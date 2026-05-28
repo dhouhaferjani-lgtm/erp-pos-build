@@ -1,0 +1,116 @@
+{
+  "title": "Transferts de stock",
+  "subtitle": "Déplacer du stock entre les succursales d'une même société.",
+  "new": "Nouveau transfert",
+  "noTransfers": "Aucun transfert pour l'instant",
+  "noTransfersHint": "Commencez par créer un transfert entre deux succursales.",
+  "list": {
+    "transferNumber": "N° transfert",
+    "source": "De",
+    "destination": "Vers",
+    "status": "Statut",
+    "lines": "Lignes",
+    "transferCost": "Coût du transfert",
+    "createdAt": "Créé le",
+    "actions": "Actions"
+  },
+  "filters": {
+    "all": "Tous",
+    "byStatus": "Filtrer par statut"
+  },
+  "status": {
+    "draft": "Brouillon",
+    "in_transit": "En transit",
+    "completed": "Complété",
+    "cancelled": "Annulé"
+  },
+  "create": {
+    "title": "Créer un transfert de stock",
+    "subtitle": "Déplacer du stock d'une succursale à l'autre, au sein d'une même société.",
+    "section": {
+      "header": "En-tête",
+      "lines": "Articles",
+      "costs": "Coûts additionnels"
+    },
+    "field": {
+      "sourceLocation": "Succursale source",
+      "destinationLocation": "Succursale destination",
+      "selectLocation": "Sélectionner une succursale",
+      "notes": "Notes",
+      "transferCost": "Coût du transfert (transport, manutention)",
+      "transferCostLabel": "Libellé du coût",
+      "transferCostDistribution": "Répartir le coût par",
+      "product": "Produit",
+      "quantity": "Quantité",
+      "selectProduct": "Sélectionner un produit",
+      "addLine": "Ajouter une ligne",
+      "removeLine": "Retirer la ligne"
+    },
+    "distribution": {
+      "pro_rata_value": "Pro-rata sur la valeur",
+      "pro_rata_quantity": "Pro-rata sur la quantité",
+      "equal_per_line": "Équitable par ligne"
+    },
+    "submit": "Créer le transfert",
+    "cancel": "Annuler",
+    "validation": {
+      "linesRequired": "Ajoutez au moins une ligne.",
+      "differentLocations": "La source et la destination doivent être différentes.",
+      "quantityPositive": "La quantité doit être supérieure à zéro."
+    },
+    "success": "Transfert créé et stock placé en transit.",
+    "error": "Impossible de créer le transfert."
+  },
+  "detail": {
+    "back": "Retour aux transferts",
+    "section": {
+      "summary": "Résumé",
+      "lines": "Articles",
+      "audit": "Piste d'audit"
+    },
+    "summary": {
+      "transferNumber": "Numéro de transfert",
+      "type": "Type",
+      "source": "Source",
+      "destination": "Destination",
+      "transferCost": "Coût du transfert",
+      "transferCostDistribution": "Répartition",
+      "notes": "Notes",
+      "initiatedBy": "Initié par",
+      "completedBy": "Complété par",
+      "cancelledBy": "Annulé par",
+      "initiatedAt": "Initié le",
+      "completedAt": "Complété le",
+      "cancelledAt": "Annulé le",
+      "cancellationReason": "Raison de l'annulation"
+    },
+    "table": {
+      "product": "Produit",
+      "sku": "SKU",
+      "quantity": "Quantité",
+      "unitCost": "Coût unitaire (au départ)",
+      "allocatedCost": "Coût alloué"
+    },
+    "actions": {
+      "complete": "Confirmer la réception",
+      "cancel": "Annuler le transfert"
+    },
+    "confirmComplete": {
+      "title": "Confirmer la réception ?",
+      "description": "Le stock de destination sera incrémenté et le coût moyen pondéré recalculé si des frais additionnels existent."
+    },
+    "confirmCancel": {
+      "title": "Annuler ce transfert ?",
+      "description": "Le stock déjà en transit sera retourné à la source.",
+      "reasonLabel": "Raison (optionnel)"
+    },
+    "errors": {
+      "completeFailed": "Impossible de compléter le transfert.",
+      "cancelFailed": "Impossible d'annuler le transfert."
+    },
+    "success": {
+      "completed": "Transfert complété ; stock destination mis à jour.",
+      "cancelled": "Transfert annulé."
+    }
+  }
+}

@@ -508,6 +508,141 @@ class WeightedAverageCostService
     }
 
     /**
+     * Record a cost adjustment that capitalizes additional costs into the
+     * company-wide weighted average cost without moving any quantity.
+     *
+     * Use this for branch-transfer freight/handling, supplier rebates,
+     * duty adjustments, write-downs, or any other WAC-affecting event
+     * that does not change on-hand quantity.
+     *
+     * new_avg = current_avg + additional_cost / company_on_hand_qty
+     *
+     * If on-hand quantity is zero the adjustment is skipped (the WAC is
+     * undefined for an empty bucket — the caller should surface this).
+     *
+     * @param  Product  $product  The product whose WAC is being adjusted
+     * @param  float  $additionalCost  Cost amount to capitalize (positive = increases WAC)
+     * @param  string  $reason  Free-text reason for audit trail (e.g. "transfer freight")
+     * @param  string|null  $reference  Human-readable reference
+     * @param  string|null  $referenceType  Source model class for audit linking
+     * @param  string|null  $referenceId  Source model UUID for audit linking
+     */
+    public function recordCostAdjustment(
+        Product $product,
+        float $additionalCost,
+        string $reason,
+        ?string $reference = null,
+        ?string $referenceType = null,
+        ?string $referenceId = null,
+    ): ?StockMovement {
+        return DB::transaction(function () use ($product, $additionalCost, $reason, $reference, $referenceType, $referenceId): ?StockMovement {
+            // Lock product first so the cost_price write is serialized.
+            $product = Product::query()
+                ->where('tenant_id', $product->tenant_id)
+                ->where('company_id', $product->company_id)
+                ->lockForUpdate()
+                ->findOrFail($product->id);
+
+            // Company-wide on-hand quantity (sum across all this product's stock_levels
+            // within the product's company). Lock the rows so concurrent stock motion
+            // cannot race the WAC delta computation.
+            /** @var numeric-string $onHandQty */
+            $onHandQty = (string) StockLevel::query()
+                ->where('product_id', $product->id)
+                ->where('tenant_id', $product->tenant_id)
+                ->where('company_id', $product->company_id)
+                ->lockForUpdate()
+                ->sum('quantity');
+
+            $onHandFloat = (float) $onHandQty;
+            if ($onHandFloat <= 0) {
+                // Nothing on hand to capitalize against — no-op, no movement.
+                return null;
+            }
+
+            $currentCostPrice = (float) ($product->cost_price ?? 0);
+            $delta = $additionalCost / $onHandFloat;
+            $newAvgCost = round($currentCostPrice + $delta, $this->scale());
+
+            // Anchor the adjustment movement at the product's "home" location
+            // (any stock_level row will do — we pick the one with the largest qty
+            // so the audit trail naturally points at where the cost lives).
+            /** @var StockLevel|null $anchor */
+            $anchor = StockLevel::query()
+                ->where('product_id', $product->id)
+                ->where('tenant_id', $product->tenant_id)
+                ->where('company_id', $product->company_id)
+                ->orderByDesc('quantity')
+                ->first();
+
+            if ($anchor === null) {
+                return null;
+            }
+
+            // quantity = 0 movement — the qty isn't changing, only the average cost.
+            $movement = StockMovement::create([
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $product->tenant_id,
+                'product_id' => $product->id,
+                'location_id' => $anchor->location_id,
+                'company_id' => $product->company_id,
+                'movement_type' => MovementType::Adjustment,
+                'quantity' => '0',
+                'quantity_before' => $onHandQty,
+                'quantity_after' => $onHandQty,
+                'unit_cost' => (string) $additionalCost,
+                'total_cost' => (string) $additionalCost,
+                'avg_cost_before' => (string) $currentCostPrice,
+                'avg_cost_after' => (string) $newAvgCost,
+                'reference' => $reference,
+                'reference_type' => $referenceType,
+                'reference_id' => $referenceId,
+                'notes' => $reason,
+            ]);
+
+            $product->cost_price = (string) $newAvgCost;
+            $product->cost_updated_at = now();
+            $product->save();
+
+            $oldSalePrice = (string) ($product->sale_price ?? '0.00');
+            $priceUpdated = $this->marginService->updateSalePrice($product);
+
+            $productSnapshot = $product->fresh() ?? $product;
+            $oldCostPriceSnapshot = (string) $currentCostPrice;
+            $newAvgCostSnapshot = (string) $newAvgCost;
+            $oldSalePriceSnapshot = $oldSalePrice;
+            $referenceSnapshot = $reference;
+            $reasonSnapshot = $reason;
+
+            if ($priceUpdated) {
+                DB::afterCommit(function () use (
+                    $productSnapshot,
+                    $oldCostPriceSnapshot,
+                    $newAvgCostSnapshot,
+                    $oldSalePriceSnapshot,
+                    $referenceSnapshot,
+                    $reasonSnapshot,
+                ): void {
+                    event(new ProductCostPriceUpdated(
+                        productId: $productSnapshot->id,
+                        tenantId: $productSnapshot->tenant_id,
+                        companyId: $productSnapshot->company_id,
+                        productSku: $productSnapshot->sku,
+                        oldCostPrice: $oldCostPriceSnapshot,
+                        newCostPrice: $newAvgCostSnapshot,
+                        oldSalePrice: $oldSalePriceSnapshot,
+                        newSalePrice: (string) $productSnapshot->sale_price,
+                        reason: $reasonSnapshot,
+                        referenceDocument: $referenceSnapshot,
+                    ));
+                });
+            }
+
+            return $movement;
+        });
+    }
+
+    /**
      * Calculate what the new weighted average cost would be without recording
      */
     public function calculateNewWAC(

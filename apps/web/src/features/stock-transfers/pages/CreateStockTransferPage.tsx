@@ -1,0 +1,307 @@
+import { useState } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import { Plus, Trash2, ArrowLeft } from 'lucide-react'
+import { toast } from 'sonner'
+import { useQuery } from '@tanstack/react-query'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { fetchLocations, type LocationApiResponse } from '@/features/location/api'
+import { Button } from '@/components/atoms/Button'
+import { ProductPicker, type ProductPickerValue } from '@/components/molecules/pickers/ProductPicker'
+import { textColors, borderColors } from '@/lib/designTokens'
+import { useCreateStockTransfer } from '../api/queries'
+import type { CreateStockTransferInput, TransferCostDistribution } from '../types'
+
+interface DraftLine {
+  uid: string
+  product: ProductPickerValue | null
+  quantity: string
+}
+
+const DISTRIBUTION_OPTIONS: TransferCostDistribution[] = [
+  'pro_rata_value',
+  'pro_rata_quantity',
+  'equal_per_line',
+]
+
+function generateUid(): string {
+  return `line-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+export function CreateStockTransferPage() {
+  const { t } = useTranslation('stock-transfers')
+  const navigate = useNavigate()
+
+  const locationsQuery = useQuery({
+    queryKey: tenantScopedKey(['locations', 'all']),
+    queryFn: () => fetchLocations(),
+  })
+  const locations: LocationApiResponse[] = locationsQuery.data ?? []
+
+  const [sourceLocationId, setSourceLocationId] = useState('')
+  const [destinationLocationId, setDestinationLocationId] = useState('')
+  const [notes, setNotes] = useState('')
+  const [transferCost, setTransferCost] = useState('0')
+  const [transferCostLabel, setTransferCostLabel] = useState('')
+  const [distribution, setDistribution] = useState<TransferCostDistribution>('pro_rata_value')
+  const [lines, setLines] = useState<DraftLine[]>([
+    { uid: generateUid(), product: null, quantity: '' },
+  ])
+
+  const createMutation = useCreateStockTransfer()
+
+  const addLine = () =>
+    setLines((prev) => [...prev, { uid: generateUid(), product: null, quantity: '' }])
+
+  const removeLine = (uid: string) =>
+    setLines((prev) => (prev.length <= 1 ? prev : prev.filter((l) => l.uid !== uid)))
+
+  const updateLine = (uid: string, patch: Partial<DraftLine>) =>
+    setLines((prev) => prev.map((l) => (l.uid === uid ? { ...l, ...patch } : l)))
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!sourceLocationId || !destinationLocationId) {
+      toast.error(t('create.field.selectLocation'))
+      return
+    }
+    if (sourceLocationId === destinationLocationId) {
+      toast.error(t('create.validation.differentLocations'))
+      return
+    }
+
+    const cleanLines = lines.filter((l) => l.product !== null && l.quantity.trim() !== '')
+    if (cleanLines.length === 0) {
+      toast.error(t('create.validation.linesRequired'))
+      return
+    }
+    for (const line of cleanLines) {
+      const q = Number(line.quantity)
+      if (Number.isNaN(q) || q <= 0) {
+        toast.error(t('create.validation.quantityPositive'))
+        return
+      }
+    }
+
+    const payload: CreateStockTransferInput = {
+      source_location_id: sourceLocationId,
+      destination_location_id: destinationLocationId,
+      notes: notes.trim() === '' ? null : notes.trim(),
+      transfer_cost: transferCost.trim() === '' ? '0' : transferCost.trim(),
+      transfer_cost_label: transferCostLabel.trim() === '' ? null : transferCostLabel.trim(),
+      transfer_cost_distribution: distribution,
+      lines: cleanLines.map((l) => ({
+        product_id: l.product!.id,
+        quantity: l.quantity,
+      })),
+    }
+
+    try {
+      const result = await createMutation.mutateAsync(payload)
+      toast.success(t('create.success'))
+      navigate(`/inventory/stock-transfers/${result.id}`)
+    } catch {
+      toast.error(t('create.error'))
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <Link
+            to="/inventory/stock-transfers"
+            className={`mb-2 inline-flex items-center text-sm ${textColors.tertiary} hover:text-gray-900`}
+          >
+            <ArrowLeft className="me-1 h-4 w-4" />
+            {t('detail.back')}
+          </Link>
+          <h1 className={`text-2xl font-semibold ${textColors.primary}`}>{t('create.title')}</h1>
+          <p className={textColors.tertiary}>{t('create.subtitle')}</p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Header section */}
+        <section className={`rounded-lg border ${borderColors.light} bg-white p-6`}>
+          <h2 className={`mb-4 text-lg font-semibold ${textColors.primary}`}>
+            {t('create.section.header')}
+          </h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label htmlFor="source" className={`mb-1 block text-sm font-medium ${textColors.secondary}`}>
+                {t('create.field.sourceLocation')}
+              </label>
+              <select
+                id="source"
+                value={sourceLocationId}
+                onChange={(e) => setSourceLocationId(e.target.value)}
+                className="w-full rounded-md border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
+                required
+              >
+                <option value="">{t('create.field.selectLocation')}</option>
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="destination" className={`mb-1 block text-sm font-medium ${textColors.secondary}`}>
+                {t('create.field.destinationLocation')}
+              </label>
+              <select
+                id="destination"
+                value={destinationLocationId}
+                onChange={(e) => setDestinationLocationId(e.target.value)}
+                className="w-full rounded-md border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
+                required
+              >
+                <option value="">{t('create.field.selectLocation')}</option>
+                {locations
+                  .filter((loc) => loc.id !== sourceLocationId)
+                  .map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <label htmlFor="notes" className={`mb-1 block text-sm font-medium ${textColors.secondary}`}>
+                {t('create.field.notes')}
+              </label>
+              <textarea
+                id="notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+                className="w-full rounded-md border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Lines section */}
+        <section className={`rounded-lg border ${borderColors.light} bg-white p-6`}>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className={`text-lg font-semibold ${textColors.primary}`}>
+              {t('create.section.lines')}
+            </h2>
+            <Button type="button" variant="secondary" size="sm" onClick={addLine}>
+              <Plus className="me-1 h-4 w-4" />
+              {t('create.field.addLine')}
+            </Button>
+          </div>
+          <div className="space-y-3">
+            {lines.map((line) => (
+              <div
+                key={line.uid}
+                className={`grid grid-cols-12 gap-3 rounded border ${borderColors.light} p-3`}
+              >
+                <div className="col-span-7">
+                  <ProductPicker
+                    value={line.product}
+                    onChange={(p) => updateLine(line.uid, { product: p })}
+                    label={t('create.field.product')}
+                    placeholder={t('create.field.selectProduct')}
+                    productType="all"
+                  />
+                </div>
+                <div className="col-span-3">
+                  <label className={`mb-1 block text-sm font-medium ${textColors.secondary}`}>
+                    {t('create.field.quantity')}
+                  </label>
+                  <input
+                    type="number"
+                    min="0.0001"
+                    step="0.0001"
+                    value={line.quantity}
+                    onChange={(e) => updateLine(line.uid, { quantity: e.target.value })}
+                    className="w-full rounded-md border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="col-span-2 flex items-end justify-end">
+                  <button
+                    type="button"
+                    onClick={() => removeLine(line.uid)}
+                    disabled={lines.length <= 1}
+                    aria-label={t('create.field.removeLine')}
+                    className="rounded p-2 text-red-600 hover:bg-red-50 disabled:opacity-30"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Costs section */}
+        <section className={`rounded-lg border ${borderColors.light} bg-white p-6`}>
+          <h2 className={`mb-4 text-lg font-semibold ${textColors.primary}`}>
+            {t('create.section.costs')}
+          </h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div>
+              <label htmlFor="cost" className={`mb-1 block text-sm font-medium ${textColors.secondary}`}>
+                {t('create.field.transferCost')}
+              </label>
+              <input
+                id="cost"
+                type="number"
+                min="0"
+                step="0.0001"
+                value={transferCost}
+                onChange={(e) => setTransferCost(e.target.value)}
+                className="w-full rounded-md border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label htmlFor="cost-label" className={`mb-1 block text-sm font-medium ${textColors.secondary}`}>
+                {t('create.field.transferCostLabel')}
+              </label>
+              <input
+                id="cost-label"
+                type="text"
+                value={transferCostLabel}
+                onChange={(e) => setTransferCostLabel(e.target.value)}
+                className="w-full rounded-md border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label htmlFor="dist" className={`mb-1 block text-sm font-medium ${textColors.secondary}`}>
+                {t('create.field.transferCostDistribution')}
+              </label>
+              <select
+                id="dist"
+                value={distribution}
+                onChange={(e) => setDistribution(e.target.value as TransferCostDistribution)}
+                className="w-full rounded-md border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
+              >
+                {DISTRIBUTION_OPTIONS.map((d) => (
+                  <option key={d} value={d}>
+                    {t(`create.distribution.${d}`)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <div className="flex justify-end gap-3">
+          <Link to="/inventory/stock-transfers">
+            <Button type="button" variant="secondary">
+              {t('create.cancel')}
+            </Button>
+          </Link>
+          <Button type="submit" variant="primary" disabled={createMutation.isPending}>
+            {t('create.submit')}
+          </Button>
+        </div>
+      </form>
+    </div>
+  )
+}
