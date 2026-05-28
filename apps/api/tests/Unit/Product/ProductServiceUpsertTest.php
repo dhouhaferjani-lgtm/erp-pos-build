@@ -77,7 +77,10 @@ class ProductServiceUpsertTest extends TestCase
 
         $product = Product::find($id);
         $this->assertNotNull($product);
-        $this->assertEquals('19', $product->tax_rate);
+        // tax_rate is a decimal(5,2) column; PostgreSQL returns the stored
+        // scale ("19.00") while SQLite returns "19". Compare numerically so the
+        // assertion holds on both drivers.
+        $this->assertEqualsWithDelta(19.0, (float) $product->tax_rate, 0.001);
     }
 
     public function test_upsert_sets_unit(): void

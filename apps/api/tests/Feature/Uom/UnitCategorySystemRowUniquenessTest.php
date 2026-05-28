@@ -41,7 +41,14 @@ class UnitCategorySystemRowUniquenessTest extends TestCase
         // (NULL, 'volume'), etc. system rows because PG treats each NULL
         // as distinct in a multi-column unique index.
         try {
-            $this->seed(UomSeeder::class);
+            // Wrap in a (nested) transaction so the duplicate-key failure
+            // rolls back to a SAVEPOINT instead of poisoning the surrounding
+            // RefreshDatabase transaction — on PostgreSQL a failed statement
+            // aborts the whole transaction block, so the post-assert SELECT
+            // below would otherwise raise 25P02 "transaction is aborted".
+            DB::transaction(function (): void {
+                $this->seed(UomSeeder::class);
+            });
         } catch (QueryException) {
             // The fixed schema must reject the duplicate at the DB level.
             // Either swallowing or surfacing the error is acceptable here;

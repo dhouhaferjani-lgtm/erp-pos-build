@@ -188,8 +188,10 @@ class ImportPreviewTest extends TestCase
 
     public function test_preview_returns_404_for_nonexistent_job(): void
     {
+        // Valid-but-nonexistent UUID: the id column is uuid, so a malformed
+        // string would raise a PostgreSQL cast error instead of a 404.
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/v1/imports/nonexistent-uuid/preview');
+            ->getJson('/api/v1/imports/00000000-0000-0000-0000-000000000000/preview');
 
         $response->assertNotFound();
     }

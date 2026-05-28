@@ -17,6 +17,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\DTOs\ProductInventoryDTO;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class ProductInventoryQueryServiceTest extends TestCase
@@ -73,9 +74,12 @@ class ProductInventoryQueryServiceTest extends TestCase
             'sale_price' => '29.99',
         ]);
 
+        // platform_article_id is a uuid column (PostgreSQL rejects non-UUID
+        // strings); use a real UUID for the lookup key.
+        $articleId = (string) Str::uuid();
         AutomotiveProductMetadata::factory()->create([
             'product_id' => $product->id,
-            'platform_article_id' => 'ART-12345',
+            'platform_article_id' => $articleId,
         ]);
 
         StockLevel::create([
@@ -89,16 +93,16 @@ class ProductInventoryQueryServiceTest extends TestCase
 
         $results = $this->service->findByPlatformArticleIds(
             $this->company->id,
-            ['ART-12345'],
+            [$articleId],
         );
 
         $this->assertCount(1, $results);
-        $this->assertTrue($results->has('ART-12345'));
+        $this->assertTrue($results->has($articleId));
 
-        $dto = $results->get('ART-12345');
+        $dto = $results->get($articleId);
         $this->assertInstanceOf(ProductInventoryDTO::class, $dto);
         $this->assertSame($product->id, $dto->productId);
-        $this->assertSame('ART-12345', $dto->platformArticleId);
+        $this->assertSame($articleId, $dto->platformArticleId);
         $this->assertEqualsWithDelta(100.0, (float) $dto->totalStock, 0.01);
         $this->assertEqualsWithDelta(10.0, (float) $dto->totalReserved, 0.01);
         $this->assertSame('90.00', $dto->available); // bcsub formats with scale 2
@@ -109,7 +113,7 @@ class ProductInventoryQueryServiceTest extends TestCase
     {
         $results = $this->service->findByPlatformArticleIds(
             $this->company->id,
-            ['ART-NONEXISTENT'],
+            [(string) Str::uuid()],
         );
 
         $this->assertCount(0, $results);
@@ -134,15 +138,16 @@ class ProductInventoryQueryServiceTest extends TestCase
             'company_id' => $otherCompany->id,
         ]);
 
+        $articleId = (string) Str::uuid();
         AutomotiveProductMetadata::factory()->create([
             'product_id' => $product->id,
-            'platform_article_id' => 'ART-OTHER',
+            'platform_article_id' => $articleId,
         ]);
 
         // Query with original company — should not find the other company's product
         $results = $this->service->findByPlatformArticleIds(
             $this->company->id,
-            ['ART-OTHER'],
+            [$articleId],
         );
 
         $this->assertCount(0, $results);
@@ -163,9 +168,10 @@ class ProductInventoryQueryServiceTest extends TestCase
             'sale_price' => '50.00',
         ]);
 
+        $articleId = (string) Str::uuid();
         AutomotiveProductMetadata::factory()->create([
             'product_id' => $product->id,
-            'platform_article_id' => 'ART-MULTI',
+            'platform_article_id' => $articleId,
         ]);
 
         StockLevel::create([
@@ -188,10 +194,10 @@ class ProductInventoryQueryServiceTest extends TestCase
 
         $results = $this->service->findByPlatformArticleIds(
             $this->company->id,
-            ['ART-MULTI'],
+            [$articleId],
         );
 
-        $dto = $results->get('ART-MULTI');
+        $dto = $results->get($articleId);
         $this->assertEqualsWithDelta(100.0, (float) $dto->totalStock, 0.01);    // 60 + 40
         $this->assertEqualsWithDelta(20.0, (float) $dto->totalReserved, 0.01);  // 5 + 15
         $this->assertSame('80.00', $dto->available);                              // 100 - 20 via bcsub

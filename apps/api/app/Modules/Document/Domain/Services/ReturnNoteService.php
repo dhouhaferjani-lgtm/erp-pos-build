@@ -99,7 +99,22 @@ final class ReturnNoteService
         $chainSequence = ($previousDoc !== null ? $previousDoc->chain_sequence : 0) + 1;
         $confirmedAt = now();
 
-        // Calculate fiscal hash using the compliance service
+        // Receive stock back for each line
+        $this->receiveStockBack($returnNote);
+
+        // Calculate and snapshot taxes BEFORE sealing. The sealed fiscal hash
+        // must cover the final, tax-adjusted total — and PostgreSQL's
+        // immutability trigger rejects any tax_amount/total change once a
+        // document is SEALED, so the totals must be written while the document
+        // is still a draft.
+        $taxResult = $this->taxCalculationService->calculateDocumentTaxes($returnNote);
+        $returnNote->update([
+            'tax_amount' => $taxResult->totalTax,
+            'total' => $taxResult->total,
+        ]);
+        $this->taxCalculationService->snapshotTaxDetails($returnNote, $taxResult);
+
+        // Calculate fiscal hash over the finalized total using the compliance service
         $input = $this->hashService->serializeForHashing([
             'document_number' => $returnNote->document_number,
             'posted_at' => $confirmedAt->toDateString(), // Use 'posted_at' for consistency with serializer
@@ -108,9 +123,6 @@ final class ReturnNoteService
         ]);
 
         $fiscalHash = $this->hashService->calculateHash($input, $previousHash, $genesisSeed);
-
-        // Receive stock back for each line
-        $this->receiveStockBack($returnNote);
 
         // Update return note with fiscal chain data and seal it
         $returnNote->update([
@@ -121,14 +133,6 @@ final class ReturnNoteService
             'previous_hash' => $previousHash,
             'chain_sequence' => $chainSequence,
         ]);
-
-        // Calculate and snapshot taxes for immutable audit trail
-        $taxResult = $this->taxCalculationService->calculateDocumentTaxes($returnNote);
-        $returnNote->update([
-            'tax_amount' => $taxResult->totalTax,
-            'total' => $taxResult->total,
-        ]);
-        $this->taxCalculationService->snapshotTaxDetails($returnNote, $taxResult);
 
         // Dispatch the fiscal event for audit log
         $this->dispatchConfirmedEvent($returnNote, $confirmedAt->toIso8601String());

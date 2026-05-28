@@ -8,6 +8,7 @@ use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\ProductInventoryQueryInterface;
 use App\Shared\DTOs\ProductInventoryDTO;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 final class ProductInventoryQueryService implements ProductInventoryQueryInterface
 {
@@ -17,10 +18,27 @@ final class ProductInventoryQueryService implements ProductInventoryQueryInterfa
      */
     public function findByPlatformArticleIds(string $companyId, array $platformArticleIds): Collection
     {
+        // platform_article_id is a uuid column. External platform article ids are
+        // not always uuids (e.g. an unlinked marketplace ref); a non-uuid value can
+        // never match a local product and on PostgreSQL raises 22P02 (invalid uuid
+        // syntax), which would 500 the whole catalog-browse enrichment. Drop
+        // non-uuid ids up front — they are simply unmatched, not an error.
+        $validArticleIds = array_values(array_filter(
+            $platformArticleIds,
+            static fn (string $id): bool => Str::isUuid($id),
+        ));
+
+        if ($validArticleIds === []) {
+            /** @var Collection<string, ProductInventoryDTO> $empty */
+            $empty = collect();
+
+            return $empty;
+        }
+
         return Product::query()
             ->where('company_id', $companyId)
-            ->whereHas('automotiveMetadata', function ($query) use ($platformArticleIds): void {
-                $query->whereIn('platform_article_id', $platformArticleIds);
+            ->whereHas('automotiveMetadata', function ($query) use ($validArticleIds): void {
+                $query->whereIn('platform_article_id', $validArticleIds);
             })
             ->with(['automotiveMetadata', 'stockLevels'])
             ->get()

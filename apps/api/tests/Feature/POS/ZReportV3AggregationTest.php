@@ -12,6 +12,7 @@ use App\Modules\POS\Application\Services\FraudSettingsResolver;
 use App\Modules\POS\Application\Services\ReportGenerationService;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\CashDrawerService;
@@ -82,7 +83,7 @@ class ZReportV3AggregationTest extends TestCase
         $terminal = $this->createTerminal();
 
         // Two sale receipts
-        $this->createReceipt($terminal, [
+        $sale1 = $this->createReceipt($terminal, [
             'receipt_type' => ReceiptType::Sale,
             'subtotal' => '100.00',
             'tax_amount' => '20.00',
@@ -95,15 +96,19 @@ class ZReportV3AggregationTest extends TestCase
             'total' => '60.00',
         ]);
 
-        // One return receipt
+        // One return receipt. A return row must carry original_receipt_id +
+        // return_reason (pos_receipts_return_logic, enforced by PostgreSQL).
         $this->createReceipt($terminal, [
             'receipt_type' => ReceiptType::Return,
+            'original_receipt_id' => $sale1->id,
+            'return_reason' => ReturnReason::Defective,
             'subtotal' => '30.00',
             'tax_amount' => '6.00',
             'total' => '36.00',
         ]);
 
-        // One voided receipt
+        // One voided receipt. A voided row must carry voided_by + fiscal_status
+        // (pos_receipts_void_logic, enforced by PostgreSQL).
         $this->createReceipt($terminal, [
             'receipt_type' => ReceiptType::Sale,
             'subtotal' => '10.00',
@@ -111,6 +116,8 @@ class ZReportV3AggregationTest extends TestCase
             'total' => '12.00',
             'is_voided' => true,
             'voided_at' => now(),
+            'voided_by' => $this->cashier->id,
+            'fiscal_status' => FiscalStatus::Voided,
         ]);
 
         $method = new ReflectionMethod(ReportGenerationService::class, 'calculateShiftTotals');

@@ -104,16 +104,6 @@ final class DeliveryNoteService
         $chainSequence = ($previousDoc !== null ? $previousDoc->chain_sequence : 0) + 1;
         $confirmedAt = now();
 
-        // Calculate fiscal hash using the compliance service
-        $input = $this->hashService->serializeForHashing([
-            'document_number' => $deliveryNote->document_number,
-            'posted_at' => $confirmedAt->toDateString(), // Use 'posted_at' for consistency with serializer
-            'total' => $deliveryNote->total ?? '0.00',
-            'currency' => $deliveryNote->currency,
-        ]);
-
-        $fiscalHash = $this->hashService->calculateHash($input, $previousHash, $genesisSeed);
-
         // Release stock reservations if this DN is linked to a sales order
         $this->releaseSourceReservations($deliveryNote);
 
@@ -127,6 +117,28 @@ final class DeliveryNoteService
             ]);
         }
 
+        // Calculate and snapshot taxes BEFORE sealing. The sealed fiscal hash
+        // must cover the final, tax-adjusted total — and PostgreSQL's
+        // immutability trigger rejects any tax_amount/total change once a
+        // document is SEALED, so the totals must be written while the document
+        // is still a draft.
+        $taxResult = $this->taxCalculationService->calculateDocumentTaxes($deliveryNote);
+        $deliveryNote->update([
+            'tax_amount' => $taxResult->totalTax,
+            'total' => $taxResult->total,
+        ]);
+        $this->taxCalculationService->snapshotTaxDetails($deliveryNote, $taxResult);
+
+        // Calculate fiscal hash over the finalized total using the compliance service
+        $input = $this->hashService->serializeForHashing([
+            'document_number' => $deliveryNote->document_number,
+            'posted_at' => $confirmedAt->toDateString(), // Use 'posted_at' for consistency with serializer
+            'total' => $deliveryNote->total ?? '0.00',
+            'currency' => $deliveryNote->currency,
+        ]);
+
+        $fiscalHash = $this->hashService->calculateHash($input, $previousHash, $genesisSeed);
+
         // Update delivery note with fiscal chain data and seal it
         $deliveryNote->update([
             'status' => DocumentStatus::Confirmed,
@@ -138,14 +150,6 @@ final class DeliveryNoteService
             'confirmed_at' => $confirmedAt,
             'confirmed_by' => auth()->id(),
         ]);
-
-        // Calculate and snapshot taxes for immutable audit trail
-        $taxResult = $this->taxCalculationService->calculateDocumentTaxes($deliveryNote);
-        $deliveryNote->update([
-            'tax_amount' => $taxResult->totalTax,
-            'total' => $taxResult->total,
-        ]);
-        $this->taxCalculationService->snapshotTaxDetails($deliveryNote, $taxResult);
 
         // Dispatch the fiscal event for audit log
         $this->dispatchConfirmedEvent($deliveryNote, $confirmedAt->toIso8601String());

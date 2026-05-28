@@ -401,6 +401,10 @@ final class CloseInvoiceWithToleranceServiceTest extends TestCase
             'tax_amount' => '0.000',
             'total' => $total,
             'balance_due' => $balance,
+            // A SEALED fiscal document must carry fiscal core
+            // (chk_fiscal_mandatory_core, enforced by PostgreSQL).
+            'fiscal_hash' => hash('sha256', 'close-tolerance-'.uniqid('', true)),
+            'chain_sequence' => random_int(1, 1_000_000),
         ]);
     }
 }

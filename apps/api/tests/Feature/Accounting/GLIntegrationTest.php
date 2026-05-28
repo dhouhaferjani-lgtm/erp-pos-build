@@ -29,6 +29,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -272,7 +273,7 @@ class GLIntegrationTest extends TestCase
         $journalEntry = $service->createCustomerAdvanceJournalEntry(
             companyId: $this->company->id,
             partnerId: $this->partner->id,
-            advanceId: 'ADV-001',
+            advanceId: (string) Str::uuid(),
             amount: '500.00',
             paymentMethodAccountId: $this->cashAccount->id,
             date: now(),
@@ -321,7 +322,7 @@ class GLIntegrationTest extends TestCase
         $journalEntry = $service->createSupplierInvoiceJournalEntry(
             companyId: $this->company->id,
             partnerId: $supplier->id,
-            invoiceId: 'SINV-001',
+            invoiceId: (string) Str::uuid(),
             totalAmount: '119.00',
             netAmount: '100.00',
             vatAmount: '19.00',
@@ -366,7 +367,7 @@ class GLIntegrationTest extends TestCase
         $journalEntry = $service->createSupplierPaymentJournalEntry(
             companyId: $this->company->id,
             partnerId: $supplier->id,
-            paymentId: 'SPMT-001',
+            paymentId: (string) Str::uuid(),
             amount: '500.00',
             paymentMethodAccountId: $this->cashAccount->id,
             date: now(),

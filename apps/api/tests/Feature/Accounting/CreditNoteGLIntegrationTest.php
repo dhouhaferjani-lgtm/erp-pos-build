@@ -164,7 +164,8 @@ class CreditNoteGLIntegrationTest extends TestCase
         // Create warehouse
         $this->warehouse = Location::create([
             'company_id' => $this->company->id,
-            'code' => 'WH-CN-GL-'.uniqid(),
+            // locations.code is varchar(20); keep within length for PostgreSQL.
+            'code' => 'WHC-'.substr((string) uniqid(), -10),
             'name' => 'Main Warehouse CN GL',
             'type' => 'warehouse',
             'is_active' => true,

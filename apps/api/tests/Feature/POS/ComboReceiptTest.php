@@ -500,10 +500,12 @@ final class ComboReceiptTest extends TestCase
         $totalShare = bcadd($decomposition[0]['share'], $decomposition[1]['share'], 3);
         $this->assertEquals('12.000', $totalShare);
 
-        // Verify tax rates match the products
-        $rates = array_column($decomposition, 'tax_rate');
-        $this->assertContains('10', $rates);
-        $this->assertContains('20', $rates);
+        // Verify tax rates match the products. tax_rate is decimal(5,2) so
+        // PostgreSQL returns "10.00"/"20.00" vs SQLite "10"/"20"; compare
+        // numerically.
+        $rates = array_map(static fn ($r): float => (float) $r, array_column($decomposition, 'tax_rate'));
+        $this->assertContains(10.0, $rates);
+        $this->assertContains(20.0, $rates);
     }
 
     private function setupTestData(): void

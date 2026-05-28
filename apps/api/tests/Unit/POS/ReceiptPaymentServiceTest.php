@@ -691,6 +691,17 @@ final class ReceiptPaymentServiceTest extends TestCase
      */
     private function createReceipt(array $overrides = []): Receipt
     {
+        // When a test overrides `total` only, the factory's random subtotal/tax
+        // would violate the pos_receipts_totals CHECK (total = subtotal +
+        // tax_amount), which PostgreSQL enforces. Keep them consistent by
+        // deriving subtotal from the overridden total + tax_amount.
+        if (array_key_exists('total', $overrides)) {
+            $tax = (string) ($overrides['tax_amount'] ?? '0.000');
+            $overrides['tax_amount'] = $tax;
+            $overrides['subtotal'] = $overrides['subtotal']
+                ?? bcsub((string) $overrides['total'], $tax, 3);
+        }
+
         return Receipt::factory()->pendingSeal()->create(array_merge([
             'company_id' => $this->company->id,
             'tenant_id' => $this->tenant->id,

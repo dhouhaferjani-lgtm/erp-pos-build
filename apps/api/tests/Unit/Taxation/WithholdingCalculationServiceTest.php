@@ -21,6 +21,9 @@ class WithholdingCalculationServiceTest extends TestCase
 {
     use RefreshDatabase;
 
+    // company_id is a uuid column; PostgreSQL rejects non-UUID strings.
+    private const COMPANY_ID = '0193b000-0000-7000-8000-000000000123';
+
     private WithholdingCalculationService $service;
 
     protected function setUp(): void
@@ -43,7 +46,7 @@ class WithholdingCalculationServiceTest extends TestCase
             '1000.000',
             'TND',
             'TN',
-            'company-123',
+            self::COMPANY_ID,
             TransactionType::SERVICES
         );
 
@@ -70,7 +73,7 @@ class WithholdingCalculationServiceTest extends TestCase
             '1000.000',
             'TND',
             'TN',
-            'company-123',
+            self::COMPANY_ID,
             TransactionType::SERVICES
         );
 
@@ -94,7 +97,7 @@ class WithholdingCalculationServiceTest extends TestCase
             '500.000',
             'TND',
             'TN',
-            'company-123',
+            self::COMPANY_ID,
             TransactionType::SERVICES
         );
 
@@ -115,7 +118,7 @@ class WithholdingCalculationServiceTest extends TestCase
             '500.000',
             'TND',
             'TN',
-            'company-123',
+            self::COMPANY_ID,
             null
         );
 
@@ -128,7 +131,7 @@ class WithholdingCalculationServiceTest extends TestCase
             '1500.000',
             'TND',
             'TN',
-            'company-123',
+            self::COMPANY_ID,
             null
         );
 
@@ -177,7 +180,7 @@ class WithholdingCalculationServiceTest extends TestCase
             '1000.000',
             'TND',
             'TN',
-            'company-123',
+            self::COMPANY_ID,
             TransactionType::SERVICES
         );
 
@@ -200,7 +203,7 @@ class WithholdingCalculationServiceTest extends TestCase
             '1234.567',
             'TND',
             'TN',
-            'company-123',
+            self::COMPANY_ID,
             TransactionType::SERVICES
         );
 

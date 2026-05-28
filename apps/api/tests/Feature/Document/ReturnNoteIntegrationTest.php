@@ -194,6 +194,10 @@ class ReturnNoteIntegrationTest extends TestCase
             'subtotal' => '200.00',
             'tax_amount' => '38.00',
             'total' => '238.00',
+            // A SEALED fiscal document must carry fiscal core
+            // (chk_fiscal_mandatory_core, enforced by PostgreSQL).
+            'fiscal_hash' => hash('sha256', 'rn-002-seal'),
+            'chain_sequence' => 1,
         ]);
 
         $response = $this->actingAs($this->user)
@@ -379,6 +383,10 @@ class ReturnNoteIntegrationTest extends TestCase
             'subtotal' => '100.00',
             'tax_amount' => '19.00',
             'total' => '119.00',
+            // A SEALED fiscal document must carry fiscal core
+            // (chk_fiscal_mandatory_core, enforced by PostgreSQL).
+            'fiscal_hash' => hash('sha256', 'rn-001-seal-'.uniqid('', true)),
+            'chain_sequence' => 1,
         ]);
 
         $updateData = [
@@ -462,6 +470,10 @@ class ReturnNoteIntegrationTest extends TestCase
             'subtotal' => '100.00',
             'tax_amount' => '19.00',
             'total' => '119.00',
+            // A SEALED fiscal document must carry fiscal core
+            // (chk_fiscal_mandatory_core, enforced by PostgreSQL).
+            'fiscal_hash' => hash('sha256', 'rn-001-seal-'.uniqid('', true)),
+            'chain_sequence' => 1,
         ]);
 
         $response = $this->actingAs($this->user)
@@ -517,9 +529,13 @@ class ReturnNoteIntegrationTest extends TestCase
         $response = $this->actingAs($this->user)
             ->postJson("/api/v1/return-notes/{$returnNote->id}/confirm");
 
-        if ($response->status() !== 200) {
-            dd($response->json());
-        }
+        // A non-200 here surfaces the failing payload without halting the
+        // whole suite (a bare dd() previously killed every later test).
+        $this->assertSame(
+            200,
+            $response->status(),
+            'Return note confirm failed: '.json_encode($response->json())
+        );
 
         $response->assertOk();
 

@@ -7,6 +7,7 @@ namespace Tests\Unit\POS;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\GrandtotalService;
 use App\Modules\POS\Domain\Terminal;
@@ -89,6 +90,8 @@ class GrandtotalServiceTest extends TestCase
             'total' => '119.00',
             'is_voided' => true,
             'voided_at' => now(),
+            'voided_by' => $this->cashier->id,
+            'fiscal_status' => FiscalStatus::Voided,
         ]);
 
         $result = $this->service->calculatePeriodTotals(
@@ -111,12 +114,15 @@ class GrandtotalServiceTest extends TestCase
         $terminal = $this->createPersistedTerminal();
 
         $this->createReceipt($terminal, [
+            'subtotal' => '100.00',
             'total' => '119.00',
             'tax_amount' => '19.00',
             'is_voided' => false,
         ]);
 
         $this->createReceipt($terminal, [
+            // total = subtotal + tax_amount (pos_receipts_totals CHECK).
+            'subtotal' => '50.00',
             'total' => '59.50',
             'tax_amount' => '9.50',
             'is_voided' => false,
@@ -137,16 +143,21 @@ class GrandtotalServiceTest extends TestCase
         $terminal = $this->createPersistedTerminal();
 
         $this->createReceipt($terminal, [
+            'subtotal' => '100.00',
             'total' => '119.00',
             'tax_amount' => '19.00',
             'is_voided' => false,
         ]);
 
         $this->createReceipt($terminal, [
+            // total = subtotal + tax_amount (pos_receipts_totals CHECK).
+            'subtotal' => '162.00',
             'total' => '200.00',
             'tax_amount' => '38.00',
             'is_voided' => true,
             'voided_at' => now(),
+            'voided_by' => $this->cashier->id,
+            'fiscal_status' => FiscalStatus::Voided,
         ]);
 
         $result = $this->service->calculatePerpetualTotals($terminal);

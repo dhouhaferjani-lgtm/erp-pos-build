@@ -63,7 +63,7 @@ class BalanceDueCacheTriggerTest extends TestCase
 
         // Trigger should have updated balance_due automatically
         $invoice = $invoice->fresh();
-        $this->assertEquals('40.00', $invoice->balance_due);
+        $this->assertEqualsWithDelta((float) '40.00', (float) $invoice->balance_due, 0.001);
     }
 
     public function test_trigger_updates_cache_on_allocation_delete(): void
@@ -85,14 +85,14 @@ class BalanceDueCacheTriggerTest extends TestCase
 
         // Verify cache updated
         $invoice = $invoice->fresh();
-        $this->assertEquals('40.00', $invoice->balance_due);
+        $this->assertEqualsWithDelta((float) '40.00', (float) $invoice->balance_due, 0.001);
 
         // Delete allocation
         $allocation->delete();
 
         // Trigger should restore balance_due to full amount
         $invoice = $invoice->fresh();
-        $this->assertEquals('100.00', $invoice->balance_due);
+        $this->assertEqualsWithDelta((float) '100.00', (float) $invoice->balance_due, 0.001);
     }
 
     public function test_trigger_updates_cache_on_allocation_update(): void
@@ -113,14 +113,14 @@ class BalanceDueCacheTriggerTest extends TestCase
         ]);
 
         $invoice = $invoice->fresh();
-        $this->assertEquals('40.00', $invoice->balance_due);
+        $this->assertEqualsWithDelta((float) '40.00', (float) $invoice->balance_due, 0.001);
 
         // Update allocation amount
         $allocation->update(['amount' => '80.00']);
 
         // Trigger should adjust balance_due
         $invoice = $invoice->fresh();
-        $this->assertEquals('20.00', $invoice->balance_due);
+        $this->assertEqualsWithDelta((float) '20.00', (float) $invoice->balance_due, 0.001);
     }
 
     public function test_trigger_handles_multiple_rapid_allocations(): void
@@ -157,7 +157,7 @@ class BalanceDueCacheTriggerTest extends TestCase
 
         // Trigger should have updated cache correctly
         $invoice = $invoice->fresh();
-        $this->assertEquals('300.00', $invoice->balance_due);
+        $this->assertEqualsWithDelta((float) '300.00', (float) $invoice->balance_due, 0.001);
     }
 
     public function test_computed_method_matches_cached_value(): void
@@ -218,7 +218,7 @@ class BalanceDueCacheTriggerTest extends TestCase
 
         // balance_due should NOT have changed (trigger respects transaction)
         $invoice = $invoice->fresh();
-        $this->assertEquals('100.00', $invoice->balance_due);
+        $this->assertEqualsWithDelta((float) '100.00', (float) $invoice->balance_due, 0.001);
     }
 
     public function test_trigger_with_null_total(): void
@@ -241,6 +241,6 @@ class BalanceDueCacheTriggerTest extends TestCase
         $invoice = $invoice->fresh();
 
         // Trigger should handle COALESCE for null total
-        $this->assertEquals('-50.00', $invoice->balance_due); // Overpayment on null invoice
+        $this->assertEqualsWithDelta((float) '-50.00', (float) $invoice->balance_due, 0.001); // Overpayment on null invoice
     }
 }

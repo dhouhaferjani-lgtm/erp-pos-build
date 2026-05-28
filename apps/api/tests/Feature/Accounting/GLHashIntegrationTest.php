@@ -147,7 +147,9 @@ final class GLHashIntegrationTest extends TestCase
         // Create warehouse
         $this->warehouse = Location::create([
             'company_id' => $this->company->id,
-            'code' => 'WH-HASH-'.uniqid(),
+            // locations.code is varchar(20); keep the unique suffix short
+            // enough to fit (PostgreSQL enforces the length, SQLite does not).
+            'code' => 'WH-'.substr((string) uniqid(), -10),
             'name' => 'Hash Test Warehouse',
             'type' => 'warehouse',
             'is_active' => true,

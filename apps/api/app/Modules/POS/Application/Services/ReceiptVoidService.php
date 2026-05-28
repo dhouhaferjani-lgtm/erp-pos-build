@@ -9,6 +9,7 @@ use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Events\ReceiptVoided;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLineBatchAllocation;
@@ -60,9 +61,17 @@ final class ReceiptVoidService
         }
 
         return DB::transaction(function () use ($receipt, $voidedBy, $reason, $authorizedByUserId): Receipt {
-            // 1. Mark as voided
+            // 1. Mark as voided.
+            //
+            // The fiscal_status must transition to Voided: the PostgreSQL
+            // receipt immutability trigger only permits an UPDATE on a
+            // fiscalized receipt when it moves fiscalized -> voided. Omitting
+            // fiscal_status here leaves a fiscalized receipt unchanged on that
+            // column, which the trigger rejects ("Receipt is fiscally sealed
+            // and cannot be modified"), failing every void in production.
             $receipt->update([
                 'is_voided' => true,
+                'fiscal_status' => FiscalStatus::Voided,
                 'voided_at' => now(),
                 'voided_by' => $voidedBy->id,
                 'void_reason' => $reason,

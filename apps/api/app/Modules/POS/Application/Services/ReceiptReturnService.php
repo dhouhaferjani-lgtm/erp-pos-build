@@ -837,10 +837,21 @@ final class ReceiptReturnService
             $totalTax = bcadd($totalTax, $recalcVat, $s);
         }
 
+        // The refund total is the discounted net plus tax (the line totals
+        // already reflect line-level discounts).
         /** @var numeric-string $total */
         $total = bcadd($subtotal, $totalTax, $s);
 
-        return [$receiptLines, $vatAggregates, $subtotal, $totalTax, $totalDiscount, $total];
+        // Persisted header columns must satisfy the pos_receipts_totals invariant
+        // total = subtotal + tax_amount - discount_amount (enforced by PostgreSQL).
+        // discount_amount carries the proportional line-discount sum for audit, so
+        // the stored subtotal is the PRE-discount net; the refund `total` is
+        // unchanged because the discount cancels out:
+        //   (net + discount) + tax - discount = net + tax = total.
+        /** @var numeric-string $headerSubtotal */
+        $headerSubtotal = bcadd($subtotal, $totalDiscount, $s);
+
+        return [$receiptLines, $vatAggregates, $headerSubtotal, $totalTax, $totalDiscount, $total];
     }
 
     // =========================================================================

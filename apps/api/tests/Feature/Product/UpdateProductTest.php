@@ -109,8 +109,9 @@ class UpdateProductTest extends TestCase
                 'sale_price' => '75.99',
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('data.sale_price', '75.99');
+        $response->assertOk();
+        // sale_price is numeric(15,3); PostgreSQL returns "75.990", SQLite "75.99".
+        $this->assertEqualsWithDelta(75.99, (float) $response->json('data.sale_price'), 0.001);
     }
 
     public function test_can_update_type_to_valid_value(): void

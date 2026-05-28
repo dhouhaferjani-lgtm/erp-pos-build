@@ -159,7 +159,8 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         // Create warehouse
         $this->warehouse = Location::create([
             'company_id' => $this->company->id,
-            'code' => 'WH-GL-INT-'.uniqid(),
+            // locations.code is varchar(20); keep within length for PostgreSQL.
+            'code' => 'WHI-'.substr((string) uniqid(), -10),
             'name' => 'Main Warehouse GL Integration',
             'type' => 'warehouse',
             'is_active' => true,
@@ -329,7 +330,9 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         $totalDebits = $glEntry->lines()->sum('debit');
         $totalCredits = $glEntry->lines()->sum('credit');
         $this->assertEquals($totalDebits, $totalCredits, 'Entry must be balanced');
-        $this->assertEquals('1190.00', $totalDebits);
+        // SUM over decimal(.,3) columns returns scale-3 on PostgreSQL
+        // ("1190.000") vs SQLite's "1190.00"; compare numerically.
+        $this->assertEqualsWithDelta(1190.0, (float) $totalDebits, 0.001);
     }
 
     /**
@@ -417,7 +420,9 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         $totalDebits = $glEntry->lines()->sum('debit');
         $totalCredits = $glEntry->lines()->sum('credit');
         $this->assertEquals($totalDebits, $totalCredits, 'Entry must be balanced');
-        $this->assertEquals('1190.00', $totalDebits);
+        // SUM over decimal(.,3) columns returns scale-3 on PostgreSQL
+        // ("1190.000") vs SQLite's "1190.00"; compare numerically.
+        $this->assertEqualsWithDelta(1190.0, (float) $totalDebits, 0.001);
     }
 
     /**

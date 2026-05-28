@@ -10,6 +10,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\CashCountValidationService;
 use App\Modules\POS\Application\Services\FraudSettingsResolver;
 use App\Modules\POS\Application\Services\ReportGenerationService;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Services\GrandtotalService;
@@ -20,7 +21,6 @@ use App\Modules\POS\Infrastructure\Repositories\ZReportCountRepository;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\Services\PaymentToleranceQueryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 use Tests\Traits\WithCurrencyScale;
 
@@ -124,6 +124,8 @@ class ReportGenerationServiceTest extends TestCase
             'total' => '238.00',
             'is_voided' => true,
             'voided_at' => now(),
+            'voided_by' => $this->cashier->id,
+            'fiscal_status' => FiscalStatus::Voided,
         ]);
 
         $method = new \ReflectionMethod(ReportGenerationService::class, 'calculateShiftTotals');
@@ -228,21 +230,21 @@ class ReportGenerationServiceTest extends TestCase
         $shiftBOpen = $shiftAClose;
         $shiftBClose = now()->addHour();
 
-        // Create receipt with posted_at inside shift B.
+        // Create receipt with posted_at inside shift B and created_at back-dated
+        // into shift A. created_at is written at INSERT time rather than via a
+        // post-seal UPDATE: the PostgreSQL receipt immutability trigger now
+        // rejects ANY update to a fiscalized receipt (other than the
+        // fiscalized->voided transition), so a raw created_at update after
+        // sealing is blocked. Setting created_at on the unsaved model keeps the
+        // whole write inside a single INSERT.
         $boundaryReceipt = $this->createReceipt($terminal, [
             'subtotal' => '80.00',
             'tax_amount' => '8.00',
             'total' => '88.00',
             'is_voided' => false,
             'posted_at' => $shiftBOpen->clone()->addMinutes(5),
+            'created_at' => $shiftAOpen->clone()->addMinutes(5),
         ]);
-
-        // Back-date created_at into shift A via raw update.
-        // created_at is NOT protected by the NF525 immutability trigger (which guards
-        // fiscal_hash, receipt_number, totals, chain_sequence, posted_at only).
-        DB::table('pos_receipts')
-            ->where('id', $boundaryReceipt->id)
-            ->update(['created_at' => $shiftAOpen->clone()->addMinutes(5)]);
 
         $method = new \ReflectionMethod(ReportGenerationService::class, 'calculateShiftTotals');
         $method->setAccessible(true);
@@ -315,6 +317,21 @@ class ReportGenerationServiceTest extends TestCase
             'is_voided' => false,
         ];
 
-        return Receipt::create(array_merge($defaults, $overrides));
+        $attributes = array_merge($defaults, $overrides);
+
+        // created_at is guarded (not mass-assignable). When a test needs a
+        // back-dated creation time it must be written at INSERT time, because
+        // the receipt is sealed (fiscalized) on insert and the immutability
+        // trigger blocks any later UPDATE.
+        $createdAt = $attributes['created_at'] ?? null;
+        unset($attributes['created_at']);
+
+        $receipt = new Receipt($attributes);
+        if ($createdAt !== null) {
+            $receipt->created_at = $createdAt;
+        }
+        $receipt->save();
+
+        return $receipt;
     }
 }
