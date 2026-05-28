@@ -11,11 +11,13 @@ use App\Modules\Catalog\Domain\Entities\ModifierGroup;
 use App\Modules\Catalog\Domain\Repositories\AttributeRepository;
 use App\Modules\Catalog\Domain\Repositories\AttributeValueRepository;
 use App\Modules\Catalog\Domain\Repositories\ProductVariantRepository;
+use App\Modules\Catalog\Infrastructure\Adapters\EloquentProductVariantLookup;
 use App\Modules\Catalog\Infrastructure\Repositories\EloquentAttributeRepository;
 use App\Modules\Catalog\Infrastructure\Repositories\EloquentAttributeValueRepository;
 use App\Modules\Catalog\Infrastructure\Repositories\EloquentProductVariantRepository;
 use App\Modules\POS\Infrastructure\Broadcasting\CatalogModelObserver;
 use App\Shared\Contracts\CompositeItemServiceInterface;
+use App\Shared\Contracts\ProductVariantLookup;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -27,6 +29,7 @@ class CatalogServiceProvider extends ServiceProvider
         $this->app->bind(AttributeRepository::class, EloquentAttributeRepository::class);
         $this->app->bind(AttributeValueRepository::class, EloquentAttributeValueRepository::class);
         $this->app->bind(ProductVariantRepository::class, EloquentProductVariantRepository::class);
+        $this->app->bind(ProductVariantLookup::class, EloquentProductVariantLookup::class);
     }
 
     public function boot(): void
