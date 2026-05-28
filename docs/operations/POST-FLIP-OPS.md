@@ -119,18 +119,40 @@ safer pattern.)
 
 ## 5. Monitoring
 
-See A4.3 (next commit) — `tenant:status` artisan + `/api/admin/tenants/health`
-JSON endpoint. Surfaces per tenant:
+Two surfaces, same underlying snapshot:
 
-- Does the per-tenant database physically exist?
-- Database size (via `pg_database_size`).
-- Active backend connection count (`pg_stat_database.numbackends`).
-- Last successful backup timestamp + age (from `tenant_backups`).
-- Last failed backup timestamp + error message (from `tenant_backups`).
+```bash
+# Operator CLI — pretty table
+php artisan tenant:status
+# slug    db?  size       conns  backup     when
+# acme    yes  142.3 MB   3      completed  2026-05-28T03:00:01+00:00
+# bravo   yes  12.7 MB    0      failed     2026-05-28T03:00:18+00:00
+# unprov  no   —          —      —          —
+```
+
+```http
+GET /api/v1/admin/monitoring/tenants
+Authorization: Bearer <super-admin token>
+```
+
+Returns `{"data": [{...}, ...]}` where each tenant row carries:
+
+- `database_exists` (bool)
+- `database_size_bytes` (int | null — null if the DB doesn't exist)
+- `active_connections` (int | null — from `pg_stat_database.numbackends`)
+- `last_backup_completed_at` (ISO-8601 | null)
+- `last_backup_status` (`completed` | `failed` | null)
+- `last_backup_error` (string | null — populated when `status=failed`)
+
+Suggested alerts (scraping the JSON endpoint):
+
+- `last_backup_completed_at` older than 26 hours when status=completed → cron drift
+- `last_backup_status=failed` for the most recent attempt → investigate immediately
+- `database_exists=false` for any non-suspended tenant → provisioning blew up
 
 **Why not PostHog / Prometheus right now?** PostHog is product analytics —
 it indexes user sessions and funnels, not Postgres metrics. Prometheus +
 Grafana is the right answer when we have several paying tenants and want
 trends, but standing up that stack pre-launch is overkill for the parapharmacy
-scope. The artisan + JSON endpoint gives us the signal a human operator
+scope. The artisan + JSON endpoint gives the signal a human operator
 actually needs (and an alerting cron can scrape the endpoint trivially).

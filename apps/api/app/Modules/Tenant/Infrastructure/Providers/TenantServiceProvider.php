@@ -11,6 +11,7 @@ use App\Modules\Tenant\Application\Commands\ReconcileIdentitiesCommand;
 use App\Modules\Tenant\Application\Commands\ResetTenantCommand;
 use App\Modules\Tenant\Application\Commands\RestoreTenantCommand;
 use App\Modules\Tenant\Application\Commands\RollingTenantMigrationCommand;
+use App\Modules\Tenant\Application\Commands\TenantStatusCommand;
 use Illuminate\Support\ServiceProvider;
 
 class TenantServiceProvider extends ServiceProvider
@@ -39,6 +40,7 @@ class TenantServiceProvider extends ServiceProvider
                 ResetTenantCommand::class,
                 RestoreTenantCommand::class,
                 RollingTenantMigrationCommand::class,
+                TenantStatusCommand::class,
             ]);
         }
     }
