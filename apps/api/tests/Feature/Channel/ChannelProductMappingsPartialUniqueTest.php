@@ -4,29 +4,15 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Channel;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\QueryException;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class ChannelProductMappingsPartialUniqueTest extends TestCase
 {
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        $this->dropChannelTables();
-        $this->runChannelMigrations();
-    }
-
-    protected function tearDown(): void
-    {
-        $this->dropChannelTables();
-
-        parent::tearDown();
-    }
+    use RefreshDatabase;
 
     public function test_two_product_level_mappings_to_same_channel_should_be_rejected_after_fix(): void
     {
@@ -98,30 +84,5 @@ final class ChannelProductMappingsPartialUniqueTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-    }
-
-    private function runChannelMigrations(): void
-    {
-        $migrations = [
-            '2026_05_24_120000_create_channels_table.php',
-            '2026_05_24_120002_create_channel_product_mappings_table.php',
-            '2026_06_02_100013b_fix_channel_product_mappings_partial_unique.php',
-        ];
-
-        foreach ($migrations as $filename) {
-            $path = database_path('migrations/tenant/'.$filename);
-            $instance = require $path;
-            $this->assertInstanceOf(Migration::class, $instance);
-            $instance->{'up'}();
-        }
-    }
-
-    private function dropChannelTables(): void
-    {
-        Schema::dropIfExists('channel_sync_operations');
-        Schema::dropIfExists('channel_orders');
-        Schema::dropIfExists('channel_product_mappings');
-        Schema::dropIfExists('channel_credentials');
-        Schema::dropIfExists('channels');
     }
 }

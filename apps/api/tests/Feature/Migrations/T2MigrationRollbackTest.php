@@ -99,7 +99,13 @@ class T2MigrationRollbackTest extends TestCase
      */
     public function test_t2_migrations_roll_back_and_reapply_cleanly(): void
     {
-        // ── Phase 0: pre-condition ────────────────────────────────────────────
+        // ── Phase 0: self-heal — guarantee a fully-migrated baseline ─────────
+        // Any schema-mutating predecessor test (e.g. a Channel test that
+        // manually drops/recreates tables without all T2 migrations) may leave
+        // the DB in a partial state.  Running migrate here is idempotent: it is
+        // a no-op when the schema is already current, and recovers when it isn't.
+        Artisan::call('migrate', ['--force' => true, '--path' => 'database/migrations/tenant']);
+
         $this->assertT2SchemaPresent(
             'Pre-condition failed — run `php artisan migrate --force` before this test'
         );
