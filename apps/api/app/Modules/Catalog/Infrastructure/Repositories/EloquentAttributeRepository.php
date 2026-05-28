@@ -15,6 +15,7 @@ final readonly class EloquentAttributeRepository implements AttributeRepository
         return ProductAttribute::find($id);
     }
 
+    /** Tenant isolation is provided implicitly by the DB-per-tenant connection context. */
     public function findByCode(string $code): ?ProductAttribute
     {
         return ProductAttribute::where('code', $code)->first();

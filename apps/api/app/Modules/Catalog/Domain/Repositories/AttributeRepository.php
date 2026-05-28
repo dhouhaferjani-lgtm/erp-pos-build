@@ -11,6 +11,7 @@ interface AttributeRepository
 {
     public function findById(string $id): ?ProductAttribute;
 
+    /** Tenant isolation is provided implicitly by the DB-per-tenant connection context. */
     public function findByCode(string $code): ?ProductAttribute;
 
     /**

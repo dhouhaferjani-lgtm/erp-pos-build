@@ -87,4 +87,20 @@ class AttributeRepositoryTest extends TestCase
             'code' => 'dup-code',
         ]);
     }
+
+    public function test_soft_delete_excludes_from_find(): void
+    {
+        $tenantId = (string) Str::uuid();
+
+        $attr = ProductAttributeFactory::new()->create([
+            'tenant_id' => $tenantId,
+            'code' => 'to-delete',
+        ]);
+
+        $repo = app(AttributeRepository::class);
+
+        $repo->softDelete($attr->id);
+
+        $this->assertNull($repo->findById($attr->id));
+    }
 }
