@@ -242,11 +242,24 @@ class Tenant extends BaseTenant implements TenantWithDatabase
     }
 
     /**
-     * Get the database name for this tenant.
-     * For schema-based tenancy, this returns the schema name.
+     * The physical database name for this tenant under database-per-tenant.
+     *
+     * Delegates to Stancl's DatabaseConfig (tenancy.database.prefix + tenant key
+     * + suffix) — the exact name CreateDatabase / MigrateDatabase / tenancy()->
+     * initialize() use. Pre-flip this returned a schema name ('tenant_'.$slug);
+     * that schema-era value no longer matches the created database and broke the
+     * provisioning existence check (login fail-closed) in DB-per-tenant mode.
      */
     public function getDatabaseName(): string
     {
-        return 'tenant_'.$this->slug;
+        $name = $this->database()->getName();
+
+        if ($name === null) {
+            throw new \RuntimeException(
+                "Tenant [{$this->getKey()}] has no resolvable database name; tenancy database config is missing.",
+            );
+        }
+
+        return $name;
     }
 }

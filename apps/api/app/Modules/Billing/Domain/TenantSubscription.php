@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Stancl\Tenancy\Database\Concerns\CentralConnection;
 
 /**
  * Tenant subscription to a plan.
@@ -41,6 +42,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 final class TenantSubscription extends Model
 {
+    // T6 Phase 0b: central table — pinned to the central connection so the trial
+    // subscription is written there even when init runs in tenant context.
+    use CentralConnection;
     use HasUuids;
     use SoftDeletes;
 

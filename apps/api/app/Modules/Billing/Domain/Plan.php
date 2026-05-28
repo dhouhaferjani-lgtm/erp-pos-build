@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Stancl\Tenancy\Database\Concerns\CentralConnection;
 
 /**
  * Subscription plan.
@@ -32,6 +33,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 final class Plan extends Model
 {
+    // T6 Phase 0b: central table — read/written on the central connection even
+    // when the default connection is swapped to a tenant database.
+    use CentralConnection;
     use HasUuids;
 
     protected $table = 'plans';

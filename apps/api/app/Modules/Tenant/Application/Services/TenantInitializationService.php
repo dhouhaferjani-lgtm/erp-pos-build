@@ -11,12 +11,16 @@ use App\Modules\Billing\Domain\TenantSubscription;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\CountriesSeeder;
+use Database\Seeders\CountryTaxRatesSeeder;
 use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\GenericChartOfAccountsSeeder;
 use Database\Seeders\PaymentMethodSeeder;
 use Database\Seeders\PaymentRepositorySeeder;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Database\Seeders\TunisiaTaxConfigurationSeeder;
+use Illuminate\Support\Facades\Artisan;
 
 /**
  * Service responsible for initializing a new tenant with required data.
@@ -47,8 +51,23 @@ class TenantInitializationService
         // 1. Create trial subscription for the tenant
         $this->createTrialSubscription($tenant);
 
+        // 1.5. Seed roles/permissions into a fresh per-tenant database (T6 Phase 0b).
+        // Spatie permission tables are tenant-scoped, so a freshly-provisioned
+        // tenant database has no roles and assignDefaultRoles() would throw. Guarded
+        // + idempotent (firstOrCreate), so it is skipped in the shared-DB compat mode
+        // where roles are already seeded globally.
+        $this->seedRolesAndPermissionsIfMissing();
+
         // 2. Assign admin role to the registering user
         $this->assignDefaultRoles($user);
+
+        // 2.5. Seed shared reference data FIRST (T6 Phase 0b, deliverable 9).
+        // Under database-per-tenant these tables live in each tenant database and
+        // are not pre-populated, so seed them before any country-dependent step —
+        // notably seedTaxConfigurations(), which silently no-ops when `countries`
+        // is empty. Idempotent (the seeders updateOrCreate), so harmless in the
+        // shared-DB compat mode where the tables may already be populated.
+        $this->seedReferenceData();
 
         // 3. Seed country-specific chart of accounts
         $this->seedChartOfAccounts($company);
@@ -128,13 +147,41 @@ class TenantInitializationService
     }
 
     /**
-     * Seed the chart of accounts based on company country.
-     *
-     * Currently supported:
-     * - TN (Tunisia): Plan Comptable Tunisien
-     * - FR (France): Plan Comptable Général
-     * - Default: Generic international chart of accounts
+     * Seed roles + permissions into a fresh per-tenant database when absent.
+     * Guarded so the (large, idempotent) seeder is skipped in the shared-DB
+     * compat mode where the global roles already exist.
      */
+    private function seedRolesAndPermissionsIfMissing(): void
+    {
+        $adminExists = \DB::table('roles')
+            ->where('name', 'admin')
+            ->where('guard_name', 'sanctum')
+            ->exists();
+
+        if ($adminExists) {
+            return;
+        }
+
+        // Run via Artisan so the seeder has a console-command context
+        // ($this->command->info(...) is used inside) and seeds the active
+        // (tenant) connection.
+        Artisan::call('db:seed', [
+            '--class' => RolesAndPermissionsSeeder::class,
+            '--force' => true,
+        ]);
+    }
+
+    /**
+     * Seed shared reference data into the current connection (the per-tenant
+     * database under database-per-tenant). Both seeders use updateOrCreate, so
+     * re-running in the shared-DB compat mode is harmless.
+     */
+    private function seedReferenceData(): void
+    {
+        (new CountriesSeeder)->run();
+        (new CountryTaxRatesSeeder)->run();
+    }
+
     private function seedChartOfAccounts(Company $company): void
     {
         $countryCode = strtoupper($company->country_code);
