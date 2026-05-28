@@ -236,10 +236,13 @@ final class DeviceLossIncidentTest extends TestCase
         // Round-2 T32-P1: `device_loss_incidents_terminal_id_fk` (the round-1
         // simple FK on terminal_id alone) is dropped + replaced by the
         // composite FK `device_loss_incidents_terminal_scope_fk` — covered in
-        // `test_composite_terminal_scope_fk_exists_on_postgres`. The other
-        // three FKs remain unchanged.
+        // `test_composite_terminal_scope_fk_exists_on_postgres`.
+        //
+        // T6 Phase 0b: `device_loss_incidents_tenant_id_fk` is removed — under
+        // database-per-tenant there is no cross-database FK to the central
+        // `tenants` table (topology contract §1); tenant_id is a plain column.
+        // The intra-tenant FKs (company, reported_by) remain.
         foreach ([
-            'device_loss_incidents_tenant_id_fk',
             'device_loss_incidents_company_id_fk',
             'device_loss_incidents_reported_by_fk',
         ] as $name) {

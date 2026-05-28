@@ -89,7 +89,7 @@ final class BackfillOwnershipHistoryTest extends TestCase
 
     private function runBackfill(): void
     {
-        $migration = require __DIR__.'/../../../../database/migrations/2026_04_19_100004_backfill_vehicle_ownership_history.php';
+        $migration = require __DIR__.'/../../../../database/migrations/tenant/2026_04_19_100004_backfill_vehicle_ownership_history.php';
         $migration->up();
     }
 }

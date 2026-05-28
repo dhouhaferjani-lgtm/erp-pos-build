@@ -91,7 +91,10 @@ final class FiscalEventQuarantineTableTest extends TestCase
         /** @var FiscalEventQuarantine $row */
         $row = FiscalEventQuarantine::query()->findOrFail($id);
 
-        $this->assertSame(
+        // PostgreSQL `jsonb` does not preserve object key order, so compare the
+        // decoded payload order-insensitively (assertEquals uses ==, which
+        // ignores associative-array key order; assertSame/=== would not).
+        $this->assertEquals(
             ['event_type' => 'SALE_RECEIPT', 'sequence' => 42],
             $row->raw_envelope,
         );

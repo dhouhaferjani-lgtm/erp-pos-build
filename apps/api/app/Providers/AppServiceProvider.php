@@ -14,6 +14,7 @@ use App\Modules\Company\Application\Services\LocationService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Identity\Infrastructure\CentralPersonalAccessToken;
 use App\Modules\Inventory\Application\Services\InventoryService;
 use App\Modules\Partner\Application\Services\PartnerService;
 use App\Modules\PlatformIntegration\Application\Services\ProductSubmissionService;
@@ -90,6 +91,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->loadTenantMigrationsInTestingEnvironment();
+
         Password::defaults(function () {
             return Password::min(10)
                 ->letters()
@@ -115,6 +118,11 @@ class AppServiceProvider extends ServiceProvider
         // endpoint mutates users.tenant_id today)
         User::observe(UserObserver::class);
 
+        // T6 Phase 0b: personal_access_tokens lives in the CENTRAL database, so
+        // Sanctum must read token rows from the central connection even after the
+        // pre-auth resolver swaps the default connection to a tenant database.
+        Sanctum::usePersonalAccessTokenModel(CentralPersonalAccessToken::class);
+
         // T1.4 — Sanctum's default Guard::isValidAccessToken ANDs the
         // global SANCTUM_TOKEN_EXPIRATION (30 days) with the per-token
         // `expires_at` column. So even when AuthController issues a POS
@@ -134,6 +142,28 @@ class AppServiceProvider extends ServiceProvider
 
             return $isValid;
         });
+    }
+
+    /**
+     * T6 Phase 0b: register the tenant migration path so the test suite rebuilds
+     * the complete schema on a single connection.
+     *
+     * In production, tenant migrations (database/migrations/tenant/) run only
+     * inside each per-tenant database via Stancl (config/tenancy.php
+     * migration_parameters) — they are deliberately NOT part of the default
+     * `migrate` path. The compat test suite, however, runs on ONE connection
+     * with RefreshDatabase, which migrates only database/migrations/. Registering
+     * the tenant path here — testing environment ONLY — keeps every existing
+     * feature test green after the ~141 tenant-scoped migrations move to tenant/.
+     * The Stancl flip integration test still exercises real per-database creation.
+     */
+    private function loadTenantMigrationsInTestingEnvironment(): void
+    {
+        if (! $this->app->environment('testing')) {
+            return;
+        }
+
+        $this->loadMigrationsFrom(database_path('migrations/tenant'));
     }
 
     /**

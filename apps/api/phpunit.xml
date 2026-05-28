@@ -39,6 +39,10 @@
         <env name="CACHE_STORE" value="array"/>
         <env name="DB_CONNECTION" value="sqlite"/>
         <env name="DB_DATABASE" value=":memory:"/>
+        <!-- T6 Phase 0b: the compat suite runs on a single connection. Tests that
+             exercise database-per-tenant fail-closed behaviour opt in via
+             config(['tenancy_resolver.db_per_tenant' => true]) at runtime. -->
+        <env name="TENANCY_DB_PER_TENANT" value="false" force="true"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>

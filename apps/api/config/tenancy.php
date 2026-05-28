@@ -10,7 +10,6 @@ use Stancl\Tenancy\Bootstrappers\FilesystemTenancyBootstrapper;
 use Stancl\Tenancy\Bootstrappers\QueueTenancyBootstrapper;
 use Stancl\Tenancy\TenantDatabaseManagers\MySQLDatabaseManager;
 use Stancl\Tenancy\TenantDatabaseManagers\PostgreSQLDatabaseManager;
-use Stancl\Tenancy\TenantDatabaseManagers\PostgreSQLSchemaManager;
 use Stancl\Tenancy\TenantDatabaseManagers\SQLiteDatabaseManager;
 use Stancl\Tenancy\UUIDGenerator;
 
@@ -71,17 +70,18 @@ return [
             'mysql' => MySQLDatabaseManager::class,
             'pgsql' => PostgreSQLDatabaseManager::class,
 
-            /**
-             * Use this database manager for MySQL to have a DB user created for each tenant database.
-             * You can customize the grants given to these users by changing the $grants property.
-             */
+        /**
+         * Use this database manager for MySQL to have a DB user created for each tenant database.
+         * You can customize the grants given to these users by changing the $grants property.
+         */
             // 'mysql' => Stancl\Tenancy\TenantDatabaseManagers\PermissionControlledMySQLDatabaseManager::class,
 
-            /**
-             * Schema-based multi-tenancy for PostgreSQL.
-             * Each tenant gets their own schema within the same database.
-             */
-            'pgsql' => PostgreSQLSchemaManager::class,
+        /**
+         * T6 Phase 0b: the PostgreSQLSchemaManager entry that previously
+         * shadowed the line above (PHP keeps the last duplicate key) has been
+         * removed. PostgreSQLDatabaseManager creates one physical database per
+         * tenant (tenant_<slug>); schema-based multi-tenancy is no longer used.
+         */
         ],
     ],
 

@@ -46,7 +46,11 @@ final class PendingSealMigrationTest extends TestCase
             "WHERE table_name = 'pos_terminals' AND column_name = 'fiscal_schema_version'"
         );
         $this->assertNotNull($row);
-        $this->assertSame('2', trim((string) $row->column_default, "'"));
+        // PostgreSQL reports a smallint column default as "'2'::smallint" (value
+        // quoted + cast suffix). Extract the numeric value rather than matching
+        // the raw default expression.
+        $this->assertSame(1, preg_match('/(\d+)/', (string) $row->column_default, $matches));
+        $this->assertSame('2', $matches[1]);
     }
 
     public function test_fiscal_status_check_constraint_includes_pending_seal(): void

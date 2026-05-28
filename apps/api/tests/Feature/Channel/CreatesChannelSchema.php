@@ -57,7 +57,12 @@ trait CreatesChannelSchema
 
     private function runTenantMigrations(): void
     {
-        foreach (glob(database_path('migrations/tenant/2026_05_24_12000*_*.php')) ?: [] as $path) {
+        // Match ONLY the channel create migrations. After T6 Phase 0b moved
+        // tenant-scoped migrations into migrations/tenant/, a broader glob
+        // (e.g. 2026_05_24_12000*_*) also matched unrelated migrations sharing
+        // the 120000 timestamp (add_fiscal_event_linkage_to_pos_z_reports),
+        // which fail against this trait's minimal schema.
+        foreach (glob(database_path('migrations/tenant/2026_05_24_12000*_create_channel*.php')) ?: [] as $path) {
             $instance = require $path;
             $instance->{'up'}();
         }

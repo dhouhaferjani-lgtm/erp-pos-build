@@ -590,10 +590,26 @@ final class ReceiptChainRebuildTest extends TestCase
         // Sanity: clean chain verifies.
         $this->assertTrue($service->verifyTerminalChain($terminal));
 
-        // Tamper the pos_receipts mirror field.
+        // Tamper the pos_receipts mirror field. A sealed receipt is protected at
+        // the database layer by BOTH the immutability trigger
+        // (enforce_receipt_immutability) and the pos_receipts_totals CHECK
+        // constraint, so an app-level update to an inconsistent total is rejected.
+        // This test deliberately simulates OUT-OF-BAND corruption (e.g. direct
+        // DBA access / disk corruption), so disable both for the single tamper
+        // statement on PostgreSQL. Both are transactional DDL, so RefreshDatabase
+        // rolls them back at end of test — unlike SET session_replication_role,
+        // a session GUC that would leak into later tests.
+        $isPgsql = DB::connection()->getDriverName() === 'pgsql';
+        if ($isPgsql) {
+            DB::statement('ALTER TABLE pos_receipts DISABLE TRIGGER enforce_receipt_immutability');
+            DB::statement('ALTER TABLE pos_receipts DROP CONSTRAINT IF EXISTS pos_receipts_totals');
+        }
         DB::table('pos_receipts')->where('id', $projectedReceipt->id)->update([
             'total' => '999999.99',
         ]);
+        if ($isPgsql) {
+            DB::statement('ALTER TABLE pos_receipts ENABLE TRIGGER enforce_receipt_immutability');
+        }
 
         // Chain must STILL verify — the verifier walks fiscal_events,
         // not pos_receipts.
