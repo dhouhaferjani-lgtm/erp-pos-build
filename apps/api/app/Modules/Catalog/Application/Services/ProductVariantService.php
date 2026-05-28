@@ -14,6 +14,7 @@ use App\Modules\Catalog\Domain\Events\ProductVariantCreated;
 use App\Modules\Catalog\Domain\Repositories\AttributeRepository;
 use App\Modules\Catalog\Domain\Repositories\AttributeValueRepository;
 use App\Modules\Catalog\Domain\Repositories\ProductVariantRepository;
+use App\Modules\Inventory\Application\Services\StockLevelMigrationService;
 use App\Modules\Product\Domain\Product;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +27,7 @@ final class ProductVariantService
         private readonly AttributeRepository $attributeRepo,
         private readonly AttributeValueRepository $attributeValueRepo,
         private readonly ProductVariantMatrixGenerator $matrixGenerator,
+        private readonly StockLevelMigrationService $stockMigrator,
     ) {}
 
     /**
@@ -65,7 +67,10 @@ final class ProductVariantService
             $isFirstVariant = $this->variantRepo->listForProduct($command->productId, onlyActive: false)->count() === 1;
 
             if ($isFirstVariant && $command->isDefault) {
-                // TODO(Task 14): migrate pre-existing product-level stock to this default variant on first-variant creation
+                $this->stockMigrator->migrateToDefaultVariant(
+                    productId: $command->productId,
+                    defaultVariantId: $variant->id,
+                );
             }
 
             event(new ProductVariantCreated(
