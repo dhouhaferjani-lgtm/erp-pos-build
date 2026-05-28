@@ -4,18 +4,22 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Truck } from 'lucide-react'
 import { Button } from '@/components/atoms/Button'
 import { EmptyState } from '@/components/molecules/EmptyState'
-import { textColors } from '@/lib/designTokens'
+import { textColors, borderColors, tokens } from '@/lib/designTokens'
 import { useStockTransferList } from '../api/queries'
 import { StockTransferStatusBadge } from '../components/StockTransferStatusBadge'
 import type { StockTransferListFilters, StockTransferStatus } from '../types'
 
-const STATUS_OPTIONS: Array<StockTransferStatus | 'all'> = [
+const STATUS_OPTIONS: readonly (StockTransferStatus | 'all')[] = [
   'all',
   'draft',
   'in_transit',
   'completed',
   'cancelled',
 ]
+
+function isStockTransferStatusOrAll(value: string): value is StockTransferStatus | 'all' {
+  return (STATUS_OPTIONS as readonly string[]).includes(value)
+}
 
 export function StockTransferListPage() {
   const { t } = useTranslation('stock-transfers')
@@ -28,6 +32,13 @@ export function StockTransferListPage() {
   const { data, isLoading } = useStockTransferList(filters)
   const transfers = data?.data ?? []
   const total = data?.meta.total ?? 0
+
+  const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const raw = e.target.value
+    if (isStockTransferStatusOrAll(raw)) {
+      setFilters({ ...filters, status: raw, page: 1 })
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -44,22 +55,16 @@ export function StockTransferListPage() {
         </Link>
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white">
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+      <div className={tokens.card.base}>
+        <div className={`flex items-center justify-between border-b ${borderColors.light} px-6 py-4`}>
           <label htmlFor="status-filter" className={`text-sm font-medium ${textColors.tertiary}`}>
             {t('filters.byStatus')}
           </label>
           <select
             id="status-filter"
             value={filters.status ?? 'all'}
-            onChange={(e) =>
-              setFilters({
-                ...filters,
-                status: e.target.value as StockTransferStatus | 'all',
-                page: 1,
-              })
-            }
-            className="ms-3 rounded-md border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
+            onChange={handleStatusChange}
+            className={`ms-3 ${tokens.select.base}`}
           >
             {STATUS_OPTIONS.map((s) => (
               <option key={s} value={s}>
@@ -75,40 +80,40 @@ export function StockTransferListPage() {
           <EmptyState
             title={t('noTransfers')}
             description={t('noTransfersHint')}
-            icon={<Truck className="mb-4 h-16 w-16 text-gray-400" />}
+            icon={<Truck className={`mb-4 h-16 w-16 ${textColors.disabled}`} />}
           />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className={tokens.badge.gray}>
                 <tr>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                     {t('list.transferNumber')}
                   </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                     {t('list.source')}
                   </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                     {t('list.destination')}
                   </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                     {t('list.status')}
                   </th>
-                  <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                     {t('list.transferCost')}
                   </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                     {t('list.createdAt')}
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
+              <tbody className="divide-y divide-gray-200">
                 {transfers.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-gray-50">
+                  <tr key={tx.id} className={tokens.card.hoverPrimary}>
                     <td className="whitespace-nowrap px-6 py-4 text-sm font-medium">
                       <Link
                         to={`/inventory/stock-transfers/${tx.id}`}
-                        className="text-blue-600 hover:underline"
+                        className={`${textColors.brand} hover:underline`}
                       >
                         {tx.transfer_number}
                       </Link>
@@ -133,7 +138,7 @@ export function StockTransferListPage() {
               </tbody>
             </table>
             {total > 0 && (
-              <div className={`border-t border-gray-200 px-6 py-3 text-xs ${textColors.tertiary}`}>
+              <div className={`border-t ${borderColors.light} px-6 py-3 text-xs ${textColors.tertiary}`}>
                 {total} / {total}
               </div>
             )}

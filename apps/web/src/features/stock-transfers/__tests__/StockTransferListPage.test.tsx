@@ -19,7 +19,7 @@ vi.mock('react-i18next', () => ({
 const mockUseList = vi.fn()
 
 vi.mock('../api/queries', () => ({
-  useStockTransferList: (...args: unknown[]) => mockUseList(...args),
+  useStockTransferList: (...args: unknown[]): unknown => mockUseList(...args) as unknown,
 }))
 
 function renderPage() {

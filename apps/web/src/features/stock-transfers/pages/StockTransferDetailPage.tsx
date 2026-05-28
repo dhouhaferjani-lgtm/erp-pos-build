@@ -5,7 +5,7 @@ import { ArrowLeft, CheckCircle2, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/atoms/Button'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { textColors, borderColors } from '@/lib/designTokens'
+import { textColors, borderColors, tokens } from '@/lib/designTokens'
 import {
   useCancelStockTransfer,
   useCompleteStockTransfer,
@@ -25,15 +25,13 @@ export function StockTransferDetailPage() {
   const [cancelReason, setCancelReason] = useState('')
 
   if (isLoading || transfer === undefined) {
-    return (
-      <div className={`p-10 text-center ${textColors.tertiary}`}>...</div>
-    )
+    return <div className={`p-10 text-center ${textColors.tertiary}`}>...</div>
   }
 
   const canComplete = transfer.status === 'in_transit'
   const canCancel = transfer.status === 'draft' || transfer.status === 'in_transit'
 
-  const handleComplete = async () => {
+  const completeTransfer = async (): Promise<void> => {
     try {
       await completeMutation.mutateAsync(transfer.id)
       toast.success(t('detail.success.completed'))
@@ -43,7 +41,7 @@ export function StockTransferDetailPage() {
     }
   }
 
-  const handleCancel = async () => {
+  const cancelTransfer = async (): Promise<void> => {
     try {
       const trimmed = cancelReason.trim()
       const payload: { id: string; reason?: string } =
@@ -59,12 +57,23 @@ export function StockTransferDetailPage() {
     }
   }
 
+  const handleComplete = () => {
+    void completeTransfer()
+  }
+  const handleCancel = () => {
+    void cancelTransfer()
+  }
+  const closeCancelDialog = () => {
+    setConfirmCancel(false)
+    setCancelReason('')
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <Link
           to="/inventory/stock-transfers"
-          className={`mb-2 inline-flex items-center text-sm ${textColors.tertiary} hover:text-gray-900`}
+          className={`mb-2 inline-flex items-center text-sm ${textColors.tertiary} ${textColors.hoverPrimary}`}
         >
           <ArrowLeft className="me-1 h-4 w-4" />
           {t('detail.back')}
@@ -80,13 +89,23 @@ export function StockTransferDetailPage() {
           </div>
           <div className="flex gap-2">
             {canComplete && (
-              <Button variant="primary" onClick={() => setConfirmComplete(true)}>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setConfirmComplete(true)
+                }}
+              >
                 <CheckCircle2 className="me-2 h-4 w-4" />
                 {t('detail.actions.complete')}
               </Button>
             )}
             {canCancel && (
-              <Button variant="danger" onClick={() => setConfirmCancel(true)}>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  setConfirmCancel(true)
+                }}
+              >
                 <XCircle className="me-2 h-4 w-4" />
                 {t('detail.actions.cancel')}
               </Button>
@@ -115,7 +134,7 @@ export function StockTransferDetailPage() {
           <SummaryRow label={t('detail.summary.initiatedBy')} value={transfer.initiated_by_name} />
           <SummaryRow
             label={t('detail.summary.initiatedAt')}
-            value={transfer.initiated_at ?? null}
+            value={transfer.initiated_at}
           />
           {transfer.completed_at !== null && (
             <>
@@ -123,10 +142,7 @@ export function StockTransferDetailPage() {
                 label={t('detail.summary.completedBy')}
                 value={transfer.completed_by_name}
               />
-              <SummaryRow
-                label={t('detail.summary.completedAt')}
-                value={transfer.completed_at}
-              />
+              <SummaryRow label={t('detail.summary.completedAt')} value={transfer.completed_at} />
             </>
           )}
           {transfer.cancelled_at !== null && (
@@ -135,10 +151,7 @@ export function StockTransferDetailPage() {
                 label={t('detail.summary.cancelledBy')}
                 value={transfer.cancelled_by_name}
               />
-              <SummaryRow
-                label={t('detail.summary.cancelledAt')}
-                value={transfer.cancelled_at}
-              />
+              <SummaryRow label={t('detail.summary.cancelledAt')} value={transfer.cancelled_at} />
               <SummaryRow
                 label={t('detail.summary.cancellationReason')}
                 value={transfer.cancellation_reason}
@@ -147,7 +160,9 @@ export function StockTransferDetailPage() {
           )}
           {transfer.notes !== null && transfer.notes !== '' && (
             <div className="md:col-span-2">
-              <dt className={`text-xs uppercase ${textColors.tertiary}`}>{t('detail.summary.notes')}</dt>
+              <dt className={`text-xs uppercase ${textColors.tertiary}`}>
+                {t('detail.summary.notes')}
+              </dt>
               <dd className={`mt-1 ${textColors.primary}`}>{transfer.notes}</dd>
             </div>
           )}
@@ -155,28 +170,28 @@ export function StockTransferDetailPage() {
       </section>
 
       <section className={`rounded-lg border ${borderColors.light} bg-white`}>
-        <div className="border-b border-gray-200 px-6 py-4">
+        <div className={`border-b ${borderColors.light} px-6 py-4`}>
           <h2 className={`text-lg font-semibold ${textColors.primary}`}>
             {t('detail.section.lines')}
           </h2>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+            <thead className={tokens.badge.gray}>
               <tr>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                   {t('detail.table.product')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                   {t('detail.table.sku')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                   {t('detail.table.quantity')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                   {t('detail.table.unitCost')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                   {t('detail.table.allocatedCost')}
                 </th>
               </tr>
@@ -211,39 +226,38 @@ export function StockTransferDetailPage() {
         title={t('detail.confirmComplete.title')}
         message={t('detail.confirmComplete.description')}
         onConfirm={handleComplete}
-        onClose={() => setConfirmComplete(false)}
+        onClose={() => {
+          setConfirmComplete(false)
+        }}
         isLoading={completeMutation.isPending}
         variant="info"
       />
 
       {confirmCancel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50">
-          <div className="relative mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h3 className={`text-lg font-semibold ${textColors.primary}`}>
-              {t('detail.confirmCancel.title')}
-            </h3>
+        <div className={tokens.modal.backdrop}>
+          <div className={tokens.modal.container}>
+            <h3 className={tokens.modal.title}>{t('detail.confirmCancel.title')}</h3>
             <p className={`mt-2 text-sm ${textColors.tertiary}`}>
               {t('detail.confirmCancel.description')}
             </p>
             <div className="mt-3">
-              <label className={`mb-1 block text-sm font-medium ${textColors.secondary}`}>
+              <label className={tokens.label.base}>
                 {t('detail.confirmCancel.reasonLabel')}
               </label>
               <textarea
                 rows={2}
                 value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                className="w-full rounded-md border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
+                onChange={(e) => {
+                  setCancelReason(e.target.value)
+                }}
+                className={tokens.textarea.base}
               />
             </div>
-            <div className="mt-6 flex justify-end gap-3">
+            <div className={tokens.modal.footer}>
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => {
-                  setConfirmCancel(false)
-                  setCancelReason('')
-                }}
+                onClick={closeCancelDialog}
                 disabled={cancelMutation.isPending}
               >
                 {t('create.cancel')}
@@ -267,8 +281,8 @@ export function StockTransferDetailPage() {
 function SummaryRow({ label, value }: { label: string; value: string | null }) {
   return (
     <div>
-      <dt className="text-xs uppercase text-gray-500">{label}</dt>
-      <dd className="mt-1 text-sm text-gray-900">{value ?? '—'}</dd>
+      <dt className={`text-xs uppercase ${textColors.tertiary}`}>{label}</dt>
+      <dd className={`mt-1 text-sm ${textColors.primary}`}>{value ?? '—'}</dd>
     </div>
   )
 }
