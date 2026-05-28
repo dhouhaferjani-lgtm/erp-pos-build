@@ -1,0 +1,2540 @@
+# T2 Product Variants Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Implement T2 product variants in AutoERP so that variants become the unit of stock, batches attach to variants with expiry tracking, recipes can be built from variant ingredients with earliest-expiry inheritance, and the data surfaces through POS / web ERP B2B / catalog ecommerce.
+
+**Architecture:** Hexagonal — Domain (entities + VOs + enums) → Application (services + DTOs) → Infrastructure (Eloquent repositories) → Presentation (controllers + React). New `ProductVariant` aggregate decorates existing `Product`; nullable `variant_id` (FK to `product_variants`) added to every table that currently scopes to `product_id`; partial unique indexes preserve pre-T2 uniqueness for non-variant rows. Backward compat at service layer: every modified signature accepts a trailing optional `?UUID $variantId = null`. Variants forbidden to coexist mixed-mode within a product after first variant created — `StockLevelMigrationService` migrates open state to default variant atomically.
+
+**Tech Stack:** PHP 8.4 + Laravel 12 + PostgreSQL 16 (tenant DB) + PHPUnit (backend) + React 19 + Vite 7 + TypeScript strict + TanStack Query 5 + Vitest (web ERP) + Tauri 2 + SQLite (POS). PHPStan L8, Pint, ESLint zero-error gates.
+
+**Spec:** `apps/erp/docs/superpowers/specs/2026-05-28-t2-product-variants.md`
+
+**Sequencing:** Phase 1 (schema + domain skeleton) → Phase 2 (service-layer ripple) → Phase 3 (recipe + variant + expiry) → Phase 4 (B2B + ecommerce surface) → Phase 5 (admin UI) → Phase 6 (acceptance test sweep). POS Wave-2 deltas are a separate session, logged to the coordination log.
+
+**TDD rule:** every task starts with a failing test (red), then minimum code to pass (green), then refactor if needed. Never commit a step that hasn't been verified.
+
+**Commit message format:** `feat(t2): <slice>` for new features, `refactor(t2): <slice>` for service-shape changes, `test(t2): <slice>` for test-only commits. Reference issue / ticket as configured.
+
+**Working directory:** all paths relative to `apps/erp/` unless otherwise noted (i.e., `apps/api/...` = `apps/erp/apps/api/...`).
+
+---
+
+## Phase 1 — Schema and domain skeleton (~4 PD)
+
+### Task 1: Create `ProductAttribute` entity, migration, repository contract, persistence
+
+**Files:**
+- Create migration: `apps/api/database/migrations/tenant/2026_06_02_100001_create_product_attributes_table.php`
+- Create domain: `apps/api/app/Modules/Catalog/Domain/Entities/ProductAttribute.php`
+- Create enum: `apps/api/app/Modules/Catalog/Domain/Enums/AttributeDataType.php`
+- Create repository contract: `apps/api/app/Modules/Catalog/Domain/Repositories/AttributeRepository.php`
+- Create eloquent repository: `apps/api/app/Modules/Catalog/Infrastructure/Repositories/EloquentAttributeRepository.php`
+- Test: `apps/api/tests/Unit/Catalog/Domain/Entities/ProductAttributeTest.php`
+- Test: `apps/api/tests/Feature/Catalog/AttributeRepositoryTest.php`
+
+- [ ] **Step 1: Write failing unit test for the entity**
+
+```php
+// apps/api/tests/Unit/Catalog/Domain/Entities/ProductAttributeTest.php
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Unit\Catalog\Domain\Entities;
+
+use App\Modules\Catalog\Domain\Entities\ProductAttribute;
+use App\Modules\Catalog\Domain\Enums\AttributeDataType;
+use Tests\TestCase;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+
+final class ProductAttributeTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_attribute_can_be_constructed_with_required_fields(): void
+    {
+        $attr = ProductAttribute::factory()->make([
+            'code' => 'taille',
+            'name' => 'Taille',
+            'data_type' => AttributeDataType::Selection,
+            'is_variant_axis' => true,
+        ]);
+
+        $this->assertSame('taille', $attr->code);
+        $this->assertSame('Taille', $attr->name);
+        $this->assertSame(AttributeDataType::Selection, $attr->data_type);
+        $this->assertTrue($attr->is_variant_axis);
+        $this->assertTrue($attr->is_active);
+    }
+
+    public function test_attribute_default_is_not_variant_axis(): void
+    {
+        $attr = ProductAttribute::factory()->make(['is_variant_axis' => false]);
+        $this->assertFalse($attr->is_variant_axis);
+    }
+}
+```
+
+- [ ] **Step 2: Run test, verify fail**
+
+Run: `cd apps/erp/apps/api && ./vendor/bin/phpunit --filter ProductAttributeTest`
+Expected: FAIL — `Class ProductAttribute does not exist`.
+
+- [ ] **Step 3: Create the `AttributeDataType` enum**
+
+```php
+// apps/api/app/Modules/Catalog/Domain/Enums/AttributeDataType.php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Catalog\Domain\Enums;
+
+enum AttributeDataType: string
+{
+    case Text = 'text';
+    case Numeric = 'numeric';
+    case Boolean = 'boolean';
+    case Date = 'date';
+    case Selection = 'selection';
+    case Color = 'color';
+    case Image = 'image';
+}
+```
+
+- [ ] **Step 4: Create the migration**
+
+```php
+// apps/api/database/migrations/tenant/2026_06_02_100001_create_product_attributes_table.php
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration {
+    public function up(): void
+    {
+        Schema::create('product_attributes', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->uuid('tenant_id')->index();
+            $table->string('code', 64);
+            $table->string('name', 128);
+            $table->string('data_type', 32);
+            $table->boolean('is_variant_axis')->default(false);
+            $table->integer('display_order')->default(0);
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->unique(['tenant_id', 'code']);
+            $table->index(['tenant_id', 'is_active', 'is_variant_axis']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('product_attributes');
+    }
+};
+```
+
+- [ ] **Step 5: Create the entity**
+
+```php
+// apps/api/app/Modules/Catalog/Domain/Entities/ProductAttribute.php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Catalog\Domain\Entities;
+
+use App\Modules\Catalog\Domain\Enums\AttributeDataType;
+use Database\Factories\Catalog\ProductAttributeFactory;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+/**
+ * @property string $id
+ * @property string $tenant_id
+ * @property string $code
+ * @property string $name
+ * @property AttributeDataType $data_type
+ * @property bool $is_variant_axis
+ * @property int $display_order
+ * @property bool $is_active
+ */
+final class ProductAttribute extends Model
+{
+    use HasUuids;
+    use HasFactory;
+    use SoftDeletes;
+
+    protected $table = 'product_attributes';
+
+    protected $fillable = [
+        'tenant_id', 'code', 'name', 'data_type',
+        'is_variant_axis', 'display_order', 'is_active',
+    ];
+
+    protected $casts = [
+        'data_type' => AttributeDataType::class,
+        'is_variant_axis' => 'boolean',
+        'display_order' => 'integer',
+        'is_active' => 'boolean',
+    ];
+
+    protected static function newFactory(): ProductAttributeFactory
+    {
+        return ProductAttributeFactory::new();
+    }
+}
+```
+
+- [ ] **Step 6: Create the factory**
+
+```php
+// apps/api/database/factories/Catalog/ProductAttributeFactory.php
+<?php
+
+declare(strict_types=1);
+
+namespace Database\Factories\Catalog;
+
+use App\Modules\Catalog\Domain\Entities\ProductAttribute;
+use App\Modules\Catalog\Domain\Enums\AttributeDataType;
+use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Str;
+
+/** @extends Factory<ProductAttribute> */
+final class ProductAttributeFactory extends Factory
+{
+    protected $model = ProductAttribute::class;
+
+    public function definition(): array
+    {
+        return [
+            'tenant_id' => (string) Str::uuid(),
+            'code' => $this->faker->unique()->slug(2),
+            'name' => $this->faker->words(2, true),
+            'data_type' => AttributeDataType::Selection,
+            'is_variant_axis' => true,
+            'display_order' => 0,
+            'is_active' => true,
+        ];
+    }
+}
+```
+
+- [ ] **Step 7: Create the repository contract**
+
+```php
+// apps/api/app/Modules/Catalog/Domain/Repositories/AttributeRepository.php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Catalog\Domain\Repositories;
+
+use App\Modules\Catalog\Domain\Entities\ProductAttribute;
+use Illuminate\Support\Collection;
+
+interface AttributeRepository
+{
+    public function findById(string $id): ?ProductAttribute;
+    public function findByCode(string $code): ?ProductAttribute;
+    /** @return Collection<int, ProductAttribute> */
+    public function listForTenant(bool $onlyVariantAxes = false): Collection;
+    public function save(ProductAttribute $attribute): void;
+    public function softDelete(string $id): void;
+}
+```
+
+- [ ] **Step 8: Create the Eloquent implementation**
+
+```php
+// apps/api/app/Modules/Catalog/Infrastructure/Repositories/EloquentAttributeRepository.php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Catalog\Infrastructure\Repositories;
+
+use App\Modules\Catalog\Domain\Entities\ProductAttribute;
+use App\Modules\Catalog\Domain\Repositories\AttributeRepository;
+use Illuminate\Support\Collection;
+
+final class EloquentAttributeRepository implements AttributeRepository
+{
+    public function findById(string $id): ?ProductAttribute
+    {
+        return ProductAttribute::query()->find($id);
+    }
+
+    public function findByCode(string $code): ?ProductAttribute
+    {
+        return ProductAttribute::query()->where('code', $code)->first();
+    }
+
+    public function listForTenant(bool $onlyVariantAxes = false): Collection
+    {
+        return ProductAttribute::query()
+            ->when($onlyVariantAxes, fn ($q) => $q->where('is_variant_axis', true))
+            ->orderBy('display_order')
+            ->get();
+    }
+
+    public function save(ProductAttribute $attribute): void
+    {
+        $attribute->save();
+    }
+
+    public function softDelete(string $id): void
+    {
+        ProductAttribute::query()->where('id', $id)->delete();
+    }
+}
+```
+
+- [ ] **Step 9: Register binding in service provider**
+
+Edit `apps/api/app/Modules/Catalog/Infrastructure/Providers/CatalogServiceProvider.php` (verify exact path) — add to the `register()` method:
+
+```php
+$this->app->bind(
+    \App\Modules\Catalog\Domain\Repositories\AttributeRepository::class,
+    \App\Modules\Catalog\Infrastructure\Repositories\EloquentAttributeRepository::class,
+);
+```
+
+- [ ] **Step 10: Run migration + unit test**
+
+Run: `cd apps/erp/apps/api && php artisan migrate --path=database/migrations/tenant --env=testing && ./vendor/bin/phpunit --filter ProductAttributeTest`
+Expected: PASS (both tests green).
+
+- [ ] **Step 11: Add repository integration test**
+
+```php
+// apps/api/tests/Feature/Catalog/AttributeRepositoryTest.php
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Catalog;
+
+use App\Modules\Catalog\Domain\Entities\ProductAttribute;
+use App\Modules\Catalog\Domain\Repositories\AttributeRepository;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+final class AttributeRepositoryTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_repository_saves_and_finds_by_id(): void
+    {
+        $repo = app(AttributeRepository::class);
+        $attr = ProductAttribute::factory()->create();
+
+        $found = $repo->findById($attr->id);
+
+        $this->assertNotNull($found);
+        $this->assertSame($attr->code, $found->code);
+    }
+
+    public function test_lists_only_variant_axes_when_flag_set(): void
+    {
+        $repo = app(AttributeRepository::class);
+        ProductAttribute::factory()->create(['is_variant_axis' => true]);
+        ProductAttribute::factory()->create(['is_variant_axis' => false]);
+
+        $variantOnly = $repo->listForTenant(onlyVariantAxes: true);
+        $all = $repo->listForTenant(onlyVariantAxes: false);
+
+        $this->assertCount(1, $variantOnly);
+        $this->assertCount(2, $all);
+    }
+
+    public function test_tenant_code_unique(): void
+    {
+        $this->expectException(\Illuminate\Database\QueryException::class);
+        $tenant = (string) \Illuminate\Support\Str::uuid();
+        ProductAttribute::factory()->create(['tenant_id' => $tenant, 'code' => 'taille']);
+        ProductAttribute::factory()->create(['tenant_id' => $tenant, 'code' => 'taille']);
+    }
+}
+```
+
+Run: `./vendor/bin/phpunit --filter AttributeRepositoryTest` → PASS.
+
+- [ ] **Step 12: Commit**
+
+```bash
+cd /Users/houssamr/Projects/syneriva/apps/erp.t2-variants-spec
+git add apps/api/app/Modules/Catalog/Domain/Entities/ProductAttribute.php \
+        apps/api/app/Modules/Catalog/Domain/Enums/AttributeDataType.php \
+        apps/api/app/Modules/Catalog/Domain/Repositories/AttributeRepository.php \
+        apps/api/app/Modules/Catalog/Infrastructure/Repositories/EloquentAttributeRepository.php \
+        apps/api/database/migrations/tenant/2026_06_02_100001_create_product_attributes_table.php \
+        apps/api/database/factories/Catalog/ProductAttributeFactory.php \
+        apps/api/tests/Unit/Catalog/Domain/Entities/ProductAttributeTest.php \
+        apps/api/tests/Feature/Catalog/AttributeRepositoryTest.php
+# Plus the service-provider edit
+git commit -m "feat(t2): ProductAttribute entity + migration + repository"
+```
+
+---
+
+### Task 2: Create `ProductAttributeValue` entity, migration, repository
+
+**Files:**
+- Create migration: `apps/api/database/migrations/tenant/2026_06_02_100002_create_product_attribute_values_table.php`
+- Create domain: `apps/api/app/Modules/Catalog/Domain/Entities/ProductAttributeValue.php`
+- Create factory, repository contract + eloquent impl following Task 1 shape
+- Test: `apps/api/tests/Feature/Catalog/AttributeValueRepositoryTest.php`
+
+- [ ] **Step 1: Write failing test**
+
+```php
+public function test_value_belongs_to_attribute(): void
+{
+    $attr = ProductAttribute::factory()->create(['data_type' => AttributeDataType::Color]);
+    $val = ProductAttributeValue::factory()->create([
+        'attribute_id' => $attr->id,
+        'code' => 'noir',
+        'label' => 'Noir',
+        'hex_color' => '#000000',
+    ]);
+
+    $this->assertSame($attr->id, $val->attribute_id);
+    $this->assertSame('#000000', $val->hex_color);
+}
+```
+
+- [ ] **Step 2: Run, verify fail.**
+- [ ] **Step 3: Create migration with `attribute_id` FK CASCADE, `(attribute_id, code)` unique, CHECK hex format**
+
+```php
+// up()
+Schema::create('product_attribute_values', function (Blueprint $table) {
+    $table->uuid('id')->primary();
+    $table->uuid('tenant_id')->index();
+    $table->foreignUuid('attribute_id')
+        ->constrained('product_attributes')
+        ->cascadeOnDelete();
+    $table->string('code', 64);
+    $table->string('label', 128);
+    $table->string('hex_color', 7)->nullable();
+    $table->string('image_url', 2048)->nullable();
+    $table->integer('display_order')->default(0);
+    $table->timestamps();
+
+    $table->unique(['attribute_id', 'code']);
+    $table->index(['tenant_id', 'attribute_id', 'display_order']);
+});
+
+if (DB::connection()->getDriverName() === 'pgsql') {
+    DB::statement('ALTER TABLE product_attribute_values ADD CONSTRAINT product_attribute_values_hex_format CHECK (hex_color IS NULL OR hex_color ~ \'^#[0-9A-Fa-f]{6}$\')');
+}
+```
+
+- [ ] **Step 4: Create entity, factory, repository contract + impl** following Task 1 shape. Bindings registered.
+- [ ] **Step 5: Run tests** including a separate hex-format CHECK test.
+
+```php
+public function test_invalid_hex_color_rejected_by_db(): void
+{
+    $this->expectException(\Illuminate\Database\QueryException::class);
+    ProductAttributeValue::factory()->create(['hex_color' => 'invalid']);
+}
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git commit -m "feat(t2): ProductAttributeValue entity + migration + repository"
+```
+
+---
+
+### Task 3: Create `ProductVariant` entity + migration with partial unique indexes
+
+**Files:**
+- Create migration: `apps/api/database/migrations/tenant/2026_06_02_100003_create_product_variants_table.php`
+- Create domain: `apps/api/app/Modules/Catalog/Domain/Entities/ProductVariant.php`
+- Factory + repository contract + Eloquent impl
+- Test: `apps/api/tests/Feature/Catalog/ProductVariantRepositoryTest.php`
+
+- [ ] **Step 1: Write failing test** including the partial unique exclusivity for `is_default`:
+
+```php
+public function test_only_one_default_variant_per_product(): void
+{
+    $product = Product::factory()->create();
+    ProductVariant::factory()->create(['product_id' => $product->id, 'is_default' => true]);
+
+    $this->expectException(\Illuminate\Database\QueryException::class);
+    ProductVariant::factory()->create(['product_id' => $product->id, 'is_default' => true]);
+}
+
+public function test_sku_unique_per_tenant(): void
+{
+    $tenant = (string) Str::uuid();
+    ProductVariant::factory()->create(['tenant_id' => $tenant, 'sku' => 'ABC-39-N']);
+    $this->expectException(\Illuminate\Database\QueryException::class);
+    ProductVariant::factory()->create(['tenant_id' => $tenant, 'sku' => 'ABC-39-N']);
+}
+
+public function test_barcode_unique_when_present(): void
+{
+    $tenant = (string) Str::uuid();
+    ProductVariant::factory()->create(['tenant_id' => $tenant, 'barcode' => '5901234123457']);
+    $this->expectException(\Illuminate\Database\QueryException::class);
+    ProductVariant::factory()->create(['tenant_id' => $tenant, 'barcode' => '5901234123457']);
+}
+
+public function test_null_barcode_allowed_multiple(): void
+{
+    $tenant = (string) Str::uuid();
+    ProductVariant::factory()->count(3)->create(['tenant_id' => $tenant, 'barcode' => null]);
+    $this->assertSame(3, ProductVariant::query()->where('tenant_id', $tenant)->count());
+}
+```
+
+- [ ] **Step 2: Run, verify fail.**
+
+- [ ] **Step 3: Create migration**
+
+```php
+Schema::create('product_variants', function (Blueprint $table) {
+    $table->uuid('id')->primary();
+    $table->uuid('tenant_id')->index();
+    $table->foreignUuid('company_id')->constrained()->cascadeOnDelete();
+    $table->foreignUuid('product_id')->constrained()->cascadeOnDelete();
+    $table->string('variant_code', 64);
+    $table->string('sku', 64);
+    $table->string('barcode', 64)->nullable();
+    $table->string('name_suffix', 128);
+    $table->boolean('is_default')->default(false);
+    $table->boolean('is_active')->default(true);
+    $table->integer('display_order')->default(0);
+    $table->decimal('price_override', 15, 4)->nullable();
+    $table->decimal('cost_override', 15, 4)->nullable();
+    $table->string('image_url', 2048)->nullable();
+    $table->timestamps();
+    $table->softDeletes();
+
+    $table->unique(['product_id', 'variant_code']);
+    $table->unique(['tenant_id', 'sku']);
+    $table->index(['tenant_id', 'product_id', 'is_active', 'display_order']);
+    $table->index(['tenant_id', 'company_id', 'is_active']);
+});
+
+// Partial unique on barcode (only when present)
+if (DB::connection()->getDriverName() === 'pgsql') {
+    DB::statement('CREATE UNIQUE INDEX product_variants_tenant_barcode_unique
+                   ON product_variants (tenant_id, barcode)
+                   WHERE barcode IS NOT NULL');
+
+    // Single default per product
+    DB::statement('CREATE UNIQUE INDEX product_variants_default_unique
+                   ON product_variants (product_id)
+                   WHERE is_default = true');
+
+    DB::statement('ALTER TABLE product_variants ADD CONSTRAINT product_variants_price_nonneg
+                   CHECK (price_override IS NULL OR price_override >= 0)');
+    DB::statement('ALTER TABLE product_variants ADD CONSTRAINT product_variants_cost_nonneg
+                   CHECK (cost_override IS NULL OR cost_override >= 0)');
+}
+```
+
+- [ ] **Step 4: Create entity + factory + repo contract `ProductVariantRepository` + Eloquent impl + service-provider binding** following Task 1 shape.
+- [ ] **Step 5: Run all four ProductVariant tests** → PASS.
+- [ ] **Step 6: Commit**
+
+```bash
+git commit -m "feat(t2): ProductVariant entity + migration + repository"
+```
+
+---
+
+### Task 4: Create `ProductVariantAttributeValue` junction + migration
+
+**Files:**
+- Create migration: `apps/api/database/migrations/tenant/2026_06_02_100004_create_product_variant_attribute_values_table.php`
+- Create domain: `apps/api/app/Modules/Catalog/Domain/Entities/ProductVariantAttributeValue.php`
+- Repository follows Task 1 shape
+- Test: `apps/api/tests/Feature/Catalog/ProductVariantAttributeValueTest.php`
+
+- [ ] **Step 1: Write failing test**
+
+```php
+public function test_junction_enforces_unique_attribute_per_variant(): void
+{
+    $variant = ProductVariant::factory()->create();
+    $attr = ProductAttribute::factory()->create();
+    $val1 = ProductAttributeValue::factory()->create(['attribute_id' => $attr->id]);
+    $val2 = ProductAttributeValue::factory()->create(['attribute_id' => $attr->id]);
+
+    ProductVariantAttributeValue::factory()->create([
+        'variant_id' => $variant->id,
+        'attribute_id' => $attr->id,
+        'attribute_value_id' => $val1->id,
+    ]);
+    $this->expectException(\Illuminate\Database\QueryException::class);
+    ProductVariantAttributeValue::factory()->create([
+        'variant_id' => $variant->id,
+        'attribute_id' => $attr->id,
+        'attribute_value_id' => $val2->id,
+    ]);
+}
+
+public function test_deleting_attribute_in_use_is_restricted(): void
+{
+    $variant = ProductVariant::factory()->create();
+    $attr = ProductAttribute::factory()->create();
+    $val = ProductAttributeValue::factory()->create(['attribute_id' => $attr->id]);
+    ProductVariantAttributeValue::factory()->create([
+        'variant_id' => $variant->id,
+        'attribute_id' => $attr->id,
+        'attribute_value_id' => $val->id,
+    ]);
+
+    $this->expectException(\Illuminate\Database\QueryException::class);
+    DB::table('product_attributes')->where('id', $attr->id)->delete();
+}
+```
+
+- [ ] **Step 2: Run, verify fail.**
+
+- [ ] **Step 3: Create migration**
+
+```php
+Schema::create('product_variant_attribute_values', function (Blueprint $table) {
+    $table->uuid('id')->primary();
+    $table->foreignUuid('variant_id')
+        ->constrained('product_variants')
+        ->cascadeOnDelete();
+    $table->foreignUuid('attribute_id')
+        ->constrained('product_attributes')
+        ->restrictOnDelete(); // RESTRICT — preserve variant integrity
+    $table->foreignUuid('attribute_value_id')
+        ->constrained('product_attribute_values')
+        ->restrictOnDelete();
+    $table->timestamps();
+
+    $table->unique(['variant_id', 'attribute_id']);
+    $table->index('attribute_value_id');
+});
+```
+
+- [ ] **Step 4: Create entity + factory + repo + binding.**
+- [ ] **Step 5: Run tests** → PASS.
+- [ ] **Step 6: Commit**
+
+```bash
+git commit -m "feat(t2): ProductVariantAttributeValue junction + migration"
+```
+
+---
+
+### Task 5: Add `variant_id` to `stock_levels` with partial unique indexes
+
+**Files:**
+- Create migration: `apps/api/database/migrations/tenant/2026_06_02_100005_add_variant_id_to_stock_levels.php`
+- Test: `apps/api/tests/Feature/Inventory/StockLevelsVariantUniqueIndexTest.php`
+
+- [ ] **Step 1: Write failing test that asserts partial-unique semantics**
+
+```php
+public function test_can_have_one_non_variant_and_one_variant_row_for_same_product_location(): void
+{
+    $tenant = (string) Str::uuid();
+    $product = Product::factory()->create(['tenant_id' => $tenant]);
+    $variant = ProductVariant::factory()->create(['tenant_id' => $tenant, 'product_id' => $product->id]);
+    $location = Location::factory()->create();
+
+    DB::table('stock_levels')->insert([
+        'id' => (string) Str::uuid(),
+        'tenant_id' => $tenant,
+        'product_id' => $product->id,
+        'variant_id' => null,
+        'location_id' => $location->id,
+        'quantity' => 0,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    DB::table('stock_levels')->insert([
+        'id' => (string) Str::uuid(),
+        'tenant_id' => $tenant,
+        'product_id' => $product->id,
+        'variant_id' => $variant->id,
+        'location_id' => $location->id,
+        'quantity' => 0,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $this->assertSame(2, DB::table('stock_levels')
+        ->where('product_id', $product->id)
+        ->where('location_id', $location->id)
+        ->count());
+}
+
+public function test_duplicate_non_variant_row_rejected(): void
+{
+    // similar setup; try to insert two variant_id=null rows for same (tenant,product,location) — second fails
+}
+
+public function test_duplicate_variant_row_rejected(): void
+{
+    // similar; two variant_id=X rows fail
+}
+```
+
+- [ ] **Step 2: Run, verify fail (column not exists).**
+
+- [ ] **Step 3: Create migration**
+
+```php
+return new class extends Migration {
+    public function up(): void
+    {
+        Schema::table('stock_levels', function (Blueprint $table) {
+            $table->foreignUuid('variant_id')
+                ->nullable()
+                ->after('product_id')
+                ->constrained('product_variants')
+                ->restrictOnDelete();
+        });
+
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            // Drop the old unique
+            DB::statement('ALTER TABLE stock_levels DROP CONSTRAINT IF EXISTS stock_levels_tenant_id_product_id_location_id_unique');
+
+            // Replacement partial-unique pair
+            DB::statement('CREATE UNIQUE INDEX stock_levels_non_variant
+                           ON stock_levels (tenant_id, product_id, location_id)
+                           WHERE variant_id IS NULL');
+            DB::statement('CREATE UNIQUE INDEX stock_levels_with_variant
+                           ON stock_levels (tenant_id, product_id, variant_id, location_id)
+                           WHERE variant_id IS NOT NULL');
+        }
+    }
+
+    public function down(): void
+    {
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('DROP INDEX IF EXISTS stock_levels_with_variant');
+            DB::statement('DROP INDEX IF EXISTS stock_levels_non_variant');
+        }
+        Schema::table('stock_levels', function (Blueprint $table) {
+            $table->dropConstrainedForeignId('variant_id');
+        });
+        // Re-create original unique
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE stock_levels ADD CONSTRAINT stock_levels_tenant_id_product_id_location_id_unique UNIQUE (tenant_id, product_id, location_id)');
+        }
+    }
+};
+```
+
+- [ ] **Step 4: Run migration + tests** → PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -m "feat(t2): add variant_id to stock_levels with partial unique indexes"
+```
+
+---
+
+### Task 6: Add `variant_id` to `stock_movements`, `stock_reservations` (append + index)
+
+**Files:**
+- Migration: `apps/api/database/migrations/tenant/2026_06_02_100006_add_variant_id_to_stock_movements.php`
+- Migration: `apps/api/database/migrations/tenant/2026_06_02_100007_add_variant_id_to_stock_reservations.php`
+- Test: `apps/api/tests/Feature/Inventory/StockMovementsVariantColumnTest.php`
+
+- [ ] **Step 1: Write failing test verifying column exists + FK + index**
+
+```php
+public function test_stock_movements_has_variant_id_column(): void
+{
+    $this->assertTrue(Schema::hasColumn('stock_movements', 'variant_id'));
+}
+
+public function test_stock_movements_variant_index_exists(): void
+{
+    if (DB::connection()->getDriverName() === 'pgsql') {
+        $idx = DB::select("SELECT indexname FROM pg_indexes WHERE tablename = 'stock_movements' AND indexname = 'stock_movements_tenant_product_variant_created_idx'");
+        $this->assertNotEmpty($idx);
+    }
+}
+```
+
+- [ ] **Step 2: Create migrations**
+
+```php
+// stock_movements
+Schema::table('stock_movements', function (Blueprint $table) {
+    $table->foreignUuid('variant_id')->nullable()->after('product_id')
+        ->constrained('product_variants')->restrictOnDelete();
+    $table->index(['tenant_id', 'product_id', 'variant_id', 'created_at'],
+                  'stock_movements_tenant_product_variant_created_idx');
+});
+
+// stock_reservations
+Schema::table('stock_reservations', function (Blueprint $table) {
+    $table->foreignUuid('variant_id')->nullable()->after('product_id')
+        ->constrained('product_variants')->restrictOnDelete();
+    $table->index(['tenant_id', 'product_id', 'variant_id', 'released_at']);
+});
+```
+
+- [ ] **Step 3: Run tests** → PASS.
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -m "feat(t2): add variant_id to stock_movements and stock_reservations"
+```
+
+---
+
+### Task 7: Add `variant_id` to `product_batches` with partial unique + remove TODO
+
+**Files:**
+- Migration: `apps/api/database/migrations/tenant/2026_06_02_100008_add_variant_id_to_product_batches.php`
+- Test: `apps/api/tests/Feature/BatchExpiry/BatchesVariantUniqueTest.php`
+
+- [ ] **Step 1: Write failing test for both non-variant + variant batch coexistence per product**
+
+```php
+public function test_can_have_non_variant_and_variant_batch_with_same_number(): void
+{
+    $company = (string) Str::uuid();
+    $product = Product::factory()->create(['company_id' => $company]);
+    $variant = ProductVariant::factory()->create([
+        'company_id' => $company,
+        'product_id' => $product->id,
+    ]);
+    Batch::factory()->create([
+        'company_id' => $company,
+        'product_id' => $product->id,
+        'variant_id' => null,
+        'batch_number' => 'LOT-001',
+    ]);
+    Batch::factory()->create([
+        'company_id' => $company,
+        'product_id' => $product->id,
+        'variant_id' => $variant->id,
+        'batch_number' => 'LOT-001',
+    ]);
+    $this->assertSame(2, Batch::where('batch_number', 'LOT-001')->count());
+}
+
+public function test_duplicate_variant_batch_rejected(): void
+{
+    // setup; two batches with same (company, product, variant, batch_number) — second fails
+}
+```
+
+- [ ] **Step 2: Create migration**
+
+```php
+Schema::table('product_batches', function (Blueprint $table) {
+    $table->foreignUuid('variant_id')->nullable()->after('product_id')
+        ->constrained('product_variants')->restrictOnDelete();
+});
+
+if (DB::connection()->getDriverName() === 'pgsql') {
+    DB::statement('ALTER TABLE product_batches DROP CONSTRAINT IF EXISTS product_batches_company_id_product_id_batch_number_unique');
+
+    DB::statement('CREATE UNIQUE INDEX product_batches_non_variant
+                   ON product_batches (company_id, product_id, batch_number)
+                   WHERE variant_id IS NULL');
+    DB::statement('CREATE UNIQUE INDEX product_batches_with_variant
+                   ON product_batches (company_id, product_id, variant_id, batch_number)
+                   WHERE variant_id IS NOT NULL');
+}
+```
+
+- [ ] **Step 3: Update the original migration file `2026_01_05_150000_create_product_batches_table.php`** — remove the TODO comment at line 23. (This is a doc-only edit; the column gets added by the new migration.)
+
+- [ ] **Step 4: Run tests** → PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -m "feat(t2): add variant_id to product_batches + partial unique; remove TODO"
+```
+
+---
+
+### Task 8: Add `variant_id` to `document_lines`, `pos_receipt_lines`, `pos_order_lines`, `pos_receipt_line_batch_allocations`
+
+**Files:**
+- Migration: `apps/api/database/migrations/tenant/2026_06_02_100009_add_variant_id_to_document_lines.php`
+- Migration: `apps/api/database/migrations/tenant/2026_06_02_100010_add_variant_id_to_pos_receipt_lines.php`
+- Migration: `apps/api/database/migrations/tenant/2026_06_02_100011_add_variant_id_to_pos_order_lines.php`
+- Migration: `apps/api/database/migrations/tenant/2026_06_02_100012_add_variant_id_to_pos_receipt_line_batch_allocations.php`
+- Test: `apps/api/tests/Feature/Inventory/SellableLinesVariantTest.php`
+
+- [ ] **Step 1: Write failing test** verifying CHECK constraint on `pos_receipt_lines`:
+
+```php
+public function test_variant_id_requires_product_id_on_pos_receipt_lines(): void
+{
+    // try to insert variant_id=X with product_id=NULL (composite_item_id=Y) — must fail
+    $this->expectException(\Illuminate\Database\QueryException::class);
+    DB::table('pos_receipt_lines')->insert([
+        // ... composite line shape but with variant_id set
+    ]);
+}
+```
+
+- [ ] **Step 2: Create the four migrations** with FK + CHECK as in §4.3 of the spec.
+
+```php
+// pos_receipt_lines example
+Schema::table('pos_receipt_lines', function (Blueprint $table) {
+    $table->foreignUuid('variant_id')->nullable()->after('product_id')
+        ->constrained('product_variants')->restrictOnDelete();
+});
+
+if (DB::connection()->getDriverName() === 'pgsql') {
+    DB::statement('ALTER TABLE pos_receipt_lines ADD CONSTRAINT pos_receipt_lines_variant_requires_product
+                   CHECK (variant_id IS NULL OR product_id IS NOT NULL)');
+}
+```
+
+- [ ] **Step 3: Run tests** → PASS.
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -m "feat(t2): add variant_id to document_lines + POS sellable lines + batch allocations"
+```
+
+---
+
+### Task 9: Add `variant_id` to `catalog_cart_items` and `price_list_items` with partial unique
+
+**Files:**
+- Migration: `apps/api/database/migrations/tenant/2026_06_02_100013_add_variant_id_to_catalog_cart_items.php`
+- Migration: `apps/api/database/migrations/tenant/2026_06_02_100014_add_variant_id_to_price_list_items.php`
+- Test: `apps/api/tests/Feature/Pricing/PriceListItemsVariantUniqueTest.php`
+
+- [ ] **Step 1: Write failing test for `price_list_items` partial unique**
+
+```php
+public function test_variant_and_non_variant_price_list_items_coexist(): void
+{
+    $priceList = PriceList::factory()->create();
+    $product = Product::factory()->create();
+    $variant = ProductVariant::factory()->create(['product_id' => $product->id]);
+
+    PriceListItem::factory()->create([
+        'price_list_id' => $priceList->id,
+        'product_id' => $product->id,
+        'variant_id' => null,
+        'min_quantity' => 1,
+        'price' => '10.0000',
+    ]);
+    PriceListItem::factory()->create([
+        'price_list_id' => $priceList->id,
+        'product_id' => $product->id,
+        'variant_id' => $variant->id,
+        'min_quantity' => 1,
+        'price' => '12.0000',
+    ]);
+    $this->assertSame(2, PriceListItem::query()
+        ->where('product_id', $product->id)
+        ->count());
+}
+```
+
+- [ ] **Step 2: Create migrations.**
+
+```php
+// price_list_items
+Schema::table('price_list_items', function (Blueprint $table) {
+    $table->foreignUuid('variant_id')->nullable()->after('product_id')
+        ->constrained('product_variants')->cascadeOnDelete();
+});
+if (DB::connection()->getDriverName() === 'pgsql') {
+    DB::statement('ALTER TABLE price_list_items DROP CONSTRAINT IF EXISTS price_list_items_price_list_id_product_id_min_quantity_unique');
+    DB::statement('CREATE UNIQUE INDEX price_list_items_non_variant
+                   ON price_list_items (price_list_id, product_id, min_quantity)
+                   WHERE variant_id IS NULL');
+    DB::statement('CREATE UNIQUE INDEX price_list_items_with_variant
+                   ON price_list_items (price_list_id, product_id, variant_id, min_quantity)
+                   WHERE variant_id IS NOT NULL');
+}
+
+// catalog_cart_items
+Schema::table('catalog_cart_items', function (Blueprint $table) {
+    $table->foreignUuid('variant_id')->nullable()->after('product_id')
+        ->constrained('product_variants')->restrictOnDelete();
+    $table->index(['cart_id', 'product_id', 'variant_id']);
+});
+```
+
+- [ ] **Step 3: Run tests** → PASS.
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -m "feat(t2): variant_id on catalog_cart_items + price_list_items (partial unique)"
+```
+
+---
+
+### Task 10: Add `component_variant_id` to `recipe_lines` with CHECK
+
+**Files:**
+- Migration: `apps/api/database/migrations/tenant/2026_06_02_100015_add_component_variant_id_to_recipe_lines.php`
+- Test: `apps/api/tests/Feature/Catalog/RecipeLineComponentVariantTest.php`
+
+- [ ] **Step 1: Write failing test**
+
+```php
+public function test_recipe_line_can_reference_variant_when_component_is_product(): void
+{
+    $recipe = Recipe::factory()->create();
+    $product = Product::factory()->create();
+    $variant = ProductVariant::factory()->create(['product_id' => $product->id]);
+
+    $line = RecipeLine::factory()->create([
+        'recipe_id' => $recipe->id,
+        'component_type' => ComponentType::Product,
+        'component_id' => $product->id,
+        'component_variant_id' => $variant->id,
+    ]);
+
+    $this->assertSame($variant->id, $line->component_variant_id);
+}
+
+public function test_recipe_line_rejects_variant_when_component_is_composite(): void
+{
+    $this->expectException(\Illuminate\Database\QueryException::class);
+    RecipeLine::factory()->create([
+        'component_type' => ComponentType::CompositeItem,
+        'component_variant_id' => (string) Str::uuid(),
+    ]);
+}
+```
+
+- [ ] **Step 2: Create migration**
+
+```php
+Schema::table('recipe_lines', function (Blueprint $table) {
+    $table->foreignUuid('component_variant_id')->nullable()->after('component_id')
+        ->constrained('product_variants')->restrictOnDelete();
+    $table->index('component_variant_id');
+});
+
+if (DB::connection()->getDriverName() === 'pgsql') {
+    DB::statement("ALTER TABLE recipe_lines ADD CONSTRAINT recipe_lines_variant_requires_product
+                   CHECK (component_variant_id IS NULL OR component_type = 'product')");
+}
+```
+
+- [ ] **Step 3: Run tests** → PASS.
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -m "feat(t2): add component_variant_id to recipe_lines + CHECK"
+```
+
+---
+
+### Task 11: Migration suite roll-back test
+
+**Files:**
+- Test: `apps/api/tests/Feature/Migrations/T2MigrationRollbackTest.php`
+
+- [ ] **Step 1: Write test**
+
+```php
+public function test_t2_migrations_roll_back_cleanly(): void
+{
+    Artisan::call('migrate', ['--path' => 'database/migrations/tenant', '--env' => 'testing']);
+    // Capture row count of stock_levels (or any table where we re-created indexes)
+    $before = Schema::hasColumn('stock_levels', 'variant_id');
+    $this->assertTrue($before);
+
+    // Roll back ONLY the T2 migrations (those dated 2026_06_02_*)
+    foreach (range(15, 1) as $n) {
+        Artisan::call('migrate:rollback', ['--step' => 1, '--env' => 'testing']);
+    }
+
+    $this->assertFalse(Schema::hasColumn('stock_levels', 'variant_id'));
+    // Re-apply to leave DB in test-clean state
+    Artisan::call('migrate', ['--env' => 'testing']);
+}
+```
+
+- [ ] **Step 2: Run test** → PASS.
+- [ ] **Step 3: Commit**
+
+```bash
+git commit -m "test(t2): verify T2 migration rollback round-trip"
+```
+
+---
+
+## Phase 2 — Service-layer ripple (~6 PD)
+
+### Task 12: `AttributeService` and `ProductVariantService` skeleton + factories
+
+**Files:**
+- Create: `apps/api/app/Modules/Catalog/Application/Services/AttributeService.php`
+- Create: `apps/api/app/Modules/Catalog/Application/Services/ProductVariantService.php`
+- Create commands: `apps/api/app/Modules/Catalog/Application/Commands/CreateAttributeCommand.php`, `AddAttributeValueCommand.php`, `CreateVariantCommand.php`, `UpdateVariantCommand.php`
+- Create: `apps/api/app/Modules/Catalog/Application/Exceptions/VariantRequiredException.php`, `MissingVariantException.php`
+- Test: `apps/api/tests/Feature/Catalog/AttributeServiceTest.php`
+- Test: `apps/api/tests/Feature/Catalog/ProductVariantServiceTest.php`
+
+- [ ] **Step 1: Write failing test for `AttributeService::create`**
+
+```php
+public function test_create_attribute_persists_and_emits_event(): void
+{
+    Event::fake([ProductAttributeCreated::class]);
+    $svc = app(AttributeService::class);
+    $cmd = new CreateAttributeCommand(
+        code: 'taille',
+        name: 'Taille',
+        dataType: AttributeDataType::Selection,
+        isVariantAxis: true,
+    );
+
+    $attr = $svc->create($cmd);
+
+    $this->assertSame('taille', $attr->code);
+    Event::assertDispatched(ProductAttributeCreated::class);
+}
+```
+
+- [ ] **Step 2: Run, verify fail.**
+
+- [ ] **Step 3: Implement `AttributeService`**
+
+```php
+final class AttributeService
+{
+    public function __construct(
+        private readonly AttributeRepository $attributes,
+        private readonly AttributeValueRepository $values,
+        private readonly EventDispatcher $events,
+        private readonly TenantContext $tenant,
+    ) {}
+
+    public function create(CreateAttributeCommand $cmd): ProductAttribute
+    {
+        $attr = new ProductAttribute([
+            'tenant_id' => $this->tenant->id(),
+            'code' => $cmd->code,
+            'name' => $cmd->name,
+            'data_type' => $cmd->dataType,
+            'is_variant_axis' => $cmd->isVariantAxis,
+            'display_order' => $cmd->displayOrder,
+            'is_active' => true,
+        ]);
+        $this->attributes->save($attr);
+        $this->events->dispatch(new ProductAttributeCreated(
+            attributeId: $attr->id,
+            tenantId: $attr->tenant_id,
+            code: $attr->code,
+            dataType: $attr->data_type,
+        ));
+        return $attr;
+    }
+
+    public function addValue(AddAttributeValueCommand $cmd): ProductAttributeValue { /* ... */ }
+    public function listForTenant(): Collection { /* delegate */ }
+}
+```
+
+- [ ] **Step 4: Implement `ProductVariantService::createVariant` (minimal — just persists; matrix-gen comes Task 13)**
+
+```php
+public function createVariant(CreateVariantCommand $cmd): ProductVariant
+{
+    return DB::transaction(function () use ($cmd) {
+        $variant = new ProductVariant([
+            'tenant_id' => $this->tenant->id(),
+            'company_id' => $cmd->companyId,
+            'product_id' => $cmd->productId,
+            'variant_code' => $cmd->variantCode,
+            'sku' => $cmd->sku,
+            'barcode' => $cmd->barcode,
+            'name_suffix' => $cmd->nameSuffix,
+            'is_default' => $cmd->isDefault,
+            'is_active' => true,
+            'price_override' => $cmd->priceOverride,
+            'cost_override' => $cmd->costOverride,
+            'image_url' => $cmd->imageUrl,
+        ]);
+        $this->variants->save($variant);
+
+        foreach ($cmd->attributeValues as [$attributeId, $attributeValueId]) {
+            ProductVariantAttributeValue::create([
+                'variant_id' => $variant->id,
+                'attribute_id' => $attributeId,
+                'attribute_value_id' => $attributeValueId,
+            ]);
+        }
+
+        // If this is the first active variant for the product, migrate stock to it.
+        $isFirst = ProductVariant::where('product_id', $cmd->productId)
+            ->where('is_active', true)
+            ->where('id', '!=', $variant->id)
+            ->doesntExist();
+        if ($isFirst && $cmd->isDefault) {
+            $this->stockMigrator->migrateToDefaultVariant($cmd->productId, $variant->id);
+        }
+
+        $this->events->dispatch(new ProductVariantCreated(/* ... */));
+        return $variant;
+    });
+}
+```
+
+- [ ] **Step 5: Create domain events** (skeleton — they get filled out as services dispatch):
+
+```php
+// ProductVariantCreated.php — immutable, never modify
+final class ProductVariantCreated extends DomainEvent
+{
+    public function __construct(
+        public readonly string $variantId,
+        public readonly string $productId,
+        public readonly string $tenantId,
+        public readonly string $companyId,
+        public readonly string $sku,
+        public readonly string $variantCode,
+        public readonly bool $isDefault,
+    ) {}
+
+    public function getEventName(): string { return 'product_variant.created'; }
+    public function getAuditPayload(): array { return [...]; }
+}
+```
+
+- [ ] **Step 6: Run tests** → PASS.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git commit -m "feat(t2): AttributeService + ProductVariantService skeleton + commands + events"
+```
+
+---
+
+### Task 13: `ProductVariantMatrixGenerator` + matrix endpoint
+
+**Files:**
+- Create: `apps/api/app/Modules/Catalog/Application/Services/ProductVariantMatrixGenerator.php`
+- Modify: `ProductVariantService::generateMatrix` to call the generator
+- Test: `apps/api/tests/Unit/Catalog/Application/Services/ProductVariantMatrixGeneratorTest.php`
+
+- [ ] **Step 1: Write failing unit test**
+
+```php
+public function test_two_axis_matrix_generates_cartesian(): void
+{
+    $sizes = ['39', '40', '41'];
+    $colors = ['noir', 'blanc'];
+    $generator = new ProductVariantMatrixGenerator();
+
+    $combos = $generator->cartesian([
+        'taille' => $sizes,
+        'couleur' => $colors,
+    ]);
+
+    $this->assertCount(6, $combos);
+    $this->assertContains(['taille' => '39', 'couleur' => 'noir'], $combos);
+}
+
+public function test_excluded_combos_skipped(): void
+{
+    $combos = $generator->cartesian(
+        ['taille' => ['39', '40'], 'couleur' => ['noir', 'blanc']],
+        excluded: [['taille' => '39', 'couleur' => 'noir']],
+    );
+    $this->assertCount(3, $combos);
+    $this->assertNotContains(['taille' => '39', 'couleur' => 'noir'], $combos);
+}
+```
+
+- [ ] **Step 2: Run, verify fail.**
+
+- [ ] **Step 3: Implement**
+
+```php
+final class ProductVariantMatrixGenerator
+{
+    /**
+     * @param array<string, string[]> $axes attribute_code => [value_codes]
+     * @param array<int, array<string, string>> $excluded
+     * @return array<int, array<string, string>>
+     */
+    public function cartesian(array $axes, array $excluded = []): array
+    {
+        if ($axes === []) return [];
+        $result = [[]];
+        foreach ($axes as $axisCode => $values) {
+            $next = [];
+            foreach ($result as $partial) {
+                foreach ($values as $val) {
+                    $next[] = $partial + [$axisCode => $val];
+                }
+            }
+            $result = $next;
+        }
+        return array_values(array_filter($result, fn ($combo) => ! in_array($combo, $excluded, true)));
+    }
+}
+```
+
+- [ ] **Step 4: Implement `ProductVariantService::generateMatrix(UUID $productId, array $attributeIds)`** that wires the generator + persists N variants with unique generated SKUs and variant_codes.
+
+- [ ] **Step 5: Write feature test for end-to-end matrix generation**
+
+```php
+public function test_generate_matrix_persists_18_variants_for_3x6(): void
+{
+    $product = Product::factory()->create();
+    $taille = ProductAttribute::factory()->create(['code' => 'taille', 'is_variant_axis' => true]);
+    $couleur = ProductAttribute::factory()->create(['code' => 'couleur', 'is_variant_axis' => true]);
+    foreach (['36','37','38','39','40','41'] as $size) {
+        ProductAttributeValue::factory()->create([
+            'attribute_id' => $taille->id, 'code' => $size, 'label' => $size,
+        ]);
+    }
+    foreach (['noir','blanc','beige'] as $color) {
+        ProductAttributeValue::factory()->create([
+            'attribute_id' => $couleur->id, 'code' => $color, 'label' => ucfirst($color),
+        ]);
+    }
+
+    $variants = app(ProductVariantService::class)
+        ->generateMatrix($product->id, [$taille->id, $couleur->id]);
+
+    $this->assertCount(18, $variants);
+    $skus = $variants->pluck('sku')->unique();
+    $this->assertCount(18, $skus); // all SKUs unique
+}
+```
+
+- [ ] **Step 6: Run tests** → PASS.
+- [ ] **Step 7: Commit**
+
+```bash
+git commit -m "feat(t2): ProductVariantMatrixGenerator + service wiring"
+```
+
+---
+
+### Task 14: `StockLevelMigrationService` (atomic migration to default variant)
+
+**Files:**
+- Create: `apps/api/app/Modules/Inventory/Application/Services/StockLevelMigrationService.php`
+- Event: `apps/api/app/Modules/Inventory/Domain/Events/StockLevelsMigratedToDefaultVariant.php`
+- Test: `apps/api/tests/Feature/Inventory/StockLevelMigrationServiceTest.php`
+
+- [ ] **Step 1: Write failing test**
+
+```php
+public function test_migrates_active_stock_levels_to_default_variant(): void
+{
+    $product = Product::factory()->create();
+    $location = Location::factory()->create();
+    $variant = ProductVariant::factory()->create(['product_id' => $product->id, 'is_default' => true]);
+
+    StockLevel::factory()->create([
+        'product_id' => $product->id,
+        'variant_id' => null,
+        'location_id' => $location->id,
+        'quantity' => 10,
+    ]);
+
+    app(StockLevelMigrationService::class)
+        ->migrateToDefaultVariant($product->id, $variant->id);
+
+    $this->assertSame(0, StockLevel::where('product_id', $product->id)
+        ->whereNull('variant_id')->count());
+    $this->assertSame(1, StockLevel::where('product_id', $product->id)
+        ->where('variant_id', $variant->id)->count());
+}
+
+public function test_historical_movements_not_rewritten(): void
+{
+    $product = Product::factory()->create();
+    $variant = ProductVariant::factory()->create(['product_id' => $product->id]);
+
+    StockMovement::factory()->create([
+        'product_id' => $product->id,
+        'variant_id' => null,
+    ]);
+
+    app(StockLevelMigrationService::class)->migrateToDefaultVariant($product->id, $variant->id);
+
+    // Movement stays variant_id=null — append-only audit
+    $this->assertSame(1, StockMovement::where('product_id', $product->id)
+        ->whereNull('variant_id')->count());
+}
+
+public function test_open_reservations_migrated_not_released(): void
+{
+    $product = Product::factory()->create();
+    $variant = ProductVariant::factory()->create(['product_id' => $product->id]);
+    $openRes = StockReservation::factory()->create([
+        'product_id' => $product->id,
+        'variant_id' => null,
+        'released_at' => null,
+    ]);
+    $closedRes = StockReservation::factory()->create([
+        'product_id' => $product->id,
+        'variant_id' => null,
+        'released_at' => now(),
+    ]);
+
+    app(StockLevelMigrationService::class)->migrateToDefaultVariant($product->id, $variant->id);
+
+    $openRes->refresh(); $closedRes->refresh();
+    $this->assertSame($variant->id, $openRes->variant_id);
+    $this->assertNull($closedRes->variant_id);
+}
+```
+
+- [ ] **Step 2: Implement**
+
+```php
+final class StockLevelMigrationService
+{
+    public function __construct(
+        private readonly EventDispatcher $events,
+    ) {}
+
+    public function migrateToDefaultVariant(string $productId, string $defaultVariantId): void
+    {
+        DB::transaction(function () use ($productId, $defaultVariantId) {
+            $stockUpdated = DB::table('stock_levels')
+                ->where('product_id', $productId)
+                ->whereNull('variant_id')
+                ->update(['variant_id' => $defaultVariantId, 'updated_at' => now()]);
+
+            $resUpdated = DB::table('stock_reservations')
+                ->where('product_id', $productId)
+                ->whereNull('variant_id')
+                ->whereNull('released_at')
+                ->update(['variant_id' => $defaultVariantId, 'updated_at' => now()]);
+
+            $batchUpdated = DB::table('product_batches')
+                ->where('product_id', $productId)
+                ->whereNull('variant_id')
+                ->where('is_active', true)
+                ->update(['variant_id' => $defaultVariantId, 'updated_at' => now()]);
+        });
+
+        $this->events->dispatch(new StockLevelsMigratedToDefaultVariant(
+            productId: $productId,
+            defaultVariantId: $defaultVariantId,
+        ));
+    }
+}
+```
+
+- [ ] **Step 3: Run tests** → PASS.
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -m "feat(t2): StockLevelMigrationService — atomic migration to default variant"
+```
+
+---
+
+### Task 15: `StockAdjustmentService` variant-aware overloads
+
+**Files:**
+- Modify: `apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php`
+- Update callsites: every direct caller (find via grep: `StockAdjustmentService::`)
+- Test: `apps/api/tests/Feature/Inventory/StockAdjustmentServiceVariantTest.php`
+
+- [ ] **Step 1: Write failing test**
+
+```php
+public function test_receive_variant_creates_variant_scoped_stock_level(): void
+{
+    $product = Product::factory()->create();
+    $variant = ProductVariant::factory()->create(['product_id' => $product->id]);
+    $location = Location::factory()->create();
+
+    app(StockAdjustmentService::class)->receive(
+        productId: $product->id,
+        locationId: $location->id,
+        quantity: '5.0000',
+        variantId: $variant->id,
+    );
+
+    $level = StockLevel::where('product_id', $product->id)
+        ->where('variant_id', $variant->id)
+        ->where('location_id', $location->id)
+        ->first();
+    $this->assertNotNull($level);
+    $this->assertSame('5.0000', $level->quantity);
+}
+
+public function test_receive_without_variant_creates_product_scoped_level_when_no_variants(): void
+{
+    $product = Product::factory()->create();
+    $location = Location::factory()->create();
+
+    app(StockAdjustmentService::class)->receive(
+        productId: $product->id,
+        locationId: $location->id,
+        quantity: '3.0000',
+    );
+
+    $level = StockLevel::where('product_id', $product->id)
+        ->whereNull('variant_id')
+        ->first();
+    $this->assertNotNull($level);
+}
+
+public function test_receive_without_variant_on_variant_bearing_product_raises(): void
+{
+    $product = Product::factory()->create();
+    ProductVariant::factory()->create(['product_id' => $product->id, 'is_default' => true]);
+
+    $this->expectException(VariantRequiredException::class);
+    app(StockAdjustmentService::class)->receive(
+        productId: $product->id,
+        locationId: Location::factory()->create()->id,
+        quantity: '1.0000',
+    );
+}
+```
+
+- [ ] **Step 2: Update `StockAdjustmentService` — add `?string $variantId = null` trailing parameter to `receive`, `issue`, `transfer`, `reserve`, `release`. Update Eloquent queries to filter `where('variant_id', $variantId)` or `whereNull('variant_id')`.
+
+```php
+public function receive(
+    string $productId,
+    string $locationId,
+    string $quantity,
+    // ... other existing params
+    ?string $variantId = null,
+): StockMovement {
+    $this->assertVariantConsistency($productId, $variantId);
+    // ... existing logic, but with where('variant_id', $variantId) on level lookups, and variant_id set on movement insert
+}
+
+private function assertVariantConsistency(string $productId, ?string $variantId): void
+{
+    if ($variantId !== null) return; // explicit variant — fine
+    $hasVariants = ProductVariant::where('product_id', $productId)->where('is_active', true)->exists();
+    if ($hasVariants) {
+        throw new VariantRequiredException("Product {$productId} has variants; variant_id required");
+    }
+}
+```
+
+- [ ] **Step 3: Sweep callsites** — find every caller and confirm none broke. Grep:
+
+```bash
+grep -rn 'StockAdjustmentService' apps/api/app apps/api/tests | grep -v '\.test\.'
+```
+
+For each callsite, the missing parameter defaults to null. **Confirm in PR** that the call-site's product is non-variant — otherwise the call needs updating. List sweep results in the PR description.
+
+- [ ] **Step 4: Run tests** → PASS.
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -m "refactor(t2): StockAdjustmentService accepts optional variant_id"
+```
+
+---
+
+### Task 16: `BatchStockService` and `FEFOInventoryService` variant-aware
+
+**Files:**
+- Modify: `apps/api/app/Modules/BatchExpiry/Application/Services/BatchStockService.php`
+- Modify: `apps/api/app/Modules/BatchExpiry/Domain/Services/FEFOInventoryService.php`
+- Test: `apps/api/tests/Feature/BatchExpiry/BatchStockServiceVariantTest.php`
+- Test: `apps/api/tests/Feature/BatchExpiry/FEFOInventoryServiceVariantTest.php`
+
+- [ ] **Step 1: Write failing test for `BatchStockService::findOrCreateBatch`**
+
+```php
+public function test_creates_variant_scoped_batch(): void
+{
+    $product = Product::factory()->create();
+    $variant = ProductVariant::factory()->create(['product_id' => $product->id]);
+
+    $batch = app(BatchStockService::class)->findOrCreateBatch(
+        productId: $product->id,
+        batchNumber: 'LOT-001',
+        expiryDate: now()->addMonths(6),
+        variantId: $variant->id,
+    );
+
+    $this->assertSame($variant->id, $batch->variant_id);
+}
+
+public function test_rejects_product_level_batch_for_variant_bearing_product(): void
+{
+    $product = Product::factory()->create();
+    ProductVariant::factory()->create(['product_id' => $product->id]);
+
+    $this->expectException(MissingVariantException::class);
+    app(BatchStockService::class)->findOrCreateBatch(
+        productId: $product->id,
+        batchNumber: 'LOT-002',
+        expiryDate: now()->addMonths(6),
+    );
+}
+```
+
+- [ ] **Step 2: Write failing test for FEFO**
+
+```php
+public function test_fefo_returns_only_variant_batches_when_variant_passed(): void
+{
+    $product = Product::factory()->create();
+    $variantA = ProductVariant::factory()->create(['product_id' => $product->id]);
+    $variantB = ProductVariant::factory()->create(['product_id' => $product->id]);
+    $loc = Location::factory()->create();
+
+    $batchA = Batch::factory()->create([
+        'product_id' => $product->id, 'variant_id' => $variantA->id,
+        'expiry_date' => now()->addDays(30),
+    ]);
+    $batchB = Batch::factory()->create([
+        'product_id' => $product->id, 'variant_id' => $variantB->id,
+        'expiry_date' => now()->addDays(10),  // sooner
+    ]);
+    BatchStock::factory()->create(['batch_id' => $batchA->id, 'location_id' => $loc->id, 'quantity' => '5']);
+    BatchStock::factory()->create(['batch_id' => $batchB->id, 'location_id' => $loc->id, 'quantity' => '5']);
+
+    $suggestions = app(FEFOInventoryService::class)->suggestBatchesForSale(
+        productId: $product->id,
+        locationId: $loc->id,
+        quantity: '3',
+        variantId: $variantA->id,
+    );
+
+    $this->assertCount(1, $suggestions);
+    $this->assertSame($batchA->id, $suggestions->first()->batch_id);
+}
+```
+
+- [ ] **Step 3: Implement variant-aware `BatchStockService::findOrCreateBatch` + `FEFOInventoryService::suggestBatchesForSale`** per spec §7.
+
+- [ ] **Step 4: Sweep callsites** — same pattern as Task 15. Run tests → PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -m "refactor(t2): BatchStockService + FEFO accept optional variant_id"
+```
+
+---
+
+### Task 17: `PricingService::getPrice` variant-aware resolution
+
+**Files:**
+- Modify: `apps/api/app/Modules/Pricing/Domain/Services/PricingService.php`
+- Create: `apps/api/app/Modules/Pricing/README.md` documenting resolution order
+- Test: `apps/api/tests/Feature/Pricing/PricingServiceVariantTest.php`
+
+- [ ] **Step 1: Write failing test for the resolution chain**
+
+```php
+public function test_variant_specific_price_takes_precedence(): void
+{
+    $priceList = PriceList::factory()->create();
+    $product = Product::factory()->create(['sale_price' => '100.00']);
+    $variant = ProductVariant::factory()->create(['product_id' => $product->id]);
+
+    PriceListItem::factory()->create([
+        'price_list_id' => $priceList->id, 'product_id' => $product->id, 'variant_id' => null,
+        'min_quantity' => 1, 'price' => '90.00',
+    ]);
+    PriceListItem::factory()->create([
+        'price_list_id' => $priceList->id, 'product_id' => $product->id, 'variant_id' => $variant->id,
+        'min_quantity' => 1, 'price' => '80.00',
+    ]);
+
+    $price = app(PricingService::class)->getPrice(
+        priceListId: $priceList->id,
+        productId: $product->id,
+        quantity: '1',
+        variantId: $variant->id,
+    );
+    $this->assertSame('80.00', $price);
+}
+
+public function test_falls_back_to_variant_agnostic_then_product_then_override(): void
+{
+    // similar; covers the four fallback levels
+}
+```
+
+- [ ] **Step 2: Update `PricingService::getPrice`** per spec §5.3.
+
+- [ ] **Step 3: Write resolution-order doc**
+
+`apps/api/app/Modules/Pricing/README.md`:
+```markdown
+# Pricing — variant-aware resolution
+
+`PricingService::getPrice` resolution order:
+1. `price_list_items` row with `variant_id = $variantId AND min_quantity <= $qty` (highest min_quantity).
+2. `price_list_items` row with `variant_id IS NULL AND product_id = $productId AND min_quantity <= $qty` (highest min_quantity).
+3. Product `sale_price`.
+4. Variant `price_override` (if `variantId !== null` and override is set; supersedes product fallback).
+```
+
+- [ ] **Step 4: Run tests** → PASS.
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -m "feat(t2): PricingService variant-aware resolution + README"
+```
+
+---
+
+### Task 18: POS `ReceiptCreationService::decrementStock` variant-aware
+
+**Files:**
+- Modify: `apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php` (lines ~837-904)
+- Modify: `apps/api/app/Modules/POS/Application/DTOs/OrderLineData.php` — add `variantId`
+- Test: `apps/api/tests/Feature/POS/ReceiptCreationVariantTest.php`
+
+- [ ] **Step 1: Write failing test**
+
+```php
+public function test_variant_line_decrements_variant_stock_row(): void
+{
+    $product = Product::factory()->create();
+    $variant = ProductVariant::factory()->create(['product_id' => $product->id]);
+    $location = Location::factory()->create();
+    StockLevel::factory()->create([
+        'product_id' => $product->id,
+        'variant_id' => $variant->id,
+        'location_id' => $location->id,
+        'quantity' => '10',
+    ]);
+
+    // Create receipt with one variant line
+    $svc = app(ReceiptCreationService::class);
+    $receipt = $svc->finalize(/* ... shape of input DTOs with variant_id set on line */);
+
+    $level = StockLevel::where('product_id', $product->id)
+        ->where('variant_id', $variant->id)
+        ->where('location_id', $location->id)
+        ->first();
+    $this->assertSame('9', $level->quantity);
+
+    // Confirm StockMovementRecordedV2 fired with variant_id
+    // ... event assertion
+}
+```
+
+- [ ] **Step 2: Update `decrementStock`** — read `variant_id` from each line; use `(product_id, variant_id, location_id)` tuple for stock decrement; pass variant_id to `BatchStockService::issueFromBatches` if batch tracking applies.
+
+- [ ] **Step 3: Update `OrderLineData` DTO**
+
+```php
+final class OrderLineData
+{
+    public function __construct(
+        public readonly string $productId,
+        public readonly ?string $variantId,
+        // ... other existing fields
+    ) {}
+    // ... fromModel() updates to include variant_id mapping
+}
+```
+
+- [ ] **Step 4: Regenerate TypeScript types**
+
+```bash
+cd apps/erp/apps/api && php artisan typescript:transform
+```
+
+- [ ] **Step 5: Run tests** → PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git commit -m "refactor(t2): POS ReceiptCreationService variant-aware decrement + DTO"
+```
+
+---
+
+### Task 19: V2/V3 domain events for stock + document lines
+
+**Files:**
+- Create: `apps/api/app/Modules/Inventory/Domain/Events/StockMovementRecordedV2.php`
+- Create: `apps/api/app/Modules/Document/Domain/Events/DraftLineAddedV3.php`
+- Create: `DraftLineModifiedV3.php`, `DraftLineRemovedV2.php`
+- Create: `ReservationCreatedV2.php`, `ReservationExpiredV2.php`, `ReservationReleasedV2.php`
+- Test: `apps/api/tests/Feature/Events/T2EventsV2Test.php`
+
+- [ ] **Step 1: Write failing test**
+
+```php
+public function test_StockMovementRecordedV2_carries_variant_id(): void
+{
+    Event::fake([StockMovementRecordedV2::class]);
+    $product = Product::factory()->create();
+    $variant = ProductVariant::factory()->create(['product_id' => $product->id]);
+
+    app(StockAdjustmentService::class)->receive(
+        productId: $product->id,
+        locationId: Location::factory()->create()->id,
+        quantity: '1',
+        variantId: $variant->id,
+    );
+
+    Event::assertDispatched(StockMovementRecordedV2::class, fn ($e) =>
+        $e->variantId === $variant->id
+    );
+}
+```
+
+- [ ] **Step 2: Create the new event classes** — each is a new file mirroring its V1/V2 predecessor, adding `variantId`. **Do not touch V1/V2 files** — they're immutable per CLAUDE.md rule 8.
+
+```php
+final class StockMovementRecordedV2 extends DomainEvent
+{
+    public function __construct(
+        public readonly string $movementId,
+        public readonly string $productId,
+        public readonly ?string $variantId,
+        // ... other fields from V1, copied verbatim
+    ) {}
+
+    public function getEventName(): string { return 'inventory.stock_movement_recorded.v2'; }
+    public function getAuditPayload(): array { return [/* ... including variant_id */]; }
+}
+```
+
+- [ ] **Step 3: Verify `SalesOrderConfirmed` payload shape** — read `apps/api/app/Modules/Document/Domain/Events/SalesOrderConfirmed.php` and check whether line items are serialized into the payload. If yes, spawn `SalesOrderConfirmedV2`. If no (just references), no V bump needed. Document the verification in the commit message.
+
+- [ ] **Step 4: Update `StockAdjustmentService` to dispatch V2 instead of V1** (V1 stays in code but is no longer dispatched on writes — replay can still construct it from history if needed).
+
+- [ ] **Step 5: Run tests** → PASS.
+- [ ] **Step 6: Commit**
+
+```bash
+git commit -m "feat(t2): V2/V3 events for stock + document lines with variant_id"
+```
+
+---
+
+### Task 20: `GoodsReceiptService` and `InventoryCountingService` variant pass-through
+
+**Files:**
+- Modify: `apps/api/app/Modules/Inventory/Application/Services/GoodsReceiptService.php`
+- Modify: `apps/api/app/Modules/Inventory/Application/Services/InventoryCountingService.php` (if exists; check naming)
+- Test: `apps/api/tests/Feature/Inventory/GoodsReceiptServiceVariantTest.php`
+
+- [ ] **Step 1: Write failing test for receipt with variant lines**
+
+```php
+public function test_finalize_receipt_with_variant_line_creates_variant_stock(): void
+{
+    // ... PO with one line that has variant_id; finalize; assert StockLevel for variant
+}
+```
+
+- [ ] **Step 2: Read `GoodsReceiptService::finalize`** — find the loop that creates stock movements per line; pass each line's `variant_id` to `StockAdjustmentService::receive`.
+
+- [ ] **Step 3: Same for `InventoryCountingService`** — the column already exists (Task 5); just stop passing NULL.
+
+- [ ] **Step 4: Run tests** → PASS.
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -m "refactor(t2): GoodsReceipt + InventoryCounting variant pass-through"
+```
+
+---
+
+## Phase 3 — Recipe + variant + expiry inheritance (~3 PD)
+
+### Task 21: `RecipeService::addLine` accepts `component_variant_id`
+
+**Files:**
+- Modify: `apps/api/app/Modules/Catalog/Application/Services/RecipeService.php`
+- Test: `apps/api/tests/Feature/Catalog/RecipeServiceVariantTest.php`
+
+- [ ] **Step 1: Write failing test**
+
+```php
+public function test_add_line_with_variant_component(): void
+{
+    $recipe = Recipe::factory()->create();
+    $product = Product::factory()->create();
+    $variant = ProductVariant::factory()->create(['product_id' => $product->id]);
+
+    $line = app(RecipeService::class)->addLine(
+        recipeId: $recipe->id,
+        componentType: ComponentType::Product,
+        componentId: $product->id,
+        quantity: '2.5',
+        componentVariantId: $variant->id,
+    );
+
+    $this->assertSame($variant->id, $line->component_variant_id);
+}
+```
+
+- [ ] **Step 2: Modify `RecipeService::addLine`** — append `?string $componentVariantId = null` parameter, persist to new column.
+
+- [ ] **Step 3: Run tests** → PASS.
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -m "feat(t2): RecipeService::addLine accepts componentVariantId"
+```
+
+---
+
+### Task 22: `RecipeCostCalculationService` reads variant `cost_override`
+
+**Files:**
+- Modify: `apps/api/app/Modules/Catalog/Application/Services/RecipeCostCalculationService.php`
+- Test: `apps/api/tests/Feature/Catalog/RecipeCostCalculationVariantTest.php`
+
+- [ ] **Step 1: Write failing test**
+
+```php
+public function test_uses_variant_cost_override_when_present(): void
+{
+    $product = Product::factory()->create(['cost_price' => '10.0000']);
+    $variant = ProductVariant::factory()->create([
+        'product_id' => $product->id,
+        'cost_override' => '12.0000',
+    ]);
+    $recipe = Recipe::factory()->create();
+    RecipeLine::factory()->create([
+        'recipe_id' => $recipe->id,
+        'component_type' => ComponentType::Product,
+        'component_id' => $product->id,
+        'component_variant_id' => $variant->id,
+        'quantity' => '2',
+        'wastage_percent' => '0',
+    ]);
+
+    $cost = app(RecipeCostCalculationService::class)->calculate($recipe->id);
+    $this->assertSame('24.0000', $cost);  // 12 * 2
+}
+
+public function test_falls_back_to_product_cost_when_variant_override_null(): void
+{
+    // similar, but cost_override = null; assert uses product->cost_price
+}
+```
+
+- [ ] **Step 2: Implement** the variant `cost_override` lookup — when `component_variant_id` is set on a line, read the variant's `cost_override`; if null, fall back to `product.cost_price`.
+
+- [ ] **Step 3: Run tests** → PASS.
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -m "feat(t2): RecipeCostCalculation uses variant cost_override"
+```
+
+---
+
+### Task 23: `CompositeItemAvailabilityService` reads variant stock
+
+**Files:**
+- Modify: `apps/api/app/Modules/Catalog/Application/Services/CompositeItemAvailabilityService.php`
+- Test: `apps/api/tests/Feature/Catalog/CompositeAvailabilityVariantTest.php`
+
+- [ ] **Step 1: Write failing test**
+
+```php
+public function test_availability_uses_variant_stock_when_recipe_line_is_variant(): void
+{
+    // Build a recipe with one variant-scoped line; create variant stock; assert availability
+}
+
+public function test_availability_uses_product_stock_when_line_is_not_variant(): void
+{
+    // build product-scoped line + product-scoped stock; assert availability matches old behavior
+}
+```
+
+- [ ] **Step 2: Modify** the availability query to check `component_variant_id` per line and resolve stock accordingly:
+
+```php
+foreach ($recipe->activeLines as $line) {
+    $level = $line->component_variant_id !== null
+        ? StockLevel::where('product_id', $line->component_id)
+            ->where('variant_id', $line->component_variant_id)
+            ->where('location_id', $locationId)
+            ->first()
+        : StockLevel::where('product_id', $line->component_id)
+            ->whereNull('variant_id')
+            ->where('location_id', $locationId)
+            ->first();
+    // ... existing min() logic
+}
+```
+
+- [ ] **Step 3: Run tests** → PASS.
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -m "feat(t2): CompositeItemAvailabilityService variant-aware stock lookup"
+```
+
+---
+
+### Task 24: `RecipeExpiryService` (NEW)
+
+**Files:**
+- Create: `apps/api/app/Modules/Catalog/Application/Services/RecipeExpiryService.php`
+- Test: `apps/api/tests/Feature/Catalog/RecipeExpiryServiceTest.php`
+
+- [ ] **Step 1: Write failing test**
+
+```php
+public function test_returns_earliest_expiry_across_ingredient_batches(): void
+{
+    $recipe = Recipe::factory()->create();
+    $location = Location::factory()->create();
+    $productA = Product::factory()->create();
+    $productB = Product::factory()->create();
+    RecipeLine::factory()->create(['recipe_id' => $recipe->id, 'component_id' => $productA->id, 'quantity' => '1']);
+    RecipeLine::factory()->create(['recipe_id' => $recipe->id, 'component_id' => $productB->id, 'quantity' => '1']);
+
+    Batch::factory()->create(['product_id' => $productA->id, 'expiry_date' => '2026-12-31']);
+    Batch::factory()->create(['product_id' => $productB->id, 'expiry_date' => '2026-09-30']); // earlier
+
+    $expiry = app(RecipeExpiryService::class)->resolveEarliestExpiry($recipe->id, $location->id);
+
+    $this->assertEquals('2026-09-30', $expiry->format('Y-m-d'));
+}
+
+public function test_returns_null_when_no_ingredients_batch_tracked(): void
+{
+    // recipe with two ingredients, neither has batches; result is null
+}
+
+public function test_variant_scoped_ingredient_uses_variant_batches(): void
+{
+    // create variant ingredient + variant batch; ensure expiry comes from variant batch
+}
+
+public function test_recalled_batches_excluded(): void
+{
+    // recipe ingredient has two batches; earlier one is recalled; resolveEarliestExpiry returns later
+}
+```
+
+- [ ] **Step 2: Implement**
+
+```php
+final class RecipeExpiryService
+{
+    public function __construct(private readonly FEFOInventoryService $fefo) {}
+
+    public function resolveEarliestExpiry(string $recipeId, string $locationId): ?\Carbon\Carbon
+    {
+        $recipe = Recipe::with('lines.recipe')->findOrFail($recipeId);
+        $earliest = null;
+
+        foreach ($recipe->lines as $line) {
+            if ($line->component_type !== ComponentType::Product) continue;
+            $batches = $this->fefo->suggestBatchesForSale(
+                productId: $line->component_id,
+                locationId: $locationId,
+                quantity: bcmul($line->quantity, $recipe->yield_quantity, 4),
+                variantId: $line->component_variant_id,
+            );
+            if ($batches->isEmpty()) continue;
+            $lineExpiry = \Carbon\Carbon::parse($batches->first()->expiry_date);
+            if ($earliest === null || $lineExpiry < $earliest) {
+                $earliest = $lineExpiry;
+            }
+        }
+
+        return $earliest;
+    }
+}
+```
+
+- [ ] **Step 3: Run tests** → PASS.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -m "feat(t2): RecipeExpiryService earliest-expiry inheritance"
+```
+
+---
+
+## Phase 4 — B2B + ecommerce surface (~4 PD)
+
+### Task 25: `CartService::add` variant-aware
+
+**Files:**
+- Modify: `apps/api/app/Modules/Cart/Application/Services/CartService.php`
+- Modify: `apps/api/app/Modules/Cart/Application/DTOs/CatalogCartItemData.php`
+- Test: `apps/api/tests/Feature/Cart/CartServiceVariantTest.php`
+
+- [ ] **Step 1: Write failing test**
+
+```php
+public function test_add_variant_to_cart(): void
+{
+    $product = Product::factory()->create();
+    $variant = ProductVariant::factory()->create(['product_id' => $product->id]);
+    $cart = CatalogCart::factory()->create();
+
+    $item = app(CartService::class)->add(
+        cartId: $cart->id,
+        productId: $product->id,
+        quantity: '1',
+        variantId: $variant->id,
+    );
+
+    $this->assertSame($variant->id, $item->variant_id);
+}
+
+public function test_variant_required_when_product_has_variants(): void
+{
+    $product = Product::factory()->create();
+    ProductVariant::factory()->create(['product_id' => $product->id]);
+    $cart = CatalogCart::factory()->create();
+
+    $this->expectException(VariantRequiredException::class);
+    app(CartService::class)->add(
+        cartId: $cart->id,
+        productId: $product->id,
+        quantity: '1',
+    );
+}
+```
+
+- [ ] **Step 2: Modify `CartService::add`** — append `?string $variantId = null`; verify product-has-variants invariant.
+
+- [ ] **Step 3: Update `CatalogCartItemData` DTO** with `variantId` field.
+
+- [ ] **Step 4: Update `CartConversionService`** to propagate `variant_id` to `document_lines` on cart→document.
+
+- [ ] **Step 5: Regenerate TS types.** Run tests → PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git commit -m "feat(t2): CartService variant-aware add + conversion"
+```
+
+---
+
+### Task 26: `ChannelService::publishProduct` variant-aware
+
+**Files:**
+- Modify: `apps/api/app/Modules/Channel/Application/Services/ChannelService.php`
+- Modify: `apps/api/app/Modules/Channel/Application/Listeners/DispatchStockChangeToChannels.php` (read from `StockMovementRecordedV2`)
+- Test: `apps/api/tests/Feature/Channel/ChannelServiceVariantTest.php`
+
+- [ ] **Step 1: Write failing test**
+
+```php
+public function test_publish_product_with_variant_writes_mapping(): void
+{
+    $channel = Channel::factory()->create();
+    $product = Product::factory()->create();
+    $variant = ProductVariant::factory()->create(['product_id' => $product->id]);
+
+    app(ChannelService::class)->publishProduct($product->id, $channel->id, $variant->id);
+
+    $mapping = ChannelProductMapping::where('channel_id', $channel->id)
+        ->where('product_id', $product->id)
+        ->where('variant_id', $variant->id)
+        ->first();
+    $this->assertNotNull($mapping);
+}
+
+public function test_stock_change_listener_propagates_variant_grain(): void
+{
+    // ... fire StockMovementRecordedV2 with variantId; mock channel adapter; assert syncStock called once with variant-scoped mapping
+}
+```
+
+- [ ] **Step 2: Implement.** The `channel_product_mappings.variant_id` already exists; service just uses it.
+
+- [ ] **Step 3: Listener update** — subscribe to V2 event, dispatch jobs scoped by variant.
+
+- [ ] **Step 4: Run tests** → PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -m "feat(t2): ChannelService variant-aware publish + listener consumes V2 events"
+```
+
+---
+
+### Task 27: B2B `ProductVariantService::resolveSku`, `resolveBarcode` for bulk-order import
+
+**Files:**
+- Modify: `ProductVariantService` — add the two resolve methods
+- Modify: B2B bulk-order importer (find via `apps/api/app/Modules/...` — likely under Document or Imports module)
+- Test: `apps/api/tests/Feature/Catalog/ProductVariantSkuBarcodeResolveTest.php`
+
+- [ ] **Step 1: Write failing test**
+
+```php
+public function test_resolve_sku_returns_variant(): void
+{
+    $product = Product::factory()->create();
+    $variant = ProductVariant::factory()->create([
+        'product_id' => $product->id, 'sku' => 'ABC-39-N',
+    ]);
+    $result = app(ProductVariantService::class)->resolveSku('ABC-39-N', $product->company_id);
+    $this->assertInstanceOf(ProductVariant::class, $result);
+    $this->assertSame($variant->id, $result->id);
+}
+
+public function test_resolve_sku_falls_back_to_product(): void
+{
+    $product = Product::factory()->create(['sku' => 'XYZ-001']);
+    $result = app(ProductVariantService::class)->resolveSku('XYZ-001', $product->company_id);
+    $this->assertInstanceOf(Product::class, $result);
+}
+
+public function test_resolve_barcode_works(): void { /* parallel */ }
+```
+
+- [ ] **Step 2: Implement**
+
+```php
+public function resolveSku(string $sku, string $companyId): ProductVariant|Product|null
+{
+    $variant = ProductVariant::where('company_id', $companyId)
+        ->where('sku', $sku)
+        ->where('is_active', true)
+        ->first();
+    if ($variant) return $variant;
+    return Product::where('company_id', $companyId)
+        ->where('sku', $sku)
+        ->where('is_active', true)
+        ->first();
+}
+```
+
+- [ ] **Step 3: Wire into B2B bulk-order import** — find the import service, swap product lookup for `ProductVariantService::resolveSku`.
+
+- [ ] **Step 4: Run tests** → PASS.
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -m "feat(t2): ProductVariantService SKU/barcode resolve + B2B import wiring"
+```
+
+---
+
+## Phase 5 — Admin UI (~5 PD)
+
+### Task 28: REST endpoints for attributes + variants
+
+**Files:**
+- Create controller: `apps/api/app/Modules/Catalog/Presentation/Http/AttributeController.php`
+- Create controller: `apps/api/app/Modules/Catalog/Presentation/Http/ProductVariantController.php`
+- Modify routes: `apps/api/app/Modules/Catalog/Presentation/routes.php`
+- Form requests: `CreateAttributeRequest.php`, `CreateVariantRequest.php`, `GenerateMatrixRequest.php`
+- Resources: `AttributeResource.php`, `ProductVariantResource.php`
+- Test: `apps/api/tests/Feature/Catalog/ProductVariantApiTest.php`
+
+- [ ] **Step 1: Write failing API test**
+
+```php
+public function test_create_attribute_endpoint(): void
+{
+    $this->actingAs(User::factory()->create()->givePermissionTo('catalog.attributes.create'));
+
+    $resp = $this->postJson('/api/v1/product-attributes', [
+        'code' => 'taille',
+        'name' => 'Taille',
+        'data_type' => 'selection',
+        'is_variant_axis' => true,
+    ]);
+
+    $resp->assertStatus(201);
+    $this->assertDatabaseHas('product_attributes', ['code' => 'taille']);
+}
+
+public function test_generate_matrix_endpoint_returns_18_variants(): void { /* ... */ }
+public function test_list_variants_for_product_endpoint(): void { /* ... */ }
+public function test_update_variant_endpoint(): void { /* ... */ }
+public function test_delete_variant_endpoint(): void { /* ... */ }
+public function test_unauthenticated_request_returns_401(): void { /* ... */ }
+public function test_missing_permission_returns_403(): void { /* ... */ }
+```
+
+- [ ] **Step 2: Implement controllers + form requests + resources + routes** following the established patterns (constructor injection, `['api', 'auth:sanctum', SetPermissionsTeam::class]` middleware, response shapes consistent with the existing API convention — see `apps/erp/docs/conventions/01-API-RESPONSES.md`).
+
+- [ ] **Step 3: Add new permissions** to the permission seeder via the project's `/project:add-permissions` command equivalent — `catalog.attributes.{create,update,delete,view}`, `catalog.variants.{create,update,delete,view}`.
+
+- [ ] **Step 4: Run tests** → PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -m "feat(t2): REST endpoints for attributes + variants + permissions"
+```
+
+---
+
+### Task 29: `AttributeListPage` React component
+
+**Files:**
+- Create page: `apps/web/src/features/catalog/pages/AttributeListPage.tsx`
+- Create components: `AttributeForm.tsx`, `AttributeValueEditor.tsx`
+- Create hooks: `apps/web/src/features/catalog/hooks/useAttributes.ts`, `useAttribute.ts`, `useCreateAttribute.ts`
+- Add routes in dashboard nav per `docs/conventions/02-NAVIGATION-ROUTING.md`
+- Add i18n keys: `apps/web/src/locales/{en,fr,ar}/catalog.json`
+- Test: `apps/web/src/features/catalog/__tests__/AttributeListPage.test.tsx`
+
+- [ ] **Step 1: Write Vitest component test**
+
+```typescript
+describe('AttributeListPage', () => {
+  it('renders empty state when no attributes', async () => {
+    render(<AttributeListPage />, { wrapper });
+    expect(await screen.findByText(/no attributes yet/i)).toBeInTheDocument();
+  });
+
+  it('opens form when "Add" clicked', async () => {
+    // ...
+  });
+
+  it('submits new attribute via form', async () => {
+    // ... assert query mutation fires, list refetches
+  });
+});
+```
+
+- [ ] **Step 2: Implement page + hooks + form components** using react-hook-form + zod + TanStack Query (per project conventions). Use `tokens` / `textColors` / `borderColors` from `@/lib/designTokens`.
+
+- [ ] **Step 3: Add i18n keys** for every visible string. Update `i18n.ts` if a new namespace is needed (project provides `/project:add-i18n-namespace` skill).
+
+- [ ] **Step 4: Run vitest** → PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -m "feat(t2): AttributeListPage + hooks + i18n keys"
+```
+
+---
+
+### Task 30: `ProductVariantMatrixEditor` React component
+
+**Files:**
+- Create: `apps/web/src/features/catalog/components/ProductVariantMatrixEditor.tsx`
+- Create hooks: `useGenerateMatrix.ts`, `useUpdateVariant.ts`, `useVariantsForProduct.ts`
+- Modify: `apps/web/src/features/catalog/pages/ProductFormPage.tsx` — add "has variants" toggle that mounts the matrix editor
+- Test: `apps/web/src/features/catalog/__tests__/ProductVariantMatrixEditor.test.tsx`
+
+- [ ] **Step 1: Write failing test**
+
+```typescript
+describe('ProductVariantMatrixEditor', () => {
+  it('renders 18-cell grid for 3x6 axes', async () => { /* ... */ });
+  it('inline-edits SKU + price_override per cell', async () => { /* ... */ });
+  it('uploads variant image (mock)', async () => { /* ... */ });
+  it('toggles is_active per variant', async () => { /* ... */ });
+});
+```
+
+- [ ] **Step 2: Implement.** Matrix is a `<table>` with N axis columns + rows + a "cell" `<td>` per variant. Each cell renders an inline-editable form (SKU, price, barcode, image, active checkbox). Tailwind tokens only; no hardcoded colors.
+
+- [ ] **Step 3: Wire into `ProductFormPage`** via a toggle.
+
+- [ ] **Step 4: Run vitest** → PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -m "feat(t2): ProductVariantMatrixEditor + ProductFormPage integration"
+```
+
+---
+
+### Task 31: `ProductVariantStockView` and B2B + ecommerce variant pickers
+
+**Files:**
+- Modify: `apps/web/src/features/inventory/pages/StockLevelsPage.tsx` — add variant drill-down
+- Create: `apps/web/src/features/document/components/DocumentLineVariantSelector.tsx`
+- Create: `apps/web/src/features/catalog/components/ProductDetailVariantPicker.tsx` (B2C catalog)
+- Test: a smoke test for each
+
+- [ ] **Step 1: Write failing tests** for each component (render + select variant + emit change event).
+
+- [ ] **Step 2: Implement.** Each picker fetches `useVariantsForProduct(productId)`, renders a select / radio group, exposes a `(variantId | null)` value.
+
+- [ ] **Step 3: Wire selectors into `DocumentForm`** + `ProductDetailPage` (catalog product detail).
+
+- [ ] **Step 4: Run tests** → PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -m "feat(t2): variant pickers — stock view + B2B doc line + B2C catalog detail"
+```
+
+---
+
+## Phase 6 — Acceptance test sweep + final QA (~2 PD)
+
+### Task 32: Full acceptance criteria suite
+
+**Files:**
+- Test: `apps/api/tests/Feature/T2/T2AcceptanceTest.php` — orchestrates all 10.1–10.7 acceptance scenarios end-to-end
+- Test data: `apps/api/database/seeders/T2AcceptanceSeeder.php` — seeds parapharmacy + F&B + automotive demo tenant
+- Test: web E2E or smoke tests if existing Playwright/Cypress harness is configured
+
+- [ ] **Step 1: Write the full acceptance suite** — one PHPUnit method per acceptance criterion in spec §10:
+
+```php
+public function test_10_1_partial_unique_indexes(): void { /* ... */ }
+public function test_10_2_backward_compat_non_variant_products(): void { /* ... */ }
+public function test_10_3_variant_aware_flows_full_chain(): void { /* ... */ }
+// ... etc
+public function test_10_5_recipe_expiry_inheritance(): void { /* ... */ }
+public function test_10_6_ecommerce_b2b_surfaces(): void { /* ... */ }
+public function test_10_7_vertical_modularity_proofs(): void { /* ... */ }
+public function test_10_8_multi_tenant_isolation(): void { /* ... */ }
+```
+
+- [ ] **Step 2: Run** `cd apps/erp/apps/api && ./vendor/bin/phpunit --filter T2Acceptance` → all PASS.
+
+- [ ] **Step 3: Preflight gates**
+
+```bash
+cd apps/erp && ./scripts/preflight.sh
+```
+
+Expected: PHPStan L8 zero new errors, Pint clean, PHPUnit all green, ESLint zero new errors, TypeScript typecheck clean.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -m "test(t2): full acceptance suite covering §10 criteria"
+```
+
+---
+
+### Task 33: Write the impl-PR description + coordination log entry
+
+**Files:**
+- Create / append: `apps/erp/docs/superpowers/coordination/2026-05-24-pos-coordination-log.md` — log the POS Wave 2 deltas as a separate session
+- Create: PR description (the actual `gh pr create` body)
+
+- [ ] **Step 1: Compose PR description** matching project convention:
+
+```
+## Summary
+- Ships T2 product variants: schema + service ripple + recipe variant inheritance + B2B/ecommerce surfaces + admin UI.
+- Honors all five owner non-negotiables from 2026-05-28 briefing.
+- POS Wave-2 deltas logged separately; gated by fiscal Phase-1 sign-off.
+
+## Test plan
+- [ ] PHPStan L8 zero new errors
+- [ ] PHPUnit suite green
+- [ ] Vitest suite green
+- [ ] §10 acceptance suite green
+- [ ] Tenant isolation regression test green
+- [ ] Recipe + variant + expiry round-trip works (acceptance §10.5)
+- [ ] Ecommerce + B2B surfaces (§10.6)
+- [ ] Vertical-modularity proofs (§10.7)
+```
+
+- [ ] **Step 2: Append a coordination-log entry for POS Wave 2 work**
+
+```markdown
+### 2026-mm-dd — T2 product variants Wave-2 POS deltas pending
+
+- Variant picker modal (cashier taps variant-bearing product → matrix with available stock).
+- Direct variant barcode resolution at POS scan.
+- Cart line variant suffix display.
+- SQLite schema: pos_receipt_lines + variant cache add `variant_id`.
+- Fiscal Phase-1 sign-off required before merge.
+```
+
+- [ ] **Step 3: Commit + push** all docs.
+
+```bash
+git add docs/superpowers/coordination/2026-05-24-pos-coordination-log.md
+git commit -m "docs(t2): coordination-log entry for POS Wave-2 deltas"
+```
+
+---
+
+## Wave 2 (separate session, NOT in this plan)
+
+The following are owned by the next POS Codex session, gated by fiscal Phase-1 sign-off:
+
+- Variant picker modal in `apps/pos/src/`.
+- Barcode-to-variant resolution wiring.
+- Cart line variant suffix rendering.
+- SQLite migration on POS device.
+- Variant-aware offline queue + sync.
+
+These are tracked via the coordination log entry from Task 33; the session that picks them up reads the log and acts accordingly.
+
+---
+
+## Self-review checklist (run before declaring plan complete)
+
+- [ ] **Spec coverage** — every section of `2026-05-28-t2-product-variants.md` traces to a task:
+  - §3 grounding → all tasks (file paths).
+  - §4 schema → Tasks 1–11.
+  - §5 cross-cutting → Tasks 15–20, 25–27 (services + listeners).
+  - §6 service contracts → Tasks 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27.
+  - §6.5 invariant → Tasks 14, 15.
+  - §7 batch + FEFO → Task 16.
+  - §8 recipe + variant + expiry → Tasks 10, 21, 22, 23, 24.
+  - §9 B2B + ecommerce → Tasks 9, 17, 25, 26, 27, 31.
+  - §10 acceptance → Task 32.
+  - §11 vertical modularity → acceptance criterion 10.7 in Task 32.
+  - §12 review checklist → Codex review prompt (not a task — done in this spec session).
+  - §13 out of scope → no tasks (explicitly).
+  - §14 workflow phases → Phase 1–6 in this plan.
+  - §15 coordination → Task 33.
+
+- [ ] **No placeholders** — every step has the actual code or command.
+
+- [ ] **Type consistency** — `ProductVariantService::resolveSku`/`resolveBarcode` return types consistent across Tasks 12 + 27. `?string $variantId = null` parameter shape consistent across all modified services. Event field names (`variantId`, `productId`) consistent.
+
+- [ ] **Frequent commits** — every task ends with a commit; no batched commits.
+
+- [ ] **TDD discipline** — every task starts with a failing test and verifies fail before implementation.
+
+- [ ] **Migration discipline** — every new migration in `apps/api/database/migrations/tenant/`. Every CHECK + partial-index uses `if pgsql` guard.
+
+- [ ] **Backward-compat at service layer** — every `?string $variantId = null` is **trailing** + **optional**; no broken positional callers.
+
+- [ ] **POS Wave-2 explicitly out of this plan** — see "Wave 2" note above.
+
+---
+
+End of plan.
