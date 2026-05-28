@@ -143,10 +143,20 @@ final class ProductVariantService
      * one axis. The resulting N₁ × N₂ × … combinations are each persisted as a
      * ProductVariant (via createVariant) with junction rows.
      *
+     * The entire creation loop runs inside a single outer DB transaction so that
+     * a failure on any combo rolls back all previously-created variants atomically.
+     * Under PostgreSQL, the nested DB::transaction calls inside createVariant become
+     * savepoints, so nesting is safe.
+     *
      * SKU / variant_code uniqueness guarantee:
      *   "{product->sku}-{valueCode1}-{valueCode2}-…" uppercased and stripped of
-     *   spaces. The cartesian product guarantees each combination of value codes
-     *   is unique, so no two generated variants can produce the same suffix.
+     *   spaces. The cartesian product guarantees each combination of value codes is
+     *   distinct within this call, so no two generated variants can produce the same
+     *   code. Tenant-global SKU uniqueness additionally relies on product SKUs being
+     *   unique per tenant — this method does not enforce cross-product uniqueness.
+     *
+     * name_suffix uses human-readable value LABELs (e.g. "39 / Noir"), while
+     * variant_code and SKU use the machine-readable value CODEs (e.g. "39-NOIR").
      *
      * is_default rule: the first generated variant is set as default ONLY when
      * the product currently has zero variants. Subsequent calls therefore never
@@ -168,13 +178,13 @@ final class ProductVariantService
 
         // Build axes (string codes) AND a parallel ID-lookup map at the same time.
         // axes:   ['taille' => ['36', '37', …], 'couleur' => ['noir', …]]
-        // lookup: ['taille' => ['36' => {attributeId, attributeValueId}, …], …]
+        // lookup: ['taille' => ['36' => {attributeId, attributeValueId, label}, …], …]
 
         /** @var array<string, string[]> $axes */
         $axes = [];
 
         /**
-         * @var array<string, array<string, array{attributeId: string, attributeValueId: string}>> $lookup
+         * @var array<string, array<string, array{attributeId: string, attributeValueId: string, label: string}>> $lookup
          */
         $lookup = [];
 
@@ -187,7 +197,7 @@ final class ProductVariantService
 
             $values = $this->attributeValueRepo->listForAttribute($attribute->id);
 
-            /** @var array<string, array{attributeId: string, attributeValueId: string}> $axisLookup */
+            /** @var array<string, array{attributeId: string, attributeValueId: string, label: string}> $axisLookup */
             $axisLookup = [];
 
             /** @var array<int, string> $axisCodes */
@@ -199,6 +209,7 @@ final class ProductVariantService
                 $axisLookup[$value->code] = [
                     'attributeId' => $attribute->id,
                     'attributeValueId' => $value->id,
+                    'label' => $value->label,
                 ];
             }
 
@@ -213,50 +224,59 @@ final class ProductVariantService
             ->listForProduct($productId, onlyActive: false)
             ->contains('is_default', true);
 
-        $created = collect();
+        // Wrap the entire creation loop in an outer transaction so that any
+        // mid-loop failure (e.g. unique constraint violation) rolls back ALL
+        // previously-created variants atomically.
+        return DB::transaction(function () use ($combos, $product, $productId, $lookup, $hasExistingDefault): Collection {
+            $created = collect();
 
-        foreach ($combos as $index => $combo) {
-            // Build suffix parts in axis order for deterministic, unique codes.
-            $codeParts = array_values($combo);
-            $suffix = implode('-', array_map(
-                fn (string $part): string => strtoupper(str_replace(' ', '_', $part)),
-                $codeParts
-            ));
+            foreach ($combos as $index => $combo) {
+                // Build suffix parts in axis order for deterministic, unique codes.
+                // Uses value CODEs (machine-readable) for variant_code / SKU.
+                $codeParts = array_values($combo);
+                $suffix = implode('-', array_map(
+                    fn (string $part): string => strtoupper(str_replace(' ', '_', $part)),
+                    $codeParts
+                ));
 
-            $variantCode = strtoupper($product->sku).'-'.$suffix;
-            $sku = $variantCode;
+                $variantCode = strtoupper($product->sku).'-'.$suffix;
+                $sku = $variantCode;
 
-            // Build name suffix as human-readable labels joined by " / ".
-            $labelParts = [];
-            foreach ($combo as $axisCode => $valueCode) {
-                $labelParts[] = $valueCode;
+                // Build name suffix from human-readable value LABELs (e.g. "39 / Noir").
+                $labelParts = [];
+                foreach ($combo as $axisCode => $valueCode) {
+                    $labelParts[] = $lookup[$axisCode][$valueCode]['label'];
+                }
+                $nameSuffix = implode(' / ', $labelParts);
+
+                // Build junction pairs from the lookup.
+                /** @var array<int, array{attributeId: string, attributeValueId: string}> $attributeValues */
+                $attributeValues = [];
+                foreach ($combo as $axisCode => $valueCode) {
+                    $attributeValues[] = [
+                        'attributeId' => $lookup[$axisCode][$valueCode]['attributeId'],
+                        'attributeValueId' => $lookup[$axisCode][$valueCode]['attributeValueId'],
+                    ];
+                }
+
+                // First combo becomes default only when the product has no existing default.
+                $isDefault = $index === 0 && ! $hasExistingDefault;
+
+                $command = new CreateVariantCommand(
+                    tenantId: $product->tenant_id,
+                    companyId: $product->company_id,
+                    productId: $productId,
+                    variantCode: $variantCode,
+                    sku: $sku,
+                    nameSuffix: $nameSuffix,
+                    isDefault: $isDefault,
+                    attributeValues: $attributeValues,
+                );
+
+                $created->push($this->createVariant($command));
             }
-            $nameSuffix = implode(' / ', $labelParts);
 
-            // Build junction pairs from the lookup.
-            /** @var array<int, array{attributeId: string, attributeValueId: string}> $attributeValues */
-            $attributeValues = [];
-            foreach ($combo as $axisCode => $valueCode) {
-                $attributeValues[] = $lookup[$axisCode][$valueCode];
-            }
-
-            // First combo becomes default only when the product has no existing default.
-            $isDefault = $index === 0 && ! $hasExistingDefault;
-
-            $command = new CreateVariantCommand(
-                tenantId: $product->tenant_id,
-                companyId: $product->company_id,
-                productId: $productId,
-                variantCode: $variantCode,
-                sku: $sku,
-                nameSuffix: $nameSuffix,
-                isDefault: $isDefault,
-                attributeValues: $attributeValues,
-            );
-
-            $created->push($this->createVariant($command));
-        }
-
-        return $created;
+            return $created;
+        });
     }
 }
