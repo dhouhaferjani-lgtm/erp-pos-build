@@ -2,7 +2,7 @@
 
 **Track:** T2 (productization sprint, Wave 1 server-side + Wave 2 POS deltas)
 **Date:** 2026-05-28
-**Version:** v3 (Codex r1 findings applied — 8 P1 + 8 P2 + 3 P3; see `reviews/2026-05-28-t2-variants-codex-r1.md`).
+**Version:** v4 (Codex r2 findings applied — 6 P1 + 9 P2 + 4 P3; see `reviews/2026-05-28-t2-variants-codex-r2.md`). v4 fixes: `consumeBatchesAtomically` matched to real `inventory_batch_movements` schema (tenant_id + movement_id FKs; raw FOR UPDATE SKIP LOCKED; afterCommit event dispatch; decimal-string shortfall); online-DDL `NOT VALID` + `CONCURRENTLY` applied uniformly to all schema migrations; Shared contracts moved to real path `apps/api/app/Shared/Contracts/` (namespace `App\Shared\Contracts`) and reordered before Task 17; Accounting report rewrites preserve company/location/void/training/posted_at scoping; PricingService signature fixed in §6.2 and §9.2 (not just §5.3); channel listener V2 migration is IN T2 scope (was contradictorily split between Task 19 and Task 26).
 **Version history:** v1 → v2 (Opus self-review r1+r2, NEEDS-REVISION → APPROVE-WITH-MINOR-EDITS) → v3 (Codex r1 REJECT, fixed in this revision). v3 changes: correct constraint names for `product_batches` and `price_list_items` (P1-1, P1-2); PricingService signature aligned with real method (P1-3); channel_product_mappings unique replaced with partial-unique pair (P1-4); atomic FEFO consumption primitive defined (P1-5, P1-6); dual-dispatch producer enumeration corrected to cover all 6 dispatch sites (P1-7); Wave 1 vs Wave 2 acceptance split (P1-8); Accounting reports added to cross-cutting map (P2-1); Loyalty correction (P2-3 — product_ids used, not category-only); T11 coordination clarified (P2-5); online-DDL strategy explicit (P2-6); module-boundary fixed via Shared/Contracts (P2-7); SalesOrderConfirmedV2 required, not conditional (P2-8); daily job name corrected (P3-1); V2/V3 naming consistency (P3-2); automotive zero-variant UI assertion (P3-3).
 **Supersedes:** `2026-05-24-t2-variants.md` (v2 post Codex r1) — widens scope to cover recipe ingredient resolution, B2B + ecommerce surfaces, and the post-T6 migration topology.
 **Relationship to prior work:** the 2026-05-24 v2 spec is the schema-design baseline. Its `ProductAttribute / ProductAttributeValue / ProductVariant / ProductVariantAttributeValue` shape and partial-index strategy are carried forward verbatim and re-verified against current `dev`. The owner's 2026-05-28 briefing adds three non-negotiable requirements (recipes built from variants with earliest-expiry inheritance; ecommerce surfacing; B2B surfacing) that the v2 spec marked out-of-scope or only gestured at. This spec closes those gaps and is the artifact the Phase-2 Codex implementation session should execute against.
@@ -445,7 +445,7 @@ T2 work (cross-references §9.1):
 
 Reference sites: `Channel/Domain/Models/ChannelProductMapping.php`, `Channel/Application/Services/ChannelService`, `DispatchProductToChannelJob`, `DispatchStockChangeToChannels`, `ChannelReconciliationJob`. Migrations: `channel_product_mappings.variant_id` ALREADY EXISTS (`2026_05_24_120002:17`), composite unique already includes it.
 
-T2 work — small (channel layer is pre-positioned; agent confirmed):
+T2 work (Codex r2 P1-6 — corrected; channel layer partially pre-positioned BUT the unique constraint is broken for NULL variants, fixed by §4.4 partial-unique replacement):
 - `ChannelService::publishProduct($productId, ?UUID $variantId = null)` — variant-aware publishing.
 - `DispatchStockChangeToChannels` listener — when `StockMovementRecorded` carries a `variantId` (V3 event), propagate to channels with variant scope.
 - No new migrations.
@@ -499,12 +499,14 @@ The `ProductVariant` aggregate lives in `apps/api/app/Modules/Catalog/` (alongsi
 - `Infrastructure/Repositories/`
 - `Presentation/Controllers/`
 
-**Cross-module access (CLAUDE.md rule 6):** other modules (Inventory, Pricing, POS, Cart, Channel, Document) MUST NOT import `App\Modules\Catalog\Domain\Entities\ProductVariant` directly. T2 ships a shared contract:
+**Cross-module access (CLAUDE.md rule 6) — V4 PATH CORRECTED (Codex r2 P1-3):** other modules (Inventory, Pricing, POS, Cart, Channel, Document) MUST NOT import `App\Modules\Catalog\Domain\Entities\ProductVariant` directly. T2 ships a shared contract at the **real shared-contracts location** verified in the codebase at `apps/api/app/Shared/Contracts/` (namespace `App\Shared\Contracts`), alongside existing `InventoryServiceInterface`, `LocationServiceInterface`, etc.
 
-- `apps/api/app/Modules/Shared/Contracts/ProductVariantLookup.php` — interface with `findById(string $id): ?ProductVariantSummary`, `findByBarcode(string $barcode, string $companyId): ?ProductVariantSummary`, `findBySku(string $sku, string $companyId): ?ProductVariantSummary`, `listForProduct(string $productId, bool $onlyActive = true): Collection<ProductVariantSummary>`. Returns DTOs (`ProductVariantSummary`), not Eloquent models.
-- `apps/api/app/Modules/Shared/DTOs/ProductVariantSummary.php` — immutable DTO: `id`, `productId`, `tenantId`, `companyId`, `sku`, `variantCode`, `barcode`, `nameSuffix`, `isDefault`, `isActive`, `priceOverride`, `costOverride`.
+- `apps/api/app/Shared/Contracts/ProductVariantLookup.php` — interface with `findById(string $id): ?ProductVariantSummary`, `findByBarcode(string $barcode, string $companyId): ?ProductVariantSummary`, `findBySku(string $sku, string $companyId): ?ProductVariantSummary`, `listForProduct(string $productId, bool $onlyActive = true): Collection<ProductVariantSummary>`. Returns DTOs, not Eloquent models.
+- `apps/api/app/Shared/DTOs/ProductVariantSummary.php` — immutable DTO: `id`, `productId`, `tenantId`, `companyId`, `sku`, `variantCode`, `barcode`, `nameSuffix`, `isDefault`, `isActive`, `priceOverride`, `costOverride`, `imageUrl`.
 - `apps/api/app/Modules/Catalog/Infrastructure/Adapters/EloquentProductVariantLookup.php` — implements the contract; reads the Catalog Eloquent model.
-- Service-provider binding maps the interface to the implementation.
+- Service-provider binding maps the interface to the implementation (Catalog's provider or `apps/api/app/Providers/AppServiceProvider.php` following existing pattern).
+
+**Task ordering:** the contract MUST be created BEFORE any service layer that consumes it. In the plan, the contract task is renumbered **Task 11b** (after schema migrations 1-11, before service ripple 12+). Service tasks (Task 17 PricingService, etc.) depend on the contract existing.
 
 Eloquent-level access stays inside Catalog. Inventory / Pricing / POS / Cart / Channel / Document depend on `ProductVariantLookup` via constructor injection. Schema FK references (`stock_levels.variant_id` → `product_variants.id`) are DB-level, not code-level cross-module — acceptable per CLAUDE.md rule 6.
 
@@ -563,7 +565,7 @@ BatchStockService::transferBatchStock(UUID $batchId, UUID $fromLocation, UUID $t
 FEFOInventoryService::suggestBatchesForSale(UUID $productId, UUID $locationId, string $qty, ?UUID $variantId = null): Collection;
 
 // Pricing
-PricingService::getPrice(UUID $priceListId, UUID $productId, string $quantity, ?UUID $variantId = null): string;
+PricingService::getPrice(string $productId, ?string $partnerId = null, string $quantity = '1.00', string $currency = 'USD', ?\DateTimeInterface $date = null, ?string $variantId = null): array; // {price, source, price_list_id} — see §5.3 for resolution order
 
 // POS
 ReceiptCreationService::decrementStock(/* ... */): void; // reads variant_id from line, decrements correct stock row
@@ -642,7 +644,10 @@ Every existing subscriber of a V1 event MUST continue working unchanged after T2
    - Known subscribers as of 2026-05-28 dev: `apps/api/app/Modules/Channel/Application/Listeners/DispatchStockChangeToChannels.php` (subscribed in `apps/api/app/Modules/Channel/Providers/ChannelServiceProvider.php` via `Event::listen(StockMovementRecorded::class, DispatchStockChangeToChannels::class)`).
    - Impl PR description MUST list every subscriber found (no silent additions).
 
-4. **Migration plan for subscribers** (NOT in T2 scope, deferred): a follow-up PR migrates each enumerated listener from V1 to V2 subscription. Once all subscribers are V2-native, dual-dispatch can stop (each producer drops the V1 emit). That follow-up is out of T2 scope.
+4. **Migration plan for subscribers (Codex r2 P1-6 — partial change for T2):**
+   - **`DispatchStockChangeToChannels` IS migrated to V2 in T2 scope** because it cannot otherwise scope to one variant (the V1 event lacks `variantId`; the listener currently fans out across all mappings for the product, including variant B mappings when only variant A's stock changed). Done in plan Task 26.
+   - **All other V1 subscribers stay on V1** during T2 (dual-dispatch keeps them safe). A follow-up PR migrates them once each one is verified.
+   - Once all subscribers are V2-native, dual-dispatch can stop (each producer drops the V1 emit). That follow-up is out of T2 scope.
 
 5. **No silent payload truncation.** Dual-dispatch is two independent calls — they do not share state. Each event is constructed from its own data.
 
@@ -951,8 +956,9 @@ The ecommerce surface has two layers in AutoERP: (a) the **catalog cart** (in-ap
 - Variant images: catalog rendering uses `variant.image_url` if set, else parent `product_images.url`.
 
 **Channel sync:**
-- `channel_product_mappings.variant_id` (nullable) — **already exists** (`2026_05_24_120002:17`).
-- Channel mapping composite unique `(channel_id, product_id, variant_id)` — **already exists**.
+- `channel_product_mappings.variant_id` (nullable) column **already exists** (`2026_05_24_120002:17`).
+- Existing unique constraint `channel_product_variant_unique` is **broken under NULL semantics** (allows multiple product-level mappings); T2 replaces with partial-unique pair per §4.4. Migration in plan Task 9b.
+- **Listener `DispatchStockChangeToChannels` IS migrated to V2 in T2 scope (Codex r2 P1-6)** — it cannot otherwise scope a stock event to one variant. The listener filters by `(product_id, variant_id)` (variant_id read from the V2 event), querying `channel_product_mappings WHERE variant_id IS NULL OR variant_id = $eventVariantId`.
 - `ChannelService::publishProduct(UUID $productId, ?UUID $variantId = null)` — publishes one variant at a time. Bulk publish helper iterates all active variants.
 - `DispatchStockChangeToChannels` listener — subscribes to `StockMovementRecordedV2`; reads `variantId`; calls `ChannelAdapter::syncStock($mapping, $qty)` for the matching mapping.
 - WooCommerce / Shopify adapter implementations remain deferred to the channel-adapter sprint. T2 ships only the contract.
@@ -967,12 +973,12 @@ The ecommerce surface has two layers in AutoERP: (a) the **catalog cart** (in-ap
 
 **T2 changes at variant grain:**
 - `price_list_items.variant_id` (nullable) — §4.2.
-- `PricingService::getPrice($priceListId, $productId, $qty, ?UUID $variantId = null)` resolution order: variant-specific row → variant-agnostic row → product `sale_price` → variant `price_override` fallback (see §5.3).
+- `PricingService::getPrice(string $productId, ?string $partnerId = null, string $quantity = '1.00', string $currency = 'USD', ?\DateTimeInterface $date = null, ?string $variantId = null): array` (real signature; T2 appends trailing `$variantId`). Resolution order is the §5.3 canonical chain: **variant `price_override` wins** (when variantId set + override non-null) → partner price list variant-specific → partner price list variant-agnostic → default price list variant-specific → default price list variant-agnostic → product `sale_price` fallback. **DO NOT reorder this anywhere.** Any earlier text suggesting price_override is a fallback is superseded.
 - B2B document line UI in web ERP gains a variant selector (`DocumentLineVariantSelector.tsx` — new component). For variant-bearing products, variant selection is required to complete the line.
 - B2B price-list import / export tools (existing CSV importer at `apps/web/src/features/pricing/import/`) gain a `variant_code` column. Optional; when absent, the row is variant-agnostic (applies to all variants of that product).
 - Quote → Sales Order → Invoice promotion preserves `variant_id` through the document state machine. The existing `DocumentService::promote` method passes line state through unchanged; `variant_id` rides along.
 
-**T11 cohabitation (informational):** T11-impl-B introduces `PricingStrategyResolver` that wraps `PricingService` with channel-override + partner-resolution chain. T2's `PricingService::getPrice` becomes the variant-aware leaf that T11's resolver calls. The two compose cleanly (T11-impl-B passes through `variantId` to the wrapped call). **T2 does not depend on T11.** If T11-impl-B ships later, T11 adapts; if T11 ships before T2, T11's resolver signature already accommodates an optional `variantId` per the T11 spec — verify before T2 implementation.
+**T11 cohabitation (locked, not informational — Codex r2 P1-5):** T11-impl-B introduces `PricingStrategyResolver`. Its current parity contract (per `docs/superpowers/specs/2026-05-24-t11-impl-b-pricing-resolver-doc-policy.md:112-120`) calls `PricingService::getPrice($productId, $partnerId, $quantity, $currency, $date)` **without `variantId`**. When T2 lands, T11 MUST be updated to pass `$variantId` to the wrapped call (T11's `ResolveContext` already carries it). T2 includes a parity-update task for T11-impl-B (`docs/superpowers/coordination/2026-05-24-pos-coordination-log.md` notes this hand-off). **T2 does not depend on T11**; both can land independently, but the parity update is REQUIRED before T11-impl-B's resolver test suite passes against variant products.
 
 **B2B-specific UX considerations:**
 - Bulk-order forms (where a B2B customer enters quantities by SKU): each row in the bulk form maps to a (product, variant) pair via SKU. The SKU is variant-grained (`product_variants.sku`) and unique per tenant, so the existing SKU-lookup flow extends naturally — `ProductVariantService::resolveSku` returns variant or product accordingly.

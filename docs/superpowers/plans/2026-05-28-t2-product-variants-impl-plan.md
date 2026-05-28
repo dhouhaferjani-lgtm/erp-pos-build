@@ -1,6 +1,14 @@
 # T2 Product Variants Implementation Plan
 
-**Version:** v3 (post Codex r1 — REJECT → fixes applied). v3 corrects 8 P1s + 8 P2s + 3 P3s. See `reviews/2026-05-28-t2-variants-codex-r1.md` and the spec v3 header for the full delta.
+**Version:** v4 (post Codex r2 — REJECT → fixes applied). v4 corrects 6 P1s + 9 P2s + 4 P3s. See `reviews/2026-05-28-t2-variants-codex-r2.md` for the full r2 findings.
+
+**v4 critical fixes (Codex r2 P1s):**
+1. **Task 16b `consumeBatchesAtomically`** rewritten: now accepts `tenantId` + `movementId` (FK to stock_movements); selects `available_quantity` for filter; decrements `quantity` (the stored value, generated `available_quantity` auto-updates); uses raw SQL `FOR UPDATE SKIP LOCKED`; `inventory_batch_movements` insert includes `tenant_id`, `movement_id`, `batch_id`, `quantity` (no spurious `id`); `BatchStockConsumed` event dispatched via `DB::afterCommit`; `BatchConsumptionResultDTO::$shortfall` is decimal string (not int); `batch_id` is `int` (matching `product_batches.id` bigint, not UUID).
+2. **Online-DDL strategy applied uniformly to Tasks 5, 6, 8, 9, 10, 16b** — every FK uses `NOT VALID`; every replacement unique uses `CREATE INDEX CONCURRENTLY`; every migration declares `$withinTransaction = false`. New Task 11c adds the deferred `VALIDATE CONSTRAINT` migration.
+3. **`ProductVariantLookup` moved to real path** `apps/api/app/Shared/Contracts/` (namespace `App\Shared\Contracts`) and **renumbered Task 11b** so it lands BEFORE Task 17 PricingService (which consumes it). Task 28a is removed.
+4. **Accounting report rewrites (Task 27b)** preserve full scoping (companyIds + locationIds + voided/training/posted_at filters; `pos_receipts` join); return `list<TopSkuData>` and `list<StockAlertData>` matching the existing DTOs.
+5. **Plan no longer duplicates broken PricingService signature** — all references use the real `(productId, partnerId, qty, currency, date, variantId)` shape returning `array{price, source, price_list_id}`.
+6. **Channel listener V2 migration moved IN-scope** (Task 19's "deferred" claim withdrawn; Task 26 owns the listener-to-V2 work as part of T2).
 
 **v3 changes that affect this plan:**
 1. **Task 3** — `product_variants` migration uses soft-delete-aware partial uniques + varchar(100) (already in v2; verified clean).
@@ -32,7 +40,7 @@
 
 **TDD rule:** every task starts with a failing test (red), then minimum code to pass (green), then refactor if needed. Never commit a step that hasn't been verified.
 
-**Commit message format:** `feat(t2): <slice>` for new features, `refactor(t2): <slice>` for service-shape changes, `test(t2): <slice>` for test-only commits. Reference issue / ticket as configured.
+**Commit message format (AGENTS.md convention — Codex r2 P2-4 fix):** `Phase <major.minor.patch>: <imperative summary>` (example: `Phase 2.1.16b: FEFOInventoryService atomic consume`). Use the task number as the patch component. Imperative summary describes what the commit does, not the task ID. Reference issue / ticket as configured in PR body, not commit message.
 
 **Working directory:** all paths relative to `apps/erp/` unless otherwise noted (i.e., `apps/api/...` = `apps/erp/apps/api/...`).
 
@@ -403,7 +411,7 @@ git add apps/api/app/Modules/Catalog/Domain/Entities/ProductAttribute.php \
         apps/api/tests/Unit/Catalog/Domain/Entities/ProductAttributeTest.php \
         apps/api/tests/Feature/Catalog/AttributeRepositoryTest.php
 # Plus the service-provider edit
-git commit -m "feat(t2): ProductAttribute entity + migration + repository"
+git commit -m "Phase 2.x: ProductAttribute entity + migration + repository"
 ```
 
 ---
@@ -475,7 +483,7 @@ public function test_invalid_hex_color_rejected_by_db(): void
 - [ ] **Step 6: Commit**
 
 ```bash
-git commit -m "feat(t2): ProductAttributeValue entity + migration + repository"
+git commit -m "Phase 2.x: ProductAttributeValue entity + migration + repository"
 ```
 
 ---
@@ -604,7 +612,7 @@ public function test_default_reusable_after_soft_delete_of_default(): void
 - [ ] **Step 6: Commit**
 
 ```bash
-git commit -m "feat(t2): ProductVariant entity + migration + repository"
+git commit -m "Phase 2.x: ProductVariant entity + migration + repository"
 ```
 
 ---
@@ -684,7 +692,7 @@ Schema::create('product_variant_attribute_values', function (Blueprint $table) {
 - [ ] **Step 6: Commit**
 
 ```bash
-git commit -m "feat(t2): ProductVariantAttributeValue junction + migration"
+git commit -m "Phase 2.x: ProductVariantAttributeValue junction + migration"
 ```
 
 ---
@@ -795,7 +803,7 @@ return new class extends Migration {
 - [ ] **Step 5: Commit**
 
 ```bash
-git commit -m "feat(t2): add variant_id to stock_levels with partial unique indexes"
+git commit -m "Phase 2.x: add variant_id to stock_levels with partial unique indexes"
 ```
 
 ---
@@ -847,7 +855,7 @@ Schema::table('stock_reservations', function (Blueprint $table) {
 - [ ] **Step 4: Commit**
 
 ```bash
-git commit -m "feat(t2): add variant_id to stock_movements and stock_reservations"
+git commit -m "Phase 2.x: add variant_id to stock_movements and stock_reservations"
 ```
 
 ---
@@ -953,7 +961,7 @@ Add a follow-up migration (e.g., `2026_06_15_*_validate_t2_fks_on_large_tables.p
 - [ ] **Step 5: Commit**
 
 ```bash
-git commit -m "feat(t2): add variant_id to product_batches + partial unique; remove TODO"
+git commit -m "Phase 2.x: add variant_id to product_batches + partial unique; remove TODO"
 ```
 
 ---
@@ -999,7 +1007,7 @@ if (DB::connection()->getDriverName() === 'pgsql') {
 - [ ] **Step 4: Commit**
 
 ```bash
-git commit -m "feat(t2): add variant_id to document_lines + POS sellable lines + batch allocations"
+git commit -m "Phase 2.x: add variant_id to document_lines + POS sellable lines + batch allocations"
 ```
 
 ---
@@ -1077,7 +1085,7 @@ Schema::table('catalog_cart_items', function (Blueprint $table) {
 - [ ] **Step 4: Commit**
 
 ```bash
-git commit -m "feat(t2): variant_id on catalog_cart_items + price_list_items (partial unique)"
+git commit -m "Phase 2.x: variant_id on catalog_cart_items + price_list_items (partial unique)"
 ```
 
 ---
@@ -1228,7 +1236,7 @@ if (DB::connection()->getDriverName() === 'pgsql') {
 - [ ] **Step 4: Commit**
 
 ```bash
-git commit -m "feat(t2): add component_variant_id to recipe_lines + CHECK"
+git commit -m "Phase 2.x: add component_variant_id to recipe_lines + CHECK"
 ```
 
 ---
@@ -1263,7 +1271,7 @@ public function test_t2_migrations_roll_back_cleanly(): void
 - [ ] **Step 3: Commit**
 
 ```bash
-git commit -m "test(t2): verify T2 migration rollback round-trip"
+git commit -m "Phase 2.x: tests — verify T2 migration rollback round-trip"
 ```
 
 ---
@@ -1412,7 +1420,7 @@ final class ProductVariantCreated extends DomainEvent
 - [ ] **Step 7: Commit**
 
 ```bash
-git commit -m "feat(t2): AttributeService + ProductVariantService skeleton + commands + events"
+git commit -m "Phase 2.x: AttributeService + ProductVariantService skeleton + commands + events"
 ```
 
 ---
@@ -1517,7 +1525,7 @@ public function test_generate_matrix_persists_18_variants_for_3x6(): void
 - [ ] **Step 7: Commit**
 
 ```bash
-git commit -m "feat(t2): ProductVariantMatrixGenerator + service wiring"
+git commit -m "Phase 2.x: ProductVariantMatrixGenerator + service wiring"
 ```
 
 ---
@@ -1709,7 +1717,7 @@ final class LargeMigrationRefusalException extends \DomainException {}
 - [ ] **Step 4: Commit**
 
 ```bash
-git commit -m "feat(t2): StockLevelMigrationService — atomic migration + recipe lines + large-migration guard"
+git commit -m "Phase 2.x: StockLevelMigrationService — atomic migration + recipe lines + large-migration guard"
 ```
 
 ---
@@ -1818,7 +1826,7 @@ For each callsite identified by Stage B: verify the call-site's product is non-v
 - [ ] **Step 5: Commit**
 
 ```bash
-git commit -m "refactor(t2): StockAdjustmentService accepts optional variant_id"
+git commit -m "Phase 2.x: refactor — StockAdjustmentService accepts optional variant_id"
 ```
 
 ---
@@ -1903,7 +1911,7 @@ public function test_fefo_returns_only_variant_batches_when_variant_passed(): vo
 - [ ] **Step 5: Commit**
 
 ```bash
-git commit -m "refactor(t2): BatchStockService + FEFO accept optional variant_id"
+git commit -m "Phase 2.x: refactor — BatchStockService + FEFO accept optional variant_id"
 ```
 
 ---
@@ -1985,7 +1993,15 @@ public function test_concurrent_consume_one_succeeds_one_fails(): void
 }
 ```
 
-- [ ] **Step 2: Implement DTOs + exception + event**
+- [ ] **Step 2: Implement DTOs + exception + event (v4 — corrected against real schema)**
+
+Real `inventory_batch_movements` schema (verified at `apps/api/database/migrations/tenant/2026_01_05_150002_create_inventory_batch_movements_table.php`):
+- `id` is `$table->id()` — bigint auto-increment, NOT UUID; do NOT supply manually
+- `tenant_id` UUID (required)
+- `batch_id` FK to `product_batches.id` (bigint, NOT UUID)
+- `movement_id` FK to `stock_movements.id` (required, UUID)
+- `quantity` decimal(15,4)
+- `created_at` timestamp
 
 ```php
 // BatchConsumptionResultDTO.php
@@ -1994,16 +2010,21 @@ final class BatchConsumptionResultDTO
     /** @param array<int, ConsumedBatchDTO> $consumed */
     public function __construct(
         public readonly array $consumed,
-        public readonly int $shortfall,
+        public readonly string $shortfall, // decimal string — preserves fractional precision (P2-9)
     ) {}
+
+    public function hasShortfall(): bool
+    {
+        return bccomp($this->shortfall, '0', 4) > 0;
+    }
 }
 
 final class ConsumedBatchDTO
 {
     public function __construct(
-        public readonly string $batchId,
-        public readonly string $batchStockId,
-        public readonly string $quantityConsumed,
+        public readonly int $batchId, // product_batches.id is bigint
+        public readonly int $batchStockId, // inventory_batch_stock.id is bigint
+        public readonly string $quantityConsumed, // decimal string
         public readonly \DateTimeInterface $expiryDate,
     ) {}
 }
@@ -2011,65 +2032,82 @@ final class ConsumedBatchDTO
 // InsufficientBatchStockException.php
 final class InsufficientBatchStockException extends \DomainException
 {
-    public function __construct(public readonly int $shortfall, string $message = '')
+    public function __construct(public readonly string $shortfall, string $message = '')
     {
         parent::__construct($message ?: "Insufficient batch stock; shortfall: {$shortfall}");
     }
 }
 ```
 
-- [ ] **Step 3: Implement `consumeBatchesAtomically`**
+- [ ] **Step 3: Implement `consumeBatchesAtomically` (v4 — matches real schema + raw SKIP LOCKED + afterCommit event)**
 
 ```php
 public function consumeBatchesAtomically(
+    string $tenantId,                  // NEW: required for inventory_batch_movements
     string $productId,
     string $locationId,
     string $quantity,
+    string $movementId,                // NEW: required FK to stock_movements (caller creates the stock_movements row first)
     ?string $variantId = null,
     bool $strictFulfillment = true,
 ): BatchConsumptionResultDTO {
-    return DB::transaction(function () use ($productId, $locationId, $quantity, $variantId, $strictFulfillment) {
-        // Lock the relevant batch_stock rows; SKIP LOCKED so concurrent callers don't deadlock
-        $rows = DB::table('inventory_batch_stock as ibs')
-            ->join('product_batches as b', 'ibs.batch_id', '=', 'b.id')
-            ->where('b.product_id', $productId)
-            ->when(
-                $variantId !== null,
-                fn ($q) => $q->where('b.variant_id', $variantId),
-                fn ($q) => $q->whereNull('b.variant_id'),
-            )
-            ->where('ibs.location_id', $locationId)
-            ->where('ibs.available_quantity', '>', 0)
-            ->where('b.is_active', true)
-            ->where('b.is_recalled', false)
-            ->where('b.expiry_date', '>=', now()->toDateString())
-            ->orderBy('b.expiry_date', 'asc')
-            ->orderBy('b.created_at', 'asc')
-            ->select('ibs.id as batch_stock_id', 'ibs.batch_id', 'ibs.quantity', 'b.expiry_date')
-            ->lockForUpdate()  // OR raw `FOR UPDATE SKIP LOCKED` via DB::select for SKIP semantics
-            ->get();
+    return DB::transaction(function () use ($tenantId, $productId, $locationId, $quantity, $movementId, $variantId, $strictFulfillment) {
+        // Lock candidate batch_stock rows with FOR UPDATE SKIP LOCKED via raw SQL
+        // (Laravel's lockForUpdate() does FOR UPDATE without SKIP LOCKED — we need SKIP for the SKIP semantics)
+        $variantPredicate = $variantId !== null
+            ? 'b.variant_id = ?'
+            : 'b.variant_id IS NULL';
+
+        $bindings = [$productId];
+        if ($variantId !== null) $bindings[] = $variantId;
+        $bindings = array_merge($bindings, [$locationId, now()->toDateString()]);
+
+        $rows = DB::select("
+            SELECT ibs.id AS batch_stock_id,
+                   ibs.batch_id,
+                   ibs.quantity AS stored_quantity,
+                   ibs.available_quantity,
+                   b.expiry_date
+            FROM inventory_batch_stock AS ibs
+            JOIN product_batches AS b ON ibs.batch_id = b.id
+            WHERE b.product_id = ?
+              AND {$variantPredicate}
+              AND ibs.location_id = ?
+              AND ibs.available_quantity > 0
+              AND b.is_active = TRUE
+              AND b.is_recalled = FALSE
+              AND b.expiry_date >= ?
+            ORDER BY b.expiry_date ASC, b.created_at ASC
+            FOR UPDATE OF ibs SKIP LOCKED
+        ", $bindings);
 
         $remaining = $quantity;
         $consumed = [];
 
         foreach ($rows as $row) {
             if (bccomp($remaining, '0', 4) <= 0) break;
-            $take = bccomp($row->quantity, $remaining, 4) < 0 ? $row->quantity : $remaining;
 
+            // Take min(available_quantity, remaining) — available_quantity is the post-reservation usable amount
+            $take = bccomp($row->available_quantity, $remaining, 4) < 0 ? $row->available_quantity : $remaining;
+
+            // Decrement the stored quantity (available_quantity is a generated column = quantity - reserved_quantity;
+            // decrementing quantity auto-recomputes available_quantity)
             DB::table('inventory_batch_stock')
                 ->where('id', $row->batch_stock_id)
                 ->decrement('quantity', $take);
 
+            // Insert audit row matching the real inventory_batch_movements schema
             DB::table('inventory_batch_movements')->insert([
-                'id' => (string) \Illuminate\Support\Str::uuid(),
-                'batch_id' => $row->batch_id,
-                'quantity' => $take,
-                'created_at' => now(),
+                'tenant_id'   => $tenantId,
+                'batch_id'    => $row->batch_id,
+                'movement_id' => $movementId,
+                'quantity'    => $take,
+                'created_at'  => now(),
             ]);
 
             $consumed[] = new ConsumedBatchDTO(
-                batchId: $row->batch_id,
-                batchStockId: $row->batch_stock_id,
+                batchId: (int) $row->batch_id,
+                batchStockId: (int) $row->batch_stock_id,
                 quantityConsumed: $take,
                 expiryDate: \Carbon\Carbon::parse($row->expiry_date),
             );
@@ -2077,18 +2115,26 @@ public function consumeBatchesAtomically(
             $remaining = bcsub($remaining, $take, 4);
         }
 
-        $shortfall = (int) bccomp($remaining, '0', 4) > 0 ? (int) ceil((float) $remaining) : 0;
-
-        if ($strictFulfillment && $shortfall > 0) {
-            throw new InsufficientBatchStockException($shortfall);
+        if ($strictFulfillment && bccomp($remaining, '0', 4) > 0) {
+            throw new InsufficientBatchStockException($remaining);
         }
 
-        event(new BatchStockConsumed($productId, $variantId, $locationId, $consumed));
+        // Dispatch event AFTER COMMIT — rolling back the transaction must not leave an orphan event
+        DB::afterCommit(function () use ($productId, $variantId, $locationId, $consumed) {
+            event(new BatchStockConsumed(
+                productId: $productId,
+                variantId: $variantId,
+                locationId: $locationId,
+                consumed: $consumed,
+            ));
+        });
 
-        return new BatchConsumptionResultDTO($consumed, $shortfall);
+        return new BatchConsumptionResultDTO($consumed, $remaining);
     });
 }
 ```
+
+**Caller contract:** the caller (e.g., `BatchStockService::issueBatchStock`, `ReceiptCreationService::allocateBatches`) creates the parent `stock_movements` row FIRST, then calls `consumeBatchesAtomically($tenantId, $productId, $locationId, $qty, $movementId=<the_stock_movement_id>, ...)`. This preserves the existing `inventory_batch_movements.movement_id` audit linkage.
 
 - [ ] **Step 4: Migrate callers to atomic API**
   - `BatchStockService::issueBatchStock` becomes a thin wrapper that calls `consumeBatchesAtomically` with `$strictFulfillment=true`.
@@ -2265,7 +2311,7 @@ Update private helpers `getPartnerPrice`, `getDefaultPriceListPrice`, `getPriceF
 - [ ] **Step 5: Commit**
 
 ```bash
-git commit -m "feat(t2): PricingService variant-aware resolution + README"
+git commit -m "Phase 2.x: PricingService variant-aware resolution + README"
 ```
 
 ---
@@ -2334,7 +2380,7 @@ cd apps/erp/apps/api && php artisan typescript:transform
 - [ ] **Step 6: Commit**
 
 ```bash
-git commit -m "refactor(t2): POS ReceiptCreationService variant-aware decrement + DTO"
+git commit -m "Phase 2.x: refactor — POS ReceiptCreationService variant-aware decrement + DTO"
 ```
 
 ---
@@ -2463,10 +2509,10 @@ The impl PR description MUST contain a complete table of (file:line, producer me
 - [ ] **Step 8: Commit**
 
 ```bash
-git commit -m "feat(t2): V2/V3 events with dual-dispatch for backward compat with V1 subscribers"
+git commit -m "Phase 2.x: V2/V3 events with dual-dispatch for backward compat with V1 subscribers"
 ```
 
-**Out-of-T2 follow-up note:** future PR migrates `DispatchStockChangeToChannels` (and any other V1 subscribers enumerated in Step 1) to subscribe to V2 instead of V1; once all subscribers are V2-native, dual-dispatch can stop. Track in `docs/superpowers/coordination/2026-05-24-pos-coordination-log.md` (or a new track-specific log).
+**Out-of-T2 follow-up note (v4 corrected — Codex r2 P1-6):** `DispatchStockChangeToChannels` IS migrated to V2 in T2 scope (handled in Task 26) because the V1 event lacks `variantId` and the listener cannot otherwise scope a stock change to one variant. **All other V1 subscribers** (enumerated in Step 1) stay on V1 throughout T2; they get migrated in a follow-up PR. Once all subscribers are V2-native, dual-dispatch can stop.
 
 ---
 
@@ -2494,7 +2540,7 @@ public function test_finalize_receipt_with_variant_line_creates_variant_stock():
 - [ ] **Step 5: Commit**
 
 ```bash
-git commit -m "refactor(t2): GoodsReceipt + InventoryCounting variant pass-through"
+git commit -m "Phase 2.x: refactor — GoodsReceipt + InventoryCounting variant pass-through"
 ```
 
 ---
@@ -2534,7 +2580,7 @@ public function test_add_line_with_variant_component(): void
 - [ ] **Step 4: Commit**
 
 ```bash
-git commit -m "feat(t2): RecipeService::addLine accepts componentVariantId"
+git commit -m "Phase 2.x: RecipeService::addLine accepts componentVariantId"
 ```
 
 ---
@@ -2632,7 +2678,7 @@ public function test_recipe_cost_does_not_affect_inventory_wac(): void
 - [ ] **Step 4: Commit**
 
 ```bash
-git commit -m "feat(t2): RecipeCostCalculation uses variant cost_override (advisory; WAC stays product-grain)"
+git commit -m "Phase 2.x: RecipeCostCalculation uses variant cost_override (advisory; WAC stays product-grain)"
 ```
 
 ---
@@ -2678,7 +2724,7 @@ foreach ($recipe->activeLines as $line) {
 - [ ] **Step 4: Commit**
 
 ```bash
-git commit -m "feat(t2): CompositeItemAvailabilityService variant-aware stock lookup"
+git commit -m "Phase 2.x: CompositeItemAvailabilityService variant-aware stock lookup"
 ```
 
 ---
@@ -2762,7 +2808,7 @@ final class RecipeExpiryService
 - [ ] **Step 4: Commit**
 
 ```bash
-git commit -m "feat(t2): RecipeExpiryService earliest-expiry inheritance"
+git commit -m "Phase 2.x: RecipeExpiryService earliest-expiry inheritance"
 ```
 
 ---
@@ -2821,7 +2867,7 @@ public function test_variant_required_when_product_has_variants(): void
 - [ ] **Step 6: Commit**
 
 ```bash
-git commit -m "feat(t2): CartService variant-aware add + conversion"
+git commit -m "Phase 2.x: CartService variant-aware add + conversion"
 ```
 
 ---
@@ -2838,11 +2884,17 @@ git commit -m "feat(t2): CartService variant-aware add + conversion"
 ```php
 public function test_publish_product_with_variant_writes_mapping(): void
 {
+    // Real signature (verified): publishProduct(string $channelId, string $productId, ?string $variantId, array $overrides, ?string $companyId = null)
     $channel = Channel::factory()->create();
     $product = Product::factory()->create();
     $variant = ProductVariant::factory()->create(['product_id' => $product->id]);
 
-    app(ChannelService::class)->publishProduct($product->id, $channel->id, $variant->id);
+    app(ChannelService::class)->publishProduct(
+        channelId: $channel->id,
+        productId: $product->id,
+        variantId: $variant->id,
+        overrides: [],
+    );
 
     $mapping = ChannelProductMapping::where('channel_id', $channel->id)
         ->where('product_id', $product->id)
@@ -2866,7 +2918,7 @@ public function test_stock_change_listener_propagates_variant_grain(): void
 - [ ] **Step 5: Commit**
 
 ```bash
-git commit -m "feat(t2): ChannelService variant-aware publish + listener consumes V2 events"
+git commit -m "Phase 2.x: ChannelService variant-aware publish + listener consumes V2 events"
 ```
 
 ---
@@ -2925,7 +2977,7 @@ public function resolveSku(string $sku, string $companyId): ProductVariant|Produ
 - [ ] **Step 5: Commit**
 
 ```bash
-git commit -m "feat(t2): ProductVariantService SKU/barcode resolve + B2B import wiring"
+git commit -m "Phase 2.x: ProductVariantService SKU/barcode resolve + B2B import wiring"
 ```
 
 ---
@@ -2967,38 +3019,105 @@ public function test_stock_alerts_at_variant_grain(): void
 }
 ```
 
-- [ ] **Step 2: Update `topSkus` query**
+- [ ] **Step 2: Update `topSkus` (v4 — preserve real scoping signature)**
+
+Real method signature: `topSkus(DateRangeData $range, array $companyIds, array $locationIds, int $limit, string $sortBy): array<TopSkuData>`. The rewrite MUST preserve the company/location/voided/training/posted_at filters. Add `variant_id` to the grouping when present.
 
 ```php
-public function topSkus(/*...*/): array
+public function topSkus(DateRangeData $range, array $companyIds, array $locationIds, int $limit, string $sortBy): array
 {
-    return DB::table('pos_receipt_lines as l')
-        ->leftJoin('product_variants as v', 'l.variant_id', '=', 'v.id')
-        ->leftJoin('products as p', 'l.product_id', '=', 'p.id')
-        ->select(
-            DB::raw('COALESCE(v.sku, p.sku) AS sku'),
-            DB::raw("CONCAT(p.name, COALESCE(' — ' || v.name_suffix, '')) AS name"),
-            DB::raw('SUM(l.quantity) AS units_sold'),
-            DB::raw('SUM(l.total) AS revenue'),
+    if ($companyIds === [] || $locationIds === []) {
+        return [];
+    }
+
+    $query = DB::table('pos_receipt_lines')
+        ->join('pos_receipts', 'pos_receipts.id', '=', 'pos_receipt_lines.receipt_id')
+        ->leftJoin('products', 'products.id', '=', 'pos_receipt_lines.product_id')
+        ->leftJoin('product_variants', 'product_variants.id', '=', 'pos_receipt_lines.variant_id')
+        ->whereIn('pos_receipts.company_id', $companyIds)
+        ->whereIn('pos_receipts.location_id', $locationIds)
+        ->where('pos_receipts.is_voided', false)
+        ->where('pos_receipts.training_flag', false)
+        ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
+        ->groupBy(
+            'pos_receipt_lines.product_id',
+            'pos_receipt_lines.variant_id',
+            'pos_receipt_lines.product_name',
+            'products.sku',
+            'product_variants.sku',
+            'product_variants.name_suffix',
         )
-        ->whereBetween('l.created_at', [$from, $to])
-        ->groupBy(DB::raw('COALESCE(v.sku, p.sku), p.name, v.name_suffix'))
-        ->orderByDesc('revenue')
-        ->limit(20)
-        ->get();
+        ->selectRaw('pos_receipt_lines.product_id')
+        ->selectRaw('pos_receipt_lines.variant_id')
+        ->selectRaw(
+            "CASE WHEN product_variants.name_suffix IS NOT NULL "
+            . "THEN pos_receipt_lines.product_name || ' — ' || product_variants.name_suffix "
+            . "ELSE pos_receipt_lines.product_name END AS product_name"
+        )
+        ->selectRaw('COALESCE(product_variants.sku, products.sku) AS sku')
+        ->selectRaw('COALESCE(SUM(pos_receipt_lines.line_total), 0) as revenue')
+        ->selectRaw('COALESCE(SUM(pos_receipt_lines.quantity), 0) as quantity')
+        ->limit($limit);
+
+    $sortBy === 'quantity'
+        ? $query->orderByDesc('quantity')
+        : $query->orderByDesc('revenue');
+
+    return array_values($query->get()->map(fn (object $row): TopSkuData => new TopSkuData(
+        product_id: $row->product_id === null ? null : (string) $row->product_id,
+        product_name: (string) $row->product_name,
+        sku: $row->sku === null ? null : (string) $row->sku,
+        revenue: $this->decimalString($row->revenue),
+        quantity: $this->decimalString($row->quantity),
+    ))->all());
 }
 ```
 
-- [ ] **Step 3: Update `StockAlertReportService`** to scope by variant when present:
+**`TopSkuData` DTO change:** `product_id` field stays the parent product id (so report consumers can drill down by product). The variant suffix is folded into `product_name`. Consider adding `variant_id` to the DTO in a follow-up PR if reporting needs to group by variant programmatically.
+
+- [ ] **Step 3: Update `StockAlertReportService` — preserve scoping; add variant join**
 
 ```php
-$alerts = DB::table('stock_levels as s')
-    ->leftJoin('product_variants as v', 's.variant_id', '=', 'v.id')
-    ->leftJoin('products as p', 's.product_id', '=', 'p.id')
-    ->where('s.quantity', '<', 's.min_quantity')
-    // ... select with variant suffix
-    ->get();
+public function lowStockAlerts(string $tenantId, array $companyIds, array $locationIds): array
+{
+    if ($companyIds === [] || $locationIds === []) {
+        return [];
+    }
+
+    return DB::table('stock_levels')
+        ->join('products', 'products.id', '=', 'stock_levels.product_id')
+        ->leftJoin('product_variants', 'product_variants.id', '=', 'stock_levels.variant_id')
+        ->where('stock_levels.tenant_id', $tenantId)
+        ->whereIn('stock_levels.company_id', $companyIds)
+        ->whereIn('stock_levels.location_id', $locationIds)
+        ->whereColumn('stock_levels.quantity', '<', 'stock_levels.min_quantity')
+        ->whereNotNull('stock_levels.min_quantity')
+        ->select([
+            'stock_levels.product_id',
+            'stock_levels.variant_id',
+            'stock_levels.location_id',
+            DB::raw('COALESCE(product_variants.sku, products.sku) AS sku'),
+            DB::raw("CASE WHEN product_variants.name_suffix IS NOT NULL "
+                  . "THEN products.name || ' — ' || product_variants.name_suffix "
+                  . "ELSE products.name END AS name"),
+            'stock_levels.quantity',
+            'stock_levels.min_quantity',
+        ])
+        ->get()
+        ->map(fn (object $row) => new StockAlertData(
+            productId: (string) $row->product_id,
+            variantId: $row->variant_id ? (string) $row->variant_id : null, // ADD to DTO
+            locationId: (string) $row->location_id,
+            sku: (string) $row->sku,
+            name: (string) $row->name,
+            currentQuantity: $this->decimalString($row->quantity),
+            minimumQuantity: $this->decimalString($row->min_quantity),
+        ))
+        ->all();
+}
 ```
+
+**`StockAlertData` DTO change:** add `variantId` (nullable string). Backward-compat: existing consumers see `null` for non-variant rows.
 
 - [ ] **Step 4: Run tests** → PASS.
 
@@ -3053,14 +3172,259 @@ git commit -m "Phase 2.4.27c: Loyalty rule evaluator — product-scoped rules ap
 
 ## Phase 5 — Admin UI (~5 PD)
 
-### Task 28a: NEW — Shared/Contracts/ProductVariantLookup (P2-7 — Codex r1)
+### Task 28a (RENUMBERED TO 11b in v4 — moved earlier to be available for Task 17): see Task 11b above.
+
+(The Shared/Contracts/ProductVariantLookup work moved earlier in the sequence. The Task 28a slot is intentionally vacant; do NOT recreate it. The contract is created right after the schema migrations (Task 11) and BEFORE the service ripple (Task 12+).)
+
+---
+
+### Task 11b: Shared/Contracts/ProductVariantLookup (P2-7 + P1-3 — v4 corrected path)
+
+**Files (verified real path):**
+- Create: `apps/api/app/Shared/Contracts/ProductVariantLookup.php` (interface; namespace `App\Shared\Contracts`)
+- Create: `apps/api/app/Shared/DTOs/ProductVariantSummary.php` (namespace `App\Shared\DTOs`)
+- Create: `apps/api/app/Modules/Catalog/Infrastructure/Adapters/EloquentProductVariantLookup.php` (namespace `App\Modules\Catalog\Infrastructure\Adapters`)
+- Service-provider binding in `apps/api/app/Modules/Catalog/Providers/CatalogServiceProvider.php`.
+
+**Why this lives in `App\Shared\Contracts` (not `App\Modules\Shared\Contracts`):** the real shared-contracts location is `apps/api/app/Shared/Contracts/` (verified — sibling contracts include `InventoryServiceInterface`, `LocationServiceInterface`, `LoyaltyServiceInterface`). v3 said `App\Modules\Shared` which does not exist in this codebase.
+
+- [ ] **Step 1: Write failing test for the contract**
+
+```php
+public function test_lookup_finds_variant_by_id(): void
+{
+    $variant = ProductVariant::factory()->create(['sku' => 'TEST-001']);
+    /** @var \App\Shared\Contracts\ProductVariantLookup $lookup */
+    $lookup = app(\App\Shared\Contracts\ProductVariantLookup::class);
+
+    $result = $lookup->findById($variant->id);
+
+    $this->assertNotNull($result);
+    $this->assertSame('TEST-001', $result->sku);
+    $this->assertInstanceOf(\App\Shared\DTOs\ProductVariantSummary::class, $result);
+}
+
+public function test_lookup_finds_by_sku_per_company(): void
+{
+    $companyId = (string) Str::uuid();
+    $variant = ProductVariant::factory()->create(['sku' => 'COMP-1', 'company_id' => $companyId]);
+
+    $result = app(\App\Shared\Contracts\ProductVariantLookup::class)->findBySku('COMP-1', $companyId);
+
+    $this->assertNotNull($result);
+    $this->assertSame($variant->id, $result->id);
+}
+
+public function test_lookup_lists_active_variants_for_product(): void
+{
+    $product = Product::factory()->create();
+    ProductVariant::factory()->count(2)->create(['product_id' => $product->id, 'is_active' => true]);
+    ProductVariant::factory()->create(['product_id' => $product->id, 'is_active' => false]);
+
+    $resultsActive = app(\App\Shared\Contracts\ProductVariantLookup::class)
+        ->listForProduct($product->id, onlyActive: true);
+    $resultsAll = app(\App\Shared\Contracts\ProductVariantLookup::class)
+        ->listForProduct($product->id, onlyActive: false);
+
+    $this->assertCount(2, $resultsActive);
+    $this->assertCount(3, $resultsAll);
+}
+```
+
+- [ ] **Step 2: Create the contract** (`apps/api/app/Shared/Contracts/ProductVariantLookup.php`)
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Shared\Contracts;
+
+use App\Shared\DTOs\ProductVariantSummary;
+use Illuminate\Support\Collection;
+
+interface ProductVariantLookup
+{
+    public function findById(string $id): ?ProductVariantSummary;
+    public function findByBarcode(string $barcode, string $companyId): ?ProductVariantSummary;
+    public function findBySku(string $sku, string $companyId): ?ProductVariantSummary;
+    /** @return Collection<int, ProductVariantSummary> */
+    public function listForProduct(string $productId, bool $onlyActive = true): Collection;
+}
+```
+
+- [ ] **Step 3: Create the DTO** (`apps/api/app/Shared/DTOs/ProductVariantSummary.php`)
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Shared\DTOs;
+
+final readonly class ProductVariantSummary
+{
+    public function __construct(
+        public string $id,
+        public string $productId,
+        public string $tenantId,
+        public string $companyId,
+        public string $sku,
+        public string $variantCode,
+        public ?string $barcode,
+        public string $nameSuffix,
+        public bool $isDefault,
+        public bool $isActive,
+        public ?string $priceOverride,
+        public ?string $costOverride,
+        public ?string $imageUrl,
+    ) {}
+}
+```
+
+- [ ] **Step 4: Create the adapter**
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Catalog\Infrastructure\Adapters;
+
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
+use App\Shared\Contracts\ProductVariantLookup;
+use App\Shared\DTOs\ProductVariantSummary;
+use Illuminate\Support\Collection;
+
+final class EloquentProductVariantLookup implements ProductVariantLookup
+{
+    public function findById(string $id): ?ProductVariantSummary
+    {
+        return $this->toSummary(ProductVariant::query()->find($id));
+    }
+
+    public function findByBarcode(string $barcode, string $companyId): ?ProductVariantSummary
+    {
+        $variant = ProductVariant::query()
+            ->where('company_id', $companyId)
+            ->where('barcode', $barcode)
+            ->where('is_active', true)
+            ->first();
+        return $this->toSummary($variant);
+    }
+
+    public function findBySku(string $sku, string $companyId): ?ProductVariantSummary
+    {
+        $variant = ProductVariant::query()
+            ->where('company_id', $companyId)
+            ->where('sku', $sku)
+            ->where('is_active', true)
+            ->first();
+        return $this->toSummary($variant);
+    }
+
+    public function listForProduct(string $productId, bool $onlyActive = true): Collection
+    {
+        return ProductVariant::query()
+            ->where('product_id', $productId)
+            ->when($onlyActive, fn ($q) => $q->where('is_active', true))
+            ->orderBy('display_order')
+            ->get()
+            ->map(fn (ProductVariant $v) => $this->toSummary($v));
+    }
+
+    private function toSummary(?ProductVariant $v): ?ProductVariantSummary
+    {
+        if ($v === null) return null;
+        return new ProductVariantSummary(
+            id: $v->id,
+            productId: $v->product_id,
+            tenantId: $v->tenant_id,
+            companyId: $v->company_id,
+            sku: $v->sku,
+            variantCode: $v->variant_code,
+            barcode: $v->barcode,
+            nameSuffix: $v->name_suffix,
+            isDefault: $v->is_default,
+            isActive: $v->is_active,
+            priceOverride: $v->price_override,
+            costOverride: $v->cost_override,
+            imageUrl: $v->image_url,
+        );
+    }
+}
+```
+
+- [ ] **Step 5: Register the binding** in `apps/api/app/Modules/Catalog/Providers/CatalogServiceProvider.php`:
+
+```php
+$this->app->bind(
+    \App\Shared\Contracts\ProductVariantLookup::class,
+    \App\Modules\Catalog\Infrastructure\Adapters\EloquentProductVariantLookup::class,
+);
+```
+
+- [ ] **Step 6: Run tests** → PASS.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git commit -m "Phase 0.2.11b: Shared ProductVariantLookup contract — preserve module boundaries"
+```
+
+---
+
+### Task 11c: Deferred FK validation migration (P1-2 v4)
 
 **Files:**
-- Create: `apps/api/app/Modules/Shared/Contracts/ProductVariantLookup.php` (interface)
-- Create: `apps/api/app/Modules/Shared/DTOs/ProductVariantSummary.php`
-- Create: `apps/api/app/Modules/Catalog/Infrastructure/Adapters/EloquentProductVariantLookup.php`
-- Modify: every cross-module consumer of `ProductVariant` (Inventory, Pricing, POS, Cart, Channel, Document services) to depend on the contract, not the Eloquent entity.
-- Service-provider binding (likely in `Catalog` provider since it owns the implementation).
+- Migration: `apps/api/database/migrations/tenant/2026_06_15_100000_validate_t2_foreign_keys.php` (dated to run AFTER all T2 migrations)
+
+- [ ] **Step 1: Create the migration**
+
+```php
+return new class extends Migration {
+    public $withinTransaction = false;
+
+    public function up(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') return;
+
+        $constraints = [
+            'stock_levels' => 'stock_levels_variant_id_foreign',
+            'stock_movements' => 'stock_movements_variant_id_foreign',
+            'stock_reservations' => 'stock_reservations_variant_id_foreign',
+            'product_batches' => 'product_batches_variant_id_foreign',
+            'document_lines' => 'document_lines_variant_id_foreign',
+            'pos_receipt_lines' => 'pos_receipt_lines_variant_id_foreign',
+            'pos_order_lines' => 'pos_order_lines_variant_id_foreign',
+            'pos_receipt_line_batch_allocations' => 'pos_receipt_line_batch_allocations_variant_id_foreign',
+            'catalog_cart_items' => 'catalog_cart_items_variant_id_foreign',
+            'price_list_items' => 'price_list_items_variant_id_foreign',
+            'recipe_lines' => 'recipe_lines_component_variant_id_foreign',
+        ];
+
+        foreach ($constraints as $table => $constraint) {
+            // VALIDATE CONSTRAINT takes a SHARE UPDATE EXCLUSIVE lock — does not block writes
+            DB::statement("ALTER TABLE {$table} VALIDATE CONSTRAINT {$constraint}");
+        }
+    }
+
+    public function down(): void
+    {
+        // No-op: validating a constraint is idempotent; once validated, cannot un-validate
+    }
+};
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git commit -m "Phase 0.2.11c: Validate deferred T2 FKs (offline-safe)"
+```
+
+---
+
+### Task 28a (REMOVED in v4 — see Task 11b above)
 
 - [ ] **Step 1: Create the contract**
 
@@ -3170,7 +3534,7 @@ public function test_missing_permission_returns_403(): void { /* ... */ }
 - [ ] **Step 5: Commit**
 
 ```bash
-git commit -m "feat(t2): REST endpoints for attributes + variants + permissions"
+git commit -m "Phase 2.x: REST endpoints for attributes + variants + permissions"
 ```
 
 ---
@@ -3213,7 +3577,7 @@ describe('AttributeListPage', () => {
 - [ ] **Step 5: Commit**
 
 ```bash
-git commit -m "feat(t2): AttributeListPage + hooks + i18n keys"
+git commit -m "Phase 2.x: AttributeListPage + hooks + i18n keys"
 ```
 
 ---
@@ -3246,7 +3610,7 @@ describe('ProductVariantMatrixEditor', () => {
 - [ ] **Step 5: Commit**
 
 ```bash
-git commit -m "feat(t2): ProductVariantMatrixEditor + ProductFormPage integration"
+git commit -m "Phase 2.x: ProductVariantMatrixEditor + ProductFormPage integration"
 ```
 
 ---
@@ -3270,7 +3634,7 @@ git commit -m "feat(t2): ProductVariantMatrixEditor + ProductFormPage integratio
 - [ ] **Step 5: Commit**
 
 ```bash
-git commit -m "feat(t2): variant pickers — stock view + B2B doc line + B2C catalog detail"
+git commit -m "Phase 2.x: variant pickers — stock view + B2B doc line + B2C catalog detail"
 ```
 
 ---
@@ -3346,7 +3710,7 @@ Expected: PHPStan L8 zero new errors, Pint clean, PHPUnit all green, ESLint zero
 - [ ] **Step 4: Commit**
 
 ```bash
-git commit -m "test(t2): full acceptance suite covering §10 criteria"
+git commit -m "Phase 2.x: tests — full acceptance suite covering §10 criteria"
 ```
 
 ---
@@ -3392,7 +3756,7 @@ git commit -m "test(t2): full acceptance suite covering §10 criteria"
 
 ```bash
 git add docs/superpowers/coordination/2026-05-24-pos-coordination-log.md
-git commit -m "docs(t2): coordination-log entry for POS Wave-2 deltas"
+git commit -m "Phase 2.x: docs — coordination-log entry for POS Wave-2 deltas"
 ```
 
 ---
