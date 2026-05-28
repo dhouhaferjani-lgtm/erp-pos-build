@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 return new class extends Migration
 {
@@ -144,18 +145,23 @@ return new class extends Migration
                 }
             });
 
-        // Log migration results
-        echo "\n=== Product Unit Migration Results ===\n";
-        echo "Total products with units: {$totalProducts}\n";
-        echo "Successfully mapped: {$mappedProducts}\n";
-        echo 'Unmapped: '.(count($unmappedUnits) > 0 ? count($unmappedUnits) : 0)." unique units\n";
+        // Log migration results. Use the framework logger instead of `echo`:
+        // tenant migrations also run via MigrateDatabase during HTTP signup
+        // (T6 database-per-tenant), and any stdout output during a request is
+        // streamed straight into the HTTP response body — corrupting the JSON
+        // axios tries to parse and silently breaking the register flow on the
+        // SPA. Logging keeps the artisan-migrate signal in storage/logs/laravel.log.
+        $summary = sprintf(
+            'Product unit migration: %d products, %d mapped, %d unmapped',
+            $totalProducts,
+            $mappedProducts,
+            count($unmappedUnits),
+        );
+        Log::info($summary);
 
         if (count($unmappedUnits) > 0) {
-            echo "\nUnmapped units (will need manual mapping):\n";
             arsort($unmappedUnits);
-            foreach (array_slice($unmappedUnits, 0, 20) as $unit => $count) {
-                echo "  - '{$unit}' ({$count} products)\n";
-            }
+            Log::info('Unmapped product units (top 20)', array_slice($unmappedUnits, 0, 20));
         }
     }
 
