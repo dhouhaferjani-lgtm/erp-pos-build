@@ -9,7 +9,9 @@ use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\Modifier;
 use App\Modules\Catalog\Domain\Entities\ModifierGroup;
 use App\Modules\Catalog\Domain\Repositories\AttributeRepository;
+use App\Modules\Catalog\Domain\Repositories\AttributeValueRepository;
 use App\Modules\Catalog\Infrastructure\Repositories\EloquentAttributeRepository;
+use App\Modules\Catalog\Infrastructure\Repositories\EloquentAttributeValueRepository;
 use App\Modules\POS\Infrastructure\Broadcasting\CatalogModelObserver;
 use App\Shared\Contracts\CompositeItemServiceInterface;
 use Illuminate\Support\Facades\Event;
@@ -21,6 +23,7 @@ class CatalogServiceProvider extends ServiceProvider
     {
         $this->app->bind(CompositeItemServiceInterface::class, CompositeItemImportService::class);
         $this->app->bind(AttributeRepository::class, EloquentAttributeRepository::class);
+        $this->app->bind(AttributeValueRepository::class, EloquentAttributeValueRepository::class);
     }
 
     public function boot(): void
