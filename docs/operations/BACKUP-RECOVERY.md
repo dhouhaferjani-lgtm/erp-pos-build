@@ -260,19 +260,22 @@ echo "[$(date)] Backup verified OK. Documents: $ROW_COUNT"
 |------|---------|
 | Find container name | `docker ps --filter name=postgres --format '{{.Names}}'` |
 | Interactive psql | `docker exec -it erp-postgres psql -U erp -d erp` |
-| Check DB size | `docker exec erp-postgres psql -U erp -d erp -c "SELECT pg_size_pretty(pg_database_size('erp'));"` |
-| List schemas (tenants) | `docker exec erp-postgres psql -U erp -d erp -c "SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'tenant_%';"` |
-| Dump single tenant schema | `docker exec erp-postgres pg_dump -U erp -n tenant_abc123 erp > tenant_abc123.sql` |
+| Check central DB size | `docker exec erp-postgres psql -U autoerp -d synerivia_central -c "SELECT pg_size_pretty(pg_database_size('synerivia_central'));"` |
+| List tenant databases | `docker exec erp-postgres psql -U autoerp -d synerivia_central -c "SELECT datname FROM pg_database WHERE datname LIKE 'tenant_%';"` |
 
-### Multi-Tenant Considerations
+### Multi-Tenant Considerations (post-flip, 2026-05-28)
 
-Since AutoERP uses schema-based multi-tenancy, a single `pg_dump` captures all tenant schemas. For tenant-specific restores:
+> **NOTE:** AutoERP flipped to **database-per-tenant** on 2026-05-28 (T6 Phase 0b, PRs #141–#146 + #148). The schema-per-tenant assumption that drove the historical scripts in this doc no longer holds — each tenant is now a separate PostgreSQL **database** (`tenant_<tenant-uuid>`), not a schema in a shared database.
+
+**Use the app-level commands for per-tenant backup/restore** (see [`POST-FLIP-OPS.md`](POST-FLIP-OPS.md) for the full runbook):
 
 ```bash
-# Dump one tenant
-docker exec erp-postgres pg_dump -U erp -Fc -n tenant_TENANT_ID erp > tenant_TENANT_ID.dump
+# Per-tenant backup (pg_dump custom format, records metadata in central tenant_backups)
+php artisan tenant:backup acme
+php artisan tenant:backup --all
 
-# Restore one tenant (drop existing schema first)
-docker exec -i erp-postgres psql -U erp -d erp -c "DROP SCHEMA IF EXISTS tenant_TENANT_ID CASCADE;"
-docker exec -i erp-postgres pg_restore -U erp -d erp --no-owner < tenant_TENANT_ID.dump
+# Per-tenant restore (drop + recreate + pg_restore + sha256 verification)
+php artisan tenant:restore acme /path/to/<uuid>/<timestamp>.dump
 ```
+
+The central database (`synerivia_central`) still benefits from a single host-level `pg_dump` for the tenant directory + auth + plans + backup metadata, but tenant data must be backed up per-DB via the artisan commands.

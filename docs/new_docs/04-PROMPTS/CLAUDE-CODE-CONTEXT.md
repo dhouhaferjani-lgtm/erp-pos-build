@@ -22,7 +22,7 @@ Both products share a single codebase (~85% shared) with product-specific module
 | Frontend | React (TypeScript) |
 | Mobile | React Native |
 | Desktop POS | Tauri 2 |
-| Database | PostgreSQL with schema-based multi-tenancy |
+| Database | PostgreSQL 16+ — database-per-tenant via Stancl `PostgreSQLDatabaseManager` (T6 Phase 0b, 2026-05-28) |
 | Testing | PHPUnit, Playwright |
 
 ---
@@ -42,7 +42,7 @@ App/Modules/{ModuleName}/
 ```
 Tenant (Organization) → owns → Company (Legal Entity)
 ```
-- Tenants are isolated by PostgreSQL schema (Row-Level Security)
+- Tenants are isolated by **database-per-tenant** (Stancl `PostgreSQLDatabaseManager`). One `synerivia_central` DB holds the tenant directory + auth; each tenant gets a physical `tenant_<uuid>` DB. Stancl `DatabaseTenancyBootstrapper` swaps the default Laravel connection per request.
 - A tenant can have multiple companies across different countries
 - Company model: `App\Modules\Company\Domain\Company`
 
@@ -70,7 +70,8 @@ Tenant (Organization) → owns → Company (Legal Entity)
 
 ### Database
 - Use migrations for all schema changes
-- Schema-based multi-tenancy (tenant_id in tables)
+- **Database-per-tenant** (Stancl). Central migrations land in `apps/api/database/migrations/`; per-tenant migrations land in `apps/api/database/migrations/tenant/` and run via `tenants:migrate` or the rolling `tenant:migrate-rolling` runner.
+- Many tenant-DB tables still carry a `tenant_id` column for defense-in-depth scoping (kept from the pre-flip row-level era), but it is not an enforced FK across databases.
 - Soft deletes where appropriate
 - Use UUIDs for external-facing IDs, integers for internal
 
