@@ -21,6 +21,44 @@ services:
     networks:
       - autoerp_network
 
+  # T6 Phase 0b — Connection pooling for DB-per-tenant.
+  #
+  # POOL_MODE=transaction is REQUIRED for database-per-tenant: session-mode
+  # would pin a request to a single backend DB, breaking Stancl's per-request
+  # DB switch. Transaction-mode multiplexes clients onto backend connections
+  # per transaction; cross-transaction state (LISTEN/NOTIFY, session-level
+  # prepared statements, advisory locks) does NOT persist — Laravel already
+  # tolerates this with DB_PGBOUNCER=true (emulate-prepares).
+  #
+  # CREATE/DROP DATABASE issued by tenant signup/deprovision MUST bypass
+  # PgBouncer (talk to autoerp_postgres directly). See
+  # docs/operations/POST-FLIP-OPS.md for the operational recipe.
+  pgbouncer:
+    image: edoburu/pgbouncer:1.22.0
+    container_name: autoerp_pgbouncer
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: autoerp
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-autoerp_secret}
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 50
+      MIN_POOL_SIZE: 5
+      RESERVE_POOL_SIZE: 10
+      SERVER_RESET_QUERY: DISCARD ALL
+      ADMIN_USERS: autoerp
+      STATS_USERS: autoerp
+    ports:
+      - "${PGBOUNCER_PORT:-6432}:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - autoerp_network
+
   redis:
     image: redis:7-alpine
     container_name: autoerp_redis
