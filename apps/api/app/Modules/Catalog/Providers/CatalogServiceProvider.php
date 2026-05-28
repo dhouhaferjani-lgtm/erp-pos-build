@@ -8,6 +8,8 @@ use App\Modules\Catalog\Application\Services\CompositeItemImportService;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\Modifier;
 use App\Modules\Catalog\Domain\Entities\ModifierGroup;
+use App\Modules\Catalog\Domain\Repositories\AttributeRepository;
+use App\Modules\Catalog\Infrastructure\Repositories\EloquentAttributeRepository;
 use App\Modules\POS\Infrastructure\Broadcasting\CatalogModelObserver;
 use App\Shared\Contracts\CompositeItemServiceInterface;
 use Illuminate\Support\Facades\Event;
@@ -18,6 +20,7 @@ class CatalogServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(CompositeItemServiceInterface::class, CompositeItemImportService::class);
+        $this->app->bind(AttributeRepository::class, EloquentAttributeRepository::class);
     }
 
     public function boot(): void
