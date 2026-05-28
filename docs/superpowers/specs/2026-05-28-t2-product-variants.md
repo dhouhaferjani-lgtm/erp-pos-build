@@ -447,8 +447,8 @@ Reference sites: `Channel/Domain/Models/ChannelProductMapping.php`, `Channel/App
 
 T2 work (Codex r2 P1-6 — corrected; channel layer partially pre-positioned BUT the unique constraint is broken for NULL variants, fixed by §4.4 partial-unique replacement):
 - `ChannelService::publishProduct($productId, ?UUID $variantId = null)` — variant-aware publishing.
-- `DispatchStockChangeToChannels` listener — when `StockMovementRecorded` carries a `variantId` (V3 event), propagate to channels with variant scope.
-- No new migrations.
+- `DispatchStockChangeToChannels` listener — when `StockMovementRecordedV2` carries a `variantId` (V2 event with dual-dispatch — see §6.4), propagate to channels with variant scope.
+- One new migration on `channel_product_mappings` — the partial-unique replacement defined in §4.4 (and implemented in Task 9b of the impl plan). Replaces the broken `channel_product_variant_unique` composite-unique with two partial uniques. No other schema changes.
 - Concrete WooCommerce / Shopify adapter still deferred to channel-adapter sprint (only the mapping contract changes here).
 
 ### 5.9 Loyalty / Coupon / Promotion / Compliance / Marketplace — OPTIONAL or OUT OF SCOPE
