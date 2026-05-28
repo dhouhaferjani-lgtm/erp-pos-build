@@ -107,6 +107,10 @@ class PriceListItemsVariantUniqueTest extends TestCase
      */
     public function test_variant_and_non_variant_price_list_items_coexist(): void
     {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Partial unique indexes are PostgreSQL-only.');
+        }
+
         $variant = ProductVariant::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
