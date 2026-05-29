@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Services;
 
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -11,9 +12,12 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DraftDocumentCreated;
 use App\Modules\Document\Domain\Events\DraftLineAdded;
 use App\Modules\Document\Domain\Events\DraftLineAddedV2;
+use App\Modules\Document\Domain\Events\DraftLineAddedV3;
 use App\Modules\Document\Domain\Events\DraftLineModified;
 use App\Modules\Document\Domain\Events\DraftLineModifiedV2;
+use App\Modules\Document\Domain\Events\DraftLineModifiedV3;
 use App\Modules\Document\Domain\Events\DraftLineRemoved;
+use App\Modules\Document\Domain\Events\DraftLineRemovedV2;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
 use Illuminate\Support\Facades\DB;
@@ -233,6 +237,10 @@ final class DraftPersistenceService
             0, 500
         );
 
+        // Resolve the variant scoped to the line's product (variant must belong
+        // to $product). A forged or mismatched variant_id resolves to null.
+        $variant = $this->resolveVariant($lineData['variant_id'] ?? null, $product);
+
         $quantity = (float) ($lineData['quantity'] ?? 1);
         $unitPrice = (float) ($lineData['unit_price'] ?? 0);
         $lineTotal = (string) ($quantity * $unitPrice);
@@ -245,6 +253,7 @@ final class DraftPersistenceService
         // (unscoped belongsTo) would later dereference.
         $line = $document->lines()->create([
             'product_id' => $product?->id,
+            'variant_id' => $variant?->id,
             'service_id' => $service?->id,
             'line_number' => $document->lines()->count() + 1,
             'description' => $overriddenDescription,
@@ -285,6 +294,27 @@ final class DraftPersistenceService
             description: (string) $line->description,
             notes: $line->notes,
             designationDefaultSnapshot: $line->designation_default_snapshot,
+            lineId: $line->id,
+            addedAt: now()->toIso8601String(),
+        ));
+
+        // Fire V3 event — adds the variant dimension (id, name, sku)
+        event(new DraftLineAddedV3(
+            documentId: $document->id,
+            tenantId: $document->tenant_id,
+            companyId: $companyId,
+            userId: $userId,
+            productId: $line->product_id ?? '',
+            productName: $defaultName,
+            quantity: (float) $line->quantity,
+            unitPrice: (float) $line->unit_price,
+            lineTotal: (float) $line->line_total,
+            description: (string) $line->description,
+            notes: $line->notes,
+            designationDefaultSnapshot: $line->designation_default_snapshot,
+            variantId: $line->variant_id,
+            variantName: $variant?->name_suffix,
+            variantSku: $variant?->sku,
             lineId: $line->id,
             addedAt: now()->toIso8601String(),
         ));
@@ -377,6 +407,30 @@ final class DraftPersistenceService
                 notes: $line->notes,
                 modifiedAt: now()->toIso8601String(),
             ));
+
+            // Fire V3 event — adds the variant dimension. The variant is read
+            // from the persisted line (modify does not re-assign the variant);
+            // name/sku are resolved from the variant when present.
+            $variant = $line->variant_id !== null
+                ? ProductVariant::query()->find($line->variant_id)
+                : null;
+
+            event(new DraftLineModifiedV3(
+                documentId: $document->id,
+                tenantId: $document->tenant_id,
+                companyId: $companyId,
+                userId: $userId,
+                lineId: $line->id,
+                productId: $line->product_id ?? '',
+                oldValues: $oldValues,
+                newValues: $newValues,
+                description: $line->description !== '' ? $line->description : null,
+                notes: $line->notes,
+                variantId: $line->variant_id,
+                variantName: $variant?->name_suffix,
+                variantSku: $variant?->sku,
+                modifiedAt: now()->toIso8601String(),
+            ));
         }
     }
 
@@ -402,6 +456,21 @@ final class DraftPersistenceService
             productName: $product !== null ? $product->name : '',
             quantity: (float) $line->quantity,
             lineTotal: (float) $line->line_total,
+            removedAt: now()->toIso8601String(),
+        ));
+
+        // Fire V2 event — adds the variant dimension.
+        event(new DraftLineRemovedV2(
+            documentId: $document->id,
+            tenantId: $document->tenant_id,
+            companyId: $companyId,
+            userId: $userId,
+            lineId: $line->id,
+            productId: $line->product_id ?? '',
+            productName: $product !== null ? $product->name : '',
+            quantity: (float) $line->quantity,
+            lineTotal: (float) $line->line_total,
+            variantId: $line->variant_id,
             removedAt: now()->toIso8601String(),
         ));
 
@@ -447,6 +516,16 @@ final class DraftPersistenceService
             ->get()
             ->keyBy('id');
 
+        // Batch fetch variants scoped to this document's tenant + company so a
+        // forged variant_id cannot leak a foreign variant's name/sku.
+        $variantIds = collect($linesData)->pluck('variant_id')->filter()->unique()->toArray();
+        $variants = ProductVariant::query()
+            ->where('tenant_id', $document->tenant_id)
+            ->where('company_id', $companyId)
+            ->whereIn('id', $variantIds)
+            ->get()
+            ->keyBy('id');
+
         // 2. Prepare line data for batch insert
         $currentLineNumber = $document->lines()->count();
         $linesToInsert = [];
@@ -456,6 +535,14 @@ final class DraftPersistenceService
             $currentLineNumber++;
             $product = $products->get($lineData['product_id'] ?? '');
             $service = $services->get($lineData['service_id'] ?? '');
+
+            // Resolve the variant only when it belongs to the resolved product
+            // — a variant whose product_id mismatches the line product is
+            // dropped (treated as no variant).
+            $variant = $variants->get($lineData['variant_id'] ?? '');
+            if ($variant !== null && ($product === null || $variant->product_id !== $product->id)) {
+                $variant = null;
+            }
 
             $quantity = (float) ($lineData['quantity'] ?? 1);
             $unitPrice = (float) ($lineData['unit_price'] ?? 0);
@@ -484,6 +571,7 @@ final class DraftPersistenceService
                 'id' => (string) \Str::uuid(),
                 'document_id' => $document->id,
                 'product_id' => $product?->id,
+                'variant_id' => $variant?->id,
                 'service_id' => $service?->id,
                 'line_number' => $currentLineNumber,
                 'description' => $batchDescription,
@@ -508,6 +596,9 @@ final class DraftPersistenceService
                 'description' => $batchDescription,
                 'notes' => $insertData['notes'],
                 'designation_default_snapshot' => $batchSnapshot,
+                'variant_id' => $variant?->id,
+                'variant_name' => $variant?->name_suffix,
+                'variant_sku' => $variant?->sku,
             ];
         }
 
@@ -550,6 +641,44 @@ final class DraftPersistenceService
                 lineId: $eventData['id'],
                 addedAt: now()->toIso8601String(),
             ));
+
+            // V3 event — adds the variant dimension (id, name, sku)
+            event(new DraftLineAddedV3(
+                documentId: $document->id,
+                tenantId: $document->tenant_id,
+                companyId: $companyId,
+                userId: $userId,
+                productId: $eventData['product_id'],
+                productName: $eventData['product_name'],
+                quantity: $eventData['quantity'],
+                unitPrice: $eventData['unit_price'],
+                lineTotal: $eventData['line_total'],
+                description: $eventData['description'],
+                notes: $eventData['notes'],
+                designationDefaultSnapshot: $eventData['designation_default_snapshot'],
+                variantId: $eventData['variant_id'],
+                variantName: $eventData['variant_name'],
+                variantSku: $eventData['variant_sku'],
+                lineId: $eventData['id'],
+                addedAt: now()->toIso8601String(),
+            ));
         }
+    }
+
+    /**
+     * Resolve a request-supplied variant id to a ProductVariant that belongs to
+     * the resolved product. Returns null when the id is absent, the product is
+     * null, or the variant does not belong to that product (forged/mismatched).
+     */
+    private function resolveVariant(mixed $variantId, ?Product $product): ?ProductVariant
+    {
+        if (! is_string($variantId) || $variantId === '' || $product === null) {
+            return null;
+        }
+
+        return ProductVariant::query()
+            ->where('id', $variantId)
+            ->where('product_id', $product->id)
+            ->first();
     }
 }

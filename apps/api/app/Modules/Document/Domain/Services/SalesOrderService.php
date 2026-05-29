@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\SalesOrderCancelled;
 use App\Modules\Document\Domain\Events\SalesOrderConfirmed;
+use App\Modules\Document\Domain\Events\SalesOrderConfirmedV2;
 use App\Modules\Inventory\Application\Services\StockReservationService;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
@@ -105,13 +106,14 @@ final class SalesOrderService
             ]);
             $this->taxCalculationService->snapshotTaxDetails($salesOrder, $taxResult);
 
-            $this->dispatchConfirmedEvent($salesOrder, [], $confirmedAt->toIso8601String());
+            $this->dispatchConfirmedEvent($salesOrder, [], [], $confirmedAt->toIso8601String());
 
             return;
         }
 
         // Reserve stock for each line with physical products
         $reservations = [];
+        $reservationsV2 = [];
         foreach ($salesOrder->lines as $line) {
             // Skip service lines (non-physical products)
             if ($line->product->is_service ?? false) {
@@ -149,9 +151,20 @@ final class SalesOrderService
                 notes: "Sales Order {$salesOrder->document_number}",
             );
 
+            // V1 entry shape — kept byte-identical (no variant_id).
             $reservations[] = [
                 'line_id' => $line->id,
                 'product_id' => $line->product_id,
+                'quantity' => (string) $line->quantity,
+                'location_id' => $locationId,
+            ];
+
+            // V2 entry shape — adds variant_id per line for the variant-aware
+            // successor event. Built separately so the V1 payload is untouched.
+            $reservationsV2[] = [
+                'line_id' => $line->id,
+                'product_id' => $line->product_id,
+                'variant_id' => $line->variant_id,
                 'quantity' => (string) $line->quantity,
                 'location_id' => $locationId,
             ];
@@ -173,7 +186,7 @@ final class SalesOrderService
         $this->taxCalculationService->snapshotTaxDetails($salesOrder, $taxResult);
 
         // Dispatch event for audit trail
-        $this->dispatchConfirmedEvent($salesOrder, $reservations, $confirmedAt->toIso8601String());
+        $this->dispatchConfirmedEvent($salesOrder, $reservations, $reservationsV2, $confirmedAt->toIso8601String());
     }
 
     /**
@@ -245,9 +258,14 @@ final class SalesOrderService
     /**
      * Dispatch the SalesOrderConfirmed event for audit trail.
      *
+     * Dual-dispatch: the unchanged V1 event fires alongside the variant-aware
+     * V2 successor (whose per-line entries carry variant_id) so existing V1
+     * subscribers keep working unchanged.
+     *
      * @param  list<array{line_id: string, product_id: string, quantity: string, location_id: string}>  $reservations
+     * @param  list<array{line_id: string, product_id: string, variant_id: string|null, quantity: string, location_id: string}>  $reservationsV2
      */
-    private function dispatchConfirmedEvent(Document $salesOrder, array $reservations, string $confirmedAt): void
+    private function dispatchConfirmedEvent(Document $salesOrder, array $reservations, array $reservationsV2, string $confirmedAt): void
     {
         event(new SalesOrderConfirmed(
             salesOrderId: $salesOrder->id,
@@ -258,6 +276,20 @@ final class SalesOrderService
             total: $salesOrder->total ?? '0.00',
             currency: $salesOrder->currency,
             lines: $reservations,
+            confirmedBy: (string) $salesOrder->confirmed_by,
+            confirmedAt: $confirmedAt,
+        ));
+
+        // V2 dual-dispatch (variant-aware per-line payload).
+        event(new SalesOrderConfirmedV2(
+            salesOrderId: $salesOrder->id,
+            tenantId: $salesOrder->tenant_id,
+            companyId: $salesOrder->company_id,
+            documentNumber: $salesOrder->document_number,
+            partnerId: $salesOrder->partner_id,
+            total: $salesOrder->total ?? '0.00',
+            currency: $salesOrder->currency,
+            lines: $reservationsV2,
             confirmedBy: (string) $salesOrder->confirmed_by,
             confirmedAt: $confirmedAt,
         ));

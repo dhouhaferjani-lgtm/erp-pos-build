@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Application\Services;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Events\StockMovementRecorded;
+use App\Modules\Inventory\Domain\Events\StockMovementRecordedV2;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Application\Services\MarginService;
@@ -484,6 +485,27 @@ class WeightedAverageCostService
             unitCost: (string) $movement->unit_cost,
             totalCost: (string) $movement->total_cost,
             newStockLevel: $newStockLevel,
+            reference: $movement->reference,
+            referenceType: $movement->reference_type,
+            referenceId: $movement->reference_id,
+            occurredAt: now()->toIso8601String(),
+        ));
+
+        // V2 dual-dispatch (variant-aware). The variant is read from the
+        // persisted movement row (variant_id is written by Task 15); it may be
+        // null for product-level movements, which is expected.
+        event(new StockMovementRecordedV2(
+            movementId: $movement->id,
+            tenantId: $product->tenant_id,
+            companyId: $product->company_id,
+            productId: $product->id,
+            locationId: $location->id,
+            movementType: $movementType,
+            quantity: (string) $movement->quantity,
+            unitCost: (string) $movement->unit_cost,
+            totalCost: (string) $movement->total_cost,
+            newStockLevel: $newStockLevel,
+            variantId: $movement->variant_id,
             reference: $movement->reference,
             referenceType: $movement->reference_type,
             referenceId: $movement->reference_id,
