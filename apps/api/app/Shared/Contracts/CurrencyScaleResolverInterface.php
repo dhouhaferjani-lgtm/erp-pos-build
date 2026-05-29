@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Shared\Contracts;
 
+use App\Shared\Exceptions\UnboundCompanyContextException;
+
 /**
  * Resolves the decimal scale for monetary values based on currency.
  *
@@ -17,8 +19,8 @@ interface CurrencyScaleResolverInterface
      * When $currencyCode is null, resolves from the current company's currency.
      * Falls back to ISO 4217 static map.
      *
-     * @throws \RuntimeException When $currencyCode is null and no CompanyContext is bound.
-     *                           Use getScaleSafe() for callers that want an explicit fallback.
+     * @throws UnboundCompanyContextException When $currencyCode is null and no CompanyContext is bound.
+     *                                        Use getScaleSafe() for callers that want an explicit fallback.
      */
     public function getScale(?string $currencyCode = null): int;
 

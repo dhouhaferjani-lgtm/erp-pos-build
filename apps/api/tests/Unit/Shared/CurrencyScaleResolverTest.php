@@ -7,6 +7,7 @@ namespace Tests\Unit\Shared;
 use App\Models\Country;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
+use App\Shared\Exceptions\UnboundCompanyContextException;
 use App\Shared\Infrastructure\CurrencyScaleResolver;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -56,7 +57,7 @@ final class CurrencyScaleResolverTest extends TestCase
             fn (string $code): ?Country => null,
         );
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(UnboundCompanyContextException::class);
         $this->expectExceptionMessageMatches('/CompanyContext/');
 
         $resolver->getScale();

@@ -7,10 +7,10 @@ namespace Tests\Unit\Shared;
 use App\Models\Country;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
+use App\Shared\Exceptions\UnboundCompanyContextException;
 use App\Shared\Infrastructure\CurrencyScaleResolver;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
 
 /**
  * Task 0.2: CurrencyScaleResolver context-guard tests.
@@ -26,7 +26,7 @@ final class CurrencyScaleResolverContextTest extends TestCase
     {
         $resolver = $this->makeEmptyContextResolver();
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(UnboundCompanyContextException::class);
         $this->expectExceptionMessageMatches('/CompanyContext/i');
 
         $resolver->getScale();
@@ -114,6 +114,29 @@ final class CurrencyScaleResolverContextTest extends TestCase
         $this->assertSame(3, $resolver->getScaleSafe(null, 2));
     }
 
+    #[Test]
+    public function test_get_scale_safe_does_not_swallow_database_failures(): void
+    {
+        $context = new CompanyContext;
+        $context->setCompanyId('00000000-0000-0000-0000-000000000001');
+
+        // Simulate a DB-side failure by having the countryFinder throw a RuntimeException
+        // that is NOT an UnboundCompanyContextException.
+        $resolver = new CurrencyScaleResolver(
+            $context,
+            function (string $code): never {
+                throw new \RuntimeException('Simulated DB connection failure');
+            },
+            // companyOverride: minimal Company stub so getCompany() returns non-null
+            companyOverride: $this->makeCompanyStub('TND', 'TN'),
+        );
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Simulated DB connection failure');
+
+        $resolver->getScaleSafe(fallback: 3);
+    }
+
     private function makeEmptyContextResolver(): CurrencyScaleResolver
     {
         $companyContext = new CompanyContext;
@@ -122,5 +145,16 @@ final class CurrencyScaleResolverContextTest extends TestCase
             $companyContext,
             fn (string $code): ?Country => null,
         );
+    }
+
+    private function makeCompanyStub(string $currency, string $countryCode): Company
+    {
+        $company = $this->createMock(Company::class);
+        $company->method('__get')->willReturnMap([
+            ['currency', $currency],
+            ['country_code', $countryCode],
+        ]);
+
+        return $company;
     }
 }
