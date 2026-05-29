@@ -2,6 +2,26 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+## Execution Progress Tracker
+
+> Updated as each phase lands. Committed with the corresponding work.
+
+- [x] **Phase 0** — Canonical contract layer (tip `85248dd09`; PR merged/ready). CurrencyScale hardened, resolver fail-loud, QuantityScale + resolver, mock default 3, frontend formatters, shared inputs.
+- [x] **Rebase** onto `origin/dev` (PR #151 merged at `83ed1f15d`) — branch already forks from it; tasks 3.10/3.11/4.3/5.2 unblocked.
+- [x] **Phase 0 follow-up (resolver fallout)** — Task 0.2 Step 4 completed: the fail-loud resolver surfaced 185 `UnboundCompanyContextException` errors across 34 direct-service test classes (handoff's "all green" was inaccurate). Bound `app(CompanyContext::class)->setCompanyId($company->id)` in those tests' setUps (EUR factory default → scale 2 == prior silent fallback, so zero fixture changes). Resolver throw (locked decision) untouched. Suite now green except 1 pre-existing `TenantCreationTest` tenancy failure (untouched by this branch).
+- [x] **Phase 1** — Storage scale alignment. 1.1 services.tax_rate→(6,3) + loyalty_programs.welcome_bonus_points→(15,3); 1.2 pos_orders/lines monetary 4→3 (PG pre-check abort guard); 1.3 quantity→(15,4) across cart/marketplace/pricing/workshop/pos (9 tables + casts + quantity write-sites); 1.4 decimal:N casts (Product/Service/Account/Treasury/Coupon/Promotion/Receipt + User/Terminal max_discount_percent float→decimal:2 with frontend adaptation). Skipped billing_invoice_items.quantity (SaaS integer-qty, plan default). NF525 fiscal fixture regenerated (Quantite 3→4 — deliberate canonical-scale change). TerminalResource (float) left for Phase 6.2.
+- [ ] **Phase 2** — Per-unit decimal_places settings UI (2.1 backend, 2.2 frontend, 2.3 seed defaults)
+- [ ] **Phase 3** — Backend service bcmath sweep (3.1–3.16)
+- [ ] **Phase 4** — Ingress validators regex sweep (4.1–4.14)
+- [ ] **Phase 5** — JSONB content tightening (5.1–5.6)
+- [ ] **Phase 6** — Resources cleanup (6.1–6.3)
+- [ ] **Phase 7** — Value-object refactor (7.1 Money, 7.2 PointsAmount, 7.3 LoyaltyBalance)
+- [ ] **Phase 8** — Notifications currency-aware scale (8.1)
+- [ ] **Phase 9** — Seeders + fixtures alignment (9.1–9.3)
+- [ ] **Phase 10** — Frontend MoneyInput/QuantityInput rollout (10.1–10.7)
+- [ ] **Phase 11** — Regression guards PHPStan + ESLint (11.1–11.5)
+- [ ] **Phase 12** — Docs + REALIGNMENT-LOG (12.1–12.3)
+
 **Goal:** Land a world-wide-ready precision contract across AutoERP: canonical currency scale 3 (TND/LYD/JOD/KWD/OMR/BHD as the floor; EUR/USD/GBP and others displayed per `getDecimals(currency)`), canonical quantity scale 4 with per-unit `decimal_places` driving display and validation, and remove every float/IEEE-754 entry point in money or quantity pipelines.
 
 **Architecture:**
