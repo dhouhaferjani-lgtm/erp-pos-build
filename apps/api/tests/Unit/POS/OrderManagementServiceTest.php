@@ -121,7 +121,7 @@ final class OrderManagementServiceTest extends TestCase
         );
 
         $this->assertInstanceOf(OrderLine::class, $line);
-        $this->assertEquals('2.000', $line->quantity);
+        $this->assertEquals('2.0000', $line->quantity);
         $this->assertEquals(1, $line->line_number);
         $this->assertEquals(OrderLineStatus::Pending, $line->status);
 
@@ -180,7 +180,7 @@ final class OrderManagementServiceTest extends TestCase
             specialInstructions: null,
         );
 
-        $this->assertEquals('3.000', $modified->quantity);
+        $this->assertEquals('3.0000', $modified->quantity);
         $this->assertEquals('30.000', $modified->line_total);
     }
 
