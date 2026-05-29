@@ -85,7 +85,7 @@ final class CurrencyScaleBcformatStrictTest extends TestCase
     }
 
     #[Test]
-    public function test_strict_accepts_whitespace_padded_numeric(): void
+    public function test_bcformat_strict_accepts_whitespace_padded_numeric(): void
     {
         self::assertSame('5.000', CurrencyScale::bcformatStrict(' 5.000 ', 3));
         self::assertSame('5.000', CurrencyScale::bcformatStrict("\t5.000\n", 3));
@@ -144,7 +144,7 @@ final class CurrencyScaleBcformatStrictTest extends TestCase
     {
         // Capture the E_USER_DEPRECATED notice emitted by the legacy bcformat on null input.
         $deprecationTriggered = false;
-        $previousHandler = set_error_handler(function (int $errno, string $errstr) use (&$deprecationTriggered): bool {
+        set_error_handler(function (int $errno, string $errstr) use (&$deprecationTriggered): bool {
             if ($errno === E_USER_DEPRECATED) {
                 $deprecationTriggered = true;
             }
@@ -157,5 +157,25 @@ final class CurrencyScaleBcformatStrictTest extends TestCase
         restore_error_handler();
 
         $this->assertTrue($deprecationTriggered, 'bcformat(null, ...) must emit E_USER_DEPRECATED');
+    }
+
+    #[Test]
+    public function test_bcformat_legacy_does_not_emit_deprecation_for_non_null(): void
+    {
+        $captured = [];
+        set_error_handler(function (int $errno, string $errstr) use (&$captured): bool {
+            $captured[] = ['errno' => $errno, 'errstr' => $errstr];
+
+            return true;
+        });
+
+        try {
+            $result = CurrencyScale::bcformat('5.000', 3);
+        } finally {
+            restore_error_handler();
+        }
+
+        self::assertSame('5.000', $result);
+        self::assertSame([], $captured, 'bcformat must not emit any error/deprecation for non-null input');
     }
 }

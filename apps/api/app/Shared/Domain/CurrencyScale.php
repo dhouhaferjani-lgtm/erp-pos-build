@@ -78,11 +78,7 @@ final class CurrencyScale extends ValueObject
      * Replaces `number_format((float) $value, $scale, '.', '')` which suffers from
      * IEEE 754 floating-point precision loss (e.g. 5.000 → 4.9999).
      *
-     * @deprecated Passing null is deprecated and will be removed in a future version.
-     *             Use bcformatOrNull() to explicitly handle nullable values, or
-     *             bcformatStrict() when the value is guaranteed non-null and numeric.
-     *
-     * @param  string|int|float|null  $value  The numeric value (string preferred to avoid float)
+     * @param  string|int|float|null  $value  Passing null is deprecated; use bcformatOrNull() instead.
      * @param  int  $scale  Number of decimal places
      * @return numeric-string Formatted decimal string
      */
