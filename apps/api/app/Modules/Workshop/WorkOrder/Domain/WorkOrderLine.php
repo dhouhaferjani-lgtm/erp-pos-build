@@ -124,7 +124,7 @@ class WorkOrderLine extends Model
             'line_type' => WorkOrderLineType::class,
             'core_deposit_status' => CoreDepositStatus::class,
             'display_order' => 'integer',
-            'quantity' => 'decimal:3',
+            'quantity' => 'decimal:4',
             'unit_price' => 'decimal:3',
             'tax_rate' => 'decimal:3',
             'discount_percent' => 'decimal:2',

@@ -126,11 +126,11 @@ final class ReceiptReturnFlowTest extends TestCase
 
         // Widget A: 2 returned out of 5
         $widgetA = collect($lines)->firstWhere('product_code', 'PROD-001');
-        $this->assertEquals('2.000', $widgetA['returned_quantity']);
+        $this->assertEquals('2.0000', $widgetA['returned_quantity']);
 
         // Widget B: 0 returned out of 3
         $widgetB = collect($lines)->firstWhere('product_code', 'PROD-002');
-        $this->assertEquals('0.000', $widgetB['returned_quantity']);
+        $this->assertEquals('0.0000', $widgetB['returned_quantity']);
     }
 
     public function test_show_receipt_returns_zero_returned_quantity_when_no_returns(): void
@@ -158,7 +158,7 @@ final class ReceiptReturnFlowTest extends TestCase
         $response->assertStatus(200);
         $lines = $response->json('data.lines');
         $this->assertCount(1, $lines);
-        $this->assertEquals('0.000', $lines[0]['returned_quantity']);
+        $this->assertEquals('0.0000', $lines[0]['returned_quantity']);
     }
 
     public function test_show_receipt_excludes_voided_returns_from_returned_quantity(): void
@@ -203,7 +203,7 @@ final class ReceiptReturnFlowTest extends TestCase
         // Assert: voided return should not count
         $response->assertStatus(200);
         $lines = $response->json('data.lines');
-        $this->assertEquals('0.000', $lines[0]['returned_quantity']);
+        $this->assertEquals('0.0000', $lines[0]['returned_quantity']);
     }
 
     public function test_receipt_type_filter_returns_only_matching_type(): void
@@ -296,12 +296,12 @@ final class ReceiptReturnFlowTest extends TestCase
         // Line 1 (same product code): 0 returned -- the return was from line 2
         $lineOne = collect($lines)->firstWhere('id', $line1->id);
         $this->assertNotNull($lineOne, 'Line 1 should be present in response');
-        $this->assertEquals('0.000', $lineOne['returned_quantity']);
+        $this->assertEquals('0.0000', $lineOne['returned_quantity']);
 
         // Line 2 (same product code): 2 returned
         $lineTwo = collect($lines)->firstWhere('id', $line2->id);
         $this->assertNotNull($lineTwo, 'Line 2 should be present in response');
-        $this->assertEquals('2.000', $lineTwo['returned_quantity']);
+        $this->assertEquals('2.0000', $lineTwo['returned_quantity']);
     }
 
     // ---------------------------------------------------------------

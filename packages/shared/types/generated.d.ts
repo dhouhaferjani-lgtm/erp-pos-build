@@ -622,7 +622,7 @@ lastLoginIp: string | null;
 createdAt: string;
 updatedAt: string;
 canDiscount: boolean | null;
-maxDiscountPercent: number | null;
+maxDiscountPercent: string | null;
 };
 }
 declare namespace App.Modules.Identity.Domain.Enums {

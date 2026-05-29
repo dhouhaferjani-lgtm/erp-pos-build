@@ -11,6 +11,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\FraudAlert;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
@@ -243,6 +244,9 @@ final class InventoryTenantIsolationTest extends TestCase
             'scope_filters' => ['product_ids' => []],
             'execution_mode' => 'sequential',
         ]);
+
+        // Pin CompanyContext so CurrencyScaleResolver can resolve scale in direct service calls.
+        app(CompanyContext::class)->setCompanyId($this->companyA->id);
     }
 
     // ──────────────────────────────────────────────────────────────────

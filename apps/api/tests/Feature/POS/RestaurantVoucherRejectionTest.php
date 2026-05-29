@@ -8,6 +8,7 @@ use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
@@ -76,6 +77,7 @@ final class RestaurantVoucherRejectionTest extends TestCase
             'currency' => 'EUR',
             'status' => CompanyStatus::Active,
         ]);
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
         $this->seed(RolesAndPermissionsSeeder::class);

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Document;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DeliveryStatus;
@@ -52,6 +53,8 @@ class PartialDeliveryTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
         ]);
+
+        app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     public function test_can_create_partial_delivery_with_specific_quantities(): void

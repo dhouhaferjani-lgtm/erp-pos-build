@@ -10,6 +10,7 @@ use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -88,6 +89,9 @@ final class VoucherIssuanceServiceTest extends TestCase
 
         // Seed chart of accounts — this includes the 5 new voucher system purposes
         app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        // Bind CompanyContext so CurrencyScaleResolver::getScale() resolves without throwing.
+        app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     /**

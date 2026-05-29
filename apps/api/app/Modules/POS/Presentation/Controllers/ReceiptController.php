@@ -539,7 +539,7 @@ final class ReceiptController extends Controller
         $receiptData = $receipt->toArray();
         $receiptData['lines'] = $receipt->lines->map(function ($line) use ($returnedQuantities) {
             $lineData = $line->toArray();
-            $lineData['returned_quantity'] = $returnedQuantities[$line->id] ?? '0.000';
+            $lineData['returned_quantity'] = $returnedQuantities[$line->id] ?? '0.0000';
 
             return $lineData;
         })->values()->toArray();
@@ -567,12 +567,12 @@ final class ReceiptController extends Controller
 
         foreach ($receipt->returnReceipts as $returnReceipt) {
             foreach ($returnReceipt->lines as $returnLine) {
-                $absQuantity = bcmul((string) $returnLine->quantity, '-1', 3);
+                $absQuantity = bcmul((string) $returnLine->quantity, '-1', 4);
 
                 // Prefer direct FK match when available (new return lines)
                 if ($returnLine->original_line_id !== null) {
                     $key = $returnLine->original_line_id;
-                    $returned[$key] = bcadd($returned[$key] ?? '0.000', $absQuantity, 3);
+                    $returned[$key] = bcadd($returned[$key] ?? '0.0000', $absQuantity, 4);
 
                     continue;
                 }
@@ -587,7 +587,7 @@ final class ReceiptController extends Controller
 
                     if ($sameProduct) {
                         $key = $originalLine->id;
-                        $returned[$key] = bcadd($returned[$key] ?? '0.000', $absQuantity, 3);
+                        $returned[$key] = bcadd($returned[$key] ?? '0.0000', $absQuantity, 4);
                         break;
                     }
                 }

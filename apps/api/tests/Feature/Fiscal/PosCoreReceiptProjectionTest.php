@@ -7,6 +7,7 @@ namespace Tests\Feature\Fiscal;
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
@@ -98,6 +99,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
         $company = Company::factory()->create(['tenant_id' => $this->tenantId]);
         $this->companyId = $company->id;
+
+        app(CompanyContext::class)->setCompanyId($this->companyId);
 
         $location = Location::factory()->create(['company_id' => $this->companyId]);
         $this->locationId = $location->id;

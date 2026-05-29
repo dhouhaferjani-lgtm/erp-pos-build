@@ -581,6 +581,8 @@ final class ExchangeServiceTest extends TestCase
             'tenant_id' => $this->tenant->id,
         ]);
 
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
+
         UserCompanyMembership::create([
             'user_id' => $this->cashier->id,
             'company_id' => $this->company->id,
@@ -682,13 +684,7 @@ final class ExchangeServiceTest extends TestCase
 
     private function bindCompanyContext(): void
     {
-        $company = $this->company;
-        $this->app->bind(CompanyContext::class, function () use ($company) {
-            $context = $this->createMock(CompanyContext::class);
-            $context->method('requireCompanyId')->willReturn($company->id);
-
-            return $context;
-        });
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     /**

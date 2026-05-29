@@ -95,7 +95,7 @@ class ProductEventsTest extends TestCase
             return $event->name === 'Test Product'
                 && $event->sku === 'SKU-001'
                 && $event->type === 'part'
-                && $event->salePrice === '19.99'
+                && $event->salePrice === '19.990'
                 && $event->tenantId === $this->tenant->id
                 && $event->companyId === $this->company->id
                 && $event->getEventName() === 'product.created';

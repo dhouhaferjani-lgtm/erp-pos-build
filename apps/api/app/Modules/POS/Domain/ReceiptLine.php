@@ -100,7 +100,7 @@ class ReceiptLine extends Model
     {
         return [
             'line_number' => 'integer',
-            'quantity' => 'decimal:3',
+            'quantity' => 'decimal:4',
             'unit_price' => 'decimal:3',
             'unit_cost' => 'decimal:4',
             'line_total' => 'decimal:3',
