@@ -118,6 +118,12 @@ final class CurrencyScale extends ValueObject
      * Strict variant: rejects any input that is not a well-formed numeric string.
      * Does NOT accept null, empty strings, or whitespace-only strings.
      * Does NOT accept float (use string representation from the source instead).
+     * Leading/trailing whitespace is trimmed before validation and bcmath processing.
+     *
+     * Guard uses is_numeric() semantics. Note: PHP's is_numeric() accepts scientific
+     * notation (e.g. "1e5") but bcmath does not — passing scientific notation will
+     * pass this guard but bcadd() will throw a ValueError. Callers must normalise
+     * scientific notation before calling this method.
      *
      * @param  string  $value  A well-formed numeric string (e.g. "5.000", "-3.14", "42")
      * @param  int  $scale  Number of decimal places
@@ -127,7 +133,9 @@ final class CurrencyScale extends ValueObject
      */
     public static function bcformatStrict(string $value, int $scale): string
     {
-        if (! is_numeric(trim($value))) {
+        $trimmed = trim($value);
+
+        if (! is_numeric($trimmed)) {
             throw new \InvalidArgumentException(
                 sprintf(
                     'CurrencyScale::bcformatStrict() expects a numeric string; "%s" given.',
@@ -137,7 +145,7 @@ final class CurrencyScale extends ValueObject
         }
 
         /** @phpstan-ignore argument.type */
-        return bcadd($value, '0', $scale);
+        return bcadd($trimmed, '0', $scale);
     }
 
     /**

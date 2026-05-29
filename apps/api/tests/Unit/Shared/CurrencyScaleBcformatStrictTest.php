@@ -84,6 +84,13 @@ final class CurrencyScaleBcformatStrictTest extends TestCase
         CurrencyScale::bcformatStrict('12abc', 2);
     }
 
+    #[Test]
+    public function test_strict_accepts_whitespace_padded_numeric(): void
+    {
+        self::assertSame('5.000', CurrencyScale::bcformatStrict(' 5.000 ', 3));
+        self::assertSame('5.000', CurrencyScale::bcformatStrict("\t5.000\n", 3));
+    }
+
     // -----------------------------------------------------------------------
     // bcformatOrNull — preserves null; delegates to strict for non-null
     // -----------------------------------------------------------------------
