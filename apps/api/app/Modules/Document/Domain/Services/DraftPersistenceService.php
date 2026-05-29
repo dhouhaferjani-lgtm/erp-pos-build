@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Services;
 
-use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -20,6 +19,8 @@ use App\Modules\Document\Domain\Events\DraftLineRemoved;
 use App\Modules\Document\Domain\Events\DraftLineRemovedV2;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
+use App\Shared\Contracts\ProductVariantLookup;
+use App\Shared\DTOs\ProductVariantSummary;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -40,6 +41,7 @@ final class DraftPersistenceService
     public function __construct(
         private readonly DocumentNumberingService $numberingService,
         private readonly DocumentTotalsCalculator $totalsCalculator,
+        private readonly ProductVariantLookup $variantLookup,
     ) {}
 
     /**
@@ -313,7 +315,7 @@ final class DraftPersistenceService
             notes: $line->notes,
             designationDefaultSnapshot: $line->designation_default_snapshot,
             variantId: $line->variant_id,
-            variantName: $variant?->name_suffix,
+            variantName: $variant?->nameSuffix,
             variantSku: $variant?->sku,
             lineId: $line->id,
             addedAt: now()->toIso8601String(),
@@ -410,9 +412,9 @@ final class DraftPersistenceService
 
             // Fire V3 event — adds the variant dimension. The variant is read
             // from the persisted line (modify does not re-assign the variant);
-            // name/sku are resolved from the variant when present.
-            $variant = $line->variant_id !== null
-                ? ProductVariant::query()->find($line->variant_id)
+            // name/sku are resolved via the cross-module contract (Rule 6).
+            $variantSummary = $line->variant_id !== null
+                ? $this->variantLookup->findById($line->variant_id)
                 : null;
 
             event(new DraftLineModifiedV3(
@@ -427,8 +429,8 @@ final class DraftPersistenceService
                 description: $line->description !== '' ? $line->description : null,
                 notes: $line->notes,
                 variantId: $line->variant_id,
-                variantName: $variant?->name_suffix,
-                variantSku: $variant?->sku,
+                variantName: $variantSummary?->nameSuffix,
+                variantSku: $variantSummary?->sku,
                 modifiedAt: now()->toIso8601String(),
             ));
         }
@@ -516,15 +518,22 @@ final class DraftPersistenceService
             ->get()
             ->keyBy('id');
 
-        // Batch fetch variants scoped to this document's tenant + company so a
-        // forged variant_id cannot leak a foreign variant's name/sku.
-        $variantIds = collect($linesData)->pluck('variant_id')->filter()->unique()->toArray();
-        $variants = ProductVariant::query()
-            ->where('tenant_id', $document->tenant_id)
-            ->where('company_id', $companyId)
-            ->whereIn('id', $variantIds)
-            ->get()
-            ->keyBy('id');
+        // Fetch variants via the cross-module contract (Rule 6 — no direct
+        // Catalog model access). Unique ids are resolved once and keyed by id.
+        // The contract's findById does not scope by tenant/company — product-id
+        // scoping below ensures a forged variant_id (mismatched product) resolves
+        // to null before being written to the line.
+        $variantIds = collect($linesData)->pluck('variant_id')->filter()->unique()->values()->toArray();
+        /** @var array<string, ProductVariantSummary> $variantSummaries */
+        $variantSummaries = [];
+        foreach ($variantIds as $vid) {
+            if (is_string($vid) && $vid !== '') {
+                $found = $this->variantLookup->findById($vid);
+                if ($found !== null) {
+                    $variantSummaries[$vid] = $found;
+                }
+            }
+        }
 
         // 2. Prepare line data for batch insert
         $currentLineNumber = $document->lines()->count();
@@ -537,10 +546,11 @@ final class DraftPersistenceService
             $service = $services->get($lineData['service_id'] ?? '');
 
             // Resolve the variant only when it belongs to the resolved product
-            // — a variant whose product_id mismatches the line product is
+            // — a variant whose productId mismatches the line product is
             // dropped (treated as no variant).
-            $variant = $variants->get($lineData['variant_id'] ?? '');
-            if ($variant !== null && ($product === null || $variant->product_id !== $product->id)) {
+            $variantId = isset($lineData['variant_id']) && is_string($lineData['variant_id']) ? $lineData['variant_id'] : '';
+            $variant = $variantId !== '' ? ($variantSummaries[$variantId] ?? null) : null;
+            if ($variant !== null && ($product === null || $variant->productId !== $product->id)) {
                 $variant = null;
             }
 
@@ -571,7 +581,7 @@ final class DraftPersistenceService
                 'id' => (string) \Str::uuid(),
                 'document_id' => $document->id,
                 'product_id' => $product?->id,
-                'variant_id' => $variant?->id,
+                'variant_id' => $variant !== null ? $variant->id : null,
                 'service_id' => $service?->id,
                 'line_number' => $currentLineNumber,
                 'description' => $batchDescription,
@@ -596,8 +606,8 @@ final class DraftPersistenceService
                 'description' => $batchDescription,
                 'notes' => $insertData['notes'],
                 'designation_default_snapshot' => $batchSnapshot,
-                'variant_id' => $variant?->id,
-                'variant_name' => $variant?->name_suffix,
+                'variant_id' => $variant !== null ? $variant->id : null,
+                'variant_name' => $variant?->nameSuffix,
                 'variant_sku' => $variant?->sku,
             ];
         }
@@ -666,19 +676,26 @@ final class DraftPersistenceService
     }
 
     /**
-     * Resolve a request-supplied variant id to a ProductVariant that belongs to
-     * the resolved product. Returns null when the id is absent, the product is
+     * Resolve a request-supplied variant id to a ProductVariantSummary that belongs
+     * to the resolved product. Returns null when the id is absent, the product is
      * null, or the variant does not belong to that product (forged/mismatched).
+     *
+     * Uses the cross-module ProductVariantLookup contract — never queries the
+     * Catalog Eloquent model directly (Rule 6).
      */
-    private function resolveVariant(mixed $variantId, ?Product $product): ?ProductVariant
+    private function resolveVariant(mixed $variantId, ?Product $product): ?ProductVariantSummary
     {
         if (! is_string($variantId) || $variantId === '' || $product === null) {
             return null;
         }
 
-        return ProductVariant::query()
-            ->where('id', $variantId)
-            ->where('product_id', $product->id)
-            ->first();
+        $summary = $this->variantLookup->findById($variantId);
+
+        // Product-scoping: reject variants that belong to a different product.
+        if ($summary === null || $summary->productId !== $product->id) {
+            return null;
+        }
+
+        return $summary;
     }
 }

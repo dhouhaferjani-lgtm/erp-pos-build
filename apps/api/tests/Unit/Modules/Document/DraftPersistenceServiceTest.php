@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Modules\Document;
 
+use App\Modules\Catalog\Infrastructure\Adapters\EloquentProductVariantLookup;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Services\CompanyContext;
@@ -81,6 +82,7 @@ class DraftPersistenceServiceTest extends TestCase
         $this->service = new DraftPersistenceService(
             new DocumentNumberingService,
             new DocumentTotalsCalculator(new TaxCalculationService),
+            new EloquentProductVariantLookup,
         );
     }
 
