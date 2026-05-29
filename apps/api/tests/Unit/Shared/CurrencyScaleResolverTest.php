@@ -47,7 +47,7 @@ final class CurrencyScaleResolverTest extends TestCase
     }
 
     #[Test]
-    public function it_defaults_to_2_when_no_company_context_and_no_currency(): void
+    public function it_throws_when_no_company_context_and_no_currency(): void
     {
         $companyContext = new CompanyContext;
 
@@ -56,7 +56,10 @@ final class CurrencyScaleResolverTest extends TestCase
             fn (string $code): ?Country => null,
         );
 
-        $this->assertSame(2, $resolver->getScale());
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/CompanyContext/');
+
+        $resolver->getScale();
     }
 
     #[Test]

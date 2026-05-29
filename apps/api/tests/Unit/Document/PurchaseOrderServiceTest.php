@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Document;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -36,12 +37,16 @@ class PurchaseOrderServiceTest extends TestCase
     {
         parent::setUp();
 
+        $this->tenant = Tenant::factory()->create();
+        $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+
+        // Bind CompanyContext so CurrencyScaleResolver has context
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
+
         $landedCostService = $this->app->make(LandedCostService::class);
         $taxCalculationService = $this->app->make(TaxCalculationService::class);
         $this->service = new PurchaseOrderService($landedCostService, $taxCalculationService);
 
-        $this->tenant = Tenant::factory()->create();
-        $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
         $this->partner = Partner::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,

@@ -71,6 +71,9 @@ class ReceiptReturnServiceTest extends TestCase
         $companyContext = new CompanyContext;
         $companyContext->setCompanyId($this->company->id);
 
+        // Also bind the container's singleton so services resolved via app->make() have context
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
+
         $this->service = new ReceiptReturnService(
             $companyContext,
             $this->app->make(CashDrawerService::class),

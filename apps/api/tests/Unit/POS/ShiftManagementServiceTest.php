@@ -6,6 +6,7 @@ namespace Tests\Unit\POS;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Exceptions\ShiftAlreadyOpenException;
@@ -39,11 +40,15 @@ final class ShiftManagementServiceTest extends TestCase
     {
         parent::setUp();
 
+        $this->tenant = Tenant::factory()->create();
+        $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+
+        // Bind CompanyContext so CurrencyScaleResolver inside CashDrawerService has context
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
+
         $cashDrawerService = $this->app->make(CashDrawerService::class);
         $this->service = new ShiftManagementService($cashDrawerService, $this->mockCurrencyScale(3));
 
-        $this->tenant = Tenant::factory()->create();
-        $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
         $this->location = Location::factory()->create([
             'company_id' => $this->company->id,
         ]);

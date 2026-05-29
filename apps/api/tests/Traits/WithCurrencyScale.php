@@ -18,6 +18,7 @@ trait WithCurrencyScale
     {
         $mock = $this->createMock(CurrencyScaleResolverInterface::class);
         $mock->method('getScale')->willReturn($scale);
+        $mock->method('getScaleSafe')->willReturn($scale);
 
         return $mock;
     }

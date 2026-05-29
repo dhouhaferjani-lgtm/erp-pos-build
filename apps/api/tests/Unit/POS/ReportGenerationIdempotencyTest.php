@@ -6,6 +6,7 @@ namespace Tests\Unit\POS;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\CashCountValidationService;
 use App\Modules\POS\Application\Services\FraudSettingsResolver;
@@ -42,6 +43,14 @@ final class ReportGenerationIdempotencyTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Create tenant and company first so CompanyContext can be bound before service resolution
+        $this->tenant = Tenant::factory()->create();
+        $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+
+        // Bind CompanyContext so CurrencyScaleResolver inside container-resolved services has context
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
+
         $this->service = new ReportGenerationService(
             $this->app->make(ShiftManagementService::class),
             $this->app->make(CashDrawerService::class),
@@ -53,8 +62,7 @@ final class ReportGenerationIdempotencyTest extends TestCase
             $this->app->make(ZReportCountRepository::class),
             $this->app->make(PaymentToleranceQueryService::class),
         );
-        $this->tenant = Tenant::factory()->create();
-        $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+
         $this->location = Location::factory()->create(['company_id' => $this->company->id]);
         $this->cashier = User::factory()->create(['tenant_id' => $this->tenant->id]);
     }

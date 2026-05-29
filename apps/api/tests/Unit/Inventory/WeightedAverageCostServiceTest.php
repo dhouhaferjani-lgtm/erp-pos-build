@@ -7,6 +7,7 @@ namespace Tests\Unit\Inventory;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Application\Services\MarginService;
@@ -36,12 +37,15 @@ class WeightedAverageCostServiceTest extends TestCase
     {
         parent::setUp();
 
-        $marginService = $this->app->make(MarginService::class);
-        $this->service = new WeightedAverageCostService($marginService, $this->mockCurrencyScale());
-
-        // Create test entities
+        // Create test entities first so CompanyContext can be bound before service resolution
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+
+        // Bind CompanyContext so the real CurrencyScaleResolver used inside MarginService has context
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
+
+        $marginService = $this->app->make(MarginService::class);
+        $this->service = new WeightedAverageCostService($marginService, $this->mockCurrencyScale());
 
         // Create location manually (no factory exists yet)
         $this->location = Location::create([
