@@ -35,8 +35,8 @@ final class PaymentFailedNotification extends Notification implements ShouldQueu
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $amount = CurrencyScale::bcformat($this->invoice->total, 2);
         $currency = strtoupper($this->invoice->currency);
+        $amount = CurrencyScale::bcformat($this->invoice->total, CurrencyScale::for($currency));
 
         return (new MailMessage)
             ->subject('Payment Failed - Action Required')
