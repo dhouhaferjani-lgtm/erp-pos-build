@@ -279,7 +279,7 @@ class InventoryTransferServiceTest extends TestCase
             ->first();
 
         $this->assertNotNull($sourceStock);
-        $this->assertEquals('13.00', $sourceStock->quantity);
+        $this->assertEquals('13.0000', $sourceStock->quantity);
         $this->assertTrue($destStock === null || (float) $destStock->quantity === 0.0);
 
         $line = $transfer->lines->first();
@@ -334,7 +334,7 @@ class InventoryTransferServiceTest extends TestCase
             ->where('location_id', $this->warehouse->id)
             ->first();
         $this->assertNotNull($sourceStock);
-        $this->assertEquals('45.00', $sourceStock->quantity);
+        $this->assertEquals('45.0000', $sourceStock->quantity);
     }
 
     public function test_complete_increments_destination_and_records_both_legs(): void
@@ -364,8 +364,8 @@ class InventoryTransferServiceTest extends TestCase
 
         $this->assertNotNull($sourceStock);
         $this->assertNotNull($destStock);
-        $this->assertEquals('13.00', $sourceStock->quantity);
-        $this->assertEquals('7.00', $destStock->quantity);
+        $this->assertEquals('13.0000', $sourceStock->quantity);
+        $this->assertEquals('7.0000', $destStock->quantity);
 
         $this->assertEquals(1, StockMovement::query()
             ->where('reference_type', StockTransfer::class)
@@ -434,7 +434,7 @@ class InventoryTransferServiceTest extends TestCase
             ->where('location_id', $this->warehouse->id)
             ->first();
         $this->assertNotNull($sourceAfterInit);
-        $this->assertEquals('15.00', $sourceAfterInit->quantity);
+        $this->assertEquals('15.0000', $sourceAfterInit->quantity);
 
         $cancelled = $this->service()->cancel($transfer->id, $this->user->id, 'shipment lost');
 
@@ -445,7 +445,7 @@ class InventoryTransferServiceTest extends TestCase
             ->where('location_id', $this->warehouse->id)
             ->first();
         $this->assertNotNull($sourceAfterCancel);
-        $this->assertEquals('20.00', $sourceAfterCancel->quantity);
+        $this->assertEquals('20.0000', $sourceAfterCancel->quantity);
 
         Event::assertDispatched(StockTransferCancelled::class);
     }
