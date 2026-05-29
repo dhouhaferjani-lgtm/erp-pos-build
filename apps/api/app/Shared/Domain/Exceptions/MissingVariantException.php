@@ -19,4 +19,9 @@ final class MissingVariantException extends \DomainException
     {
         return new self("Variant '{$variantId}' does not exist or has been deleted.");
     }
+
+    public static function forProduct(string $productId): self
+    {
+        return new self("Product '{$productId}' has active variants; batches must be variant-scoped — a variant_id is required.");
+    }
 }

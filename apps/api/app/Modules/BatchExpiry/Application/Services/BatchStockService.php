@@ -49,7 +49,7 @@ final class BatchStockService
         if ($variantId === null) {
             $activeVariants = $this->variantLookup->listForProduct($productId, true);
             if ($activeVariants->isNotEmpty()) {
-                throw MissingVariantException::withId($productId);
+                throw MissingVariantException::forProduct($productId);
             }
         }
 

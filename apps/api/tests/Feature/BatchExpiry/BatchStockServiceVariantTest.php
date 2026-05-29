@@ -119,6 +119,7 @@ class BatchStockServiceVariantTest extends TestCase
         ]);
 
         $this->expectException(MissingVariantException::class);
+        $this->expectExceptionMessage('variant_id is required');
 
         $this->service->findOrCreateBatch(
             companyId: $this->company->id,
