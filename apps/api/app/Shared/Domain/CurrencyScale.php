@@ -78,6 +78,10 @@ final class CurrencyScale extends ValueObject
      * Replaces `number_format((float) $value, $scale, '.', '')` which suffers from
      * IEEE 754 floating-point precision loss (e.g. 5.000 → 4.9999).
      *
+     * @deprecated Passing null is deprecated and will be removed in a future version.
+     *             Use bcformatOrNull() to explicitly handle nullable values, or
+     *             bcformatStrict() when the value is guaranteed non-null and numeric.
+     *
      * @param  string|int|float|null  $value  The numeric value (string preferred to avoid float)
      * @param  int  $scale  Number of decimal places
      * @return numeric-string Formatted decimal string
@@ -85,6 +89,11 @@ final class CurrencyScale extends ValueObject
     public static function bcformat(string|int|float|null $value, int $scale): string
     {
         if ($value === null) {
+            trigger_error(
+                'CurrencyScale::bcformat() called with null. Null will zero-fill silently — '
+                .'use bcformatOrNull() to preserve null or bcformatStrict() for guaranteed-non-null paths.',
+                E_USER_DEPRECATED,
+            );
             $str = '0';
         } elseif (is_float($value)) {
             // Avoid scientific notation from (string) cast (e.g., 1e-5 → "1.0E-5")
@@ -101,6 +110,55 @@ final class CurrencyScale extends ValueObject
 
         /** @phpstan-ignore argument.type */
         return bcadd($str, '0', $scale);
+    }
+
+    /**
+     * Format a numeric string to a fixed decimal scale using bcmath.
+     *
+     * Strict variant: rejects any input that is not a well-formed numeric string.
+     * Does NOT accept null, empty strings, or whitespace-only strings.
+     * Does NOT accept float (use string representation from the source instead).
+     *
+     * @param  string  $value  A well-formed numeric string (e.g. "5.000", "-3.14", "42")
+     * @param  int  $scale  Number of decimal places
+     * @return numeric-string Formatted decimal string
+     *
+     * @throws \InvalidArgumentException If $value is not a well-formed numeric string
+     */
+    public static function bcformatStrict(string $value, int $scale): string
+    {
+        if (! is_numeric(trim($value))) {
+            throw new \InvalidArgumentException(
+                sprintf(
+                    'CurrencyScale::bcformatStrict() expects a numeric string; "%s" given.',
+                    $value,
+                ),
+            );
+        }
+
+        /** @phpstan-ignore argument.type */
+        return bcadd($value, '0', $scale);
+    }
+
+    /**
+     * Format a nullable numeric string to a fixed decimal scale using bcmath.
+     *
+     * Preserves null — does NOT zero-fill. For non-null input, delegates to
+     * bcformatStrict() and will throw if the string is not numeric.
+     *
+     * @param  string|null  $value  A well-formed numeric string or null
+     * @param  int  $scale  Number of decimal places
+     * @return numeric-string|null Formatted decimal string, or null if input was null
+     *
+     * @throws \InvalidArgumentException If $value is non-null and not a well-formed numeric string
+     */
+    public static function bcformatOrNull(?string $value, int $scale): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return self::bcformatStrict($value, $scale);
     }
 
     public function equals(ValueObject $other): bool
