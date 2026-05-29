@@ -17,6 +17,6 @@ final class VariantRequiredException extends \DomainException
 {
     public static function forProduct(string $productId): self
     {
-        return new self("Product '{$productId}' has no variants. Create a variant first.");
+        return new self("Product '{$productId}' has active variants; a variant_id is required for this operation.");
     }
 }

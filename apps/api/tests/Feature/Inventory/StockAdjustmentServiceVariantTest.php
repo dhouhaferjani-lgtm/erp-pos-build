@@ -295,4 +295,107 @@ class StockAdjustmentServiceVariantTest extends TestCase
         $this->assertNotNull($level);
         $this->assertEquals('12.00', $level->quantity);
     }
+
+    public function test_transfer_variant_moves_variant_scoped_stock(): void
+    {
+        $variant = $this->makeVariant();
+
+        $toLocation = Location::create([
+            'company_id' => $this->company->id,
+            'code' => 'WH-V2',
+            'name' => 'Variant Warehouse 2',
+            'type' => 'warehouse',
+            'is_active' => true,
+            'is_default' => false,
+        ]);
+
+        // Seed variant-scoped stock at the from-location.
+        $this->service->receive(
+            productId: $this->product->id,
+            locationId: $this->warehouse->id,
+            quantity: '10.00',
+            reference: 'PO-TRANSFER-SEED',
+            userId: $this->userId,
+            expectedCompanyId: $this->company->id,
+            variantId: $variant->id,
+        );
+
+        $this->service->transfer(
+            productId: $this->product->id,
+            fromLocationId: $this->warehouse->id,
+            toLocationId: $toLocation->id,
+            quantity: '3.00',
+            reference: 'TRF-001',
+            userId: $this->userId,
+            expectedCompanyId: $this->company->id,
+            variantId: $variant->id,
+        );
+
+        // Variant-scoped from-location decreased.
+        $fromLevel = StockLevel::query()
+            ->where('product_id', $this->product->id)
+            ->where('variant_id', $variant->id)
+            ->where('location_id', $this->warehouse->id)
+            ->first();
+        $this->assertNotNull($fromLevel);
+        $this->assertEquals('7.00', $fromLevel->quantity);
+
+        // Variant-scoped to-location increased.
+        $toLevel = StockLevel::query()
+            ->where('product_id', $this->product->id)
+            ->where('variant_id', $variant->id)
+            ->where('location_id', $toLocation->id)
+            ->first();
+        $this->assertNotNull($toLevel);
+        $this->assertEquals('3.00', $toLevel->quantity);
+
+        // No product-level (variant_id NULL) row was created.
+        $productLevelCount = StockLevel::query()
+            ->where('product_id', $this->product->id)
+            ->whereNull('variant_id')
+            ->count();
+        $this->assertSame(0, $productLevelCount);
+    }
+
+    public function test_reserve_variant_scopes_to_variant_row(): void
+    {
+        $variant = $this->makeVariant();
+
+        // Seed variant-scoped stock.
+        $this->service->receive(
+            productId: $this->product->id,
+            locationId: $this->warehouse->id,
+            quantity: '8.00',
+            reference: 'PO-RESERVE-SEED',
+            userId: $this->userId,
+            expectedCompanyId: $this->company->id,
+            variantId: $variant->id,
+        );
+
+        $this->service->reserve(
+            productId: $this->product->id,
+            locationId: $this->warehouse->id,
+            quantity: '2.00',
+            reference: 'ORD-001',
+            expectedCompanyId: $this->company->id,
+            variantId: $variant->id,
+        );
+
+        // The variant-scoped row's reserved amount increased.
+        $variantLevel = StockLevel::query()
+            ->where('product_id', $this->product->id)
+            ->where('variant_id', $variant->id)
+            ->where('location_id', $this->warehouse->id)
+            ->first();
+        $this->assertNotNull($variantLevel);
+        $this->assertEquals('2.00', $variantLevel->reserved);
+
+        // No product-level (variant_id NULL) row was touched.
+        $productLevel = StockLevel::query()
+            ->where('product_id', $this->product->id)
+            ->whereNull('variant_id')
+            ->where('location_id', $this->warehouse->id)
+            ->first();
+        $this->assertNull($productLevel);
+    }
 }
