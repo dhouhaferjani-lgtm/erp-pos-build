@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Application\Services;
 
-use App\Modules\BatchExpiry\Application\Services\BatchStockService;
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
 use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\Modifier;
@@ -68,7 +69,6 @@ final class ReceiptCreationService
         private readonly CompanyContext $companyContext,
         private readonly ReceiptHashService $receiptHashService,
         private readonly FEFOInventoryService $fefoService,
-        private readonly BatchStockService $batchStockService,
         private readonly DiscountCalculationService $discountCalculationService,
         private readonly DiscountOrchestratorService $discountOrchestrator,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
@@ -1290,9 +1290,21 @@ final class ReceiptCreationService
     /**
      * Allocate batches using FEFO for a POS receipt line.
      *
-     * Creates ReceiptLineBatchAllocation records and deducts batch-level stock.
-     * If FEFO cannot fully fulfill, logs a warning but does not block the sale
-     * (aggregate stock check already passed).
+     * Atomically consumes batch-level stock (FEFO, row-locked via
+     * {@see FEFOInventoryService::consumeBatchesAtomically()}) and snapshots each
+     * consumed batch into a ReceiptLineBatchAllocation row for traceability.
+     *
+     * STRICT FULFILLMENT (§10.3): if batch stock cannot fully cover the line,
+     * InsufficientBatchStockException bubbles out of this method and aborts the
+     * surrounding receipt transaction BEFORE commit — the sale is rejected
+     * rather than committed with a silent batch shortfall. This replaces the old
+     * "log a warning and proceed" path, which let a batch-tracked sale commit
+     * even though no batch could be drawn down (a real concurrency hole when two
+     * cashiers received identical read-only FEFO suggestions).
+     *
+     * @param  numeric-string  $quantity  Line quantity to consume (decimal string)
+     *
+     * @throws InsufficientBatchStockException
      */
     private function allocateBatches(
         string $tenantId,
@@ -1303,45 +1315,27 @@ final class ReceiptCreationService
         string $receiptLineId,
         string $movementId,
     ): void {
-        $result = $this->fefoService->suggestBatchesForSale(
-            $productId,
-            $locationId,
-            (float) $quantity,
+        $result = $this->fefoService->consumeBatchesAtomically(
+            tenantId: $tenantId,
+            productId: $productId,
+            locationId: $locationId,
+            quantity: $quantity,
+            movementId: $movementId,
+            strictFulfillment: true,
         );
 
-        if ($result->hasShortfall()) {
-            Log::warning('POS batch allocation shortfall - global stock passed but batch stock insufficient', [
-                'product_id' => $productId,
-                'location_id' => $locationId,
-                'requested' => $quantity,
-                'fulfilled' => $result->getSuggestedQuantity(),
-                'shortfall' => $result->shortfall,
-                'receipt_id' => $receiptId,
-            ]);
-        }
+        foreach ($result->consumed as $consumedBatch) {
+            $batch = Batch::find($consumedBatch->batchId);
 
-        foreach ($result->suggestions as $suggestion) {
-            /** @var numeric-string $batchQty */
-            $batchQty = (string) $suggestion->quantity;
-
-            // Create allocation record (snapshot batch info for traceability)
+            // Create allocation record (snapshot batch info for traceability).
             ReceiptLineBatchAllocation::create([
                 'receipt_id' => $receiptId,
                 'receipt_line_id' => $receiptLineId,
-                'batch_id' => $suggestion->batch->id,
-                'quantity' => $batchQty,
-                'batch_number' => $suggestion->batch->batch_number,
-                'expiry_date' => $suggestion->batch->expiry_date,
+                'batch_id' => $consumedBatch->batchId,
+                'quantity' => $consumedBatch->quantityConsumed,
+                'batch_number' => $batch?->batch_number,
+                'expiry_date' => $consumedBatch->expiryDate,
             ]);
-
-            // Deduct batch-level stock
-            $this->batchStockService->issueBatchStock(
-                tenantId: $tenantId,
-                batchId: (int) $suggestion->batch->id,
-                locationId: $locationId,
-                quantity: $batchQty,
-                movementId: $movementId,
-            );
         }
     }
 }

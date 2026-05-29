@@ -7,6 +7,7 @@ namespace App\Modules\BatchExpiry\Application\Services;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchMovement;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
+use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
 use App\Modules\BatchExpiry\Domain\Repositories\BatchRepositoryInterface;
 use App\Shared\Contracts\ProductVariantLookup;
 use App\Shared\Domain\Exceptions\MissingVariantException;
@@ -112,14 +113,25 @@ final class BatchStockService
     }
 
     /**
-     * Issue stock from a batch at a location.
+     * Issue stock from a SPECIFIC batch at a location (strict fulfillment).
+     *
+     * This is the batch-targeted issue path: the caller already knows which batch
+     * to draw down — a write-off targeting one (possibly expired/recalled) batch,
+     * or a delivery-note line with a pre-assigned batch_id. It is NOT the FEFO
+     * product-level consume; that is {@see FEFOInventoryService::consumeBatchesAtomically()},
+     * which POS sales use and which deliberately excludes expired/recalled batches.
+     *
+     * Atomic + strict: the batch_stock row is locked FOR UPDATE inside a
+     * transaction, and an insufficient balance throws InsufficientBatchStockException
+     * (carrying the shortfall) — rolling back the whole pass. This is the strict
+     * single-batch analogue of the atomic FEFO consume (Task 16b).
      *
      * Creates a BatchMovement record (negative qty) and decrements BatchStock.
      * Does NOT touch aggregate stock levels — that's handled by WAC service.
      *
      * @param  numeric-string  $quantity  Positive quantity to issue (will be negated internally)
      *
-     * @throws \DomainException If insufficient batch stock
+     * @throws InsufficientBatchStockException If the batch has insufficient stock
      */
     public function issueBatchStock(
         string $tenantId,
@@ -129,16 +141,20 @@ final class BatchStockService
         ?string $movementId = null,
     ): void {
         DB::transaction(function () use ($tenantId, $batchId, $locationId, $quantity, $movementId): void {
-            // Lock batch stock for update
+            // Lock batch stock for update — strict, atomic single-batch issue.
             $batchStock = BatchStock::where('batch_id', $batchId)
                 ->where('location_id', $locationId)
                 ->lockForUpdate()
                 ->first();
 
-            if ($batchStock === null || bccomp((string) $batchStock->available_quantity, $quantity, 4) < 0) {
-                $available = $batchStock !== null ? (string) $batchStock->available_quantity : '0.0000';
-                throw new \DomainException(
-                    "Insufficient batch stock. Batch ID: {$batchId}, Available: {$available}, Requested: {$quantity}"
+            $available = $batchStock !== null ? (string) $batchStock->available_quantity : '0.0000';
+
+            if (bccomp($available, $quantity, 4) < 0) {
+                /** @var numeric-string $shortfall */
+                $shortfall = bcsub($quantity, $available, 4);
+                throw new InsufficientBatchStockException(
+                    shortfall: $shortfall,
+                    message: "Insufficient batch stock. Batch ID: {$batchId}, Available: {$available}, Requested: {$quantity}",
                 );
             }
 
