@@ -88,7 +88,7 @@ final class InventoryEventsTest extends TestCase
             return $event->productId === $this->product->id
                 && $event->locationId === $this->location->id
                 && $event->movementType === 'purchase'
-                && $event->quantity === '10.00'
+                && $event->quantity === '10.0000'
                 && $event->reference === 'PO-TEST-001';
         });
     }
@@ -121,7 +121,7 @@ final class InventoryEventsTest extends TestCase
             return $event->productId === $this->product->id
                 && $event->locationId === $this->location->id
                 && $event->movementType === 'sale'
-                && $event->quantity === '-5.00'
+                && $event->quantity === '-5.0000'
                 && $event->reference === 'DN-TEST-001';
         });
     }
@@ -147,7 +147,7 @@ final class InventoryEventsTest extends TestCase
             return $event->productId === $this->product->id
                 && $event->locationId === $this->location->id
                 && $event->movementType === 'return'
-                && $event->quantity === '3.00';
+                && $event->quantity === '3.0000';
         });
     }
 

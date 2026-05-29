@@ -110,7 +110,7 @@ class StockMovementTest extends TestCase
 
         $response->assertStatus(201);
         $response->assertJsonPath('data.movement_type', 'receipt');
-        $response->assertJsonPath('data.quantity', '25.00');
+        $response->assertJsonPath('data.quantity', '25.0000');
 
         $this->assertDatabaseHas('stock_levels', [
             'product_id' => $this->product->id,
@@ -141,7 +141,7 @@ class StockMovementTest extends TestCase
 
         $response->assertStatus(201);
         $response->assertJsonPath('data.movement_type', 'issue');
-        $response->assertJsonPath('data.quantity', '15.00');
+        $response->assertJsonPath('data.quantity', '15.0000');
 
         $this->assertDatabaseHas('stock_levels', [
             'product_id' => $this->product->id,
