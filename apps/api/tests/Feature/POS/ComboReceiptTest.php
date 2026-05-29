@@ -355,17 +355,17 @@ final class ComboReceiptTest extends TestCase
         $beansStock = StockLevel::where('product_id', $beans->id)
             ->where('location_id', $this->location->id)
             ->first();
-        $this->assertEquals('96.00', $beansStock->quantity); // 100 - 4
+        $this->assertEquals('96.0000', $beansStock->quantity); // 100 - 4
 
         $milkStock = StockLevel::where('product_id', $milk->id)
             ->where('location_id', $this->location->id)
             ->first();
-        $this->assertEquals('48.00', $milkStock->quantity); // 50 - 2
+        $this->assertEquals('48.0000', $milkStock->quantity); // 50 - 2
 
         $breadStock = StockLevel::where('product_id', $bread->id)
             ->where('location_id', $this->location->id)
             ->first();
-        $this->assertEquals('18.00', $breadStock->quantity); // 20 - 2
+        $this->assertEquals('18.0000', $breadStock->quantity); // 20 - 2
     }
 
     public function test_standard_pricing_mode_composite_item_does_not_store_combo_components(): void

@@ -795,7 +795,7 @@ final class ReceiptReturnFlowTest extends TestCase
             ->where('location_id', $this->location->id)
             ->first();
         $this->assertNotNull($stockLevel, 'Stock level should exist');
-        $expectedQuantity = bcadd($initialQuantity, '2', 2);
+        $expectedQuantity = bcadd($initialQuantity, '2', 4);
         $this->assertEquals($expectedQuantity, $stockLevel->quantity);
 
         // Assert: StockMovement created for the return

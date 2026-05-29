@@ -120,7 +120,7 @@ class ReturnNoteServiceTest extends TestCase
         $this->assertNotNull($movement);
         $this->assertEquals(MovementType::Receipt, $movement->movement_type);
         $this->assertEquals($this->product->id, $movement->product_id);
-        $this->assertEquals('10.00', $movement->quantity); // Returned quantity
+        $this->assertEquals('10.0000', $movement->quantity); // Returned quantity
     }
 
     public function test_uses_fiscal_hash_chain(): void

@@ -425,7 +425,7 @@ final class ExchangeServiceTest extends TestCase
         ]);
 
         $movementCountBefore = StockMovement::count();
-        $stockBefore = '10.00';
+        $stockBefore = '10.0000';
 
         // Return the same SKU qty 1, then sell the same SKU qty 1
         $result = $this->callProcessExchangeWithProduct(
