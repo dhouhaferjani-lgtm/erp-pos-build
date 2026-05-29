@@ -17,12 +17,20 @@ class FEFOInventoryService
     /**
      * Get batches to fulfill a quantity, ordered by expiry (soonest first).
      * Implements FEFO (First-Expired-First-Out) logic.
+     *
+     * @param  ?string  $variantId  When set, only batches belonging to that variant
+     *                              are considered (product_batches.variant_id = $variantId).
+     *                              When null, only product-level batches are considered
+     *                              (product_batches.variant_id IS NULL).
+     *                              This is a READ-ONLY suggestion; atomic consume is handled
+     *                              separately (Task 16b).
      */
     public function suggestBatchesForSale(
         string $productId,
         string $locationId,
         float $quantity,
-        bool $includeExpired = false
+        bool $includeExpired = false,
+        ?string $variantId = null,
     ): BatchSuggestionResultDTO {
         $query = BatchStock::query()
             ->join('product_batches', 'inventory_batch_stock.batch_id', '=', 'product_batches.id')
@@ -32,6 +40,13 @@ class FEFOInventoryService
             ->where('product_batches.is_active', true)
             ->where('product_batches.is_recalled', false)
             ->orderBy('product_batches.expiry_date', 'asc');  // FEFO: earliest expiry first
+
+        // Variant predicate: null → product-level batches only; set → variant batches only.
+        if ($variantId === null) {
+            $query->whereNull('product_batches.variant_id');
+        } else {
+            $query->where('product_batches.variant_id', $variantId);
+        }
 
         if (! $includeExpired) {
             $query->where('product_batches.expiry_date', '>=', now()->startOfDay());

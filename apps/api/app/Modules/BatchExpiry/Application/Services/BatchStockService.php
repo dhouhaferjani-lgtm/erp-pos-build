@@ -8,6 +8,8 @@ use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchMovement;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\BatchExpiry\Domain\Repositories\BatchRepositoryInterface;
+use App\Shared\Contracts\ProductVariantLookup;
+use App\Shared\Domain\Exceptions\MissingVariantException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -21,10 +23,18 @@ final class BatchStockService
 {
     public function __construct(
         private readonly BatchRepositoryInterface $batchRepository,
+        private readonly ProductVariantLookup $variantLookup,
     ) {}
 
     /**
      * Find an existing batch or create a new one (for goods receipt).
+     *
+     * @param  ?string  $variantId  When set, the batch is scoped to this variant.
+     *                              When null and the product has active variants,
+     *                              throws MissingVariantException — a variant-bearing
+     *                              product must never receive a product-level batch.
+     *
+     * @throws MissingVariantException when variantId is null and the product has active variants.
      */
     public function findOrCreateBatch(
         string $companyId,
@@ -33,14 +43,30 @@ final class BatchStockService
         string $batchNumber,
         string $expiryDate,
         ?string $manufacturingDate = null,
+        ?string $variantId = null,
     ): Batch {
-        $existing = $this->batchRepository->findByBatchNumber($companyId, $productId, $batchNumber);
+        // Guard: reject product-level batch for variant-bearing products.
+        if ($variantId === null) {
+            $activeVariants = $this->variantLookup->listForProduct($productId, true);
+            if ($activeVariants->isNotEmpty()) {
+                throw MissingVariantException::withId($productId);
+            }
+        }
+
+        // Use the variant-aware find so the same batch_number can coexist across
+        // the product-level and per-variant partial index partitions (Task 7).
+        $existing = $this->batchRepository->findByBatchNumberAndVariant(
+            $companyId,
+            $productId,
+            $batchNumber,
+            $variantId,
+        );
 
         if ($existing !== null) {
             return $existing;
         }
 
-        return $this->batchRepository->create([
+        $data = [
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
             'product_id' => $productId,
@@ -50,7 +76,13 @@ final class BatchStockService
             'is_active' => true,
             'is_expired' => false,
             'is_recalled' => false,
-        ]);
+        ];
+
+        if ($variantId !== null) {
+            $data['variant_id'] = $variantId;
+        }
+
+        return $this->batchRepository->create($data);
     }
 
     /**
