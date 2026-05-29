@@ -130,3 +130,27 @@ export async function convertUnits(
     to_unit_id: toUnitId,
   })
 }
+
+/**
+ * Rounding method values used by the precision-settings endpoint.
+ * Note: the backend for PUT uom/units/{id} precision payload uses PascalCase
+ * identifiers ('HalfUp' | 'Floor' | 'Ceil') distinct from the legacy snake_case
+ * used by the full unit create/update flow.
+ */
+export type RoundingMethod = 'HalfUp' | 'Floor' | 'Ceil'
+
+export interface UnitPrecisionPayload {
+  decimal_places: number
+  rounding_method: RoundingMethod
+}
+
+/**
+ * Update only the precision fields (decimal_places + rounding_method) of a unit.
+ * Distinct from updateUnit which updates all mutable fields.
+ */
+export async function updateUnitPrecision(
+  id: string,
+  payload: UnitPrecisionPayload
+): Promise<Unit> {
+  return apiPut<Unit>(`/uom/units/${id}`, payload)
+}

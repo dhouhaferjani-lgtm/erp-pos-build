@@ -52,5 +52,26 @@
   "swapUnits": "Échanger les unités",
   "result": "Résultat",
   "convert": "Convertir",
-  "conversionFactorDisplay": "Facteur de conversion"
+  "conversionFactorDisplay": "Facteur de conversion",
+
+  "precisionSettings": {
+    "title": "Paramètres de précision des unités",
+    "description": "Configurez le nombre de décimales et la méthode d'arrondi pour chaque unité de mesure.",
+    "columns": {
+      "code": "Code",
+      "name": "Nom",
+      "decimalPlaces": "Décimales",
+      "roundingMethod": "Méthode d'arrondi"
+    },
+    "roundingOptions": {
+      "HalfUp": "Arrondi au plus proche",
+      "Floor": "Arrondi inférieur",
+      "Ceil": "Arrondi supérieur"
+    },
+    "save": "Enregistrer",
+    "saving": "Enregistrement...",
+    "saved": "Paramètres de précision enregistrés.",
+    "saveError": "Échec de l'enregistrement des paramètres de précision.",
+    "narrowingWarning": "Cette modification peut rendre inexactes certaines valeurs de quantité existantes. Consultez le rapport d'impact après l'enregistrement."
+  }
 }
