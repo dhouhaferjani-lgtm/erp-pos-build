@@ -117,6 +117,9 @@ class Payment extends Model
             'origin' => PaymentOrigin::class,
             'is_reconciled' => 'boolean',
             'reconciled_at' => 'datetime',
+            'exchange_rate_at_payment' => 'decimal:6',
+            'fx_gain_loss_amount' => 'decimal:4',
+            'discount_taken' => 'decimal:4',
         ];
     }
 

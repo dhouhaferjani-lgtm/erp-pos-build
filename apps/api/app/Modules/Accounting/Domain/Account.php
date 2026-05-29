@@ -89,6 +89,7 @@ class Account extends Model
             'system_purpose' => SystemAccountPurpose::class,
             'is_active' => 'boolean',
             'is_system' => 'boolean',
+            'balance' => 'decimal:3',
         ];
     }
 
@@ -98,7 +99,7 @@ class Account extends Model
     protected $attributes = [
         'is_active' => true,
         'is_system' => false,
-        'balance' => '0.00',
+        'balance' => '0.000',
     ];
 
     /**

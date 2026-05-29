@@ -229,7 +229,7 @@ class CreateProductTest extends TestCase
         $response->assertCreated()
             ->assertJsonPath('data.name', 'Brake Pad Set')
             ->assertJsonPath('data.sku', 'BRK-PAD-001')
-            ->assertJsonPath('data.sale_price', '49.99')
+            ->assertJsonPath('data.sale_price', '49.990')
             ->assertJsonStructure([
                 'data' => [
                     'id',

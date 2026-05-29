@@ -35,7 +35,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property array<string, mixed> $preferences User preferences
  * @property string|null $pos_pin Bcrypt-hashed 4-6 digit PIN for POS operator auth
  * @property bool $can_discount Whether cashier can apply discounts
- * @property float|null $max_discount_percent Maximum discount percentage (NULL = no individual limit)
+ * @property string|null $max_discount_percent Maximum discount percentage (NULL = no individual limit)
  * @property Carbon|null $email_verified_at
  * @property Carbon|null $last_login_at
  * @property string|null $last_login_ip
@@ -111,7 +111,7 @@ class User extends Authenticatable
             'status' => UserStatus::class,
             'preferences' => 'array',
             'can_discount' => 'boolean',
-            'max_discount_percent' => 'float',
+            'max_discount_percent' => 'decimal:2',
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
             'password' => 'hashed',

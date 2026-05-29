@@ -128,6 +128,13 @@ class Product extends Model implements SellableContract
             'cross_references' => 'array',
             'cost_updated_at' => 'datetime',
             'enrichment_status' => EnrichmentStatus::class,
+            'sale_price' => 'decimal:3',
+            'purchase_price' => 'decimal:3',
+            'cost_price' => 'decimal:3',
+            'last_purchase_cost' => 'decimal:3',
+            'target_margin_override' => 'decimal:3',
+            'minimum_margin_override' => 'decimal:3',
+            'tax_rate' => 'decimal:2',
         ];
     }
 
