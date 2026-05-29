@@ -93,8 +93,8 @@ final class ZReportSyncController extends Controller
             'previous_hash' => ['required', 'string'],
             'hash_sequence' => ['required', 'integer', 'min:1'],
             'report_data' => ['required', 'array'],
-            'opening_cash' => ['required', 'numeric'],
-            'expected_cash' => ['required', 'numeric'],
+            'opening_cash' => ['required', 'numeric', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'expected_cash' => ['required', 'numeric', 'regex:/^\d+(\.\d{1,4})?$/'],
             'receipt_snapshots' => ['present', 'array'],
             'grand_totals' => ['present', 'array'],
 

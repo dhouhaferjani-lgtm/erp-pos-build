@@ -122,7 +122,7 @@ class PaymentController extends Controller
                 'uuid',
                 ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
             ],
-            'amount' => ['required', 'numeric', 'min:0.01'],
+            'amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
             'currency' => ['nullable', 'string', 'size:3'],
             'payment_date' => ['required', 'date'],
             'reference' => ['nullable', 'string', 'max:100'],
@@ -133,10 +133,14 @@ class PaymentController extends Controller
                 'uuid',
                 ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
             ],
-            'allocations.*.amount' => ['required_with:allocations', 'numeric', 'min:0.01'],
+            'allocations.*.amount' => ['required_with:allocations', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
             'withholding_enabled' => ['nullable', 'boolean'],
-            'withholding_rate' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'withholding_rate' => ['nullable', 'numeric', 'min:0', 'max:1', 'regex:/^\d+(\.\d{1,2})?$/'],
             'withholding_override_reason' => ['nullable', 'string', 'max:500'],
+        ], [
+            'amount.regex' => 'Amount must have at most 3 decimal places.',
+            'allocations.*.amount.regex' => 'Allocation amount must have at most 3 decimal places.',
+            'withholding_rate.regex' => 'Withholding rate must have at most 2 decimal places.',
         ]);
 
         /** @var numeric-string $paymentAmount */
@@ -472,7 +476,7 @@ class PaymentController extends Controller
                 'uuid',
                 ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
             ],
-            'payments.*.amount' => ['required', 'numeric', 'min:0.01'],
+            'payments.*.amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
             'payments.*.reference' => ['nullable', 'string', 'max:100'],
 
             // Excess allocation options
@@ -483,7 +487,10 @@ class PaymentController extends Controller
                 'uuid',
                 ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
             ],
-            'excess_allocations.*.amount' => ['required_with:excess_allocations', 'numeric', 'min:0.01'],
+            'excess_allocations.*.amount' => ['required_with:excess_allocations', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
+        ], [
+            'payments.*.amount.regex' => 'Payment amount must have at most 3 decimal places.',
+            'excess_allocations.*.amount.regex' => 'Excess allocation amount must have at most 3 decimal places.',
         ]);
 
         // Get the primary document

@@ -47,9 +47,9 @@ class CreateProductRequest extends FormRequest
             'type' => ['nullable', new Enum(ProductType::class)],
             'is_physical' => ['sometimes', 'boolean'],
             'description' => ['nullable', 'string', 'max:5000'],
-            'sale_price' => ['nullable', 'numeric', 'min:0'],
-            'purchase_price' => ['nullable', 'numeric', 'min:0'],
-            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'sale_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'purchase_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             // api.unmapped.012 (api.catalog): tax_configurations is a
             // country-scoped global reference table (no tenant_id /
             // company_id columns; partitioned by country_code). Cross-tenant
@@ -132,6 +132,18 @@ class CreateProductRequest extends FormRequest
             'automotive_metadata.criteria.*.value' => ['required', 'string', 'max:500'],
             'automotive_metadata.criteria.*.unit' => ['nullable', 'string', 'max:20'],
             'automotive_metadata.criteria.*.sort_order' => ['nullable', 'integer', 'min:0'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'sale_price.regex' => 'Sale price must have at most 2 decimal places.',
+            'purchase_price.regex' => 'Purchase price must have at most 2 decimal places.',
+            'tax_rate.regex' => 'Tax rate must have at most 2 decimal places.',
         ];
     }
 }

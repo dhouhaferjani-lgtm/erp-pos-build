@@ -88,8 +88,10 @@ class BankReconciliationController extends Controller
                 ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
             ],
             'statement_date' => ['required', 'date'],
-            'statement_balance' => ['required', 'numeric'],
+            'statement_balance' => ['required', 'numeric', 'regex:/^-?\d+(\.\d{1,3})?$/'],
             'notes' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'statement_balance.regex' => 'Statement balance must have at most 3 decimal places.',
         ]);
 
         $reconciliation = $this->reconciliationService->startReconciliation(

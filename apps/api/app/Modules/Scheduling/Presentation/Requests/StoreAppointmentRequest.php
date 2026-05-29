@@ -21,6 +21,16 @@ final class StoreAppointmentRequest extends FormRequest
     }
 
     /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'planned_services.*.estimated_price.regex' => 'Each estimated price must have at most 3 decimal places.',
+        ];
+    }
+
+    /**
      * @return array<string, array<int, mixed>>
      */
     public function rules(): array
@@ -46,7 +56,7 @@ final class StoreAppointmentRequest extends FormRequest
             'planned_services.*.service_ref_id' => ['required', 'uuid'],
             'planned_services.*.display_name' => ['required', 'string', 'max:200'],
             'planned_services.*.estimated_duration_minutes' => ['required', 'integer', 'min:1'],
-            'planned_services.*.estimated_price' => ['nullable', 'numeric'],
+            'planned_services.*.estimated_price' => ['nullable', 'numeric', 'regex:/^\d+(\.\d{1,3})?$/'],
             'planned_services.*.display_order' => ['nullable', 'integer', 'min:0'],
             'services_summary' => ['nullable', 'string', 'max:2000'],
             'customer_notes' => ['nullable', 'string', 'max:2000'],

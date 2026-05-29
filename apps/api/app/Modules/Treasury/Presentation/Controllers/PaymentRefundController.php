@@ -91,8 +91,10 @@ class PaymentRefundController extends Controller
     public function partialRefund(Request $request, string $id): JsonResponse
     {
         $request->validate([
-            'amount' => 'required|numeric|min:0.01',
+            'amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
             'reason' => 'required|string|max:500',
+        ], [
+            'amount.regex' => 'Amount must have at most 3 decimal places.',
         ]);
 
         $payment = $this->findPaymentOrFail($id);

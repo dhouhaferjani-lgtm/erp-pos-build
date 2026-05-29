@@ -28,8 +28,8 @@ class CreateWithholdingRuleRequest extends FormRequest
             'description' => ['nullable', 'string', 'max:1000'],
             'transaction_type' => ['nullable', Rule::enum(TransactionType::class)],
             'partner_tax_status' => ['nullable', Rule::enum(PartnerTaxStatus::class)],
-            'min_amount' => ['nullable', 'numeric', 'min:0'],
-            'rate' => ['required', 'numeric', 'min:0', 'max:1'],
+            'min_amount' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'rate' => ['required', 'numeric', 'min:0', 'max:1', 'regex:/^\d+(\.\d{1,4})?$/'],
             'effective_from' => ['required', 'date'],
             'effective_to' => ['nullable', 'date', 'after:effective_from'],
             'is_company_specific' => ['boolean'],
@@ -41,6 +41,8 @@ class CreateWithholdingRuleRequest extends FormRequest
     {
         return [
             'rate.max' => 'Rate must be a decimal between 0 and 1 (e.g., 0.05 for 5%)',
+            'rate.regex' => 'Rate must not exceed 4 decimal places.',
+            'min_amount.regex' => 'Min amount must not exceed 3 decimal places.',
         ];
     }
 }

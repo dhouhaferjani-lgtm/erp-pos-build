@@ -39,12 +39,24 @@ class UpdateServiceRequest extends FormRequest
             'description' => ['nullable', 'string', 'max:5000'],
             'category_id' => ['nullable', 'uuid', 'exists:service_categories,id'],
             'pricing_type' => ['sometimes', new Enum(PricingType::class)],
-            'base_price' => ['sometimes', 'numeric', 'min:0'],
+            'base_price' => ['sometimes', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
             'currency' => ['sometimes', 'string', 'size:3'],
             'default_duration_minutes' => ['nullable', 'integer', 'min:1'],
-            'hourly_rate' => ['nullable', 'numeric', 'min:0'],
-            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'hourly_rate' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'is_active' => ['sometimes', 'boolean'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'base_price.regex' => 'Base price must have at most 2 decimal places.',
+            'hourly_rate.regex' => 'Hourly rate must have at most 2 decimal places.',
+            'tax_rate.regex' => 'Tax rate must have at most 2 decimal places.',
         ];
     }
 }

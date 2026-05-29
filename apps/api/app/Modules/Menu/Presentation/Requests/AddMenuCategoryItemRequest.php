@@ -24,9 +24,19 @@ class AddMenuCategoryItemRequest extends FormRequest
         return [
             'sellable_type' => ['required', 'string', Rule::in(['product', 'composite_item'])],
             'sellable_id' => ['required', 'uuid'],
-            'override_price' => ['nullable', 'numeric', 'min:0'],
+            'override_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
             'display_order' => ['sometimes', 'integer', 'min:0'],
             'is_available' => ['sometimes', 'boolean'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'override_price.regex' => 'Override price must have at most 4 decimal places.',
         ];
     }
 

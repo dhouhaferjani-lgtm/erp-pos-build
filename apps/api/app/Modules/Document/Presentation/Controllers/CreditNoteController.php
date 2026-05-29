@@ -145,12 +145,12 @@ class CreditNoteController extends Controller
 
             if (! $isLineBased) {
                 // Amount-based
-                $rules['amount'] = ['required', 'string', 'regex:/^\d+(\.\d{1,4})?$/'];
+                $rules['amount'] = ['required', 'string', 'regex:/^\d+(\.\d{1,3})?$/'];
             } else {
                 // Line-based (partial)
                 $rules['lines'] = ['required', 'array', 'min:1'];
                 $rules['lines.*.line_id'] = ['required', 'string', 'exists:document_lines,id'];
-                $rules['lines.*.quantity'] = ['required', 'numeric', 'gt:0'];
+                $rules['lines.*.quantity'] = ['required', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,4})?$/'];
             }
         } else {
             // Standalone mode (customer-based)
@@ -160,9 +160,9 @@ class CreditNoteController extends Controller
             // api.document.003: scope per-line product_id (nullable) by tenant + company.
             $rules['lines.*.product_id'] = ['nullable', 'string', ScopedExists::tenantAndCompany('products', $tenantId, $companyId)];
             $rules['lines.*.description'] = ['required', 'string', 'max:500'];
-            $rules['lines.*.quantity'] = ['required', 'numeric', 'gt:0'];
-            $rules['lines.*.unit_price'] = ['required', 'string', 'regex:/^\d+(\.\d{1,4})?$/'];
-            $rules['lines.*.tax_rate'] = ['required', 'numeric', 'min:0', 'max:100'];
+            $rules['lines.*.quantity'] = ['required', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,4})?$/'];
+            $rules['lines.*.unit_price'] = ['required', 'string', 'regex:/^\d+(\.\d{1,3})?$/'];
+            $rules['lines.*.tax_rate'] = ['required', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'];
         }
 
         $validated = $request->validate($rules);

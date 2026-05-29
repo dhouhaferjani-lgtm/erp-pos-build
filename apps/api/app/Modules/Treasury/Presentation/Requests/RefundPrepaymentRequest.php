@@ -30,7 +30,7 @@ final class RefundPrepaymentRequest extends FormRequest
         $tenantId = $this->companyContext->requireCompany()->tenant_id;
 
         return [
-            'amount' => ['required', 'numeric', 'gt:0'],
+            'amount' => ['required', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'payment_method_id' => [
                 'required',
                 'uuid',
@@ -42,6 +42,16 @@ final class RefundPrepaymentRequest extends FormRequest
                 ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
             ],
             'reason' => ['nullable', 'string', 'max:1000'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'amount.regex' => 'Amount must have at most 3 decimal places.',
         ];
     }
 }
