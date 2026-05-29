@@ -72,6 +72,7 @@ class AtomicFEFOConsumptionTest extends TestCase
         $this->assertFalse($result->hasShortfall());
         $this->assertCount(1, $result->consumed);
         $this->assertSame((int) $batch->id, $result->consumed[0]->batchId);
+        // The result DTO reports the POSITIVE magnitude consumed.
         $this->assertSame('3.0000', $result->consumed[0]->quantityConsumed);
 
         $stock = BatchStock::where('batch_id', $batch->id)->first();
@@ -81,6 +82,13 @@ class AtomicFEFOConsumptionTest extends TestCase
         // Exactly one batch movement row was written.
         $this->assertSame(1, DB::table('inventory_batch_movements')
             ->where('movement_id', $movementId)->count());
+
+        // Signed-ledger convention: a consume is an issue, so the ledger ROW stores
+        // the NEGATIVE magnitude (matching BatchStockService::issueBatchStock()).
+        $movementRow = DB::table('inventory_batch_movements')
+            ->where('movement_id', $movementId)->first();
+        $this->assertNotNull($movementRow);
+        $this->assertSame('-3.0000', (string) $movementRow->quantity);
     }
 
     public function test_strict_fulfillment_throws_on_shortfall(): void

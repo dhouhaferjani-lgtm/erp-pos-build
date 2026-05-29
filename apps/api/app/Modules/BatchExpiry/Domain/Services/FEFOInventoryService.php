@@ -197,14 +197,22 @@ class FEFOInventoryService
                     ->where('id', $row->batch_stock_id)
                     ->update(['quantity' => $newQuantity]);
 
+                // Signed ledger: a consume is an ISSUE, so the movement row stores
+                // the NEGATIVE magnitude — matching BatchStockService::issueBatchStock()
+                // (bcmul($quantity, '-1', 4)). Receipts are positive, issues negative.
+                /** @var numeric-string $movementQuantity */
+                $movementQuantity = bcmul($take, '-1', 4);
+
                 DB::table('inventory_batch_movements')->insert([
                     'tenant_id' => $tenantId,
                     'batch_id' => (int) $row->batch_id,
                     'movement_id' => $movementId,
-                    'quantity' => $take,
+                    'quantity' => $movementQuantity,
                     'created_at' => now(),
                 ]);
 
+                // The result DTO reports the POSITIVE magnitude consumed; only the
+                // ledger ROW carries the negative sign.
                 $consumed[] = new ConsumedBatchDTO(
                     batchId: (int) $row->batch_id,
                     batchStockId: (int) $row->batch_stock_id,
