@@ -147,7 +147,7 @@ final class OrderManagementTest extends TestCase
 
         $lineData = $response->json('data.line');
         $this->assertEquals($this->product->id, $lineData['product_id']);
-        $this->assertEquals('2.000', $lineData['quantity']);
+        $this->assertEquals('2.0000', $lineData['quantity']);
 
         // Order totals should be updated
         $orderData = $response->json('data.order');
@@ -182,7 +182,7 @@ final class OrderManagementTest extends TestCase
         );
 
         $response->assertStatus(200);
-        $this->assertEquals('5.000', $response->json('data.line.quantity'));
+        $this->assertEquals('5.0000', $response->json('data.line.quantity'));
     }
 
     public function test_remove_line_from_order(): void

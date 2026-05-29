@@ -79,7 +79,7 @@ class OrderLine extends Model
     {
         return [
             'line_number' => 'integer',
-            'quantity' => 'decimal:3',
+            'quantity' => 'decimal:4',
             'unit_price' => 'decimal:3',
             'discount_amount' => 'decimal:3',
             'tax_rate' => 'decimal:2',

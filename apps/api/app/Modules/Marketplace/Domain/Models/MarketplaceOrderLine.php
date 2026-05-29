@@ -46,7 +46,7 @@ class MarketplaceOrderLine extends Model
     protected function casts(): array
     {
         return [
-            'quantity' => 'decimal:2',
+            'quantity' => 'decimal:4',
             'unit_price' => 'decimal:3',
             'line_total' => 'decimal:3',
         ];
