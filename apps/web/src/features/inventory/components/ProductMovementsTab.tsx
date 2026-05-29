@@ -11,6 +11,7 @@ import {
   Filter,
 } from 'lucide-react'
 import { api } from '../../../lib/api'
+import { formatQuantity } from '../../../lib/format'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -295,14 +296,14 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
                         className={`text-sm font-semibold ${isPositive ? 'text-green-600' : 'text-red-600'}`}
                       >
                         {isPositive ? '+' : ''}
-                        {movement.quantity}
+                        {formatQuantity(movement.quantity)}
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-500">
-                      {movement.quantity_before}
+                      {formatQuantity(movement.quantity_before)}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
-                      {movement.quantity_after}
+                      {formatQuantity(movement.quantity_after)}
                     </td>
                     <td
                       className="max-w-xs truncate px-6 py-4 text-sm text-gray-500"
