@@ -83,7 +83,7 @@ final class ReceiptCreationService
      * Create a new POS receipt.
      *
      * @param  string  $terminalId  Terminal UUID or code
-     * @param  array<int, array{product_id?: string, composite_item_id?: string, quantity: string, unit_price: string, modifiers?: array<int, array{modifier_id: string, modifier_group_id: string, price_adjustment: string}>, discount_amount?: string, discount_type?: string, discount_percent?: string, discount_reason?: string, discount_authorized_by?: string}>  $lines
+     * @param  array<int, array{product_id?: string, variant_id?: string, composite_item_id?: string, quantity: string, unit_price: string, modifiers?: array<int, array{modifier_id: string, modifier_group_id: string, price_adjustment: string}>, discount_amount?: string, discount_type?: string, discount_percent?: string, discount_reason?: string, discount_authorized_by?: string}>  $lines
      * @param  string|null  $customerId  Optional partner ID
      * @param  string|null  $contactId  Optional contact ID
      * @param  string|null  $notes  Optional notes
@@ -320,6 +320,7 @@ final class ReceiptCreationService
                 $receiptLines[] = [
                     'line_number' => $index + 1,
                     'product_id' => $compositeItem !== null ? null : ($lineData['product_id'] ?? null),
+                    'variant_id' => $compositeItem !== null ? null : ($lineData['variant_id'] ?? null),
                     'composite_item_id' => $compositeItem !== null ? ($lineData['composite_item_id'] ?? null) : null,
                     'product_code' => $sellableCode,
                     'product_name' => $sellableName,
@@ -640,6 +641,10 @@ final class ReceiptCreationService
 
                 if ($lineData['product_id'] !== null) {
                     // Direct product line — decrement stock
+                    $lineVariantId = isset($lineData['variant_id']) && $lineData['variant_id'] !== ''
+                        ? (string) $lineData['variant_id']
+                        : null;
+
                     $movement = $this->decrementStock(
                         tenantId: $terminal->tenant_id,
                         companyId: $companyId,
@@ -648,9 +653,12 @@ final class ReceiptCreationService
                         quantity: $lineData['quantity'],
                         receiptId: $receipt->id,
                         cashierId: $shift->cashier_id,
+                        variantId: $lineVariantId,
                     );
 
-                    // Allocate batches using FEFO for batch-tracked products
+                    // Allocate batches using FEFO for batch-tracked products.
+                    // Thread variantId so variant-bearing batch sales consume only
+                    // variant-scoped batches (Task 18 — closes the null gap from Task 16b).
                     if ($movement !== null && $receiptLineModel !== null && $this->fefoService->productRequiresBatchTracking($lineData['product_id'])) {
                         $this->allocateBatches(
                             tenantId: $terminal->tenant_id,
@@ -660,6 +668,7 @@ final class ReceiptCreationService
                             receiptId: $receipt->id,
                             receiptLineId: $receiptLineModel->id,
                             movementId: $movement->id,
+                            variantId: $lineVariantId,
                         );
                     }
                 } elseif ($lineData['composite_item_id'] !== null) {
@@ -837,7 +846,17 @@ final class ReceiptCreationService
     }
 
     /**
-     * Decrement stock for a product at a location, with pessimistic lock.
+     * Decrement stock for a product (optionally a specific variant) at a location,
+     * with pessimistic lock.
+     *
+     * When `$variantId` is set the query scopes to the variant-scoped
+     * `stock_levels` row (`product_id + variant_id + location_id`).
+     * When null the query scopes to the product-level row
+     * (`product_id + variant_id IS NULL + location_id`) — matching the
+     * pre-variant behaviour exactly.
+     *
+     * The `variant_id` is threaded onto the `stock_movements` row so that
+     * downstream reporting can dimension by variant.
      *
      * Creates a StockMovement audit record.
      *
@@ -851,13 +870,20 @@ final class ReceiptCreationService
         string $quantity,
         string $receiptId,
         string $cashierId,
+        ?string $variantId = null,
     ): ?StockMovement {
-        /** @var StockLevel|null $stockLevel */
-        $stockLevel = StockLevel::where('product_id', $productId)
+        $stockLevelQuery = StockLevel::where('product_id', $productId)
             ->where('location_id', $locationId)
-            ->where('company_id', $companyId)
-            ->lockForUpdate()
-            ->first();
+            ->where('company_id', $companyId);
+
+        if ($variantId !== null) {
+            $stockLevelQuery->where('variant_id', $variantId);
+        } else {
+            $stockLevelQuery->whereNull('variant_id');
+        }
+
+        /** @var StockLevel|null $stockLevel */
+        $stockLevel = $stockLevelQuery->lockForUpdate()->first();
 
         if ($stockLevel === null) {
             // No stock record — skip stock decrement for products without inventory tracking
@@ -891,12 +917,15 @@ final class ReceiptCreationService
         $stockLevel->quantity = $quantityAfter;
         $stockLevel->save();
 
-        // Create stock movement audit record
+        // Create stock movement audit record.
+        // `variant_id` is written when set so downstream reporting can
+        // dimension by variant (Task 18). Column exists from Task 6.
         return StockMovement::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
             'product_id' => $productId,
+            'variant_id' => $variantId,
             'location_id' => $locationId,
             'movement_type' => MovementType::Issue,
             'reason' => MovementReason::POSSale,
@@ -1302,6 +1331,11 @@ final class ReceiptCreationService
      * even though no batch could be drawn down (a real concurrency hole when two
      * cashiers received identical read-only FEFO suggestions).
      *
+     * `$variantId` is threaded into `consumeBatchesAtomically` so that
+     * variant-bearing batch sales consume only variant-scoped batches
+     * (Task 18 — closes the null gap Task 16b left). When null, only
+     * product-level batches (variant_id IS NULL) are consumed.
+     *
      * @param  numeric-string  $quantity  Line quantity to consume (decimal string)
      *
      * @throws InsufficientBatchStockException
@@ -1314,6 +1348,7 @@ final class ReceiptCreationService
         string $receiptId,
         string $receiptLineId,
         string $movementId,
+        ?string $variantId = null,
     ): void {
         $result = $this->fefoService->consumeBatchesAtomically(
             tenantId: $tenantId,
@@ -1322,6 +1357,7 @@ final class ReceiptCreationService
             quantity: $quantity,
             movementId: $movementId,
             strictFulfillment: true,
+            variantId: $variantId,
         );
 
         foreach ($result->consumed as $consumedBatch) {

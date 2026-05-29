@@ -370,6 +370,7 @@ display_order: number;
 };
 }
 declare namespace App.Modules.Catalog.Domain.Enums {
+export type AttributeDataType = 'text' | 'numeric' | 'boolean' | 'date' | 'selection' | 'color' | 'image';
 export type ComponentType = 'product' | 'composite_item';
 export type PriceAdjustmentType = 'absolute' | 'percentage' | 'override';
 export type PricingMode = 'standard' | 'fixed_bundle';
@@ -1020,6 +1021,7 @@ id: string;
 order_id: string;
 line_number: number;
 product_id: string;
+variantId: string | null;
 product_name: string;
 variant_name: string | null;
 barcode: string | null;

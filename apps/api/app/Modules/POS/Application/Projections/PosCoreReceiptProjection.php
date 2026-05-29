@@ -546,6 +546,16 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      *   - gtin (DSFinV-K future)
      *   - tax_category_code (unified KSA/IT axis)
      *   - non_collected_subtype (IT future)
+     *
+     * **T2 variant_id gap (Task 18).** The `pos_receipt_lines` table has a
+     * `variant_id` column (added in Task 8 migration). However, the canonical
+     * `LineItemDTO` (fiscal_events.payload.line_items[]) does NOT carry a
+     * `variant_id` field — the 13-property canonical shape was finalised before
+     * the T2 variants spec introduced the column. The `PosCoreReceiptProjection`
+     * therefore writes `null` for `variant_id` on all projection-path rows.
+     * Rows written directly by `ReceiptCreationService` (the draft-creation path)
+     * DO carry `variant_id` (Task 18). Aligning the canonical payload to carry
+     * `variant_id` is deferred to a future canonical schema bump (Phase 2 T2).
      */
     private function writeLines(string $receiptId, FiscalEvent $event, SaleReceiptCanonicalView $view): void
     {
@@ -803,6 +813,17 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
 
     /**
      * Stock decrement for product lines — iterates the canonical view.
+     *
+     * **T2 variant_id gap (Task 18).** `LineItemDTO` does not carry a
+     * `variant_id` field (the canonical payload shape pre-dates T2 variants).
+     * Consequently, every projection-path decrement scopes to the product-level
+     * stock row (`variant_id IS NULL`). For variant sales that arrived via the
+     * draft-creation path (`ReceiptCreationService`) the stock was already
+     * decremented correctly at draft time — the projection-path decrement here
+     * is a SECOND decrement, which is the existing pre-T2 behaviour (draft +
+     * projection). Resolving the double-decrement and adding `variant_id` to
+     * the canonical payload is deferred to Phase 2 T2. No change to the
+     * existing decrement logic in this task scope.
      */
     private function decrementStockForLines(
         string $receiptId,
@@ -828,12 +849,21 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 quantity: $line->quantity,
                 receiptId: $receiptId,
                 cashierId: $event->operator_id,
+                // variantId intentionally omitted — LineItemDTO does not carry
+                // variant_id (T2 gap documented in writeLines() above).
+                // Scopes to product-level (variant_id IS NULL) row.
             );
         }
     }
 
     /**
      * Decrement stock for one product line.
+     *
+     * When `$variantId` is set, scopes to the variant-scoped `stock_levels`
+     * row (`product_id + variant_id + location_id`). When null, scopes to the
+     * product-level row (`product_id + variant_id IS NULL + location_id`).
+     * `variant_id` is written onto the `stock_movements` row for downstream
+     * reporting (Task 18). Column exists from Task 6.
      */
     private function decrementStock(
         string $tenantId,
@@ -843,14 +873,21 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         string $quantity,
         string $receiptId,
         string $cashierId,
+        ?string $variantId = null,
     ): void {
-        /** @var StockLevel|null $stockLevel */
-        $stockLevel = StockLevel::query()
+        $stockLevelQuery = StockLevel::query()
             ->where('product_id', $productId)
             ->where('location_id', $locationId)
-            ->where('company_id', $companyId)
-            ->lockForUpdate()
-            ->first();
+            ->where('company_id', $companyId);
+
+        if ($variantId !== null) {
+            $stockLevelQuery->where('variant_id', $variantId);
+        } else {
+            $stockLevelQuery->whereNull('variant_id');
+        }
+
+        /** @var StockLevel|null $stockLevel */
+        $stockLevel = $stockLevelQuery->lockForUpdate()->first();
 
         if ($stockLevel === null) {
             return;
@@ -882,6 +919,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
             'product_id' => $productId,
+            'variant_id' => $variantId,
             'location_id' => $locationId,
             'movement_type' => MovementType::Issue,
             'reason' => MovementReason::POSSale,
