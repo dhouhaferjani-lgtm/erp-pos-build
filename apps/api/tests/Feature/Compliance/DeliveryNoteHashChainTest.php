@@ -10,6 +10,7 @@ use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
@@ -71,6 +72,9 @@ class DeliveryNoteHashChainTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
         ]);
+
+        app(CompanyContext::class)->setCompanyId($this->company->id);
+
         $this->location = Location::create([
             'company_id' => $this->company->id,
             'name' => 'Main Warehouse',

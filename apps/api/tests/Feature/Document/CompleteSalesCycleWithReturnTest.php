@@ -12,6 +12,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -105,6 +106,8 @@ class CompleteSalesCycleWithReturnTest extends TestCase
         $this->company = CompanyFactory::new()->create([
             'tenant_id' => $this->tenant->id,
         ]);
+
+        app(CompanyContext::class)->setCompanyId($this->company->id);
 
         // Create location
         $this->location = Location::create([

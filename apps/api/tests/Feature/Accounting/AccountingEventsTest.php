@@ -10,6 +10,7 @@ use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryCreated;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -91,6 +92,9 @@ final class AccountingEventsTest extends TestCase
         ]);
 
         $this->accountingService = app(AccountingService::class);
+
+        // Pin CompanyContext so CurrencyScaleResolver can resolve scale without HTTP middleware.
+        app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     /**

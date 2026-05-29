@@ -7,6 +7,7 @@ namespace Tests\Feature\POS;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\ReportGenerationService;
 use App\Modules\POS\Domain\Shift;
@@ -359,6 +360,7 @@ class ZReportPdfTest extends TestCase
             'address_postal_code' => '75001',
             'phone' => '+33 1 23 45 67 89',
         ]);
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
 
         $this->location = Location::create([
             'company_id' => $this->company->id,

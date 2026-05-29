@@ -7,6 +7,7 @@ namespace Tests\Feature\Workshop\WorkOrder;
 use App\Enums\Vertical;
 use App\Models\Country;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -85,6 +86,8 @@ final class DocumentLineWorkOrderLineIdRetentionTest extends TestCase
         );
 
         Event::forget(InvoicePosted::class);
+
+        app(CompanyContext::class)->setCompanyId($this->company->id);
 
         $this->customer = Partner::create([
             'tenant_id' => $this->tenant->id,

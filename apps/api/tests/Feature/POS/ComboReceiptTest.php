@@ -11,6 +11,7 @@ use App\Modules\Catalog\Domain\Enums\PricingMode;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\POS\Application\Services\ReceiptCreationService;
@@ -514,6 +515,7 @@ final class ComboReceiptTest extends TestCase
         $this->company = Company::factory()->create([
             'tenant_id' => $this->tenant->id,
         ]);
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
 
         $this->cashier = User::factory()->create([
             'tenant_id' => $this->tenant->id,

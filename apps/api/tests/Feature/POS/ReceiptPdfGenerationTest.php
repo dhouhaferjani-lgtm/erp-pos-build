@@ -6,6 +6,7 @@ namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\ReceiptPdfService;
 use App\Modules\POS\Domain\Enums\ReceiptType;
@@ -242,6 +243,7 @@ class ReceiptPdfGenerationTest extends TestCase
             'address_postal_code' => '75001',
             'phone' => '+33 1 23 45 67 89',
         ]);
+        $this->app->make(CompanyContext::class)->setCompanyId($company->id);
 
         // Create location
         $location = Location::create([

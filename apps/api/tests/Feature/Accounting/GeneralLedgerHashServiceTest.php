@@ -12,6 +12,7 @@ use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -89,6 +90,9 @@ final class GeneralLedgerHashServiceTest extends TestCase
             'name' => 'Sales Revenue',
             'type' => AccountType::Revenue,
         ]);
+
+        // Pin CompanyContext so CurrencyScaleResolver can resolve scale without HTTP middleware.
+        app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     public function test_calculate_hash_returns_sha256_string(): void
