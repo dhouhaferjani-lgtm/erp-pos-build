@@ -42,8 +42,9 @@ class UnitSeederTest extends TestCase
         $this->assertSame(0, $ea->fresh()->decimal_places, 'EA should be scale 0');
         $this->assertSame(3, $l->fresh()->decimal_places, 'L should be scale 3');
 
-        // Rounding method canonicalised to HalfUp.
-        $this->assertSame(RoundingMethod::HalfUp, $kg->fresh()->rounding_method);
+        // rounding_method is left untouched — an operator's deliberate choice
+        // (here Floor) must be preserved, not clobbered to the canonical default.
+        $this->assertSame(RoundingMethod::Floor, $kg->fresh()->rounding_method);
     }
 
     public function test_does_not_override_user_customised_decimal_places(): void

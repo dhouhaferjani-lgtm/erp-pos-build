@@ -114,7 +114,7 @@ const terminal: Terminal = {
   has_history: false,
   current_sequence: 1,
   current_year: 2026,
-  max_discount_percent: 10,
+  max_discount_percent: '10.00',
   allow_line_discounts: true,
   allow_transaction_discounts: true,
   created_at: '2026-05-11T10:00:00Z',

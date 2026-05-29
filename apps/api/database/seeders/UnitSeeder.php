@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Modules\Uom\Domain\Entities\Unit;
-use App\Modules\Uom\Domain\Enums\RoundingMethod;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Seeder;
 
@@ -15,7 +14,8 @@ use Illuminate\Database\Seeder;
  * Part of the precision & scale-drift remediation: the `units.decimal_places`
  * column (default 2 from the create migration) was effectively dormant. This
  * seeder applies the canonical display/validation precision for each well-known
- * unit code, plus a default rounding method.
+ * unit code. `rounding_method` is left to its migration default (half_up) and
+ * never overwritten, so operator customisations are preserved.
  *
  * IDEMPOTENCY & UPDATE-ONLY DESIGN
  * ================================
@@ -79,15 +79,13 @@ class UnitSeeder extends Seeder
                 $changes = [];
 
                 // Only correct the precision if it is still the migration default.
+                // rounding_method is intentionally left untouched: the migration
+                // already defaults it to half_up (== HalfUp), and clobbering it
+                // here would overwrite a deliberate operator customisation.
                 if ($unit->decimal_places === self::MIGRATION_DEFAULT_DECIMAL_PLACES
                     && $decimalPlaces !== self::MIGRATION_DEFAULT_DECIMAL_PLACES
                 ) {
                     $changes['decimal_places'] = $decimalPlaces;
-                }
-
-                // Canonicalise the rounding method to HalfUp for these standard units.
-                if ($unit->rounding_method !== RoundingMethod::HalfUp) {
-                    $changes['rounding_method'] = RoundingMethod::HalfUp;
                 }
 
                 if ($changes !== []) {
