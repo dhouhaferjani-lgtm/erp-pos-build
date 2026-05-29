@@ -101,6 +101,10 @@ final class GoodsReceiptService
                 // Use landed cost from the PO line (includes allocated additional costs)
                 $landedUnitCost = (float) ($line->landed_unit_cost ?? $line->unit_price);
 
+                // Thread variant_id from the PO line (Task 20).
+                // null for non-variant products → product-level stock (backward compat).
+                $variantId = $line->variant_id ?? null;
+
                 // Record purchase with WAC update and audit trail
                 $movement = $this->wacService->recordPurchase(
                     product: $product,
@@ -109,7 +113,8 @@ final class GoodsReceiptService
                     landedUnitCost: $landedUnitCost,
                     reference: $purchaseOrder->document_number,
                     referenceType: 'Document',
-                    referenceId: $purchaseOrder->id
+                    referenceId: $purchaseOrder->id,
+                    variantId: $variantId,
                 );
 
                 // Receive batch stock if batch data is provided for this line

@@ -48,6 +48,7 @@ class WeightedAverageCostService
      * @param  string|null  $reference  Human-readable reference (e.g., "PO-2025-001")
      * @param  string|null  $referenceType  Type of source document (e.g., "Document")
      * @param  string|null  $referenceId  UUID of source document for audit trail
+     * @param  string|null  $variantId  Variant UUID when the line is for a specific variant; null = product-level stock
      */
     public function recordPurchase(
         Product $product,
@@ -56,17 +57,26 @@ class WeightedAverageCostService
         float $landedUnitCost,
         ?string $reference = null,
         ?string $referenceType = null,
-        ?string $referenceId = null
+        ?string $referenceId = null,
+        ?string $variantId = null,
     ): StockMovement {
-        return DB::transaction(function () use ($product, $location, $quantity, $landedUnitCost, $reference, $referenceType, $referenceId): StockMovement {
+        return DB::transaction(function () use ($product, $location, $quantity, $landedUnitCost, $reference, $referenceType, $referenceId, $variantId): StockMovement {
             // Lock stock level first to prevent concurrent modifications.
             // company_id added to the tuple (api.inventory.032) so the lock
             // cannot be satisfied by a StockLevel row from another company
             // even if product_id + location_id happen to collide cross-company.
+            // variant_id (Task 20) scopes the lock to the correct row: when a
+            // line addresses a specific variant we must not land on the
+            // product-level row (which has variant_id IS NULL).
             $stockLevel = StockLevel::where('product_id', $product->id)
                 ->where('location_id', $location->id)
                 ->where('tenant_id', $product->tenant_id)
                 ->where('company_id', $product->company_id)
+                ->when(
+                    $variantId !== null,
+                    fn ($q) => $q->where('variant_id', $variantId),
+                    fn ($q) => $q->whereNull('variant_id'),
+                )
                 ->lockForUpdate()
                 ->first();
 
@@ -74,6 +84,7 @@ class WeightedAverageCostService
                 $stockLevel = StockLevel::create([
                     'id' => Str::uuid()->toString(),
                     'product_id' => $product->id,
+                    'variant_id' => $variantId,
                     'location_id' => $location->id,
                     'tenant_id' => $product->tenant_id,
                     'company_id' => $location->company_id,
@@ -100,11 +111,12 @@ class WeightedAverageCostService
 
             $newAvgCost = $newQty > 0 ? round($newValue / $newQty, $this->scale()) : 0;
 
-            // Record movement
+            // Record movement (variant_id threaded from receipt line — Task 20)
             $movement = StockMovement::create([
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $product->tenant_id,
                 'product_id' => $product->id,
+                'variant_id' => $variantId,
                 'location_id' => $location->id,
                 'company_id' => $location->company_id,
                 'movement_type' => MovementType::Receipt,
