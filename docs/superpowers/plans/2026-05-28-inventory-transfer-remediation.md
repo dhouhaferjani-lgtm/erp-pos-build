@@ -10,6 +10,12 @@
 
 ---
 
+## Plan-document conventions
+
+- Every code snippet that contains `// ...` shorthand means **"preserve the existing method body verbatim from the file the snippet modifies; only the lines explicitly written here are added or changed"**. The executing engineer reads the file under modification and copies the unchanged sections forward. Do not invent new code to fill in for `// ...`.
+- Every file path in this plan is **relative to the worktree root** (`apps/erp.inventory-transfer/` during execution). When the plan says `docs/superpowers/coordination/X.md` it means the path inside the worktree; the absolute path is `/Users/houssamr/Projects/syneriva/apps/erp.inventory-transfer/docs/superpowers/coordination/X.md`.
+- Every task that ends without an explicit `git commit ...` step belongs to the surrounding batch's final commit. The subagent driver should batch-commit at batch boundaries unless the task explicitly says otherwise.
+
 ## Source reviews
 
 - Opus review: `docs/superpowers/reviews/2026-05-28-inventory-transfer-opus-review.md` — verdict APPROVE-WITH-MINOR-EDITS (0 BLOCKER, 2 P1, 7 P2, 7 P3)
@@ -98,13 +104,8 @@ Frontend (React) — files this plan touches:
 
 Docs:
 
-- `apps/erp/docs/superpowers/coordination/2026-05-28-inventory-transfer.md` — annotate the deferred items now closed and the open follow-ups.
-- `CLAUDE.md` (repo root) — flip "row-level" → "DB-per-tenant (mid-flight; row-level remains current at the central DB layer)".
-- `claude/architecture.md`, `claude/database-topology.md`, `claude/shared-patterns.md` — same flip.
-- `apps/erp/CLAUDE.md` — replace the "schema-based" footnoted line with the actual DB-per-tenant model.
-- `apps/erp/.claude/context/architecture.md` — replace the "Each tenant gets a PostgreSQL schema" paragraph.
-- `apps/erp/docs/architecture/database.md` — same.
-- Memory: `project_tenancy_model_truth.md` — flip from "future target" to "current state, mid-flight".
+- `docs/superpowers/coordination/2026-05-28-inventory-transfer.md` — annotate the deferred items now closed and the open follow-ups (Batch I).
+- Forward-pointer to the orchestrator-owned post-flip docs PR (Batch H) — the CLAUDE.md + claude/* + apps/erp/CLAUDE.md + .claude/context/architecture.md + database.md + memory rewrites are NOT in scope for this plan per D3. The orchestrator session lands them in a dedicated PR after #147 and #148 merge.
 
 End-to-end verification:
 
@@ -152,6 +153,11 @@ return new class extends Migration
 
             $table->foreignUuid('recorded_by_user_id')->constrained('users')->restrictOnDelete();
             $table->string('idempotency_key', 128)->nullable();
+            // sha256 of the canonical (phase, amount, label, distribution)
+            // payload so reusing the same key with a different payload throws
+            // IdempotencyKeyConflictException instead of silently returning
+            // the prior event (Codex plan-review P2-7).
+            $table->string('idempotency_payload_hash', 64)->nullable();
             $table->timestampTz('recorded_at');
 
             $table->timestampsTz();
@@ -162,7 +168,12 @@ return new class extends Migration
         });
 
         if (DB::getDriverName() === 'pgsql') {
-            DB::statement("ALTER TABLE stock_transfer_cost_events ADD CONSTRAINT stock_transfer_cost_events_amount_positive CHECK (amount > 0)");
+            // Amount is signed: positive = capitalize cost; negative =
+            // reverse / compensating event (e.g., quoted freight that the
+            // user didn't actually pay, recorded by the cancel flow per
+            // Option B+ in the design note). Zero amounts are still
+            // forbidden because they would mean "no change".
+            DB::statement("ALTER TABLE stock_transfer_cost_events ADD CONSTRAINT stock_transfer_cost_events_amount_nonzero CHECK (amount <> 0)");
             DB::statement("ALTER TABLE stock_transfer_cost_events ADD CONSTRAINT stock_transfer_cost_events_phase_valid CHECK (phase IN ('at_initiate', 'in_transit', 'at_receipt'))");
         }
     }
@@ -427,8 +438,12 @@ final class RecordCostEventData
         public readonly TransferCostDistribution $distribution = TransferCostDistribution::ProRataValue,
         public readonly ?string $idempotencyKey = null,
     ) {
-        if (bccomp($amount, '0', 4) <= 0) {
-            throw new InvalidArgumentException('Cost event amount must be positive.');
+        // Amount is signed: positive = capitalize cost; negative = reverse
+        // a prior cost event (recorded by the cancel flow when the user
+        // confirms a quoted-but-unpaid fee on the transfer being voided).
+        // Zero amounts are forbidden — they would mean "no change".
+        if (bccomp($amount, '0', 4) === 0) {
+            throw new InvalidArgumentException('Cost event amount must be non-zero.');
         }
     }
 }
@@ -582,81 +597,124 @@ cd apps/api && ./vendor/bin/phpunit --filter test_wac_is_deterministic_across_mu
 
 Expected: FAIL — `recordCostEvent` does not exist.
 
-### Task A6 — Extend `WeightedAverageCostService::recordCostAdjustment` to accept `inTransitQuantity`
+### Task A6 — Move both denominator halves inside `WeightedAverageCostService::recordCostAdjustment` (closes Codex BLOCKER 1)
 
 **Files:**
 - Modify: `apps/api/app/Modules/Inventory/Application/Services/WeightedAverageCostService.php`
 
-- [ ] **Step 1: Add the optional parameter and use it in the denominator**
+The previous draft passed `inTransitQuantity` in from the caller. Codex's review of the plan caught the race: `StockTransferService::recordCostEvent` read in-transit BEFORE the WAC service took the product lock, so another transfer could complete between the two reads and produce stale denominators. The fix is to compute both halves of the denominator inside the WAC service, under the same lock that protects the write.
+
+- [ ] **Step 1: Rewrite the method signature to take tenant + company and compute both halves locally**
 
 ```php
 public function recordCostAdjustment(
     Product $product,
     float $additionalCost,
     string $reason,
+    string $tenantId,                 // <-- NEW required
+    string $companyId,                // <-- NEW required
     ?string $reference = null,
     ?string $referenceType = null,
     ?string $referenceId = null,
-    string $inTransitQuantity = '0', // <-- NEW; numeric-string
 ): ?StockMovement {
-    return DB::transaction(function () use ($product, $additionalCost, $reason, $reference, $referenceType, $referenceId, $inTransitQuantity): ?StockMovement {
+    return DB::transaction(function () use (
+        $product, $additionalCost, $reason, $tenantId, $companyId,
+        $reference, $referenceType, $referenceId
+    ): ?StockMovement {
+        // 1. Lock the product row first. All denominator reads that follow
+        //    are now protected by this lock for the duration of the cost
+        //    adjustment.
         $product = Product::query()
-            ->where('tenant_id', $product->tenant_id)
-            ->where('company_id', $product->company_id)
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->lockForUpdate()
             ->findOrFail($product->id);
 
+        // 2. Lock-and-sum stock_levels for this product under the same
+        //    transaction.
         /** @var numeric-string $onHandQty */
         $onHandQty = (string) StockLevel::query()
             ->where('product_id', $product->id)
-            ->where('tenant_id', $product->tenant_id)
-            ->where('company_id', $product->company_id)
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->lockForUpdate()
             ->sum('quantity');
 
+        // 3. Lock-and-sum in-transit stock_transfer_lines for this product
+        //    under the same transaction. The lockForUpdate on the join
+        //    targets the matched stock_transfers rows so a concurrent
+        //    state transition (initiate/complete/cancel) on any of those
+        //    transfers serializes against this read.
+        /** @var numeric-string $inTransitQty */
+        $inTransitQty = (string) StockTransferLine::query()
+            ->join('stock_transfers', 'stock_transfers.id', '=', 'stock_transfer_lines.transfer_id')
+            ->where('stock_transfer_lines.product_id', $product->id)
+            ->where('stock_transfers.tenant_id', $tenantId)
+            ->where('stock_transfers.company_id', $companyId)
+            ->where('stock_transfers.status', TransferStatus::InTransit)
+            ->lockForUpdate()
+            ->sum('stock_transfer_lines.quantity');
+
         /** @var numeric-string $totalOwnedQty */
-        $totalOwnedQty = bcadd($onHandQty, $inTransitQuantity, $this->scale());
+        $totalOwnedQty = bcadd($onHandQty, $inTransitQty, $this->scale());
         $totalOwnedFloat = (float) $totalOwnedQty;
         if ($totalOwnedFloat <= 0) {
             return null;
         }
 
-        // remainder unchanged but every $onHandFloat → $totalOwnedFloat
-        // and every $onHandQty in stock_movements payload → $totalOwnedQty
-        // ...
+        // The remainder of the method body is the existing flow, but every
+        // reference to `$onHandFloat` becomes `$totalOwnedFloat`, and every
+        // `$onHandQty` written into the stock_movements audit row becomes
+        // `$totalOwnedQty`. The stock_movements row still has quantity = 0
+        // because no stock motion has occurred; only avg_cost_before /
+        // avg_cost_after capture the WAC change.
+        // ... existing body continues here ...
+    });
+}
 ```
 
-- [ ] **Step 2: Verify PHPStan clean on the file**
+Verify the in-transit query honors the canonical company-wide policy from `project_inventory_costing.md`: in-transit stock IS company-owned even though it sits in no stock_levels row, so it belongs in the denominator.
+
+- [ ] **Step 2: Update existing callers of `recordCostAdjustment` to pass tenant + company**
+
+The only existing call site today is inside `StockTransferService::capitalizeTransferCost` (which Batch A9 deletes). Confirm by grep:
+
+```
+cd apps/api && rg -n "recordCostAdjustment\(" app/
+```
+
+Expected: only the StockTransferService call site. Update it to pass `$transfer->tenant_id` and `$transfer->company_id`, even though the body of `capitalizeTransferCost` itself is removed in Task A9 — the *internal* method `recordCostEventInternal` (added in Task A7) will call `recordCostAdjustment` instead.
+
+- [ ] **Step 3: Verify PHPStan + Pint clean on the file**
+
+```
+cd apps/api && ./vendor/bin/phpstan analyse app/Modules/Inventory/Application/Services/WeightedAverageCostService.php --memory-limit=2G
+cd apps/api && ./vendor/bin/pint --test app/Modules/Inventory/Application/Services/WeightedAverageCostService.php
+```
+
+Expected: both clean.
+
+- [ ] **Step 4: Commit**
+
+```
+git add apps/api/app/Modules/Inventory/Application/Services/WeightedAverageCostService.php
+git commit -m "fix(inventory): compute (on_hand + in_transit) denominator under same lock
+
+Closes Codex BLOCKER 1 from the plan review: the denominator was read in
+two steps (in_transit in StockTransferService, on_hand inside the WAC
+service), so a concurrent transfer state transition between those reads
+could shift one half without the other. Both halves now live inside the
+WAC service's locked transaction; cross-transfer races serialize correctly."
+```
 
 ### Task A7 — Add `StockTransferService::recordCostEvent()` method
 
 **Files:**
 - Modify: `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php`
 
-- [ ] **Step 1: Add the `inTransitQuantityForProduct` helper**
+The `inTransitQuantityForProduct` helper from the previous draft is **removed** — Codex BLOCKER 1's fix lives entirely inside `WeightedAverageCostService::recordCostAdjustment` now (Task A6). The transfer service only passes tenant + company; the WAC service locks and reads both denominator halves.
 
-```php
-/**
- * Sum of quantities currently in_transit for the given product+company.
- * Counts ALL in_transit transfers including the current one when called
- * from cost-event recording — this is the right denominator because the
- * company owns those units even though they aren't in stock_levels yet.
- */
-private function inTransitQuantityForProduct(string $tenantId, string $companyId, string $productId): string
-{
-    $sum = StockTransferLine::query()
-        ->join('stock_transfers', 'stock_transfers.id', '=', 'stock_transfer_lines.transfer_id')
-        ->where('stock_transfer_lines.product_id', $productId)
-        ->where('stock_transfers.tenant_id', $tenantId)
-        ->where('stock_transfers.company_id', $companyId)
-        ->where('stock_transfers.status', TransferStatus::InTransit)
-        ->sum('stock_transfer_lines.quantity');
-
-    return (string) ($sum ?: '0');
-}
-```
-
-- [ ] **Step 2: Add `recordCostEvent()`**
+- [ ] **Step 1: Add `recordCostEvent()`**
 
 ```php
 /**
@@ -678,7 +736,11 @@ public function recordCostEvent(RecordCostEventData $data): StockTransferCostEve
     return DB::transaction(function () use ($data): StockTransferCostEvent {
         $transfer = $this->lockTransferUnscoped($data->transferId);
 
-        // Idempotency short-circuit on the cost-event endpoint.
+        // Idempotency short-circuit on the cost-event endpoint, route-scoped
+        // to the target transfer (Codex plan-review P1-1) AND payload-fingerprint
+        // checked (Codex plan-review P2-7). If the key was used on a DIFFERENT
+        // transfer in the same company, reject with 409. If it was used on the
+        // same transfer with a different payload, reject with 409.
         if ($data->idempotencyKey !== null) {
             $existing = StockTransferCostEvent::query()
                 ->where('tenant_id', $transfer->tenant_id)
@@ -686,6 +748,20 @@ public function recordCostEvent(RecordCostEventData $data): StockTransferCostEve
                 ->where('idempotency_key', $data->idempotencyKey)
                 ->first();
             if ($existing !== null) {
+                if ($existing->transfer_id !== $transfer->id) {
+                    throw new IdempotencyKeyConflictException(
+                        $data->idempotencyKey, $existing->transfer_id, $transfer->id,
+                    );
+                }
+                $expectedHash = $this->fingerprintCostEvent($data);
+                if ($existing->idempotency_payload_hash !== null
+                    && $existing->idempotency_payload_hash !== $expectedHash) {
+                    throw new IdempotencyKeyConflictException(
+                        $data->idempotencyKey,
+                        $existing->idempotency_payload_hash,
+                        $expectedHash,
+                    );
+                }
                 return $existing;
             }
         }
@@ -707,6 +783,9 @@ public function recordCostEvent(RecordCostEventData $data): StockTransferCostEve
                 'distribution' => $data->distribution,
                 'recorded_by_user_id' => $data->recordedByUserId,
                 'idempotency_key' => $data->idempotencyKey,
+                'idempotency_payload_hash' => $data->idempotencyKey !== null
+                    ? $this->fingerprintCostEvent($data)
+                    : null,
                 'recorded_at' => now(),
             ]);
         } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
@@ -743,18 +822,15 @@ public function recordCostEvent(RecordCostEventData $data): StockTransferCostEve
             );
             $line->save();
 
-            $inTransitQty = $this->inTransitQuantityForProduct(
-                $transfer->tenant_id, $transfer->company_id, $product->id,
-            );
-
             $this->wacService->recordCostAdjustment(
                 product: $product,
                 additionalCost: $allocated,
                 reason: 'stock_transfer_cost.'.$data->phase->value,
+                tenantId: $transfer->tenant_id,
+                companyId: $transfer->company_id,
                 reference: $transfer->transfer_number,
                 referenceType: StockTransfer::class,
                 referenceId: $transfer->id,
-                inTransitQuantity: $inTransitQty,
             );
         }
 
@@ -784,6 +860,16 @@ public function recordCostEvent(RecordCostEventData $data): StockTransferCostEve
 private function lockTransferUnscoped(string $transferId): StockTransfer
 {
     return StockTransfer::query()->with('lines')->lockForUpdate()->findOrFail($transferId);
+}
+
+private function fingerprintCostEvent(RecordCostEventData $data): string
+{
+    return hash('sha256', json_encode([
+        'phase' => $data->phase->value,
+        'amount' => $data->amount,
+        'label' => $data->label,
+        'distribution' => $data->distribution->value,
+    ], JSON_THROW_ON_ERROR));
 }
 ```
 
@@ -1215,19 +1301,28 @@ protected $fillable = [
 ];
 ```
 
-- [ ] **Step 2: Change the service signature**
+- [ ] **Step 2: Change the service signature to the FINAL locked shape**
+
+Lock the canonical signature here so Batch D doesn't need to rewrite it (Codex plan-review P1-2). The order is: `transferId, userId, tenantId, companyId, ?idempotencyKey`. `cancel` follows the same order with an extra `?reason` parameter sitting between `companyId` and `?idempotencyKey` so the user-facing reason can be passed even without an idempotency_key:
 
 Change `complete(string $transferId, string $userId): StockTransfer` to:
 
 ```php
-public function complete(string $transferId, string $userId, ?string $idempotencyKey = null): StockTransfer
-{
-    return DB::transaction(function () use ($transferId, $userId, $idempotencyKey): StockTransfer {
-        $transfer = $this->lockTransfer($transferId);
+public function complete(
+    string $transferId,
+    string $userId,
+    string $tenantId,
+    string $companyId,
+    ?string $idempotencyKey = null,
+): StockTransfer {
+    return DB::transaction(function () use ($transferId, $userId, $tenantId, $companyId, $idempotencyKey): StockTransfer {
+        $transfer = $this->lockTransfer($transferId, $tenantId, $companyId);
 
-        // Idempotency short-circuit: if this key was already used to complete
-        // THIS transfer (or any transfer in the same company), return the
-        // existing row instead of re-running the state transition.
+        // Idempotency short-circuit (route-scoped per Codex plan-review P1-1):
+        // if this key was already used to complete THIS specific transfer,
+        // return the existing row. If the same key was used on a DIFFERENT
+        // transfer in the same company, throw IdempotencyKeyConflictException
+        // so the client cannot accidentally observe an unrelated aggregate.
         if ($idempotencyKey !== null) {
             $existing = StockTransfer::query()
                 ->where('tenant_id', $transfer->tenant_id)
@@ -1235,6 +1330,11 @@ public function complete(string $transferId, string $userId, ?string $idempotenc
                 ->where('complete_idempotency_key', $idempotencyKey)
                 ->first();
             if ($existing !== null) {
+                if ($existing->id !== $transfer->id) {
+                    throw new IdempotencyKeyConflictException(
+                        $idempotencyKey, $existing->id, $transfer->id,
+                    );
+                }
                 return $existing->loadMissing('lines');
             }
         }
@@ -1277,8 +1377,22 @@ public function test_cancel_with_same_idempotency_key_returns_existing_transfer(
     ));
 
     $key = 'cancel-retry-1';
-    $first = $this->service()->cancel($transfer->id, $this->user->id, 'lost shipment', $key);
-    $second = $this->service()->cancel($transfer->id, $this->user->id, 'lost shipment', $key);
+    $first = $this->service()->cancel(
+        transferId: $transfer->id,
+        userId: $this->user->id,
+        tenantId: $this->tenant->id,
+        companyId: $this->company->id,
+        reason: 'lost shipment',
+        idempotencyKey: $key,
+    );
+    $second = $this->service()->cancel(
+        transferId: $transfer->id,
+        userId: $this->user->id,
+        tenantId: $this->tenant->id,
+        companyId: $this->company->id,
+        reason: 'lost shipment',
+        idempotencyKey: $key,
+    );
 
     $this->assertSame($first->id, $second->id);
     $this->assertSame(TransferStatus::Cancelled, $second->status);
@@ -1287,11 +1401,24 @@ public function test_cancel_with_same_idempotency_key_returns_existing_transfer(
         ->where('product_id', $this->productA->id)
         ->where('location_id', $this->warehouse->id)
         ->first();
-    $this->assertEquals('20.00', $sourceStock->quantity);
+    $this->assertEquals('20.0000', $sourceStock->quantity);
 }
 ```
 
-Change the cancel signature symmetrically to `cancel(string $transferId, string $userId, ?string $reason = null, ?string $idempotencyKey = null)` and add the same short-circuit + write.
+Change the cancel signature to the FINAL locked shape symmetrically:
+
+```php
+public function cancel(
+    string $transferId,
+    string $userId,
+    string $tenantId,
+    string $companyId,
+    ?string $reason = null,
+    ?string $idempotencyKey = null,
+): StockTransfer
+```
+
+Add the same route-scoped short-circuit and `cancel_idempotency_key` write that complete uses.
 
 - [ ] **Step 5: Run both tests**
 
@@ -1484,15 +1611,31 @@ class IdempotencyKeyConflictException extends DomainException
 ```php
 private function fingerprintPayload(InitiateTransferData $data): string
 {
+    // Canonicalize: sort lines by product_id so the same logical payload
+    // submitted with lines in a different order produces the same hash
+    // (Codex plan-review P2-3). Include every DTO field that materially
+    // describes the resulting transfer; only `initiatedByUserId` and
+    // `idempotencyKey` itself are deliberately excluded (the user is an
+    // actor, not part of the resource identity, and including the key
+    // would make the hash trivially self-consistent). `transferNumber`
+    // is excluded because it is server-allocated when omitted; including
+    // it would force the client to round-trip before retrying.
+    $lines = array_map(
+        fn ($l) => ['product_id' => $l->productId, 'quantity' => $l->quantity],
+        $data->lines,
+    );
+    usort($lines, fn ($a, $b) => strcmp($a['product_id'], $b['product_id']));
+
     return hash('sha256', json_encode([
         'source' => $data->sourceLocationId,
         'dest' => $data->destinationLocationId,
-        'lines' => array_map(fn ($l) => [$l->productId, $l->quantity], $data->lines),
+        'transfer_type' => $data->transferType->value,
+        'lines' => $lines,
         'cost' => $data->transferCost,
         'cost_label' => $data->transferCostLabel,
         'distribution' => $data->transferCostDistribution->value,
         'notes' => $data->notes,
-    ]));
+    ], JSON_THROW_ON_ERROR));
 }
 
 // in the short-circuit branch:
@@ -1746,34 +1889,14 @@ and P1-4 (StockMovementRecorded event type drift)."
 
 ## Batch D — Defense-in-depth + test coverage (Codex P2-3/4/8 + P3-3, Opus P2-3/4)
 
-### Task D1 — Scope `lockTransfer` by tenant + company
+### Task D1 — Cross-company scoping regression test (defense-in-depth)
 
 **Files:**
-- Modify: `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php`
-- Modify: `apps/api/app/Modules/Inventory/Presentation/Controllers/StockTransferController.php`
+- Test: `apps/api/tests/Feature/Inventory/InventoryTransferServiceTest.php`
 
-- [ ] **Step 1: Change the service signatures**
+The service signatures already require `tenantId` + `companyId` from Batch B3 (final-locked shape). The internal `lockTransfer(string $transferId, string $tenantId, string $companyId)` query is already scoped. This task adds the regression test that proves it.
 
-`complete` and `cancel` accept an optional `?CompanyContext $context = null` parameter, OR — cleaner — accept explicit `tenantId` + `companyId` parameters. Internal `lockTransfer` becomes:
-
-```php
-private function lockTransfer(string $transferId, string $tenantId, string $companyId): StockTransfer
-{
-    /** @var StockTransfer $transfer */
-    $transfer = StockTransfer::query()
-        ->where('tenant_id', $tenantId)
-        ->where('company_id', $companyId)
-        ->with('lines')
-        ->lockForUpdate()
-        ->findOrFail($transferId);
-
-    return $transfer;
-}
-```
-
-- [ ] **Step 2: Update the controller calls to pass `$company->tenant_id, $company->id`**
-
-- [ ] **Step 3: Add a failing test**
+- [ ] **Step 1: Write the failing test**
 
 ```php
 public function test_complete_rejects_transfer_from_other_company(): void
@@ -1795,7 +1918,7 @@ public function test_complete_rejects_transfer_from_other_company(): void
 }
 ```
 
-- [ ] **Step 4: Run + commit**
+- [ ] **Step 2: Run + verify the lockTransfer scoping rejects the lookup. Add the symmetric cancel test. Commit.**
 
 ### Task D2 — Cross-tenant product rejection test (Opus P2-4)
 
@@ -1935,7 +2058,34 @@ Closes Opus P1-2/P2-1/P2-2 and Codex P2-1/P2-7."
 
 ---
 
-## Batch F — Cancel semantics polish (Opus P2-6, Codex P3-1)
+## Batch F — Cancel semantics polish (Opus P2-6, Codex P3-1, owner-locked cancel-cost policy)
+
+### Task F0 — Pre-flight: grep `MovementType::TransferIn` and `isInbound()` call sites
+
+Codex's plan-review P1-4 flagged that adding a new enum case may surface assumptions in downstream code. Before F1's migration, catalog the reporting/audit/event-consumer surface that currently filters by these.
+
+**Files:** read-only.
+
+- [ ] **Step 1: Grep the codebase**
+
+```
+cd /Users/houssamr/Projects/syneriva/apps/erp.inventory-transfer
+rg -n "MovementType::TransferIn|->isInbound\(\)" apps/api/ apps/web/ apps/pos/ packages/
+```
+
+- [ ] **Step 2: For each match, document what the code does with the result**
+
+In the plan's design note (`docs/superpowers/coordination/2026-05-28-inventory-transfer.md`), add an "F1 callsite audit" subsection listing each callsite and noting whether it should:
+- Treat `TransferReversed` identically to `TransferIn` (e.g., physical stock-quantity reports — both add to on-hand);
+- Treat `TransferReversed` distinctly (e.g., audit reports asking "how much arrived through normal transfers vs how much came back via cancellations");
+- Be updated as part of Batch F1.
+
+- [ ] **Step 3: Commit the audit note**
+
+```
+git add docs/superpowers/coordination/2026-05-28-inventory-transfer.md
+git commit -m "docs(inventory-transfer): F1 pre-flight — TransferIn / isInbound callsite audit"
+```
 
 ### Task F1 — Add `TransferReversed` movement type
 
@@ -1962,7 +2112,91 @@ public function isInbound(): bool
 
 - [ ] **Step 1:** Replace `transfer_number . '-CANCEL'` with a reference like `'RV-' . transfer_number` so `reference LIKE 'TR-%'` filters don't double-count cancellations.
 
-### Task F3 — Commit
+### Task F3 — Cancel-time cost-event confirmation UI (owner-locked Option B+)
+
+The owner locked the cancel-cost policy: capitalized cost events do NOT auto-reverse on cancel. Instead, the cancel modal lists every cost event on the transfer and asks the user, per event, whether to **reverse** (emit a compensating negative event) or **keep** (the fee was actually paid; leave it capitalized). This matches the real-world ambiguity between quoted freight and paid freight, and is forward-compatible with the planned Treasury integration that will pre-select **keep** when a payment is allocated against the cost event.
+
+**Files:**
+- Modify: `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php` — `cancel()` accepts an optional `costEventReversalIds: list<string>` parameter; for each id present in the list, before the cancel transaction commits, call `recordCostEventInternal()` with `amount = -(prior event amount)` and `phase = at_receipt` (or `in_transit` if status is still InTransit when the cancel hits).
+- Modify: `apps/api/app/Modules/Inventory/Presentation/Requests/CancelTransferRequest.php` (new) — validates `cost_event_reversal_ids: ?array<string>` with each entry `ScopedExists` against `stock_transfer_cost_events` for the target transfer.
+- Modify: `apps/api/app/Modules/Inventory/Presentation/Controllers/StockTransferController.php::cancel` — accept and forward `cost_event_reversal_ids`.
+- Modify: `apps/web/src/features/stock-transfers/pages/StockTransferDetailPage.tsx` — the cancel modal renders the cost-event ledger with a checkbox per event labeled "Reverse this fee — we didn't pay it" and a fallback label "Keep this fee — we paid it". The default selection in this PR is **keep** (no boxes checked); the Treasury follow-up will flip the default to **reverse** for events with no allocated payment.
+- Modify: `apps/web/src/features/stock-transfers/api/stockTransferApi.ts` — `cancel(id, idempotencyKey?, reason?, costEventReversalIds?)`.
+- Modify: `apps/web/src/locales/{en,fr}/stock-transfers.json` — new keys.
+
+- [ ] **Step 1: Write the failing test**
+
+```php
+public function test_cancel_with_cost_event_reversal_emits_compensating_negative_events(): void
+{
+    $this->seedStock($this->productA, $this->warehouse, '100.0000');
+
+    $transfer = $this->service()->initiate($this->initiateData(
+        $this->warehouse->id, $this->shop->id,
+        [new InitiateTransferLineData($this->productA->id, '10.0000')],
+        transferCost: '100.0000', // at_initiate event capitalizes 100
+    ));
+    $beforeCancel = $this->productA->fresh()->cost_price;
+
+    $atInitiateEventId = $transfer->fresh('costEvents')->costEvents->first()->id;
+
+    $this->service()->cancel(
+        transferId: $transfer->id,
+        userId: $this->user->id,
+        tenantId: $this->tenant->id,
+        companyId: $this->company->id,
+        reason: 'shipment fell through, no fees paid',
+        costEventReversalIds: [$atInitiateEventId],
+    );
+
+    // After cancel-with-reversal, WAC returns to pre-initiate value.
+    $this->assertEquals('5.0000', $this->productA->fresh()->cost_price);
+
+    // Ledger now has TWO events: original at_initiate +100 and a compensating -100.
+    $events = StockTransferCostEvent::query()->where('transfer_id', $transfer->id)->orderBy('recorded_at')->get();
+    $this->assertCount(2, $events);
+    $this->assertEquals('100.0000', $events[0]->amount);
+    $this->assertEquals('-100.0000', $events[1]->amount);
+}
+```
+
+- [ ] **Step 2: Implement the reversal loop inside `cancel()`**
+
+Before the existing cancel body runs (and before the status flips to Cancelled), iterate `costEventReversalIds`. For each id, load the original event (scoped to the transfer), validate that it has not already been reversed (no prior negative event with the same `idempotency_payload_hash` or a `reverses_event_id` link if added later), and call `recordCostEventInternal()` with `amount = bcmul($original->amount, '-1', 4)`, same distribution as the original, label = `"Reversal of {original->label} on cancel"`.
+
+- [ ] **Step 3: Wire the controller request**
+
+`CancelTransferRequest::rules()`:
+
+```php
+return [
+    'reason' => ['nullable', 'string', 'max:5000'],
+    'idempotency_key' => ['nullable', 'string', 'max:128'],
+    'cost_event_reversal_ids' => ['nullable', 'array'],
+    'cost_event_reversal_ids.*' => [
+        'string', 'uuid',
+        ScopedExists::tenantAndCompany('stock_transfer_cost_events', $company->tenant_id, $company->id),
+    ],
+];
+```
+
+- [ ] **Step 4: Add the Vitest assertion for the cancel modal listing cost events with per-event checkboxes**
+
+- [ ] **Step 5: Document the Treasury follow-up in the design note**
+
+In `docs/superpowers/coordination/2026-05-28-inventory-transfer.md`, append:
+
+> ### Treasury integration follow-up — auto-suggest reverse vs keep on cancel
+>
+> Today the cancel modal lists every cost event on the transfer with a per-event "Reverse / Keep" choice, default Keep. The Treasury team's follow-up PR will:
+>
+> - Add a foreign key from `payment_allocations.allocation_target` to `stock_transfer_cost_events.id` (or whichever generic-allocation seam they pick).
+> - When the cancel modal mounts, query the Treasury module for "is this cost event referenced by any allocated payment?". If yes, pre-select Keep and disable Reverse with a tooltip. If no, pre-select Reverse.
+> - Add a Treasury-side cancel hook for the reverse case so unallocated payments can be flagged for re-allocation when their cost event is reversed.
+>
+> The data model needed for this lives entirely in Treasury; nothing in Inventory needs to change. The Treasury session can pick up the work whenever it's prioritized.
+
+- [ ] **Step 6: Run + commit**
 
 ---
 
@@ -2015,7 +2249,7 @@ The orchestrator confirmed the master-docs rewrite (CLAUDE.md + claude/* + apps/
 
 ### Task H1 — Add the forward-pointer to the inventory-transfer design note
 
-**Files:** `apps/erp/docs/superpowers/coordination/2026-05-28-inventory-transfer.md`
+**Files:** `docs/superpowers/coordination/2026-05-28-inventory-transfer.md`
 
 - [ ] **Step 1: Append the following paragraph at the end of the document**
 
@@ -2038,7 +2272,7 @@ git commit -m "docs(inventory-transfer): forward-pointer to orchestrator-owned p
 
 ### Task I1 — Annotate the design note with what was closed and what remains
 
-**Files:** `apps/erp/docs/superpowers/coordination/2026-05-28-inventory-transfer.md`
+**Files:** `docs/superpowers/coordination/2026-05-28-inventory-transfer.md`
 
 - [ ] **Step 1: Add a "Remediation pass" section** that links to this plan, the Opus + Codex reviews, and the resulting commits.
 - [ ] **Step 2: Update the "Out of scope" section** to reflect the new state: WAC determinism solved here; idempotency solved here; migration placement corrected here; the four named deferrals (Scenario B, per-location tax IDs, InTransitAvailability, batch preservation) still in the next session.
@@ -2097,7 +2331,30 @@ test.describe('Stock Transfers', () => {
   })
 
   test('initiate -> cancel-from-in-transit returns stock', async ({ page }) => {
-    // ... symmetric flow ending in Cancelled with reason
+    await page.goto('http://localhost:5173/inventory/stock-transfers/new')
+    await page.selectOption('#source', { label: 'Main Warehouse' })
+    await page.selectOption('#destination', { label: 'Downtown Shop' })
+    await page.locator('text=Add line').click()
+    await page.fill('[role=combobox]', 'BRAKE')
+    await page.locator('[role=option]').first().click()
+    await page.fill('input[type=number]', '3')
+    await page.click('button:has-text("Create transfer")')
+    await page.waitForURL('**/stock-transfers/**')
+    await expect(page.locator('[data-testid=status-badge]')).toContainText('In Transit')
+
+    await page.click('button:has-text("Cancel transfer")')
+    await page.fill('textarea[aria-label*="Reason"]', 'Carrier cancelled the shipment')
+    // Cancel modal lists the at_initiate cost event with a "Reverse" checkbox.
+    // Leave it unchecked (default Keep) for this golden path; the reverse case
+    // gets its own assertion in a separate spec.
+    await page.click('button:has-text("Cancel transfer")') // confirm in modal
+    await expect(page.locator('[data-testid=status-badge]')).toContainText('Cancelled')
+
+    // Verify source stock returned (navigate to stock-levels listing or the
+    // product detail page, depending on the existing UI shape).
+    await page.goto('http://localhost:5173/inventory/stock-levels')
+    await expect(page.locator(`tr:has-text("Main Warehouse"):has-text("BRAKE")`))
+      .toContainText(/3\.0000|3\.00/)  // pre-cancel value restored
   })
 })
 ```
@@ -2133,7 +2390,7 @@ After all batches:
 
 These items are real but explicitly deferred:
 
-- **Quantity precision drift** (Opus P2-5) — `StockAdjustmentService::SCALE = 2` truncates the `decimal(15,4)` line quantity at the stock_levels boundary. Pre-existing tech debt. Filed as a follow-up ticket; this PR adds a regex validator on the FormRequest to reject sub-cent quantities so the surface stays honest.
+- **Quantity precision drift** (Opus P2-5) — **RESOLVED UPSTREAM** by PR #151 (`fix(inventory): widen quantity precision to 4 decimals end-to-end`), merged to `dev` on 2026-05-29. The plan no longer needs a regex workaround on `StoreStockTransferRequest`; the storage layer now matches the API contract end-to-end at 4 decimals. The architecture guard added by PR #151 (`InventoryQuantityPrecisionGuardTest`) will catch any regression that tries to reintroduce `SCALE = 2` or `decimal:2` casts in the Inventory module.
 - **`ConfirmDialog` extension to accept children** (Opus P3-7 / Codex P3-2) — touches a UI primitive used by every feature; out of scope here. The cancel modal stays inlined; ticket filed.
 - **`bcformat` migration in WAC math** (Opus P3-3) — touches the entire `WeightedAverageCostService`; out of scope.
 - **Batch preservation on transfer legs** (Codex P2-5 / Opus design note deferral) — explicitly in the Scenario A close-out session.
