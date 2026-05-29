@@ -71,6 +71,13 @@ final readonly class EloquentProductVariantLookup implements ProductVariantLooku
 
     private function variantToSummary(ProductVariant $v): ProductVariantSummary
     {
+        // Monetary columns (price_override, cost_override) are intentionally
+        // left uncast in the Eloquent model to preserve decimal string precision.
+        // On SQLite the driver may return an int for whole-number decimals; cast
+        // to string here so the DTO contract (?string) is always satisfied.
+        $priceOverride = $v->price_override !== null ? (string) $v->price_override : null;
+        $costOverride = $v->cost_override !== null ? (string) $v->cost_override : null;
+
         return new ProductVariantSummary(
             id: $v->id,
             productId: $v->product_id,
@@ -82,8 +89,8 @@ final readonly class EloquentProductVariantLookup implements ProductVariantLooku
             nameSuffix: $v->name_suffix,
             isDefault: $v->is_default,
             isActive: $v->is_active,
-            priceOverride: $v->price_override,
-            costOverride: $v->cost_override,
+            priceOverride: $priceOverride,
+            costOverride: $costOverride,
             imageUrl: $v->image_url,
         );
     }
