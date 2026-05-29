@@ -22,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property string $tenant_id
  * @property string $company_id
  * @property string $product_id
+ * @property string|null $variant_id
  * @property string $location_id
  * @property MovementType $movement_type
  * @property MovementReason|null $reason
@@ -56,6 +57,7 @@ class StockMovement extends Model
         'tenant_id',
         'company_id',
         'product_id',
+        'variant_id',
         'location_id',
         'movement_type',
         'reason',

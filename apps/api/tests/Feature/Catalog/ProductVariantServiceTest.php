@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Tests\Feature\Catalog;
 
 use App\Modules\Catalog\Application\Commands\CreateVariantCommand;
-use App\Modules\Catalog\Application\Exceptions\MissingVariantException;
 use App\Modules\Catalog\Application\Services\ProductVariantService;
 use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Catalog\Domain\Entities\ProductVariantAttributeValue;
 use App\Modules\Catalog\Domain\Events\ProductVariantCreated;
 use App\Modules\Company\Domain\Location;
+use App\Shared\Domain\Exceptions\MissingVariantException;
 use Database\Factories\Catalog\ProductAttributeFactory;
 use Database\Factories\Catalog\ProductAttributeValueFactory;
 use Database\Factories\CompanyFactory;

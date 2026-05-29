@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Catalog\Application\Services;
 
 use App\Modules\Catalog\Application\Commands\CreateVariantCommand;
-use App\Modules\Catalog\Application\Exceptions\MissingVariantException;
-use App\Modules\Catalog\Application\Exceptions\VariantRequiredException;
 use App\Modules\Catalog\Domain\Entities\ProductAttributeValue;
 use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Catalog\Domain\Entities\ProductVariantAttributeValue;
@@ -16,6 +14,8 @@ use App\Modules\Catalog\Domain\Repositories\AttributeValueRepository;
 use App\Modules\Catalog\Domain\Repositories\ProductVariantRepository;
 use App\Modules\Inventory\Application\Services\StockLevelMigrationService;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Domain\Exceptions\MissingVariantException;
+use App\Shared\Domain\Exceptions\VariantRequiredException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;

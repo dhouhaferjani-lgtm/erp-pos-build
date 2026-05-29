@@ -2,13 +2,16 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Catalog\Application\Exceptions;
+namespace App\Shared\Domain\Exceptions;
 
 /**
  * Thrown when a referenced variant cannot be found.
  *
  * Used by setDefault, resolveBarcode, resolveSku, and other look-up operations
  * that require the variant to exist.
+ *
+ * Lives in SharedDomain because variant resolution is cross-cutting across
+ * Catalog, Inventory, BatchExpiry, and POS.
  */
 final class MissingVariantException extends \DomainException
 {

@@ -20,6 +20,7 @@ use Illuminate\Support\Carbon;
  * @property string $tenant_id
  * @property string $company_id
  * @property string $product_id
+ * @property string|null $variant_id
  * @property string $location_id
  * @property numeric-string $quantity
  * @property numeric-string $reserved
@@ -42,6 +43,7 @@ class StockLevel extends Model
         'tenant_id',
         'company_id',
         'product_id',
+        'variant_id',
         'location_id',
         'quantity',
         'reserved',
