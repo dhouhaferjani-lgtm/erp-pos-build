@@ -82,9 +82,9 @@ class StockMovement extends Model
         return [
             'movement_type' => MovementType::class,
             'reason' => MovementReason::class,
-            'quantity' => 'decimal:2',
-            'quantity_before' => 'decimal:2',
-            'quantity_after' => 'decimal:2',
+            'quantity' => 'decimal:4',
+            'quantity_before' => 'decimal:4',
+            'quantity_after' => 'decimal:4',
             'unit_cost' => 'decimal:3',
             'total_cost' => 'decimal:3',
             'avg_cost_before' => 'decimal:3',

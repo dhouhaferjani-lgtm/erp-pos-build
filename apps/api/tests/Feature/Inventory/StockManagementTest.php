@@ -122,7 +122,7 @@ class StockManagementTest extends TestCase
             ->first();
 
         $this->assertNotNull($stockLevel);
-        $this->assertEquals('10.00', $stockLevel->quantity);
+        $this->assertEquals('10.0000', $stockLevel->quantity);
     }
 
     public function test_can_issue_stock(): void
@@ -152,7 +152,7 @@ class StockManagementTest extends TestCase
             ->where('location_id', $this->warehouse->id)
             ->first();
 
-        $this->assertEquals('15.00', $stockLevel->quantity);
+        $this->assertEquals('15.0000', $stockLevel->quantity);
     }
 
     public function test_cannot_issue_more_than_available(): void
@@ -206,8 +206,8 @@ class StockManagementTest extends TestCase
             ->where('location_id', $this->warehouse->id)
             ->first();
 
-        $this->assertEquals('20.00', $stockLevel->quantity);
-        $this->assertEquals('5.00', $stockLevel->reserved);
+        $this->assertEquals('20.0000', $stockLevel->quantity);
+        $this->assertEquals('5.0000', $stockLevel->reserved);
         $this->assertEquals('15.0000', $stockLevel->getAvailableQuantity());
     }
 
@@ -267,7 +267,7 @@ class StockManagementTest extends TestCase
             ->where('location_id', $this->warehouse->id)
             ->first();
 
-        $this->assertEquals('2.00', $stockLevel->reserved);
+        $this->assertEquals('2.0000', $stockLevel->reserved);
         $this->assertEquals('18.0000', $stockLevel->getAvailableQuantity());
     }
 
@@ -312,8 +312,8 @@ class StockManagementTest extends TestCase
             ->where('location_id', $secondWarehouse->id)
             ->first();
 
-        $this->assertEquals('12.00', $sourceStock->quantity);
-        $this->assertEquals('8.00', $destStock->quantity);
+        $this->assertEquals('12.0000', $sourceStock->quantity);
+        $this->assertEquals('8.0000', $destStock->quantity);
     }
 
     public function test_stock_movement_is_recorded(): void
@@ -335,7 +335,7 @@ class StockManagementTest extends TestCase
 
         $this->assertNotNull($movement);
         $this->assertEquals(MovementType::Receipt, $movement->movement_type);
-        $this->assertEquals('10.00', $movement->quantity);
+        $this->assertEquals('10.0000', $movement->quantity);
         $this->assertEquals('PO-001', $movement->reference);
     }
 
@@ -366,7 +366,7 @@ class StockManagementTest extends TestCase
             ->where('location_id', $this->warehouse->id)
             ->first();
 
-        $this->assertEquals('12.00', $stockLevel->quantity);
+        $this->assertEquals('12.0000', $stockLevel->quantity);
     }
 
     public function test_location_api_returns_locations(): void

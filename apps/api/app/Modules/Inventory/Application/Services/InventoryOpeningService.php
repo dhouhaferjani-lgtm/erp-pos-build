@@ -53,7 +53,7 @@ class InventoryOpeningService
 
     private function quantityScale(): int
     {
-        return 2;
+        return 4;
     }
 
     /**

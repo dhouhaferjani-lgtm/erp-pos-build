@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { getProductStock } from '@/features/products/api/productStock'
-import { formatCurrency } from '@/lib/format'
+import { formatCurrency, formatQuantity } from '@/lib/format'
 import { useCurrency } from '@/hooks/useCurrency'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
@@ -90,7 +90,7 @@ export function ProductStockLevels({
               {formatAmount(stockValue.toFixed(decimals))}
             </div>
             <div className="mt-1 text-xs text-blue-600">
-              {parseFloat(totals.quantity).toFixed(decimals)} × {formatAmount(costPrice)} (WAC)
+              {formatQuantity(totals.quantity)} × {formatAmount(costPrice)} (WAC)
             </div>
           </div>
         )}
@@ -101,7 +101,7 @@ export function ProductStockLevels({
               {t('stock.onHand')}
             </div>
             <div className="mt-1 text-base font-semibold text-gray-900">
-              {parseFloat(totals.quantity).toFixed(decimals)}
+              {formatQuantity(totals.quantity)}
             </div>
           </div>
           <div>
@@ -109,7 +109,7 @@ export function ProductStockLevels({
               {t('stock.available')}
             </div>
             <div className="mt-1 text-base font-semibold text-green-600">
-              {parseFloat(totals.available).toFixed(decimals)}
+              {formatQuantity(totals.available)}
             </div>
           </div>
         </div>
@@ -120,7 +120,7 @@ export function ProductStockLevels({
               {t('stock.reserved')}
             </div>
             <div className="mt-1 text-base font-semibold text-orange-600">
-              {parseFloat(totals.reserved).toFixed(decimals)}
+              {formatQuantity(totals.reserved)}
             </div>
           </div>
           <div>
@@ -128,7 +128,7 @@ export function ProductStockLevels({
               {t('stock.incoming')}
             </div>
             <div className="mt-1 text-base font-semibold text-blue-600">
-              {parseFloat(totals.incoming).toFixed(decimals)}
+              {formatQuantity(totals.incoming)}
             </div>
           </div>
         </div>
@@ -138,7 +138,7 @@ export function ProductStockLevels({
             {t('stock.projectedAvailable')}
           </div>
           <div className="mt-1 text-base font-semibold text-gray-900">
-            {parseFloat(totals.projected_available).toFixed(decimals)}
+            {formatQuantity(totals.projected_available)}
           </div>
         </div>
       </div>
@@ -156,18 +156,18 @@ export function ProductStockLevels({
                 <div className="grid grid-cols-3 gap-4 text-sm">
                   <div>
                     <span className="text-gray-500">{t('stock.onHand')}:</span>{' '}
-                    <span className="font-medium">{parseFloat(loc.quantity).toFixed(decimals)}</span>
+                    <span className="font-medium">{formatQuantity(loc.quantity)}</span>
                   </div>
                   <div>
                     <span className="text-gray-500">{t('stock.available')}:</span>{' '}
                     <span className="font-medium text-green-600">
-                      {parseFloat(loc.available).toFixed(decimals)}
+                      {formatQuantity(loc.available)}
                     </span>
                   </div>
                   <div>
                     <span className="text-gray-500">{t('stock.incoming')}:</span>{' '}
                     <span className="font-medium text-blue-600">
-                      {parseFloat(loc.incoming).toFixed(decimals)}
+                      {formatQuantity(loc.incoming)}
                     </span>
                   </div>
                 </div>

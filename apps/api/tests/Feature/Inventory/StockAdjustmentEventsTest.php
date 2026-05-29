@@ -133,7 +133,7 @@ class StockAdjustmentEventsTest extends TestCase
                 && $event->locationId === $this->warehouse->id
                 && $event->movementType === 'receipt'
                 && $event->quantity === '10.00'
-                && $event->newStockLevel === '10.00';
+                && $event->newStockLevel === '10.0000';
         });
     }
 
@@ -163,7 +163,7 @@ class StockAdjustmentEventsTest extends TestCase
                 && $event->locationId === $this->warehouse->id
                 && $event->movementType === 'issue'
                 && $event->quantity === '5.00'
-                && $event->newStockLevel === '15.00';
+                && $event->newStockLevel === '15.0000';
         });
     }
 
@@ -192,7 +192,7 @@ class StockAdjustmentEventsTest extends TestCase
             return $event->productId === $this->product->id
                 && $event->locationId === $this->warehouse->id
                 && $event->movementType === 'adjustment'
-                && $event->quantity === '2.00'
+                && $event->quantity === '2.0000'
                 && $event->newStockLevel === '12.00';
         });
     }
@@ -225,14 +225,14 @@ class StockAdjustmentEventsTest extends TestCase
         Event::assertDispatched(StockMovementRecorded::class, function (StockMovementRecorded $event): bool {
             return $event->locationId === $this->warehouse->id
                 && $event->movementType === 'transfer_out'
-                && $event->newStockLevel === '12.00';
+                && $event->newStockLevel === '12.0000';
         });
 
         // Destination movement (transfer in)
         Event::assertDispatched(StockMovementRecorded::class, function (StockMovementRecorded $event): bool {
             return $event->locationId === $this->secondWarehouse->id
                 && $event->movementType === 'transfer_in'
-                && $event->newStockLevel === '8.00';
+                && $event->newStockLevel === '8.0000';
         });
     }
 

@@ -20,7 +20,16 @@ use Illuminate\Support\Str;
 
 final class StockAdjustmentService
 {
-    private const SCALE = 2;
+    /**
+     * Quantity precision (decimal places) for all stock math.
+     *
+     * Must match the `decimal(15,4)` storage scale on `stock_levels` and
+     * `stock_movements` and the `decimal:4` casts on their models. Inventory
+     * quantities are produced at 4 decimal places (transfer/document/counting
+     * lines); operating bcmath at a lower scale here silently truncates them
+     * and leaves un-reconcilable ghost stock.
+     */
+    private const SCALE = 4;
 
     /**
      * Receive stock into a location (e.g., from purchase order).
