@@ -82,7 +82,7 @@ final class OrderManagementServiceTest extends TestCase
         $this->assertEquals($this->terminal->id, $order->terminal_id);
         $this->assertEquals($this->shift->id, $order->shift_id);
         $this->assertEquals($this->user->id, $order->cashier_id);
-        $this->assertEquals('0.0000', $order->total);
+        $this->assertEquals('0.000', $order->total);
         $this->assertNotNull($order->opened_at);
     }
 
@@ -125,15 +125,15 @@ final class OrderManagementServiceTest extends TestCase
         $this->assertEquals(1, $line->line_number);
         $this->assertEquals(OrderLineStatus::Pending, $line->status);
 
-        // line_total should be 20.0000 (2 * 10)
-        $this->assertEquals('20.0000', $line->line_total);
+        // line_total should be 20.000 (2 * 10)
+        $this->assertEquals('20.000', $line->line_total);
 
         // Tax at 19% inclusive: net = 20/1.19, tax = 20 - net
-        $this->assertNotEquals('0.0000', $line->tax_amount);
+        $this->assertNotEquals('0.000', $line->tax_amount);
 
         // Order totals should be updated
         $order->refresh();
-        $this->assertNotEquals('0.0000', $order->total);
+        $this->assertNotEquals('0.000', $order->total);
     }
 
     public function test_add_line_with_discount(): void
@@ -155,8 +155,8 @@ final class OrderManagementServiceTest extends TestCase
         );
 
         // line_total = 100 - 10 = 90
-        $this->assertEquals('90.0000', $line->line_total);
-        $this->assertEquals('10.0000', $line->discount_amount);
+        $this->assertEquals('90.000', $line->line_total);
+        $this->assertEquals('10.000', $line->discount_amount);
     }
 
     public function test_modify_line_updates_quantity(): void
@@ -181,7 +181,7 @@ final class OrderManagementServiceTest extends TestCase
         );
 
         $this->assertEquals('3.000', $modified->quantity);
-        $this->assertEquals('30.0000', $modified->line_total);
+        $this->assertEquals('30.000', $modified->line_total);
     }
 
     public function test_remove_line_recalculates_totals(): void
@@ -199,7 +199,7 @@ final class OrderManagementServiceTest extends TestCase
         $this->service->removeLine($order->id, $line->id);
 
         $order->refresh();
-        $this->assertEquals('0.0000', $order->total);
+        $this->assertEquals('0.000', $order->total);
         $this->assertEquals(0, $order->lines()->count());
     }
 

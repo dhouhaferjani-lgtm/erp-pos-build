@@ -73,8 +73,8 @@ final class OrderToReceiptServiceTest extends TestCase
         $line1->method('__get')->willReturnMap([
             ['product_id', 'product-1'],
             ['quantity', '2.000'],
-            ['unit_price', '10.0000'],
-            ['discount_amount', '0.0000'],
+            ['unit_price', '10.000'],
+            ['discount_amount', '0.000'],
             ['modifiers', null],
         ]);
 
@@ -82,8 +82,8 @@ final class OrderToReceiptServiceTest extends TestCase
         $line2->method('__get')->willReturnMap([
             ['product_id', 'product-2'],
             ['quantity', '1.000'],
-            ['unit_price', '25.0000'],
-            ['discount_amount', '5.0000'],
+            ['unit_price', '25.000'],
+            ['discount_amount', '5.000'],
             ['modifiers', null],
         ]);
 

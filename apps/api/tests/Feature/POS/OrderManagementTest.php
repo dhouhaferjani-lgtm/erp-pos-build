@@ -151,7 +151,7 @@ final class OrderManagementTest extends TestCase
 
         // Order totals should be updated
         $orderData = $response->json('data.order');
-        $this->assertNotEquals('0.0000', $orderData['total']);
+        $this->assertNotEquals('0.000', $orderData['total']);
     }
 
     public function test_add_line_fails_on_closed_order(): void
@@ -197,7 +197,7 @@ final class OrderManagementTest extends TestCase
 
         $response->assertStatus(200);
         $this->assertEmpty($response->json('data.lines'));
-        $this->assertEquals('0.0000', $response->json('data.total'));
+        $this->assertEquals('0.000', $response->json('data.total'));
     }
 
     public function test_send_order_to_kitchen(): void
@@ -324,10 +324,10 @@ final class OrderManagementTest extends TestCase
             'status' => OrderStatus::Open,
             'cashier_id' => $this->user->id,
             'cashier_name' => $this->user->name ?? 'Test Cashier',
-            'subtotal' => '0.0000',
-            'tax_amount' => '0.0000',
-            'discount_amount' => '0.0000',
-            'total' => '0.0000',
+            'subtotal' => '0.000',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'total' => '0.000',
             'currency' => 'TND',
             'opened_at' => now(),
         ]);
