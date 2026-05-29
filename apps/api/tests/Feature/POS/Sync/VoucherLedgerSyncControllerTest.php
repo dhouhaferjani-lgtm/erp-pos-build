@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Receipt;
@@ -108,6 +109,9 @@ final class VoucherLedgerSyncControllerTest extends TestCase
 
         $this->terminalA = $this->createTerminal('POS-A');
         $this->terminalB = $this->createTerminal('POS-B');
+
+        // Bind CompanyContext so CurrencyScaleResolver::getScale() resolves without throwing.
+        app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     // -------------------------------------------------------------------------
