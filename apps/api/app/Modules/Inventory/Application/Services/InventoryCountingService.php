@@ -626,7 +626,7 @@ class InventoryCountingService
             $theoreticalQty = (float) $item->theoretical_qty;
             $finalQty = (float) ($item->final_qty ?? '0.00');
             $variance = $finalQty - $theoreticalQty;
-            $totalVariance = bcadd($totalVariance, (string) $variance, 2);
+            $totalVariance = bcadd($totalVariance, (string) $variance, 4);
         }
 
         // Get tenant_id from counting or fallback to user's tenant_id
