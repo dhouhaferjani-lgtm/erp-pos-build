@@ -102,9 +102,29 @@ class WeightedAverageCostService
                 ->lockForUpdate()
                 ->findOrFail($product->id);
 
-            $currentQty = (float) $stockLevel->quantity;
+            // WAC is product-grain (LOCKED spec §6.7 Option C): variants share
+            // one company-wide product cost. The running inventory quantity that
+            // feeds the average MUST aggregate across ALL variant rows (and any
+            // product-level row) at the pre-T2 scope (product + location +
+            // tenant + company) — NOT the single variant row we just locked.
+            // Scoping the WAC input by variant_id would shard the average per
+            // variant, which is the Task 20 regression this fixes.
+            //
+            // For a non-variant product the table holds exactly one matching row
+            // (variant_id IS NULL), so this SUM is byte-identical to the pre-T2
+            // single-row read — no behavior change.
+            $currentQty = (float) StockLevel::where('product_id', $product->id)
+                ->where('location_id', $location->id)
+                ->where('tenant_id', $product->tenant_id)
+                ->where('company_id', $product->company_id)
+                ->sum('quantity');
             $currentCostPrice = (float) ($product->cost_price ?? 0);
             $currentValue = $currentQty * $currentCostPrice;
+
+            // The variant row's own running quantity drives the physical stock
+            // update below; only the WAC formula uses the product-grain total.
+            $stockLevelQtyBefore = (float) $stockLevel->quantity;
+            $stockLevelQtyAfter = $stockLevelQtyBefore + $quantity;
 
             $newQty = $currentQty + $quantity;
             $newValue = $currentValue + ($quantity * $landedUnitCost);
@@ -121,8 +141,10 @@ class WeightedAverageCostService
                 'company_id' => $location->company_id,
                 'movement_type' => MovementType::Receipt,
                 'quantity' => $quantity,
-                'quantity_before' => $currentQty,
-                'quantity_after' => $newQty,
+                // Movement before/after reflect the variant-scoped physical row,
+                // not the product-grain WAC aggregate.
+                'quantity_before' => $stockLevelQtyBefore,
+                'quantity_after' => $stockLevelQtyAfter,
                 'unit_cost' => (string) $landedUnitCost,
                 'total_cost' => (string) ($quantity * $landedUnitCost),
                 'avg_cost_before' => (string) $currentCostPrice,
@@ -132,8 +154,8 @@ class WeightedAverageCostService
                 'reference_id' => $referenceId,
             ]);
 
-            // Update stock level
-            $stockLevel->quantity = (string) $newQty;
+            // Update stock level (variant-scoped physical row).
+            $stockLevel->quantity = (string) $stockLevelQtyAfter;
             $stockLevel->save();
 
             // Update product cost

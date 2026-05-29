@@ -20,6 +20,7 @@ use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\GoodsReceiptService;
+use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -399,5 +400,96 @@ class GoodsReceiptServiceVariantTest extends TestCase
 
         $this->assertNotNull($productBStock);
         $this->assertEquals(0, bccomp('15.0000', (string) $productBStock->quantity, 4));
+    }
+
+    /**
+     * REGRESSION (§6.7 Option C / product-grain WAC): recordPurchase must compute
+     * the weighted-average cost over the PRODUCT-GRAIN inventory total (sum across
+     * ALL variant rows at the same location), NOT the single variant row being
+     * received into. Task 20 scoped the WAC currentQty to the variant row, which
+     * sharded the average per-variant.
+     *
+     * Worked example: product cost 10.00, 5 RED + 7 BLUE on hand (12 units),
+     * receive 3 RED @ 14.00.
+     *   Correct product-grain WAC = (12*10 + 3*14) / 15 = 162 / 15 = 10.80
+     *   Buggy variant-sharded WAC = (5*10  + 3*14) / 8  =  92 / 8  = 11.50
+     *
+     * The variant-A (RED) physical row must still increase to 8 (row update
+     * stays variant-scoped).
+     */
+    public function test_record_purchase_keeps_wac_product_grain_across_variants(): void
+    {
+        $product = $this->createProduct('PROD-WAC-GRAIN', 'WAC Grain Product');
+        $product->cost_price = '10.0000';
+        $product->save();
+
+        $variantRed = $this->createVariant($product, 'RED');
+        $variantBlue = $this->createVariant($product, 'BLUE');
+
+        // Existing on-hand: 5 RED + 7 BLUE at the warehouse.
+        StockLevel::create([
+            'product_id' => $product->id,
+            'variant_id' => $variantRed->id,
+            'location_id' => $this->warehouse->id,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'quantity' => '5.0000',
+            'reserved' => '0.0000',
+        ]);
+        StockLevel::create([
+            'product_id' => $product->id,
+            'variant_id' => $variantBlue->id,
+            'location_id' => $this->warehouse->id,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'quantity' => '7.0000',
+            'reserved' => '0.0000',
+        ]);
+
+        $service = app(WeightedAverageCostService::class);
+
+        // Receive 3 RED @ 14.00.
+        $service->recordPurchase(
+            product: $product,
+            location: $this->warehouse,
+            quantity: 3.0,
+            landedUnitCost: 14.0,
+            reference: 'PO-WAC-GRAIN',
+            referenceType: null,
+            referenceId: null,
+            variantId: $variantRed->id,
+        );
+
+        // Product cost_price must be the product-grain WAC (10.80), NOT 11.50.
+        $product->refresh();
+        $this->assertEquals(
+            0,
+            bccomp('10.8000', (string) $product->cost_price, 4),
+            "Product cost_price must be product-grain WAC 10.80, got {$product->cost_price}"
+        );
+
+        // Variant-A (RED) row must still be variant-scoped: 5 + 3 = 8.
+        $redStock = StockLevel::where('product_id', $product->id)
+            ->where('variant_id', $variantRed->id)
+            ->where('location_id', $this->warehouse->id)
+            ->first();
+        $this->assertNotNull($redStock);
+        $this->assertEquals(
+            0,
+            bccomp('8.0000', (string) $redStock->quantity, 4),
+            "RED variant stock row must increase to 8, got {$redStock->quantity}"
+        );
+
+        // Variant-B (BLUE) row must be untouched at 7.
+        $blueStock = StockLevel::where('product_id', $product->id)
+            ->where('variant_id', $variantBlue->id)
+            ->where('location_id', $this->warehouse->id)
+            ->first();
+        $this->assertNotNull($blueStock);
+        $this->assertEquals(
+            0,
+            bccomp('7.0000', (string) $blueStock->quantity, 4),
+            "BLUE variant stock row must stay at 7, got {$blueStock->quantity}"
+        );
     }
 }
