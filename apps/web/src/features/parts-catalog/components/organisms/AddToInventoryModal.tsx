@@ -4,6 +4,8 @@ import { X, Package } from 'lucide-react'
 import { addArticleToInventory } from '../../api/partsCatalog'
 import type { EnrichedArticle, BrandQualityTier } from '../../types/catalog'
 import { TaxConfigurationField } from '../../../../components/molecules/TaxConfigurationField'
+import { MoneyInput } from '@/components/atoms'
+import { useCompanyConfig } from '@/contexts'
 
 interface AddToInventoryModalProps {
   isOpen: boolean
@@ -27,6 +29,8 @@ export function AddToInventoryModal({
   onSuccess,
 }: AddToInventoryModalProps) {
   const { t } = useTranslation(['parts-catalog', 'common'])
+  const { config } = useCompanyConfig()
+  const currency = config?.currency ?? 'TND'
 
   const defaultName = useMemo(() => {
     if (!article) return ''
@@ -186,28 +190,24 @@ export function AddToInventoryModal({
               <label htmlFor="inv-sale" className="block text-sm font-medium text-gray-700 mb-1">
                 {t('parts-catalog:addToInventory.salePrice')}
               </label>
-              <input
+              <MoneyInput
                 id="inv-sale"
-                type="number"
-                step="0.01"
+                currency={currency}
                 min="0"
                 value={salePrice}
-                onChange={(e) => { setSalePrice(e.target.value) }}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                onChange={setSalePrice}
               />
             </div>
             <div>
               <label htmlFor="inv-purchase" className="block text-sm font-medium text-gray-700 mb-1">
                 {t('parts-catalog:addToInventory.purchasePrice')}
               </label>
-              <input
+              <MoneyInput
                 id="inv-purchase"
-                type="number"
-                step="0.01"
+                currency={currency}
                 min="0"
                 value={purchasePrice}
-                onChange={(e) => { setPurchasePrice(e.target.value) }}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                onChange={setPurchasePrice}
               />
             </div>
           </div>

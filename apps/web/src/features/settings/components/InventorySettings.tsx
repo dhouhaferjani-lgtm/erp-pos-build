@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { api } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { Button } from '../../../components/atoms/Button/Button'
+import { MoneyInput } from '../../../components/atoms/MoneyInput'
 import { useCompany } from '../../../hooks/useCompany'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -360,13 +361,12 @@ export function InventorySettings() {
               <label className="block text-sm font-medium text-gray-700">
                 {t('inventory:settings.reservations.fraud.highValue.label')} ({currentCompany?.currency || 'USD'})
               </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
+              <MoneyInput
                 value={reservationSettings.high_value_alert_threshold}
-                onChange={(e) => { setReservationSettings({ ...reservationSettings, high_value_alert_threshold: e.target.value }); }}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                onChange={(v) => { setReservationSettings({ ...reservationSettings, high_value_alert_threshold: v }); }}
+                currency={currentCompany?.currency ?? 'USD'}
+                min="0"
+                className="mt-1 w-full"
               />
               <p className="mt-1 text-xs text-gray-500">
                 {t('inventory:settings.reservations.fraud.highValue.hint')}
@@ -377,13 +377,12 @@ export function InventorySettings() {
               <label className="block text-sm font-medium text-gray-700">
                 {t('inventory:settings.reservations.fraud.countTrigger.label')} ({currentCompany?.currency || 'USD'})
               </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
+              <MoneyInput
                 value={reservationSettings.inventory_count_trigger_threshold}
-                onChange={(e) => { setReservationSettings({ ...reservationSettings, inventory_count_trigger_threshold: e.target.value }); }}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                onChange={(v) => { setReservationSettings({ ...reservationSettings, inventory_count_trigger_threshold: v }); }}
+                currency={currentCompany?.currency ?? 'USD'}
+                min="0"
+                className="mt-1 w-full"
               />
               <p className="mt-1 text-xs text-gray-500">
                 {t('inventory:settings.reservations.fraud.countTrigger.hint')}

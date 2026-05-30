@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
-import { Input, Textarea, FormField, Button, Select } from '@/components/atoms'
+import { Input, Textarea, FormField, Button, Select, MoneyInput } from '@/components/atoms'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { ProductSelector } from '@/features/products/components/ProductSelector'
 import { CategorySelector } from '@/features/categories/components/CategorySelector'
+import { useCompany } from '@/hooks/useCompany'
 
 import { usePromotion, useCreatePromotion, useUpdatePromotion } from '../hooks/usePromotions'
 import type { CreatePromotionData, UpdatePromotionData } from '../api/promotionApi'
@@ -19,6 +20,8 @@ export function PromotionFormPage() {
   const { t } = useTranslation(['promotions', 'common'])
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
+  const { currentCompany } = useCompany()
+  const currency = currentCompany?.currency ?? 'EUR'
   const isEditing = !!id
 
   const { data: existingPromotion, isLoading: isLoadingPromotion } = usePromotion(id ?? '')
@@ -227,22 +230,31 @@ export function PromotionFormPage() {
           </FormField>
 
           <FormField label={t('promotions:fields.discountValue')} required>
-            <Input
-              type="number"
-              value={discountValue}
-              onChange={(e) => { setDiscountValue(e.target.value); }}
-              step="0.01"
-              min="0"
-              required
-            />
+            {discountType === 'percentage' ? (
+              <Input
+                type="number"
+                value={discountValue}
+                onChange={(e) => { setDiscountValue(e.target.value); }}
+                step="0.01"
+                min="0"
+                max="100"
+                required
+              />
+            ) : (
+              <MoneyInput
+                value={discountValue}
+                onChange={setDiscountValue}
+                currency={currency}
+                min="0"
+              />
+            )}
           </FormField>
 
           <FormField label={t('promotions:fields.maxDiscountAmount')}>
-            <Input
-              type="number"
+            <MoneyInput
               value={maxDiscountAmount}
-              onChange={(e) => { setMaxDiscountAmount(e.target.value); }}
-              step="0.01"
+              onChange={setMaxDiscountAmount}
+              currency={currency}
               min="0"
             />
           </FormField>
@@ -279,11 +291,10 @@ export function PromotionFormPage() {
                 />
               </FormField>
               <FormField label={t('promotions:fields.minimumAmount')}>
-                <Input
-                  type="number"
+                <MoneyInput
                   value={minAmount}
-                  onChange={(e) => { setMinAmount(e.target.value); }}
-                  step="0.01"
+                  onChange={setMinAmount}
+                  currency={currency}
                   min="0"
                 />
               </FormField>

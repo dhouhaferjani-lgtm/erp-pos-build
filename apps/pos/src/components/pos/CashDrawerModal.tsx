@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from './Modal';
+import { MoneyInput } from '@/components/atoms/MoneyInput';
+import { useCurrency } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import { depositCash, payoutCash } from '@/api/cashDrawerApi';
 import { getErrorMessage } from '@/lib/api';
@@ -24,6 +26,7 @@ export function CashDrawerModal({
   approvalContext,
 }: CashDrawerModalProps) {
   const { t } = useTranslation('pos');
+  const { currency } = useCurrency();
   const [tab, setTab] = useState<TabType>('deposit');
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
@@ -141,12 +144,11 @@ export function CashDrawerModal({
           <label className="mb-1 block text-sm font-medium text-gray-700">
             {t('cashDrawer.amount')}
           </label>
-          <input
-            type="number"
-            step="0.01"
+          <MoneyInput
+            currency={currency}
             min="0"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={setAmount}
             className="w-full rounded-lg border border-gray-300 px-4 py-3 text-right text-xl font-semibold focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
           />
         </div>

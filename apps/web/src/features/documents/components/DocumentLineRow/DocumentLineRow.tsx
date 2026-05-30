@@ -1,6 +1,8 @@
 import { GripVertical, Trash2 } from 'lucide-react'
 import { MarginIndicator, type MarginLevel } from '../../../../components/molecules/MarginIndicator'
 import { TaxConfigurationSelect } from '../../../../components/atoms/TaxConfigurationSelect'
+import { MoneyInput } from '../../../../components/atoms/MoneyInput'
+import { QuantityInput } from '../../../../components/atoms/QuantityInput'
 import { useTaxConfigName } from '../../../../hooks/useTaxConfigName'
 import { DesignationCell } from '../DesignationCell'
 import { NotesCell } from '../NotesCell'
@@ -31,6 +33,8 @@ export interface DocumentLineRowProps {
   minimumMargin?: number
   isDragging: boolean
   documentType?: string
+  /** ISO currency code used for the unit-price MoneyInput. Defaults to 'EUR'. */
+  currency?: string
   onUpdate: (updates: Partial<DocumentLineData>) => void
   onRemove: () => void
   onDragStart: () => void
@@ -64,6 +68,7 @@ export function DocumentLineRow({
   minimumMargin = 15,
   isDragging,
   documentType,
+  currency = 'EUR',
   onUpdate,
   onRemove,
   onDragStart,
@@ -123,12 +128,11 @@ export function DocumentLineRow({
         {readonly ? (
           <span className="text-sm text-gray-900">{line.quantity}</span>
         ) : (
-          <input
-            type="number"
+          <QuantityInput
+            decimalPlaces={4}
             min="0"
-            step="1"
-            value={line.quantity}
-            onChange={(e) => { onUpdate({ quantity: parseFloat(e.target.value) || 0 }) }}
+            value={String(line.quantity)}
+            onChange={(v) => { onUpdate({ quantity: parseFloat(v) || 0 }) }}
             className="w-20 rounded border border-gray-300 px-2 py-1 text-end text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         )}
@@ -150,12 +154,12 @@ export function DocumentLineRow({
           </div>
         ) : (
           <div className="flex flex-col items-end gap-1">
-            <input
-              type="number"
+            <MoneyInput
+              currency={currency}
               min="0"
-              step="0.01"
-              value={line.unit_price}
-              onChange={(e) => { onUpdate({ unit_price: parseFloat(e.target.value) || 0 }) }}
+              value={String(line.unit_price)}
+              onChange={(v) => { onUpdate({ unit_price: parseFloat(v) || 0 }) }}
+              error={level === 'red' || level === 'orange'}
               className={`w-28 rounded border px-2 py-1 text-end text-sm focus:outline-none focus:ring-1 ${
                 level === 'red'
                   ? 'border-red-300 focus:border-red-500 focus:ring-red-500'

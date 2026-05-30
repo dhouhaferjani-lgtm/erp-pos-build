@@ -243,6 +243,37 @@ describe('cartStore', () => {
     expect(useCartStore.getState().total()).toBeCloseTo(80);
   });
 
+  it('sums fractional quantity × price without float drift (Big.js)', () => {
+    // 0.1 + 0.2 = 0.30000000000000004 with Number arithmetic. Three €0.10
+    // lines must subtotal to exactly 0.30, and the subtotalString accessor
+    // must return the exact currency-scale string with no drift.
+    useCartStore.getState().addItem(makeProduct({ id: 'p1', sale_price: '0.10' }));
+    useCartStore.getState().addItem(makeProduct({ id: 'p2', sale_price: '0.20' }));
+
+    expect(useCartStore.getState().subtotalString()).toBe('0.30');
+    expect(useCartStore.getState().subtotal()).toBe(0.3);
+  });
+
+  it('multiplies a fractional quantity by unit price exactly', () => {
+    // 1.5 kg × €2.99 = €4.485 → €4.49 at EUR scale 2 (round-half-up).
+    useCartStore.getState().addItem(makeProduct({ id: 'kg', sale_price: '2.99' }));
+    const itemId = useCartStore.getState().items[0]!.id;
+    useCartStore.getState().updateQuantity(itemId, 1.5);
+
+    const item = useCartStore.getState().items[0]!;
+    expect(item.quantity).toBe(1.5);
+    expect(item.line_total).toBe('4.49');
+  });
+
+  it('aggregates many fractional lines without accumulating drift', () => {
+    // Ten €0.10 lines → €1.00 exactly. Number reduce drifts to 0.9999999999.
+    for (let i = 0; i < 10; i++) {
+      useCartStore.getState().addItem(makeProduct({ id: `f${String(i)}`, sale_price: '0.10' }));
+    }
+    expect(useCartStore.getState().subtotalString()).toBe('1.00');
+    expect(useCartStore.getState().total()).toBe(1);
+  });
+
   it('calculates total correctly with tax-inclusive pricing', () => {
     useCartStore.getState().addItem(makeProduct({ sale_price: '100.00', tax_rate: '20' }));
     // line_total = 100 (tax-inclusive), tax_amount = 16.67 (extracted)

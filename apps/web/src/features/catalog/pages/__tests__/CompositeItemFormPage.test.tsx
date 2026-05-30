@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { CompositeItemFormPage } from '../CompositeItemFormPage'
 
 const mockNavigate = vi.fn()
@@ -43,11 +44,12 @@ const mockItem = {
 }
 
 const mockDeleteMutate = vi.fn().mockResolvedValue(undefined)
+const mockUpdateMutate = vi.fn()
 
 vi.mock('../../hooks/useCompositeItems', () => ({
   useCompositeItem: () => ({ data: mockItem, isLoading: false }),
   useCreateCompositeItem: () => ({ mutate: vi.fn(), isPending: false }),
-  useUpdateCompositeItem: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateCompositeItem: () => ({ mutate: mockUpdateMutate, isPending: false }),
   useDeleteCompositeItem: () => ({ mutateAsync: mockDeleteMutate, isPending: false }),
   useCompositeItemAvailability: () => ({ data: undefined, isLoading: false }),
 }))
@@ -62,7 +64,7 @@ vi.mock('../../hooks/useVerticalLabels', () => ({
 }))
 
 vi.mock('@/contexts', () => ({
-  useCompanyConfig: () => ({ config: { vertical: 'fnb' }, hasModule: () => false }),
+  useCompanyConfig: () => ({ config: { vertical: 'fnb', currency: 'TND' }, hasModule: () => false }),
 }))
 
 vi.mock('@tanstack/react-query', async (importOriginal) => {
@@ -79,6 +81,7 @@ describe('CompositeItemFormPage', () => {
     vi.clearAllMocks()
     mockParams = { id: 'composite-1' }
     mockHasPermission = vi.fn().mockReturnValue(true)
+    mockUpdateMutate.mockReset()
   })
 
   it('shows the delete button when editing an existing item', () => {
@@ -125,5 +128,27 @@ describe('CompositeItemFormPage', () => {
     mockHasPermission = vi.fn().mockReturnValue(false)
     render(<CompositeItemFormPage />)
     expect(screen.queryByRole('button', { name: /common:delete/i })).not.toBeInTheDocument()
+  })
+
+  it('sends base_price as a string (not a JS number) in the update payload', async () => {
+    const user = userEvent.setup()
+    render(<CompositeItemFormPage />)
+
+    // The price field is rendered as a MoneyInput (type=number); find it by label
+    const priceInput = screen.getByLabelText(/catalog:basePrice/i)
+    await user.clear(priceInput)
+    await user.type(priceInput, '12.5')
+
+    const saveButton = screen.getByRole('button', { name: /common:save/i })
+    await user.click(saveButton)
+
+    await waitFor(() => {
+      expect(mockUpdateMutate).toHaveBeenCalled()
+      const [{ data }] = mockUpdateMutate.mock.calls[0] as [{ id: string; data: Record<string, unknown> }]
+      // Precision contract: monetary values MUST be strings, never JS numbers —
+      // coercing to Number() would silently truncate TND's 3rd decimal place.
+      expect(typeof data['base_price']).toBe('string')
+      expect(data['base_price']).toBe('12.5')
+    })
   })
 })

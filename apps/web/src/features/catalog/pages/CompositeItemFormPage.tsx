@@ -22,6 +22,7 @@ import { ModifierGroupAssigner } from '../components/ModifierGroupAssigner'
 import { useVerticalLabels, companyVerticalToCatalog } from '../hooks/useVerticalLabels'
 import { useCompanyConfig } from '@/contexts'
 import { TaxConfigurationField } from '../../../components/molecules/TaxConfigurationField'
+import { MoneyInput } from '@/components/atoms'
 import type { ProductionType, PricingMode } from '../types/compositeItem'
 
 type TabValue = 'details' | 'recipeTab' | 'sizesTab' | 'modifiersTab'
@@ -37,6 +38,7 @@ export function CompositeItemFormPage() {
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const { config, hasModule } = useCompanyConfig()
+  const currency = config?.currency ?? 'TND'
   const hasInventory = hasModule('Inventory')
   const companyVerticalType = companyVerticalToCatalog(config?.vertical)
 
@@ -127,11 +129,11 @@ export function CompositeItemFormPage() {
       name: form.name,
       category_id: form.category_id || null,
       vertical_type: form.vertical_type,
-      base_price: Number(form.base_price),
-      manual_cost: form.manual_cost ? Number(form.manual_cost) : null,
+      base_price: form.base_price,
+      manual_cost: form.manual_cost || null,
       production_type: form.production_type,
       pricing_mode: form.pricing_mode,
-      tax_rate: form.tax_rate ? Number(form.tax_rate) : null,
+      tax_rate: form.tax_rate || null,
       is_active: form.is_active,
       is_available: form.is_available,
       image_url: form.image_url || null,
@@ -225,24 +227,22 @@ export function CompositeItemFormPage() {
                     />
                   </FormField>
                   <FormField label={t('catalog:basePrice')} htmlFor="ci-price" required>
-                    <Input
+                    <MoneyInput
                       id="ci-price"
-                      type="number"
                       required
-                      step="0.01"
+                      currency={currency}
                       min="0"
                       value={form.base_price}
-                      onChange={(e) => { setForm({ ...form, base_price: e.target.value }); }}
+                      onChange={(v) => { setForm({ ...form, base_price: v }); }}
                     />
                   </FormField>
                   <FormField label={t('catalog:manualCost')} htmlFor="ci-manual-cost">
-                    <Input
+                    <MoneyInput
                       id="ci-manual-cost"
-                      type="number"
-                      step="0.01"
+                      currency={currency}
                       min="0"
                       value={form.manual_cost}
-                      onChange={(e) => { setForm({ ...form, manual_cost: e.target.value }); }}
+                      onChange={(v) => { setForm({ ...form, manual_cost: v }); }}
                       placeholder={t('catalog:manualCostPlaceholder')}
                     />
                     {item?.recipe_cost && (
@@ -466,24 +466,22 @@ export function CompositeItemFormPage() {
                 />
               </FormField>
               <FormField label={t('catalog:basePrice')} htmlFor="ci-price" required>
-                <Input
+                <MoneyInput
                   id="ci-price"
-                  type="number"
                   required
-                  step="0.01"
+                  currency={currency}
                   min="0"
                   value={form.base_price}
-                  onChange={(e) => { setForm({ ...form, base_price: e.target.value }); }}
+                  onChange={(v) => { setForm({ ...form, base_price: v }); }}
                 />
               </FormField>
               <FormField label={t('catalog:manualCost')} htmlFor="ci-manual-cost">
-                <Input
+                <MoneyInput
                   id="ci-manual-cost"
-                  type="number"
-                  step="0.01"
+                  currency={currency}
                   min="0"
                   value={form.manual_cost}
-                  onChange={(e) => { setForm({ ...form, manual_cost: e.target.value }); }}
+                  onChange={(v) => { setForm({ ...form, manual_cost: v }); }}
                   placeholder={t('catalog:manualCostPlaceholder')}
                 />
                 {form.manual_cost && parseFloat(form.base_price) > 0 && (

@@ -50,6 +50,14 @@ vi.mock('@/lib/offline/voucherRepository', () => ({
   findByCode: (db: unknown, code: string) => mockFindByCode(db, code),
 }));
 
+// Mock @/lib/currency to break the MoneyInput → currency → authStore → api → i18n
+// import chain. MoneyInput only uses getCurrencyDecimals; map known currencies to
+// their scale (TND = 3) so the modal's amount-formatting stays correct in tests.
+vi.mock('@/lib/currency', () => ({
+  getCurrencyDecimals: (currency: string): number =>
+    ['TND', 'LYD', 'BHD', 'IQD', 'JOD', 'KWD', 'OMR'].includes(currency) ? 3 : 2,
+}));
+
 // Mock @/lib/decimal to break the import chain into authStore/api/i18n
 // The component uses bccomp, bcformat from this module.
 vi.mock('@/lib/decimal', () => ({

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useForm, type Resolver } from 'react-hook-form'
+import { useForm, Controller, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { AlertCircle, Info } from 'lucide-react'
-import { Button, Input, FormField, Select, Textarea } from '@/components/atoms'
+import { Button, Input, FormField, Select, Textarea, MoneyInput } from '@/components/atoms'
 import { Modal } from '@/components/organisms/Modal/Modal'
 import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import { PartnerPicker, type PartnerPickerValue } from '@/components/molecules/pickers/PartnerPicker'
@@ -90,6 +90,8 @@ export function IssueGoodwillVoucherModal({ isOpen, onClose }: IssueGoodwillVouc
   }, [settings, isOpen, defaultRedemptionMode, expiryDefault, form])
 
   const amountValue = form.watch('amount')
+  // currency field always has a default value ('EUR') so the cast is safe
+  const currencyValue = (form.watch('currency') as string | undefined) ?? 'EUR'
   const needsFourEyes = !isNaN(Number(amountValue)) && Number(amountValue) >= threshold
 
   // Clear secondAdmin state when amount drops below the four-eyes threshold
@@ -164,12 +166,18 @@ export function IssueGoodwillVoucherModal({ isOpen, onClose }: IssueGoodwillVouc
               label={t('vouchers:fields.amount')}
               error={form.formState.errors.amount?.message}
             >
-              <Input
-                {...form.register('amount')}
-                type="number"
-                step="0.01"
-                min="0.01"
-                placeholder="0.00"
+              <Controller
+                name="amount"
+                control={form.control}
+                render={({ field }) => (
+                  <MoneyInput
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    currency={currencyValue}
+                    min="0.01"
+                    placeholder="0.00"
+                  />
+                )}
               />
             </FormField>
 

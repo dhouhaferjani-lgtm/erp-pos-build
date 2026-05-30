@@ -9,6 +9,8 @@ import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { AddQuickProductModal } from '../../../components/organisms'
 import { TaxConfigurationSelect } from '../../../components/atoms/TaxConfigurationSelect'
+import { MoneyInput } from '../../../components/atoms/MoneyInput'
+import { QuantityInput } from '../../../components/atoms/QuantityInput'
 import { DesignationCell } from './DesignationCell'
 import { NotesCell } from './NotesCell'
 import { useLineDesignationFeature } from '../hooks/useLineDesignationFeature'
@@ -413,13 +415,12 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                     {readonly ? (
                       <span className="text-sm text-gray-900">{line.quantity}</span>
                     ) : (
-                      <input
-                        type="number"
+                      <QuantityInput
+                        decimalPlaces={4}
                         min="0"
-                        step="1"
-                        value={line.quantity}
-                        onChange={(e) => {
-                          handleUpdateLine(line.id, { quantity: parseFloat(e.target.value) || 0 })
+                        value={String(line.quantity)}
+                        onChange={(v) => {
+                          handleUpdateLine(line.id, { quantity: parseFloat(v) || 0 })
                         }}
                         className="w-20 rounded border border-gray-300 px-2 py-1 text-end text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
@@ -429,13 +430,12 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                     {readonly ? (
                       <span className="text-sm text-gray-900">{formatAmount(line.unit_price)}</span>
                     ) : (
-                      <input
-                        type="number"
+                      <MoneyInput
+                        currency={companyCurrency}
                         min="0"
-                        step="0.01"
-                        value={line.unit_price}
-                        onChange={(e) => {
-                          handleUpdateLine(line.id, { unit_price: parseFloat(e.target.value) || 0 })
+                        value={String(line.unit_price)}
+                        onChange={(v) => {
+                          handleUpdateLine(line.id, { unit_price: parseFloat(v) || 0 })
                         }}
                         className="w-28 rounded border border-gray-300 px-2 py-1 text-end text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />

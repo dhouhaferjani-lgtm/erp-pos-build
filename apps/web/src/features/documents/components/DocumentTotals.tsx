@@ -6,6 +6,7 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { fetchTaxBreakdown, type TaxBreakdown } from '../api/taxApi'
+import { getDecimals } from '@/hooks/useCurrency'
 
 export interface DocumentTotalsProps {
   documentId: string
@@ -47,7 +48,7 @@ export function DocumentTotals({
   })
 
   // Determine decimal places based on currency
-  const decimals = currency === 'TND' ? 3 : 2
+  const decimals = getDecimals(currency)
 
   const formatAmount = (amount: string | number): string => {
     return parseFloat(String(amount)).toFixed(decimals)
