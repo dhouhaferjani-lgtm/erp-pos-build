@@ -17,6 +17,8 @@ use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\DB;
 
 class CartConversionService
@@ -24,7 +26,31 @@ class CartConversionService
     public function __construct(
         private readonly DocumentNumberingService $documentNumberingService,
         private readonly CompanyContext $companyContext,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
+
+    /**
+     * Multiply a quantity (stored at scale 4) by a unit price and round the
+     * MONEY result to the currency boundary scale.
+     *
+     * The intermediate uses scale()+1 so the 4th quantity decimal survives the
+     * multiply; the single boundary rounding happens via CurrencyScale::bcformat.
+     *
+     * @param  numeric-string  $quantity
+     * @param  numeric-string  $unitPrice
+     * @return numeric-string
+     */
+    private function lineTotal(string $quantity, string $unitPrice): string
+    {
+        $intermediate = bcmul($quantity, $unitPrice, $this->scale() + 1);
+
+        return CurrencyScale::bcformat($intermediate, $this->scale());
+    }
 
     /**
      * Convert catalog items to purchase orders, grouped by supplier.
@@ -74,15 +100,15 @@ class CartConversionService
                     DocumentType::PurchaseOrder,
                 );
 
-                $subtotal = '0.000';
+                $subtotal = CurrencyScale::bcformat('0', $this->scale());
                 foreach ($groupItems as $item) {
                     if ($item->unit_price !== null) {
                         /** @var numeric-string $qty */
                         $qty = (string) $item->quantity;
                         /** @var numeric-string $unitPrice */
                         $unitPrice = (string) $item->unit_price;
-                        $lineTotal = bcmul($qty, $unitPrice, 3);
-                        $subtotal = bcadd($subtotal, $lineTotal, 3);
+                        $lineTotal = $this->lineTotal($qty, $unitPrice);
+                        $subtotal = bcadd($subtotal, $lineTotal, $this->scale());
                     }
                 }
 
@@ -110,8 +136,8 @@ class CartConversionService
                     /** @var numeric-string $itemUnitPrice */
                     $itemUnitPrice = (string) ($item->unit_price ?? '0.000');
                     $lineTotal = $item->unit_price !== null
-                        ? bcmul($itemQty, $itemUnitPrice, 3)
-                        : '0.000';
+                        ? $this->lineTotal($itemQty, $itemUnitPrice)
+                        : CurrencyScale::bcformat('0', $this->scale());
 
                     DocumentLine::create([
                         'document_id' => $document->id,
@@ -162,15 +188,15 @@ class CartConversionService
                 DocumentType::SalesOrder,
             );
 
-            $subtotal = '0.000';
+            $subtotal = CurrencyScale::bcformat('0', $this->scale());
             foreach ($items as $item) {
                 if ($item->unit_price !== null) {
                     /** @var numeric-string $soQty */
                     $soQty = (string) $item->quantity;
                     /** @var numeric-string $soPrice */
                     $soPrice = (string) $item->unit_price;
-                    $lineTotal = bcmul($soQty, $soPrice, 3);
-                    $subtotal = bcadd($subtotal, $lineTotal, 3);
+                    $lineTotal = $this->lineTotal($soQty, $soPrice);
+                    $subtotal = bcadd($subtotal, $lineTotal, $this->scale());
                 }
             }
 
@@ -198,8 +224,8 @@ class CartConversionService
                 /** @var numeric-string $soLinePrice */
                 $soLinePrice = (string) ($item->unit_price ?? '0.000');
                 $lineTotal = $item->unit_price !== null
-                    ? bcmul($soLineQty, $soLinePrice, 3)
-                    : '0.000';
+                    ? $this->lineTotal($soLineQty, $soLinePrice)
+                    : CurrencyScale::bcformat('0', $this->scale());
 
                 DocumentLine::create([
                     'document_id' => $document->id,

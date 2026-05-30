@@ -6,6 +6,7 @@ namespace Tests\Feature\Taxation;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -154,18 +155,21 @@ class TaxCalculationTest extends TestCase
         // Refresh to load relationships
         $invoice->refresh();
 
-        // Act: Calculate taxes
+        // Act: Calculate taxes. Bind the French company so the currency-scale
+        // resolver resolves EUR → scale 2 (Phase 3.7 made the service
+        // currency-aware instead of hard-coding scale 3).
+        app(CompanyContext::class)->setCompanyId($this->frenchCompany->id);
         $service = app(TaxCalculationService::class);
         $result = $service->calculateDocumentTaxes($invoice);
 
         // Assert: VAT calculated correctly, no stamp duty for France.
-        // TaxCalculationService accumulates monetary fields with bcadd at
-        // 3-decimal precision, so the result strings carry three fractional
-        // digits.
-        $this->assertEquals('20.000', $result->lineTaxAmount, 'Line tax (VAT 20%) should be 20.000');
+        // EUR boundary scale = 2, so the result strings carry two fractional
+        // digits (Phase 3.7: was hard-coded scale 3 → 20.000 / 120.000, which
+        // over-retained a non-EUR third decimal).
+        $this->assertEquals('20.00', $result->lineTaxAmount, 'Line tax (VAT 20%) should be 20.00');
         $this->assertEquals('0', $result->stampDutyAmount, 'France should have no stamp duty');
-        $this->assertEquals('20.000', $result->totalTaxAmount, 'Total tax should be 20.000 (VAT only)');
-        $this->assertEquals('120.000', $result->total, 'Total should be 120.000 (100 + 20 VAT)');
+        $this->assertEquals('20.00', $result->totalTaxAmount, 'Total tax should be 20.00 (VAT only)');
+        $this->assertEquals('120.00', $result->total, 'Total should be 120.00 (100 + 20 VAT)');
         $this->assertCount(1, $result->taxDetails, 'Should have only 1 tax detail (VAT)');
         $this->assertFalse($result->taxDetails[0]->isStampDuty, 'First detail should be VAT, not stamp duty');
     }
@@ -205,12 +209,14 @@ class TaxCalculationTest extends TestCase
         // Refresh to load relationships
         $invoice->refresh();
 
-        // Act: Calculate taxes
+        // Act: Calculate taxes. Bind the Tunisian company so the currency-scale
+        // resolver resolves TND → scale 3.
+        app(CompanyContext::class)->setCompanyId($this->tunisianCompany->id);
         $service = app(TaxCalculationService::class);
         $result = $service->calculateDocumentTaxes($invoice);
 
-        // Assert: VAT + Stamp Duty calculated. 3-decimal precision matches
-        // the bcadd scale used by TaxCalculationService.
+        // Assert: VAT + Stamp Duty calculated. TND boundary scale = 3, so the
+        // result strings carry three fractional digits (unchanged from before).
         $this->assertEquals('19.000', $result->lineTaxAmount, 'Line tax (VAT 19%) should be 19.000');
         $this->assertEquals('1.000', $result->stampDutyAmount, 'Tunisia should have 1.000 TND stamp duty');
         $this->assertEquals('20.000', $result->totalTaxAmount, 'Total tax should be 20.000 (19 VAT + 1 stamp)');
