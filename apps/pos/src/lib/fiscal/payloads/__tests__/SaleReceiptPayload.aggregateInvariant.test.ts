@@ -116,6 +116,27 @@ describe('SaleReceiptPayload aggregate invariant', () => {
     ).toThrow(SaleReceiptAggregateInvariantError);
   });
 
+  it('passes with a non-zero transaction discount (subtotal + vat_total == total + discount)', () => {
+    // Regression for the device-identity gap: a transaction-level discount makes
+    // total = subtotalGross − discount, so the aggregate identity must add the
+    // discount back to total. Line gross 12.00 (net 10.00 + vat 2.00); a 2.00
+    // transaction discount yields total 10.00, and 10.00 + 2.00 == 12.00.
+    const payload = buildSaleReceiptPayload(
+      makeBaseInput([makeTaxedLine()], {
+        total: '10.00',
+        transactionDiscountAmount: '2.00',
+        transactionDiscountReason: 'Loyalty reward',
+        payments: [{ methodCode: 'CASH', amount: '10.00' }],
+      }),
+    );
+
+    expect(payload.subtotal).toBe('10.00');
+    expect(payload.vat_total).toBe('2.00');
+    expect(payload.total).toBe('10.00');
+    expect(payload.transaction_discount_amount).toBe('2.00');
+    expect(payload.transaction_discount_reason).toBe('Loyalty reward');
+  });
+
   it('passes on a multi-line, multi-rate consistent payload', () => {
     // Line A: 20% inclusive gross 12.00 (net 10.00, vat 2.00).
     // Line B: 0% gross 5.00 (net 5.00, vat 0.00).

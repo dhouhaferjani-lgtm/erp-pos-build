@@ -69,3 +69,18 @@ JSONB columns bypass Eloquent casts, so producers must pre-canonicalize numeric 
 - WAC/COGS truncation vs half-up — owner sign-off.
 - POS device Big.RM half-up vs server truncation — coordinated rounding alignment.
 - DocumentLineEditor client-side line-total still float (backend recomputes authoritatively) — full string pipeline.
+
+## `unit_price` is context-overloaded: tax-INCLUSIVE (B2C POS) vs net/HT (B2B) — READ BEFORE TOUCHING PRICE FIELDS
+
+The field name `unit_price` carries **different tax semantics depending on the flow**, and the same name is reused across layers. This has caused real confusion (it surfaced a false-positive in the fiscal line-arithmetic work). Always confirm which one you're in:
+
+| Context | `unit_price` means | Evidence / where |
+|---|---|---|
+| **B2C POS (offline-first Tauri + web POS)** | **tax-INCLUSIVE** (TTC) — the displayed shelf price includes VAT | `apps/pos` cart is unconditionally tax-inclusive: `cartStore.computeTaxAmount` extracts VAT from the gross (`net = lineTotal/(1+rate/100)`). The canonical SALE_RECEIPT `line_items[].unit_price` is written **verbatim from this inclusive cart price**; the **net** appears separately as `line_subtotal` (= line_total − line_vat), and VAT is in `line_vat` / `vat_breakdown`. |
+| **B2B / Documents (quotes, orders, invoices)** | **net / HT** (hors taxes) — pre-tax | Document line editors + the canonical `subtotal` (net) / `vat_total` / `total` (gross) aggregates. Golden vector F-04 shows the canonical *aggregate* contract: `unit_price=20.00` (net), `line_vat=4.00`, `line_subtotal=20.00`. |
+
+**Consequences for code:**
+- **Never** assert `line_subtotal == unit_price × qty − discount` against a POS canonical line — `unit_price` there is inclusive (gross), so that compares net vs gross and FALSE-POSITIVES on every taxed line. Fiscal integrity is enforced at the **aggregate** level instead (`subtotal + vat_total == total + transaction_discount`; `Σ vat_breakdown.{net,vat} == subtotal/vat_total`).
+- When reading a `unit_price`, determine the flow (POS vs document/B2B) before doing tax math; convert explicitly (`net = gross / (1+rate)` or `gross = net × (1+rate)`), never assume.
+
+**Deferred disambiguation (owner-flagged):** the cleanest long-term fix is to rename to unambiguous fields — e.g. `unit_price_incl` / `unit_price_excl` (or `unit_price_ttc` / `unit_price_ht`) — across the POS cart, canonical payload, and document layers. That is a broad, multi-app, fixture-regenerating change (canonical payload field rename = versioned fiscal event), so it is **deferred**; until then, this section + the CLAUDE.md pointer are the contract. Any new feature touching price fields MUST consult this.

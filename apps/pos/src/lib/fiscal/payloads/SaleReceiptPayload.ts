@@ -135,12 +135,16 @@ export function buildSaleReceiptPayload(
   // The device authors + signs the aggregates; the server stores the bytes
   // verbatim and re-hashes — it does NOT recompute prices. So the device must
   // guarantee its own aggregates add up before signing:
-  //   1. subtotal + vat_total == total
+  //   1. subtotal + vat_total == total + transaction_discount_amount
   //   2. Σ vat_breakdown[].net_amount == subtotal
   //   3. Σ vat_breakdown[].vat_amount == vat_total
   //   4. per group: gross_amount == net_amount + vat_amount
   // All comparisons EXACT (bccomp == 0) at currency scale, never a tolerance.
-  assertSaleReceiptAggregates(subtotalNet, vatTotal, total, vatBreakdown, scale);
+  // The subtotal/vat_total describe pre-transaction-discount gross; the device
+  // computes total = subtotalGross − transaction_discount_amount, so the
+  // identity must add the discount back to total to be symmetric with the
+  // server's validateSaleReceiptAggregateConsistency.
+  assertSaleReceiptAggregates(subtotalNet, vatTotal, total, discountAmount, vatBreakdown, scale);
 
   return {
     approval_references: input.approvalReferences ?? [],
@@ -182,15 +186,18 @@ function assertSaleReceiptAggregates(
   subtotal: string,
   vatTotal: string,
   total: string,
+  transactionDiscountAmount: string,
   vatBreakdown: ReadonlyArray<VatBreakdownInput>,
   scale: number,
 ): void {
-  // 1. subtotal + vat_total == total
+  // 1. subtotal + vat_total == total + transaction_discount_amount
   const subtotalPlusVat = bcformat(bcadd(subtotal, vatTotal, scale), scale);
-  if (bccomp(subtotalPlusVat, total) !== 0) {
+  const totalPlusDiscount = bcformat(bcadd(total, transactionDiscountAmount, scale), scale);
+  if (bccomp(subtotalPlusVat, totalPlusDiscount) !== 0) {
     throw new SaleReceiptAggregateInvariantError(
       `Aggregate invariant violated: subtotal (${subtotal}) + vat_total (${vatTotal}) `
-      + `= ${subtotalPlusVat} != total ${total}.`,
+      + `= ${subtotalPlusVat} != total (${total}) + transaction_discount_amount `
+      + `(${transactionDiscountAmount}) = ${totalPlusDiscount}.`,
     );
   }
 

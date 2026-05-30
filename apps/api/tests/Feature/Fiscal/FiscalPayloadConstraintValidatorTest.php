@@ -61,6 +61,25 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public function test_sale_receipt_with_non_zero_transaction_discount_is_accepted(): void
+    {
+        // Regression for the aggregate-identity gap: a transaction-level discount
+        // makes total = subtotalGross − discount, so the identity must add the
+        // discount back to total (subtotal + vat_total == total + discount). The
+        // baseline is subtotal 10.00 + vat 2.00 == 12.00; a 2.00 transaction
+        // discount yields total 10.00, and 10.00 + 2.00 == 12.00.
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        $payload['total'] = '10.00';
+        $payload['transaction_discount_amount'] = '2.00';
+        $payload['transaction_discount_reason'] = 'Loyalty reward';
+
+        self::assertNull($this->validator->validatePayloadKeySet(FiscalEventType::SALE_RECEIPT, $payload));
+
+        // No throw == accepted (validateSaleReceiptAggregateConsistency passes).
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+        $this->addToAssertionCount(1);
+    }
+
     public function test_account_payment_payload_is_accepted(): void
     {
         $payload = $this->canonicalAccountPaymentPayload();
