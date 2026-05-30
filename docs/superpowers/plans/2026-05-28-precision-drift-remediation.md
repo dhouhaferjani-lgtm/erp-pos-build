@@ -10,17 +10,17 @@
 - [x] **Rebase** onto `origin/dev` (PR #151 merged at `83ed1f15d`) — branch already forks from it; tasks 3.10/3.11/4.3/5.2 unblocked.
 - [x] **Phase 0 follow-up (resolver fallout)** — Task 0.2 Step 4 completed: the fail-loud resolver surfaced 185 `UnboundCompanyContextException` errors across 34 direct-service test classes (handoff's "all green" was inaccurate). Bound `app(CompanyContext::class)->setCompanyId($company->id)` in those tests' setUps (EUR factory default → scale 2 == prior silent fallback, so zero fixture changes). Resolver throw (locked decision) untouched. Suite now green except 1 pre-existing `TenantCreationTest` tenancy failure (untouched by this branch).
 - [x] **Phase 1** — Storage scale alignment. 1.1 services.tax_rate→(6,3) + loyalty_programs.welcome_bonus_points→(15,3); 1.2 pos_orders/lines monetary 4→3 (PG pre-check abort guard); 1.3 quantity→(15,4) across cart/marketplace/pricing/workshop/pos (9 tables + casts + quantity write-sites); 1.4 decimal:N casts (Product/Service/Account/Treasury/Coupon/Promotion/Receipt + User/Terminal max_discount_percent float→decimal:2 with frontend adaptation). Skipped billing_invoice_items.quantity (SaaS integer-qty, plan default). NF525 fiscal fixture regenerated (Quantite 3→4 — deliberate canonical-scale change). TerminalResource (float) left for Phase 6.2.
-- [ ] **Phase 2** — Per-unit decimal_places settings UI (2.1 backend, 2.2 frontend, 2.3 seed defaults)
-- [ ] **Phase 3** — Backend service bcmath sweep (3.1–3.16)
-- [ ] **Phase 4** — Ingress validators regex sweep (4.1–4.14)
-- [ ] **Phase 5** — JSONB content tightening (5.1–5.6)
-- [ ] **Phase 6** — Resources cleanup (6.1–6.3)
-- [ ] **Phase 7** — Value-object refactor (7.1 Money, 7.2 PointsAmount, 7.3 LoyaltyBalance)
-- [ ] **Phase 8** — Notifications currency-aware scale (8.1)
-- [ ] **Phase 9** — Seeders + fixtures alignment (9.1–9.3)
-- [ ] **Phase 10** — Frontend MoneyInput/QuantityInput rollout (10.1–10.7)
-- [ ] **Phase 11** — Regression guards PHPStan + ESLint (11.1–11.5)
-- [ ] **Phase 12** — Docs + REALIGNMENT-LOG (12.1–12.3)
+- [x] **Phase 2** — Per-unit decimal_places settings UI (2.1 backend, 2.2 frontend, 2.3 seed defaults) — PR #154 (merged)
+- [x] **Phase 3** — Backend service bcmath sweep (3.1–3.16) — PR #156 (merged); incl. context-safe scale resolution
+- [x] **Phase 4** — Ingress validators regex sweep (4.1–4.14) — PR #155 (merged); numeric+regex non-breaking pattern
+- [x] **Phase 5** — JSONB content tightening (5.1–5.5) — PR #157 (merged). **5.6 CHECK constraint GATE-STOPPED/escalated** (infeasible as plain PG CHECK)
+- [x] **Phase 6** — Resources cleanup (6.1–6.3) — PR #154 (merged)
+- [x] **Phase 7** — Value-object refactor (7.1 Money, 7.2 PointsAmount, 7.3 LoyaltyBalance) — PR #158 (merged); +PHP8.3 parse hotfix #160
+- [x] **Phase 8** — Notifications currency-aware scale (8.1) — PR #154 (merged)
+- [x] **Phase 9** — Seeders + fixtures alignment (9.1–9.3) — PR #161 (group G)
+- [x] **Phase 10** — Frontend MoneyInput/QuantityInput rollout (10.1–10.7) + built the missing Phase 0.7 components — PR #159
+- [x] **Phase 11** — Regression guards PHPStan (11.1/11.2, baselined) + ESLint (11.3/11.4, ratcheted) + CI (11.5) — PRs #159/#161
+- [x] **Phase 12** — Docs (CLAUDE.md §19 + docs/architecture/precision-contract.md) + REALIGNMENT-LOG (syneriva) — PR #161
 
 **Goal:** Land a world-wide-ready precision contract across AutoERP: canonical currency scale 3 (TND/LYD/JOD/KWD/OMR/BHD as the floor; EUR/USD/GBP and others displayed per `getDecimals(currency)`), canonical quantity scale 4 with per-unit `decimal_places` driving display and validation, and remove every float/IEEE-754 entry point in money or quantity pipelines.
 
