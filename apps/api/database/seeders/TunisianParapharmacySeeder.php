@@ -21,6 +21,7 @@ use App\Modules\Taxation\Domain\Enums\TransactionType;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
@@ -453,8 +454,9 @@ class TunisianParapharmacySeeder extends Seeder
                 'description' => 'Produit parapharmaceutique de qualité - '.$productData['name'],
                 'is_physical' => true,
                 'unit' => 'pièce',
-                'sale_price' => $productData['price'],
-                'purchase_price' => $productData['price'] * 0.6, // 40% margin
+                // TND (scale 3). Canonical numeric strings via bcmath — no float.
+                'sale_price' => CurrencyScale::bcformat($productData['price'], 3),
+                'purchase_price' => bcmul((string) $productData['price'], '0.6', 3), // 40% margin
                 'tax_rate' => '19.00', // 19% VAT in Tunisia
                 'is_active' => true,
                 'is_physical' => true,

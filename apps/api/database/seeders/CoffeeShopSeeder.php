@@ -45,6 +45,7 @@ use App\Modules\Promotion\Domain\Enums\PromotionStatus;
 use App\Modules\Promotion\Domain\Enums\PromotionType;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -217,7 +218,7 @@ class CoffeeShopSeeder extends Seeder
                 'plan_id' => $professionalPlan->id,
                 'status' => SubscriptionStatus::Active,
                 'billing_cycle' => 'yearly',
-                'price' => 0,
+                'price' => CurrencyScale::bcformat(0, 3),
                 'started_at' => now(),
                 'current_period_start' => now(),
                 'current_period_end' => now()->addYear(),
@@ -336,9 +337,9 @@ class CoffeeShopSeeder extends Seeder
                 'name' => $data['name'],
                 'sku' => $data['code'],
                 'is_physical' => true,
-                'purchase_price' => $data['cost'],
-                'sale_price' => $data['price'],
-                'tax_rate' => 7.00, // 7% Tunisia VAT on food items
+                'purchase_price' => CurrencyScale::bcformat($data['cost'], 3),
+                'sale_price' => CurrencyScale::bcformat($data['price'], 3),
+                'tax_rate' => CurrencyScale::bcformat(7.00, 2), // 7% Tunisia VAT on food items
                 'is_active' => true,
             ]);
             $this->ingredients[$data['code']] = $product;
@@ -406,7 +407,7 @@ class CoffeeShopSeeder extends Seeder
                 'code' => $data['code'],
                 'name' => $data['name'],
                 'vertical_type' => VerticalType::Fnb,
-                'base_price' => $data['price'],
+                'base_price' => CurrencyScale::bcformat($data['price'], 3),
                 'production_type' => ProductionType::MadeToOrder,
                 'tax_rate' => '7.00',
                 'is_active' => true,
@@ -420,7 +421,7 @@ class CoffeeShopSeeder extends Seeder
                 'version' => 1,
                 'version_name' => 'Standard',
                 'is_active' => true,
-                'yield_quantity' => 1,
+                'yield_quantity' => CurrencyScale::bcformat(1, 4),
             ]);
 
             $lineOrder = 0;
@@ -430,7 +431,7 @@ class CoffeeShopSeeder extends Seeder
                         'recipe_id' => $recipe->id,
                         'component_type' => 'product',
                         'component_id' => $this->ingredients[$ingredientCode]->id,
-                        'quantity' => $qty,
+                        'quantity' => CurrencyScale::bcformat($qty, 4),
                         'is_optional' => false,
                         'is_scalable' => true,
                         'display_order' => $lineOrder++,
@@ -447,8 +448,8 @@ class CoffeeShopSeeder extends Seeder
                     'code' => $data['code'].'-S',
                     'name' => 'Small',
                     'price_adjustment_type' => PriceAdjustmentType::Absolute,
-                    'price_adjustment' => -1.000,
-                    'recipe_multiplier' => 0.8,
+                    'price_adjustment' => CurrencyScale::bcformat(-1.000, 3),
+                    'recipe_multiplier' => CurrencyScale::bcformat(0.8, 4),
                     'is_default' => true,
                     'is_active' => true,
                     'display_order' => 0,
@@ -458,8 +459,8 @@ class CoffeeShopSeeder extends Seeder
                     'code' => $data['code'].'-M',
                     'name' => 'Medium',
                     'price_adjustment_type' => PriceAdjustmentType::Absolute,
-                    'price_adjustment' => 0,
-                    'recipe_multiplier' => 1.0,
+                    'price_adjustment' => CurrencyScale::bcformat(0, 3),
+                    'recipe_multiplier' => CurrencyScale::bcformat(1.0, 4),
                     'is_default' => false,
                     'is_active' => true,
                     'display_order' => 1,
@@ -469,8 +470,8 @@ class CoffeeShopSeeder extends Seeder
                     'code' => $data['code'].'-L',
                     'name' => 'Large',
                     'price_adjustment_type' => PriceAdjustmentType::Absolute,
-                    'price_adjustment' => 1.000,
-                    'recipe_multiplier' => 1.2,
+                    'price_adjustment' => CurrencyScale::bcformat(1.000, 3),
+                    'recipe_multiplier' => CurrencyScale::bcformat(1.2, 4),
                     'is_default' => false,
                     'is_active' => true,
                     'display_order' => 2,
@@ -487,7 +488,7 @@ class CoffeeShopSeeder extends Seeder
             'code' => 'DAILY',
             'name' => 'Daily Special',
             'vertical_type' => VerticalType::Fnb,
-            'base_price' => 8.000,
+            'base_price' => CurrencyScale::bcformat(8.000, 3),
             'production_type' => ProductionType::MadeToOrder,
             'tax_rate' => '7.00',
             'is_active' => true,
@@ -529,7 +530,7 @@ class CoffeeShopSeeder extends Seeder
                 'code' => $data['code'],
                 'name' => $data['name'],
                 'vertical_type' => VerticalType::Fnb,
-                'base_price' => $data['price'],
+                'base_price' => CurrencyScale::bcformat($data['price'], 3),
                 'production_type' => ProductionType::MadeToOrder,
                 'pricing_mode' => PricingMode::FixedBundle,
                 'tax_rate' => '7.00',
@@ -543,7 +544,7 @@ class CoffeeShopSeeder extends Seeder
                 'version' => 1,
                 'version_name' => 'Standard',
                 'is_active' => true,
-                'yield_quantity' => 1,
+                'yield_quantity' => CurrencyScale::bcformat(1, 4),
             ]);
 
             $lineOrder = 0;
@@ -553,7 +554,7 @@ class CoffeeShopSeeder extends Seeder
                         'recipe_id' => $recipe->id,
                         'component_type' => 'composite_item',
                         'component_id' => $this->compositeItems[$componentCode]->id,
-                        'quantity' => 1,
+                        'quantity' => CurrencyScale::bcformat(1, 4),
                         'is_optional' => false,
                         'is_scalable' => false,
                         'display_order' => $lineOrder++,
@@ -585,9 +586,9 @@ class CoffeeShopSeeder extends Seeder
                 'name' => $data['name'],
                 'sku' => $data['code'],
                 'is_physical' => true,
-                'purchase_price' => $data['cost'],
-                'sale_price' => $data['price'],
-                'tax_rate' => 7.00,
+                'purchase_price' => CurrencyScale::bcformat($data['cost'], 3),
+                'sale_price' => CurrencyScale::bcformat($data['price'], 3),
+                'tax_rate' => CurrencyScale::bcformat(7.00, 2),
                 'is_active' => true,
             ]);
             $this->retailProducts[$data['code']] = $product;
@@ -626,7 +627,7 @@ class CoffeeShopSeeder extends Seeder
                 'modifier_group_id' => $milkGroup->id,
                 'code' => $mod['code'],
                 'name' => $mod['name'],
-                'price_adjustment' => $mod['price'],
+                'price_adjustment' => CurrencyScale::bcformat($mod['price'], 3),
                 'component_type' => $componentId ? 'product' : null,
                 'component_id' => $componentId,
                 'is_default' => $mod['default'],
@@ -666,7 +667,7 @@ class CoffeeShopSeeder extends Seeder
                 'modifier_group_id' => $extrasGroup->id,
                 'code' => $mod['code'],
                 'name' => $mod['name'],
-                'price_adjustment' => $mod['price'],
+                'price_adjustment' => CurrencyScale::bcformat($mod['price'], 3),
                 'component_type' => $componentId ? 'product' : null,
                 'component_id' => $componentId,
                 'is_default' => false,
@@ -707,7 +708,7 @@ class CoffeeShopSeeder extends Seeder
                 'modifier_group_id' => $sweetnessGroup->id,
                 'code' => $mod['code'],
                 'name' => $mod['name'],
-                'price_adjustment' => 0,
+                'price_adjustment' => CurrencyScale::bcformat(0, 3),
                 'is_default' => $mod['default'],
                 'is_active' => true,
                 'display_order' => $order++,
@@ -745,7 +746,7 @@ class CoffeeShopSeeder extends Seeder
                 'modifier_group_id' => $tempGroup->id,
                 'code' => $mod['code'],
                 'name' => $mod['name'],
-                'price_adjustment' => 0,
+                'price_adjustment' => CurrencyScale::bcformat(0, 3),
                 'is_default' => $mod['default'],
                 'is_active' => true,
                 'display_order' => $order++,
@@ -940,8 +941,8 @@ class CoffeeShopSeeder extends Seeder
                 'company_id' => $this->company->id,
                 'product_id' => $product->id,
                 'location_id' => $this->location->id,
-                'quantity' => rand(10, 50),
-                'reserved' => 0,
+                'quantity' => CurrencyScale::bcformat(rand(10, 50), 4),
+                'reserved' => CurrencyScale::bcformat(0, 4),
             ]);
             $count++;
         }

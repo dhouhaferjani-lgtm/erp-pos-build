@@ -132,8 +132,13 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
 
+      # Loads apps/api/phpstan.neon, which registers the precision rules
+      # (ForbidFloatCastOnDecimalProperty, ForbidHardcodedBcmathScale) and the
+      # phpstan-baseline.neon that absorbs pre-existing legacy hits. New
+      # violations above the baseline fail the build. Memory bumped to 2G:
+      # parseModelCastsMethod + the extra rules raise peak usage past 1G.
       - name: Run PHPStan
-        run: ./vendor/bin/phpstan analyse --level=8 --memory-limit=1G
+        run: ./vendor/bin/phpstan analyse --level=8 --memory-limit=2G
 
   backend-architecture:
     name: Backend Architecture Boundary (Deptrac ratchet)
