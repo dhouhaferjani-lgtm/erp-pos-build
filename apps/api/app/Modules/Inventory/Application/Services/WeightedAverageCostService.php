@@ -25,6 +25,18 @@ use Illuminate\Support\Str;
  */
 class WeightedAverageCostService
 {
+    /**
+     * Internal precision at which the perpetual WAC unit cost / avg cost / total
+     * cost are PERSISTED at rest.
+     *
+     * Rationale (NC 01 §62 + perpetual-WAC bias): truncating the stored cost to
+     * the currency scale at each write biases the running average DOWNWARD and
+     * compounds across recomputes. We carry 6 dp (Dynamics-style headroom) at rest
+     * and round HALF-UP to the currency scale only at the GL/COGS posting (and
+     * display) boundary — never "dans l'enregistrement des opérations".
+     */
+    private const COST_SCALE = 6;
+
     public function __construct(
         private readonly MarginService $marginService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
@@ -36,15 +48,25 @@ class WeightedAverageCostService
     }
 
     /**
+     * The precision at which costs are stored at rest.
+     */
+    private function costScale(): int
+    {
+        return self::COST_SCALE;
+    }
+
+    /**
      * Intermediate working precision for WAC blending.
      *
      * WAC multiplies quantities (scale 4) by unit costs and divides running
-     * values; carrying 4 extra digits beyond the currency scale preserves the
-     * exact intermediate value so the single boundary truncation is faithful.
+     * values. We carry enough digits to (a) keep 4 digits of headroom beyond the
+     * currency scale and (b) never truncate below the at-rest COST_SCALE before
+     * the division result is persisted. For TND (scale 3) this is 7; for a 0-dp
+     * currency it is still >= COST_SCALE + 1.
      */
     private function workingScale(): int
     {
-        return $this->scale() + 4;
+        return max($this->scale() + 4, self::COST_SCALE + 1);
     }
 
     /**
@@ -117,12 +139,16 @@ class WeightedAverageCostService
             $newQty = bcadd($currentQty, $quantityStr, 4);
             $newValue = bcadd($currentValue, bcmul($quantityStr, $landedUnitCostStr, $working), $working);
 
-            // Single boundary truncation to the currency scale.
+            // Persist the blended WAC at the higher internal COST_SCALE — NO
+            // truncation to the currency scale here. Rounding to the currency
+            // scale happens only at the GL/COGS posting (and display) boundary,
+            // so the running average no longer compounds a downward bias.
+            $costScale = $this->costScale();
             $newAvgCost = bccomp($newQty, '0', 4) > 0
-                ? CurrencyScale::bcformat(bcdiv($newValue, $newQty, $working), $this->scale())
-                : CurrencyScale::bcformat('0', $this->scale());
+                ? CurrencyScale::bcformat(bcdiv($newValue, $newQty, $working), $costScale)
+                : CurrencyScale::bcformat('0', $costScale);
 
-            // Record movement
+            // Record movement (cost ledger stored at the internal COST_SCALE).
             $movement = StockMovement::create([
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $product->tenant_id,
@@ -133,9 +159,9 @@ class WeightedAverageCostService
                 'quantity' => $quantityStr,
                 'quantity_before' => $currentQty,
                 'quantity_after' => $newQty,
-                'unit_cost' => CurrencyScale::bcformat($landedUnitCostStr, $this->scale()),
-                'total_cost' => CurrencyScale::bcformat(bcmul($quantityStr, $landedUnitCostStr, $working), $this->scale()),
-                'avg_cost_before' => CurrencyScale::bcformat($currentCostPrice, $this->scale()),
+                'unit_cost' => CurrencyScale::bcformat($landedUnitCostStr, $costScale),
+                'total_cost' => CurrencyScale::bcformat(bcmul($quantityStr, $landedUnitCostStr, $working), $costScale),
+                'avg_cost_before' => CurrencyScale::bcformat($currentCostPrice, $costScale),
                 'avg_cost_after' => $newAvgCost,
                 'reference' => $reference,
                 'reference_type' => $referenceType,
@@ -146,9 +172,9 @@ class WeightedAverageCostService
             $stockLevel->quantity = $newQty;
             $stockLevel->save();
 
-            // Update product cost
+            // Update product cost at the internal COST_SCALE (no boundary truncation).
             $product->cost_price = $newAvgCost;
-            $product->last_purchase_cost = CurrencyScale::bcformat($landedUnitCostStr, $this->scale());
+            $product->last_purchase_cost = CurrencyScale::bcformat($landedUnitCostStr, $costScale);
             $product->cost_updated_at = now();
             $product->save();
 
@@ -163,7 +189,8 @@ class WeightedAverageCostService
             $locationSnapshot = $location;
             $newStockLevelSnapshot = $stockLevel->quantity;
             $priceUpdatedSnapshot = $priceUpdated;
-            $oldCostPriceSnapshot = CurrencyScale::bcformat($currentCostPrice, $this->scale());
+            // Audit-event cost figures reflect the at-rest COST_SCALE value.
+            $oldCostPriceSnapshot = CurrencyScale::bcformat($currentCostPrice, $costScale);
             $newAvgCostSnapshot = $newAvgCost;
             $oldSalePriceSnapshot = $oldSalePrice;
             $referenceSnapshot = $reference;
@@ -253,9 +280,12 @@ class WeightedAverageCostService
 
             $working = $this->workingScale();
 
+            $costScale = $this->costScale();
             $quantityStr = CurrencyScale::bcformat($quantity, 4);
             $costPriceStr = CurrencyScale::bcformat($product->cost_price ?? '0', $working);
-            $costPriceBoundary = CurrencyScale::bcformat($costPriceStr, $this->scale());
+            // The cost ledger stores the WAC at the internal COST_SCALE (no
+            // boundary truncation); COGS rounds to the currency scale downstream.
+            $costPriceAtRest = CurrencyScale::bcformat($costPriceStr, $costScale);
             $currentQty = CurrencyScale::bcformat($stockLevel->quantity, 4);
             $newQty = bcsub($currentQty, $quantityStr, 4);
 
@@ -276,10 +306,10 @@ class WeightedAverageCostService
                 'quantity' => bcmul($quantityStr, '-1', 4),
                 'quantity_before' => $currentQty,
                 'quantity_after' => $newQty,
-                'unit_cost' => $costPriceBoundary,
-                'total_cost' => CurrencyScale::bcformat(bcmul($quantityStr, $costPriceStr, $working), $this->scale()),
-                'avg_cost_before' => $costPriceBoundary,
-                'avg_cost_after' => $costPriceBoundary, // WAC doesn't change on sale
+                'unit_cost' => $costPriceAtRest,
+                'total_cost' => CurrencyScale::bcformat(bcmul($quantityStr, $costPriceStr, $working), $costScale),
+                'avg_cost_before' => $costPriceAtRest,
+                'avg_cost_after' => $costPriceAtRest, // WAC doesn't change on sale
                 'reference' => $reference,
                 'reference_type' => $referenceType,
                 'reference_id' => $referenceId,
@@ -379,12 +409,15 @@ class WeightedAverageCostService
             $newQty = bcadd($currentQty, $quantityStr, 4);
             $newValue = bcadd($currentValue, bcmul($quantityStr, $originalCostStr, $working), $working);
 
-            // Single boundary truncation to the currency scale.
+            // Persist the blended WAC at the higher internal COST_SCALE — NO
+            // boundary truncation (see recordPurchase()). Rounding to the
+            // currency scale happens only at the GL/COGS posting boundary.
+            $costScale = $this->costScale();
             $newAvgCost = bccomp($newQty, '0', 4) > 0
-                ? CurrencyScale::bcformat(bcdiv($newValue, $newQty, $working), $this->scale())
-                : CurrencyScale::bcformat('0', $this->scale());
+                ? CurrencyScale::bcformat(bcdiv($newValue, $newQty, $working), $costScale)
+                : CurrencyScale::bcformat('0', $costScale);
 
-            // Record movement
+            // Record movement (cost ledger stored at the internal COST_SCALE).
             $movement = StockMovement::create([
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $product->tenant_id,
@@ -395,9 +428,9 @@ class WeightedAverageCostService
                 'quantity' => $quantityStr,
                 'quantity_before' => $currentQty,
                 'quantity_after' => $newQty,
-                'unit_cost' => CurrencyScale::bcformat($originalCostStr, $this->scale()),
-                'total_cost' => CurrencyScale::bcformat(bcmul($quantityStr, $originalCostStr, $working), $this->scale()),
-                'avg_cost_before' => CurrencyScale::bcformat($currentCostPrice, $this->scale()),
+                'unit_cost' => CurrencyScale::bcformat($originalCostStr, $costScale),
+                'total_cost' => CurrencyScale::bcformat(bcmul($quantityStr, $originalCostStr, $working), $costScale),
+                'avg_cost_before' => CurrencyScale::bcformat($currentCostPrice, $costScale),
                 'avg_cost_after' => $newAvgCost,
                 'reference' => $reference,
                 'reference_type' => $referenceType,
@@ -408,7 +441,7 @@ class WeightedAverageCostService
             $stockLevel->quantity = $newQty;
             $stockLevel->save();
 
-            // Update product cost
+            // Update product cost at the internal COST_SCALE (no boundary truncation).
             $product->cost_price = $newAvgCost;
             $product->cost_updated_at = now();
             $product->save();
@@ -424,7 +457,8 @@ class WeightedAverageCostService
             $locationSnapshot = $location;
             $newStockLevelSnapshot = $stockLevel->quantity;
             $priceUpdatedSnapshot = $priceUpdated;
-            $oldCostPriceSnapshot = CurrencyScale::bcformat($currentCostPrice, $this->scale());
+            // Audit-event cost figures reflect the at-rest COST_SCALE value.
+            $oldCostPriceSnapshot = CurrencyScale::bcformat($currentCostPrice, $costScale);
             $newAvgCostSnapshot = $newAvgCost;
             $oldSalePriceSnapshot = $oldSalePrice;
             $referenceSnapshot = $reference;
@@ -499,9 +533,10 @@ class WeightedAverageCostService
         $newValue = bcmul($newQtyStr, $newCostStr, $working);
         $blended = bcdiv(bcadd($currentValue, $newValue, $working), $totalQty, $working);
 
-        // Boundary-truncate to currency scale, then surface as float to keep
-        // this preview helper's published float return type stable.
-        return (float) CurrencyScale::bcformat($blended, $this->scale());
+        // Carry to the internal COST_SCALE (no currency-scale truncation), then
+        // surface as float to keep this preview helper's published return type.
+        // This mirrors what recordPurchase()/recordReturn() now persist.
+        return (float) CurrencyScale::bcformat($blended, $this->costScale());
     }
 
     /**

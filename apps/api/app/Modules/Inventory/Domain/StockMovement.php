@@ -85,10 +85,13 @@ class StockMovement extends Model
             'quantity' => 'decimal:4',
             'quantity_before' => 'decimal:4',
             'quantity_after' => 'decimal:4',
-            'unit_cost' => 'decimal:3',
-            'total_cost' => 'decimal:3',
-            'avg_cost_before' => 'decimal:3',
-            'avg_cost_after' => 'decimal:3',
+            // WAC cost ledger carried at higher internal precision (6 dp) at rest;
+            // rounded HALF-UP to the currency scale only at the GL/COGS posting
+            // (and display) boundary. See the scale-6 widening migration.
+            'unit_cost' => 'decimal:6',
+            'total_cost' => 'decimal:6',
+            'avg_cost_before' => 'decimal:6',
+            'avg_cost_after' => 'decimal:6',
             'is_historical' => 'boolean',
         ];
     }

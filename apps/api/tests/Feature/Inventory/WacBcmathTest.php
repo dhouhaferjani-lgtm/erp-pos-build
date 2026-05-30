@@ -31,11 +31,12 @@ use Tests\TestCase;
  *     WAC pinned at exactly 0.100 — any sub-millième float creep is drift.
  *
  *  2. A short sequence whose exact WAC is a non-terminating fraction
- *     (0.51 / 1.1 = 0.463636…). At TND scale 3 the canonical bcmath boundary
- *     value is 0.463 (bcmath truncates at the boundary, matching the convention
- *     already used by the migrated Promotion/Recipe/Accounting services). The
- *     old float path rounded half-up to 0.464, so this assertion is red on the
- *     pre-bcmath implementation and green afterwards.
+ *     (0.51 / 1.1 = 0.463636…). The WAC unit cost is now carried at the internal
+ *     COST_SCALE (6 dp) AT REST — no truncation to the currency scale at the
+ *     write boundary — so the persisted value keeps full precision (0.463636)
+ *     instead of the biased, pre-truncated 0.463. Rounding to the currency scale
+ *     happens only at the GL/COGS posting boundary. This removes the systematic
+ *     downward bias that compounds across perpetual recomputes (NC 01 §62).
  */
 class WacBcmathTest extends TestCase
 {
@@ -112,8 +113,9 @@ class WacBcmathTest extends TestCase
 
             $this->product->refresh();
 
+            // Stored at the internal COST_SCALE (6 dp) — exact, no drift.
             $this->assertSame(
-                '0.100',
+                '0.100000',
                 (string) $this->product->cost_price,
                 "WAC drifted at receipt #{$i}: {$this->product->cost_price}",
             );
@@ -127,8 +129,8 @@ class WacBcmathTest extends TestCase
 
         $this->assertSame(0, bccomp('10.0000', (string) $stockLevel->quantity, 4));
 
-        // And the WAC is still exactly 0.100 — no millième of drift.
-        $this->assertSame('0.100', (string) $this->product->cost_price);
+        // And the WAC is still exactly 0.100000 — no sub-millième of drift.
+        $this->assertSame('0.100000', (string) $this->product->cost_price);
     }
 
     public function test_running_wac_uses_exact_bcmath_boundary_on_non_terminating_fraction(): void
@@ -145,9 +147,9 @@ class WacBcmathTest extends TestCase
             reference: 'PO-FRAC-1',
         );
         $this->product->refresh();
-        $this->assertSame('0.700', (string) $this->product->cost_price);
+        $this->assertSame('0.700000', (string) $this->product->cost_price);
 
-        // r2: 0.7 @ 0.300 → value 0.21 + 0.21 = 0.42, qty 1.0 → WAC 0.420
+        // r2: 0.7 @ 0.300 → value 0.21 + 0.21 = 0.42, qty 1.0 → WAC 0.420000
         $service->recordPurchase(
             product: $this->product,
             location: $this->location,
@@ -156,11 +158,12 @@ class WacBcmathTest extends TestCase
             reference: 'PO-FRAC-2',
         );
         $this->product->refresh();
-        $this->assertSame('0.420', (string) $this->product->cost_price);
+        $this->assertSame('0.420000', (string) $this->product->cost_price);
 
         // r3: 0.1 @ 0.900 → value 0.42 + 0.09 = 0.51, qty 1.1
-        //     exact WAC = 0.51 / 1.1 = 0.463636…  → bcmath boundary at scale 3 = 0.463
-        //     (old float `round()` produced 0.464 — drift away from the exact value).
+        //     exact WAC = 0.51 / 1.1 = 0.463636…  → carried at COST_SCALE (6 dp) = 0.463636
+        //     (no boundary truncation to 0.463; no float round() to 0.464 — the
+        //     full-precision value is preserved at rest, so recomputes never drift).
         $service->recordPurchase(
             product: $this->product,
             location: $this->location,
@@ -169,7 +172,56 @@ class WacBcmathTest extends TestCase
             reference: 'PO-FRAC-3',
         );
         $this->product->refresh();
-        $this->assertSame('0.463', (string) $this->product->cost_price);
+        $this->assertSame('0.463636', (string) $this->product->cost_price);
+    }
+
+    /**
+     * No-downward-drift proof for the perpetual recompute path.
+     *
+     * Each recordPurchase() reads the product's stored cost_price, blends it with
+     * the new receipt, and writes the result back — so any truncation of the
+     * stored value compounds across receipts. Here every receipt is qty=1 @ a
+     * constant non-terminating unit cost (1/3 = 0.333333… TND). Because the WAC
+     * is carried at the internal COST_SCALE (6 dp) at rest and the per-receipt
+     * unit cost is constant, the running average must stay pinned at exactly
+     * 0.333333 after every one of 50 receipts — proving the stored value is not
+     * re-truncated and the average does NOT erode downward over time.
+     */
+    public function test_perpetual_recompute_does_not_drift_downward_on_non_terminating_cost(): void
+    {
+        /** @var WeightedAverageCostService $service */
+        $service = app(WeightedAverageCostService::class);
+
+        // 1/3 TND, carried at 6 dp = 0.333333.
+        $unitCost = 1 / 3;
+
+        for ($i = 0; $i < 50; $i++) {
+            $service->recordPurchase(
+                product: $this->product,
+                location: $this->location,
+                quantity: 1.0,
+                landedUnitCost: $unitCost,
+                reference: 'PO-DRIFT-'.$i,
+            );
+
+            $this->product->refresh();
+
+            // The WAC of N identical receipts at a constant unit cost is that unit
+            // cost — exactly 0.333333 at COST_SCALE. Any deviation downward (e.g.
+            // a slide toward 0.333000) would be the compounding truncation bias.
+            $this->assertSame(
+                '0.333333',
+                (string) $this->product->cost_price,
+                "Perpetual WAC drifted at receipt #{$i}: {$this->product->cost_price}",
+            );
+        }
+
+        // Explicitly assert no downward erosion: still >= the exact 6-dp value.
+        $this->assertSame(
+            0,
+            bccomp('0.333333', (string) $this->product->cost_price, 6),
+            'Perpetual WAC eroded below the exact 6-dp cost over 50 recomputes',
+        );
     }
 
     public function test_calculate_new_wac_blends_without_float_drift(): void
