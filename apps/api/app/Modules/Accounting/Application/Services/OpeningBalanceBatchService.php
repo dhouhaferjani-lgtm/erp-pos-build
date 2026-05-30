@@ -10,6 +10,8 @@ use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Accounting\Domain\OpeningBalanceImportRow;
 use App\Modules\Company\Domain\Company;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -28,6 +30,15 @@ use RuntimeException;
  */
 class OpeningBalanceBatchService
 {
+    /**
+     * Quantity values are always staged at scale 4 (independent of currency).
+     */
+    private const QUANTITY_SCALE = 4;
+
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
     /**
      * Create a new opening balance batch.
      *
@@ -144,14 +155,26 @@ class OpeningBalanceBatchService
         $rowType = $batch->type->rowType();
         $currentMaxRow = $batch->rows()->max('row_number') ?? 0;
 
+        // Resolve the default monetary scale from the batch company's currency.
+        // Runs in request/batch contexts, so resolve from the company explicitly
+        // rather than relying on a bound CompanyContext.
+        $companyCurrency = Company::query()
+            ->whereKey($batch->company_id)
+            ->value('currency');
+        $defaultMoneyScale = $this->scaleResolver->getScale(
+            is_string($companyCurrency) ? $companyCurrency : null
+        );
+
         $importRows = [];
         foreach ($rows as $index => $row) {
+            $canonical = $this->canonicalizeRow($batch->type, $row, $defaultMoneyScale);
+
             $importRows[] = [
                 'id' => (string) Str::uuid(),
                 'batch_id' => $batch->id,
                 'row_type' => $rowType,
                 'row_number' => $currentMaxRow + $index + 1,
-                'raw_data' => json_encode($row),
+                'raw_data' => json_encode($canonical, JSON_PRESERVE_ZERO_FRACTION),
                 'status' => OpeningImportRowStatus::Pending->value,
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -159,6 +182,68 @@ class OpeningBalanceBatchService
         }
 
         OpeningBalanceImportRow::insert($importRows);
+    }
+
+    /**
+     * Pre-canonicalize the numeric fields of a staging row to fixed-scale numeric strings.
+     *
+     * JSONB columns bypass Eloquent decimal casts, so numeric values must be written as
+     * canonical numeric-strings (with trailing zeros preserved) BEFORE json_encode.
+     * Monetary fields use the row/company currency scale; quantity is always scale 4.
+     * Non-numeric and unknown fields are passed through untouched.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function canonicalizeRow(OpeningBatchType $type, array $row, int $defaultMoneyScale): array
+    {
+        // For AR/AP rows the currency may be supplied per-row; honour it when present.
+        $moneyScale = $defaultMoneyScale;
+        if (isset($row['currency']) && is_string($row['currency']) && $row['currency'] !== '') {
+            $moneyScale = $this->scaleResolver->getScale($row['currency']);
+        }
+
+        // Field => scale map per batch type.
+        $moneyFields = match ($type) {
+            OpeningBatchType::Accounting => ['debit', 'credit'],
+            OpeningBatchType::Inventory => ['unit_cost'],
+            OpeningBatchType::ArOpenItems, OpeningBatchType::ApOpenItems => ['total', 'open_amount'],
+        };
+
+        foreach ($moneyFields as $field) {
+            $row[$field] = $this->canonicalizeField($row[$field] ?? null, $moneyScale);
+        }
+
+        if ($type === OpeningBatchType::Inventory) {
+            $row['quantity'] = $this->canonicalizeField($row['quantity'] ?? null, self::QUANTITY_SCALE);
+        }
+
+        return $row;
+    }
+
+    /**
+     * Canonicalize a single numeric field value to a fixed-scale numeric string.
+     *
+     * Leaves null, empty, and non-numeric values untouched (validation surfaces those
+     * downstream) so canonicalization never silently mutates malformed input.
+     */
+    private function canonicalizeField(mixed $value, int $scale): mixed
+    {
+        if ($value === null) {
+            return $value;
+        }
+
+        if (! is_string($value) && ! is_int($value) && ! is_float($value)) {
+            return $value;
+        }
+
+        $asString = is_string($value) ? trim($value) : (string) $value;
+
+        if ($asString === '' || ! is_numeric($asString)) {
+            return $value;
+        }
+
+        return CurrencyScale::bcformatStrict($asString, $scale);
     }
 
     /**

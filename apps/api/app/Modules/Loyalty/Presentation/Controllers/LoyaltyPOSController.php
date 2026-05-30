@@ -105,7 +105,7 @@ class LoyaltyPOSController extends Controller
         }
 
         $transactionData = [
-            'amount' => (float) $validated['amount'],
+            'amount' => (string) $validated['amount'],
             'items' => $validated['items'] ?? [],
             'timestamp' => now(),
         ];
@@ -240,7 +240,7 @@ class LoyaltyPOSController extends Controller
         }
 
         $transactionData = [
-            'amount' => (float) $validated['amount'],
+            'amount' => (string) $validated['amount'],
             'items' => $validated['items'] ?? [],
             'timestamp' => now(),
         ];

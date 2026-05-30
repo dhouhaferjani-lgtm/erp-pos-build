@@ -95,7 +95,7 @@ class CountingReconciliationService
         InventoryCountingEvent::recordAutoResolution(
             $item,
             $item->resolution_method->value,
-            $count1
+            bcadd((string) $count1, '0', 4)
         );
     }
 
@@ -117,7 +117,7 @@ class CountingReconciliationService
             $item->resolved_at = now();
             $item->save();
 
-            InventoryCountingEvent::recordAutoResolution($item, 'auto_all_match', $theoretical);
+            InventoryCountingEvent::recordAutoResolution($item, 'auto_all_match', bcadd((string) $theoretical, '0', 4));
 
             return;
         }
@@ -131,7 +131,7 @@ class CountingReconciliationService
             $item->resolved_at = now();
             $item->save();
 
-            InventoryCountingEvent::recordAutoResolution($item, 'auto_counters_agree', $count1);
+            InventoryCountingEvent::recordAutoResolution($item, 'auto_counters_agree', bcadd((string) $count1, '0', 4));
 
             return;
         }
@@ -177,7 +177,7 @@ class CountingReconciliationService
 
             $item->save();
 
-            InventoryCountingEvent::recordAutoResolution($item, 'third_count_decisive', $majority);
+            InventoryCountingEvent::recordAutoResolution($item, 'third_count_decisive', bcadd((string) $majority, '0', 4));
 
             return;
         }
