@@ -24,6 +24,48 @@ const { mutationState, mockMutate } = vi.hoisted(() => ({
   mockMutate: vi.fn(),
 }))
 
+vi.mock('@/components/atoms/MoneyInput', () => ({
+  MoneyInput: ({
+    id,
+    value,
+    onChange,
+    disabled,
+    className,
+    error: _error,
+    currency: _currency,
+    ...rest
+  }: {
+    id?: string
+    value: string
+    onChange: (v: string) => void
+    disabled?: boolean
+    className?: string
+    error?: boolean
+    currency?: string
+    [k: string]: unknown
+  }) => (
+    <input
+      id={id}
+      type="number"
+      value={value}
+      onChange={(e) => { onChange(e.target.value) }}
+      disabled={disabled}
+      className={className}
+      {...rest}
+    />
+  ),
+}))
+
+vi.mock('@/hooks/useCurrency', () => ({
+  useCurrency: () => ({
+    currency: 'TND',
+    decimals: 3,
+    toFixed: (v: number) => v.toFixed(3),
+    format: (v: number) => v.toFixed(3),
+    symbol: 'TND',
+  }),
+}))
+
 vi.mock('../hooks/useCreditNotes', () => ({
   useCreateCreditNote: () => ({
     mutate: mockMutate,

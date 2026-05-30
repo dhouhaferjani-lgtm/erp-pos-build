@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
 import { Modal } from './Modal';
+import { MoneyInput } from '@/components/atoms/MoneyInput';
 import { Banknote } from 'lucide-react';
 
 interface CashTenderedModalProps {
@@ -23,7 +24,7 @@ export function CashTenderedModal({
   isProcessing,
 }: CashTenderedModalProps) {
   const { t } = useTranslation('pos');
-  const { format, decimals } = useCurrency();
+  const { format, decimals, currency } = useCurrency();
   const [tenderedStr, setTenderedStr] = useState('');
 
   useEffect(() => {
@@ -66,12 +67,11 @@ export function CashTenderedModal({
           <label className="mb-2 block text-sm font-medium text-gray-700">
             {t('cashTendered.tenderedAmount')}
           </label>
-          <input
-            type="number"
-            step="0.01"
+          <MoneyInput
+            currency={currency}
             min={0}
             value={tenderedStr}
-            onChange={(e) => setTenderedStr(e.target.value)}
+            onChange={setTenderedStr}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && isValid && !isProcessing) {
                 handleConfirm();

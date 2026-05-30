@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { ExpenseCategorySelect } from '../molecules/ExpenseCategorySelect'
 import { useActivePaymentMethods } from '../../../treasury/hooks/usePaymentMethods'
 import { useActivePaymentRepositories } from '../../../treasury/hooks/usePaymentRepositories'
+import { useCurrency } from '../../../../hooks/useCurrency'
+import { MoneyInput } from '../../../../components/atoms/MoneyInput'
 import type { CreateExpenseDTO, Expense } from '../../types'
 
 interface ExpenseFormFieldsProps {
@@ -25,6 +27,7 @@ export function ExpenseFormFields({
   isSubmitting = false,
 }: ExpenseFormFieldsProps) {
   const { t } = useTranslation(['expenses', 'common'])
+  const { currency } = useCurrency()
 
   // Fetch payment methods and repositories
   const {
@@ -66,6 +69,7 @@ export function ExpenseFormFields({
   })
 
   const categoryId = watch('expense_category_id')
+  const totalValue = watch('total')
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -116,16 +120,16 @@ export function ExpenseFormFields({
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
             {t('expenses:form.amount')} *
           </label>
-          <input
-            type="number"
-            step="0.01"
+          <MoneyInput
             {...register('total', {
               required: t('common:validation.required'),
-              min: {
-                value: 0.01,
-                message: t('common:validation.minAmount', { amount: '0.01' }),
-              },
+              validate: (v) => parseFloat(v) >= 0.01 || t('common:validation.minAmount', { amount: '0.01' }),
             })}
+            currency={currency}
+            value={totalValue ?? ''}
+            onChange={(v) => { setValue('total', v) }}
+            min="0.01"
+            error={!!errors.total}
             className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
           />
           {errors.total && (

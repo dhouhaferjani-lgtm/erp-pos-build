@@ -1,6 +1,9 @@
 import { useTranslation } from 'react-i18next'
-import type { UseFormRegister, UseFormWatch } from 'react-hook-form'
+import { Controller } from 'react-hook-form'
+import type { UseFormRegister, UseFormWatch, Control } from 'react-hook-form'
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react'
+import { MoneyInput } from '@/components/atoms/MoneyInput'
+import { useCompany } from '@/hooks/useCompany'
 import { useTaxIdValidation } from '../hooks/useTaxIdValidation'
 
 interface B2BFormFields {
@@ -17,10 +20,13 @@ interface B2BFormFields {
 interface B2BFieldsSectionProps {
   register: UseFormRegister<B2BFormFields & Record<string, unknown>>
   watch: UseFormWatch<B2BFormFields & Record<string, unknown>>
+  control: Control<B2BFormFields & Record<string, unknown>>
   partnerId?: string | undefined
 }
 
-export function B2BFieldsSection({ register, watch, partnerId }: B2BFieldsSectionProps) {
+export function B2BFieldsSection({ register, watch, control, partnerId }: B2BFieldsSectionProps) {
+  const { currentCompany } = useCompany()
+  const currency = currentCompany?.currency ?? 'EUR'
   const { t } = useTranslation('sales')
   const paymentTerms = watch('payment_terms')
   const invoiceConsolidation = watch('invoice_consolidation')
@@ -160,13 +166,19 @@ export function B2BFieldsSection({ register, watch, partnerId }: B2BFieldsSectio
           >
             {t('partners.b2b.creditLimit')}
           </label>
-          <input
-            type="number"
-            id="credit_limit"
-            step="0.01"
-            min="0"
-            {...register('credit_limit')}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          <Controller
+            name="credit_limit"
+            control={control}
+            render={({ field }) => (
+              <MoneyInput
+                id="credit_limit"
+                value={field.value as string}
+                onChange={field.onChange}
+                currency={currency}
+                min="0"
+                className="mt-1 block w-full"
+              />
+            )}
           />
         </div>
 

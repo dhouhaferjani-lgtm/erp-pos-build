@@ -4,7 +4,8 @@ import { fetchPaymentMethods, fetchPaymentRepositories } from '@/api/paymentApi'
 import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useTerminalStore } from '@/stores/terminalStore';
-import { getCurrencyDecimals } from '@/lib/currency';
+import { getActiveCurrency, getCurrencyDecimals } from '@/lib/currency';
+import { bcsum, bcmul, bcdiv, bcsub, bccomp, bcformat } from '@/lib/decimal';
 import { getDatabase } from '@/lib/db';
 import { getAllPaymentMethods, getAllPaymentRepositories } from '@/lib/db/repositories/paymentRepository';
 import { createOfflineReceipt, type OfflineReceiptResult } from '@/lib/offline/receiptService';
@@ -210,7 +211,12 @@ interface PaymentState {
 
 export interface AdvancedPaymentLine {
   payment_method_id: string;
-  amount: number;
+  /**
+   * Canonical decimal amount string at the currency's scale (e.g. "12.50",
+   * TND "12.500"). String — never a JS number — so the value that enters the
+   * fiscal-event canonical hash carries no IEEE-754 jitter (F-FRONTEND-VOUCHER).
+   */
+  amount: string;
   repository_id: string;
   card_last_four?: string;
   transaction_reference?: string;
@@ -387,22 +393,26 @@ function assertAttachedCustomerScope(customer: AttachedCheckoutCustomer): void {
 function estimateCartTotal(
   cartItems: CartItem[],
   transactionDiscount?: CartTransactionDiscount,
+  currency: string = 'EUR',
 ): number {
-  const subtotal = cartItems.reduce((sum, item) => sum + parseFloat(item.line_total), 0);
+  const decimals = getCurrencyDecimals(currency);
+  const subtotal = bcsum(cartItems.map((item) => item.line_total), decimals);
   if (transactionDiscount === undefined) {
-    return subtotal;
+    return Number(subtotal);
   }
 
   const discountValue = parseFloat(transactionDiscount.value);
   if (!Number.isFinite(discountValue) || discountValue <= 0) {
-    return subtotal;
+    return Number(subtotal);
   }
 
-  const discountAmount = transactionDiscount.type === 'percentage'
-    ? subtotal * (discountValue / 100)
-    : discountValue;
-
-  return Math.max(0, subtotal - Math.min(discountAmount, subtotal));
+  const rawDiscount = transactionDiscount.type === 'percentage'
+    ? bcdiv(bcmul(subtotal, transactionDiscount.value, decimals), '100', decimals)
+    : transactionDiscount.value;
+  // Clamp discount to the subtotal so the total can never go negative.
+  const discount = bccomp(rawDiscount, subtotal) > 0 ? subtotal : rawDiscount;
+  const total = bcsub(subtotal, discount, decimals);
+  return bccomp(total, '0') < 0 ? 0 : Number(total);
 }
 
 
@@ -747,7 +757,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       throw new Error(msg);
     }
 
-    const totalEstimate = estimateCartTotal(cartItems, transactionDiscount);
+    const totalEstimate = estimateCartTotal(cartItems, transactionDiscount, getActiveCurrency());
     if (tenderedAmount + 0.000001 < totalEstimate) {
       const msg = 'Cash tender tolerance requires a manager-authored tender tolerance override and is not available from quick cash checkout.';
       set({ error: msg });
@@ -898,7 +908,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       const company = authState.companies.find((c) => c.id === companyId);
       const currency = company?.currency ?? 'EUR';
       const decimals = getCurrencyDecimals(currency);
-      const totalEstimate = cartItems.reduce((sum, i) => sum + parseFloat(i.line_total), 0);
+      const totalEstimate = bcsum(cartItems.map((i) => i.line_total), decimals);
 
       await createReceiptLocalFirst(
         set,
@@ -906,7 +916,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         cartItems,
         [{
           methodCode: cardMethod.code,
-          amount: totalEstimate.toFixed(decimals),
+          amount: totalEstimate,
           paymentMethodId: cardMethod.id,
           repositoryId: cardRepo.id,
           cardLastFour: cardData?.lastFour,
@@ -978,7 +988,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         }
         return {
           methodCode: method.code,
-          amount: p.amount.toFixed(decimals),
+          amount: bcformat(p.amount, decimals),
           paymentMethodId: p.payment_method_id,
           repositoryId: p.repository_id,
           cardLastFour: p.card_last_four,
@@ -990,8 +1000,12 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         };
       });
 
-      const tenderedAmount = payments.reduce((sum, p) => sum + p.amount, 0);
-      const totalEstimate = estimateCartTotal(cartItems, transactionDiscount);
+      // Sum the per-tender amounts exactly (Big.js) from the same
+      // currency-scale strings that get persisted/hashed, so the tendered
+      // total and the per-line `amount` strings cannot disagree.
+      const tenderedAmountStr = bcsum(enriched.map((e) => e.amount), decimals);
+      const tenderedAmount = Number(tenderedAmountStr);
+      const totalEstimate = estimateCartTotal(cartItems, transactionDiscount, currency);
       let tenderToleranceEvidence: PosOverrideEvidence | undefined;
 
       if (tenderedAmount + 0.000001 < totalEstimate) {
@@ -1011,15 +1025,18 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         }
 
         const businessDate = new Date().toISOString().slice(0, 10);
-        const shortfall = Math.max(0, totalEstimate - tenderedAmount).toFixed(decimals);
+        const totalEstimateStr = totalEstimate.toFixed(decimals);
+        // Exact shortfall = total − tendered, clamped at 0 (Big.js).
+        const rawShortfall = bcsub(totalEstimateStr, tenderedAmountStr, decimals);
+        const shortfall = bccomp(rawShortfall, '0') < 0 ? (0).toFixed(decimals) : rawShortfall;
         const target = {
           tenant_id: authState.user.tenantId,
           company_id: companyId,
           terminal_id: terminalId,
           target_event_type: 'SALE_RECEIPT',
           target_reference_id: idempotencyKey,
-          total_amount: totalEstimate.toFixed(decimals),
-          tendered_amount: tenderedAmount.toFixed(decimals),
+          total_amount: totalEstimateStr,
+          tendered_amount: tenderedAmountStr,
           shortfall_amount: shortfall,
           currency,
         };
@@ -1055,7 +1072,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
           target,
           policyVersion: 'pos-phase-4-v1',
           reasonCode: 'tender_tolerance_shortfall',
-          reasonText: `Tendered ${tenderedAmount.toFixed(decimals)} against ${totalEstimate.toFixed(decimals)}`,
+          reasonText: `Tendered ${tenderedAmountStr} against ${totalEstimateStr}`,
         });
       }
 

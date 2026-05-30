@@ -43,6 +43,24 @@ export function bccomp(a: string, b: string): number {
   return safeBig(a).cmp(safeBig(b));
 }
 
+/**
+ * Sum an array of decimal strings exactly (Big.js), returning a string at
+ * `scale`. Avoids the float drift of `arr.reduce((s, x) => s + parseFloat(x))`
+ * when aggregating many line totals.
+ */
+export function bcsum(values: readonly string[], scale: number = 3): string {
+  let acc = new Big(0);
+  for (const value of values) {
+    acc = acc.plus(safeBig(value));
+  }
+  return acc.toFixed(scale);
+}
+
+/** Absolute value of a decimal string, formatted at `scale`. */
+export function bcabs(value: string, scale: number = 3): string {
+  return safeBig(value).abs().toFixed(scale);
+}
+
 export function bcformat(value: string | number, scale: number): string {
   return new Big(value).toFixed(scale);
 }

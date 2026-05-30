@@ -50,8 +50,8 @@ export function ToleranceSettingsDisplay() {
     return null
   }
 
-  // Convert decimal string to percentage (0.0050 → 0.50%)
-  const percentageValue = (parseFloat(settings.percentage) * 100).toFixed(2)
+  // Convert decimal string to percentage (0.0050 → 0.5000%)
+  const percentageValue = (parseFloat(settings.percentage) * 100).toFixed(4)
   const maxAmountValue = parseFloat(settings.max_amount).toFixed(decimals)
 
   return (

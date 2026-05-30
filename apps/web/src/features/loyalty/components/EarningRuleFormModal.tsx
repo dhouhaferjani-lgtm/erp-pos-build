@@ -1,9 +1,9 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useForm, type Resolver } from 'react-hook-form'
+import { useForm, Controller, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Button, Input, FormField, Select } from '@/components/atoms'
+import { Button, Input, FormField, Select, QuantityInput } from '@/components/atoms'
 import { Modal } from '@/components/organisms/Modal/Modal'
 import type { EarningRule, CreateEarningRuleData } from '../types/loyalty'
 
@@ -112,15 +112,48 @@ export function EarningRuleFormModal({ isOpen, onClose, onSubmit, isPending, edi
             </div>
 
             <FormField label={t('loyalty:fields.rewardValue')} error={form.formState.errors.reward_value?.message}>
-              <Input {...form.register('reward_value')} type="number" step="0.01" min="0" />
+              <Controller
+                name="reward_value"
+                control={form.control}
+                render={({ field }) => (
+                  <QuantityInput
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    decimalPlaces={2}
+                    min="0"
+                  />
+                )}
+              />
             </FormField>
 
             <div className="grid grid-cols-2 gap-4">
               <FormField label={t('loyalty:fields.maxEarnPerTransaction')}>
-                <Input {...form.register('max_earn_per_transaction')} type="number" step="0.01" min="0" />
+                <Controller
+                  name="max_earn_per_transaction"
+                  control={form.control}
+                  render={({ field }) => (
+                    <QuantityInput
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      decimalPlaces={2}
+                      min="0"
+                    />
+                  )}
+                />
               </FormField>
               <FormField label={t('loyalty:fields.maxEarnPerDay')}>
-                <Input {...form.register('max_earn_per_day')} type="number" step="0.01" min="0" />
+                <Controller
+                  name="max_earn_per_day"
+                  control={form.control}
+                  render={({ field }) => (
+                    <QuantityInput
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      decimalPlaces={2}
+                      min="0"
+                    />
+                  )}
+                />
               </FormField>
             </div>
 

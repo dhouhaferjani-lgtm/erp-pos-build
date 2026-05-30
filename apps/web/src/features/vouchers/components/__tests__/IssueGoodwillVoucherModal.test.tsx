@@ -309,4 +309,31 @@ describe('IssueGoodwillVoucherModal', () => {
     const [payload] = mockMutate.mock.calls[0] as [{ second_admin_user_id: string | null }]
     expect(payload.second_admin_user_id).toBeNull()
   })
+
+  // ─── Precision: amount must be sent as a string, never a JS number ───────────
+
+  it('sends amount as a string in the mutation payload', async () => {
+    render(<IssueGoodwillVoucherModal isOpen onClose={onClose} />)
+
+    const amountInput = screen.getByPlaceholderText('0.00')
+    fireEvent.change(amountInput, { target: { value: '42.50' } })
+
+    const textboxes = screen.getAllByRole('textbox')
+    const notesTextarea = textboxes[textboxes.length - 1]
+    fireEvent.change(notesTextarea, { target: { value: 'string payload test' } })
+
+    const terminalSelect = screen.getByRole('combobox')
+    fireEvent.change(terminalSelect, { target: { value: 't1' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'vouchers:issueGoodwill.action' }))
+
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalled()
+    })
+
+    const [payload] = mockMutate.mock.calls[0] as [{ amount: unknown }]
+    // MoneyInput emits a raw string — the payload must never be a JS number
+    expect(typeof payload.amount).toBe('string')
+    expect(payload.amount).toBe('42.50')
+  })
 })

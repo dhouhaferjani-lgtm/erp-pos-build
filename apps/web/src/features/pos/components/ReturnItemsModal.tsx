@@ -7,16 +7,27 @@ import type { ProcessReturnRequest } from '../api/receiptApi'
 import { Loader2, RotateCcw, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { QuantityInput } from '@/components/atoms/QuantityInput'
 import { useCurrency } from '@/hooks/useCurrency'
+import { bcadd, bcmul, bcdiv, bcsub, bccomp } from '@/lib/decimal'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+
+/**
+ * Quantity scale for returned-line quantities (matches the backend
+ * inventory quantity precision — decimal(.,4)). F-FRONTEND-RETURN: the
+ * returned quantity must be canonicalized at QUANTITY scale (4), NOT the
+ * currency scale, so fractional-unit returns are not silently truncated.
+ */
+const QUANTITY_SCALE = 4
 
 interface ReturnLineState {
   lineId: string
   productName: string
-  originalQuantity: number
-  returnQuantity: number
-  maxReturnable: number
+  originalQuantity: string
+  /** Returned quantity as a canonical decimal string at QUANTITY_SCALE. */
+  returnQuantity: string
+  maxReturnable: string
   unitPrice: string
   lineTotal: string
   selected: boolean
@@ -38,6 +49,16 @@ const RETURN_REASONS = [
 ] as const
 
 type ReturnReasonValue = typeof RETURN_REASONS[number]
+
+/**
+ * Trim trailing zeros (and a dangling decimal point) from a canonical quantity
+ * string for compact display, e.g. "2.0000" → "2", "1.5000" → "1.5". The wire
+ * payload still uses the full QUANTITY_SCALE string — this is display-only.
+ */
+function displayQuantity(value: string): string {
+  if (!value.includes('.')) return value
+  return value.replace(/\.?0+$/, '')
+}
 
 export function ReturnItemsModal({
   isOpen,
@@ -67,20 +88,24 @@ export function ReturnItemsModal({
         receipt.lines
           .filter((line) => parseFloat(line.quantity) > 0) // Only sale lines (positive qty)
           .map((line) => {
-            const maxReturnable =
-              parseFloat(line.quantity) - parseFloat(line.returned_quantity ?? '0')
+            // bc-safe at quantity scale — never a float subtraction.
+            const maxReturnable = bcsub(
+              line.quantity,
+              line.returned_quantity ?? '0',
+              QUANTITY_SCALE,
+            )
             return {
               lineId: line.id,
               productName: line.product_name,
-              originalQuantity: parseFloat(line.quantity),
-              returnQuantity: 0,
+              originalQuantity: line.quantity,
+              returnQuantity: '0',
               maxReturnable,
               unitPrice: line.unit_price,
               lineTotal: line.line_total,
               selected: false,
             }
           })
-          .filter((line) => line.maxReturnable > 0) // Hide fully returned lines
+          .filter((line) => bccomp(line.maxReturnable, '0') > 0) // Hide fully returned lines
       )
     }
   }, [receipt])
@@ -101,39 +126,48 @@ export function ReturnItemsModal({
           ? {
               ...line,
               selected: !line.selected,
-              returnQuantity: !line.selected ? line.maxReturnable : 0,
+              returnQuantity: !line.selected ? line.maxReturnable : '0',
             }
           : line
       )
     )
   }
 
-  const updateQuantity = (lineId: string, quantity: number) => {
+  const updateQuantity = (lineId: string, quantity: string) => {
     setReturnLines((prev) =>
-      prev.map((line) =>
-        line.lineId === lineId
-          ? {
-              ...line,
-              returnQuantity: Math.min(Math.max(0, quantity), line.maxReturnable),
-              selected: quantity > 0,
-            }
-          : line
-      )
+      prev.map((line) => {
+        if (line.lineId !== lineId) return line
+        // Clamp the raw input string into [0, maxReturnable] without ever
+        // entering the float pipeline. Empty / invalid input clamps to '0'.
+        let next = quantity
+        if (quantity.trim() === '' || bccomp(quantity, '0') < 0) {
+          next = '0'
+        } else if (bccomp(quantity, line.maxReturnable) > 0) {
+          next = line.maxReturnable
+        }
+        return {
+          ...line,
+          returnQuantity: next,
+          selected: bccomp(next, '0') > 0,
+        }
+      })
     )
   }
 
   const selectedLines = useMemo(
-    () => returnLines.filter((line) => line.selected && line.returnQuantity > 0),
+    () => returnLines.filter((line) => line.selected && bccomp(line.returnQuantity, '0') > 0),
     [returnLines]
   )
 
   const returnTotal = useMemo(() => {
+    // Sum exact line refunds: lineTotal * (returnQuantity / originalQuantity).
+    // Intermediate ratio kept at high precision; final sum at currency scale.
     return selectedLines.reduce((sum, line) => {
-      const ratio = line.returnQuantity / line.originalQuantity
-      const lineReturn = parseFloat(line.lineTotal) * ratio
-      return sum + lineReturn
-    }, 0)
-  }, [selectedLines])
+      const ratio = bcdiv(line.returnQuantity, line.originalQuantity, QUANTITY_SCALE + 4)
+      const lineReturn = bcmul(line.lineTotal, ratio, decimals)
+      return bcadd(sum, lineReturn, decimals)
+    }, '0')
+  }, [selectedLines, decimals])
 
   const handleSubmit = () => {
     if (selectedLines.length === 0) return
@@ -143,7 +177,10 @@ export function ReturnItemsModal({
       return_reason: returnReason,
       lines: selectedLines.map((line) => ({
         line_id: line.lineId,
-        quantity: line.returnQuantity.toFixed(decimals),
+        // F-FRONTEND-RETURN: send the quantity at QUANTITY scale (4), not the
+        // currency scale, and as a canonical string straight from the input.
+        // `bcadd(x, '0')` canonicalizes to a fixed-scale numeric string.
+        quantity: bcadd(line.returnQuantity, '0', QUANTITY_SCALE),
       })),
       notes: notes || undefined,
     })
@@ -233,7 +270,7 @@ export function ReturnItemsModal({
                         {line.productName}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {line.unitPrice} x {line.originalQuantity} = {line.lineTotal}
+                        {line.unitPrice} x {displayQuantity(line.originalQuantity)} = {line.lineTotal}
                       </p>
                     </div>
                     {line.selected && (
@@ -241,19 +278,16 @@ export function ReturnItemsModal({
                         <label className="text-xs text-gray-500">
                           {t('pos:returns.qty')}
                         </label>
-                        <input
-                          type="number"
-                          min={0.001}
+                        <QuantityInput
+                          decimalPlaces={QUANTITY_SCALE}
+                          min="0"
                           max={line.maxReturnable}
-                          step={1}
                           value={line.returnQuantity}
-                          onChange={(e) =>
-                            { updateQuantity(line.lineId, parseFloat(e.target.value) || 0); }
-                          }
+                          onChange={(value) => { updateQuantity(line.lineId, value); }}
                           className="w-20 rounded-md border-gray-300 text-sm text-center"
                         />
                         <span className="text-xs text-gray-400">
-                          / {line.maxReturnable}
+                          / {displayQuantity(line.maxReturnable)}
                         </span>
                       </div>
                     )}
@@ -289,7 +323,7 @@ export function ReturnItemsModal({
                     </p>
                   </div>
                   <p className="text-lg font-bold text-red-700">
-                    -{returnTotal.toFixed(decimals)} {receipt.currency}
+                    -{returnTotal} {receipt.currency}
                   </p>
                 </div>
               </div>

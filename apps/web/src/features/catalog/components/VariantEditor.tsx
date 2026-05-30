@@ -2,10 +2,63 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { Input, Button, Select } from '@/components/atoms'
+import { Input, Button, Select, MoneyInput, QuantityInput } from '@/components/atoms'
 import { tokens } from '@/lib/designTokens'
+import { useCompanyConfig } from '@/contexts'
 import type { CompositeItemVariantData, PriceAdjustmentType } from '../types/compositeItem'
 import { useCreateVariant, useUpdateVariant, useDeleteVariant } from '../hooks/useRecipes'
+
+/** Controlled MoneyInput that only fires onCommit on blur — prevents per-keystroke API calls in table rows. */
+function BlurMoneyInput({
+  initialValue,
+  currency,
+  onCommit,
+  className,
+}: {
+  initialValue: string
+  currency: string
+  onCommit: (value: string) => void
+  className?: string
+}) {
+  const [draft, setDraft] = useState(initialValue)
+  return (
+    <MoneyInput
+      currency={currency}
+      min="-999999"
+      value={draft}
+      onChange={setDraft}
+      onBlur={() => { if (draft !== initialValue) onCommit(draft) }}
+      className={className}
+    />
+  )
+}
+
+/** Controlled QuantityInput that only fires onCommit on blur — prevents per-keystroke API calls in table rows. */
+function BlurQuantityInput({
+  initialValue,
+  decimalPlaces,
+  onCommit,
+  className,
+  min,
+}: {
+  initialValue: string
+  decimalPlaces: number
+  onCommit: (value: string) => void
+  className?: string
+  min?: string
+}) {
+  const [draft, setDraft] = useState(initialValue)
+  return (
+    <QuantityInput
+      decimalPlaces={decimalPlaces}
+      value={draft}
+      onChange={setDraft}
+      onBlur={() => { if (draft !== initialValue) onCommit(draft) }}
+      className={className}
+      {...(min !== undefined ? { min } : {})}
+    />
+  )
+}
 
 interface VariantEditorProps {
   compositeItemId: string
@@ -14,6 +67,8 @@ interface VariantEditorProps {
 
 export function VariantEditor({ compositeItemId, variants }: VariantEditorProps) {
   const { t } = useTranslation(['catalog', 'common'])
+  const { config } = useCompanyConfig()
+  const currency = config?.currency ?? 'TND'
   const [newVariant, setNewVariant] = useState({
     code: '',
     name: '',
@@ -36,8 +91,8 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
           code: newVariant.code,
           name: newVariant.name,
           price_adjustment_type: newVariant.price_adjustment_type,
-          price_adjustment: Number(newVariant.price_adjustment),
-          recipe_multiplier: Number(newVariant.recipe_multiplier),
+          price_adjustment: newVariant.price_adjustment,
+          recipe_multiplier: newVariant.recipe_multiplier,
           is_default: newVariant.is_default,
         },
       },
@@ -51,15 +106,7 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
   }
 
   const handleUpdate = (id: string, field: string, value: string | boolean) => {
-    const data: Record<string, unknown> = {}
-    if (typeof value === 'boolean') {
-      data[field] = value
-    } else if (field === 'price_adjustment' || field === 'recipe_multiplier') {
-      data[field] = Number(value)
-    } else {
-      data[field] = value
-    }
-    updateMutation.mutate({ id, data })
+    updateMutation.mutate({ id, data: { [field]: value } })
   }
 
   const handleDelete = (id: string) => {
@@ -107,21 +154,19 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                   </Select>
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                  <Input
-                    type="number"
-                    defaultValue={variant.price_adjustment}
-                    onBlur={(e) => { handleUpdate(variant.id, 'price_adjustment', e.target.value); }}
+                  <BlurMoneyInput
+                    initialValue={variant.price_adjustment}
+                    currency={currency}
+                    onCommit={(v) => { handleUpdate(variant.id, 'price_adjustment', v) }}
                     className="!mt-0 w-24"
-                    step="0.01"
                   />
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                  <Input
-                    type="number"
-                    defaultValue={variant.recipe_multiplier}
-                    onBlur={(e) => { handleUpdate(variant.id, 'recipe_multiplier', e.target.value); }}
+                  <BlurQuantityInput
+                    initialValue={variant.recipe_multiplier}
+                    decimalPlaces={2}
+                    onCommit={(v) => { handleUpdate(variant.id, 'recipe_multiplier', v) }}
                     className="!mt-0 w-20"
-                    step="0.01"
                     min="0.01"
                   />
                 </td>
@@ -179,22 +224,21 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                 </Select>
               </td>
               <td className="px-3 py-4">
-                <Input
-                  type="number"
+                <MoneyInput
+                  currency={currency}
+                  min="-999999"
                   value={newVariant.price_adjustment}
-                  onChange={(e) => { setNewVariant({ ...newVariant, price_adjustment: e.target.value }); }}
+                  onChange={(v) => { setNewVariant({ ...newVariant, price_adjustment: v }); }}
                   className="!mt-0 w-24"
-                  step="0.01"
                 />
               </td>
               <td className="px-3 py-4">
-                <Input
-                  type="number"
-                  value={newVariant.recipe_multiplier}
-                  onChange={(e) => { setNewVariant({ ...newVariant, recipe_multiplier: e.target.value }); }}
-                  className="!mt-0 w-20"
-                  step="0.01"
+                <QuantityInput
+                  decimalPlaces={2}
                   min="0.01"
+                  value={newVariant.recipe_multiplier}
+                  onChange={(v) => { setNewVariant({ ...newVariant, recipe_multiplier: v }); }}
+                  className="!mt-0 w-20"
                 />
               </td>
               <td className="px-3 py-4">

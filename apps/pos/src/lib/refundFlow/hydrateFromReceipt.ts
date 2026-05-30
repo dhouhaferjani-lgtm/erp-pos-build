@@ -1,6 +1,12 @@
 import type { CartItem } from '@/types/cart';
 import type { ReceiptTokenAccepted } from '@/types/refund';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
+import { bcmul } from '@/lib/decimal';
+
+/** Decimal places present in a monetary string (default 2 if none). */
+function inferScale(value: string): number {
+  return value.includes('.') ? value.split('.')[1]!.length : 2;
+}
 
 /**
  * Shape of a persisted receipt line as stored in `offline_receipts.lines` JSON.
@@ -42,13 +48,11 @@ export function hydrateFromReceipt(
     const negativeQty = -Math.abs(line.quantity);
     const unitPrice = line.unit_price;
 
-    // line_total for a return line: negative (cashier owes money)
-    const lineTotal = (parseFloat(line.line_total) * -1).toFixed(
-      line.line_total.includes('.') ? line.line_total.split('.')[1]!.length : 2,
-    );
-    const taxAmount = (parseFloat(line.tax_amount) * -1).toFixed(
-      line.tax_amount.includes('.') ? line.tax_amount.split('.')[1]!.length : 2,
-    );
+    // line_total for a return line: negative (cashier owes money). Negate with
+    // Big.js at the source string's own scale so the value is byte-identical
+    // to a parseFloat-free negation.
+    const lineTotal = bcmul(line.line_total, '-1', inferScale(line.line_total));
+    const taxAmount = bcmul(line.tax_amount, '-1', inferScale(line.tax_amount));
 
     const productId = line.product_id ?? line.composite_item_id ?? `${event.receiptUuid}-line-${String(idx)}`;
 

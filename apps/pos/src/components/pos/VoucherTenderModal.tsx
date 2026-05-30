@@ -35,12 +35,13 @@
  *   This handles TND (scale 3) and other multi-decimal currencies correctly.
  */
 
-import { useState, useCallback, useRef, type ChangeEvent } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type Database from '@tauri-apps/plugin-sql';
 import { findByCode, type LocalVoucher } from '@/lib/offline/voucherRepository';
 import { usePaymentStore } from '@/stores/paymentStore';
 import { Modal } from '@/components/pos/Modal';
+import { MoneyInput } from '@/components/atoms/MoneyInput';
 import { bccomp, bcformat } from '@/lib/decimal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -335,9 +336,9 @@ export function VoucherTenderModal({
     }
   }, [voucher, amountInput, remainingDue, appliedVoucherCodes, currency, addVoucherPayment, onApplied, resetToScan, t]);
 
-  const handleAmountChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+  const handleAmountChange = useCallback((value: string) => {
     // Allow decimals and digits only
-    const raw = e.target.value.replace(/[^0-9.]/g, '');
+    const raw = value.replace(/[^0-9.]/g, '');
     setAmountInput(raw);
     setLookupError(null);
   }, []);
@@ -440,12 +441,10 @@ export function VoucherTenderModal({
                   {t('voucherTender.amountLabel', { defaultValue: 'Amount to apply' })}
                 </label>
                 <div className="flex items-center gap-2">
-                  <input
+                  <MoneyInput
                     id="voucher-amount-input"
-                    type="number"
-                    inputMode="decimal"
-                    min="0.01"
-                    step="0.01"
+                    currency={currency}
+                    min="0"
                     value={amountInput}
                     onChange={handleAmountChange}
                     data-testid="voucher-amount-input"

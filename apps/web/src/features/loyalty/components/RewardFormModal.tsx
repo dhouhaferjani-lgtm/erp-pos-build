@@ -1,11 +1,12 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useForm, type Resolver } from 'react-hook-form'
+import { useForm, Controller, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Button, Input, FormField, Select } from '@/components/atoms'
+import { Button, Input, FormField, Select, MoneyInput } from '@/components/atoms'
 import { Textarea } from '@/components/atoms/Textarea/Textarea'
 import { Modal } from '@/components/organisms/Modal/Modal'
+import { useCompany } from '@/hooks/useCompany'
 import type { Reward, CreateRewardData } from '../types/loyalty'
 
 const schema = z.object({
@@ -34,6 +35,8 @@ interface RewardFormModalProps {
 
 export function RewardFormModal({ isOpen, onClose, onSubmit, isPending, editingReward }: RewardFormModalProps) {
   const { t } = useTranslation(['loyalty', 'common'])
+  const { currentCompany } = useCompany()
+  const currency = currentCompany?.currency ?? 'EUR'
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema) as Resolver<FormValues>,
@@ -51,6 +54,10 @@ export function RewardFormModal({ isOpen, onClose, onSubmit, isPending, editingR
       end_date: null,
     },
   })
+
+  const rewardType = form.watch('reward_type')
+  // reward_value is a monetary amount for all types except discount_percent
+  const rewardValueIsPercent = rewardType === 'discount_percent'
 
   useEffect(() => {
     if (editingReward) {
@@ -133,16 +140,53 @@ export function RewardFormModal({ isOpen, onClose, onSubmit, isPending, editingR
 
             <div className="grid grid-cols-2 gap-4">
               <FormField label={t('loyalty:fields.rewardValue')}>
-                <Input {...form.register('reward_value')} type="number" step="0.01" min="0" />
+                {rewardValueIsPercent ? (
+                  <Input {...form.register('reward_value')} type="number" step="0.01" min="0" max="100" />
+                ) : (
+                  <Controller
+                    name="reward_value"
+                    control={form.control}
+                    render={({ field }) => (
+                      <MoneyInput
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        currency={currency}
+                        min="0"
+                      />
+                    )}
+                  />
+                )}
               </FormField>
               <FormField label={t('loyalty:fields.maxDiscount')}>
-                <Input {...form.register('max_discount')} type="number" step="0.01" min="0" />
+                <Controller
+                  name="max_discount"
+                  control={form.control}
+                  render={({ field }) => (
+                    <MoneyInput
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      currency={currency}
+                      min="0"
+                    />
+                  )}
+                />
               </FormField>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <FormField label={t('loyalty:fields.minOrderValue')}>
-                <Input {...form.register('min_order_value')} type="number" step="0.01" min="0" />
+                <Controller
+                  name="min_order_value"
+                  control={form.control}
+                  render={({ field }) => (
+                    <MoneyInput
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      currency={currency}
+                      min="0"
+                    />
+                  )}
+                />
               </FormField>
               <FormField label={t('loyalty:fields.quantityAvailable')}>
                 <Input {...form.register('quantity_available')} type="number" min="1" />

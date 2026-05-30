@@ -5,10 +5,11 @@ import { useForm, Controller, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { ArrowLeft } from 'lucide-react'
-import { Button, Input, FormField, Select } from '@/components/atoms'
+import { Button, Input, FormField, Select, MoneyInput } from '@/components/atoms'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { ProductSelector } from '@/features/products/components/ProductSelector'
 import { CategorySelector } from '@/features/categories/components/CategorySelector'
+import { useCompany } from '@/hooks/useCompany'
 
 import { useCoupon, useCreateCoupon, useUpdateCoupon } from '../hooks/useCoupons'
 import type { CreateCouponData } from '../api/couponApi'
@@ -38,6 +39,8 @@ export function CouponFormPage() {
   const { t } = useTranslation(['coupons', 'common'])
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
+  const { currentCompany } = useCompany()
+  const currency = currentCompany?.currency ?? 'EUR'
   const isEditing = !!id
 
   const { data: existingCoupon, isLoading: isLoadingCoupon } = useCoupon(id ?? '')
@@ -65,6 +68,9 @@ export function CouponFormPage() {
       qualifying_category_ids: null,
     },
   })
+
+  const discountType = form.watch('discount_type')
+  const discountValueIsPercent = discountType === 'percentage'
 
   useEffect(() => {
     if (existingCoupon) {
@@ -202,31 +208,59 @@ export function CouponFormPage() {
               label={t('coupons:fields.discountValue')}
               error={form.formState.errors.discount_value?.message}
             >
-              <Input
-                {...form.register('discount_value')}
-                type="number"
-                step="0.01"
-                min="0"
-              />
+              {discountValueIsPercent ? (
+                <Input
+                  {...form.register('discount_value')}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                />
+              ) : (
+                <Controller
+                  name="discount_value"
+                  control={form.control}
+                  render={({ field }) => (
+                    <MoneyInput
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      currency={currency}
+                      min="0"
+                    />
+                  )}
+                />
+              )}
             </FormField>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <FormField label={t('coupons:fields.maxDiscountAmount')}>
-              <Input
-                {...form.register('max_discount_amount')}
-                type="number"
-                step="0.01"
-                min="0"
+              <Controller
+                name="max_discount_amount"
+                control={form.control}
+                render={({ field }) => (
+                  <MoneyInput
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    currency={currency}
+                    min="0"
+                  />
+                )}
               />
             </FormField>
 
             <FormField label={t('coupons:fields.minimumOrderAmount')}>
-              <Input
-                {...form.register('minimum_order_amount')}
-                type="number"
-                step="0.01"
-                min="0"
+              <Controller
+                name="minimum_order_amount"
+                control={form.control}
+                render={({ field }) => (
+                  <MoneyInput
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    currency={currency}
+                    min="0"
+                  />
+                )}
               />
             </FormField>
           </div>

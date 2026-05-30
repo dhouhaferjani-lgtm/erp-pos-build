@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCurrency } from '@/lib/currency';
+import { bcformat } from '@/lib/decimal';
 import { NumPad } from '@/components/molecules/NumPad';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { requiresInstrumentForMethodCode } from '@/lib/payment/paymentMethodKind';
@@ -377,7 +378,10 @@ export function AdvancedPaymentsModal({
 
     const cashAndCardPayments: AdvancedPaymentLine[] = paymentLines.map((l) => ({
       payment_method_id: l.methodId,
-      amount: l.amount,
+      // Canonicalize the display-math float to a currency-scale string at the
+      // wire boundary so the amount enters the fiscal hash without IEEE-754
+      // jitter (F-FRONTEND-VOUCHER / precision remediation Phase 10.1).
+      amount: bcformat(String(l.amount), decimals),
       repository_id: l.repositoryId,
       ...(l.cardLastFour ? { card_last_four: l.cardLastFour } : {}),
       ...(l.reference ? { transaction_reference: l.reference } : {}),
@@ -391,7 +395,10 @@ export function AdvancedPaymentsModal({
     const voucherPayments: AdvancedPaymentLine[] = storeVoucherMethod && voucherRepository
       ? voucherTenders.map((v) => ({
         payment_method_id: storeVoucherMethod.id,
-        amount: Number.parseFloat(v.amount),
+        // F-FRONTEND-VOUCHER: forward the canonical string verbatim — the
+        // voucher amount is bound to the fiscal-event hash, so a parseFloat
+        // round-trip here would inject IEEE-754 jitter into the hash input.
+        amount: v.amount,
         repository_id: voucherRepository.id,
         instrument_type: 'store_voucher',
         instrument_serial: v.code,
@@ -414,6 +421,7 @@ export function AdvancedPaymentsModal({
     voucherTenders,
     storeVoucherMethod,
     voucherRepository,
+    decimals,
   ]);
 
   const handleClose = useCallback(() => {

@@ -2,8 +2,14 @@ import { create } from 'zustand';
 import type { CartItem, SelectedModifier } from '@/types/cart';
 import type { POSProduct } from '@/types/product';
 import { getCurrencyDecimals } from '@/lib/currency';
+import { bcadd, bcdiv, bcmul, bcsub, bcsum, bccomp, bcabs } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
 import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
+
+// Quantities carry up to 4 decimal places (weight/volume sales); money carries
+// the currency scale. Multiply at quantity precision so a fractional qty never
+// loses resolution before the currency-scale rounding at the line-total step.
+const QUANTITY_SCALE = 4;
 
 export interface CartTransactionDiscount {
   type: 'percentage' | 'fixed';
@@ -45,8 +51,12 @@ interface CartActions {
 
 interface CartDerived {
   subtotal: () => number;
+  /** Exact subtotal as a currency-scale decimal string (no float boundary). */
+  subtotalString: () => string;
   taxAmount: () => number;
   discountAmount: () => number;
+  /** Exact transaction-discount amount as a currency-scale decimal string. */
+  discountAmountString: () => string;
   total: () => number;
   itemCount: () => number;
   /** Items whose kind is 'return' (or normalised to 'return'). */
@@ -68,39 +78,48 @@ function getDecimals(): number {
   return getCurrencyDecimals(company?.currency ?? 'EUR');
 }
 
-export function computeTaxAmount(lineTotal: number, taxRate: string): string {
+export function computeTaxAmount(lineTotal: number | string, taxRate: string): string {
   const decimals = getDecimals();
-  const rate = parseFloat(taxRate);
-  if (rate <= 0) return (0).toFixed(decimals);
-  // Tax-inclusive: extract tax from price that already includes it
-  // net = lineTotal / (1 + rate/100), tax = lineTotal - net
-  const tax = lineTotal - lineTotal / (1 + rate / 100);
-  return tax.toFixed(decimals);
+  if (bccomp(taxRate, '0') <= 0) return (0).toFixed(decimals);
+  // Tax-inclusive: extract tax from price that already includes it.
+  //   net = lineTotal / (1 + rate/100); tax = lineTotal - net
+  // Big.js arithmetic — no IEEE-754 drift on the division.
+  const lineTotalStr = typeof lineTotal === 'number' ? String(lineTotal) : lineTotal;
+  const factor = bcadd('1', bcdiv(taxRate, '100', QUANTITY_SCALE), QUANTITY_SCALE);
+  const net = bcdiv(lineTotalStr, factor, decimals);
+  return bcsub(lineTotalStr, net, decimals);
 }
 
 function recalcLineTotal(item: CartItem, newQty: number): CartItem {
   const decimals = getDecimals();
-  const grossTotal = parseFloat(item.unit_price) * newQty;
-  let discountAmount = 0;
+  // unit_price is a money string; newQty may be fractional (scale 4). Multiply
+  // at quantity precision, then round the line total to the currency scale.
+  const grossTotal = bcmul(item.unit_price, String(newQty), decimals);
+  let discountAmount = (0).toFixed(decimals);
 
   if (item.discount_type === 'percentage' && item.discount_percent) {
-    discountAmount = (grossTotal * parseFloat(item.discount_percent)) / 100;
+    discountAmount = bcdiv(
+      bcmul(grossTotal, item.discount_percent, decimals),
+      '100',
+      decimals,
+    );
   } else if (item.discount_amount && item.discount_type === 'fixed') {
-    discountAmount = parseFloat(item.discount_amount);
+    discountAmount = item.discount_amount;
   }
 
   // For sale lines (positive qty) clamp to 0 so discounts never invert the total.
   // For return lines (negative qty) the raw signed value is correct — do not clamp.
-  const rawTotal = grossTotal - discountAmount;
-  const lineTotal = newQty >= 0 ? Math.max(0, rawTotal) : rawTotal;
+  const rawTotal = bcsub(grossTotal, discountAmount, decimals);
+  const lineTotal =
+    newQty >= 0 && bccomp(rawTotal, '0') < 0 ? (0).toFixed(decimals) : rawTotal;
 
   return {
     ...item,
     quantity: newQty,
     ...(item.discount_type === 'percentage'
-      ? { discount_amount: discountAmount.toFixed(decimals) }
+      ? { discount_amount: discountAmount }
       : {}),
-    line_total: lineTotal.toFixed(decimals),
+    line_total: lineTotal,
     tax_amount: computeTaxAmount(lineTotal, item.tax_rate),
   };
 }
@@ -165,13 +184,12 @@ export const useCartStore = create<CartStore>()((set, get) => ({
       }
 
       // Add new item
-      const basePrice = parseFloat(product.sale_price ?? '0');
-      const modifierAdjustment = hasModifiers
-        ? selectedModifiers.reduce((sum, m) => sum + parseFloat(m.price_adjustment), 0)
-        : 0;
-      const unitPrice = basePrice + modifierAdjustment;
       const decimals = getDecimals();
-      const priceValue = unitPrice.toFixed(decimals);
+      const basePrice = product.sale_price ?? '0';
+      const modifierAdjustment = hasModifiers
+        ? bcsum(selectedModifiers.map((m) => m.price_adjustment), decimals)
+        : (0).toFixed(decimals);
+      const priceValue = bcadd(basePrice, modifierAdjustment, decimals);
 
       const cartProduct: CartItem['product'] = {
         id: product.id,
@@ -190,9 +208,9 @@ export const useCartStore = create<CartStore>()((set, get) => ({
         product: cartProduct,
         quantity: 1,
         unit_price: priceValue,
-        line_total: unitPrice.toFixed(decimals),
+        line_total: priceValue,
         tax_rate: taxRate,
-        tax_amount: computeTaxAmount(unitPrice, taxRate),
+        tax_amount: computeTaxAmount(priceValue, taxRate),
       };
 
       return { items: [...state.items, newItem] };
@@ -222,17 +240,19 @@ export const useCartStore = create<CartStore>()((set, get) => ({
       items: state.items.map((item) => {
         if (item.id !== lineId) return item;
         const decimals = getDecimals();
-        const basePrice = parseFloat(item.product.price) -
-          (item.product.selectedModifiers?.reduce((s, m) => s + parseFloat(m.price_adjustment), 0) ?? 0);
-        const newAdjustment = newModifiers.reduce((s, m) => s + parseFloat(m.price_adjustment), 0);
-        const newUnitPrice = basePrice + newAdjustment;
-        const priceValue = newUnitPrice.toFixed(decimals);
-        const lineTotal = newUnitPrice * item.quantity;
+        const currentAdjustment = bcsum(
+          item.product.selectedModifiers?.map((m) => m.price_adjustment) ?? [],
+          decimals,
+        );
+        const basePrice = bcsub(item.product.price, currentAdjustment, decimals);
+        const newAdjustment = bcsum(newModifiers.map((m) => m.price_adjustment), decimals);
+        const priceValue = bcadd(basePrice, newAdjustment, decimals);
+        const lineTotal = bcmul(priceValue, String(item.quantity), decimals);
         return {
           ...item,
           product: { ...item.product, selectedModifiers: newModifiers, price: priceValue },
           unit_price: priceValue,
-          line_total: lineTotal.toFixed(decimals),
+          line_total: lineTotal,
           tax_amount: computeTaxAmount(lineTotal, item.tax_rate),
         };
       }),
@@ -278,39 +298,57 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     }));
   },
 
+  // Derived selectors keep their `number` return type (external store shape),
+  // but aggregate with Big.js internally so summing many line totals / a
+  // fractional-qty cart cannot accumulate IEEE-754 drift. The float boundary
+  // is the final `Number(...)` only, on an already currency-scale-rounded
+  // string.
+
+  subtotalString: () => {
+    const decimals = getDecimals();
+    return bcsum(get().items.map((item) => item.line_total), decimals);
+  },
+
   subtotal: () => {
-    return get().items.reduce((sum, item) => sum + parseFloat(item.line_total), 0);
+    return Number(get().subtotalString());
   },
 
   taxAmount: () => {
-    const rawTax = get().items.reduce(
-      (sum, item) => sum + parseFloat(item.tax_amount ?? '0'),
-      0,
-    );
-    // Adjust tax proportionally for transaction discount
-    const subtotal = get().subtotal();
-    const discount = get().discountAmount();
-    if (discount > 0 && subtotal > 0) {
-      const ratio = Math.max(0, (subtotal - discount) / subtotal);
-      return rawTax * ratio;
+    const decimals = getDecimals();
+    const rawTax = bcsum(get().items.map((item) => item.tax_amount ?? '0'), decimals);
+    // Adjust tax proportionally for transaction discount.
+    const subtotal = get().subtotalString();
+    const discount = get().discountAmountString();
+    if (bccomp(discount, '0') > 0 && bccomp(subtotal, '0') > 0) {
+      const net = bcsub(subtotal, discount, decimals);
+      const ratio = bccomp(net, '0') > 0 ? bcdiv(net, subtotal, QUANTITY_SCALE) : '0';
+      return Number(bcmul(rawTax, ratio, decimals));
     }
-    return rawTax;
+    return Number(rawTax);
+  },
+
+  discountAmountString: () => {
+    const decimals = getDecimals();
+    const discount = get().transactionDiscount;
+    if (!discount) return (0).toFixed(decimals);
+    const subtotal = get().subtotalString();
+    const value = discount.value && discount.value.trim() !== '' ? discount.value : '0';
+    const raw =
+      discount.type === 'percentage'
+        ? bcdiv(bcmul(subtotal, value, decimals), '100', decimals)
+        : value;
+    // Never discount more than the subtotal.
+    return bccomp(raw, subtotal) > 0 ? subtotal : raw;
   },
 
   discountAmount: () => {
-    const discount = get().transactionDiscount;
-    if (!discount) return 0;
-    const subtotal = get().subtotal();
-    if (discount.type === 'percentage') {
-      return Math.min(subtotal, (subtotal * (parseFloat(discount.value) || 0)) / 100);
-    }
-    return Math.min(subtotal, parseFloat(discount.value) || 0);
+    return Number(get().discountAmountString());
   },
 
   total: () => {
-    const subtotal = get().subtotal();
-    const discount = get().discountAmount();
-    return Math.max(0, subtotal - discount);
+    const decimals = getDecimals();
+    const total = bcsub(get().subtotalString(), get().discountAmountString(), decimals);
+    return bccomp(total, '0') < 0 ? 0 : Number(total);
   },
 
   itemCount: () => {
@@ -326,17 +364,23 @@ export const useCartStore = create<CartStore>()((set, get) => ({
   },
 
   netTotal: () => {
+    const decimals = getDecimals();
     const items = get().items;
-    const saleTotal = items
-      .filter((i) => (i.kind ?? 'sale') === 'sale')
-      .reduce((sum, i) => sum + parseFloat(i.line_total), 0);
-    const returnTotal = items
-      .filter((i) => (i.kind ?? 'sale') === 'return')
-      .reduce((sum, i) => sum + Math.abs(parseFloat(i.line_total)), 0);
+    const saleTotal = bcsum(
+      items
+        .filter((i) => (i.kind ?? 'sale') === 'sale')
+        .map((i) => i.line_total),
+      decimals,
+    );
+    const returnTotal = bcsum(
+      items
+        .filter((i) => (i.kind ?? 'sale') === 'return')
+        .map((i) => bcabs(i.line_total, decimals)),
+      decimals,
+    );
 
-    const net = saleTotal - returnTotal;
-    // Apply transaction discount against the net (discount applies to saleItems only)
-    const discount = get().discountAmount();
-    return net - discount;
+    // Apply transaction discount against the net (discount applies to saleItems only).
+    const net = bcsub(saleTotal, returnTotal, decimals);
+    return Number(bcsub(net, get().discountAmountString(), decimals));
   },
 }));

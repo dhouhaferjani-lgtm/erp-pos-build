@@ -562,6 +562,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
           <B2BFieldsSection
             register={register as never}
             watch={watch as never}
+            control={control as never}
             partnerId={isEditing ? id : undefined}
           />
         )}

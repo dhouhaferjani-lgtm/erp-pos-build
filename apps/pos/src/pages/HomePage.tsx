@@ -22,6 +22,7 @@ import { ReceiptScanConfirmationSheet } from '@/components/pos/ReceiptScanConfir
 import { ReceiptLocatorScreen } from '@/components/pos/ReceiptLocatorScreen';
 import { ResumeRefundDraftBanner } from '@/components/pos/ResumeRefundDraftBanner';
 import { CustomerAttachPanel } from '@/components/customers/CustomerAttachPanel';
+import { MoneyInput } from '@/components/atoms/MoneyInput';
 import { getErrorMessage } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
 import { resolveDiscountAccess } from '@/lib/discountPermissions';
@@ -80,7 +81,7 @@ async function lookupQrToken(receiptNumber: string, companyId: string | null): P
 
 export function HomePage() {
   const { t } = useTranslation();
-  const { decimals: currencyDecimals } = useCurrency();
+  const { decimals: currencyDecimals, currency } = useCurrency();
   const { shift, terminal, openShift, isLoading: terminalLoading } = useTerminalStore();
   const hashChainReady = useTerminalStore((s) => s.hashChainReady);
   const operator = useOperatorStore((s) => s.operator);
@@ -1028,13 +1029,12 @@ export function HomePage() {
             <label htmlFor="openingCash" className="block text-sm font-medium text-gray-700">
               {t('shift.openingCash')}
             </label>
-            <input
+            <MoneyInput
               id="openingCash"
-              type="number"
-              step="0.01"
+              currency={currency}
               min="0"
               value={openingCash}
-              onChange={(e) => setOpeningCash(e.target.value)}
+              onChange={setOpeningCash}
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-center text-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
             />
           </div>

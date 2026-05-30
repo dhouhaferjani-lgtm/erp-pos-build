@@ -269,7 +269,8 @@ describe('AdvancedPaymentsModal — B4: route instrument-bearing taps through vo
     expect(payments).toHaveLength(1);
     expect(payments[0]).toEqual(expect.objectContaining({
       payment_method_id: 'pm-cash',
-      amount: 50,
+      // F-FRONTEND-VOUCHER: amount crosses the wire as a currency-scale string.
+      amount: '50.00',
       repository_id: 'repo-cash',
     }));
     // Cash rows must continue to land WITHOUT instrument metadata.
@@ -590,7 +591,8 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
     expect(payments).toHaveLength(1);
     expect(payments[0]).toEqual({
       payment_method_id: 'pm-store-voucher',
-      amount: 50,
+      // F-FRONTEND-VOUCHER: voucher amount forwarded as the canonical string.
+      amount: '50.00',
       repository_id: 'repo-virtual',
       instrument_type: 'store_voucher',
       instrument_serial: 'SV-2026-0099',
@@ -626,13 +628,16 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
     // Cash line first (kept in modal-local list order), voucher last.
     expect(payments[0]).toEqual(expect.objectContaining({
       payment_method_id: 'pm-cash',
+      // F-FRONTEND-VOUCHER: cash line amount is a currency-scale string too.
+      amount: '30.00',
       repository_id: 'repo-cash',
     }));
+    expect(typeof payments[0].amount).toBe('string');
     expect(payments[0].instrument_type).toBeUndefined();
     expect(payments[0].instrument_serial).toBeUndefined();
     expect(payments[1]).toEqual({
       payment_method_id: 'pm-store-voucher',
-      amount: 20,
+      amount: '20.00',
       repository_id: 'repo-virtual',
       instrument_type: 'store_voucher',
       instrument_serial: 'SV-2026-0099',

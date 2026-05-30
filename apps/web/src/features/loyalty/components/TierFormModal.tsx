@@ -1,10 +1,11 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useForm, type Resolver } from 'react-hook-form'
+import { useForm, Controller, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Button, Input, FormField, Select } from '@/components/atoms'
+import { Button, Input, FormField, Select, MoneyInput, QuantityInput } from '@/components/atoms'
 import { Modal } from '@/components/organisms/Modal/Modal'
+import { useCompany } from '@/hooks/useCompany'
 import type { Tier, CreateTierData } from '../types/loyalty'
 
 const schema = z.object({
@@ -29,6 +30,8 @@ interface TierFormModalProps {
 
 export function TierFormModal({ isOpen, onClose, onSubmit, isPending, editingTier }: TierFormModalProps) {
   const { t } = useTranslation(['loyalty', 'common'])
+  const { currentCompany } = useCompany()
+  const currency = currentCompany?.currency ?? 'EUR'
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema) as Resolver<FormValues>,
@@ -42,6 +45,10 @@ export function TierFormModal({ isOpen, onClose, onSubmit, isPending, editingTie
       color: null,
     },
   })
+
+  const qualificationType = form.watch('qualification_type')
+  // qualification_threshold is monetary when type is 'spend', otherwise it's a plain count
+  const thresholdIsMonetary = qualificationType === 'spend'
 
   useEffect(() => {
     if (editingTier) {
@@ -106,7 +113,27 @@ export function TierFormModal({ isOpen, onClose, onSubmit, isPending, editingTie
                 </Select>
               </FormField>
               <FormField label={t('loyalty:fields.qualificationThreshold')} error={form.formState.errors.qualification_threshold?.message}>
-                <Input {...form.register('qualification_threshold')} type="number" step="0.01" min="0" />
+                <Controller
+                  name="qualification_threshold"
+                  control={form.control}
+                  render={({ field }) => (
+                    thresholdIsMonetary ? (
+                      <MoneyInput
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        currency={currency}
+                        min="0"
+                      />
+                    ) : (
+                      <QuantityInput
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        decimalPlaces={2}
+                        min="0"
+                      />
+                    )
+                  )}
+                />
               </FormField>
             </div>
 
