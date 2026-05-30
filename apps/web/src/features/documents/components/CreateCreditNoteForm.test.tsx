@@ -171,7 +171,8 @@ describe('CreateCreditNoteForm', () => {
     renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
 
     expect(screen.getByText('INV-00001')).toBeInTheDocument()
-    expect(screen.getByText('Remaining creditable: 1190.00')).toBeInTheDocument()
+    // TND currency → 3-decimal display (currency-aware toFixed).
+    expect(screen.getByText('Remaining creditable: 1190.000')).toBeInTheDocument()
   })
 
   // The Save button is disabled until a reason is selected (post-Phase-4
@@ -328,6 +329,7 @@ describe('CreateCreditNoteForm', () => {
     await user.click(fullRefundButton)
 
     const amountInput = screen.getByLabelText('Amount') as HTMLInputElement
-    expect(amountInput.value).toBe('1190.00')
+    // TND currency → 3-decimal canonical value.
+    expect(amountInput.value).toBe('1190.000')
   })
 })
