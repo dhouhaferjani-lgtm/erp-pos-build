@@ -38,6 +38,25 @@ export class LineArithmeticInvariantError extends Error {
   }
 }
 
+/**
+ * Thrown when the receipt's own ticket AGGREGATES are internally inconsistent
+ * at canonical-build time.
+ *
+ * NF525 secures the ticket aggregates (subtotal / vat_total / total /
+ * vat_breakdown) — these carry the VAT-declaration integrity. The device
+ * authors and signs them; the server stores the bytes verbatim and re-hashes,
+ * so an internally-inconsistent aggregate (e.g. subtotal + vat_total != total,
+ * or a vat_breakdown that doesn't sum to the declared totals) would hash +
+ * verify fine yet be fiscally wrong. This error guarantees the device never
+ * signs an internally-inconsistent ticket; it is NOT part of the hash chain.
+ */
+export class SaleReceiptAggregateInvariantError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SaleReceiptAggregateInvariantError';
+  }
+}
+
 export interface SaleReceiptSellerInput {
   name: string | null | undefined;
   taxNumber: string | null | undefined;
@@ -109,6 +128,20 @@ export function buildSaleReceiptPayload(
     );
   }
 
+  const total = bcformat(input.total, scale);
+  const vatTotal = bcformat(input.taxAmount, scale);
+
+  // ── Ticket-aggregate invariant (NF525 VAT-declaration integrity) ─────────
+  // The device authors + signs the aggregates; the server stores the bytes
+  // verbatim and re-hashes — it does NOT recompute prices. So the device must
+  // guarantee its own aggregates add up before signing:
+  //   1. subtotal + vat_total == total
+  //   2. Σ vat_breakdown[].net_amount == subtotal
+  //   3. Σ vat_breakdown[].vat_amount == vat_total
+  //   4. per group: gross_amount == net_amount + vat_amount
+  // All comparisons EXACT (bccomp == 0) at currency scale, never a tolerance.
+  assertSaleReceiptAggregates(subtotalNet, vatTotal, total, vatBreakdown, scale);
+
   return {
     approval_references: input.approvalReferences ?? [],
     business_date: input.businessDate,
@@ -131,14 +164,62 @@ export function buildSaleReceiptPayload(
     subtotal: subtotalNet,
     table_id: input.tableId ?? null,
     terminal_id: input.terminalId,
-    total: bcformat(input.total, scale),
+    total,
     training_flag: input.isTraining,
     transaction_discount_amount: discountAmount,
     transaction_discount_reason: bccomp(discountAmount, '0') === 0 ? null : discountReason,
     vat_breakdown: vatBreakdown,
-    vat_total: bcformat(input.taxAmount, scale),
+    vat_total: vatTotal,
     vouchers_redeemed: vouchersRedeemed,
   };
+}
+
+/**
+ * Verify the receipt's ticket aggregates are internally consistent before the
+ * canonical payload is finalized and signed. EXACT comparison at currency scale.
+ */
+function assertSaleReceiptAggregates(
+  subtotal: string,
+  vatTotal: string,
+  total: string,
+  vatBreakdown: ReadonlyArray<VatBreakdownInput>,
+  scale: number,
+): void {
+  // 1. subtotal + vat_total == total
+  const subtotalPlusVat = bcformat(bcadd(subtotal, vatTotal, scale), scale);
+  if (bccomp(subtotalPlusVat, total) !== 0) {
+    throw new SaleReceiptAggregateInvariantError(
+      `Aggregate invariant violated: subtotal (${subtotal}) + vat_total (${vatTotal}) `
+      + `= ${subtotalPlusVat} != total ${total}.`,
+    );
+  }
+
+  // 2 + 3 + 4. vat_breakdown nets/vats sum to subtotal/vat_total; per group gross == net + vat.
+  let sumNet = bcformat('0', scale);
+  let sumVat = bcformat('0', scale);
+  for (const group of vatBreakdown) {
+    const groupGross = bcformat(bcadd(group.net_amount, group.vat_amount, scale), scale);
+    if (bccomp(groupGross, group.gross_amount) !== 0) {
+      throw new SaleReceiptAggregateInvariantError(
+        `Aggregate invariant violated: vat_breakdown group (rate ${group.rate}, `
+        + `category "${group.tax_category_code}") gross_amount ${group.gross_amount} `
+        + `!= net_amount (${group.net_amount}) + vat_amount (${group.vat_amount}) = ${groupGross}.`,
+      );
+    }
+    sumNet = bcformat(bcadd(sumNet, group.net_amount, scale), scale);
+    sumVat = bcformat(bcadd(sumVat, group.vat_amount, scale), scale);
+  }
+
+  if (bccomp(sumNet, subtotal) !== 0) {
+    throw new SaleReceiptAggregateInvariantError(
+      `Aggregate invariant violated: Σ vat_breakdown.net_amount (${sumNet}) != subtotal ${subtotal}.`,
+    );
+  }
+  if (bccomp(sumVat, vatTotal) !== 0) {
+    throw new SaleReceiptAggregateInvariantError(
+      `Aggregate invariant violated: Σ vat_breakdown.vat_amount (${sumVat}) != vat_total ${vatTotal}.`,
+    );
+  }
 }
 
 function buildSellerBlock(input: SaleReceiptSellerInput): SellerBlockInput {

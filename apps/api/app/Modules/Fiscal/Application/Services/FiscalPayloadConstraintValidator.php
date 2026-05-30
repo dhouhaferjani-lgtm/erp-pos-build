@@ -19,7 +19,6 @@ use App\Modules\Fiscal\Domain\DTOs\XReportPayload;
 use App\Modules\Fiscal\Domain\DTOs\ZCashDrawerMovementPayload;
 use App\Modules\Fiscal\Domain\DTOs\ZReportPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
-use App\Shared\Domain\QuantityScale;
 use LogicException;
 use RuntimeException;
 
@@ -759,6 +758,90 @@ final class FiscalPayloadConstraintValidator
         // ----    amount equality via BCMath at currency_scale. ----
         // @phpstan-ignore-next-line argument.type — validated as list above
         $this->validateVatPartition($lineItems, $vatBreakdown, $scale);
+
+        // ---- 9. Aggregate consistency (NF525-meaningful) ----
+        // NF525 secures the ticket AGGREGATES (the VAT-declaration integrity):
+        // the device-authored subtotal / vat_total / total / vat_breakdown must
+        // be INTERNALLY consistent with one another. The server does NOT recompute
+        // prices from unit_price (which is the cart's tax-INCLUSIVE figure) — it
+        // only verifies the device's own aggregates add up. A violation routes
+        // through the SAME RuntimeException → quarantine path (event stored, NOT
+        // projected) without touching canonical_bytes / current_hash. All checks
+        // are EXACT (bccomp === 0) at the payload's currency_scale via bcmath.
+        // @phpstan-ignore-next-line argument.type — validated as list above
+        $this->validateSaleReceiptAggregateConsistency($payload, $vatBreakdown, $scale);
+    }
+
+    /**
+     * Aggregate-consistency invariant for SALE_RECEIPT (NF525 VAT-declaration
+     * integrity). Verifies the device's own ticket aggregates are internally
+     * consistent; does NOT recompute prices.
+     *
+     *   1. subtotal + vat_total == total
+     *   2. Σ vat_breakdown[].net_amount == subtotal
+     *   3. Σ vat_breakdown[].vat_amount == vat_total
+     *   4. per group: gross_amount == net_amount + vat_amount
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  list<array<string, mixed>>  $vatBreakdown
+     *
+     * @throws RuntimeException on aggregate inconsistency (→ quarantine)
+     */
+    private function validateSaleReceiptAggregateConsistency(array $payload, array $vatBreakdown, int $scale): void
+    {
+        $subtotal = $this->asNumericString($payload['subtotal'], 'subtotal');
+        $vatTotal = $this->asNumericString($payload['vat_total'], 'vat_total');
+        $total = $this->asNumericString($payload['total'], 'total');
+        $discount = $this->asNumericString($payload['transaction_discount_amount'], 'transaction_discount_amount');
+
+        // 1. subtotal + vat_total == total (+ transaction_discount_amount).
+        //
+        // The canonical contract carries `subtotal` (net) and `vat_total` BEFORE
+        // the ticket-level discount, while `total` is the gross AFTER it
+        // (`receiptService.ts`: total = subtotalGross − transactionDiscountAmount).
+        // So the NF525-meaningful identity is subtotal + vat_total == total +
+        // transaction_discount_amount. For the discount-free case this reduces to
+        // subtotal + vat_total == total. Omitting the discount term here would
+        // FALSE-POSITIVE on every valid ticket carrying a transaction discount —
+        // exactly the failure class this rework removes at the line level.
+        $subtotalPlusVat = bcadd($subtotal, $vatTotal, $scale);
+        $totalPlusDiscount = bcadd($total, $discount, $scale);
+        if (bccomp($subtotalPlusVat, $totalPlusDiscount, $scale) !== 0) {
+            throw new RuntimeException(
+                'payload_aggregate_consistency:subtotal_plus_vat_ne_total:expected='.$subtotalPlusVat.':got='.$totalPlusDiscount
+            );
+        }
+
+        // 2 + 3. Σ vat_breakdown nets / vats == subtotal / vat_total.
+        // 4. per group gross == net + vat.
+        $sumNet = bcadd('0', '0', $scale);
+        $sumVat = bcadd('0', '0', $scale);
+        foreach ($vatBreakdown as $row) {
+            $net = $this->asNumericString($row['net_amount'], 'vat_breakdown.net_amount');
+            $vat = $this->asNumericString($row['vat_amount'], 'vat_breakdown.vat_amount');
+            $gross = $this->asNumericString($row['gross_amount'], 'vat_breakdown.gross_amount');
+
+            $groupGross = bcadd($net, $vat, $scale);
+            if (bccomp($groupGross, $gross, $scale) !== 0) {
+                throw new RuntimeException(
+                    'payload_aggregate_consistency:group_gross_ne_net_plus_vat:expected='.$groupGross.':got='.$gross
+                );
+            }
+
+            $sumNet = bcadd($sumNet, $net, $scale);
+            $sumVat = bcadd($sumVat, $vat, $scale);
+        }
+
+        if (bccomp($sumNet, $subtotal, $scale) !== 0) {
+            throw new RuntimeException(
+                'payload_aggregate_consistency:vat_breakdown_net_sum_ne_subtotal:expected='.$subtotal.':got='.$sumNet
+            );
+        }
+        if (bccomp($sumVat, $vatTotal, $scale) !== 0) {
+            throw new RuntimeException(
+                'payload_aggregate_consistency:vat_breakdown_vat_sum_ne_vat_total:expected='.$vatTotal.':got='.$sumVat
+            );
+        }
     }
 
     private function validateSaleReceiptApprovalReference(int $index, mixed $row): void
@@ -1622,44 +1705,19 @@ final class FiscalPayloadConstraintValidator
             );
         }
 
-        // ---- Per-line arithmetic-consistency invariant (defense-in-depth) ----
-        // The device authors the canonical receipt + hash; the server stores
-        // canonical_bytes/current_hash verbatim and verifies by RE-HASHING the
-        // bytes — it does NOT recompute the line arithmetic. So the hash chain
-        // proves *un-tampered*, not *arithmetically correct*. A device bug or a
-        // forged event could carry a self-inconsistent line whose hash still
-        // verifies, polluting reporting + GL once projected. This check closes
-        // that gap WITHOUT touching the hash: a violation is routed through the
-        // SAME RuntimeException path the parser wraps as
-        // `sub_array_shape:<message>` → quarantine (event stored, NOT projected).
-        //
-        // Canonical tax model (docs/TAX_IMPLEMENTATION_ANALYSIS.md §271-272 +
-        // every sale-receipt-golden v4 vector): `unit_price` is the PRE-TAX
-        // (net) unit price and
-        //   line_subtotal == round(unit_price × quantity, scale) − line_discount_amount
-        // The multiply is rounded HALF-UP at currency_scale to match the device
-        // (`apps/pos/.../decimal.ts` sets `Big.RM = 1`). bcmath truncates, so we
-        // round via QuantityScale::round(..., HALF_UP). quantity carries scale 3
-        // (QUANTITY_SCALE); the product is rounded to the payload's currency
-        // scale. Comparison is EXACT (bccomp === 0), never a tolerance.
-        $unitPriceN = $this->asNumericString($row['unit_price'], "{$path}.unit_price");
-        $quantityN = $this->asNumericString($row['quantity'], "{$path}.quantity");
-        $lineSubtotalN = $this->asNumericString($row['line_subtotal'], "{$path}.line_subtotal");
-
-        $pricedQuantity = $this->asNumericString(
-            QuantityScale::round(
-                bcmul($unitPriceN, $quantityN, self::QUANTITY_SCALE + $scale + 1),
-                $scale,
-                QuantityScale::HALF_UP,
-            ),
-            "{$path}.priced_quantity",
-        );
-        $expectedSubtotal = bcsub($pricedQuantity, $lda, $scale);
-        if (bccomp($expectedSubtotal, $lineSubtotalN, $scale) !== 0) {
-            throw new RuntimeException(
-                "payload_line_arithmetic_mismatch:{$path}:expected={$expectedSubtotal}:got={$lineSubtotalN}"
-            );
-        }
+        // NOTE: Deliberately NO per-line `line_subtotal == round(unit_price ×
+        // quantity) − line_discount_amount` re-validation here. The canonical
+        // `unit_price` is the cart's TAX-INCLUSIVE unit price (the POS cart is
+        // tax-inclusive and writes the gross unit_price verbatim), while
+        // `line_subtotal` is the NET amount (line_total − line_vat). Asserting
+        // net == round(gross × qty) − discount compares a net field against a
+        // gross product and FALSE-POSITIVES on every valid taxed receipt
+        // (quarantining good events). NF525 does NOT mandate per-line arithmetic
+        // re-validation — it secures the ticket AGGREGATES (VAT-declaration
+        // integrity) and requires line detail to be conserved inalterably (the
+        // hash already does that). Aggregate consistency is enforced in
+        // validateSaleReceiptPayload(); the device proves its own line
+        // arithmetic before signing.
     }
 
     /**
