@@ -12,6 +12,7 @@ use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -30,6 +31,7 @@ final class BatchWriteOffService
         private readonly BatchStockService $batchStockService,
         private readonly GeneralLedgerService $glService,
         private readonly CompanyContext $companyContext,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     /**
@@ -137,6 +139,6 @@ final class BatchWriteOffService
         $unitCost = (string) ($product->weighted_average_cost ?? $product->cost_price ?? '0.00');
         /** @var numeric-string $quantity */
 
-        return bcmul($quantity, $unitCost, 2);
+        return bcmul($quantity, $unitCost, $this->scaleResolver->getScale());
     }
 }

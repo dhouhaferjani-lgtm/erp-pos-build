@@ -13,6 +13,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
@@ -31,6 +32,7 @@ class UninvoicedDeliveryNoteService
 {
     public function __construct(
         private readonly ChartOfAccountsService $accountsService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     /**
@@ -98,6 +100,8 @@ class UninvoicedDeliveryNoteService
     ): array {
         $dns = $this->getUninvoicedDeliveryNotes($companyId, $fromDate, $toDate);
 
+        $scale = $this->scaleResolver->getScale();
+
         /** @var numeric-string $subtotal */
         $subtotal = '0.00';
         /** @var numeric-string $taxAmount */
@@ -106,9 +110,9 @@ class UninvoicedDeliveryNoteService
         $total = '0.00';
 
         foreach ($dns as $dn) {
-            $subtotal = bcadd($subtotal, $dn['subtotal'], 2); // @phpstan-ignore argument.type
-            $taxAmount = bcadd($taxAmount, $dn['tax_amount'], 2); // @phpstan-ignore argument.type
-            $total = bcadd($total, $dn['total'], 2); // @phpstan-ignore argument.type
+            $subtotal = bcadd($subtotal, $dn['subtotal'], $scale); // @phpstan-ignore argument.type
+            $taxAmount = bcadd($taxAmount, $dn['tax_amount'], $scale); // @phpstan-ignore argument.type
+            $total = bcadd($total, $dn['total'], $scale); // @phpstan-ignore argument.type
         }
 
         return [
@@ -138,6 +142,8 @@ class UninvoicedDeliveryNoteService
         $dns = $this->getUninvoicedDeliveryNotes($companyId, $fromDate, $toDate);
         $totals = $this->calculateUninvoicedTotals($companyId, $fromDate, $toDate);
 
+        $scale = $this->scaleResolver->getScale();
+
         // Group by partner
         /** @var array<string, array{partner_id: string, partner_name: string, subtotal: string, tax_amount: string, total: string, count: int, delivery_notes: list<mixed>}> $byPartner */
         $byPartner = [];
@@ -162,9 +168,9 @@ class UninvoicedDeliveryNoteService
             /** @var numeric-string $currentTotal */
             $currentTotal = $byPartner[$partnerId]['total'];
 
-            $byPartner[$partnerId]['subtotal'] = bcadd($currentSubtotal, $dn['subtotal'], 2); // @phpstan-ignore argument.type
-            $byPartner[$partnerId]['tax_amount'] = bcadd($currentTaxAmount, $dn['tax_amount'], 2); // @phpstan-ignore argument.type
-            $byPartner[$partnerId]['total'] = bcadd($currentTotal, $dn['total'], 2); // @phpstan-ignore argument.type
+            $byPartner[$partnerId]['subtotal'] = bcadd($currentSubtotal, $dn['subtotal'], $scale); // @phpstan-ignore argument.type
+            $byPartner[$partnerId]['tax_amount'] = bcadd($currentTaxAmount, $dn['tax_amount'], $scale); // @phpstan-ignore argument.type
+            $byPartner[$partnerId]['total'] = bcadd($currentTotal, $dn['total'], $scale); // @phpstan-ignore argument.type
             $byPartner[$partnerId]['count']++;
             $byPartner[$partnerId]['delivery_notes'][] = $dn;
         }
@@ -201,7 +207,7 @@ class UninvoicedDeliveryNoteService
         $zeroAmount = '0.00';
 
         // No adjustment needed if no uninvoiced DNs
-        if (bccomp($totals['total'], $zeroAmount, 2) === 0) { // @phpstan-ignore argument.type
+        if (bccomp($totals['total'], $zeroAmount, $this->scaleResolver->getScale()) === 0) { // @phpstan-ignore argument.type
             return null;
         }
 

@@ -8,6 +8,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Treasury\Domain\Payment;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 
 /**
@@ -22,6 +23,10 @@ use App\Shared\Domain\CurrencyScale;
  */
 class AgedReceivablesService
 {
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
     /**
      * Generate aged receivables report for a company
      *
@@ -61,6 +66,8 @@ class AgedReceivablesService
             'days_over_90' => '0.00',
         ];
 
+        $scale = $this->scaleResolver->getScale();
+
         // Group invoices by partner
         /** @var array<string, array<string, mixed>> $byPartner */
         $byPartner = [];
@@ -83,7 +90,7 @@ class AgedReceivablesService
 
             // Get outstanding amount
             $outstanding = $invoice->balance_due ?? $invoice->total ?? '0.00';
-            $totalOutstanding = bcadd($totalOutstanding, $outstanding, 2);
+            $totalOutstanding = bcadd($totalOutstanding, $outstanding, $scale);
 
             // Initialize partner entry if needed
             if (! isset($byPartner[$partnerId])) {
@@ -106,18 +113,18 @@ class AgedReceivablesService
             $byPartner[$partnerId]['total_outstanding'] = bcadd(
                 $partnerOutstanding,
                 $outstanding,
-                2
+                $scale
             );
             /** @var numeric-string $bucketAmount */
             $bucketAmount = $byPartner[$partnerId][$agingBucket];
             $byPartner[$partnerId][$agingBucket] = bcadd(
                 $bucketAmount,
                 $outstanding,
-                2
+                $scale
             );
 
             // Add to summary totals
-            $summary[$agingBucket] = bcadd($summary[$agingBucket], $outstanding, 2);
+            $summary[$agingBucket] = bcadd($summary[$agingBucket], $outstanding, $scale);
 
             // Add invoice details
             $byPartner[$partnerId]['invoices'][] = [
@@ -126,8 +133,8 @@ class AgedReceivablesService
                 'document_date' => $invoice->document_date->toDateString(),
                 'due_date' => $invoice->due_date?->toDateString(),
                 'days_overdue' => $daysOverdue,
-                'total' => CurrencyScale::bcformat($invoice->total, 2),
-                'outstanding' => CurrencyScale::bcformat($outstanding, 2),
+                'total' => CurrencyScale::bcformat($invoice->total, $scale),
+                'outstanding' => CurrencyScale::bcformat($outstanding, $scale),
                 'aging_bucket' => $agingBucket,
             ];
         }
@@ -135,12 +142,12 @@ class AgedReceivablesService
         // Sort partners by total outstanding (descending)
         /** @var list<array<string, mixed>> $partnerList */
         $partnerList = array_values($byPartner);
-        usort($partnerList, fn ($a, $b) => bccomp($b['total_outstanding'], $a['total_outstanding'], 2));
+        usort($partnerList, fn ($a, $b) => bccomp($b['total_outstanding'], $a['total_outstanding'], $scale));
 
         /** @var array<string, mixed> */
         return [
             'as_of_date' => $asOfDate,
-            'total_outstanding' => CurrencyScale::bcformat($totalOutstanding, 2),
+            'total_outstanding' => CurrencyScale::bcformat($totalOutstanding, $scale),
             'summary' => $summary,
             'by_partner' => $partnerList,
         ];
@@ -205,19 +212,21 @@ class AgedReceivablesService
             ->orderBy('document_number')
             ->get();
 
+        $scale = $this->scaleResolver->getScale();
+
         foreach ($invoices as $invoice) {
             /** @var numeric-string $amount */
             $amount = $invoice->total ?? '0.00';
-            $runningBalance = bcadd($runningBalance, $amount, 2);
+            $runningBalance = bcadd($runningBalance, $amount, $scale);
 
             $transactions[] = [
                 'date' => $invoice->document_date->toDateString(),
                 'type' => 'Invoice',
                 'document_number' => $invoice->document_number,
                 'description' => 'Invoice',
-                'debit' => CurrencyScale::bcformat($amount, 2),
+                'debit' => CurrencyScale::bcformat($amount, $scale),
                 'credit' => '0.00',
-                'balance' => CurrencyScale::bcformat($runningBalance, 2),
+                'balance' => CurrencyScale::bcformat($runningBalance, $scale),
             ];
         }
 
@@ -232,7 +241,7 @@ class AgedReceivablesService
         foreach ($payments as $payment) {
             /** @var numeric-string $amount */
             $amount = $payment->amount ?? '0.00';
-            $runningBalance = bcsub($runningBalance, $amount, 2);
+            $runningBalance = bcsub($runningBalance, $amount, $scale);
 
             $transactions[] = [
                 'date' => $payment->payment_date->toDateString(),
@@ -240,8 +249,8 @@ class AgedReceivablesService
                 'document_number' => $payment->reference ?? 'Payment',
                 'description' => 'Payment received',
                 'debit' => '0.00',
-                'credit' => CurrencyScale::bcformat($amount, 2),
-                'balance' => CurrencyScale::bcformat($runningBalance, 2),
+                'credit' => CurrencyScale::bcformat($amount, $scale),
+                'balance' => CurrencyScale::bcformat($runningBalance, $scale),
             ];
         }
 
@@ -257,7 +266,7 @@ class AgedReceivablesService
         foreach ($creditNotes as $creditNote) {
             /** @var numeric-string $amount */
             $amount = $creditNote->total ?? '0.00';
-            $runningBalance = bcsub($runningBalance, $amount, 2);
+            $runningBalance = bcsub($runningBalance, $amount, $scale);
 
             $transactions[] = [
                 'date' => $creditNote->document_date->toDateString(),
@@ -265,8 +274,8 @@ class AgedReceivablesService
                 'document_number' => $creditNote->document_number,
                 'description' => 'Credit note',
                 'debit' => '0.00',
-                'credit' => CurrencyScale::bcformat($amount, 2),
-                'balance' => CurrencyScale::bcformat($runningBalance, 2),
+                'credit' => CurrencyScale::bcformat($amount, $scale),
+                'balance' => CurrencyScale::bcformat($runningBalance, $scale),
             ];
         }
 
@@ -278,8 +287,8 @@ class AgedReceivablesService
         foreach ($transactions as &$transaction) {
             $debit = (float) $transaction['debit'];
             $credit = (float) $transaction['credit'];
-            $runningBalance = bcadd(bcsub((string) $runningBalance, (string) $credit, 2), (string) $debit, 2);
-            $transaction['balance'] = CurrencyScale::bcformat($runningBalance, 2);
+            $runningBalance = bcadd(bcsub((string) $runningBalance, (string) $credit, $scale), (string) $debit, $scale);
+            $transaction['balance'] = CurrencyScale::bcformat($runningBalance, $scale);
         }
 
         return [
@@ -287,8 +296,8 @@ class AgedReceivablesService
             'partner_name' => $partner->name,
             'from_date' => $fromDate,
             'to_date' => $toDate,
-            'opening_balance' => CurrencyScale::bcformat($openingBalance, 2),
-            'closing_balance' => CurrencyScale::bcformat($runningBalance, 2),
+            'opening_balance' => CurrencyScale::bcformat($openingBalance, $scale),
+            'closing_balance' => CurrencyScale::bcformat($runningBalance, $scale),
             'transactions' => $transactions,
         ];
     }
@@ -327,10 +336,12 @@ class AgedReceivablesService
             'low' => ['count' => 0, 'amount' => '0.00'],      // 1-29 days
         ];
 
+        $scale = $this->scaleResolver->getScale();
+
         foreach ($overdueInvoices as $invoice) {
             $daysOverdue = $today->diffInDays($invoice->due_date);
             $outstanding = $invoice->balance_due ?? '0.00';
-            $totalOverdue = bcadd($totalOverdue, $outstanding, 2);
+            $totalOverdue = bcadd($totalOverdue, $outstanding, $scale);
 
             $severity = match (true) {
                 $daysOverdue >= 90 => 'critical',
@@ -343,12 +354,12 @@ class AgedReceivablesService
             $bySeverity[$severity]['amount'] = bcadd(
                 $bySeverity[$severity]['amount'],
                 $outstanding,
-                2
+                $scale
             );
         }
 
         return [
-            'total_overdue' => CurrencyScale::bcformat($totalOverdue, 2),
+            'total_overdue' => CurrencyScale::bcformat($totalOverdue, $scale),
             'count' => $overdueInvoices->count(),
             'by_severity' => $bySeverity,
         ];
