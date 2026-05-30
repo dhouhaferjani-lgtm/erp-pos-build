@@ -185,7 +185,7 @@ final class MoneyBcmathTest extends TestCase
     #[Test]
     public function is_zero_is_exact(): void
     {
-        $this->assertTrue((new Money('0', 'EUR')->isZero()));
+        $this->assertTrue((new Money('0', 'EUR'))->isZero());
         $this->assertTrue((new Money('0.00', 'EUR'))->isZero());
         $this->assertFalse((new Money('0.01', 'EUR'))->isZero());
     }
