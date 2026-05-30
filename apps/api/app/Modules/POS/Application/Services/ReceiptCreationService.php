@@ -22,6 +22,7 @@ use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\POS\Application\Concerns\RoundsVat;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
@@ -64,6 +65,8 @@ use Illuminate\Support\Str;
  */
 final class ReceiptCreationService
 {
+    use RoundsVat;
+
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly ReceiptHashService $receiptHashService,
@@ -885,7 +888,10 @@ final class ReceiptCreationService
         $quantityBefore = $stockLevel->quantity;
         /** @var numeric-string $stockQty */
         $stockQty = $stockLevel->quantity;
-        $quantityAfter = bcsub($stockQty, $quantity, 2);
+        // stock_levels.quantity and pos_receipt_lines.quantity are stored at
+        // scale 4 (canonical quantity storage scale). Subtract at scale 4 so
+        // sub-centi quantities are not truncated to zero.
+        $quantityAfter = bcsub($stockQty, $quantity, 4); // 4 = canonical quantity storage scale
 
         // Update stock level
         $stockLevel->quantity = $quantityAfter;
@@ -910,22 +916,6 @@ final class ReceiptCreationService
             'user_id' => $cashierId,
             'is_historical' => false,
         ]);
-    }
-
-    /**
-     * Round VAT amount to match PostgreSQL: round((net_amount * tax_rate / 100)::numeric, 2).
-     *
-     * Uses PHP round() which matches PostgreSQL round() (half away from zero).
-     */
-    private function roundVat(string $netAmount, string $taxRate): string
-    {
-        // Use bcmath for intermediate precision, then PHP round() for half-away-from-zero (matching PostgreSQL)
-        $extraPrecision = $this->scale() + 4;
-        /** @var numeric-string $netAmount */
-        /** @var numeric-string $taxRate */
-        $raw = bcdiv(bcmul($netAmount, $taxRate, $extraPrecision), '100', $extraPrecision);
-
-        return CurrencyScale::bcformat((string) round((float) $raw, $this->scale()), $this->scale());
     }
 
     /**

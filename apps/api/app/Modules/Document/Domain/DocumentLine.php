@@ -33,6 +33,7 @@ use Illuminate\Support\Carbon;
  * @property numeric-string $line_total
  * @property numeric-string $allocated_costs
  * @property numeric-string|null $landed_unit_cost
+ * @property numeric-string|null $non_recoverable_tax
  * @property string|null $notes
  * @property string|null $designation_default_snapshot
  * @property numeric-string|null $eco_tax_amount Eco-contribution amount (Phase 2)
@@ -113,6 +114,7 @@ class DocumentLine extends Model
             'line_total' => 'decimal:3',
             'allocated_costs' => 'decimal:3',
             'landed_unit_cost' => 'decimal:3',
+            'non_recoverable_tax' => 'decimal:3',
             // Eco-tax columns: cast as strings for bcmath-safe arithmetic (project convention).
             // Phase 1: always null; Phase 2 wires the writer.
             'eco_tax_amount' => 'decimal:5',

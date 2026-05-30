@@ -15,12 +15,14 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 
 final class VendorRefundService
 {
     public function __construct(
         private readonly GeneralLedgerService $glService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     /**
@@ -67,7 +69,9 @@ final class VendorRefundService
                 ->where('document_id', $lockedPo->id)
                 ->sum('amount');
 
-            if (bccomp($amount, $totalAllocated, 2) > 0) {
+            $scale = $this->scaleResolver->getScale($lockedPo->currency ?? 'EUR');
+
+            if (bccomp($amount, $totalAllocated, $scale) > 0) {
                 throw new \DomainException(
                     "Refund amount ({$amount}) exceeds total allocated ({$totalAllocated})"
                 );
@@ -132,7 +136,7 @@ final class VendorRefundService
             // Update PO balance_due (add back the refunded amount) — PO already locked above
             /** @var numeric-string $currentBalance */
             $currentBalance = $lockedPo->balance_due ?? '0.00';
-            $lockedPo->balance_due = bcadd($currentBalance, $amount, 2);
+            $lockedPo->balance_due = bcadd($currentBalance, $amount, $scale);
             // PO status stays confirmed — never transition to paid
             $lockedPo->save();
 
@@ -144,7 +148,7 @@ final class VendorRefundService
             // before Payment::create.
             /** @var numeric-string $repoBalance */
             $repoBalance = $resolvedRepository->balance ?? '0.00';
-            $resolvedRepository->balance = bcsub($repoBalance, $amount, 2);
+            $resolvedRepository->balance = bcsub($repoBalance, $amount, $scale);
             $resolvedRepository->save();
 
             // Create GL reversal if repository has account_id

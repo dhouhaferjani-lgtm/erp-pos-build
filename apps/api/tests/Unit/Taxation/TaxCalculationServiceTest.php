@@ -17,10 +17,12 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\CountriesSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Traits\WithCurrencyScale;
 
 class TaxCalculationServiceTest extends TestCase
 {
     use RefreshDatabase;
+    use WithCurrencyScale;
 
     private TaxCalculationService $service;
 
@@ -31,7 +33,9 @@ class TaxCalculationServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new TaxCalculationService;
+        // TND scale 3 — matches the TN company under test and surfaces
+        // scale-2 regressions.
+        $this->service = new TaxCalculationService($this->mockCurrencyScale());
         $this->seed(CountriesSeeder::class);
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->for($this->tenant)->create(['country_code' => 'TN']);

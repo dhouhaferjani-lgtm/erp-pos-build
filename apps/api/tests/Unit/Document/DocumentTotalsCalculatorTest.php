@@ -19,6 +19,7 @@ use Database\Seeders\CountriesSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
+use Tests\Traits\WithCurrencyScale;
 
 /**
  * Behaviour-preservation coverage for document totals recalculation (M3.2 / T3).
@@ -40,6 +41,7 @@ use Tests\TestCase;
 class DocumentTotalsCalculatorTest extends TestCase
 {
     use RefreshDatabase;
+    use WithCurrencyScale;
 
     private Tenant $tenant;
 
@@ -64,7 +66,7 @@ class DocumentTotalsCalculatorTest extends TestCase
 
     private function calculator(): DocumentTotalsCalculator
     {
-        return new DocumentTotalsCalculator(new TaxCalculationService);
+        return new DocumentTotalsCalculator(new TaxCalculationService($this->mockCurrencyScale()));
     }
 
     /**

@@ -13,6 +13,7 @@ use App\Modules\Product\Application\Services\MarginService;
 use App\Modules\Product\Domain\Events\ProductCostPriceUpdated;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -32,6 +33,18 @@ class WeightedAverageCostService
     private function scale(): int
     {
         return $this->scaleResolver->getScale();
+    }
+
+    /**
+     * Intermediate working precision for WAC blending.
+     *
+     * WAC multiplies quantities (scale 4) by unit costs and divides running
+     * values; carrying 4 extra digits beyond the currency scale preserves the
+     * exact intermediate value so the single boundary truncation is faithful.
+     */
+    private function workingScale(): int
+    {
+        return $this->scale() + 4;
     }
 
     /**
@@ -90,14 +103,24 @@ class WeightedAverageCostService
                 ->lockForUpdate()
                 ->findOrFail($product->id);
 
-            $currentQty = (float) $stockLevel->quantity;
-            $currentCostPrice = (float) ($product->cost_price ?? 0);
-            $currentValue = $currentQty * $currentCostPrice;
+            $working = $this->workingScale();
 
-            $newQty = $currentQty + $quantity;
-            $newValue = $currentValue + ($quantity * $landedUnitCost);
+            // Normalise every operand into a numeric string before any
+            // arithmetic; quantities carry scale 4, monetary values the
+            // working precision. No native float math touches WAC.
+            $quantityStr = CurrencyScale::bcformat($quantity, 4);
+            $landedUnitCostStr = CurrencyScale::bcformat($landedUnitCost, $working);
+            $currentQty = CurrencyScale::bcformat($stockLevel->quantity, 4);
+            $currentCostPrice = CurrencyScale::bcformat($product->cost_price ?? '0', $working);
+            $currentValue = bcmul($currentQty, $currentCostPrice, $working);
 
-            $newAvgCost = $newQty > 0 ? round($newValue / $newQty, $this->scale()) : 0;
+            $newQty = bcadd($currentQty, $quantityStr, 4);
+            $newValue = bcadd($currentValue, bcmul($quantityStr, $landedUnitCostStr, $working), $working);
+
+            // Single boundary truncation to the currency scale.
+            $newAvgCost = bccomp($newQty, '0', 4) > 0
+                ? CurrencyScale::bcformat(bcdiv($newValue, $newQty, $working), $this->scale())
+                : CurrencyScale::bcformat('0', $this->scale());
 
             // Record movement
             $movement = StockMovement::create([
@@ -107,25 +130,25 @@ class WeightedAverageCostService
                 'location_id' => $location->id,
                 'company_id' => $location->company_id,
                 'movement_type' => MovementType::Receipt,
-                'quantity' => $quantity,
+                'quantity' => $quantityStr,
                 'quantity_before' => $currentQty,
                 'quantity_after' => $newQty,
-                'unit_cost' => (string) $landedUnitCost,
-                'total_cost' => (string) ($quantity * $landedUnitCost),
-                'avg_cost_before' => (string) $currentCostPrice,
-                'avg_cost_after' => (string) $newAvgCost,
+                'unit_cost' => CurrencyScale::bcformat($landedUnitCostStr, $this->scale()),
+                'total_cost' => CurrencyScale::bcformat(bcmul($quantityStr, $landedUnitCostStr, $working), $this->scale()),
+                'avg_cost_before' => CurrencyScale::bcformat($currentCostPrice, $this->scale()),
+                'avg_cost_after' => $newAvgCost,
                 'reference' => $reference,
                 'reference_type' => $referenceType,
                 'reference_id' => $referenceId,
             ]);
 
             // Update stock level
-            $stockLevel->quantity = (string) $newQty;
+            $stockLevel->quantity = $newQty;
             $stockLevel->save();
 
             // Update product cost
-            $product->cost_price = (string) $newAvgCost;
-            $product->last_purchase_cost = (string) $landedUnitCost;
+            $product->cost_price = $newAvgCost;
+            $product->last_purchase_cost = CurrencyScale::bcformat($landedUnitCostStr, $this->scale());
             $product->cost_updated_at = now();
             $product->save();
 
@@ -140,8 +163,8 @@ class WeightedAverageCostService
             $locationSnapshot = $location;
             $newStockLevelSnapshot = $stockLevel->quantity;
             $priceUpdatedSnapshot = $priceUpdated;
-            $oldCostPriceSnapshot = (string) $currentCostPrice;
-            $newAvgCostSnapshot = (string) $newAvgCost;
+            $oldCostPriceSnapshot = CurrencyScale::bcformat($currentCostPrice, $this->scale());
+            $newAvgCostSnapshot = $newAvgCost;
             $oldSalePriceSnapshot = $oldSalePrice;
             $referenceSnapshot = $reference;
 
@@ -228,14 +251,18 @@ class WeightedAverageCostService
                 ->lockForUpdate()
                 ->findOrFail($product->id);
 
-            $costPrice = (float) ($product->cost_price ?? 0);
-            $currentQty = (float) $stockLevel->quantity;
-            $newQty = $currentQty - $quantity;
+            $working = $this->workingScale();
+
+            $quantityStr = CurrencyScale::bcformat($quantity, 4);
+            $costPriceStr = CurrencyScale::bcformat($product->cost_price ?? '0', $working);
+            $costPriceBoundary = CurrencyScale::bcformat($costPriceStr, $this->scale());
+            $currentQty = CurrencyScale::bcformat($stockLevel->quantity, 4);
+            $newQty = bcsub($currentQty, $quantityStr, 4);
 
             // Validate sufficient stock
-            if ($newQty < 0) {
+            if (bccomp($newQty, '0', 4) < 0) {
                 throw new \DomainException(
-                    "Insufficient stock for product {$product->id}. Available: {$currentQty}, Requested: {$quantity}"
+                    "Insufficient stock for product {$product->id}. Available: {$currentQty}, Requested: {$quantityStr}"
                 );
             }
 
@@ -246,20 +273,20 @@ class WeightedAverageCostService
                 'location_id' => $location->id,
                 'company_id' => $location->company_id,
                 'movement_type' => MovementType::Issue,
-                'quantity' => -$quantity,
+                'quantity' => bcmul($quantityStr, '-1', 4),
                 'quantity_before' => $currentQty,
                 'quantity_after' => $newQty,
-                'unit_cost' => (string) $costPrice,
-                'total_cost' => (string) ($quantity * $costPrice),
-                'avg_cost_before' => (string) $costPrice,
-                'avg_cost_after' => (string) $costPrice, // WAC doesn't change on sale
+                'unit_cost' => $costPriceBoundary,
+                'total_cost' => CurrencyScale::bcformat(bcmul($quantityStr, $costPriceStr, $working), $this->scale()),
+                'avg_cost_before' => $costPriceBoundary,
+                'avg_cost_after' => $costPriceBoundary, // WAC doesn't change on sale
                 'reference' => $reference,
                 'reference_type' => $referenceType,
                 'reference_id' => $referenceId,
             ]);
 
             // Update stock level (cost stays same)
-            $stockLevel->quantity = (string) $newQty;
+            $stockLevel->quantity = $newQty;
             $stockLevel->save();
 
             // Capture data for events BEFORE afterCommit
@@ -339,14 +366,23 @@ class WeightedAverageCostService
                 ->lockForUpdate()
                 ->findOrFail($product->id);
 
-            $currentQty = (float) $stockLevel->quantity;
-            $currentCostPrice = (float) ($product->cost_price ?? 0);
-            $currentValue = $currentQty * $currentCostPrice;
+            $working = $this->workingScale();
 
-            $newQty = $currentQty + $quantity;
-            $newValue = $currentValue + ($quantity * $originalCost);
+            // Normalise operands to numeric strings; quantity at scale 4,
+            // monetary values at the working precision. No native float math.
+            $quantityStr = CurrencyScale::bcformat($quantity, 4);
+            $originalCostStr = CurrencyScale::bcformat($originalCost, $working);
+            $currentQty = CurrencyScale::bcformat($stockLevel->quantity, 4);
+            $currentCostPrice = CurrencyScale::bcformat($product->cost_price ?? '0', $working);
+            $currentValue = bcmul($currentQty, $currentCostPrice, $working);
 
-            $newAvgCost = $newQty > 0 ? round($newValue / $newQty, $this->scale()) : 0;
+            $newQty = bcadd($currentQty, $quantityStr, 4);
+            $newValue = bcadd($currentValue, bcmul($quantityStr, $originalCostStr, $working), $working);
+
+            // Single boundary truncation to the currency scale.
+            $newAvgCost = bccomp($newQty, '0', 4) > 0
+                ? CurrencyScale::bcformat(bcdiv($newValue, $newQty, $working), $this->scale())
+                : CurrencyScale::bcformat('0', $this->scale());
 
             // Record movement
             $movement = StockMovement::create([
@@ -356,24 +392,24 @@ class WeightedAverageCostService
                 'location_id' => $location->id,
                 'company_id' => $location->company_id,
                 'movement_type' => MovementType::Receipt,
-                'quantity' => $quantity,
+                'quantity' => $quantityStr,
                 'quantity_before' => $currentQty,
                 'quantity_after' => $newQty,
-                'unit_cost' => (string) $originalCost,
-                'total_cost' => (string) ($quantity * $originalCost),
-                'avg_cost_before' => (string) $currentCostPrice,
-                'avg_cost_after' => (string) $newAvgCost,
+                'unit_cost' => CurrencyScale::bcformat($originalCostStr, $this->scale()),
+                'total_cost' => CurrencyScale::bcformat(bcmul($quantityStr, $originalCostStr, $working), $this->scale()),
+                'avg_cost_before' => CurrencyScale::bcformat($currentCostPrice, $this->scale()),
+                'avg_cost_after' => $newAvgCost,
                 'reference' => $reference,
                 'reference_type' => $referenceType,
                 'reference_id' => $referenceId,
             ]);
 
             // Update stock level
-            $stockLevel->quantity = (string) $newQty;
+            $stockLevel->quantity = $newQty;
             $stockLevel->save();
 
             // Update product cost
-            $product->cost_price = (string) $newAvgCost;
+            $product->cost_price = $newAvgCost;
             $product->cost_updated_at = now();
             $product->save();
 
@@ -388,8 +424,8 @@ class WeightedAverageCostService
             $locationSnapshot = $location;
             $newStockLevelSnapshot = $stockLevel->quantity;
             $priceUpdatedSnapshot = $priceUpdated;
-            $oldCostPriceSnapshot = (string) $currentCostPrice;
-            $newAvgCostSnapshot = (string) $newAvgCost;
+            $oldCostPriceSnapshot = CurrencyScale::bcformat($currentCostPrice, $this->scale());
+            $newAvgCostSnapshot = $newAvgCost;
             $oldSalePriceSnapshot = $oldSalePrice;
             $referenceSnapshot = $reference;
 
@@ -446,15 +482,26 @@ class WeightedAverageCostService
         float $newQty,
         float $newCost
     ): float {
-        $currentValue = $currentQty * $currentCost;
-        $newValue = $newQty * $newCost;
-        $totalQty = $currentQty + $newQty;
+        $working = $this->workingScale();
 
-        if ($totalQty <= 0) {
-            return 0;
+        $currentQtyStr = CurrencyScale::bcformat($currentQty, 4);
+        $newQtyStr = CurrencyScale::bcformat($newQty, 4);
+        $currentCostStr = CurrencyScale::bcformat($currentCost, $working);
+        $newCostStr = CurrencyScale::bcformat($newCost, $working);
+
+        $totalQty = bcadd($currentQtyStr, $newQtyStr, 4);
+
+        if (bccomp($totalQty, '0', 4) <= 0) {
+            return 0.0;
         }
 
-        return round(($currentValue + $newValue) / $totalQty, $this->scale());
+        $currentValue = bcmul($currentQtyStr, $currentCostStr, $working);
+        $newValue = bcmul($newQtyStr, $newCostStr, $working);
+        $blended = bcdiv(bcadd($currentValue, $newValue, $working), $totalQty, $working);
+
+        // Boundary-truncate to currency scale, then surface as float to keep
+        // this preview helper's published float return type stable.
+        return (float) CurrencyScale::bcformat($blended, $this->scale());
     }
 
     /**

@@ -12,6 +12,7 @@ use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\POS\Application\Concerns\RoundsVat;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\RefundDestination;
@@ -34,7 +35,6 @@ use App\Modules\Voucher\Application\DTOs\VoucherIssuanceRequest;
 use App\Modules\Voucher\Application\Services\VoucherIssuanceService;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
-use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -63,6 +63,8 @@ use Illuminate\Support\Str;
  */
 final class ReceiptReturnService
 {
+    use RoundsVat;
+
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly CashDrawerService $cashDrawerService,
@@ -1006,7 +1008,10 @@ final class ReceiptReturnService
         }
 
         $quantityBefore = (string) $stockLevel->quantity;
-        $quantityAfter = bcadd((string) $stockLevel->quantity, $quantity, 2);
+        // stock_levels.quantity and pos_receipt_lines.quantity are stored at
+        // scale 4 (canonical quantity storage scale). Add at scale 4 so
+        // sub-centi returned quantities are not truncated to zero.
+        $quantityAfter = bcadd((string) $stockLevel->quantity, $quantity, 4); // 4 = canonical quantity storage scale
 
         $stockLevel->quantity = $quantityAfter;
         $stockLevel->save();
@@ -1050,18 +1055,5 @@ final class ReceiptReturnService
 
         /** @var numeric-string */
         return $amount;
-    }
-
-    /**
-     * Round VAT amount to match PostgreSQL rounding.
-     *
-     * @return numeric-string
-     */
-    private function roundVat(string $netAmount, string $taxRate): string
-    {
-        $raw = (float) $netAmount * (float) $taxRate / 100.0;
-
-        /** @var numeric-string */
-        return CurrencyScale::bcformat(round($raw, $this->scale()), $this->scale());
     }
 }

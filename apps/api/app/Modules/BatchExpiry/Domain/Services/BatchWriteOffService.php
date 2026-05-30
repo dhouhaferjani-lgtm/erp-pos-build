@@ -12,6 +12,7 @@ use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -30,6 +31,7 @@ final class BatchWriteOffService
         private readonly BatchStockService $batchStockService,
         private readonly GeneralLedgerService $glService,
         private readonly CompanyContext $companyContext,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     /**
@@ -89,6 +91,7 @@ final class BatchWriteOffService
                         quantity: $quantity,
                         tenantId: (string) $batch->tenant_id,
                         companyId: (string) $batch->company_id,
+                        currency: $company->currency,
                     ),
                     reason: $movementReason,
                     movementId: $movement->id,
@@ -124,6 +127,7 @@ final class BatchWriteOffService
         string $quantity,
         string $tenantId,
         string $companyId,
+        string $currency,
     ): string {
         $product = Product::query()
             ->where('tenant_id', $tenantId)
@@ -137,6 +141,9 @@ final class BatchWriteOffService
         $unitCost = (string) ($product->weighted_average_cost ?? $product->cost_price ?? '0.00');
         /** @var numeric-string $quantity */
 
-        return bcmul($quantity, $unitCost, 2);
+        // Resolve scale from the company's own currency (context-safe AND
+        // fiscally correct: EUR→2, TND→3) so a service-direct caller (queue job /
+        // cross-module orchestrator) does not depend on a bound CompanyContext.
+        return bcmul($quantity, $unitCost, $this->scaleResolver->getScale($currency));
     }
 }

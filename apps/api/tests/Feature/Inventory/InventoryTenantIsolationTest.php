@@ -1010,6 +1010,7 @@ final class InventoryTenantIsolationTest extends TestCase
             '1',                           // quantity
             $this->tenantA->id,            // tenantId
             $this->companyA->id,           // companyId
+            $this->companyA->currency,     // currency (scale resolution)
         );
 
         // Cross-tenant call: same productId BUT tenantB / companyB.
@@ -1022,6 +1023,7 @@ final class InventoryTenantIsolationTest extends TestCase
             '1',                           // quantity
             $this->tenantB->id,            // foreign tenant
             $this->companyB->id,           // foreign company
+            $this->companyB->currency,     // currency (scale resolution)
         );
 
         $log = DB::getQueryLog();

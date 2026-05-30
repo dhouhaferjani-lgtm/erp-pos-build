@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Application\Services;
 
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Taxation\Domain\DTOs\TaxCalculationResult;
 use App\Modules\Taxation\Domain\Enums\TaxApplicationLevel;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -18,6 +21,15 @@ use Illuminate\Support\Facades\DB;
  * IMPORTANT: Cost allocation is wrapped in a transaction to ensure
  * all-or-nothing allocation. If any line fails, the entire allocation
  * is rolled back to prevent partial/inconsistent cost assignments.
+ *
+ * Precision: all arithmetic is bcmath. Intermediate values carry
+ * {@see self::workingScale()} (currency scale + 4) extra digits and are
+ * truncated to the currency scale exactly once at the boundary. Proportional
+ * allocations use a largest-remainder reconciliation: the running remainder is
+ * assigned to the absorber line — the last line with a positive base (see
+ * {@see self::absorberIndex()}) — so the sum of allocated columns equals the
+ * input total to the last unit, the residue never lands on a zero-base line,
+ * and line order/keying cannot drop it.
  */
 class LandedCostService
 {
@@ -31,6 +43,14 @@ class LandedCostService
     }
 
     /**
+     * Intermediate working precision for proportional cost allocation.
+     */
+    private function workingScale(): int
+    {
+        return $this->scale() + 4;
+    }
+
+    /**
      * Allocate additional costs to purchase order lines proportionally by value
      *
      * Uses a database transaction to ensure atomic allocation.
@@ -39,22 +59,42 @@ class LandedCostService
     public function allocateCosts(Document $purchaseOrder): void
     {
         DB::transaction(function () use ($purchaseOrder): void {
-            $lines = $purchaseOrder->lines;
-            $additionalCostsTotal = (float) $purchaseOrder->additionalCosts()->sum('amount');
-            $subtotal = (float) $lines->sum('line_total');
+            $scale = $this->scale();
+            $working = $this->workingScale();
 
-            foreach ($lines as $line) {
-                if ($subtotal > 0 && $additionalCostsTotal > 0) {
-                    $proportion = (float) $line->line_total / $subtotal;
-                    $allocatedCost = round($additionalCostsTotal * $proportion, $this->scale());
+            // Re-key to a contiguous 0-based sequence so the largest-remainder
+            // "is this the last line" check is robust even if the relation was
+            // filtered/keyed by a caller (otherwise the remainder could be dropped).
+            $lines = $purchaseOrder->lines->values();
+            $additionalCostsTotal = CurrencyScale::bcformat(
+                (string) $purchaseOrder->additionalCosts()->sum('amount'),
+                $scale,
+            );
+            $subtotal = $this->sumLineTotals($lines);
+
+            $remaining = $additionalCostsTotal;
+            $absorberIndex = $this->absorberIndex($lines);
+
+            foreach ($lines as $index => $line) {
+                $lineTotal = CurrencyScale::bcformat((string) $line->line_total, $working);
+
+                if (bccomp($subtotal, '0', $working) > 0 && bccomp($additionalCostsTotal, '0', $scale) > 0) {
+                    $allocatedCost = $this->allocateShare(
+                        index: $index,
+                        absorberIndex: $absorberIndex,
+                        lineTotal: $lineTotal,
+                        subtotal: $subtotal,
+                        total: $additionalCostsTotal,
+                        remaining: $remaining,
+                    );
                 } else {
-                    $allocatedCost = 0;
+                    $allocatedCost = CurrencyScale::bcformat('0', $scale);
                 }
 
-                $line->allocated_costs = (string) $allocatedCost;
-                $line->landed_unit_cost = (float) $line->quantity > 0
-                    ? (string) round(((float) $line->line_total + $allocatedCost) / (float) $line->quantity, $this->scale())
-                    : $line->unit_price;
+                $remaining = bcsub($remaining, $allocatedCost, $scale);
+
+                $line->allocated_costs = $allocatedCost;
+                $line->landed_unit_cost = $this->landedUnitCost($lineTotal, $allocatedCost, '0', $line);
                 $line->save();
             }
 
@@ -62,7 +102,7 @@ class LandedCostService
             $purchaseOrder->update([
                 'payload' => array_merge($purchaseOrder->payload ?? [], [
                     'costs_allocated_at' => now()->toDateTimeString(),
-                    'costs_allocated_total' => (string) $additionalCostsTotal,
+                    'costs_allocated_total' => $additionalCostsTotal,
                 ]),
             ]);
         });
@@ -83,78 +123,87 @@ class LandedCostService
     public function allocateCostsAndTaxes(Document $purchaseOrder, TaxCalculationResult $taxResult): void
     {
         DB::transaction(function () use ($purchaseOrder, $taxResult): void {
-            $lines = $purchaseOrder->lines;
-            $additionalCostsTotal = (float) $purchaseOrder->additionalCosts()->sum('amount');
-            $subtotal = (float) $lines->sum('line_total');
+            $scale = $this->scale();
+            $working = $this->workingScale();
 
-            // Separate line-level taxes from document-level taxes
-            // Line-level taxes (VAT) must stay with their specific lines
-            // Document-level taxes (stamps) should be distributed proportionally
-            $nonRecoverableDocumentTaxTotal = 0;
+            // Re-key to a contiguous 0-based sequence (see allocateCosts()).
+            $lines = $purchaseOrder->lines->values();
+            $additionalCostsTotal = CurrencyScale::bcformat(
+                (string) $purchaseOrder->additionalCosts()->sum('amount'),
+                $scale,
+            );
+            $subtotal = $this->sumLineTotals($lines);
+
+            // Separate line-level taxes from document-level taxes.
+            // Line-level taxes (VAT) must stay with their specific lines.
+            // Document-level taxes (stamps) should be distributed proportionally.
+            $nonRecoverableDocumentTaxTotal = CurrencyScale::bcformat('0', $scale);
             foreach ($taxResult->taxes as $tax) {
                 if (! $tax->isRecoverable && $tax->appliesTo === TaxApplicationLevel::DocumentTotal) {
-                    $nonRecoverableDocumentTaxTotal += (float) $tax->amount;
+                    $nonRecoverableDocumentTaxTotal = bcadd(
+                        $nonRecoverableDocumentTaxTotal,
+                        CurrencyScale::bcformat((string) $tax->amount, $scale),
+                        $scale,
+                    );
                 }
             }
 
-            $totalNonRecoverableTax = 0;
+            $totalNonRecoverableTax = CurrencyScale::bcformat('0', $scale);
+
+            $remainingCost = $additionalCostsTotal;
+            $remainingDocTax = $nonRecoverableDocumentTaxTotal;
+            $absorberIndex = $this->absorberIndex($lines);
 
             // Allocate to each line
-            foreach ($lines as $line) {
-                // Calculate proportion for distributing document-level taxes and additional costs
-                if ($subtotal > 0) {
-                    $proportion = (float) $line->line_total / $subtotal;
-                } else {
-                    $proportion = 0;
-                }
+            foreach ($lines as $index => $line) {
+                $lineTotal = CurrencyScale::bcformat((string) $line->line_total, $working);
 
-                // Allocate additional costs proportionally
-                $allocatedCost = $additionalCostsTotal > 0
-                    ? round($additionalCostsTotal * $proportion, $this->scale())
-                    : 0;
+                $hasSubtotal = bccomp($subtotal, '0', $working) > 0;
 
-                // Calculate line-specific non-recoverable tax (VAT based on line's tax_rate)
-                // This tax is already in line_total, but we track it separately for inventory costing
-                $lineNonRecoverableTax = 0;
-                if ($line->tax_rate && (float) $line->tax_rate > 0) {
-                    // Check if this line's tax rate is non-recoverable
-                    $lineTaxRate = (string) $line->tax_rate;
+                // Allocate additional costs proportionally (largest-remainder).
+                $allocatedCost = ($hasSubtotal && bccomp($additionalCostsTotal, '0', $scale) > 0)
+                    ? $this->allocateShare($index, $absorberIndex, $lineTotal, $subtotal, $additionalCostsTotal, $remainingCost)
+                    : CurrencyScale::bcformat('0', $scale);
+                $remainingCost = bcsub($remainingCost, $allocatedCost, $scale);
+
+                // Calculate line-specific non-recoverable tax (VAT based on line's tax_rate).
+                // This tax is already in line_total, but we track it separately for inventory costing.
+                $lineNonRecoverableTax = CurrencyScale::bcformat('0', $scale);
+                if ($line->tax_rate !== null && bccomp($line->tax_rate, '0', 6) > 0) {
+                    $lineTaxRate = CurrencyScale::bcformat($line->tax_rate, $working);
                     foreach ($taxResult->taxes as $tax) {
-                        /** @var numeric-string $taxRate */
-                        $taxRate = (string) $tax->rate;
+                        if ($tax->rate === null) {
+                            continue;
+                        }
+                        $taxRate = CurrencyScale::bcformat($tax->rate, $working);
                         if (! $tax->isRecoverable
                             && $tax->appliesTo === TaxApplicationLevel::LineItems
                             && bccomp($taxRate, $lineTaxRate, 2) === 0) {
-                            // Calculate this line's portion of the non-recoverable tax
-                            $lineSubtotal = bcmul((string) $line->quantity, (string) $line->unit_price, 3);
-                            $lineNonRecoverableTax = (float) bcmul(
-                                $lineSubtotal,
-                                bcdiv($lineTaxRate, '100', 6),
-                                3
+                            // This line's portion of the non-recoverable tax.
+                            $lineSubtotal = bcmul((string) $line->quantity, (string) $line->unit_price, $working);
+                            $lineNonRecoverableTax = CurrencyScale::bcformat(
+                                bcmul($lineSubtotal, bcdiv($lineTaxRate, '100', $working), $working),
+                                $scale,
                             );
                             break;
                         }
                     }
                 }
 
-                // Allocate proportional share of document-level non-recoverable taxes
-                $allocatedDocumentTax = $nonRecoverableDocumentTaxTotal > 0
-                    ? round($nonRecoverableDocumentTaxTotal * $proportion, $this->scale())
-                    : 0;
+                // Allocate proportional share of document-level non-recoverable taxes.
+                $allocatedDocumentTax = ($hasSubtotal && bccomp($nonRecoverableDocumentTaxTotal, '0', $scale) > 0)
+                    ? $this->allocateShare($index, $absorberIndex, $lineTotal, $subtotal, $nonRecoverableDocumentTaxTotal, $remainingDocTax)
+                    : CurrencyScale::bcformat('0', $scale);
+                $remainingDocTax = bcsub($remainingDocTax, $allocatedDocumentTax, $scale);
 
-                // Total non-recoverable tax for this line
-                $totalLineTax = $lineNonRecoverableTax + $allocatedDocumentTax;
-                $totalNonRecoverableTax += $totalLineTax;
+                // Total non-recoverable tax for this line.
+                $totalLineTax = bcadd($lineNonRecoverableTax, $allocatedDocumentTax, $scale);
+                $totalNonRecoverableTax = bcadd($totalNonRecoverableTax, $totalLineTax, $scale);
 
-                // Update line
-                $line->allocated_costs = (string) $allocatedCost;
-                $line->non_recoverable_tax = round($totalLineTax, $this->scale());
-
-                // Calculate landed unit cost: (line_total + allocated_costs + non_recoverable_tax) / quantity
-                $totalCost = (float) $line->line_total + $allocatedCost + $totalLineTax;
-                $line->landed_unit_cost = (float) $line->quantity > 0
-                    ? (string) round($totalCost / (float) $line->quantity, $this->scale())
-                    : $line->unit_price;
+                // Update line.
+                $line->allocated_costs = $allocatedCost;
+                $line->non_recoverable_tax = $totalLineTax;
+                $line->landed_unit_cost = $this->landedUnitCost($lineTotal, $allocatedCost, $totalLineTax, $line);
 
                 $line->save();
             }
@@ -163,8 +212,8 @@ class LandedCostService
             $purchaseOrder->update([
                 'payload' => array_merge($purchaseOrder->payload ?? [], [
                     'costs_allocated_at' => now()->toDateTimeString(),
-                    'costs_allocated_total' => (string) $additionalCostsTotal,
-                    'non_recoverable_tax_total' => (string) round($totalNonRecoverableTax, $this->scale()),
+                    'costs_allocated_total' => $additionalCostsTotal,
+                    'non_recoverable_tax_total' => $totalNonRecoverableTax,
                 ]),
             ]);
         });
@@ -178,22 +227,40 @@ class LandedCostService
     public function reallocateCosts(Document $purchaseOrder): void
     {
         DB::transaction(function () use ($purchaseOrder): void {
-            $lines = $purchaseOrder->lines;
-            $additionalCostsTotal = (float) $purchaseOrder->additionalCosts()->sum('amount');
-            $subtotal = (float) $lines->sum('line_total');
+            $scale = $this->scale();
+            $working = $this->workingScale();
 
-            foreach ($lines as $line) {
-                if ($subtotal > 0 && $additionalCostsTotal > 0) {
-                    $proportion = (float) $line->line_total / $subtotal;
-                    $allocatedCost = round($additionalCostsTotal * $proportion, $this->scale());
+            // Re-key to a contiguous 0-based sequence (see allocateCosts()).
+            $lines = $purchaseOrder->lines->values();
+            $additionalCostsTotal = CurrencyScale::bcformat(
+                (string) $purchaseOrder->additionalCosts()->sum('amount'),
+                $scale,
+            );
+            $subtotal = $this->sumLineTotals($lines);
+
+            $remaining = $additionalCostsTotal;
+            $absorberIndex = $this->absorberIndex($lines);
+
+            foreach ($lines as $index => $line) {
+                $lineTotal = CurrencyScale::bcformat((string) $line->line_total, $working);
+
+                if (bccomp($subtotal, '0', $working) > 0 && bccomp($additionalCostsTotal, '0', $scale) > 0) {
+                    $allocatedCost = $this->allocateShare(
+                        index: $index,
+                        absorberIndex: $absorberIndex,
+                        lineTotal: $lineTotal,
+                        subtotal: $subtotal,
+                        total: $additionalCostsTotal,
+                        remaining: $remaining,
+                    );
                 } else {
-                    $allocatedCost = 0;
+                    $allocatedCost = CurrencyScale::bcformat('0', $scale);
                 }
 
-                $line->allocated_costs = (string) $allocatedCost;
-                $line->landed_unit_cost = (float) $line->quantity > 0
-                    ? (string) round(((float) $line->line_total + $allocatedCost) / (float) $line->quantity, $this->scale())
-                    : $line->unit_price;
+                $remaining = bcsub($remaining, $allocatedCost, $scale);
+
+                $line->allocated_costs = $allocatedCost;
+                $line->landed_unit_cost = $this->landedUnitCost($lineTotal, $allocatedCost, '0', $line);
                 $line->save();
             }
 
@@ -201,10 +268,128 @@ class LandedCostService
             $purchaseOrder->update([
                 'payload' => array_merge($purchaseOrder->payload ?? [], [
                     'costs_reallocated_at' => now()->toDateTimeString(),
-                    'costs_allocated_total' => (string) $additionalCostsTotal,
+                    'costs_allocated_total' => $additionalCostsTotal,
                 ]),
             ]);
         });
+    }
+
+    /**
+     * Sum the line_total of a collection at the working precision.
+     *
+     * @param  iterable<int, DocumentLine>  $lines
+     * @return numeric-string
+     */
+    private function sumLineTotals(iterable $lines): string
+    {
+        $working = $this->workingScale();
+        $subtotal = CurrencyScale::bcformat('0', $working);
+
+        foreach ($lines as $line) {
+            $subtotal = bcadd($subtotal, CurrencyScale::bcformat((string) $line->line_total, $working), $working);
+        }
+
+        return $subtotal;
+    }
+
+    /**
+     * Index of the line that absorbs the largest-remainder residue.
+     *
+     * The residue must land on a line that actually participates in the
+     * proportional split, i.e. one with a positive line_total. A zero-base line
+     * gets a zero proportional share, so dumping the whole rounding residue on it
+     * would inflate its landed unit cost from a base of nothing (e.g. a free /
+     * promotional line). We therefore pick the LAST line with line_total > 0.
+     *
+     * Lines are assumed to be 0-indexed contiguously (callers pass ->values()).
+     * If every line has a zero base the proportional branch is never entered
+     * (subtotal must be > 0 to allocate), so the fallback to the last index is
+     * inert; we return it only to keep the absorber well-defined.
+     *
+     * @param  Collection<int, DocumentLine>  $lines
+     */
+    private function absorberIndex(Collection $lines): int
+    {
+        $working = $this->workingScale();
+        $absorber = $lines->count() - 1;
+
+        foreach ($lines as $index => $line) {
+            $lineTotal = CurrencyScale::bcformat((string) $line->line_total, $working);
+            if (bccomp($lineTotal, '0', $working) > 0) {
+                $absorber = $index;
+            }
+        }
+
+        return $absorber;
+    }
+
+    /**
+     * Compute one line's proportional share of a total using largest-remainder
+     * reconciliation: every line except the absorber is rounded proportionally,
+     * and the absorber line receives whatever remains so the allocation sums
+     * exactly. The absorber is the last line with a positive base (see
+     * {@see absorberIndex()}), so the rounding residue never lands on a
+     * zero-base line.
+     *
+     * @param  int  $absorberIndex  Index of the line that absorbs the residue
+     * @param  numeric-string  $lineTotal  Line total at working precision
+     * @param  numeric-string  $subtotal  Sum of all line totals at working precision
+     * @param  numeric-string  $total  Amount being distributed at currency scale
+     * @param  numeric-string  $remaining  Amount still unallocated at currency scale
+     * @return numeric-string Allocated amount at currency scale
+     */
+    private function allocateShare(
+        int $index,
+        int $absorberIndex,
+        string $lineTotal,
+        string $subtotal,
+        string $total,
+        string $remaining,
+    ): string {
+        $scale = $this->scale();
+
+        // Absorber line takes the running remainder — exact reconciliation.
+        if ($index === $absorberIndex) {
+            return CurrencyScale::bcformat($remaining, $scale);
+        }
+
+        $working = $this->workingScale();
+        $proportion = bcdiv($lineTotal, $subtotal, $working);
+
+        return CurrencyScale::bcformat(bcmul($total, $proportion, $working), $scale);
+    }
+
+    /**
+     * Compute a line's landed unit cost, falling back to unit_price when the
+     * line has no positive quantity.
+     *
+     * @param  numeric-string  $lineTotal  Line total at working precision
+     * @param  numeric-string  $allocatedCost  Allocated costs at currency scale
+     * @param  numeric-string  $nonRecoverableTax  Non-recoverable tax at currency scale
+     * @return numeric-string
+     */
+    private function landedUnitCost(
+        string $lineTotal,
+        string $allocatedCost,
+        string $nonRecoverableTax,
+        DocumentLine $line,
+    ): string {
+        $scale = $this->scale();
+        $working = $this->workingScale();
+
+        $quantity = CurrencyScale::bcformat((string) $line->quantity, 4);
+
+        if (bccomp($quantity, '0', 4) <= 0) {
+            return CurrencyScale::bcformat((string) $line->unit_price, $scale);
+        }
+
+        $totalCost = bcadd(
+            bcadd($lineTotal, CurrencyScale::bcformat($allocatedCost, $working), $working),
+            CurrencyScale::bcformat($nonRecoverableTax, $working),
+            $working,
+        );
+
+        return CurrencyScale::bcformat(bcdiv($totalCost, $quantity, $working), $scale);
     }
 
     /**
@@ -233,17 +418,28 @@ class LandedCostService
     }
 
     /**
-     * Calculate what the allocated cost would be for a line without saving
+     * Calculate what the allocated cost would be for a line without saving.
+     *
+     * Note: this preview helper computes a single line's proportional share in
+     * isolation; it does NOT perform the largest-remainder reconciliation used
+     * by {@see allocateCosts()} (which needs the whole line set). The published
+     * float return type is preserved for backward compatibility.
      */
     public function calculateAllocatedCost(float $lineTotal, float $subtotal, float $additionalCostsTotal): float
     {
-        if ($subtotal <= 0 || $additionalCostsTotal <= 0) {
-            return 0;
+        $scale = $this->scale();
+        $working = $this->workingScale();
+
+        $subtotalStr = CurrencyScale::bcformat($subtotal, $working);
+        $totalStr = CurrencyScale::bcformat($additionalCostsTotal, $working);
+
+        if (bccomp($subtotalStr, '0', $working) <= 0 || bccomp($totalStr, '0', $working) <= 0) {
+            return 0.0;
         }
 
-        $proportion = $lineTotal / $subtotal;
+        $proportion = bcdiv(CurrencyScale::bcformat($lineTotal, $working), $subtotalStr, $working);
 
-        return round($additionalCostsTotal * $proportion, $this->scale());
+        return (float) CurrencyScale::bcformat(bcmul($totalStr, $proportion, $working), $scale);
     }
 
     /**
@@ -260,11 +456,22 @@ class LandedCostService
         float $nonRecoverableTax,
         float $quantity
     ): float {
-        if ($quantity <= 0) {
-            return 0;
+        $scale = $this->scale();
+        $working = $this->workingScale();
+
+        $quantityStr = CurrencyScale::bcformat($quantity, 4);
+
+        if (bccomp($quantityStr, '0', 4) <= 0) {
+            return 0.0;
         }
 
-        return round(($lineTotal + $allocatedCost + $nonRecoverableTax) / $quantity, $this->scale());
+        $totalCost = bcadd(
+            bcadd(CurrencyScale::bcformat($lineTotal, $working), CurrencyScale::bcformat($allocatedCost, $working), $working),
+            CurrencyScale::bcformat($nonRecoverableTax, $working),
+            $working,
+        );
+
+        return (float) CurrencyScale::bcformat(bcdiv($totalCost, $quantityStr, $working), $scale);
     }
 
     /**
