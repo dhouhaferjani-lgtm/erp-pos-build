@@ -203,6 +203,12 @@ final class LoyaltyPOSControllerTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonStructure(['data' => ['points_to_earn']]);
+
+        // points_to_earn is a non-fiscal display preview; the API contract
+        // exposes it as a numeric value (frontend types it as `number`),
+        // even though the service computes it as a canonical bcmath string.
+        $this->assertIsNumeric($response->json('data.points_to_earn'));
+        $this->assertIsNotString($response->json('data.points_to_earn'));
     }
 
     private function createProgram(Tenant $tenant): LoyaltyProgram

@@ -116,9 +116,14 @@ class LoyaltyPOSController extends Controller
                 $transactionData,
             );
 
+            // points_to_earn is a NON-FISCAL display preview (estimated points
+            // shown in the cart), not a stored money value. The service keeps
+            // the canonical bcmath string internally to avoid float drift; we
+            // float it ONLY here at the display-preview wire boundary so the
+            // API contract stays numeric (frontend types it as `number`).
             return response()->json([
                 'data' => [
-                    'points_to_earn' => $points,
+                    'points_to_earn' => (float) $points,
                 ],
             ]);
         } catch (\InvalidArgumentException $e) {

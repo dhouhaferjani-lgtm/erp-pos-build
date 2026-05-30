@@ -10,7 +10,6 @@ use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Accounting\Domain\OpeningBalanceImportRow;
 use App\Modules\Company\Domain\Company;
-use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -35,9 +34,16 @@ class OpeningBalanceBatchService
      */
     private const QUANTITY_SCALE = 4;
 
-    public function __construct(
-        private readonly CurrencyScaleResolverInterface $scaleResolver,
-    ) {}
+    /**
+     * Money values are always staged at the fixed STORAGE scale 3 (independent
+     * of currency). This matches the 3-decimal ingress regex (Phase 4.5) and
+     * the decimal(N,3) journal-posting target columns this staging feeds.
+     *
+     * Canonicalizing at the per-currency display scale (e.g. EUR scale 2) would
+     * silently truncate the 3rd decimal the regex accepts (10000.105 -> 10000.10)
+     * before it ever reaches the decimal(N,3) columns.
+     */
+    private const MONEY_STORAGE_SCALE = 3;
 
     /**
      * Create a new opening balance batch.
@@ -155,19 +161,9 @@ class OpeningBalanceBatchService
         $rowType = $batch->type->rowType();
         $currentMaxRow = $batch->rows()->max('row_number') ?? 0;
 
-        // Resolve the default monetary scale from the batch company's currency.
-        // Runs in request/batch contexts, so resolve from the company explicitly
-        // rather than relying on a bound CompanyContext.
-        $companyCurrency = Company::query()
-            ->whereKey($batch->company_id)
-            ->value('currency');
-        $defaultMoneyScale = $this->scaleResolver->getScale(
-            is_string($companyCurrency) ? $companyCurrency : null
-        );
-
         $importRows = [];
         foreach ($rows as $index => $row) {
-            $canonical = $this->canonicalizeRow($batch->type, $row, $defaultMoneyScale);
+            $canonical = $this->canonicalizeRow($batch->type, $row);
 
             $importRows[] = [
                 'id' => (string) Str::uuid(),
@@ -189,19 +185,17 @@ class OpeningBalanceBatchService
      *
      * JSONB columns bypass Eloquent decimal casts, so numeric values must be written as
      * canonical numeric-strings (with trailing zeros preserved) BEFORE json_encode.
-     * Monetary fields use the row/company currency scale; quantity is always scale 4.
+     * Monetary fields use the fixed STORAGE scale 3 (matching the 3dp ingress regex and
+     * the decimal(N,3) journal-posting target columns), NOT the per-currency display scale
+     * which would silently truncate the 3rd decimal. Quantity is always scale 4.
      * Non-numeric and unknown fields are passed through untouched.
      *
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>
      */
-    private function canonicalizeRow(OpeningBatchType $type, array $row, int $defaultMoneyScale): array
+    private function canonicalizeRow(OpeningBatchType $type, array $row): array
     {
-        // For AR/AP rows the currency may be supplied per-row; honour it when present.
-        $moneyScale = $defaultMoneyScale;
-        if (isset($row['currency']) && is_string($row['currency']) && $row['currency'] !== '') {
-            $moneyScale = $this->scaleResolver->getScale($row['currency']);
-        }
+        $moneyScale = self::MONEY_STORAGE_SCALE;
 
         // Field => scale map per batch type.
         $moneyFields = match ($type) {

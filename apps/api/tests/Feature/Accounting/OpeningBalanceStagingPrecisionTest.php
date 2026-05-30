@@ -25,8 +25,10 @@ use Tests\TestCase;
  * Phase 5 — JSONB content tightening for opening-balance staging.
  *
  * Numeric values written into the `raw_data` JSONB column must be pre-canonicalized
- * to numeric-strings (at the company-currency scale; quantity at 4) BEFORE json_encode,
- * with JSON_PRESERVE_ZERO_FRACTION so trailing zeros survive the round-trip.
+ * to numeric-strings BEFORE json_encode, with JSON_PRESERVE_ZERO_FRACTION so trailing
+ * zeros survive the round-trip. Money fields canonicalize at the fixed STORAGE scale 3
+ * (matching the 3dp ingress regex and the decimal(N,3) journal-posting target columns),
+ * NOT the per-currency display scale; quantity is always scale 4.
  */
 class OpeningBalanceStagingPrecisionTest extends TestCase
 {
@@ -117,9 +119,34 @@ class OpeningBalanceStagingPrecisionTest extends TestCase
 
         $json = $this->rawJsonForBatch($batch->id);
 
-        // EUR → money scale 2. The literal stored value must keep its precision (not "10000.1").
-        $this->assertStringContainsString('"debit":"10000.10"', $json);
-        $this->assertStringContainsString('"credit":"0.00"', $json);
+        // Money fields canonicalize at the fixed storage scale 3 (NOT EUR display scale 2).
+        // The literal stored value must keep its precision (not "10000.1").
+        $this->assertStringContainsString('"debit":"10000.100"', $json);
+        $this->assertStringContainsString('"credit":"0.000"', $json);
+    }
+
+    public function test_eur_money_field_preserves_third_decimal_not_truncated_to_currency_scale(): void
+    {
+        // Regression: canonicalizing EUR (display scale 2) money fields at the
+        // currency scale silently truncated the 3rd decimal the ingress regex
+        // accepts (10000.105 -> 10000.10) before it reached the decimal(N,3)
+        // journal-posting columns. Money must stage at the fixed storage scale 3.
+        $batch = $this->makeBatch(OpeningBatchType::Accounting);
+
+        $this->service->addImportRows($batch, [
+            [
+                'account_code' => '1200',
+                'debit' => '10000.105',
+                'credit' => '0',
+                'description' => 'Three-decimal EUR amount',
+            ],
+        ]);
+
+        $json = $this->rawJsonForBatch($batch->id);
+
+        // The 3rd decimal survives — NOT silently truncated to "10000.10".
+        $this->assertStringContainsString('"debit":"10000.105"', $json);
+        $this->assertStringNotContainsString('"debit":"10000.10"', $json);
     }
 
     public function test_inventory_quantity_trailing_zeros_preserved_at_scale_four(): void
@@ -137,9 +164,9 @@ class OpeningBalanceStagingPrecisionTest extends TestCase
 
         $json = $this->rawJsonForBatch($batch->id);
 
-        // Quantity always scale 4; unit_cost money scale 2 (EUR).
+        // Quantity always scale 4; unit_cost money at fixed storage scale 3.
         $this->assertStringContainsString('"quantity":"2.5000"', $json);
-        $this->assertStringContainsString('"unit_cost":"25.50"', $json);
+        $this->assertStringContainsString('"unit_cost":"25.500"', $json);
     }
 
     public function test_non_numeric_fields_are_left_untouched(): void
@@ -159,6 +186,6 @@ class OpeningBalanceStagingPrecisionTest extends TestCase
 
         $this->assertStringContainsString('"account_code":"1200"', $json);
         $this->assertStringContainsString('"description":"Keep me as text"', $json);
-        $this->assertStringContainsString('"debit":"5.00"', $json);
+        $this->assertStringContainsString('"debit":"5.000"', $json);
     }
 }
