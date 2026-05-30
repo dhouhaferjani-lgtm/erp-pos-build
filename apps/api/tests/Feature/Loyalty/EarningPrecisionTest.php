@@ -132,10 +132,10 @@ final class EarningPrecisionTest extends TestCase
      *
      * The test has two gates:
      *
-     * Gate 1 — per-earning value precision (strict PHP float identity):
-     *   Before fix: 0.1 * 0.1 = 0.010000000000000002 (IEEE 754 drift) ≠ 0.01
-     *   After fix: (float) CurrencyScale::bcformat(bcmul('0.1','0.1',7), 3)
-     *            = (float) '0.010' = 0.01 exactly in PHP (no IEEE drift for this decimal)
+     * Gate 1 — per-earning value precision (canonical numeric-string identity):
+     *   Before VO refactor: 0.1 * 0.1 = 0.010000000000000002 (IEEE 754 drift) ≠ 0.01
+     *   After VO refactor: PointsAmount::value is now a numeric-string with NO float
+     *     round-trip — bcmul('0.1','0.1',7) canonicalised to scale 3 = '0.010'.
      *
      * Gate 2 — ledger SUM (DB accumulation):
      *   10,000 Transaction rows each with amount = CurrencyScale::bcformat($points->value, 3)
@@ -159,18 +159,17 @@ final class EarningPrecisionTest extends TestCase
                 $this->rule,
             );
 
-            // Gate 1: per-earning value must be strictly equal to 0.01
-            // Before fix: $points->value = 0.010000000000000002 !== 0.01
-            // After fix:  $points->value = (float)'0.010' === 0.01 (PHP exact)
+            // Gate 1: per-earning value must be the exact canonical numeric-string.
+            // Before VO refactor: $points->value = 0.010000000000000002 (float drift).
+            // After VO refactor:  $points->value = '0.010' (numeric-string, no float).
             if ($i === 0) {
                 $this->assertSame(
-                    0.01,
+                    '0.010',
                     $points->value,
                     'PointsAmount::value for 0.1 TND × 0.1 reward (TND scale=3) must be '
-                    .'exactly 0.01 (PHP strict float identity). '
+                    .'exactly the canonical numeric-string "0.010". '
                     .'Got: '.var_export($points->value, true).'. '
-                    .'Fix: calculateSpendPoints must use bcmul + CurrencyScale::bcformat '
-                    .'with scaleResolver instead of float multiplication.',
+                    .'The VO must store bcmath numeric-strings — no float round-trip.',
                 );
             }
 

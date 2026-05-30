@@ -13,6 +13,7 @@ use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
 use App\Modules\Billing\Domain\Invoice;
 use App\Modules\Billing\Domain\Payment;
 use App\Modules\Billing\Domain\TenantSubscription;
+use App\Modules\Billing\Domain\ValueObjects\Money;
 use App\Modules\Billing\Notifications\AdminPaymentAlertNotification;
 use App\Modules\Billing\Notifications\InvoicePaidNotification;
 use App\Modules\Billing\Notifications\PaymentFailedNotification;
@@ -536,12 +537,14 @@ final class StripeWebhookController extends Controller
             return;
         }
 
-        $refundedAmount = ((int) ($charge['amount_refunded'] ?? 0)) / 100;
+        $refunded = Money::fromCents((int) ($charge['amount_refunded'] ?? 0), $payment->currency);
+        $paymentAmount = new Money((string) $payment->amount, $payment->currency);
+        $refundedAmount = $refunded->amount;
 
         $payment->update([
             'refunded_amount' => $refundedAmount,
             'refunded_at' => now(),
-            'status' => $refundedAmount >= (float) $payment->amount
+            'status' => ! $refunded->lessThan($paymentAmount)
                 ? PaymentStatus::Refunded
                 : PaymentStatus::PartiallyRefunded,
         ]);

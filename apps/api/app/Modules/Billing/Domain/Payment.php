@@ -146,7 +146,7 @@ final class Payment extends Model
      */
     public function getAmountMoney(): Money
     {
-        return new Money((float) $this->amount, $this->currency);
+        return new Money((string) $this->amount, $this->currency);
     }
 
     /**
@@ -154,7 +154,7 @@ final class Payment extends Model
      */
     public function getNetAmountMoney(): Money
     {
-        return new Money((float) $this->net_amount, $this->currency);
+        return new Money((string) $this->net_amount, $this->currency);
     }
 
     /**

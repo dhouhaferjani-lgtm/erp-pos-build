@@ -122,7 +122,7 @@ final class TenantSubscription extends Model
             return null;
         }
 
-        return new Money((float) $this->price, $this->currency ?? 'EUR');
+        return new Money((string) $this->price, $this->currency ?? 'EUR');
     }
 
     /**
