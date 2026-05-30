@@ -4,6 +4,21 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Service;
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
+use App\Modules\Identity\Presentation\Requests\UpdateUserRequest;
+use App\Modules\Menu\Presentation\Requests\AddMenuCategoryItemRequest;
+use App\Modules\Menu\Presentation\Requests\SyncMenuCategoryItemsRequest;
+use App\Modules\Partner\Presentation\Requests\CreatePartnerRequest;
+use App\Modules\Partner\Presentation\Requests\UpdatePartnerRequest;
+use App\Modules\Product\Presentation\Requests\CreateProductRequest;
+use App\Modules\Product\Presentation\Requests\UpdateProductRequest;
+use App\Modules\Scheduling\Presentation\Requests\UpdateScheduleConfigRequest;
+use App\Modules\Service\Presentation\Requests\CreateServiceRequest;
+use App\Modules\Service\Presentation\Requests\UpdateServiceRequest;
+use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Validator;
 use Tests\TestCase;
 
@@ -11,15 +26,31 @@ use Tests\TestCase;
  * Phase 4.12 — Service / Partner / Identity / Product / Scheduling / Menu / Marketplace
  * ingress precision ceiling tests.
  *
- * Validates the decimal-ceiling regex rules on Request classes across all
- * remaining Phase 4.12 modules. Requests with heavy dependencies
- * (Rule::unique, ScopedExists, CompanyContext) are tested by extracting
- * their numeric/regex rules inline — same pattern as POS IngressPrecisionTest.
+ * FormRequest-backed fields bind to the REAL production rules() (these requests
+ * resolve CompanyContext via the container and read route params, so we bind a
+ * seeded company and call rules() without route args — null route params are
+ * fine for the Rule::unique ignore). The Marketplace fields are validated by
+ * inline controller validators; those mirror the production callsite with an
+ * explicit pointer (see comments) since the endpoints are costly to set up.
  *
- * Uses Validator::make() against rules arrays directly — no HTTP stack needed.
+ * If a production scale changes, the FormRequest-backed tests fail.
  */
 final class IngressPrecisionTest extends TestCase
 {
+    use RefreshDatabase;
+
+    /**
+     * Bind a real CompanyContext (seeded tenant + company) in the container so
+     * that FormRequests resolving app(CompanyContext::class) get a company id.
+     */
+    private function bindCompanyContext(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+
+        app(CompanyContext::class)->setCompanyId($company->id);
+    }
+
     // ── Service: CreateServiceRequest / UpdateServiceRequest ──────────────────
 
     public function test_create_service_rejects_3_decimal_base_price(): void
@@ -384,20 +415,15 @@ final class IngressPrecisionTest extends TestCase
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * Numeric/regex rules from CreateServiceRequest (skips Rule::unique).
+     * Production rules from CreateServiceRequest (CompanyContext bound).
      *
      * @return array<string, mixed>
      */
     private function serviceRules(): array
     {
-        return [
-            'code' => ['required', 'string', 'max:50'],
-            'name' => ['required', 'string', 'max:255'],
-            'pricing_type' => ['required', 'string'],
-            'base_price' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'hourly_rate' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
-        ];
+        $this->bindCompanyContext();
+
+        return (new CreateServiceRequest)->rules();
     }
 
     /**
@@ -405,24 +431,21 @@ final class IngressPrecisionTest extends TestCase
      */
     private function serviceUpdateRules(): array
     {
-        return [
-            'base_price' => ['sometimes', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'hourly_rate' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
-        ];
+        $this->bindCompanyContext();
+
+        return (new UpdateServiceRequest)->rules();
     }
 
     /**
-     * Numeric/regex rules from CreatePartnerRequest (skips Rule::unique + VAT closure).
+     * Production rules from CreatePartnerRequest.
      *
      * @return array<string, mixed>
      */
     private function partnerRules(): array
     {
-        return [
-            'credit_limit' => ['nullable', 'numeric', 'min:0', 'max:99999999999.9999', 'regex:/^\d+(\.\d{1,4})?$/'],
-            'discount_percentage' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
-        ];
+        $this->bindCompanyContext();
+
+        return (new CreatePartnerRequest)->rules();
     }
 
     /**
@@ -430,38 +453,41 @@ final class IngressPrecisionTest extends TestCase
      */
     private function partnerUpdateRules(): array
     {
-        return [
-            'credit_limit' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:99999999999.9999', 'regex:/^\d+(\.\d{1,4})?$/'],
-            'discount_percentage' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
-        ];
+        $this->bindCompanyContext();
+
+        return (new UpdatePartnerRequest)->rules();
     }
 
     /**
-     * Numeric/regex rules from UpdateUserRequest (skips Rule::unique).
+     * Production rules from UpdateUserRequest.
      *
      * @return array<string, mixed>
      */
     private function identityUpdateUserRules(): array
     {
-        return [
-            'max_discount_percent' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
-        ];
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+        $user = User::factory()->create(['tenant_id' => $tenant->id]);
+
+        app(CompanyContext::class)->setCompanyId($company->id);
+
+        // UpdateUserRequest::rules() reads $this->user()->tenant_id.
+        $request = new UpdateUserRequest;
+        $request->setUserResolver(fn () => $user);
+
+        return $request->rules();
     }
 
     /**
-     * Numeric/regex rules from CreateProductRequest (skips Rule::unique).
+     * Production rules from CreateProductRequest.
      *
      * @return array<string, mixed>
      */
     private function productRules(): array
     {
-        return [
-            'name' => ['required', 'string', 'max:255'],
-            'sku' => ['required', 'string', 'max:100'],
-            'sale_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'purchase_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
-        ];
+        $this->bindCompanyContext();
+
+        return (new CreateProductRequest)->rules();
     }
 
     /**
@@ -469,54 +495,53 @@ final class IngressPrecisionTest extends TestCase
      */
     private function productUpdateRules(): array
     {
-        return [
-            'sale_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'purchase_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'tax_rate' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
-        ];
+        $this->bindCompanyContext();
+
+        return (new UpdateProductRequest)->rules();
     }
 
     /**
-     * Numeric/regex rules from UpdateScheduleConfigRequest.
+     * Production rules from UpdateScheduleConfigRequest.
      *
      * @return array<string, mixed>
      */
     private function scheduleConfigRules(): array
     {
-        return [
-            'walk_in_buffer_hours_per_day' => ['nullable', 'numeric', 'min:0', 'max:24', 'regex:/^\d+(\.\d{1,2})?$/'],
-        ];
+        $this->bindCompanyContext();
+
+        return (new UpdateScheduleConfigRequest)->rules();
     }
 
     /**
-     * Structural rules from AddMenuCategoryItemRequest (no withValidator DB check).
+     * Production rules from AddMenuCategoryItemRequest.
      *
      * @return array<string, mixed>
      */
     private function menuAddItemRules(): array
     {
-        return [
-            'sellable_type' => ['required', 'string'],
-            'sellable_id' => ['required', 'uuid'],
-            'override_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
-        ];
+        $this->bindCompanyContext();
+
+        return (new AddMenuCategoryItemRequest)->rules();
     }
 
     /**
+     * Production rules from SyncMenuCategoryItemsRequest.
+     *
      * @return array<string, mixed>
      */
     private function menuSyncItemsRules(): array
     {
-        return [
-            'items' => ['required', 'array', 'min:1'],
-            'items.*.sellable_type' => ['required', 'string'],
-            'items.*.sellable_id' => ['required', 'uuid'],
-            'items.*.override_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
-        ];
+        $this->bindCompanyContext();
+
+        return (new SyncMenuCategoryItemsRequest)->rules();
     }
 
     /**
-     * commission_rate rules from MarketplaceSellerController::store/update.
+     * commission_rate rules — MIRRORS (does NOT bind to) the inline validator in
+     * MarketplaceSellerController::store/update
+     * (app/Modules/Marketplace/Presentation/Controllers/MarketplaceSellerController.php).
+     * The marketplace endpoints require a fully-provisioned seller context, so a
+     * rules-literal is retained here with a pointer to the production callsite.
      *
      * @return array<string, mixed>
      */
@@ -528,7 +553,9 @@ final class IngressPrecisionTest extends TestCase
     }
 
     /**
-     * items.*.quantity rules from MarketplaceOrderController::store.
+     * items.*.quantity rules — MIRRORS (does NOT bind to) the inline validator in
+     * MarketplaceOrderController::store
+     * (app/Modules/Marketplace/Presentation/Controllers/MarketplaceOrderController.php).
      *
      * @return array<string, mixed>
      */

@@ -4,56 +4,97 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Loyalty;
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Loyalty\Presentation\Requests\AdjustPointsRequest;
+use App\Modules\Loyalty\Presentation\Requests\CreateEarningRuleRequest;
+use App\Modules\Loyalty\Presentation\Requests\CreateRewardRequest;
+use App\Modules\Loyalty\Presentation\Requests\CreateTierRequest;
+use App\Modules\Loyalty\Presentation\Requests\EnrollMemberRequest;
+use App\Modules\Loyalty\Presentation\Requests\UpdateEarningRuleRequest;
+use App\Modules\Loyalty\Presentation\Requests\UpdateRewardRequest;
+use App\Modules\Loyalty\Presentation\Requests\UpdateTierRequest;
+use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Validator;
 use Tests\TestCase;
 
 /**
  * Phase 4.10 — Loyalty module ingress precision ceiling tests.
  *
+ * These tests bind to the REAL production FormRequest rules (via each
+ * request's rules() method) rather than hand-copied literals, so they FAIL
+ * if someone changes the production decimal scale to the wrong value.
+ *
  * Covers: EarningRule, Reward, Tier, EnrollMember, AdjustPoints requests.
  */
 final class IngressPrecisionTest extends TestCase
 {
-    // ── EarningRule: reward_value (decimal 15,4) ──────────────────────────────
+    use RefreshDatabase;
+
+    /**
+     * Validate a single field's value against the production rules pulled from
+     * the given FormRequest, returning whether validation passed for that field.
+     *
+     * @param  array<string, mixed>  $rules
+     * @param  array<string, mixed>  $payload
+     */
+    private function fieldPasses(array $rules, string $field, array $payload): bool
+    {
+        $this->assertArrayHasKey(
+            $field,
+            $rules,
+            "Field {$field} is missing from the production request rules — the test no longer binds to production."
+        );
+
+        $v = Validator::make($payload, [$field => $rules[$field]]);
+
+        return $v->errors()->get($field) === [];
+    }
+
+    // ── EarningRule: reward_value (decimal 15,4 → 4 dp) ──────────────────────
 
     public function test_earning_rule_reward_value_rejects_5_decimal(): void
     {
-        $rules = ['reward_value' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/']];
-        $v = Validator::make(['reward_value' => '1.12345'], $rules);
+        $rules = (new CreateEarningRuleRequest)->rules();
 
-        $this->assertTrue($v->fails(), 'Expected 1.12345 to fail');
-        $this->assertArrayHasKey('reward_value', $v->errors()->toArray());
+        $this->assertFalse(
+            $this->fieldPasses($rules, 'reward_value', ['reward_value' => '1.12345']),
+            'Expected reward_value=1.12345 to fail (column is decimal 15,4)'
+        );
     }
 
     public function test_earning_rule_reward_value_accepts_4_decimal(): void
     {
-        $rules = ['reward_value' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/']];
-        $v = Validator::make(['reward_value' => '1.1234'], $rules);
+        $rules = (new CreateEarningRuleRequest)->rules();
 
-        $this->assertEmpty($v->errors()->get('reward_value'), 'Expected 1.1234 to pass');
+        $this->assertTrue(
+            $this->fieldPasses($rules, 'reward_value', ['reward_value' => '1.1234']),
+            'Expected reward_value=1.1234 to pass (column is decimal 15,4)'
+        );
     }
 
-    // ── EarningRule: max_earn_per_transaction / max_earn_per_day (money/3) ───
+    // ── EarningRule: max_earn_per_transaction / max_earn_per_day (15,2 → 2 dp) ──
 
     /** @dataProvider earningRuleMoneyFieldsProvider */
-    public function test_earning_rule_money_field_rejects_4_decimal(string $field): void
+    public function test_earning_rule_money_field_rejects_3_decimal(string $field): void
     {
-        $rules = [$field => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/']];
-        $v = Validator::make([$field => '100.1234'], $rules);
+        $rules = (new CreateEarningRuleRequest)->rules();
 
-        $this->assertTrue($v->fails(), "Expected {$field}=100.1234 to fail");
-        $this->assertArrayHasKey($field, $v->errors()->toArray());
+        $this->assertFalse(
+            $this->fieldPasses($rules, $field, [$field => '100.123']),
+            "Expected {$field}=100.123 to fail (column is decimal 15,2)"
+        );
     }
 
     /** @dataProvider earningRuleMoneyFieldsProvider */
-    public function test_earning_rule_money_field_accepts_3_decimal(string $field): void
+    public function test_earning_rule_money_field_accepts_2_decimal(string $field): void
     {
-        $rules = [$field => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/']];
-        $v = Validator::make([$field => '100.123'], $rules);
+        $rules = (new UpdateEarningRuleRequest)->rules();
 
-        $this->assertEmpty(
-            $v->errors()->get($field),
-            "Expected {$field}=100.123 to pass"
+        $this->assertTrue(
+            $this->fieldPasses($rules, $field, [$field => '100.12']),
+            "Expected {$field}=100.12 to pass (column is decimal 15,2)"
         );
     }
 
@@ -71,22 +112,24 @@ final class IngressPrecisionTest extends TestCase
     /** @dataProvider earningRuleConditionAmountsProvider */
     public function test_earning_rule_condition_amount_rejects_4_decimal(string $field): void
     {
-        $rules = ["conditions.{$field}" => ['sometimes', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/']];
-        $v = Validator::make(['conditions' => [$field => '500.1234']], $rules);
+        $rules = (new CreateEarningRuleRequest)->rules();
+        $key = "conditions.{$field}";
 
-        $this->assertTrue($v->fails(), "Expected {$field}=500.1234 to fail");
-        $this->assertTrue($v->errors()->has("conditions.{$field}"));
+        $this->assertFalse(
+            $this->fieldPasses($rules, $key, ['conditions' => [$field => '500.1234']]),
+            "Expected {$key}=500.1234 to fail (JSONB house scale 3)"
+        );
     }
 
     /** @dataProvider earningRuleConditionAmountsProvider */
     public function test_earning_rule_condition_amount_accepts_3_decimal(string $field): void
     {
-        $rules = ["conditions.{$field}" => ['sometimes', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/']];
-        $v = Validator::make(['conditions' => [$field => '500.123']], $rules);
+        $rules = (new CreateEarningRuleRequest)->rules();
+        $key = "conditions.{$field}";
 
-        $this->assertEmpty(
-            $v->errors()->get("conditions.{$field}"),
-            "Expected conditions.{$field}=500.123 to pass"
+        $this->assertTrue(
+            $this->fieldPasses($rules, $key, ['conditions' => [$field => '500.123']]),
+            "Expected {$key}=500.123 to pass (JSONB house scale 3)"
         );
     }
 
@@ -99,27 +142,27 @@ final class IngressPrecisionTest extends TestCase
         ];
     }
 
-    // ── Reward: points_cost, reward_value, max_discount, min_order_value (money/3) ──
+    // ── Reward: points_cost, reward_value, max_discount, min_order_value (15,2 → 2 dp) ──
 
     /** @dataProvider rewardMoneyFieldsProvider */
-    public function test_reward_money_field_rejects_4_decimal(string $field): void
+    public function test_reward_money_field_rejects_3_decimal(string $field): void
     {
-        $rules = [$field => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/']];
-        $v = Validator::make([$field => '250.1234'], $rules);
+        $rules = (new CreateRewardRequest)->rules();
 
-        $this->assertTrue($v->fails(), "Expected {$field}=250.1234 to fail");
-        $this->assertArrayHasKey($field, $v->errors()->toArray());
+        $this->assertFalse(
+            $this->fieldPasses($rules, $field, [$field => '250.123']),
+            "Expected {$field}=250.123 to fail (column is decimal 15,2)"
+        );
     }
 
     /** @dataProvider rewardMoneyFieldsProvider */
-    public function test_reward_money_field_accepts_3_decimal(string $field): void
+    public function test_reward_money_field_accepts_2_decimal(string $field): void
     {
-        $rules = [$field => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/']];
-        $v = Validator::make([$field => '250.123'], $rules);
+        $rules = (new UpdateRewardRequest)->rules();
 
-        $this->assertEmpty(
-            $v->errors()->get($field),
-            "Expected {$field}=250.123 to pass"
+        $this->assertTrue(
+            $this->fieldPasses($rules, $field, [$field => '250.12']),
+            "Expected {$field}=250.12 to pass (column is decimal 15,2)"
         );
     }
 
@@ -134,118 +177,152 @@ final class IngressPrecisionTest extends TestCase
         ];
     }
 
-    // ── Tier: qualification_threshold (money/3) ───────────────────────────────
+    // ── Tier: qualification_threshold (15,2 → 2 dp) ──────────────────────────
 
-    public function test_tier_qualification_threshold_rejects_4_decimal(): void
+    public function test_tier_qualification_threshold_rejects_3_decimal(): void
     {
-        $rules = ['qualification_threshold' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/']];
-        $v = Validator::make(['qualification_threshold' => '1000.1234'], $rules);
+        $rules = (new CreateTierRequest)->rules();
 
-        $this->assertTrue($v->fails(), 'Expected 1000.1234 to fail');
-        $this->assertArrayHasKey('qualification_threshold', $v->errors()->toArray());
+        $this->assertFalse(
+            $this->fieldPasses($rules, 'qualification_threshold', ['qualification_threshold' => '1000.123']),
+            'Expected qualification_threshold=1000.123 to fail (column is decimal 15,2)'
+        );
     }
 
-    public function test_tier_qualification_threshold_accepts_3_decimal(): void
+    public function test_tier_qualification_threshold_accepts_2_decimal(): void
     {
-        $rules = ['qualification_threshold' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/']];
-        $v = Validator::make(['qualification_threshold' => '1000.123'], $rules);
+        $rules = (new UpdateTierRequest)->rules();
 
-        $this->assertEmpty($v->errors()->get('qualification_threshold'), 'Expected 1000.123 to pass');
+        $this->assertTrue(
+            $this->fieldPasses($rules, 'qualification_threshold', ['qualification_threshold' => '1000.12']),
+            'Expected qualification_threshold=1000.12 to pass (column is decimal 15,2)'
+        );
     }
 
-    // ── Tier: earning_multiplier (decimal 5,2) ────────────────────────────────
+    // ── Tier: earning_multiplier (decimal 5,2 → 2 dp) ─────────────────────────
 
     public function test_tier_earning_multiplier_rejects_3_decimal(): void
     {
-        $rules = ['earning_multiplier' => ['required', 'numeric', 'min:1', 'regex:/^\d+(\.\d{1,2})?$/']];
-        $v = Validator::make(['earning_multiplier' => '1.234'], $rules);
+        $rules = (new CreateTierRequest)->rules();
 
-        $this->assertTrue($v->fails(), 'Expected 1.234 to fail');
-        $this->assertArrayHasKey('earning_multiplier', $v->errors()->toArray());
+        $this->assertFalse(
+            $this->fieldPasses($rules, 'earning_multiplier', ['earning_multiplier' => '1.234']),
+            'Expected earning_multiplier=1.234 to fail (column is decimal 5,2)'
+        );
     }
 
     public function test_tier_earning_multiplier_accepts_2_decimal(): void
     {
-        $rules = ['earning_multiplier' => ['required', 'numeric', 'min:1', 'regex:/^\d+(\.\d{1,2})?$/']];
-        $v = Validator::make(['earning_multiplier' => '1.50'], $rules);
+        $rules = (new CreateTierRequest)->rules();
 
-        $this->assertEmpty($v->errors()->get('earning_multiplier'), 'Expected 1.50 to pass');
+        $this->assertTrue(
+            $this->fieldPasses($rules, 'earning_multiplier', ['earning_multiplier' => '1.50']),
+            'Expected earning_multiplier=1.50 to pass (column is decimal 5,2)'
+        );
     }
 
-    // ── Tier: benefits.birthday_bonus_multiplier (multiplier scale 2) ────────
+    // ── Tier: benefits.birthday_bonus_multiplier (JSONB multiplier scale 2) ──
 
     public function test_birthday_bonus_multiplier_rejects_3_decimal(): void
     {
-        $rules = ['benefits.birthday_bonus_multiplier' => ['sometimes', 'numeric', 'min:1', 'regex:/^\d+(\.\d{1,2})?$/']];
-        $v = Validator::make(['benefits' => ['birthday_bonus_multiplier' => '2.123']], $rules);
+        $rules = (new CreateTierRequest)->rules();
+        $key = 'benefits.birthday_bonus_multiplier';
 
-        $this->assertTrue($v->fails(), 'Expected 2.123 to fail');
-        $this->assertTrue($v->errors()->has('benefits.birthday_bonus_multiplier'));
+        $this->assertFalse(
+            $this->fieldPasses($rules, $key, ['benefits' => ['birthday_bonus_multiplier' => '2.123']]),
+            'Expected birthday_bonus_multiplier=2.123 to fail'
+        );
     }
 
     public function test_birthday_bonus_multiplier_accepts_2_decimal(): void
     {
-        $rules = ['benefits.birthday_bonus_multiplier' => ['sometimes', 'numeric', 'min:1', 'regex:/^\d+(\.\d{1,2})?$/']];
-        $v = Validator::make(['benefits' => ['birthday_bonus_multiplier' => '2.50']], $rules);
+        $rules = (new CreateTierRequest)->rules();
+        $key = 'benefits.birthday_bonus_multiplier';
 
-        $this->assertEmpty(
-            $v->errors()->get('benefits.birthday_bonus_multiplier'),
-            'Expected 2.50 to pass'
+        $this->assertTrue(
+            $this->fieldPasses($rules, $key, ['benefits' => ['birthday_bonus_multiplier' => '2.50']]),
+            'Expected birthday_bonus_multiplier=2.50 to pass'
         );
     }
 
-    // ── EnrollMember: welcome_bonus (money/3) ────────────────────────────────
+    // ── EnrollMember: welcome_bonus (15,2 → 2 dp) ────────────────────────────
+    //
+    // EnrollMemberRequest::rules() calls CompanyContext::requireCompany(),
+    // which hits the DB, so we seed a tenant+company and bind the context.
 
-    public function test_welcome_bonus_rejects_4_decimal(): void
+    /** @return array<string, mixed> */
+    private function enrollMemberRules(): array
     {
-        $rules = ['welcome_bonus' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/']];
-        $v = Validator::make(['welcome_bonus' => '100.1234'], $rules);
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
 
-        $this->assertTrue($v->fails(), 'Expected 100.1234 to fail');
-        $this->assertArrayHasKey('welcome_bonus', $v->errors()->toArray());
+        $context = app(CompanyContext::class);
+        $context->setCompanyId($company->id);
+
+        // Construct the request directly with its dependency so rules() resolves
+        // against the bound CompanyContext without triggering auto-validation.
+        return (new EnrollMemberRequest($context))->rules();
     }
 
-    public function test_welcome_bonus_accepts_3_decimal(): void
+    public function test_welcome_bonus_rejects_3_decimal(): void
     {
-        $rules = ['welcome_bonus' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/']];
-        $v = Validator::make(['welcome_bonus' => '100.123'], $rules);
+        $rules = $this->enrollMemberRules();
 
-        $this->assertEmpty($v->errors()->get('welcome_bonus'), 'Expected 100.123 to pass');
+        $this->assertFalse(
+            $this->fieldPasses($rules, 'welcome_bonus', ['welcome_bonus' => '100.123']),
+            'Expected welcome_bonus=100.123 to fail (column is decimal 15,2)'
+        );
     }
 
-    // ── AdjustPoints: points (signed money/3) ────────────────────────────────
-
-    public function test_adjust_points_rejects_4_decimal(): void
+    public function test_welcome_bonus_accepts_2_decimal(): void
     {
-        $rules = ['points' => ['required', 'numeric', 'not_in:0', 'regex:/^-?\d+(\.\d{1,3})?$/']];
-        $v = Validator::make(['points' => '50.1234'], $rules);
+        $rules = $this->enrollMemberRules();
 
-        $this->assertTrue($v->fails(), 'Expected 50.1234 to fail');
-        $this->assertArrayHasKey('points', $v->errors()->toArray());
+        $this->assertTrue(
+            $this->fieldPasses($rules, 'welcome_bonus', ['welcome_bonus' => '100.12']),
+            'Expected welcome_bonus=100.12 to pass (column is decimal 15,2)'
+        );
     }
 
-    public function test_adjust_points_accepts_negative_3_decimal(): void
-    {
-        $rules = ['points' => ['required', 'numeric', 'not_in:0', 'regex:/^-?\d+(\.\d{1,3})?$/']];
-        $v = Validator::make(['points' => '-50.123'], $rules);
+    // ── AdjustPoints: points (signed 15,2 → 2 dp) ────────────────────────────
 
-        $this->assertEmpty($v->errors()->get('points'), 'Expected -50.123 to pass');
+    public function test_adjust_points_rejects_3_decimal(): void
+    {
+        $rules = (new AdjustPointsRequest)->rules();
+
+        $this->assertFalse(
+            $this->fieldPasses($rules, 'points', ['points' => '50.123']),
+            'Expected points=50.123 to fail (column is decimal 15,2)'
+        );
+    }
+
+    public function test_adjust_points_accepts_negative_2_decimal(): void
+    {
+        $rules = (new AdjustPointsRequest)->rules();
+
+        $this->assertTrue(
+            $this->fieldPasses($rules, 'points', ['points' => '-50.12']),
+            'Expected points=-50.12 to pass (column is decimal 15,2)'
+        );
     }
 
     public function test_adjust_points_accepts_positive_integer(): void
     {
-        $rules = ['points' => ['required', 'numeric', 'not_in:0', 'regex:/^-?\d+(\.\d{1,3})?$/']];
-        $v = Validator::make(['points' => '100'], $rules);
+        $rules = (new AdjustPointsRequest)->rules();
 
-        $this->assertEmpty($v->errors()->get('points'), 'Expected 100 to pass');
+        $this->assertTrue(
+            $this->fieldPasses($rules, 'points', ['points' => '100']),
+            'Expected points=100 to pass'
+        );
     }
 
     public function test_adjust_points_rejects_zero(): void
     {
-        $rules = ['points' => ['required', 'numeric', 'not_in:0', 'regex:/^-?\d+(\.\d{1,3})?$/']];
-        $v = Validator::make(['points' => '0'], $rules);
+        $rules = (new AdjustPointsRequest)->rules();
 
-        $this->assertTrue($v->fails(), 'Expected 0 to fail (not_in:0)');
-        $this->assertArrayHasKey('points', $v->errors()->toArray());
+        $this->assertFalse(
+            $this->fieldPasses($rules, 'points', ['points' => '0']),
+            'Expected points=0 to fail (not_in:0)'
+        );
     }
 }

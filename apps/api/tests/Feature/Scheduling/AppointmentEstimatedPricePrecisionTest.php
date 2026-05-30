@@ -13,6 +13,7 @@ use App\Modules\Scheduling\Domain\Bay;
 use App\Modules\Scheduling\Domain\Enums\AppointmentSource;
 use App\Modules\Scheduling\Domain\Enums\AppointmentType;
 use App\Modules\Scheduling\Domain\Enums\WaitType;
+use App\Modules\Scheduling\Presentation\Requests\StoreAppointmentRequest;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -45,68 +46,62 @@ final class AppointmentEstimatedPricePrecisionTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // Ingress validation — regex ceiling for estimated_price
+    // Ingress validation — regex ceiling for estimated_price.
+    //
+    // Binds to the REAL production rules from StoreAppointmentRequest (no DI
+    // dependencies) so these tests FAIL if the production scale changes.
     // -------------------------------------------------------------------------
+
+    /**
+     * Extract the production estimated_price rule from StoreAppointmentRequest.
+     *
+     * @return array<int, mixed>
+     */
+    private function estimatedPriceRule(): array
+    {
+        $rules = (new StoreAppointmentRequest)->rules();
+        $key = 'planned_services.*.estimated_price';
+
+        $this->assertArrayHasKey(
+            $key,
+            $rules,
+            "StoreAppointmentRequest no longer exposes {$key} — the test no longer binds to production."
+        );
+
+        return $rules[$key];
+    }
+
+    private function estimatedPricePasses(?string $value): bool
+    {
+        $data = ['planned_services' => [['estimated_price' => $value]]];
+        $rules = ['planned_services.*.estimated_price' => $this->estimatedPriceRule()];
+
+        return Validator::make($data, $rules)->errors()->get('planned_services.0.estimated_price') === [];
+    }
 
     public function test_validator_accepts_estimated_price_with_three_decimal_places(): void
     {
-        $rules = [
-            'planned_services.*.estimated_price' => ['nullable', 'numeric', 'regex:/^\d+(\.\d{1,3})?$/'],
-        ];
-
-        $data = ['planned_services' => [['estimated_price' => '49.900']]];
-        $v = Validator::make($data, $rules);
-
-        $this->assertFalse($v->fails(), '3-decimal price should pass validation');
+        $this->assertTrue($this->estimatedPricePasses('49.900'), '3-decimal price should pass validation');
     }
 
     public function test_validator_accepts_estimated_price_with_two_decimal_places(): void
     {
-        $rules = [
-            'planned_services.*.estimated_price' => ['nullable', 'numeric', 'regex:/^\d+(\.\d{1,3})?$/'],
-        ];
-
-        $data = ['planned_services' => [['estimated_price' => '49.90']]];
-        $v = Validator::make($data, $rules);
-
-        $this->assertFalse($v->fails(), '2-decimal price should pass validation');
+        $this->assertTrue($this->estimatedPricePasses('49.90'), '2-decimal price should pass validation');
     }
 
     public function test_validator_accepts_null_estimated_price(): void
     {
-        $rules = [
-            'planned_services.*.estimated_price' => ['nullable', 'numeric', 'regex:/^\d+(\.\d{1,3})?$/'],
-        ];
-
-        $data = ['planned_services' => [['estimated_price' => null]]];
-        $v = Validator::make($data, $rules);
-
-        $this->assertFalse($v->fails(), 'Null estimated_price should pass (nullable)');
+        $this->assertTrue($this->estimatedPricePasses(null), 'Null estimated_price should pass (nullable)');
     }
 
     public function test_validator_rejects_estimated_price_with_four_decimal_places(): void
     {
-        $rules = [
-            'planned_services.*.estimated_price' => ['nullable', 'numeric', 'regex:/^\d+(\.\d{1,3})?$/'],
-        ];
-
-        $data = ['planned_services' => [['estimated_price' => '49.9001']]];
-        $v = Validator::make($data, $rules);
-
-        $this->assertTrue($v->fails(), '4-decimal price should fail validation');
-        $this->assertArrayHasKey('planned_services.0.estimated_price', $v->errors()->toArray());
+        $this->assertFalse($this->estimatedPricePasses('49.9001'), '4-decimal price should fail validation');
     }
 
     public function test_validator_rejects_estimated_price_with_eight_decimal_places(): void
     {
-        $rules = [
-            'planned_services.*.estimated_price' => ['nullable', 'numeric', 'regex:/^\d+(\.\d{1,3})?$/'],
-        ];
-
-        $data = ['planned_services' => [['estimated_price' => '49.90000001']]];
-        $v = Validator::make($data, $rules);
-
-        $this->assertTrue($v->fails(), '8-decimal price should fail validation');
+        $this->assertFalse($this->estimatedPricePasses('49.90000001'), '8-decimal price should fail validation');
     }
 
     // -------------------------------------------------------------------------

@@ -135,12 +135,12 @@ class PaymentController extends Controller
             ],
             'allocations.*.amount' => ['required_with:allocations', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
             'withholding_enabled' => ['nullable', 'boolean'],
-            'withholding_rate' => ['nullable', 'numeric', 'min:0', 'max:1', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'withholding_rate' => ['nullable', 'numeric', 'min:0', 'max:1', 'regex:/^\d+(\.\d{1,4})?$/'],
             'withholding_override_reason' => ['nullable', 'string', 'max:500'],
         ], [
             'amount.regex' => 'Amount must have at most 3 decimal places.',
             'allocations.*.amount.regex' => 'Allocation amount must have at most 3 decimal places.',
-            'withholding_rate.regex' => 'Withholding rate must have at most 2 decimal places.',
+            'withholding_rate.regex' => 'Withholding rate must have at most 4 decimal places.',
         ]);
 
         /** @var numeric-string $paymentAmount */

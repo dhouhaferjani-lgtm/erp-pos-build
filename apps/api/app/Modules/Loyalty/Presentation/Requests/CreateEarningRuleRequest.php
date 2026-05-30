@@ -51,8 +51,8 @@ class CreateEarningRuleRequest extends FormRequest
             'reward_type' => ['required', 'string', 'in:fixed,multiplier,percentage'],
             'start_date' => ['nullable', 'date'],
             'end_date' => ['nullable', 'date', 'after:start_date'],
-            'max_earn_per_transaction' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
-            'max_earn_per_day' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'max_earn_per_transaction' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'max_earn_per_day' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
         ];
     }
 
@@ -76,8 +76,8 @@ class CreateEarningRuleRequest extends FormRequest
             'end_date.after' => 'End date must be after start date',
             'conditions.min_purchase_amount.regex' => 'Min purchase amount must not exceed 3 decimal places.',
             'conditions.max_purchase_amount.regex' => 'Max purchase amount must not exceed 3 decimal places.',
-            'max_earn_per_transaction.regex' => 'Max earn per transaction must not exceed 3 decimal places.',
-            'max_earn_per_day.regex' => 'Max earn per day must not exceed 3 decimal places.',
+            'max_earn_per_transaction.regex' => 'Max earn per transaction must not exceed 2 decimal places.',
+            'max_earn_per_day.regex' => 'Max earn per day must not exceed 2 decimal places.',
         ];
     }
 }

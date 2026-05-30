@@ -4,25 +4,46 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Presentation\Requests\AddOrderLineRequest;
 use App\Modules\POS\Presentation\Requests\ModifyOrderLineRequest;
 use App\Modules\POS\Presentation\Requests\StoreReceiptRequest;
 use App\Modules\POS\Presentation\Requests\StoreReturnRequest;
+use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Validator;
 use Tests\TestCase;
 
 /**
  * Phase 4.1 — POS ingress precision ceiling tests.
  *
- * Proves that over-precise values are rejected (regex ceiling) and
- * valid values (at or within scale) are accepted.
+ * These tests bind to the REAL production FormRequest rules (via each
+ * request's rules() method) so they FAIL if someone changes a production
+ * decimal scale to the wrong value. CompanyContext-dependent requests are
+ * constructed with a bound context backed by a seeded tenant + company.
  *
- * Uses Laravel's Validator::make() against the request's rules() directly,
- * so no full HTTP stack or DB is needed.  The CompanyContext dependency is
- * stubbed so rules() can return the decimal-ceiling array in isolation.
+ * The ZReportSync inline-controller validator is covered by a true HTTP
+ * 422 test in ZReportSyncControllerSchema2Test.
  */
 final class IngressPrecisionTest extends TestCase
 {
+    use RefreshDatabase;
+
+    /**
+     * Bind a real CompanyContext (seeded tenant + company) so that
+     * CompanyContext-dependent FormRequests resolve their rules().
+     */
+    private function bindCompanyContext(): CompanyContext
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+
+        $context = app(CompanyContext::class);
+        $context->setCompanyId($company->id);
+
+        return $context;
+    }
     // ── StoreReceiptRequest ───────────────────────────────────────────────────
 
     /**
@@ -299,62 +320,27 @@ final class IngressPrecisionTest extends TestCase
         $this->assertEmpty($errors, 'Expected 4-decimal return quantity to pass');
     }
 
-    // ── ZReportSync opening_cash / expected_cash ──────────────────────────────
-
-    public function test_zreport_sync_rejects_5_decimal_opening_cash(): void
-    {
-        $rules = [
-            'opening_cash' => ['required', 'numeric', 'regex:/^\d+(\.\d{1,4})?$/'],
-        ];
-        $v = Validator::make(['opening_cash' => '100.12345'], $rules);
-
-        $this->assertTrue($v->fails());
-        $this->assertArrayHasKey('opening_cash', $v->errors()->toArray());
-    }
-
-    public function test_zreport_sync_accepts_4_decimal_opening_cash(): void
-    {
-        $rules = [
-            'opening_cash' => ['required', 'numeric', 'regex:/^\d+(\.\d{1,4})?$/'],
-        ];
-        $v = Validator::make(['opening_cash' => '100.1234'], $rules);
-
-        $errors = $v->errors()->get('opening_cash');
-        $this->assertEmpty($errors, 'Expected 4-decimal opening_cash to pass');
-    }
-
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * Extract rules that don't require CompanyContext/DB from StoreReceiptRequest
-     * (the numeric/regex rules only — we skip ScopedExists rules here).
+     * Production rules from StoreReceiptRequest (CompanyContext bound).
      *
      * @return array<string, mixed>
      */
     private function storeReceiptBaseRules(): array
     {
-        return [
-            'lines' => ['required', 'array', 'min:1'],
-            'lines.*.quantity' => ['required', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,4})?$/'],
-            'lines.*.unit_price' => ['required', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
-            'lines.*.discount_amount' => ['nullable', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
-            'lines.*.discount_percent' => ['nullable', 'numeric', 'gte:0', 'lte:100', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'transaction_discount_amount' => ['nullable', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
-            'loyalty_discount_amount' => ['nullable', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
-        ];
+        return (new StoreReceiptRequest($this->bindCompanyContext()))->rules();
     }
 
     /**
-     * Rules including modifier sub-rules (also don't require DB lookups).
+     * StoreReceiptRequest rules already include the modifier sub-rules, so the
+     * "full" variant is identical to the base — both pull from production.
      *
      * @return array<string, mixed>
      */
     private function storeReceiptFullRules(): array
     {
-        return array_merge($this->storeReceiptBaseRules(), [
-            'lines.*.modifiers' => ['nullable', 'array'],
-            'lines.*.modifiers.*.price_adjustment' => ['required', 'numeric', 'regex:/^-?\d+(\.\d{1,3})?$/'],
-        ]);
+        return $this->storeReceiptBaseRules();
     }
 
     /**
@@ -410,42 +396,42 @@ final class IngressPrecisionTest extends TestCase
     }
 
     /**
-     * Minimal AddOrderLineRequest rules (numeric/regex only — no ScopedExists).
+     * Production rules from AddOrderLineRequest (CompanyContext bound).
      *
      * @return array<string, mixed>
      */
     private function addOrderLineRules(): array
     {
-        return [
-            'quantity' => ['required', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,4})?$/'],
-            'unit_price' => ['required', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
-            'tax_rate' => ['required', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'discount_amount' => ['nullable', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
-        ];
+        return (new AddOrderLineRequest($this->bindCompanyContext()))->rules();
     }
 
     /**
-     * ModifyOrderLineRequest numeric/regex rules.
+     * Production rules from ModifyOrderLineRequest (no DI dependencies).
      *
      * @return array<string, mixed>
      */
     private function modifyOrderLineRules(): array
     {
-        return [
-            'quantity' => ['sometimes', 'nullable', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,4})?$/'],
-            'discount_amount' => ['sometimes', 'nullable', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
-        ];
+        return (new ModifyOrderLineRequest)->rules();
     }
 
     /**
-     * StoreReturnRequest line-level quantity rules.
+     * Production line-level quantity rules from StoreReturnRequest
+     * (CompanyContext bound). The test data uses a flat 'quantity' key, so we
+     * extract the line-level quantity rule as a standalone field.
      *
      * @return array<string, mixed>
      */
     private function storeReturnLineRules(): array
     {
-        return [
-            'quantity' => ['required', 'numeric', 'min:0.001', 'regex:/^\d+(\.\d{1,4})?$/'],
-        ];
+        $rules = (new StoreReturnRequest($this->bindCompanyContext()))->rules();
+
+        $this->assertArrayHasKey(
+            'lines.*.quantity',
+            $rules,
+            'StoreReturnRequest no longer exposes lines.*.quantity — the test no longer binds to production.'
+        );
+
+        return ['quantity' => $rules['lines.*.quantity']];
     }
 }

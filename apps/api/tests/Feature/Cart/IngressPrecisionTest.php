@@ -225,12 +225,18 @@ final class IngressPrecisionTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // Validator::make smoke test (no DB required — fast)
+    // Validator::make boundary smoke test (fast, many cases).
+    //
+    // NOTE: this MIRRORS (does NOT bind to) the inline validator in
+    // CatalogCartController::addItem/updateItem
+    // (app/Modules/Cart/Presentation/Controllers/CatalogCartController.php
+    // :177 quantity, :180 unit_price). The production binding is provided by the
+    // HTTP 422 tests above; this is only extra boundary-case coverage.
     // -------------------------------------------------------------------------
 
     public function test_quantity_regex_boundary_conditions_via_validator(): void
     {
-        // Build identical rule arrays to the controller for direct testing
+        // Mirrors CatalogCartController.php:177/:180 — NOT bound to production.
         $rules = [
             'quantity' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,4})?$/'],
             'unit_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],

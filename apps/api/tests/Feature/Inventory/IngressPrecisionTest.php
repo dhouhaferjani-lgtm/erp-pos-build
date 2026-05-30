@@ -350,11 +350,18 @@ final class IngressPrecisionTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // Fast Validator::make boundary checks (no HTTP overhead)
+    // Fast Validator::make boundary checks.
+    //
+    // NOTE: these MIRROR (do NOT bind to) the inline validators in
+    // StockMovementController (app/Modules/Inventory/Presentation/Controllers/
+    // StockMovementController.php :65 quantity, :222 new_quantity). The
+    // production binding is provided by the HTTP 422 tests above; these are only
+    // extra boundary-case coverage.
     // -------------------------------------------------------------------------
 
     public function test_quantity_regex_rules_via_validator(): void
     {
+        // Mirrors StockMovementController.php:65 — NOT bound to production.
         $rules = [
             'quantity' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,4})?$/'],
         ];
@@ -374,6 +381,7 @@ final class IngressPrecisionTest extends TestCase
 
     public function test_new_quantity_zero_is_valid_in_adjust(): void
     {
+        // Mirrors StockMovementController.php:222 — NOT bound to production.
         $rules = [
             'new_quantity' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
         ];

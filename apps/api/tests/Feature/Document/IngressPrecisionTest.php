@@ -4,22 +4,29 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Document;
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
+use App\Modules\Identity\Domain\User;
+use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Validator;
 use Tests\TestCase;
 
 /**
  * Phase 4.2 — Document module ingress precision ceiling tests.
  *
- * Proves that over-precise values are rejected (regex ceiling) and
- * valid values (at or within scale) are accepted.
- *
- * Uses Laravel's Validator::make() against the numeric/regex rules directly,
- * without needing the full FormRequest DI chain (CompanyContext, ScopedExists,
- * vehicle-module toggle, etc.).  The regex rules are the same as those in
- * CreateDocumentRequest / UpdateDocumentRequest / CreditNoteController.
+ * Document-line tests bind to the REAL production rules from
+ * CreateDocumentRequest (CompanyContext bound) so they FAIL if a production
+ * scale changes. The CreditNote tests mirror the inline validator in
+ * CreditNoteController::store() (CreditNoteController.php:148/164/165 etc.) —
+ * that endpoint requires a fully-built source invoice + customer to reach
+ * validation, so a rules-literal is retained here with an explicit pointer to
+ * the production callsite (it does NOT bind to production — see comments).
  */
 final class IngressPrecisionTest extends TestCase
 {
+    use RefreshDatabase;
     // ── Document line quantity (scale 4) ──────────────────────────────────────
 
     /**
@@ -156,9 +163,17 @@ final class IngressPrecisionTest extends TestCase
     }
 
     // ── CreditNoteController: amount (scale 3) ────────────────────────────────
+    //
+    // NOTE: The CreditNote tests below use a rules-literal that MIRRORS (does
+    // NOT bind to) the inline validator in CreditNoteController::store()
+    // (app/Modules/Document/Presentation/Controllers/CreditNoteController.php
+    // :148 amount, :164 unit_price, :165 tax_rate, :153/:163 quantity).
+    // The endpoint needs a fully-built source invoice + customer to reach
+    // validation, so a focused HTTP 422 test was deemed too costly here.
 
     public function test_credit_note_amount_rejects_4_decimal(): void
     {
+        // Mirrors CreditNoteController.php:148 — NOT bound to production.
         $rules = ['amount' => ['required', 'string', 'regex:/^\d+(\.\d{1,3})?$/']];
         $v = Validator::make(['amount' => '100.1234'], $rules);
 
@@ -250,21 +265,41 @@ final class IngressPrecisionTest extends TestCase
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * Numeric/regex rules for a document line (mirrors CreateDocumentRequest &
-     * UpdateDocumentRequest — ScopedExists and required_with are omitted since
-     * those need DB/DI).
+     * Production document-line rules from CreateDocumentRequest (CompanyContext
+     * bound), re-keyed from `lines.*.<field>` to flat `<field>` so the flat
+     * validLineData() payloads exercise them. Binds to production: if a
+     * production line scale changes, these tests fail.
      *
      * @return array<string, mixed>
      */
     private function documentLineRules(): array
     {
-        return [
-            'quantity' => ['required', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,4})?$/'],
-            'unit_price' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
-            'discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'discount_amount' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
-            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
-        ];
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+        $user = User::factory()->create(['tenant_id' => $tenant->id]);
+
+        $context = app(CompanyContext::class);
+        $context->setCompanyId($company->id);
+
+        // CreateDocumentRequest::rules() reads $this->user()->tenant_id, so the
+        // request needs a resolvable authenticated user.
+        $request = new CreateDocumentRequest($context);
+        $request->setUserResolver(fn () => $user);
+
+        $rules = $request->rules();
+
+        $lineRules = [];
+        foreach (['quantity', 'unit_price', 'discount_percent', 'discount_amount', 'tax_rate'] as $field) {
+            $key = "lines.*.{$field}";
+            $this->assertArrayHasKey(
+                $key,
+                $rules,
+                "CreateDocumentRequest no longer exposes {$key} — the test no longer binds to production."
+            );
+            $lineRules[$field] = $rules[$key];
+        }
+
+        return $lineRules;
     }
 
     /**

@@ -25,7 +25,8 @@ class ValidateCouponRequest extends FormRequest
             'items' => ['sometimes', 'array'],
             'items.*.product_id' => ['required_with:items', 'string', 'uuid'],
             'items.*.category_id' => ['nullable', 'string', 'uuid'],
-            'items.*.quantity' => ['required_with:items', 'numeric', 'min:0.0001', 'regex:/^\d+(\.\d{1,4})?$/'],
+            // F-COUPON-QTY (fractional coupon quantities) deferred — requires making the coupon consumer chain decimal-aware; out of scope for the precision ingress sweep.
+            'items.*.quantity' => ['required', 'integer', 'min:1'],
             'items.*.unit_price' => ['required_with:items', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'items.*.line_total' => ['required_with:items', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
         ];
@@ -36,7 +37,6 @@ class ValidateCouponRequest extends FormRequest
     {
         return [
             'subtotal.regex' => 'Subtotal must not exceed 3 decimal places.',
-            'items.*.quantity.regex' => 'Item quantity must not exceed 4 decimal places.',
             'items.*.unit_price.regex' => 'Item unit price must not exceed 3 decimal places.',
             'items.*.line_total.regex' => 'Item line total must not exceed 3 decimal places.',
         ];

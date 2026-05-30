@@ -4,21 +4,46 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Catalog;
 
+use App\Modules\Catalog\Presentation\Requests\StoreCompositeItemRequest;
+use App\Modules\Catalog\Presentation\Requests\StoreModifierRequest;
+use App\Modules\Catalog\Presentation\Requests\StoreRecipeLineRequest;
+use App\Modules\Catalog\Presentation\Requests\StoreRecipeRequest;
 use App\Modules\Catalog\Presentation\Requests\StoreVariantRequest;
+use App\Modules\Catalog\Presentation\Requests\UpdateCompositeItemRequest;
+use App\Modules\Catalog\Presentation\Requests\UpdateRecipeRequest;
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Validator;
 use Tests\TestCase;
 
 /**
  * Phase 4.11 — Catalog ingress precision ceiling tests.
  *
- * Validates the decimal-ceiling regex rules on Catalog request classes.
- * Requests that depend on CompanyContext are tested using rules() extracted
- * with a stubbed context; purely structural requests are called directly.
- *
- * Uses Validator::make() against rules() directly — no HTTP stack needed.
+ * These tests bind to the REAL production FormRequest rules (via each
+ * request's rules() method) so they FAIL if someone changes a production
+ * decimal scale to the wrong value. Requests that depend on CompanyContext
+ * are constructed with a bound context backed by a seeded tenant + company.
  */
 final class IngressPrecisionTest extends TestCase
 {
+    use RefreshDatabase;
+
+    /**
+     * Bind a real CompanyContext (seeded tenant + company) so that
+     * CompanyContext-dependent FormRequests resolve their rules().
+     */
+    private function bindCompanyContext(): CompanyContext
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+
+        $context = app(CompanyContext::class);
+        $context->setCompanyId($company->id);
+
+        return $context;
+    }
     // ── StoreVariantRequest ───────────────────────────────────────────────────
 
     public function test_store_variant_rejects_5_decimal_price_adjustment(): void
@@ -312,15 +337,13 @@ final class IngressPrecisionTest extends TestCase
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * Extract numeric/regex rules from StoreRecipeRequest without CompanyContext.
+     * Production rules from StoreRecipeRequest (CompanyContext bound).
      *
      * @return array<string, mixed>
      */
     private function catalogRecipeRules(): array
     {
-        return [
-            'yield_quantity' => ['sometimes', 'numeric', 'min:0.0001', 'regex:/^\d+(\.\d{1,4})?$/'],
-        ];
+        return (new StoreRecipeRequest($this->bindCompanyContext()))->rules();
     }
 
     /**
@@ -328,54 +351,37 @@ final class IngressPrecisionTest extends TestCase
      */
     private function catalogUpdateRecipeRules(): array
     {
-        return [
-            'yield_quantity' => ['sometimes', 'numeric', 'min:0.0001', 'regex:/^\d+(\.\d{1,4})?$/'],
-        ];
+        return (new UpdateRecipeRequest($this->bindCompanyContext()))->rules();
     }
 
     /**
-     * Numeric/regex rules from StoreRecipeLineRequest (skips ScopedExists).
+     * Production rules from StoreRecipeLineRequest (CompanyContext bound).
      *
      * @return array<string, mixed>
      */
     private function catalogRecipeLineRules(): array
     {
-        return [
-            'component_id' => ['required', 'uuid'],
-            'quantity' => ['required', 'numeric', 'min:0.0001', 'regex:/^\d+(\.\d{1,4})?$/'],
-            'wastage_percent' => ['sometimes', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
-        ];
+        return (new StoreRecipeLineRequest($this->bindCompanyContext()))->rules();
     }
 
     /**
-     * Numeric/regex rules from StoreModifierRequest (skips ScopedExists).
+     * Production rules from StoreModifierRequest (CompanyContext bound).
      *
      * @return array<string, mixed>
      */
     private function catalogModifierRules(): array
     {
-        return [
-            'code' => ['required', 'string', 'max:100'],
-            'name' => ['required', 'string', 'max:255'],
-            'price_adjustment' => ['sometimes', 'numeric', 'regex:/^-?\d+(\.\d{1,4})?$/'],
-            'component_quantity' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
-        ];
+        return (new StoreModifierRequest($this->bindCompanyContext()))->rules();
     }
 
     /**
-     * Numeric/regex rules from StoreCompositeItemRequest (skips Rule::unique / ScopedExists).
+     * Production rules from StoreCompositeItemRequest (CompanyContext bound).
      *
      * @return array<string, mixed>
      */
     private function catalogCompositeRules(): array
     {
-        return [
-            'code' => ['required', 'string', 'max:100'],
-            'name' => ['required', 'string', 'max:255'],
-            'base_price' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
-            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'manual_cost' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
-        ];
+        return (new StoreCompositeItemRequest($this->bindCompanyContext()))->rules();
     }
 
     /**
@@ -383,10 +389,6 @@ final class IngressPrecisionTest extends TestCase
      */
     private function catalogUpdateCompositeRules(): array
     {
-        return [
-            'base_price' => ['sometimes', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
-            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'manual_cost' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
-        ];
+        return (new UpdateCompositeItemRequest($this->bindCompanyContext()))->rules();
     }
 }
