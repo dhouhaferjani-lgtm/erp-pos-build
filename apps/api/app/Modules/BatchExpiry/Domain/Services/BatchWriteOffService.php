@@ -91,6 +91,7 @@ final class BatchWriteOffService
                         quantity: $quantity,
                         tenantId: (string) $batch->tenant_id,
                         companyId: (string) $batch->company_id,
+                        currency: $company->currency,
                     ),
                     reason: $movementReason,
                     movementId: $movement->id,
@@ -126,6 +127,7 @@ final class BatchWriteOffService
         string $quantity,
         string $tenantId,
         string $companyId,
+        string $currency,
     ): string {
         $product = Product::query()
             ->where('tenant_id', $tenantId)
@@ -139,6 +141,9 @@ final class BatchWriteOffService
         $unitCost = (string) ($product->weighted_average_cost ?? $product->cost_price ?? '0.00');
         /** @var numeric-string $quantity */
 
-        return bcmul($quantity, $unitCost, $this->scaleResolver->getScale());
+        // Resolve scale from the company's own currency (context-safe AND
+        // fiscally correct: EUR→2, TND→3) so a service-direct caller (queue job /
+        // cross-module orchestrator) does not depend on a bound CompanyContext.
+        return bcmul($quantity, $unitCost, $this->scaleResolver->getScale($currency));
     }
 }

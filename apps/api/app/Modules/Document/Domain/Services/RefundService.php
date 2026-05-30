@@ -221,7 +221,10 @@ class RefundService
                 ]);
             }
 
-            $scale = $this->scaleResolver->getScale();
+            // Resolve scale from the credited invoice's own currency so this
+            // never depends on a bound CompanyContext (context-safe AND
+            // fiscally correct: EUR→2, TND→3).
+            $scale = $this->scaleResolver->getScale($invoice->currency);
             $subtotal = '0.00';
             $taxAmount = '0.00';
             $total = '0.00';
@@ -331,7 +334,7 @@ class RefundService
             ->where('type', DocumentType::CreditNote)
             ->get();
 
-        $scale = $this->scaleResolver->getScale();
+        $scale = $this->scaleResolver->getScale($invoice->currency);
         $totalCredited = '0.00';
         foreach ($creditNotes as $cn) {
             $totalCredited = bcadd($totalCredited, $cn->total ?? '0.00', $scale);

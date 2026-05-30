@@ -29,27 +29,22 @@ class CartConversionService
         private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
-    private function scale(): int
-    {
-        return $this->scaleResolver->getScale();
-    }
-
     /**
      * Multiply a quantity (stored at scale 4) by a unit price and round the
      * MONEY result to the currency boundary scale.
      *
-     * The intermediate uses scale()+1 so the 4th quantity decimal survives the
+     * The intermediate uses $scale+1 so the 4th quantity decimal survives the
      * multiply; the single boundary rounding happens via CurrencyScale::bcformat.
      *
      * @param  numeric-string  $quantity
      * @param  numeric-string  $unitPrice
      * @return numeric-string
      */
-    private function lineTotal(string $quantity, string $unitPrice): string
+    private function lineTotal(string $quantity, string $unitPrice, int $scale): string
     {
-        $intermediate = bcmul($quantity, $unitPrice, $this->scale() + 1);
+        $intermediate = bcmul($quantity, $unitPrice, $scale + 1);
 
-        return CurrencyScale::bcformat($intermediate, $this->scale());
+        return CurrencyScale::bcformat($intermediate, $scale);
     }
 
     /**
@@ -62,6 +57,10 @@ class CartConversionService
     {
         return DB::transaction(function () use ($cart, $itemIds): array {
             $company = $this->companyContext->requireCompany();
+            // Resolve scale from the company's own currency so this never
+            // depends on a separately-bound CompanyContext binding inside the
+            // resolver (context-safe AND fiscally correct: EUR→2, TND→3).
+            $scale = $this->scaleResolver->getScale($company->currency);
             $items = CatalogCartItem::whereIn('id', $itemIds)
                 ->where('cart_id', $cart->id)
                 ->get();
@@ -100,15 +99,15 @@ class CartConversionService
                     DocumentType::PurchaseOrder,
                 );
 
-                $subtotal = CurrencyScale::bcformat('0', $this->scale());
+                $subtotal = CurrencyScale::bcformat('0', $scale);
                 foreach ($groupItems as $item) {
                     if ($item->unit_price !== null) {
                         /** @var numeric-string $qty */
                         $qty = (string) $item->quantity;
                         /** @var numeric-string $unitPrice */
                         $unitPrice = (string) $item->unit_price;
-                        $lineTotal = $this->lineTotal($qty, $unitPrice);
-                        $subtotal = bcadd($subtotal, $lineTotal, $this->scale());
+                        $lineTotal = $this->lineTotal($qty, $unitPrice, $scale);
+                        $subtotal = bcadd($subtotal, $lineTotal, $scale);
                     }
                 }
 
@@ -136,8 +135,8 @@ class CartConversionService
                     /** @var numeric-string $itemUnitPrice */
                     $itemUnitPrice = (string) ($item->unit_price ?? '0.000');
                     $lineTotal = $item->unit_price !== null
-                        ? $this->lineTotal($itemQty, $itemUnitPrice)
-                        : CurrencyScale::bcformat('0', $this->scale());
+                        ? $this->lineTotal($itemQty, $itemUnitPrice, $scale)
+                        : CurrencyScale::bcformat('0', $scale);
 
                     DocumentLine::create([
                         'document_id' => $document->id,
@@ -178,6 +177,8 @@ class CartConversionService
             $customer = Partner::where('tenant_id', $company->tenant_id)
                 ->where('company_id', $company->id)
                 ->findOrFail($customerId);
+            // Resolve scale from the company's own currency (context-safe).
+            $scale = $this->scaleResolver->getScale($company->currency);
             $items = CatalogCartItem::whereIn('id', $itemIds)
                 ->where('cart_id', $cart->id)
                 ->get();
@@ -188,15 +189,15 @@ class CartConversionService
                 DocumentType::SalesOrder,
             );
 
-            $subtotal = CurrencyScale::bcformat('0', $this->scale());
+            $subtotal = CurrencyScale::bcformat('0', $scale);
             foreach ($items as $item) {
                 if ($item->unit_price !== null) {
                     /** @var numeric-string $soQty */
                     $soQty = (string) $item->quantity;
                     /** @var numeric-string $soPrice */
                     $soPrice = (string) $item->unit_price;
-                    $lineTotal = $this->lineTotal($soQty, $soPrice);
-                    $subtotal = bcadd($subtotal, $lineTotal, $this->scale());
+                    $lineTotal = $this->lineTotal($soQty, $soPrice, $scale);
+                    $subtotal = bcadd($subtotal, $lineTotal, $scale);
                 }
             }
 
@@ -224,8 +225,8 @@ class CartConversionService
                 /** @var numeric-string $soLinePrice */
                 $soLinePrice = (string) ($item->unit_price ?? '0.000');
                 $lineTotal = $item->unit_price !== null
-                    ? $this->lineTotal($soLineQty, $soLinePrice)
-                    : CurrencyScale::bcformat('0', $this->scale());
+                    ? $this->lineTotal($soLineQty, $soLinePrice, $scale)
+                    : CurrencyScale::bcformat('0', $scale);
 
                 DocumentLine::create([
                     'document_id' => $document->id,

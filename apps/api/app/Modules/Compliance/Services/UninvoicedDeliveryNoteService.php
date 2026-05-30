@@ -36,6 +36,22 @@ class UninvoicedDeliveryNoteService
     ) {}
 
     /**
+     * Resolve the monetary scale from a company's own currency.
+     *
+     * This service is invoked from year-end reporting/adjustment paths that may
+     * run outside an HTTP request (console commands / scheduled jobs), where no
+     * CompanyContext is bound. Passing the company currency explicitly is both
+     * context-safe AND fiscally correct (EUR→2, TND→3).
+     */
+    private function scaleFor(string $companyId): int
+    {
+        /** @var Company $company */
+        $company = Company::findOrFail($companyId);
+
+        return $this->scaleResolver->getScale($company->currency);
+    }
+
+    /**
      * Get all uninvoiced delivery notes for a company.
      *
      * @return array<int, array{id: string, document_number: string, document_date: string, partner_id: string, partner_name: string, subtotal: string, tax_amount: string, total: string}>
@@ -100,7 +116,7 @@ class UninvoicedDeliveryNoteService
     ): array {
         $dns = $this->getUninvoicedDeliveryNotes($companyId, $fromDate, $toDate);
 
-        $scale = $this->scaleResolver->getScale();
+        $scale = $this->scaleFor($companyId);
 
         /** @var numeric-string $subtotal */
         $subtotal = '0.00';
@@ -142,7 +158,7 @@ class UninvoicedDeliveryNoteService
         $dns = $this->getUninvoicedDeliveryNotes($companyId, $fromDate, $toDate);
         $totals = $this->calculateUninvoicedTotals($companyId, $fromDate, $toDate);
 
-        $scale = $this->scaleResolver->getScale();
+        $scale = $this->scaleFor($companyId);
 
         // Group by partner
         /** @var array<string, array{partner_id: string, partner_name: string, subtotal: string, tax_amount: string, total: string, count: int, delivery_notes: list<mixed>}> $byPartner */
@@ -207,7 +223,7 @@ class UninvoicedDeliveryNoteService
         $zeroAmount = '0.00';
 
         // No adjustment needed if no uninvoiced DNs
-        if (bccomp($totals['total'], $zeroAmount, $this->scaleResolver->getScale()) === 0) { // @phpstan-ignore argument.type
+        if (bccomp($totals['total'], $zeroAmount, $this->scaleFor($companyId)) === 0) { // @phpstan-ignore argument.type
             return null;
         }
 
