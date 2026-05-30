@@ -21,6 +21,8 @@ use App\Modules\Company\Presentation\Requests\UpdateCompanyRequest;
 use App\Modules\Company\Presentation\Requests\UpdateReceiptSettingsRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -32,6 +34,7 @@ class CompanyController extends Controller
     public function __construct(
         private readonly ChartOfAccountsService $chartOfAccountsService,
         private readonly CompanyTaxStatusValidationService $taxStatusValidationService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     /**
@@ -335,6 +338,11 @@ class CompanyController extends Controller
         // Get current settings and merge with updates
         $currentSettings = $company->getReservationSettings();
 
+        // Resolve decimal scale from the company's currency (no CompanyContext bind required)
+        /** @var string $companyCurrency */
+        $companyCurrency = $company->currency;
+        $scale = $this->scaleResolver->getScale($companyCurrency);
+
         $newSettings = new ReservationSettings(
             // Existing fields
             salesOrderExpiryDays: $validated['sales_order_expiry_days'] ?? $currentSettings->salesOrderExpiryDays,
@@ -351,10 +359,10 @@ class CompanyController extends Controller
 
             // Refund-policy: manager override
             managerOverrideThresholdAmount: isset($validated['manager_override_threshold_amount'])
-                ? number_format((float) $validated['manager_override_threshold_amount'], 2, '.', '')
+                ? CurrencyScale::bcformatStrict((string) $validated['manager_override_threshold_amount'], $scale)
                 : $currentSettings->managerOverrideThresholdAmount,
             managerOverrideThresholdPercent: isset($validated['manager_override_threshold_percent'])
-                ? number_format((float) $validated['manager_override_threshold_percent'], 2, '.', '')
+                ? CurrencyScale::bcformatStrict((string) $validated['manager_override_threshold_percent'], $scale)
                 : $currentSettings->managerOverrideThresholdPercent,
             managerOverrideRequiredForNoReceipt: $validated['manager_override_required_for_no_receipt'] ?? $currentSettings->managerOverrideRequiredForNoReceipt,
 
@@ -370,7 +378,7 @@ class CompanyController extends Controller
             // Refund-policy: daily caps
             dailyRefundCapPerCashier: array_key_exists('daily_refund_cap_per_cashier', $validated)
                 ? (isset($validated['daily_refund_cap_per_cashier'])
-                    ? number_format((float) $validated['daily_refund_cap_per_cashier'], 2, '.', '')
+                    ? CurrencyScale::bcformatStrict((string) $validated['daily_refund_cap_per_cashier'], $scale)
                     : null)
                 : $currentSettings->dailyRefundCapPerCashier,
             dailyRefundCapOverrideAllowed: $validated['daily_refund_cap_override_allowed'] ?? $currentSettings->dailyRefundCapOverrideAllowed,
@@ -394,14 +402,14 @@ class CompanyController extends Controller
 
             // Refund-policy: goodwill controls
             goodwillNamedCustomerThreshold: isset($validated['goodwill_named_customer_threshold'])
-                ? number_format((float) $validated['goodwill_named_customer_threshold'], 2, '.', '')
+                ? CurrencyScale::bcformatStrict((string) $validated['goodwill_named_customer_threshold'], $scale)
                 : $currentSettings->goodwillNamedCustomerThreshold,
             goodwillFourEyesThreshold: isset($validated['goodwill_four_eyes_threshold'])
-                ? number_format((float) $validated['goodwill_four_eyes_threshold'], 2, '.', '')
+                ? CurrencyScale::bcformatStrict((string) $validated['goodwill_four_eyes_threshold'], $scale)
                 : $currentSettings->goodwillFourEyesThreshold,
             goodwillDailyIssuanceCapPerUser: array_key_exists('goodwill_daily_issuance_cap_per_user', $validated)
                 ? (isset($validated['goodwill_daily_issuance_cap_per_user'])
-                    ? number_format((float) $validated['goodwill_daily_issuance_cap_per_user'], 2, '.', '')
+                    ? CurrencyScale::bcformatStrict((string) $validated['goodwill_daily_issuance_cap_per_user'], $scale)
                     : null)
                 : $currentSettings->goodwillDailyIssuanceCapPerUser,
             goodwillBearerDefaultOff: $validated['goodwill_bearer_default_off'] ?? $currentSettings->goodwillBearerDefaultOff,

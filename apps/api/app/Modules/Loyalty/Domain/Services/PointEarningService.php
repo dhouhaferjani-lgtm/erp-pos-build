@@ -8,6 +8,8 @@ use App\Modules\Loyalty\Domain\Entities\EarningRule;
 use App\Modules\Loyalty\Domain\Entities\Enrollment;
 use App\Modules\Loyalty\Domain\Enums\EarningRuleType;
 use App\Modules\Loyalty\Domain\ValueObjects\PointsAmount;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Carbon;
 
 /**
@@ -18,6 +20,10 @@ use Illuminate\Support\Carbon;
  */
 final readonly class PointEarningService
 {
+    public function __construct(
+        private CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
     /**
      * Calculate points earned for a transaction
      *
@@ -69,20 +75,34 @@ final readonly class PointEarningService
 
         // Check minimum purchase amount
         if (isset($conditions['min_purchase_amount'])) {
-            $minAmount = (float) $conditions['min_purchase_amount'];
-            $transactionAmount = (float) ($transactionData['amount'] ?? 0);
+            /** @var numeric-string $minAmount */
+            $minAmount = (string) $conditions['min_purchase_amount'];
+            // Use number_format to prevent scientific notation from float->string cast
+            $transactionAmount = number_format(
+                (float) ($transactionData['amount'] ?? 0),
+                $this->scaleResolver->getScale() + 4,
+                '.',
+                '',
+            );
 
-            if ($transactionAmount < $minAmount) {
+            if (bccomp($transactionAmount, $minAmount, $this->scaleResolver->getScale() + 4) < 0) {
                 return false;
             }
         }
 
         // Check maximum purchase amount
         if (isset($conditions['max_purchase_amount'])) {
-            $maxAmount = (float) $conditions['max_purchase_amount'];
-            $transactionAmount = (float) ($transactionData['amount'] ?? 0);
+            /** @var numeric-string $maxAmount */
+            $maxAmount = (string) $conditions['max_purchase_amount'];
+            // Use number_format to prevent scientific notation from float->string cast
+            $transactionAmount = number_format(
+                (float) ($transactionData['amount'] ?? 0),
+                $this->scaleResolver->getScale() + 4,
+                '.',
+                '',
+            );
 
-            if ($transactionAmount > $maxAmount) {
+            if (bccomp($transactionAmount, $maxAmount, $this->scaleResolver->getScale() + 4) > 0) {
                 return false;
             }
         }
@@ -176,14 +196,20 @@ final readonly class PointEarningService
             return $calculatedPoints;
         }
 
-        $dailyCap = (float) $rule->max_earn_per_day;
-        $remaining = max(0, $dailyCap - $alreadyEarnedToday);
+        $scale = $this->scaleResolver->getScale();
+        /** @var numeric-string $dailyCap */
+        $dailyCap = (string) $rule->max_earn_per_day;
+        // Use number_format to prevent scientific notation from float->string cast
+        $alreadyEarned = number_format($alreadyEarnedToday, $scale + 4, '.', '');
+        $remaining = bcsub($dailyCap, $alreadyEarned, $scale + 4);
 
-        if ($remaining <= 0) {
+        if (bccomp($remaining, '0', $scale + 4) <= 0) {
             return PointsAmount::zero();
         }
 
-        return $calculatedPoints->min(PointsAmount::fromNumeric($remaining));
+        return $calculatedPoints->min(
+            PointsAmount::fromNumeric((float) CurrencyScale::bcformat($remaining, $scale))
+        );
     }
 
     /**
@@ -193,16 +219,20 @@ final readonly class PointEarningService
      */
     private function calculateBasePoints(EarningRule $rule, array $transactionData): PointsAmount
     {
-        $rewardValue = (float) $rule->reward_value;
+        $rewardValue = (string) $rule->reward_value;
 
         return match ($rule->rule_type) {
             EarningRuleType::Spend => $this->calculateSpendPoints($rewardValue, $transactionData),
             EarningRuleType::Item => $this->calculateItemPoints($rewardValue, $rule, $transactionData),
             EarningRuleType::Category => $this->calculateCategoryPoints($rewardValue, $rule, $transactionData),
             EarningRuleType::Quantity => $this->calculateQuantityPoints($rewardValue, $transactionData),
-            EarningRuleType::Visit => PointsAmount::fromNumeric($rewardValue),
+            EarningRuleType::Visit => PointsAmount::fromNumeric(
+                (float) CurrencyScale::bcformat($rewardValue, $this->scaleResolver->getScale())
+            ),
             EarningRuleType::Threshold => $this->calculateThresholdPoints($rewardValue, $rule, $transactionData),
-            EarningRuleType::Time => PointsAmount::fromNumeric($rewardValue),
+            EarningRuleType::Time => PointsAmount::fromNumeric(
+                (float) CurrencyScale::bcformat($rewardValue, $this->scaleResolver->getScale())
+            ),
         };
     }
 
@@ -211,11 +241,16 @@ final readonly class PointEarningService
      *
      * @param  array<string, mixed>  $transactionData
      */
-    private function calculateSpendPoints(float $rewardValue, array $transactionData): PointsAmount
+    private function calculateSpendPoints(string $rewardValue, array $transactionData): PointsAmount
     {
-        $amount = (float) ($transactionData['amount'] ?? 0);
+        $scale = $this->scaleResolver->getScale();
+        // Use number_format to prevent scientific notation from float->string cast
+        $rawAmount = $transactionData['amount'] ?? '0';
+        $amount = number_format((float) $rawAmount, $scale + 4, '.', '');
+        /** @var numeric-string $rewardValue */
+        $intermediate = bcmul($amount, $rewardValue, $scale + 4);
 
-        return PointsAmount::fromNumeric($amount * $rewardValue);
+        return PointsAmount::fromNumeric((float) CurrencyScale::bcformat($intermediate, $scale));
     }
 
     /**
@@ -223,7 +258,7 @@ final readonly class PointEarningService
      *
      * @param  array<string, mixed>  $transactionData
      */
-    private function calculateItemPoints(float $rewardValue, EarningRule $rule, array $transactionData): PointsAmount
+    private function calculateItemPoints(string $rewardValue, EarningRule $rule, array $transactionData): PointsAmount
     {
         $productIds = $rule->conditions['product_ids'] ?? [];
         $items = $transactionData['items'] ?? [];
@@ -236,7 +271,11 @@ final readonly class PointEarningService
             }
         }
 
-        return PointsAmount::fromNumeric($matchingQuantity * $rewardValue);
+        $scale = $this->scaleResolver->getScale();
+        /** @var numeric-string $rewardValue */
+        $intermediate = bcmul((string) $matchingQuantity, $rewardValue, $scale + 4);
+
+        return PointsAmount::fromNumeric((float) CurrencyScale::bcformat($intermediate, $scale));
     }
 
     /**
@@ -244,7 +283,7 @@ final readonly class PointEarningService
      *
      * @param  array<string, mixed>  $transactionData
      */
-    private function calculateCategoryPoints(float $rewardValue, EarningRule $rule, array $transactionData): PointsAmount
+    private function calculateCategoryPoints(string $rewardValue, EarningRule $rule, array $transactionData): PointsAmount
     {
         $categoryIds = $rule->conditions['category_ids'] ?? [];
         $items = $transactionData['items'] ?? [];
@@ -257,7 +296,11 @@ final readonly class PointEarningService
             }
         }
 
-        return PointsAmount::fromNumeric($matchingQuantity * $rewardValue);
+        $scale = $this->scaleResolver->getScale();
+        /** @var numeric-string $rewardValue */
+        $intermediate = bcmul((string) $matchingQuantity, $rewardValue, $scale + 4);
+
+        return PointsAmount::fromNumeric((float) CurrencyScale::bcformat($intermediate, $scale));
     }
 
     /**
@@ -265,11 +308,14 @@ final readonly class PointEarningService
      *
      * @param  array<string, mixed>  $transactionData
      */
-    private function calculateQuantityPoints(float $rewardValue, array $transactionData): PointsAmount
+    private function calculateQuantityPoints(string $rewardValue, array $transactionData): PointsAmount
     {
         $totalQuantity = $this->getTotalQuantity($transactionData);
+        $scale = $this->scaleResolver->getScale();
+        /** @var numeric-string $rewardValue */
+        $intermediate = bcmul((string) $totalQuantity, $rewardValue, $scale + 4);
 
-        return PointsAmount::fromNumeric($totalQuantity * $rewardValue);
+        return PointsAmount::fromNumeric((float) CurrencyScale::bcformat($intermediate, $scale));
     }
 
     /**
@@ -277,13 +323,25 @@ final readonly class PointEarningService
      *
      * @param  array<string, mixed>  $transactionData
      */
-    private function calculateThresholdPoints(float $rewardValue, EarningRule $rule, array $transactionData): PointsAmount
+    private function calculateThresholdPoints(string $rewardValue, EarningRule $rule, array $transactionData): PointsAmount
     {
-        $minAmount = (float) ($rule->conditions['min_purchase_amount'] ?? 0);
-        $transactionAmount = (float) ($transactionData['amount'] ?? 0);
+        /** @var numeric-string $minAmount */
+        $minAmount = (string) ($rule->conditions['min_purchase_amount'] ?? '0');
+        // Use number_format to prevent scientific notation from float->string cast
+        $transactionAmount = number_format(
+            (float) ($transactionData['amount'] ?? 0),
+            $this->scaleResolver->getScale() + 4,
+            '.',
+            '',
+        );
 
-        if ($transactionAmount >= $minAmount) {
-            return PointsAmount::fromNumeric($rewardValue);
+        // Use bccomp for decimal comparison (no float cast)
+        if (bccomp($transactionAmount, $minAmount, $this->scaleResolver->getScale() + 4) >= 0) {
+            $scale = $this->scaleResolver->getScale();
+
+            return PointsAmount::fromNumeric(
+                (float) CurrencyScale::bcformat($rewardValue, $scale)
+            );
         }
 
         return PointsAmount::zero();
@@ -300,9 +358,14 @@ final readonly class PointEarningService
             return $points;
         }
 
-        $multiplier = (float) $tier->earning_multiplier;
+        $scale = $this->scaleResolver->getScale();
+        /** @var numeric-string $multiplier */
+        $multiplier = (string) $tier->earning_multiplier;
+        // Use number_format to prevent scientific notation from float->string cast
+        $pointsStr = number_format($points->value, $scale + 4, '.', '');
+        $intermediate = bcmul($pointsStr, $multiplier, $scale + 4);
 
-        return $points->multiply($multiplier);
+        return PointsAmount::fromNumeric((float) CurrencyScale::bcformat($intermediate, $scale));
     }
 
     /**
@@ -314,7 +377,10 @@ final readonly class PointEarningService
             return $points;
         }
 
-        $cap = PointsAmount::fromNumeric((float) $rule->max_earn_per_transaction);
+        $scale = $this->scaleResolver->getScale();
+        $cap = PointsAmount::fromNumeric(
+            (float) CurrencyScale::bcformat((string) $rule->max_earn_per_transaction, $scale)
+        );
 
         return $points->min($cap);
     }

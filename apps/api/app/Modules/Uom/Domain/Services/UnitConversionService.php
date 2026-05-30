@@ -7,6 +7,7 @@ namespace App\Modules\Uom\Domain\Services;
 use App\Modules\Uom\Domain\Entities\Unit;
 use App\Modules\Uom\Domain\Enums\RoundingMethod;
 use App\Modules\Uom\Domain\Exceptions\IncompatibleUnitsException;
+use App\Shared\Domain\QuantityScale;
 
 class UnitConversionService
 {
@@ -71,22 +72,16 @@ class UnitConversionService
     }
 
     /**
-     * Round value according to rounding method
+     * Round value according to rounding method using bcmath (no float intermediary).
      */
     private function round(string $value, int $decimalPlaces, RoundingMethod $method): string
     {
-        /** @var numeric-string $multiplier */
-        $multiplier = bcpow('10', (string) $decimalPlaces, 0);
-        /** @var numeric-string $numericValue */
-        $numericValue = $value;
-        $scaled = bcmul($numericValue, $multiplier, 10);
-
-        $rounded = match ($method) {
-            RoundingMethod::HalfUp => round((float) $scaled),
-            RoundingMethod::Floor => floor((float) $scaled),
-            RoundingMethod::Ceil => ceil((float) $scaled),
+        $methodStr = match ($method) {
+            RoundingMethod::HalfUp => QuantityScale::HALF_UP,
+            RoundingMethod::Floor => QuantityScale::FLOOR,
+            RoundingMethod::Ceil => QuantityScale::CEIL,
         };
 
-        return bcdiv((string) $rounded, $multiplier, $decimalPlaces);
+        return QuantityScale::round($value, $decimalPlaces, $methodStr);
     }
 }

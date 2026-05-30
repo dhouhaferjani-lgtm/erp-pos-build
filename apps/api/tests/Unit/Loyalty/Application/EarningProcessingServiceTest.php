@@ -16,6 +16,7 @@ use App\Modules\Loyalty\Domain\Repositories\EarningRuleRepositoryInterface;
 use App\Modules\Loyalty\Domain\Repositories\EnrollmentRepositoryInterface;
 use App\Modules\Loyalty\Domain\Repositories\TransactionRepositoryInterface;
 use App\Modules\Loyalty\Domain\Services\PointEarningService;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -47,8 +48,22 @@ final class EarningProcessingServiceTest extends TestCase
         $this->earningRuleRepository = $this->createMock(EarningRuleRepositoryInterface::class);
         $this->transactionRepository = $this->createMock(TransactionRepositoryInterface::class);
 
+        // Stub resolver returning EUR scale=2 for unit tests (no DB required).
+        $resolver = new class implements CurrencyScaleResolverInterface
+        {
+            public function getScale(?string $currencyCode = null): int
+            {
+                return 2;
+            }
+
+            public function getScaleSafe(?string $currencyCode = null, int $fallback = 3): int
+            {
+                return 2;
+            }
+        };
+
         // Create real PointEarningService (already tested, final class)
-        $pointEarningService = new PointEarningService($this->transactionRepository);
+        $pointEarningService = new PointEarningService($resolver);
 
         // Create service with mocked repositories and real domain service
         $this->service = new EarningProcessingService(

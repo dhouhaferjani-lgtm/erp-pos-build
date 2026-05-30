@@ -10,6 +10,7 @@ use App\Modules\Loyalty\Domain\Entities\Tier;
 use App\Modules\Loyalty\Domain\Enums\EarningRuleType;
 use App\Modules\Loyalty\Domain\Services\PointEarningService;
 use App\Modules\Loyalty\Domain\ValueObjects\PointsAmount;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
@@ -20,7 +21,22 @@ class PointEarningServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new PointEarningService;
+
+        // Stub resolver returning EUR scale=2 for unit tests (no DB required).
+        $resolver = new class implements CurrencyScaleResolverInterface
+        {
+            public function getScale(?string $currencyCode = null): int
+            {
+                return 2;
+            }
+
+            public function getScaleSafe(?string $currencyCode = null, int $fallback = 3): int
+            {
+                return 2;
+            }
+        };
+
+        $this->service = new PointEarningService($resolver);
     }
 
     /** @test */
