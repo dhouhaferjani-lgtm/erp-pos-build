@@ -94,7 +94,7 @@ final class MoneyBcmathTest extends TestCase
     }
 
     #[Test]
-    public function multiply_is_exact_and_rounded_once_to_scale(): void
+    public function multiply_is_exact_when_product_lands_on_scale(): void
     {
         // 19.99 * 3 = 59.97 exactly
         $result = (new Money('19.99', 'EUR'))->multiply('3');
@@ -103,12 +103,14 @@ final class MoneyBcmathTest extends TestCase
     }
 
     #[Test]
-    public function multiply_truncates_fractional_cents_to_scale(): void
+    public function multiply_truncates_sub_cent_product_toward_zero(): void
     {
-        // 10.00 * 0.075 = 0.75 exactly
-        $result = (new Money('10.00', 'EUR'))->multiply('0.075');
+        // 10.00 * 0.0375 = 0.375 → normalised to EUR scale 2 TRUNCATES to 0.37
+        // (NOT half-up 0.38) — this pins the documented truncation semantics so
+        // a future switch to half-up rounding is a deliberate, test-visible change.
+        $result = (new Money('10.00', 'EUR'))->multiply('0.0375');
 
-        $this->assertSame('0.75', $result->amount);
+        $this->assertSame('0.37', $result->amount);
     }
 
     #[Test]

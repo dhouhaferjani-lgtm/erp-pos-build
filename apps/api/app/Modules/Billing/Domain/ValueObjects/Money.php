@@ -99,8 +99,11 @@ final readonly class Money
     /**
      * Multiply by a numeric-string factor.
      *
-     * The product is computed at higher precision then rounded once to the
-     * currency scale, avoiding compounding truncation.
+     * The product is computed at scale+4 precision, then normalised once to the
+     * currency scale at the boundary. Normalisation TRUNCATES toward zero (via
+     * CurrencyScale::bcformat) — consistent with every other write boundary in
+     * the precision contract. A future caller needing half-up rounding (e.g.
+     * proration billing) must round explicitly before constructing the Money.
      */
     public function multiply(string $factor): self
     {
