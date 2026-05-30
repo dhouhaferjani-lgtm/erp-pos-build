@@ -1,6 +1,6 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Plus, AlertCircle } from 'lucide-react'
@@ -119,6 +119,7 @@ export function PaymentForm() {
     reset,
     setValue,
     watch,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<PaymentFormData>({
     defaultValues: {
@@ -418,18 +419,26 @@ export function PaymentForm() {
                 <span className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-500 z-10">
                   {symbol}
                 </span>
-                <MoneyInput
-                  id="amount"
-                  currency={currency}
-                  min="0.01"
-                  {...register('amount', {
+                <Controller
+                  name="amount"
+                  control={control}
+                  rules={{
                     required: t('treasury:payments.form.amountRequired'),
                     validate: (v) => parseFloat(v) > 0 || t('treasury:payments.form.amountPositive'),
-                  })}
-                  onChange={(v) => { setValue('amount', v) }}
-                  value={paymentAmount}
-                  error={!!errors.amount}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 ps-10 pe-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  }}
+                  render={({ field }) => (
+                    <MoneyInput
+                      id="amount"
+                      currency={currency}
+                      min="0.01"
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                      error={!!errors.amount}
+                      className="mt-1 block w-full rounded-lg border border-gray-300 ps-10 pe-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  )}
                 />
               </div>
               {errors.amount && (

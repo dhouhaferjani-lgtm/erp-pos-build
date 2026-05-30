@@ -42,6 +42,7 @@ import { findByCode, type LocalVoucher } from '@/lib/offline/voucherRepository';
 import { usePaymentStore } from '@/stores/paymentStore';
 import { Modal } from '@/components/pos/Modal';
 import { MoneyInput } from '@/components/atoms/MoneyInput';
+import { getCurrencyDecimals } from '@/lib/currency';
 import { bccomp, bcformat } from '@/lib/decimal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -444,7 +445,11 @@ export function VoucherTenderModal({
                   <MoneyInput
                     id="voucher-amount-input"
                     currency={currency}
-                    min="0"
+                    // Effective positive floor: smallest representable unit for the
+                    // currency (EUR → 0.01, TND → 0.001). A zero/empty tender is also
+                    // hard-blocked in handleApply (parsedFloat <= 0 → invalidAmount),
+                    // so this restores the native non-zero floor without a 2-dp bias.
+                    min={String(1 / 10 ** getCurrencyDecimals(currency))}
                     value={amountInput}
                     onChange={handleAmountChange}
                     data-testid="voucher-amount-input"

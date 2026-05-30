@@ -1025,7 +1025,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         }
 
         const businessDate = new Date().toISOString().slice(0, 10);
-        const totalEstimateStr = totalEstimate.toFixed(decimals);
+        const totalEstimateStr = bcformat(String(totalEstimate), decimals);
         // Exact shortfall = total − tendered, clamped at 0 (Big.js).
         const rawShortfall = bcsub(totalEstimateStr, tenderedAmountStr, decimals);
         const shortfall = bccomp(rawShortfall, '0') < 0 ? (0).toFixed(decimals) : rawShortfall;

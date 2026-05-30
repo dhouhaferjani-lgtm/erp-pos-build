@@ -71,7 +71,7 @@ export function PriceListDetailPage() {
   }
 
   const formatCurrency = (amount: string | number) =>
-    formatAmount(amount, priceList?.currency ?? 'EUR', { locale: 'en-US' })
+    formatAmount(amount, priceList?.currency ?? 'TND', { locale: 'en-US' })
 
   const handleDelete = () => {
     if (window.confirm(t('common:confirmation.delete'))) {
