@@ -33,6 +33,18 @@ use Illuminate\Support\Facades\DB;
  */
 class LandedCostService
 {
+    /**
+     * Internal precision at which the per-unit landed cost is PERSISTED at rest.
+     *
+     * landed_unit_cost feeds the perpetual WAC via recordPurchase(); truncating
+     * it to the currency scale here would re-introduce the downward bias the
+     * scale-6 carry is meant to remove (NC 01 §62 — no rounding "dans
+     * l'enregistrement des opérations"). Allocated COST AMOUNTS, by contrast, are
+     * a real invoiced money figure split across lines and are reconciled at the
+     * currency scale so the persisted shares sum exactly to the input total.
+     */
+    private const COST_SCALE = 6;
+
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
@@ -43,11 +55,23 @@ class LandedCostService
     }
 
     /**
+     * The precision at which the per-unit landed cost is stored at rest.
+     */
+    private function costScale(): int
+    {
+        return self::COST_SCALE;
+    }
+
+    /**
      * Intermediate working precision for proportional cost allocation.
+     *
+     * Carries 4 digits beyond the currency scale and never less than the at-rest
+     * COST_SCALE + 1, so the landed-unit-cost division is not truncated below the
+     * precision at which it is persisted.
      */
     private function workingScale(): int
     {
-        return $this->scale() + 4;
+        return max($this->scale() + 4, self::COST_SCALE + 1);
     }
 
     /**
@@ -374,13 +398,16 @@ class LandedCostService
         string $nonRecoverableTax,
         DocumentLine $line,
     ): string {
-        $scale = $this->scale();
+        // Persist the per-unit landed cost at the internal COST_SCALE (no
+        // currency-scale truncation) so it feeds the perpetual WAC at full
+        // precision. See self::COST_SCALE.
+        $costScale = $this->costScale();
         $working = $this->workingScale();
 
         $quantity = CurrencyScale::bcformat((string) $line->quantity, 4);
 
         if (bccomp($quantity, '0', 4) <= 0) {
-            return CurrencyScale::bcformat((string) $line->unit_price, $scale);
+            return CurrencyScale::bcformat((string) $line->unit_price, $costScale);
         }
 
         $totalCost = bcadd(
@@ -389,7 +416,7 @@ class LandedCostService
             $working,
         );
 
-        return CurrencyScale::bcformat(bcdiv($totalCost, $quantity, $working), $scale);
+        return CurrencyScale::bcformat(bcdiv($totalCost, $quantity, $working), $costScale);
     }
 
     /**
@@ -456,7 +483,9 @@ class LandedCostService
         float $nonRecoverableTax,
         float $quantity
     ): float {
-        $scale = $this->scale();
+        // Mirrors landedUnitCost(): carry to the internal COST_SCALE, not the
+        // currency scale, so the preview matches what is persisted.
+        $costScale = $this->costScale();
         $working = $this->workingScale();
 
         $quantityStr = CurrencyScale::bcformat($quantity, 4);
@@ -471,7 +500,7 @@ class LandedCostService
             $working,
         );
 
-        return (float) CurrencyScale::bcformat(bcdiv($totalCost, $quantityStr, $working), $scale);
+        return (float) CurrencyScale::bcformat(bcdiv($totalCost, $quantityStr, $working), $costScale);
     }
 
     /**

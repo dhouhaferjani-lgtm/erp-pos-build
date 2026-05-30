@@ -112,8 +112,11 @@ class DocumentLine extends Model
             'discount_amount' => 'decimal:3',
             'tax_rate' => 'decimal:2',
             'line_total' => 'decimal:3',
-            'allocated_costs' => 'decimal:3',
-            'landed_unit_cost' => 'decimal:3',
+            // WAC-feeding cost columns carried at higher internal precision (6 dp)
+            // at rest so the landed unit cost flowing into recordPurchase() is not
+            // pre-truncated. See the scale-6 widening migration.
+            'allocated_costs' => 'decimal:6',
+            'landed_unit_cost' => 'decimal:6',
             'non_recoverable_tax' => 'decimal:3',
             // Eco-tax columns: cast as strings for bcmath-safe arithmetic (project convention).
             // Phase 1: always null; Phase 2 wires the writer.

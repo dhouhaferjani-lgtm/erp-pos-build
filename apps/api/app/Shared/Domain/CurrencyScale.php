@@ -145,6 +145,59 @@ final class CurrencyScale extends ValueObject
     }
 
     /**
+     * Round a numeric value HALF-UP (away from zero) to a fixed decimal scale,
+     * using pure bcmath (no float intermediary).
+     *
+     * Unlike {@see bcformat()} — which TRUNCATES toward zero (the bcmath default)
+     * and is correct only where truncation is intentional — this method applies
+     * banker-free half-away-from-zero rounding. Use it at PRESENTATION / GL-POSTING
+     * boundaries (e.g. rounding a high-precision perpetual WAC × quantity down to
+     * the currency scale for a COGS journal line). It mirrors PHP's default
+     * round() mode (PHP_ROUND_HALF_UP) for well-formed inputs while eliminating the
+     * IEEE-754 drift that round((float)$v, $s) incurs.
+     *
+     * NC 01 §62 (Tunisia) forbids rounding "dans l'enregistrement des opérations":
+     * costs are carried at higher internal precision at rest and only rounded at the
+     * posting/display boundary — this is that boundary helper.
+     *
+     * Negatives round away from zero (-0.0005 @ scale 3 → -0.001), symmetric with
+     * positives, so a debit and its mirror credit round to the same magnitude.
+     *
+     * @param  string  $value  A well-formed numeric string (e.g. "0.463636", "-3.1415")
+     * @param  int  $scale  Target number of decimal places (>= 0)
+     * @return numeric-string Rounded decimal string with exactly $scale digits
+     *
+     * @throws \InvalidArgumentException If $value is not a well-formed numeric string
+     */
+    public static function bcround(string $value, int $scale): string
+    {
+        $trimmed = trim($value);
+
+        if (! is_numeric($trimmed)) {
+            throw new \InvalidArgumentException(
+                sprintf(
+                    'CurrencyScale::bcround() expects a numeric string; "%s" given.',
+                    $value,
+                ),
+            );
+        }
+
+        // Half-increment at the target scale, built via bcmath so it is a proven
+        // numeric-string: scale 3 → "0.0005", scale 0 → "0.5".
+        $half = bcdiv('5', bcpow('10', (string) ($scale + 1), 0), $scale + 1);
+
+        // Add (positive) or subtract (negative) the half at one extra digit of
+        // precision, then truncate to $scale — yielding round-half-away-from-zero.
+        if (str_starts_with($trimmed, '-')) {
+            /** @phpstan-ignore argument.type */
+            return bcadd(bcsub($trimmed, $half, $scale + 1), '0', $scale);
+        }
+
+        /** @phpstan-ignore argument.type */
+        return bcadd(bcadd($trimmed, $half, $scale + 1), '0', $scale);
+    }
+
+    /**
      * Format a nullable numeric string to a fixed decimal scale using bcmath.
      *
      * Preserves null — does NOT zero-fill. For non-null input, delegates to

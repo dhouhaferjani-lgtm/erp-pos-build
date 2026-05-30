@@ -55,25 +55,16 @@ class MarginService
 
     /**
      * Round a numeric string half-away-from-zero to $scale, using pure bcmath
-     * (no float). Mirrors PHP's default round() mode (PHP_ROUND_HALF_UP) so the
-     * rewrite stays behaviour-equivalent to the previous round() calls for
-     * well-formed inputs, while eliminating the IEEE-754 drift those incurred.
+     * (no float). Delegates to the shared {@see CurrencyScale::bcround()} so the
+     * round-half-up boundary semantics are centralised across margin, WAC and
+     * COGS code.
      *
      * @param  numeric-string  $value  A well-formed numeric string
      * @return numeric-string
      */
     private function bcRoundHalfUp(string $value, int $scale): string
     {
-        // Half-increment at the target scale, e.g. scale 3 → "0.0005".
-        // Built via bcmath so the result is a proven numeric-string.
-        $half = bcdiv('5', bcpow('10', (string) ($scale + 1), 0), $scale + 1);
-
-        if (str_starts_with($value, '-')) {
-            // round away from zero for negatives: subtract the half then truncate
-            return CurrencyScale::bcformat(bcsub($value, $half, $scale + 1), $scale);
-        }
-
-        return CurrencyScale::bcformat(bcadd($value, $half, $scale + 1), $scale);
+        return CurrencyScale::bcround($value, $scale);
     }
 
     /**
