@@ -169,6 +169,150 @@ final class ReservationSettingsPrecisionTest extends TestCase
     }
 
     /**
+     * P2-2 regression: manager_override_threshold_percent is a PERCENTAGE, not a
+     * monetary value. It must use a fixed 2-decimal scale and NOT inherit the
+     * currency scale. For a 0-decimal currency (JPY, scale=0), the old code path
+     * (bcformatStrict with currency scale) would truncate 10.5 → '10'. After the
+     * fix the percent keeps 2 decimals → '10.50'.
+     */
+    public function test_percent_threshold_not_truncated_by_zero_decimal_currency(): void
+    {
+        [$jpyCompany, $jpyAdmin] = $this->createCompanyWithAdmin('JPY', 'JP', 'ja');
+
+        $response = $this->actingAs($jpyAdmin)
+            ->putJson("/api/v1/companies/{$jpyCompany->id}/reservation-settings", [
+                'manager_override_threshold_percent' => '10.5',
+            ]);
+
+        $response->assertOk();
+
+        $jpyCompany->refresh();
+        $settings = $jpyCompany->getReservationSettings();
+
+        $this->assertSame(
+            '10.50',
+            $settings->managerOverrideThresholdPercent,
+            'Percent field must NOT inherit the currency scale (JPY=0 would truncate 10.5 → 10). '
+            ."Got: '{$settings->managerOverrideThresholdPercent}'. "
+            .'Fix: format percent fields with a fixed scale of 2.',
+        );
+    }
+
+    /**
+     * P2-2 regression (companion): a MONETARY field on the same 0-decimal currency
+     * company still uses the currency scale (JPY=0), so '100.5' truncates to '100'.
+     * This proves the percent fix did not accidentally apply scale 2 to money.
+     */
+    public function test_money_threshold_uses_currency_scale_for_zero_decimal_currency(): void
+    {
+        [$jpyCompany, $jpyAdmin] = $this->createCompanyWithAdmin('JPY', 'JP', 'ja');
+
+        $response = $this->actingAs($jpyAdmin)
+            ->putJson("/api/v1/companies/{$jpyCompany->id}/reservation-settings", [
+                'manager_override_threshold_amount' => '100.5',
+            ]);
+
+        $response->assertOk();
+
+        $jpyCompany->refresh();
+        $settings = $jpyCompany->getReservationSettings();
+
+        $this->assertSame(
+            '100',
+            $settings->managerOverrideThresholdAmount,
+            'JPY monetary threshold must use currency scale=0 (truncate to integer). '
+            ."Got: '{$settings->managerOverrideThresholdAmount}'.",
+        );
+    }
+
+    /**
+     * P2-3 regression: non-numeric input for a bcformatStrict-fed field must be
+     * rejected by validation (422) before reaching bcformatStrict, which would
+     * otherwise throw InvalidArgumentException → a 500.
+     */
+    public function test_non_numeric_threshold_returns_422_not_500(): void
+    {
+        $response = $this->actingAs($this->adminUser)
+            ->putJson("/api/v1/companies/{$this->company->id}/reservation-settings", [
+                'manager_override_threshold_amount' => 'not-a-number',
+            ]);
+
+        // Validation errors are wrapped in a custom envelope: error.errors.<field>
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $response->assertJsonStructure(['error' => ['errors' => ['manager_override_threshold_amount']]]);
+    }
+
+    /**
+     * P2-3 regression: non-numeric percent must also be a 422, not a 500.
+     */
+    public function test_non_numeric_percent_returns_422_not_500(): void
+    {
+        $response = $this->actingAs($this->adminUser)
+            ->putJson("/api/v1/companies/{$this->company->id}/reservation-settings", [
+                'manager_override_threshold_percent' => 'abc',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $response->assertJsonStructure(['error' => ['errors' => ['manager_override_threshold_percent']]]);
+    }
+
+    /**
+     * Create a company + owner admin for an arbitrary currency and seed roles.
+     *
+     * @return array{0: Company, 1: User}
+     */
+    private function createCompanyWithAdmin(string $currency, string $countryCode, string $locale): array
+    {
+        $tenant = Tenant::create([
+            'name' => "{$currency} Precision Tenant",
+            'slug' => strtolower($currency).'-res-precision-'.uniqid(),
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+            'settings' => [],
+        ]);
+
+        $company = Company::create([
+            'tenant_id' => $tenant->id,
+            'name' => "{$currency} Settings Company",
+            'legal_name' => "{$currency} Settings Company",
+            'country_code' => $countryCode,
+            'currency' => $currency,
+            'locale' => $locale,
+            'timezone' => 'UTC',
+            'date_format' => 'd/m/Y',
+            'fiscal_year_start_month' => 1,
+            'status' => CompanyStatus::Active,
+            'is_headquarters' => true,
+        ]);
+
+        app(CompanyContext::class)->setCompanyId($company->id);
+        app(PermissionRegistrar::class)->setPermissionsTeamId($tenant->id);
+        $this->seed(RolesAndPermissionsSeeder::class);
+
+        $admin = User::create([
+            'tenant_id' => $tenant->id,
+            'name' => "{$currency} Admin",
+            'email' => strtolower($currency).'-admin-'.uniqid().'@example.com',
+            'password' => 'Password1!',
+            'status' => UserStatus::Active,
+        ]);
+        $admin->assignRole('admin');
+
+        UserCompanyMembership::create([
+            'user_id' => $admin->id,
+            'company_id' => $company->id,
+            'role' => MembershipRole::Owner,
+            'is_primary' => true,
+            'status' => MembershipStatus::Active,
+            'accepted_at' => now(),
+        ]);
+
+        return [$company, $admin];
+    }
+
+    /**
      * EUR companies (scale=2) must still round to 2 decimal places.
      */
     public function test_eur_company_threshold_rounded_to_2_decimals(): void

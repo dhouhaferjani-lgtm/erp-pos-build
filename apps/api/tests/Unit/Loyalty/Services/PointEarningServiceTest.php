@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Loyalty\Services;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Loyalty\Domain\Entities\EarningRule;
 use App\Modules\Loyalty\Domain\Entities\Enrollment;
 use App\Modules\Loyalty\Domain\Entities\Tier;
@@ -11,6 +12,7 @@ use App\Modules\Loyalty\Domain\Enums\EarningRuleType;
 use App\Modules\Loyalty\Domain\Services\PointEarningService;
 use App\Modules\Loyalty\Domain\ValueObjects\PointsAmount;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Infrastructure\CurrencyScaleResolver;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
@@ -37,6 +39,81 @@ class PointEarningServiceTest extends TestCase
         };
 
         $this->service = new PointEarningService($resolver);
+    }
+
+    /**
+     * Regression for P1-1: EarnPointsOnReceiptCompleted implements ShouldQueue and
+     * runs in a queue worker where no CompanyContext is bound. Before the fix the
+     * service called the resolver's no-arg getScale(), which threw
+     * UnboundCompanyContextException — the listener caught it and silently dropped
+     * the points. With the real resolver and an UNBOUND CompanyContext, the earning
+     * path must NOT throw and must award the correct points.
+     *
+     * @test
+     */
+    public function it_awards_points_without_a_bound_company_context_using_transaction_currency(): void
+    {
+        // Real resolver, no company bound (simulates the queue worker context).
+        $unboundContext = new CompanyContext;
+        $resolver = new CurrencyScaleResolver(
+            companyContext: $unboundContext,
+            countryFinder: fn (string $code) => null,
+        );
+        $service = new PointEarningService($resolver);
+
+        $enrollment = $this->createEnrollment();
+        $rule = $this->createRule(
+            ruleType: EarningRuleType::Spend,
+            rewardValue: '1.5',
+            isActive: true,
+        );
+
+        // Currency carried on the transaction → resolves via the static ISO map (EUR=2),
+        // no CompanyContext required.
+        $transactionData = [
+            'amount' => 100.00,
+            'currency' => 'EUR',
+            'items' => [],
+        ];
+
+        $points = $service->calculatePoints($enrollment, $transactionData, $rule);
+
+        $this->assertEqualsWithDelta(150.0, $points->value, 0.0001); // 100 * 1.5
+    }
+
+    /**
+     * Regression for P1-1: even when NO currency is carried on the transaction (so
+     * the resolver cannot resolve from CompanyContext or an explicit code), the
+     * service must fall back via getScaleSafe() to the TND canonical floor (3) and
+     * still award points rather than throwing.
+     *
+     * @test
+     */
+    public function it_awards_points_without_company_context_and_without_currency_via_safe_fallback(): void
+    {
+        $unboundContext = new CompanyContext;
+        $resolver = new CurrencyScaleResolver(
+            companyContext: $unboundContext,
+            countryFinder: fn (string $code) => null,
+        );
+        $service = new PointEarningService($resolver);
+
+        $enrollment = $this->createEnrollment();
+        $rule = $this->createRule(
+            ruleType: EarningRuleType::Spend,
+            rewardValue: '1.5',
+            isActive: true,
+        );
+
+        $transactionData = [
+            'amount' => 100.00,
+            'items' => [],
+            // no 'currency' key — must not throw
+        ];
+
+        $points = $service->calculatePoints($enrollment, $transactionData, $rule);
+
+        $this->assertEqualsWithDelta(150.0, $points->value, 0.0001);
     }
 
     /** @test */

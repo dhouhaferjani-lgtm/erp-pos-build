@@ -188,6 +188,157 @@ class LandedCostBcmathTest extends TestCase
         );
     }
 
+    /**
+     * P2-4 regression: the largest-remainder absorber must be located by VALUE
+     * (last positive-base line), not by assuming a 0-based sequential key. When a
+     * caller hands the service a non-zero-keyed collection (e.g. keyBy('id')),
+     * the old `$index >= $lastIndex` check could match no line and silently drop
+     * the residue. With ->values() re-keying + value-based absorber, the sum
+     * still reconciles exactly.
+     */
+    public function test_allocation_reconciles_with_non_zero_keyed_line_collection(): void
+    {
+        $po = $this->makePurchaseOrder('PO-LC-KEYED');
+
+        // Three awkward TND lines.
+        $this->makeLine($po, 1, quantity: '2', unitPrice: '3.337'); // 6.674
+        $this->makeLine($po, 2, quantity: '1', unitPrice: '11.119'); // 11.119
+        $this->makeLine($po, 3, quantity: '3', unitPrice: '4.441'); // 13.323
+
+        DocumentAdditionalCost::create([
+            'document_id' => $po->id,
+            'cost_type' => 'transport',
+            'description' => 'Freight',
+            'amount' => '100.001',
+        ]);
+
+        $fresh = $po->fresh(['lines']);
+        $this->assertNotNull($fresh);
+
+        // Force a NON-zero-keyed collection on the relation (keyed by UUID string).
+        $fresh->setRelation('lines', $fresh->lines->keyBy('id'));
+
+        /** @var LandedCostService $service */
+        $service = app(LandedCostService::class);
+        $service->allocateCosts($fresh);
+
+        $allocatedSum = '0.000';
+        $reloaded = $po->fresh(['lines']);
+        $this->assertNotNull($reloaded);
+        foreach ($reloaded->lines as $line) {
+            $allocatedSum = bcadd($allocatedSum, (string) $line->allocated_costs, 3);
+        }
+
+        $this->assertSame(
+            0,
+            bccomp('100.001', $allocatedSum, 3),
+            "Allocated sum {$allocatedSum} must equal input 100.001 exactly even with a keyed collection",
+        );
+    }
+
+    /**
+     * P2-5 regression: when the genuinely-last line has line_total 0, the residue
+     * must NOT be dumped on it (which would inflate a zero-base line's landed unit
+     * cost). The absorber is the last POSITIVE-base line, so the zero-base trailing
+     * line receives 0 allocated cost while the sum still reconciles exactly.
+     */
+    public function test_zero_base_last_line_does_not_absorb_remainder(): void
+    {
+        $po = $this->makePurchaseOrder('PO-LC-ZEROLAST');
+
+        $this->makeLine($po, 1, quantity: '1', unitPrice: '33.333'); // 33.333 (positive)
+        $this->makeLine($po, 2, quantity: '1', unitPrice: '66.667'); // 66.667 (positive)
+        $zeroLine = $this->makeLine($po, 3, quantity: '1', unitPrice: '0.000'); // 0.000 (free/promo, LAST)
+
+        DocumentAdditionalCost::create([
+            'document_id' => $po->id,
+            'cost_type' => 'transport',
+            'description' => 'Freight',
+            'amount' => '50.000',
+        ]);
+
+        /** @var LandedCostService $service */
+        $service = app(LandedCostService::class);
+        $service->allocateCosts($po->fresh(['lines']) ?? $po);
+
+        $reloaded = $po->fresh(['lines']);
+        $this->assertNotNull($reloaded);
+
+        $allocatedSum = '0.000';
+        $zeroLineAllocated = null;
+        foreach ($reloaded->lines as $line) {
+            $allocatedSum = bcadd($allocatedSum, (string) $line->allocated_costs, 3);
+            if ($line->id === $zeroLine->id) {
+                $zeroLineAllocated = (string) $line->allocated_costs;
+            }
+        }
+
+        // The zero-base trailing line gets nothing (residue went to a positive line).
+        $this->assertNotNull($zeroLineAllocated);
+        $this->assertSame(
+            0,
+            bccomp('0', $zeroLineAllocated, 3),
+            "Zero-base last line must receive 0 allocated cost, got {$zeroLineAllocated}",
+        );
+
+        // And the total still reconciles exactly.
+        $this->assertSame(
+            0,
+            bccomp('50.000', $allocatedSum, 3),
+            "Allocated sum {$allocatedSum} must equal input 50.000 exactly",
+        );
+    }
+
+    private function makePurchaseOrder(string $number): Document
+    {
+        return Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'location_id' => $this->warehouse->id,
+            'type' => DocumentType::PurchaseOrder,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => $number,
+            'document_date' => now(),
+            'currency' => 'TND',
+            'subtotal' => '0.000',
+            'tax_amount' => '0.000',
+            'total' => '0.000',
+        ]);
+    }
+
+    /**
+     * @param  numeric-string  $quantity
+     * @param  numeric-string  $unitPrice
+     */
+    private function makeLine(Document $po, int $lineNumber, string $quantity, string $unitPrice): DocumentLine
+    {
+        $product = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'LC-SKU-'.$po->id.'-'.$lineNumber,
+            'name' => 'LC Product '.$lineNumber,
+            'type' => ProductType::Part,
+            'is_active' => true,
+        ]);
+
+        $lineTotal = bcmul($quantity, $unitPrice, 3);
+
+        return DocumentLine::create([
+            'document_id' => $po->id,
+            'product_id' => $product->id,
+            'product_code' => $product->sku,
+            'line_number' => $lineNumber,
+            'description' => $product->name,
+            'quantity' => $quantity.'.0000',
+            'unit_price' => $unitPrice,
+            'line_total' => $lineTotal,
+            'allocated_costs' => '0.000',
+        ]);
+    }
+
     public function test_calculate_landed_unit_cost_truncates_non_terminating_fraction(): void
     {
         /** @var LandedCostService $service */

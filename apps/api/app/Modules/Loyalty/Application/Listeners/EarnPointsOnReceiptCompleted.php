@@ -78,6 +78,7 @@ final class EarnPointsOnReceiptCompleted implements ShouldQueue
 
         $transactionData = [
             'amount' => (float) $event->totalAmount,
+            'currency' => $event->currency,
             'items' => $items,
             'timestamp' => $receipt->posted_at ?? now(),
         ];

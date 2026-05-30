@@ -31,6 +31,13 @@ use Illuminate\Support\Facades\Log;
 
 class CompanyController extends Controller
 {
+    /**
+     * Fixed decimal scale for percentage fields. Percentages are NOT monetary
+     * values and must never inherit the currency scale (which can be 0 for
+     * currencies like JPY, truncating fractional percents).
+     */
+    private const PERCENT_SCALE = 2;
+
     public function __construct(
         private readonly ChartOfAccountsService $chartOfAccountsService,
         private readonly CompanyTaxStatusValidationService $taxStatusValidationService,
@@ -361,8 +368,11 @@ class CompanyController extends Controller
             managerOverrideThresholdAmount: isset($validated['manager_override_threshold_amount'])
                 ? CurrencyScale::bcformatStrict((string) $validated['manager_override_threshold_amount'], $scale)
                 : $currentSettings->managerOverrideThresholdAmount,
+            // Percentage — NOT a monetary value, so it must NOT inherit the currency
+            // scale (a 0-decimal currency like JPY would truncate 10.5 → 10). Fixed
+            // 2-decimal scale per the percent field type.
             managerOverrideThresholdPercent: isset($validated['manager_override_threshold_percent'])
-                ? CurrencyScale::bcformatStrict((string) $validated['manager_override_threshold_percent'], $scale)
+                ? CurrencyScale::bcformatStrict((string) $validated['manager_override_threshold_percent'], self::PERCENT_SCALE)
                 : $currentSettings->managerOverrideThresholdPercent,
             managerOverrideRequiredForNoReceipt: $validated['manager_override_required_for_no_receipt'] ?? $currentSettings->managerOverrideRequiredForNoReceipt,
 
