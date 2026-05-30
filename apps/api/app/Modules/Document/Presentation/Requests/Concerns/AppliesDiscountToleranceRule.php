@@ -83,6 +83,7 @@ trait AppliesDiscountToleranceRule
                 'nullable',
                 'numeric',
                 'min:0',
+                'regex:/^\d+(\.\d{1,3})?$/',
                 new DiscountAboveTolerance(
                     subtotal: $lineSubtotal,
                     companyId: $companyId,
@@ -101,6 +102,7 @@ trait AppliesDiscountToleranceRule
                 'nullable',
                 'numeric',
                 'min:0',
+                'regex:/^\d+(\.\d{1,3})?$/',
                 new DiscountAboveTolerance(
                     subtotal: $documentSubtotal,
                     companyId: $companyId,

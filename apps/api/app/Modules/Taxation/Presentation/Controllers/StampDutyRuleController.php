@@ -66,11 +66,13 @@ class StampDutyRuleController extends Controller
             'country_code' => ['required', 'string', 'size:2', 'exists:countries,code'],
             'document_type' => ['required', 'string', 'max:50'],
             'fiscal_category' => ['nullable', 'string', 'max:50'],
-            'stamp_amount' => ['required', 'numeric', 'min:0'],
+            'stamp_amount' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'is_active' => ['boolean'],
             'effective_from' => ['required', 'date'],
             'effective_to' => ['nullable', 'date', 'after:effective_from'],
             'metadata' => ['nullable', 'array'],
+        ], [
+            'stamp_amount.regex' => 'The stamp amount must have at most 3 decimal places.',
         ]);
 
         $rule = StampDutyRule::create($validated);
@@ -89,10 +91,12 @@ class StampDutyRuleController extends Controller
         $rule = StampDutyRule::findOrFail($id);
 
         $validated = $request->validate([
-            'stamp_amount' => ['sometimes', 'numeric', 'min:0'],
+            'stamp_amount' => ['sometimes', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'is_active' => ['boolean'],
             'effective_to' => ['nullable', 'date', 'after:effective_from'],
             'metadata' => ['nullable', 'array'],
+        ], [
+            'stamp_amount.regex' => 'The stamp amount must have at most 3 decimal places.',
         ]);
 
         $rule->update($validated);

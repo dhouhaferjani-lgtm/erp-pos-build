@@ -317,6 +317,46 @@ final class ZReportSyncControllerSchema2Test extends TestCase
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Ingress precision — over-precise opening_cash is rejected (Phase 4.1).
+    //
+    // Binds to the REAL inline validator in
+    // ZReportSyncController::sync() (app/Modules/POS/Presentation/Controllers/
+    // ZReportSyncController.php:96) via a true HTTP request, so it fails if the
+    // production scale-4 ceiling is changed to the wrong value.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function test_sync_rejects_over_precise_opening_cash(): void
+    {
+        Sanctum::actingAs($this->cashier);
+        Event::fake();
+
+        $payload = array_merge($this->buildV1Payload(), [
+            'opening_cash' => '100.12345', // 5 decimals — over the scale-4 ceiling
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/reports/z/sync', $payload);
+
+        $response->assertStatus(422);
+        $errors = $response->json('error.errors');
+        $this->assertIsArray($errors);
+        $this->assertArrayHasKey('opening_cash', $errors);
+    }
+
+    public function test_sync_accepts_4_decimal_opening_cash(): void
+    {
+        Sanctum::actingAs($this->cashier);
+        Event::fake();
+
+        $payload = array_merge($this->buildV1Payload(), [
+            'opening_cash' => '100.1234', // 4 decimals — within scale-4 ceiling
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/reports/z/sync', $payload);
+
+        $response->assertStatus(201);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // 7. Duplicate sync returns 200 'duplicate'
     // ─────────────────────────────────────────────────────────────────────────
 

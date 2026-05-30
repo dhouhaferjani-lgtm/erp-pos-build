@@ -42,14 +42,25 @@ class StoreRecipeLineRequest extends FormRequest
         return [
             'component_type' => ['sometimes', new Enum(ComponentType::class)],
             'component_id' => ['required', 'uuid', $componentExistsRule],
-            'quantity' => ['required', 'numeric', 'min:0.0001'],
+            'quantity' => ['required', 'numeric', 'min:0.0001', 'regex:/^\d+(\.\d{1,4})?$/'],
             // api.catalog.022 round-2: units has nullable tenant_id (system rows = NULL).
             // ScopedExists::tenantOrSystem accepts tenant-owned + system rows, rejects others.
             'unit_id' => ['nullable', 'uuid', ScopedExists::tenantOrSystem('units', $company->tenant_id)],
             'is_optional' => ['sometimes', 'boolean'],
             'is_scalable' => ['sometimes', 'boolean'],
-            'wastage_percent' => ['sometimes', 'numeric', 'min:0', 'max:100'],
+            'wastage_percent' => ['sometimes', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'display_order' => ['sometimes', 'integer', 'min:0'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'quantity.regex' => 'Quantity must have at most 4 decimal places.',
+            'wastage_percent.regex' => 'Wastage percent must have at most 2 decimal places.',
         ];
     }
 }

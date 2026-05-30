@@ -50,9 +50,9 @@ class CreateWithholdingCertificateRequest extends FormRequest
                 ScopedExists::tenantAndCompany('payments', $tenantId, $companyId),
             ],
             'currency' => ['required', 'string', 'size:3'],
-            'gross_amount' => ['required', 'numeric', 'min:0'],
+            'gross_amount' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'transaction_type' => ['nullable', Rule::enum(TransactionType::class)],
-            'manual_rate_percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'manual_rate_percentage' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'override_reason' => ['required_with:manual_rate_percentage', 'string', 'max:500'],
         ];
     }
@@ -62,6 +62,8 @@ class CreateWithholdingCertificateRequest extends FormRequest
     {
         return [
             'override_reason.required_with' => 'Override reason is required when specifying manual rate',
+            'gross_amount.regex' => 'Gross amount must not exceed 3 decimal places.',
+            'manual_rate_percentage.regex' => 'Manual rate percentage must not exceed 2 decimal places.',
         ];
     }
 }

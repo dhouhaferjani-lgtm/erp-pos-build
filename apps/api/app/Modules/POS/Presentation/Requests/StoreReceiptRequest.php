@@ -64,8 +64,8 @@ final class StoreReceiptRequest extends FormRequest
                 ScopedExists::tenantAndCompany('composite_items', $tenantId, $companyId),
                 'required_without:lines.*.product_id',
             ],
-            'lines.*.quantity' => ['required', 'numeric', 'gt:0'],
-            'lines.*.unit_price' => ['required', 'numeric', 'gte:0'],
+            'lines.*.quantity' => ['required', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'lines.*.unit_price' => ['required', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'lines.*.modifiers' => ['nullable', 'array'],
             // api.pos-stabilization.012 — modifiers has no tenant_id/company_id of
             // its own; scope by parent modifier_groups via subquery callback.
@@ -88,10 +88,10 @@ final class StoreReceiptRequest extends FormRequest
                 'required', 'uuid',
                 ScopedExists::tenantAndCompany('modifier_groups', $tenantId, $companyId),
             ],
-            'lines.*.modifiers.*.price_adjustment' => ['required', 'numeric'],
-            'lines.*.discount_amount' => ['nullable', 'numeric', 'gte:0'],
+            'lines.*.modifiers.*.price_adjustment' => ['required', 'numeric', 'regex:/^-?\d+(\.\d{1,3})?$/'],
+            'lines.*.discount_amount' => ['nullable', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'lines.*.discount_type' => ['nullable', 'string', 'in:percentage,fixed'],
-            'lines.*.discount_percent' => ['nullable', 'numeric', 'gte:0', 'lte:100'],
+            'lines.*.discount_percent' => ['nullable', 'numeric', 'gte:0', 'lte:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'lines.*.discount_reason' => ['nullable', 'string', 'max:255'],
             // api.pos-stabilization.014 — partners (T+C).
             'customer_id' => [
@@ -104,10 +104,10 @@ final class StoreReceiptRequest extends FormRequest
                 ScopedExists::tenantAndCompany('contacts', $tenantId, $companyId),
             ],
             'notes' => ['nullable', 'string', 'max:500'],
-            'transaction_discount_amount' => ['nullable', 'numeric', 'gte:0'],
+            'transaction_discount_amount' => ['nullable', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'transaction_discount_reason' => ['nullable', 'string', 'max:255'],
             'coupon_code' => ['nullable', 'string', 'max:50'],
-            'loyalty_discount_amount' => ['nullable', 'numeric', 'gte:0'],
+            'loyalty_discount_amount' => ['nullable', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'loyalty_reward_id' => ['nullable', 'uuid'],
             'consumption_mode' => ['nullable', 'string', Rule::enum(ConsumptionMode::class)],
         ];
@@ -131,10 +131,17 @@ final class StoreReceiptRequest extends FormRequest
             'lines.*.composite_item_id.exists' => 'Composite item does not exist',
             'lines.*.quantity.required' => 'Quantity is required for each line',
             'lines.*.quantity.gt' => 'Quantity must be greater than zero',
+            'lines.*.quantity.regex' => 'Quantity must have at most 4 decimal places',
             'lines.*.unit_price.required' => 'Unit price is required for each line',
             'lines.*.unit_price.gte' => 'Unit price must be zero or greater',
+            'lines.*.unit_price.regex' => 'Unit price must have at most 3 decimal places',
+            'lines.*.modifiers.*.price_adjustment.regex' => 'Price adjustment must have at most 3 decimal places',
+            'lines.*.discount_amount.regex' => 'Discount amount must have at most 3 decimal places',
             'lines.*.discount_type.in' => 'Discount type must be "percentage" or "fixed"',
             'lines.*.discount_percent.lte' => 'Discount percentage cannot exceed 100%',
+            'lines.*.discount_percent.regex' => 'Discount percentage must have at most 2 decimal places',
+            'transaction_discount_amount.regex' => 'Transaction discount amount must have at most 3 decimal places',
+            'loyalty_discount_amount.regex' => 'Loyalty discount amount must have at most 3 decimal places',
             'customer_id.exists' => 'Customer does not exist',
         ];
     }

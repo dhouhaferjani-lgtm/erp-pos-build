@@ -45,10 +45,10 @@ class StoreCompositeItemRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'category_id' => ['nullable', 'integer', ScopedExists::company('categories', $companyId)],
             'vertical_type' => ['sometimes', new Enum(VerticalType::class)],
-            'base_price' => ['required', 'numeric', 'min:0'],
+            'base_price' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
             'production_type' => ['sometimes', new Enum(ProductionType::class)],
             'pricing_mode' => ['sometimes', new Enum(PricingMode::class)],
-            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             // api.catalog.023 round-2: tax_configurations is country-scoped (no tenant_id/
             // company_id). TaxCalculationService selects applicable configs by
             // company.country_code at calculation time (Modules/Taxation/Domain/Services/
@@ -60,13 +60,25 @@ class StoreCompositeItemRequest extends FormRequest
                 'nullable', 'uuid', 'exists:tax_configurations,id',
                 new TaxConfigurationCountryCoherent($company->country_code),
             ],
-            'manual_cost' => ['nullable', 'numeric', 'min:0'],
+            'manual_cost' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
             // api.catalog.022 round-2: units has nullable tenant_id (system rows = NULL).
             'stock_unit_id' => ['nullable', 'uuid', ScopedExists::tenantOrSystem('units', $company->tenant_id)],
             'is_active' => ['sometimes', 'boolean'],
             'is_available' => ['sometimes', 'boolean'],
             'image_url' => ['nullable', 'string', 'max:500'],
             'display_order' => ['sometimes', 'integer', 'min:0'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'base_price.regex' => 'Base price must have at most 4 decimal places.',
+            'tax_rate.regex' => 'Tax rate must have at most 2 decimal places.',
+            'manual_cost.regex' => 'Manual cost must have at most 4 decimal places.',
         ];
     }
 }

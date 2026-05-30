@@ -24,6 +24,8 @@ use App\Modules\Scheduling\Domain\Exceptions\AppointmentConflictException;
 use App\Modules\Scheduling\Domain\Exceptions\InvalidAppointmentTransitionException;
 use App\Modules\Scheduling\Domain\Services\AppointmentStatusMachine;
 use App\Modules\Scheduling\Domain\ValueObjects\ConflictDetail;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -57,6 +59,7 @@ final class AppointmentAuthoringService
         private readonly AppointmentRepositoryInterface $appointments,
         private readonly AppointmentStatusMachine $statusMachine,
         private readonly AppointmentSequenceInterface $appointmentSequence,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     public function create(BookAppointmentCommand $command): Appointment
@@ -114,6 +117,8 @@ final class AppointmentAuthoringService
                 throw $e;
             }
 
+            $moneyScale = $this->scaleResolver->getScaleSafe();
+
             foreach ($command->planned_services as $planned) {
                 $line = new AppointmentService;
                 $line->id = (string) Str::uuid();
@@ -124,7 +129,10 @@ final class AppointmentAuthoringService
                 $line->display_name = $planned['display_name'];
                 $line->estimated_duration_minutes = $planned['estimated_duration_minutes'];
                 if (isset($planned['estimated_price'])) {
-                    $line->estimated_price = $planned['estimated_price'];
+                    $line->estimated_price = CurrencyScale::bcformatStrict(
+                        (string) $planned['estimated_price'],
+                        $moneyScale,
+                    );
                 }
                 $line->display_order = $planned['display_order'] ?? 0;
                 $line->save();

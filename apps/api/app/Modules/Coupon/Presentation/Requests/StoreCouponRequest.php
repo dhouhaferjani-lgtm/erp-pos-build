@@ -44,9 +44,9 @@ class StoreCouponRequest extends FormRequest
             'max_uses' => ['nullable', 'integer', 'min:1'],
             'max_uses_per_customer' => ['nullable', 'integer', 'min:1'],
             'discount_type' => ['required', 'in:percentage,fixed'],
-            'discount_value' => ['required', 'numeric', 'gt:0'],
-            'max_discount_amount' => ['nullable', 'numeric', 'gt:0'],
-            'minimum_order_amount' => ['nullable', 'numeric', 'gte:0'],
+            'discount_value' => ['required', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'max_discount_amount' => ['nullable', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'minimum_order_amount' => ['nullable', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'qualifying_product_ids' => ['nullable', 'array'],
             'qualifying_product_ids.*' => ['string', 'uuid'],
             'qualifying_category_ids' => ['nullable', 'array'],
@@ -55,6 +55,16 @@ class StoreCouponRequest extends FormRequest
             'stacking_group' => ['sometimes', 'string', 'max:100'],
             'starts_at' => ['nullable', 'date'],
             'expires_at' => ['nullable', 'date', 'after_or_equal:starts_at'],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public function messages(): array
+    {
+        return [
+            'discount_value.regex' => 'Discount value must not exceed 4 decimal places.',
+            'max_discount_amount.regex' => 'Max discount amount must not exceed 3 decimal places.',
+            'minimum_order_amount.regex' => 'Minimum order amount must not exceed 3 decimal places.',
         ];
     }
 

@@ -37,7 +37,15 @@ class EnrollMemberRequest extends FormRequest
                 // is the correct scope helper.
                 ScopedExists::tenant('loyalty_programs', $tenantId),
             ],
-            'welcome_bonus' => ['nullable', 'numeric', 'min:0'],
+            'welcome_bonus' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public function messages(): array
+    {
+        return [
+            'welcome_bonus.regex' => 'Welcome bonus must not exceed 2 decimal places.',
         ];
     }
 }

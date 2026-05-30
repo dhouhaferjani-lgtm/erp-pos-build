@@ -32,12 +32,23 @@ class PatchComponentRequest extends FormRequest
         return [
             'component_type' => ['sometimes', new Enum(BundleComponentType::class)],
             'component_id' => ['sometimes', 'required_with:component_type', 'uuid'],
-            'quantity' => ['sometimes', 'numeric', 'gt:0'],
+            'quantity' => ['sometimes', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,4})?$/'],
             'unit_id' => ['sometimes', 'uuid'],
-            'override_unit_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'override_unit_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'is_optional' => ['sometimes', 'boolean'],
             'display_order' => ['sometimes', 'integer', 'min:0'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:500'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'quantity.regex' => 'Quantity must have at most 4 decimal places.',
+            'override_unit_price.regex' => 'Override unit price must have at most 3 decimal places.',
         ];
     }
 }

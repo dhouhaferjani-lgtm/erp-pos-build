@@ -49,7 +49,7 @@ final class StoreReturnRequest extends FormRequest
             'return_reason' => ['required', 'string', Rule::in(array_column(ReturnReason::cases(), 'value'))],
             'lines' => 'required|array|min:1',
             'lines.*.line_id' => 'required|uuid',
-            'lines.*.quantity' => 'required|numeric|min:0.001',
+            'lines.*.quantity' => ['required', 'numeric', 'min:0.001', 'regex:/^\d+(\.\d{1,4})?$/'],
             'notes' => 'nullable|string|max:1000',
             'approval_id' => ['required', 'uuid'],
             'approval_fiscal_event_id' => ['required', 'uuid'],
@@ -74,6 +74,7 @@ final class StoreReturnRequest extends FormRequest
             'lines.*.line_id.required' => 'Each return line must reference an original receipt line.',
             'lines.*.quantity.required' => 'Each return line must have a quantity.',
             'lines.*.quantity.min' => 'Return quantity must be positive.',
+            'lines.*.quantity.regex' => 'Return quantity must have at most 4 decimal places.',
             'return_reason.required' => 'A return reason is required.',
             'return_reason.in' => 'Invalid return reason.',
         ];
