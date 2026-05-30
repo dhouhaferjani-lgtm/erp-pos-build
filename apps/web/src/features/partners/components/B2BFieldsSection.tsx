@@ -1,6 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Controller } from 'react-hook-form'
-import type { UseFormRegister, UseFormWatch, Control } from 'react-hook-form'
+import type { UseFormRegister, UseFormWatch } from 'react-hook-form'
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import { MoneyInput } from '@/components/atoms/MoneyInput'
 import { useCompany } from '@/hooks/useCompany'
@@ -20,11 +19,11 @@ interface B2BFormFields {
 interface B2BFieldsSectionProps {
   register: UseFormRegister<B2BFormFields & Record<string, unknown>>
   watch: UseFormWatch<B2BFormFields & Record<string, unknown>>
-  control: Control<B2BFormFields & Record<string, unknown>>
+  setValue: (name: 'credit_limit', value: string) => void
   partnerId?: string | undefined
 }
 
-export function B2BFieldsSection({ register, watch, control, partnerId }: B2BFieldsSectionProps) {
+export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFieldsSectionProps) {
   const { currentCompany } = useCompany()
   const currency = currentCompany?.currency ?? 'EUR'
   const { t } = useTranslation('sales')
@@ -166,19 +165,13 @@ export function B2BFieldsSection({ register, watch, control, partnerId }: B2BFie
           >
             {t('partners.b2b.creditLimit')}
           </label>
-          <Controller
-            name="credit_limit"
-            control={control}
-            render={({ field }) => (
-              <MoneyInput
-                id="credit_limit"
-                value={field.value as string}
-                onChange={field.onChange}
-                currency={currency}
-                min="0"
-                className="mt-1 block w-full"
-              />
-            )}
+          <MoneyInput
+            id="credit_limit"
+            value={watch('credit_limit') ?? ''}
+            onChange={(v) => { setValue('credit_limit', v) }}
+            currency={currency}
+            min="0"
+            className="mt-1 block w-full"
           />
         </div>
 

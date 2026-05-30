@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useForm, Controller, type Resolver } from 'react-hook-form'
+import { useForm, Controller, useWatch, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button, Input, FormField, Select, MoneyInput } from '@/components/atoms'
@@ -55,7 +55,7 @@ export function RewardFormModal({ isOpen, onClose, onSubmit, isPending, editingR
     },
   })
 
-  const rewardType = form.watch('reward_type')
+  const rewardType = useWatch({ control: form.control, name: 'reward_type' })
   // reward_value is a monetary amount for all types except discount_percent
   const rewardValueIsPercent = rewardType === 'discount_percent'
 

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useForm, Controller, type Resolver } from 'react-hook-form'
+import { useForm, Controller, useWatch, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button, Input, FormField, Select, MoneyInput, QuantityInput } from '@/components/atoms'
@@ -46,7 +46,7 @@ export function TierFormModal({ isOpen, onClose, onSubmit, isPending, editingTie
     },
   })
 
-  const qualificationType = form.watch('qualification_type')
+  const qualificationType = useWatch({ control: form.control, name: 'qualification_type' })
   // qualification_threshold is monetary when type is 'spend', otherwise it's a plain count
   const thresholdIsMonetary = qualificationType === 'spend'
 

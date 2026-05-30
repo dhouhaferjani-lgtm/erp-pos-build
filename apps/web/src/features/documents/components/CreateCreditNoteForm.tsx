@@ -303,9 +303,9 @@ export function CreateCreditNoteForm({
               {...register('amount')}
               id="amount"
               currency={currency}
-              value={amountValue ?? ''}
+              value={amountValue}
               onChange={(v) => { setValue('amount', v) }}
-              error={!!(errors.amount || customAmountError)}
+              error={errors.amount != null || customAmountError != null}
               disabled={isSubmitting}
               className={`flex-1 rounded-md border ${
                 errors.amount || customAmountError

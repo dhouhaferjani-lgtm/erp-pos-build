@@ -126,7 +126,7 @@ export function ExpenseFormFields({
               validate: (v) => parseFloat(v) >= 0.01 || t('common:validation.minAmount', { amount: '0.01' }),
             })}
             currency={currency}
-            value={totalValue ?? ''}
+            value={totalValue}
             onChange={(v) => { setValue('total', v) }}
             min="0.01"
             error={!!errors.total}

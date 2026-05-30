@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useForm, Controller, type Resolver } from 'react-hook-form'
+import { useForm, Controller, useWatch, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { ArrowLeft } from 'lucide-react'
@@ -69,7 +69,7 @@ export function CouponFormPage() {
     },
   })
 
-  const discountType = form.watch('discount_type')
+  const discountType = useWatch({ control: form.control, name: 'discount_type' })
   const discountValueIsPercent = discountType === 'percentage'
 
   useEffect(() => {

@@ -165,6 +165,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
     reset,
     watch,
     control,
+    setValue,
     setError,
     formState: { errors },
   } = useForm<PartnerFormData>({
@@ -562,7 +563,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
           <B2BFieldsSection
             register={register as never}
             watch={watch as never}
-            control={control as never}
+            setValue={setValue}
             partnerId={isEditing ? id : undefined}
           />
         )}
