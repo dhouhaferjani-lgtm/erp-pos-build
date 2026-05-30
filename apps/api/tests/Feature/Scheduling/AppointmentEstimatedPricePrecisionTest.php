@@ -46,10 +46,14 @@ final class AppointmentEstimatedPricePrecisionTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // Ingress validation — regex ceiling for estimated_price.
+    // Ingress validation — estimated_price is a NORMALIZE-ON-WRITE field.
     //
-    // Binds to the REAL production rules from StoreAppointmentRequest (no DI
-    // dependencies) so these tests FAIL if the production scale changes.
+    // It carries NO decimal-ceiling regex: the storefront/staff may submit any
+    // precision and AppointmentAuthoringService canonicalizes it to the company
+    // currency scale via CurrencyScale::bcformatStrict (the precision guarantee
+    // lives at the service boundary, asserted in the normalization tests below).
+    // Ingress only enforces numeric + nullable. Binds to the REAL production
+    // rules from StoreAppointmentRequest so the test fails if that contract drifts.
     // -------------------------------------------------------------------------
 
     /**
@@ -94,14 +98,17 @@ final class AppointmentEstimatedPricePrecisionTest extends TestCase
         $this->assertTrue($this->estimatedPricePasses(null), 'Null estimated_price should pass (nullable)');
     }
 
-    public function test_validator_rejects_estimated_price_with_four_decimal_places(): void
+    public function test_validator_accepts_over_precise_estimated_price_for_service_normalization(): void
     {
-        $this->assertFalse($this->estimatedPricePasses('49.9001'), '4-decimal price should fail validation');
+        // No ingress ceiling: over-precise input is accepted and later truncated to
+        // the currency scale by the service (see normalization tests below).
+        $this->assertTrue($this->estimatedPricePasses('49.9001'), '4-decimal price should pass ingress (service normalizes)');
+        $this->assertTrue($this->estimatedPricePasses('49.90000001'), '8-decimal price should pass ingress (service normalizes)');
     }
 
-    public function test_validator_rejects_estimated_price_with_eight_decimal_places(): void
+    public function test_validator_rejects_non_numeric_estimated_price(): void
     {
-        $this->assertFalse($this->estimatedPricePasses('49.90000001'), '8-decimal price should fail validation');
+        $this->assertFalse($this->estimatedPricePasses('abc'), 'Non-numeric estimated_price must fail (numeric rule)');
     }
 
     // -------------------------------------------------------------------------

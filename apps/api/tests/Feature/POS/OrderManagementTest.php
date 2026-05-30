@@ -133,7 +133,7 @@ final class OrderManagementTest extends TestCase
         $response = $this->postJson("/api/v1/pos/orders/{$order->id}/lines", [
             'product_id' => $this->product->id,
             'quantity' => 2,
-            'unit_price' => '10.0000',
+            'unit_price' => '10.000',
             'tax_rate' => '19.00',
         ]);
 
@@ -162,7 +162,7 @@ final class OrderManagementTest extends TestCase
         $response = $this->postJson("/api/v1/pos/orders/{$order->id}/lines", [
             'product_id' => $this->product->id,
             'quantity' => 1,
-            'unit_price' => '10.0000',
+            'unit_price' => '10.000',
             'tax_rate' => '19.00',
         ]);
 
@@ -343,7 +343,7 @@ final class OrderManagementTest extends TestCase
         $this->postJson("/api/v1/pos/orders/{$order->id}/lines", [
             'product_id' => $this->product->id,
             'quantity' => 1,
-            'unit_price' => '10.0000',
+            'unit_price' => '10.000',
             'tax_rate' => '19.00',
         ])->assertStatus(201);
     }

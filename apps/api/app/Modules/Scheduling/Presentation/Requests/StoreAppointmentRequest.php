@@ -25,9 +25,7 @@ final class StoreAppointmentRequest extends FormRequest
      */
     public function messages(): array
     {
-        return [
-            'planned_services.*.estimated_price.regex' => 'Each estimated price must have at most 3 decimal places.',
-        ];
+        return [];
     }
 
     /**
@@ -56,7 +54,11 @@ final class StoreAppointmentRequest extends FormRequest
             'planned_services.*.service_ref_id' => ['required', 'uuid'],
             'planned_services.*.display_name' => ['required', 'string', 'max:200'],
             'planned_services.*.estimated_duration_minutes' => ['required', 'integer', 'min:1'],
-            'planned_services.*.estimated_price' => ['nullable', 'numeric', 'regex:/^\d+(\.\d{1,3})?$/'],
+            // estimated_price is a normalize-on-write field: AppointmentAuthoringService
+            // canonicalizes any precision to the company currency scale via
+            // CurrencyScale::bcformatStrict (Phase 4.14). No ingress decimal ceiling — the
+            // storefront/staff may enter arbitrary precision and the service truncates it.
+            'planned_services.*.estimated_price' => ['nullable', 'numeric'],
             'planned_services.*.display_order' => ['nullable', 'integer', 'min:0'],
             'services_summary' => ['nullable', 'string', 'max:2000'],
             'customer_notes' => ['nullable', 'string', 'max:2000'],
