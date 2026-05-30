@@ -139,6 +139,101 @@ final class HeldOrderTest extends TestCase
         $response->assertStatus(422);
     }
 
+    public function test_hold_order_rejects_over_precise_quantity(): void
+    {
+        $snapshot = $this->makeCartSnapshot();
+        // quantity ceiling is 4 decimal places
+        $snapshot['lines'][0]['quantity'] = '2.12345';
+
+        $response = $this->postJson('/api/v1/pos/held-orders', [
+            'terminal_id' => $this->terminal->id,
+            'shift_id' => $this->shift->id,
+            'cart_snapshot' => $snapshot,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('cart_snapshot.lines.0.quantity', $response->json('error.errors'));
+    }
+
+    public function test_hold_order_rejects_over_precise_unit_price(): void
+    {
+        $snapshot = $this->makeCartSnapshot();
+        // unit_price (money) ceiling is 3 decimal places
+        $snapshot['lines'][0]['unit_price'] = '3.5001';
+
+        $response = $this->postJson('/api/v1/pos/held-orders', [
+            'terminal_id' => $this->terminal->id,
+            'shift_id' => $this->shift->id,
+            'cart_snapshot' => $snapshot,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('cart_snapshot.lines.0.unit_price', $response->json('error.errors'));
+    }
+
+    public function test_hold_order_rejects_over_precise_tax_rate(): void
+    {
+        $snapshot = $this->makeCartSnapshot();
+        // tax_rate ceiling is 2 decimal places
+        $snapshot['lines'][0]['tax_rate'] = '20.001';
+
+        $response = $this->postJson('/api/v1/pos/held-orders', [
+            'terminal_id' => $this->terminal->id,
+            'shift_id' => $this->shift->id,
+            'cart_snapshot' => $snapshot,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('cart_snapshot.lines.0.tax_rate', $response->json('error.errors'));
+    }
+
+    public function test_hold_order_rejects_over_precise_discount_amount(): void
+    {
+        $snapshot = $this->makeCartSnapshot();
+        // discount_amount (money) ceiling is 3 decimal places
+        $snapshot['lines'][0]['discount_amount'] = '0.0001';
+
+        $response = $this->postJson('/api/v1/pos/held-orders', [
+            'terminal_id' => $this->terminal->id,
+            'shift_id' => $this->shift->id,
+            'cart_snapshot' => $snapshot,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('cart_snapshot.lines.0.discount_amount', $response->json('error.errors'));
+    }
+
+    public function test_hold_order_canonicalises_snapshot_values_to_currency_scale(): void
+    {
+        // Company is EUR (scale 2 money). A valid in-scale snapshot value
+        // must round-trip canonically through the persisted JSONB column.
+        $snapshot = $this->makeCartSnapshot();
+        $snapshot['lines'][0]['quantity'] = '2';
+        $snapshot['lines'][0]['unit_price'] = '3.5';
+        $snapshot['lines'][0]['tax_rate'] = '20';
+        $snapshot['lines'][0]['discount_amount'] = '1';
+
+        $response = $this->postJson('/api/v1/pos/held-orders', [
+            'terminal_id' => $this->terminal->id,
+            'shift_id' => $this->shift->id,
+            'cart_snapshot' => $snapshot,
+        ]);
+
+        $response->assertStatus(201);
+
+        $heldOrderId = $response->json('data.id');
+        $heldOrder = HeldOrder::query()->whereKey($heldOrderId)->first();
+        $this->assertNotNull($heldOrder);
+
+        $lines = $heldOrder->cart_snapshot['lines'];
+
+        // money canonicalised to currency scale (EUR = 2), quantity to 4dp.
+        $this->assertSame('2.0000', (string) $lines[0]['quantity']);
+        $this->assertSame('3.50', (string) $lines[0]['unit_price']);
+        $this->assertSame('20.00', (string) $lines[0]['tax_rate']);
+        $this->assertSame('1.00', (string) $lines[0]['discount_amount']);
+    }
+
     public function test_list_held_orders_returns_active_orders(): void
     {
         $this->createHeldOrder(['label' => 'Order A']);

@@ -96,6 +96,16 @@ final class ZReportSyncController extends Controller
             'opening_cash' => ['required', 'numeric', 'regex:/^\d+(\.\d{1,4})?$/'],
             'expected_cash' => ['required', 'numeric', 'regex:/^\d+(\.\d{1,4})?$/'],
             'receipt_snapshots' => ['present', 'array'],
+            // INGRESS-ONLY scale ceilings (money 3dp). `numeric` keeps
+            // well-formed device numeric-strings/numbers valid; the anchored
+            // regex rejects an over-precise device value (422) so the POS app
+            // learns what to fix instead of the server silently rounding it.
+            // This does NOT touch hash/canonical-byte computation — receipt
+            // snapshots are still archived verbatim (device authority).
+            'receipt_snapshots.*.subtotal' => ['sometimes', 'numeric', 'regex:/^-?\d+(?:\.\d{1,3})?$/'],
+            'receipt_snapshots.*.tax_amount' => ['sometimes', 'numeric', 'regex:/^-?\d+(?:\.\d{1,3})?$/'],
+            'receipt_snapshots.*.total' => ['sometimes', 'numeric', 'regex:/^-?\d+(?:\.\d{1,3})?$/'],
+            'receipt_snapshots.*.discount_amount' => ['sometimes', 'numeric', 'regex:/^-?\d+(?:\.\d{1,3})?$/'],
             'grand_totals' => ['present', 'array'],
 
             // ── Schema v2 fields ──────────────────────────────────────────────
@@ -123,7 +133,9 @@ final class ZReportSyncController extends Controller
 
             'tolerance_summary' => ['sometimes', 'nullable', 'array'],
             'tolerance_summary.writeoffCount' => ['sometimes', 'integer'],
-            'tolerance_summary.totalAmount' => ['sometimes', 'string'],
+            // Money 3dp ceiling (INGRESS-ONLY, stored verbatim into report_data
+            // JSONB — does NOT affect hash computation).
+            'tolerance_summary.totalAmount' => ['sometimes', 'string', 'regex:/^-?\d+(?:\.\d{1,3})?$/'],
             'tolerance_summary.currencyCode' => ['sometimes', 'string', 'size:3'],
         ]);
 

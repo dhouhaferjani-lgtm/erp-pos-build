@@ -224,6 +224,82 @@ final class ZReportSyncControllerSchema2Test extends TestCase
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // 2b. receipt_snapshots / tolerance_summary scale validation (FISCAL ingress)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function test_over_precise_receipt_snapshot_total_is_rejected(): void
+    {
+        Sanctum::actingAs($this->cashier);
+        Event::fake();
+
+        $payload = $this->buildV1Payload();
+        $payload['receipt_snapshots'] = [
+            [
+                'subtotal' => '10.000',
+                'tax_amount' => '2.000',
+                'total' => '12.0001', // money ceiling is 3 decimal places
+                'discount_amount' => '0.000',
+            ],
+        ];
+
+        $response = $this->postJson('/api/v1/pos/reports/z/sync', $payload);
+
+        $response->assertStatus(422);
+        $errors = $response->json('error.errors') ?? $response->json('errors');
+        $this->assertIsArray($errors);
+        $this->assertArrayHasKey('receipt_snapshots.0.total', $errors);
+        $this->assertDatabaseCount('pos_z_reports', 0);
+    }
+
+    public function test_over_precise_tolerance_summary_total_is_rejected(): void
+    {
+        Sanctum::actingAs($this->cashier);
+        Event::fake();
+
+        $payload = $this->buildSchema2Payload();
+        $payload['tolerance_summary']['totalAmount'] = '3.5001'; // money ceiling 3dp
+
+        $response = $this->postJson('/api/v1/pos/reports/z/sync', $payload);
+
+        $response->assertStatus(422);
+        $errors = $response->json('error.errors') ?? $response->json('errors');
+        $this->assertIsArray($errors);
+        $this->assertArrayHasKey('tolerance_summary.totalAmount', $errors);
+        $this->assertDatabaseCount('pos_z_reports', 0);
+    }
+
+    public function test_well_formed_device_receipt_snapshots_still_sync(): void
+    {
+        Sanctum::actingAs($this->cashier);
+        Event::fake();
+
+        $payload = $this->buildV1Payload();
+        // Numeric (not string) device values, within the money scale ceiling.
+        $payload['receipt_snapshots'] = [
+            [
+                'subtotal' => 10.0,
+                'tax_amount' => 2.0,
+                'total' => 12.0,
+                'discount_amount' => 0.0,
+            ],
+        ];
+
+        $response = $this->postJson('/api/v1/pos/reports/z/sync', $payload);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('data.status', 'synced');
+
+        // INGRESS-ONLY: receipt_snapshots stored verbatim (device authority,
+        // no canonicalisation of the fiscal payload).
+        $zReportId = $response->json('data.id');
+        $zReport = ZReport::find($zReportId);
+        $this->assertNotNull($zReport);
+
+        $snapshots = $zReport->receipt_snapshots ?? [];
+        $this->assertEqualsWithDelta(12.0, (float) $snapshots[0]['total'], 0.0001);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // 3. shift_fields applied to pos_shifts
     // ─────────────────────────────────────────────────────────────────────────
 

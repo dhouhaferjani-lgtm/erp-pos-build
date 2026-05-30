@@ -98,7 +98,7 @@ class CountingItemController extends Controller
         $this->countingService->submitCount(
             $item,
             $countNumber,
-            (float) $request->input('quantity'),
+            $request->quantity(),
             $request->input('notes'),
             $user
         );
@@ -284,7 +284,7 @@ class CountingItemController extends Controller
 
         $this->countingService->manualOverride(
             $item,
-            (float) $request->input('quantity'),
+            $request->quantity(),
             (string) $request->input('notes'),
             $user
         );

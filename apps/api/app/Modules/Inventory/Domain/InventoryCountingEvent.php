@@ -123,11 +123,13 @@ class InventoryCountingEvent extends Model
 
     /**
      * Record a count submission event.
+     *
+     * @param  numeric-string  $quantity  Canonical numeric string (quantity scale 4, e.g. '1.2345')
      */
     public static function recordCountSubmitted(
         InventoryCountingItem $item,
         int $countNumber,
-        float $quantity,
+        string $quantity,
         ?string $notes,
         string $userId
     ): self {
@@ -146,12 +148,17 @@ class InventoryCountingEvent extends Model
 
     /**
      * Record an auto resolution event.
+     *
+     * @param  numeric-string  $finalQty  Canonical numeric string (quantity scale 4)
      */
     public static function recordAutoResolution(
         InventoryCountingItem $item,
         string $method,
-        float $finalQty
+        string $finalQty
     ): self {
+        $theoreticalQty = $item->theoretical_qty;
+        $variance = bcsub($finalQty, $theoreticalQty, 4);
+
         return self::create([
             'counting_id' => $item->counting_id,
             'item_id' => $item->id,
@@ -159,8 +166,8 @@ class InventoryCountingEvent extends Model
             'event_data' => [
                 'method' => $method,
                 'final_qty' => $finalQty,
-                'theoretical_qty' => (float) $item->theoretical_qty,
-                'variance' => $finalQty - (float) $item->theoretical_qty,
+                'theoretical_qty' => $theoreticalQty,
+                'variance' => $variance,
             ],
             'user_id' => null,
         ]);
@@ -168,10 +175,12 @@ class InventoryCountingEvent extends Model
 
     /**
      * Record a manual override event.
+     *
+     * @param  string  $finalQty  Canonical numeric string (quantity scale 4)
      */
     public static function recordManualOverride(
         InventoryCountingItem $item,
-        float $finalQty,
+        string $finalQty,
         string $notes,
         string $userId
     ): self {
@@ -182,10 +191,10 @@ class InventoryCountingEvent extends Model
             'event_data' => [
                 'final_qty' => $finalQty,
                 'notes' => $notes,
-                'count_1_qty' => $item->count_1_qty !== null ? (float) $item->count_1_qty : null,
-                'count_2_qty' => $item->count_2_qty !== null ? (float) $item->count_2_qty : null,
-                'count_3_qty' => $item->count_3_qty !== null ? (float) $item->count_3_qty : null,
-                'theoretical_qty' => (float) $item->theoretical_qty,
+                'count_1_qty' => $item->count_1_qty !== null ? (string) $item->count_1_qty : null,
+                'count_2_qty' => $item->count_2_qty !== null ? (string) $item->count_2_qty : null,
+                'count_3_qty' => $item->count_3_qty !== null ? (string) $item->count_3_qty : null,
+                'theoretical_qty' => (string) $item->theoretical_qty,
             ],
             'user_id' => $userId,
         ]);
