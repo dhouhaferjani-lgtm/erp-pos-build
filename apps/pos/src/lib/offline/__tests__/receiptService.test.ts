@@ -186,6 +186,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       cartItems: [
         makeCartItem({
           tax_rate: '0.00',
+          line_total: '9.00',
           discount_type: 'fixed',
           discount_amount: '1.00',
           discount_reason: 'Line approval',
