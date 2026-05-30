@@ -995,6 +995,213 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
     }
 
     // =================================================================
+    // Per-line arithmetic-consistency invariant (defense-in-depth)
+    //
+    // Canonical tax model (docs/TAX_IMPLEMENTATION_ANALYSIS.md §271-272):
+    // `unit_price` is the PRE-TAX (net) unit price and
+    // `line_subtotal == round(unit_price × quantity, scale) − line_discount_amount`
+    // computed half-up (matching the device `Big.RM = 1`) at currency_scale.
+    // The server stores canonical_bytes/current_hash verbatim and verifies by
+    // re-hashing — it does NOT recompute arithmetic. This check quarantines a
+    // forged / device-bugged line whose own fields are internally inconsistent
+    // BEFORE it is projected into reporting + GL, without touching the hash.
+    // =================================================================
+
+    public function test_line_arithmetic_consistent_multi_quantity_with_discount_passes(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        // unit_price 5.00 × qty 3 = 15.00 net gross; − 2.00 discount = 13.00 net subtotal.
+        // 20% VAT on 13.00 net = 2.60. gross = 15.60.
+        $payload['line_items'] = [
+            array_replace($payload['line_items'][0], [
+                'unit_price' => '5.00',
+                'quantity' => '3.000',
+                'line_discount_amount' => '2.00',
+                'line_discount_reason' => 'loyalty',
+                'line_subtotal' => '13.00',
+                'line_vat' => '2.60',
+                'vat_rate' => '20.00',
+                'tax_category_code' => '',
+            ]),
+        ];
+        $payload['vat_breakdown'] = [
+            ['gross_amount' => '15.60', 'net_amount' => '13.00', 'rate' => '20.00', 'tax_category_code' => '', 'vat_amount' => '2.60'],
+        ];
+        $payload['subtotal'] = '13.00';
+        $payload['vat_total'] = '2.60';
+        $payload['total'] = '15.60';
+        $payload['transaction_discount_amount'] = '0.00';
+        $payload['transaction_discount_reason'] = null;
+        $payload['payments'] = [array_replace($payload['payments'][0], ['amount' => '15.60'])];
+
+        // No throw == accepted.
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_line_subtotal_not_equal_to_priced_quantity_minus_discount_is_rejected(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        // unit_price 10.00 × qty 1 − 0 discount = 10.00, but line_subtotal forged
+        // to 9.00 (and vat_breakdown kept in sync so the partition check passes
+        // first and the per-line arithmetic check is what fires).
+        $payload['line_items'] = [
+            array_replace($payload['line_items'][0], [
+                'unit_price' => '10.00',
+                'quantity' => '1.000',
+                'line_discount_amount' => '0.00',
+                'line_discount_reason' => null,
+                'line_subtotal' => '9.00',
+                'line_vat' => '2.00',
+                'vat_rate' => '20.00',
+                'tax_category_code' => '',
+            ]),
+        ];
+        $payload['vat_breakdown'] = [
+            ['gross_amount' => '11.00', 'net_amount' => '9.00', 'rate' => '20.00', 'tax_category_code' => '', 'vat_amount' => '2.00'],
+        ];
+        $payload['subtotal'] = '9.00';
+        $payload['vat_total'] = '2.00';
+        $payload['total'] = '11.00';
+        $payload['payments'] = [array_replace($payload['payments'][0], ['amount' => '11.00'])];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/^payload_line_arithmetic_mismatch:line_items\[0\]:expected=10\.00:got=9\.00/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+    }
+
+    public function test_line_arithmetic_uses_half_up_rounding_on_priced_quantity(): void
+    {
+        // unit_price 0.33 × qty 3.5 = 1.155 → half-up to scale 2 = 1.16.
+        // (Truncation would give 1.15 — proves the server rounds half-up,
+        // matching the device Big.RM=1, not bcmath's default truncation.)
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        $payload['line_items'] = [
+            array_replace($payload['line_items'][0], [
+                'unit_price' => '0.33',
+                'quantity' => '3.500',
+                'line_discount_amount' => '0.00',
+                'line_discount_reason' => null,
+                'line_subtotal' => '1.16',
+                'line_vat' => '0.00',
+                'vat_rate' => '0.00',
+                'tax_category_code' => 'Z',
+            ]),
+        ];
+        $payload['vat_breakdown'] = [
+            ['gross_amount' => '1.16', 'net_amount' => '1.16', 'rate' => '0.00', 'tax_category_code' => 'Z', 'vat_amount' => '0.00'],
+        ];
+        $payload['subtotal'] = '1.16';
+        $payload['vat_total'] = '0.00';
+        $payload['total'] = '1.16';
+        $payload['transaction_discount_amount'] = '0.00';
+        $payload['transaction_discount_reason'] = null;
+        $payload['payments'] = [array_replace($payload['payments'][0], ['amount' => '1.16'])];
+
+        // No throw == accepted (half-up 1.16 matches).
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_line_discount_not_folded_into_subtotal_is_rejected(): void
+    {
+        // Modifier-style case: a line discount that the device failed to fold
+        // into line_subtotal. unit_price 10.00 × qty 1 − 3.00 discount = 7.00
+        // net subtotal, but the line still carries the un-discounted 10.00.
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        $payload['line_items'] = [
+            array_replace($payload['line_items'][0], [
+                'unit_price' => '10.00',
+                'quantity' => '1.000',
+                'line_discount_amount' => '3.00',
+                'line_discount_reason' => 'modifier credit',
+                'line_subtotal' => '10.00', // bug: discount not folded in (should be 7.00)
+                'line_vat' => '2.00',
+                'vat_rate' => '20.00',
+                'tax_category_code' => '',
+            ]),
+        ];
+        $payload['vat_breakdown'] = [
+            ['gross_amount' => '12.00', 'net_amount' => '10.00', 'rate' => '20.00', 'tax_category_code' => '', 'vat_amount' => '2.00'],
+        ];
+        $payload['subtotal'] = '10.00';
+        $payload['vat_total'] = '2.00';
+        $payload['total'] = '12.00';
+        $payload['transaction_discount_amount'] = '0.00';
+        $payload['transaction_discount_reason'] = null;
+        $payload['payments'] = [array_replace($payload['payments'][0], ['amount' => '12.00'])];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/^payload_line_arithmetic_mismatch:line_items\[0\]:expected=7\.00:got=10\.00/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+    }
+
+    public function test_line_discount_correctly_folded_into_subtotal_passes(): void
+    {
+        // Same shape as the rejection case but with the discount correctly
+        // folded: unit_price 10.00 × 1 − 3.00 = 7.00 net subtotal.
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        $payload['line_items'] = [
+            array_replace($payload['line_items'][0], [
+                'unit_price' => '10.00',
+                'quantity' => '1.000',
+                'line_discount_amount' => '3.00',
+                'line_discount_reason' => 'modifier credit',
+                'line_subtotal' => '7.00',
+                'line_vat' => '1.40',
+                'vat_rate' => '20.00',
+                'tax_category_code' => '',
+            ]),
+        ];
+        $payload['vat_breakdown'] = [
+            ['gross_amount' => '8.40', 'net_amount' => '7.00', 'rate' => '20.00', 'tax_category_code' => '', 'vat_amount' => '1.40'],
+        ];
+        $payload['subtotal'] = '7.00';
+        $payload['vat_total'] = '1.40';
+        $payload['total'] = '8.40';
+        $payload['transaction_discount_amount'] = '0.00';
+        $payload['transaction_discount_reason'] = null;
+        $payload['payments'] = [array_replace($payload['payments'][0], ['amount' => '8.40'])];
+
+        // No throw == accepted.
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_line_arithmetic_consistent_at_scale_3_tnd_passes(): void
+    {
+        // Scale-3 (TND millimes): unit_price 1.500 × qty 2 − 0.250 = 2.750 net.
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        $payload['currency_code'] = 'TND';
+        $payload['currency_scale'] = 3;
+        $payload['line_items'] = [
+            array_replace($payload['line_items'][0], [
+                'unit_price' => '1.500',
+                'quantity' => '2.000',
+                'line_discount_amount' => '0.250',
+                'line_discount_reason' => 'promo',
+                'line_subtotal' => '2.750',
+                'line_vat' => '0.000',
+                'vat_rate' => '0.00',
+                'tax_category_code' => 'Z',
+            ]),
+        ];
+        $payload['vat_breakdown'] = [
+            ['gross_amount' => '2.750', 'net_amount' => '2.750', 'rate' => '0.00', 'tax_category_code' => 'Z', 'vat_amount' => '0.000'],
+        ];
+        $payload['subtotal'] = '2.750';
+        $payload['vat_total'] = '0.000';
+        $payload['total'] = '2.750';
+        $payload['transaction_discount_amount'] = '0.000';
+        $payload['transaction_discount_reason'] = null;
+        $payload['payments'] = [array_replace($payload['payments'][0], ['amount' => '2.750'])];
+
+        // No throw == accepted.
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+        $this->addToAssertionCount(1);
+    }
+
+    // =================================================================
     // Positive invariants from spec v7 §11.2
     // =================================================================
 

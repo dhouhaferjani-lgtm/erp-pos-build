@@ -19,6 +19,7 @@ use App\Modules\Fiscal\Domain\DTOs\XReportPayload;
 use App\Modules\Fiscal\Domain\DTOs\ZCashDrawerMovementPayload;
 use App\Modules\Fiscal\Domain\DTOs\ZReportPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Shared\Domain\QuantityScale;
 use LogicException;
 use RuntimeException;
 
@@ -1618,6 +1619,45 @@ final class FiscalPayloadConstraintValidator
         if (! $isZero && $ldr === null) {
             throw new RuntimeException(
                 "payload_line_discount_reason_mismatch:{$path}:amount={$lda}:reason_present=false"
+            );
+        }
+
+        // ---- Per-line arithmetic-consistency invariant (defense-in-depth) ----
+        // The device authors the canonical receipt + hash; the server stores
+        // canonical_bytes/current_hash verbatim and verifies by RE-HASHING the
+        // bytes — it does NOT recompute the line arithmetic. So the hash chain
+        // proves *un-tampered*, not *arithmetically correct*. A device bug or a
+        // forged event could carry a self-inconsistent line whose hash still
+        // verifies, polluting reporting + GL once projected. This check closes
+        // that gap WITHOUT touching the hash: a violation is routed through the
+        // SAME RuntimeException path the parser wraps as
+        // `sub_array_shape:<message>` → quarantine (event stored, NOT projected).
+        //
+        // Canonical tax model (docs/TAX_IMPLEMENTATION_ANALYSIS.md §271-272 +
+        // every sale-receipt-golden v4 vector): `unit_price` is the PRE-TAX
+        // (net) unit price and
+        //   line_subtotal == round(unit_price × quantity, scale) − line_discount_amount
+        // The multiply is rounded HALF-UP at currency_scale to match the device
+        // (`apps/pos/.../decimal.ts` sets `Big.RM = 1`). bcmath truncates, so we
+        // round via QuantityScale::round(..., HALF_UP). quantity carries scale 3
+        // (QUANTITY_SCALE); the product is rounded to the payload's currency
+        // scale. Comparison is EXACT (bccomp === 0), never a tolerance.
+        $unitPriceN = $this->asNumericString($row['unit_price'], "{$path}.unit_price");
+        $quantityN = $this->asNumericString($row['quantity'], "{$path}.quantity");
+        $lineSubtotalN = $this->asNumericString($row['line_subtotal'], "{$path}.line_subtotal");
+
+        $pricedQuantity = $this->asNumericString(
+            QuantityScale::round(
+                bcmul($unitPriceN, $quantityN, self::QUANTITY_SCALE + $scale + 1),
+                $scale,
+                QuantityScale::HALF_UP,
+            ),
+            "{$path}.priced_quantity",
+        );
+        $expectedSubtotal = bcsub($pricedQuantity, $lda, $scale);
+        if (bccomp($expectedSubtotal, $lineSubtotalN, $scale) !== 0) {
+            throw new RuntimeException(
+                "payload_line_arithmetic_mismatch:{$path}:expected={$expectedSubtotal}:got={$lineSubtotalN}"
             );
         }
     }

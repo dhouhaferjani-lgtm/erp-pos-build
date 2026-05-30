@@ -1,5 +1,5 @@
 import { getCurrencyDecimals } from '@/lib/currency';
-import { bcadd, bccomp, bcformat, bcsub } from '@/lib/decimal';
+import { bcadd, bccomp, bcformat, bcmul, bcsub } from '@/lib/decimal';
 import type {
   AddressInput,
   LineItemInput,
@@ -16,6 +16,25 @@ export class SaleReceiptPayloadInputError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'SaleReceiptPayloadInputError';
+  }
+}
+
+/**
+ * Thrown when a cart line is internally inconsistent at canonical-build time.
+ *
+ * The device authors the canonical receipt + hash; the server stores it
+ * verbatim and verifies by re-hashing the bytes — it does NOT recompute the
+ * arithmetic. So a cart bug (or a modifier `price_adjustment` not folded into
+ * `unit_price`/`discount`) could produce a line whose `line_total` differs from
+ * `unit_price * quantity - line_discount_amount`, and the hash would still
+ * verify (the chain proves *un-tampered*, not *arithmetically correct*). This
+ * error is the device-side guarantee of arithmetic correctness; it is NOT part
+ * of the hash chain. A line that trips it must never be signed.
+ */
+export class LineArithmeticInvariantError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LineArithmeticInvariantError';
   }
 }
 
@@ -163,6 +182,42 @@ function buildLineItems(cartItems: CartItem[], scale: number): LineItemInput[] {
     }
     const lineVat = bcformat(item.tax_amount, scale);
     const lineSubtotal = bcformat(bcsub(item.line_total, item.tax_amount), scale);
+
+    // ── Device-side line-arithmetic invariant ──────────────────────────────
+    // GROSS self-consistency: line_total must equal unit_price * quantity
+    // - line_discount_amount, rounded with the SAME rule the cart/device uses
+    // (Big.RM half-up, currency scale — see cartStore.recalcLineTotal /
+    // decimal.bcmul). Threshold is EXACT (bccomp == 0), never a tolerance.
+    // A malformed line must be rejected BEFORE it is folded into the canonical
+    // payload + signed; the hash chain proves un-tampered, not correct.
+    const expectedGross = bcformat(
+      bcsub(bcmul(item.unit_price, String(item.quantity), scale), discountAmount, scale),
+      scale,
+    );
+    const actualGross = bcformat(item.line_total, scale);
+    if (bccomp(actualGross, expectedGross) !== 0) {
+      throw new LineArithmeticInvariantError(
+        `Line arithmetic invariant violated for product ${item.product.id} (${item.product.name}): `
+        + `line_total ${actualGross} != unit_price (${bcformat(item.unit_price, scale)}) `
+        + `× quantity (${bcformat(String(item.quantity), 3)}) − discount (${discountAmount}) `
+        + `= ${expectedGross}. A modifier price_adjustment was likely not folded into `
+        + `unit_price/discount before line_total was computed.`,
+      );
+    }
+
+    // NET/TAX decomposition: the payload derives line_subtotal as
+    // line_total − tax_amount, so line_subtotal + line_vat must reconstitute
+    // line_total at scale. A tax_amount carrying more precision than the
+    // currency allows can make the rounded subtotal + rounded vat drift.
+    const recomposedGross = bcformat(bcadd(lineSubtotal, lineVat, scale), scale);
+    if (bccomp(recomposedGross, actualGross) !== 0) {
+      throw new LineArithmeticInvariantError(
+        `Line net/tax decomposition invariant violated for product ${item.product.id} `
+        + `(${item.product.name}): line_subtotal (${lineSubtotal}) + line_vat (${lineVat}) `
+        + `= ${recomposedGross} != line_total ${actualGross}.`,
+      );
+    }
+
     return {
       gtin: null,
       line_discount_amount: discountAmount,
