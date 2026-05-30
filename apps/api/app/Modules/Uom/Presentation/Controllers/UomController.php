@@ -9,6 +9,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Uom\Application\DTOs\ConversionResultData;
 use App\Modules\Uom\Application\DTOs\UnitCategoryData;
 use App\Modules\Uom\Application\DTOs\UnitData;
+use App\Modules\Uom\Application\Jobs\RevalidateUnitQuantityScaleJob;
 use App\Modules\Uom\Domain\Entities\Unit;
 use App\Modules\Uom\Domain\Entities\UnitCategory;
 use App\Modules\Uom\Domain\Exceptions\IncompatibleUnitsException;
@@ -174,8 +175,25 @@ class UomController extends Controller
 
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
+
+        $previousDecimalPlaces = $unit->decimal_places;
+
         $unit->update($validated);
         $unit->load('category');
+
+        // When the quantity precision narrows (or otherwise changes), audit every
+        // product/stock row that uses this unit against the new scale. The job only
+        // logs violations — it never mutates stored quantities.
+        if (array_key_exists('decimal_places', $validated)
+            && (int) $validated['decimal_places'] !== $previousDecimalPlaces
+        ) {
+            RevalidateUnitQuantityScaleJob::dispatch(
+                unitId: $unit->id,
+                unitCode: $unit->code,
+                tenantId: $unit->tenant_id,
+                newDecimalPlaces: $unit->decimal_places,
+            );
+        }
 
         return response()->json([
             'data' => UnitData::fromModel($unit),

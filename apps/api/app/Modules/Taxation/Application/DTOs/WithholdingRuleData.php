@@ -64,10 +64,15 @@ readonly class WithholdingRuleData
 
     /**
      * Get rate as percentage.
+     *
+     * Precision: returns the bcmul numeric-string directly (e.g. '1.00') instead
+     * of laundering it through a (float) cast, which would drop scale/precision.
+     *
+     * @return numeric-string
      */
-    public function getRateAsPercentage(): float
+    public function getRateAsPercentage(): string
     {
-        return (float) bcmul($this->rate, '100', 2);
+        return bcmul($this->rate, '100', 2);
     }
 
     /**
