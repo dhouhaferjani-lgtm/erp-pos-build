@@ -293,11 +293,13 @@ class InventoryCountingService
      * Submit a count for an item.
      *
      * CRITICAL: This is the only method that should modify count values.
+     *
+     * @param  numeric-string  $quantity  Canonical numeric string (quantity scale 4, e.g. '1.2345')
      */
     public function submitCount(
         InventoryCountingItem $item,
         int $countNumber,
-        float $quantity,
+        string $quantity,
         ?string $notes,
         User $user
     ): void {
@@ -505,17 +507,19 @@ class InventoryCountingService
 
     /**
      * Manual override for an item.
+     *
+     * @param  numeric-string  $quantity  Canonical numeric string (quantity scale 4, e.g. '1.2345')
      */
     public function manualOverride(
         InventoryCountingItem $item,
-        float $quantity,
+        string $quantity,
         string $notes,
         User $user
     ): void {
         $userId = (string) $user->id;
 
         DB::transaction(function () use ($item, $quantity, $notes, $userId): void {
-            $item->final_qty = (string) $quantity;
+            $item->final_qty = $quantity;
             $item->resolution_method = ItemResolutionMethod::ManualOverride;
             $item->resolution_notes = $notes;
             $item->resolved_by_user_id = $userId;
@@ -623,10 +627,10 @@ class InventoryCountingService
         $totalVariance = '0.00';
 
         foreach ($items as $item) {
-            $theoreticalQty = (float) $item->theoretical_qty;
-            $finalQty = (float) ($item->final_qty ?? '0.00');
-            $variance = $finalQty - $theoreticalQty;
-            $totalVariance = bcadd($totalVariance, (string) $variance, 4);
+            $theoreticalQty = (string) $item->theoretical_qty;
+            $finalQty = (string) ($item->final_qty ?? '0.0000');
+            $variance = bcsub($finalQty, $theoreticalQty, 4);
+            $totalVariance = bcadd($totalVariance, $variance, 4);
         }
 
         // Get tenant_id from counting or fallback to user's tenant_id

@@ -240,7 +240,7 @@ final readonly class PointEarningService
         }
 
         return $calculatedPoints->min(
-            PointsAmount::fromNumeric((float) CurrencyScale::bcformat($remaining, $scale))
+            PointsAmount::fromNumericString(CurrencyScale::bcformat($remaining, $scale))
         );
     }
 
@@ -259,12 +259,12 @@ final readonly class PointEarningService
             EarningRuleType::Item => $this->calculateItemPoints($rewardValue, $rule, $transactionData, $scale),
             EarningRuleType::Category => $this->calculateCategoryPoints($rewardValue, $rule, $transactionData, $scale),
             EarningRuleType::Quantity => $this->calculateQuantityPoints($rewardValue, $transactionData, $scale),
-            EarningRuleType::Visit => PointsAmount::fromNumeric(
-                (float) CurrencyScale::bcformat($rewardValue, $scale)
+            EarningRuleType::Visit => PointsAmount::fromNumericString(
+                CurrencyScale::bcformat($rewardValue, $scale)
             ),
             EarningRuleType::Threshold => $this->calculateThresholdPoints($rewardValue, $rule, $transactionData, $scale),
-            EarningRuleType::Time => PointsAmount::fromNumeric(
-                (float) CurrencyScale::bcformat($rewardValue, $scale)
+            EarningRuleType::Time => PointsAmount::fromNumericString(
+                CurrencyScale::bcformat($rewardValue, $scale)
             ),
         };
     }
@@ -282,7 +282,7 @@ final readonly class PointEarningService
         /** @var numeric-string $rewardValue */
         $intermediate = bcmul($amount, $rewardValue, $scale + 4);
 
-        return PointsAmount::fromNumeric((float) CurrencyScale::bcformat($intermediate, $scale));
+        return PointsAmount::fromNumericString(CurrencyScale::bcformat($intermediate, $scale));
     }
 
     /**
@@ -306,7 +306,7 @@ final readonly class PointEarningService
         /** @var numeric-string $rewardValue */
         $intermediate = bcmul((string) $matchingQuantity, $rewardValue, $scale + 4);
 
-        return PointsAmount::fromNumeric((float) CurrencyScale::bcformat($intermediate, $scale));
+        return PointsAmount::fromNumericString(CurrencyScale::bcformat($intermediate, $scale));
     }
 
     /**
@@ -330,7 +330,7 @@ final readonly class PointEarningService
         /** @var numeric-string $rewardValue */
         $intermediate = bcmul((string) $matchingQuantity, $rewardValue, $scale + 4);
 
-        return PointsAmount::fromNumeric((float) CurrencyScale::bcformat($intermediate, $scale));
+        return PointsAmount::fromNumericString(CurrencyScale::bcformat($intermediate, $scale));
     }
 
     /**
@@ -344,7 +344,7 @@ final readonly class PointEarningService
         /** @var numeric-string $rewardValue */
         $intermediate = bcmul((string) $totalQuantity, $rewardValue, $scale + 4);
 
-        return PointsAmount::fromNumeric((float) CurrencyScale::bcformat($intermediate, $scale));
+        return PointsAmount::fromNumericString(CurrencyScale::bcformat($intermediate, $scale));
     }
 
     /**
@@ -366,8 +366,8 @@ final readonly class PointEarningService
 
         // Use bccomp for decimal comparison (no float cast)
         if (bccomp($transactionAmount, $minAmount, $scale + 4) >= 0) {
-            return PointsAmount::fromNumeric(
-                (float) CurrencyScale::bcformat($rewardValue, $scale)
+            return PointsAmount::fromNumericString(
+                CurrencyScale::bcformat($rewardValue, $scale)
             );
         }
 
@@ -387,11 +387,10 @@ final readonly class PointEarningService
 
         /** @var numeric-string $multiplier */
         $multiplier = (string) $tier->earning_multiplier;
-        // Use number_format to prevent scientific notation from float->string cast
-        $pointsStr = number_format($points->value, $scale + 4, '.', '');
-        $intermediate = bcmul($pointsStr, $multiplier, $scale + 4);
+        // $points->value is already a canonical numeric string — multiply directly via bcmath.
+        $intermediate = bcmul($points->value, $multiplier, $scale + 4);
 
-        return PointsAmount::fromNumeric((float) CurrencyScale::bcformat($intermediate, $scale));
+        return PointsAmount::fromNumericString(CurrencyScale::bcformat($intermediate, $scale));
     }
 
     /**
@@ -403,8 +402,8 @@ final readonly class PointEarningService
             return $points;
         }
 
-        $cap = PointsAmount::fromNumeric(
-            (float) CurrencyScale::bcformat((string) $rule->max_earn_per_transaction, $scale)
+        $cap = PointsAmount::fromNumericString(
+            CurrencyScale::bcformat((string) $rule->max_earn_per_transaction, $scale)
         );
 
         return $points->min($cap);

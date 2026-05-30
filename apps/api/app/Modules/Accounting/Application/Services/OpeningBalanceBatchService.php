@@ -10,6 +10,7 @@ use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Accounting\Domain\OpeningBalanceImportRow;
 use App\Modules\Company\Domain\Company;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -28,6 +29,22 @@ use RuntimeException;
  */
 class OpeningBalanceBatchService
 {
+    /**
+     * Quantity values are always staged at scale 4 (independent of currency).
+     */
+    private const QUANTITY_SCALE = 4;
+
+    /**
+     * Money values are always staged at the fixed STORAGE scale 3 (independent
+     * of currency). This matches the 3-decimal ingress regex (Phase 4.5) and
+     * the decimal(N,3) journal-posting target columns this staging feeds.
+     *
+     * Canonicalizing at the per-currency display scale (e.g. EUR scale 2) would
+     * silently truncate the 3rd decimal the regex accepts (10000.105 -> 10000.10)
+     * before it ever reaches the decimal(N,3) columns.
+     */
+    private const MONEY_STORAGE_SCALE = 3;
+
     /**
      * Create a new opening balance batch.
      *
@@ -146,12 +163,14 @@ class OpeningBalanceBatchService
 
         $importRows = [];
         foreach ($rows as $index => $row) {
+            $canonical = $this->canonicalizeRow($batch->type, $row);
+
             $importRows[] = [
                 'id' => (string) Str::uuid(),
                 'batch_id' => $batch->id,
                 'row_type' => $rowType,
                 'row_number' => $currentMaxRow + $index + 1,
-                'raw_data' => json_encode($row),
+                'raw_data' => json_encode($canonical, JSON_PRESERVE_ZERO_FRACTION),
                 'status' => OpeningImportRowStatus::Pending->value,
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -159,6 +178,66 @@ class OpeningBalanceBatchService
         }
 
         OpeningBalanceImportRow::insert($importRows);
+    }
+
+    /**
+     * Pre-canonicalize the numeric fields of a staging row to fixed-scale numeric strings.
+     *
+     * JSONB columns bypass Eloquent decimal casts, so numeric values must be written as
+     * canonical numeric-strings (with trailing zeros preserved) BEFORE json_encode.
+     * Monetary fields use the fixed STORAGE scale 3 (matching the 3dp ingress regex and
+     * the decimal(N,3) journal-posting target columns), NOT the per-currency display scale
+     * which would silently truncate the 3rd decimal. Quantity is always scale 4.
+     * Non-numeric and unknown fields are passed through untouched.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function canonicalizeRow(OpeningBatchType $type, array $row): array
+    {
+        $moneyScale = self::MONEY_STORAGE_SCALE;
+
+        // Field => scale map per batch type.
+        $moneyFields = match ($type) {
+            OpeningBatchType::Accounting => ['debit', 'credit'],
+            OpeningBatchType::Inventory => ['unit_cost'],
+            OpeningBatchType::ArOpenItems, OpeningBatchType::ApOpenItems => ['total', 'open_amount'],
+        };
+
+        foreach ($moneyFields as $field) {
+            $row[$field] = $this->canonicalizeField($row[$field] ?? null, $moneyScale);
+        }
+
+        if ($type === OpeningBatchType::Inventory) {
+            $row['quantity'] = $this->canonicalizeField($row['quantity'] ?? null, self::QUANTITY_SCALE);
+        }
+
+        return $row;
+    }
+
+    /**
+     * Canonicalize a single numeric field value to a fixed-scale numeric string.
+     *
+     * Leaves null, empty, and non-numeric values untouched (validation surfaces those
+     * downstream) so canonicalization never silently mutates malformed input.
+     */
+    private function canonicalizeField(mixed $value, int $scale): mixed
+    {
+        if ($value === null) {
+            return $value;
+        }
+
+        if (! is_string($value) && ! is_int($value) && ! is_float($value)) {
+            return $value;
+        }
+
+        $asString = is_string($value) ? trim($value) : (string) $value;
+
+        if ($asString === '' || ! is_numeric($asString)) {
+            return $value;
+        }
+
+        return CurrencyScale::bcformatStrict($asString, $scale);
     }
 
     /**
