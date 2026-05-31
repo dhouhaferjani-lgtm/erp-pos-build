@@ -401,7 +401,7 @@ class InventoryTransferServiceTest extends TestCase
         // Company on-hand A = 120 (100 at warehouse + 20 at shop), cost = 5.
         $this->seedStock($this->productA, $this->warehouse, '100.0000');
         $this->seedStock($this->productA, $this->shop, '20.0000');
-        $this->assertEquals('5.0000', $this->productA->fresh()->cost_price);
+        $this->assertEquals('5.000000', $this->productA->fresh()->cost_price);
 
         $transfer = $this->service()->initiate($this->initiateData(
             $this->warehouse->id,
@@ -414,7 +414,7 @@ class InventoryTransferServiceTest extends TestCase
 
         // Company on-hand still 120 after complete (90 + 30).
         // WAC delta = 60 / 120 = 0.50 → 5.50
-        $this->assertEquals('5.5000', $this->productA->fresh()->cost_price);
+        $this->assertEquals('5.500000', $this->productA->fresh()->cost_price);
     }
 
     public function test_cancelling_in_transit_transfer_returns_stock_to_source(): void

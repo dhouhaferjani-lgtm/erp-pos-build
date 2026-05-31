@@ -190,15 +190,20 @@ class StockTransferService
                 );
             }
 
-            $transferCost = (float) $transfer->transfer_cost;
-            if ($transferCost > 0) {
-                $this->capitalizeTransferCost($transfer, $transferCost);
-            }
-
+            // Persist the Completed status BEFORE capitalizing the transfer cost.
+            // recordCostAdjustment re-queries stock_transfers for in-transit
+            // quantity; if this transfer is still InTransit at that point its
+            // just-received qty is double-counted (in_transit + on_hand),
+            // inflating the denominator and under-capitalizing the freight cost.
             $transfer->status = TransferStatus::Completed;
             $transfer->completed_by_user_id = $userId;
             $transfer->completed_at = now();
             $transfer->save();
+
+            $transferCost = (float) $transfer->transfer_cost;
+            if ($transferCost > 0) {
+                $this->capitalizeTransferCost($transfer, $transferCost);
+            }
 
             $transferSnapshot = $transfer->fresh(['lines']) ?? $transfer;
 
