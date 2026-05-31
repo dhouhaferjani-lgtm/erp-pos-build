@@ -408,6 +408,8 @@ class StockTransferService
                 product: $product,
                 additionalCost: $allocated,
                 reason: 'stock_transfer_cost',
+                tenantId: $transfer->tenant_id,
+                companyId: $transfer->company_id,
                 reference: $transfer->transfer_number,
                 referenceType: StockTransfer::class,
                 referenceId: $transfer->id,
