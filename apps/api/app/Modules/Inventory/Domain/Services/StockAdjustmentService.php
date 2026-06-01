@@ -54,7 +54,7 @@ final class StockAdjustmentService
             $companyId = $expectedCompanyId ?? $this->resolveCompanyId($locationId);
 
             return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $companyId): StockMovement {
-                $stockLevel = $this->getOrCreateStockLevel($productId, $locationId, $companyId);
+                $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId);
 
                 /** @var numeric-string $quantityBefore */
                 $quantityBefore = $stockLevel->quantity;
@@ -259,7 +259,7 @@ final class StockAdjustmentService
                 );
 
                 // Add to destination
-                $destStock = $this->getOrCreateStockLevel($productId, $toLocationId, $resolvedCompanyId);
+                $destStock = $this->lockStockLevel($productId, $toLocationId, $resolvedCompanyId);
                 /** @var numeric-string $destQuantityBefore */
                 $destQuantityBefore = $destStock->quantity;
                 $destQuantityAfter = bcadd($destQuantityBefore, $quantity, self::SCALE);
@@ -446,7 +446,7 @@ final class StockAdjustmentService
             $companyId = $expectedCompanyId ?? $this->resolveCompanyId($locationId);
 
             return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $newQuantity, $reason, $userId, $companyId): StockMovement {
-                $stockLevel = $this->getOrCreateStockLevel($productId, $locationId, $companyId);
+                $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId);
 
                 /** @var numeric-string $quantityBefore */
                 $quantityBefore = $stockLevel->quantity;

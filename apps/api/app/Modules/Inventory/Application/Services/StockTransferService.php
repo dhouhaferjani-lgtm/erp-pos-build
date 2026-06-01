@@ -153,7 +153,7 @@ class StockTransferService
 
             // Move stock into in_transit immediately.
             return $this->moveSourceToInTransit($transfer->id, $data->initiatedByUserId);
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -173,10 +173,10 @@ class StockTransferService
 
             $reference = $transfer->transfer_number;
             foreach ($transfer->lines as $line) {
+                // load unlocked — receive()/recordCostAdjustment() take advisory-then-product-row lock in the canonical order; pre-locking the product row here would invert the order vs recordPurchase and deadlock.
                 $product = Product::query()
                     ->where('tenant_id', $transfer->tenant_id)
                     ->where('company_id', $transfer->company_id)
-                    ->lockForUpdate()
                     ->findOrFail($line->product_id);
 
                 $this->stockAdjustmentService->receive(
@@ -233,7 +233,7 @@ class StockTransferService
             });
 
             return $transferSnapshot;
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -298,7 +298,7 @@ class StockTransferService
             });
 
             return $transferSnapshot;
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -409,6 +409,14 @@ class StockTransferService
             $totalWeight = bcadd($totalWeight, $weight, $working);
         }
 
+        $lineCount = max(1, $transfer->lines->count());
+
+        // First pass: compute each line's allocation, skipping genuinely-zero
+        // shares. The LAST cost-bearing line absorbs the residual
+        // (transferCost − Σ others) so the allocations sum to transferCost
+        // EXACTLY, with no millième lost or gained to independent rounding.
+        /** @var list<array{line: StockTransferLine, product: Product, allocated: numeric-string}> $allocations */
+        $allocations = [];
         foreach ($transfer->lines as $line) {
             $product = Product::query()
                 ->where('tenant_id', $transfer->tenant_id)
@@ -418,12 +426,31 @@ class StockTransferService
             if (bccomp($totalWeight, '0', $working) > 0) {
                 $allocated = bcmul($transferCost, bcdiv($weights[$line->id], $totalWeight, $working), $working);
             } else {
-                $allocated = bcdiv($transferCost, (string) max(1, $transfer->lines->count()), $working);
+                $allocated = bcdiv($transferCost, (string) $lineCount, $working);
             }
 
             if (bccomp($allocated, '0', $working) <= 0) {
                 continue;
             }
+
+            $allocations[] = ['line' => $line, 'product' => $product, 'allocated' => $allocated];
+        }
+
+        $lastIndex = count($allocations) - 1;
+        /** @var numeric-string $runningSumOfOthers */
+        $runningSumOfOthers = '0';
+
+        foreach ($allocations as $index => $allocation) {
+            $line = $allocation['line'];
+            $product = $allocation['product'];
+
+            // Assign the residual to the final cost-bearing line so the running
+            // sum reconciles to transferCost to the working scale.
+            $allocated = $index === $lastIndex
+                ? bcsub($transferCost, $runningSumOfOthers, $working)
+                : $allocation['allocated'];
+
+            $runningSumOfOthers = bcadd($runningSumOfOthers, $allocated, $working);
 
             $line->allocated_transfer_cost = CurrencyScale::bcformat($allocated, self::QTY_SCALE);
             $line->save();

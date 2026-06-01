@@ -15,6 +15,7 @@ use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
 use App\Modules\Inventory\Application\Services\StockTransferService;
 use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\Enums\TransferCostDistribution;
 use App\Modules\Inventory\Domain\Enums\TransferStatus;
 use App\Modules\Inventory\Domain\Enums\TransferType;
 use App\Modules\Inventory\Domain\Events\StockTransferCancelled;
@@ -463,5 +464,56 @@ class InventoryTransferServiceTest extends TestCase
 
         $this->expectException(TransferStateException::class);
         $this->service()->cancel($transfer->id, $this->user->id, 'too late');
+    }
+
+    public function test_transfer_cost_allocation_conserves_total_across_uneven_lines(): void
+    {
+        // Three equal lines (qty 10, cost 5) sharing a transfer cost that does
+        // NOT divide evenly: 100 / 3 = 33.333333... per line. Rounding each
+        // share independently loses a millième; the residual must land on the
+        // last cost-bearing line so the allocated shares sum EXACTLY to 100.
+        $productC = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'PROD-C',
+            'name' => 'Spark Plug',
+            'type' => ProductType::Part,
+            'is_active' => true,
+            'cost_price' => '5.0000',
+            'sale_price' => '10.0000',
+        ]);
+
+        $this->seedStock($this->productA, $this->warehouse, '50.0000');
+        $this->seedStock($this->productB, $this->warehouse, '50.0000');
+        $this->seedStock($productC, $this->warehouse, '50.0000');
+
+        $transfer = $this->service()->initiate(new InitiateTransferData(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            sourceLocationId: $this->warehouse->id,
+            destinationLocationId: $this->shop->id,
+            initiatedByUserId: $this->user->id,
+            lines: [
+                new InitiateTransferLineData($this->productA->id, '10.0000'),
+                new InitiateTransferLineData($this->productB->id, '10.0000'),
+                new InitiateTransferLineData($productC->id, '10.0000'),
+            ],
+            transferCost: '100.0000',
+            transferCostDistribution: TransferCostDistribution::EqualPerLine,
+        ));
+
+        $completed = $this->service()->complete($transfer->id, $this->user->id);
+
+        $sumAllocated = '0';
+        foreach ($completed->lines as $line) {
+            $sumAllocated = bcadd($sumAllocated, (string) $line->allocated_transfer_cost, 4);
+        }
+
+        // No millième lost or gained: Σ allocated == transfer cost, exactly.
+        $this->assertSame(
+            '100.0000',
+            bcadd($sumAllocated, '0', 4),
+            'Per-line transfer-cost allocations must sum to the total transfer cost.'
+        );
     }
 }
