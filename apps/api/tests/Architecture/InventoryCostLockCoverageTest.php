@@ -1,0 +1,167 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Architecture;
+
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
+use Tests\TestCase;
+
+/**
+ * Architecture guard for the ProductCostLock serialization seam.
+ *
+ * The WAC serialization foundation relies on a single advisory-lock seam
+ * (ProductCostLock::acquire) wrapping every code path that either recomputes
+ * the weighted-average cost or creates a new stock_level row. Pure decrement
+ * paths intentionally stay OUTSIDE the seam: they only mutate an already
+ * existing row and serialize against an in-flight recompute via the row locks
+ * they take (lockForUpdate/firstOrFail). This test pins both halves of that
+ * contract so a future edit cannot silently drop the seam from a recompute
+ * path or wrap a pure decrement in a redundant (deadlock-prone) lock.
+ */
+final class InventoryCostLockCoverageTest extends TestCase
+{
+    /**
+     * Methods that recompute the WAC or can create a stock_level row.
+     * Each MUST take the ProductCostLock seam.
+     *
+     * @return array<int, array{string, string}>
+     */
+    public static function mustLockProvider(): array
+    {
+        return [
+            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordPurchase'],
+            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordReturn'],
+            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordCostAdjustment'],
+            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function receive'],
+            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function adjust'],
+            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function transfer'],
+            ['app/Modules/Inventory/Application/Services/InventoryOpeningService.php', 'public function postBatch'],
+        ];
+    }
+
+    /**
+     * Pure decrement methods that operate only on an existing row.
+     * Each MUST NOT take the ProductCostLock seam.
+     *
+     * @return array<int, array{string, string}>
+     */
+    public static function mustNotLockProvider(): array
+    {
+        return [
+            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordSale'],
+            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function issue'],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('mustLockProvider')]
+    public function test_recompute_or_creating_methods_take_the_seam_lock(string $path, string $sig): void
+    {
+        $body = $this->extractMethodBody(base_path($path), $sig);
+
+        $this->assertStringContainsString(
+            'costLock->acquire',
+            $body,
+            "{$sig} in {$path} recomputes the weighted-average cost or can create a "
+            .'stock_level row, so it MUST acquire the ProductCostLock serialization '
+            .'seam (costLock->acquire). Without it, a concurrent recompute can read a '
+            .'stale cost or race to create a phantom row.'
+        );
+    }
+
+    #[Test]
+    #[DataProvider('mustNotLockProvider')]
+    public function test_pure_decrement_methods_stay_lock_free(string $path, string $sig): void
+    {
+        $body = $this->extractMethodBody(base_path($path), $sig);
+
+        $this->assertStringNotContainsString(
+            'costLock->acquire',
+            $body,
+            "{$sig} in {$path} is a pure decrement that only mutates an existing "
+            .'stock_level row. It MUST NOT acquire the ProductCostLock seam: it already '
+            .'serializes against an in-flight recompute via the existing row locks it '
+            .'takes, and wrapping it in the seam adds a redundant, deadlock-prone lock.'
+        );
+    }
+
+    #[Test]
+    public function test_lock_free_methods_operate_only_on_existing_rows(): void
+    {
+        // recordSale loads the EXISTING stock_level row with lockForUpdate()->firstOrFail();
+        // firstOrFail throws rather than creating a row, so it can never produce the
+        // phantom row that a pure row-lock strategy would miss.
+        $recordSale = $this->extractMethodBody(
+            base_path('app/Modules/Inventory/Application/Services/WeightedAverageCostService.php'),
+            'public function recordSale'
+        );
+
+        $this->assertStringContainsString(
+            'firstOrFail',
+            $recordSale,
+            'recordSale must load the EXISTING stock_level row via firstOrFail(): being '
+            .'lock-free is only safe because it mutates an already-existing row and cannot '
+            .'create the phantom rows that pure row-locking would miss, so it serializes '
+            .'against an in-flight recompute through the row locks it takes.'
+        );
+
+        // issue loads the EXISTING row via lockStockLevel(), which itself uses
+        // firstOrFail() — same existing-row-only guarantee.
+        $issue = $this->extractMethodBody(
+            base_path('app/Modules/Inventory/Domain/Services/StockAdjustmentService.php'),
+            'public function issue'
+        );
+
+        $this->assertStringContainsString(
+            'lockStockLevel',
+            $issue,
+            'issue must load the EXISTING stock_level row via lockStockLevel(): being '
+            .'lock-free is only safe because it mutates an already-existing row and cannot '
+            .'create the phantom rows that pure row-locking would miss, so it serializes '
+            .'against an in-flight recompute through the row locks it takes.'
+        );
+    }
+
+    /**
+     * Balanced-brace method-body extractor.
+     *
+     * Locates $signature in the file, finds the first '{' at/after it, then
+     * walks characters tracking brace depth until it returns to 0, returning
+     * the method body substring (inclusive of the outer braces). The target
+     * bodies contain no '{' or '}' inside string literals or comments, so a
+     * naive depth counter is balanced and accurate for them.
+     */
+    private function extractMethodBody(string $absPath, string $signature): string
+    {
+        $source = file_get_contents($absPath);
+
+        $this->assertNotFalse($source, "Unable to read {$absPath}");
+
+        $sigPos = strpos($source, $signature);
+        $this->assertNotFalse($sigPos, "Signature '{$signature}' not found in {$absPath}");
+
+        $openPos = strpos($source, '{', $sigPos);
+        $this->assertNotFalse($openPos, "Opening brace for '{$signature}' not found in {$absPath}");
+
+        $depth = 0;
+        $length = strlen($source);
+
+        for ($i = $openPos; $i < $length; $i++) {
+            $char = $source[$i];
+
+            if ($char === '{') {
+                $depth++;
+            } elseif ($char === '}') {
+                $depth--;
+
+                if ($depth === 0) {
+                    return substr($source, $openPos, $i - $openPos + 1);
+                }
+            }
+        }
+
+        $this->fail("Unbalanced braces while extracting body of '{$signature}' in {$absPath}");
+    }
+}
