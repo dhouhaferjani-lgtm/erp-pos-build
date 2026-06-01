@@ -221,30 +221,51 @@ class InventoryOpeningService
 
         $company = Company::findOrFail($batch->company_id);
 
-        return DB::transaction(function () use ($batch, $validRows, $company, $userId): JournalEntry {
-            $entryNumber = $this->generateEntryNumber($company->id);
+        // Multi-product deadlock defense: acquire ALL the batch's product
+        // advisory locks UP-FRONT in ONE sorted call (ProductCostLock sorts
+        // internally) before the per-row create/recompute loop. A per-iteration
+        // acquire([$singleId]) accumulates per-product advisory locks in row
+        // order (unsorted) within the one transaction, so two concurrent posts
+        // over overlapping products in different row orders AB-BA deadlock;
+        // attempts:3 just retries the same losing order. Mirrors
+        // StockTransferService::complete/cancel and GoodsReceiptService::receiveGoods.
+        $seenProductIds = [];
+        foreach ($validRows as $row) {
+            $mappedData = $row->mapped_data;
 
-            $totalInventoryValue = '0.00';
-            $rowEntityMap = [];
+            if (! is_array($mappedData) || ! isset($mappedData['product_id'])) {
+                continue;
+            }
 
-            // Process each row: create stock movements and update stock levels
-            foreach ($validRows as $row) {
-                $mappedData = $row->mapped_data;
+            $seenProductIds[(string) $mappedData['product_id']] = true;
+        }
+        /** @var list<string> $productIds */
+        $productIds = array_keys($seenProductIds);
 
-                if (! is_array($mappedData) || ! isset($mappedData['product_id'], $mappedData['location_id'])) {
-                    continue;
-                }
+        return DB::transaction(function () use ($batch, $validRows, $company, $userId, $productIds): JournalEntry {
+            return $this->costLock->acquire($company->tenant_id, $company->id, $productIds, function () use ($batch, $validRows, $company, $userId): JournalEntry {
+                $entryNumber = $this->generateEntryNumber($company->id);
 
-                $quantity = $mappedData['quantity'] ?? '0.00';
-                $unitCost = $mappedData['unit_cost'] ?? '0.00';
-                $lineValue = bcmul($quantity, $unitCost, $this->monetaryScale());
+                $totalInventoryValue = '0.00';
+                $rowEntityMap = [];
 
-                $productId = (string) $mappedData['product_id'];
-                $locationId = $mappedData['location_id'];
+                // Process each row: create stock movements and update stock levels.
+                // All product advisory locks are already held up-front (sorted), so
+                // per-row work runs directly — no nested per-row re-acquire needed.
+                foreach ($validRows as $row) {
+                    $mappedData = $row->mapped_data;
 
-                // Serialize the per-product row-create + cost recompute against any
-                // concurrent recompute for the same (tenant, company, product) tuple.
-                $movementId = $this->costLock->acquire($company->tenant_id, $company->id, [$productId], function () use ($company, $batch, $userId, $productId, $locationId, $quantity, $unitCost): string {
+                    if (! is_array($mappedData) || ! isset($mappedData['product_id'], $mappedData['location_id'])) {
+                        continue;
+                    }
+
+                    $quantity = $mappedData['quantity'] ?? '0.00';
+                    $unitCost = $mappedData['unit_cost'] ?? '0.00';
+                    $lineValue = bcmul($quantity, $unitCost, $this->monetaryScale());
+
+                    $productId = (string) $mappedData['product_id'];
+                    $locationId = $mappedData['location_id'];
+
                     // Get or create stock level (with lock for update)
                     $stockLevel = StockLevel::where('product_id', $productId)
                         ->where('location_id', $locationId)
@@ -293,61 +314,59 @@ class InventoryOpeningService
                             ]);
                     }
 
-                    return $movement->id;
-                });
+                    $totalInventoryValue = bcadd($totalInventoryValue, $lineValue, $this->monetaryScale());
+                    $rowEntityMap[$row->id] = $movement->id;
+                }
 
-                $totalInventoryValue = bcadd($totalInventoryValue, $lineValue, $this->monetaryScale());
-                $rowEntityMap[$row->id] = $movementId;
-            }
+                // Create GL entry: Dr. Inventory, Cr. Opening Balance Equity
+                $inventoryAccount = Account::findByPurposeOrFail($company->id, SystemAccountPurpose::Inventory);
+                $obeAccount = Account::findByPurposeOrFail($company->id, SystemAccountPurpose::OpeningBalanceEquity);
 
-            // Create GL entry: Dr. Inventory, Cr. Opening Balance Equity
-            $inventoryAccount = Account::findByPurposeOrFail($company->id, SystemAccountPurpose::Inventory);
-            $obeAccount = Account::findByPurposeOrFail($company->id, SystemAccountPurpose::OpeningBalanceEquity);
+                $entry = JournalEntry::create([
+                    'tenant_id' => $company->tenant_id,
+                    'company_id' => $company->id,
+                    'entry_number' => $entryNumber,
+                    'entry_date' => $batch->cutover_date,
+                    'description' => "Inventory Opening Balance - {$batch->name}",
+                    'status' => JournalEntryStatus::Posted,
+                    'source_type' => 'opening_balance',
+                    'source_id' => $batch->id,
+                    'is_historical' => true,
+                    'posted_at' => now(),
+                    'posted_by' => $userId,
+                ]);
 
-            $entry = JournalEntry::create([
-                'tenant_id' => $company->tenant_id,
-                'company_id' => $company->id,
-                'entry_number' => $entryNumber,
-                'entry_date' => $batch->cutover_date,
-                'description' => "Inventory Opening Balance - {$batch->name}",
-                'status' => JournalEntryStatus::Posted,
-                'source_type' => 'opening_balance',
-                'source_id' => $batch->id,
-                'is_historical' => true,
-                'posted_at' => now(),
-                'posted_by' => $userId,
-            ]);
+                // Debit: Inventory
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $inventoryAccount->id,
+                    'partner_id' => null,
+                    'debit' => $totalInventoryValue,
+                    'credit' => '0.00',
+                    'description' => 'Opening inventory value',
+                    'line_order' => 0,
+                ]);
 
-            // Debit: Inventory
-            JournalLine::create([
-                'journal_entry_id' => $entry->id,
-                'account_id' => $inventoryAccount->id,
-                'partner_id' => null,
-                'debit' => $totalInventoryValue,
-                'credit' => '0.00',
-                'description' => 'Opening inventory value',
-                'line_order' => 0,
-            ]);
+                // Credit: Opening Balance Equity
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $obeAccount->id,
+                    'partner_id' => null,
+                    'debit' => '0.00',
+                    'credit' => $totalInventoryValue,
+                    'description' => 'Opening Balance Equity offset',
+                    'line_order' => 1,
+                ]);
 
-            // Credit: Opening Balance Equity
-            JournalLine::create([
-                'journal_entry_id' => $entry->id,
-                'account_id' => $obeAccount->id,
-                'partner_id' => null,
-                'debit' => '0.00',
-                'credit' => $totalInventoryValue,
-                'description' => 'Opening Balance Equity offset',
-                'line_order' => 1,
-            ]);
+                // Mark rows as posted
+                $this->batchService->markRowsPosted($rowEntityMap);
 
-            // Mark rows as posted
-            $this->batchService->markRowsPosted($rowEntityMap);
+                // Mark batch as validated (posted)
+                $this->batchService->markBatchValidated($batch, $userId);
 
-            // Mark batch as validated (posted)
-            $this->batchService->markBatchValidated($batch, $userId);
-
-            return $entry->load('lines');
-        });
+                return $entry->load('lines');
+            });
+        }, attempts: 3);
     }
 
     /**

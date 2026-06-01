@@ -88,6 +88,71 @@ final class InventoryCostLockCoverageTest extends TestCase
         );
     }
 
+    /**
+     * Multi-product seam callers: each opens ONE transaction and drives a loop
+     * that calls a per-product advisory-locking seam (recordPurchase /
+     * recordReturn / recordCostAdjustment / receive, or a per-row
+     * costLock->acquire). The deadlock defense is to acquire ALL the products'
+     * advisory locks UP-FRONT in ONE sorted ProductCostLock::acquire BEFORE the
+     * loop (ProductCostLock sorts internally), so the nested per-iteration
+     * acquires are re-entrant on already-held xact locks. A per-iteration single
+     * acquire instead accumulates per-product locks in row/line order (unsorted)
+     * within the one transaction, AB-BA deadlocking two concurrent runs over
+     * overlapping products in different orders.
+     *
+     * @return array<int, array{string, string}>
+     */
+    public static function multiProductSeamCallerProvider(): array
+    {
+        return [
+            ['app/Modules/Inventory/Application/Services/StockTransferService.php', 'public function complete'],
+            ['app/Modules/Inventory/Application/Services/StockTransferService.php', 'public function cancel'],
+            ['app/Modules/Inventory/Application/Services/GoodsReceiptService.php', 'public function receiveGoods'],
+            ['app/Modules/Inventory/Application/Services/InventoryOpeningService.php', 'public function postBatch'],
+            ['app/Modules/Document/Domain/Services/ReturnNoteService.php', 'public function confirm'],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('multiProductSeamCallerProvider')]
+    public function test_multi_product_seam_callers_acquire_locks_up_front(string $path, string $sig): void
+    {
+        $body = $this->extractMethodBody(base_path($path), $sig);
+
+        $acquirePos = strpos($body, 'costLock->acquire(');
+
+        $this->assertNotFalse(
+            $acquirePos,
+            "{$sig} in {$path} must acquire all product advisory locks UP-FRONT (sorted) "
+            .'before iterating — a per-iteration acquire accumulates unsorted locks and '
+            .'deadlocks (see WAC foundation review r2/r3/r4).'
+        );
+
+        // Target the acquire-before-the-SEAM-LOOP ordering, using the LAST
+        // foreach as the seam loop's position. Two of these methods legitimately
+        // run a benign foreach BEFORE the acquire — a validation / id-collection
+        // pre-pass that builds the product-id list to lock (e.g. postBatch's
+        // unique-id gather). That pre-pass takes no locks, so it cannot
+        // accumulate the unsorted advisory locks the deadlock requires; only the
+        // SEAM loop (which calls the per-product locking seam) must run AFTER the
+        // up-front acquire. The seam loop is always the LAST foreach: it lives
+        // inside the acquire closure (cancel, postBatch) or in a helper the
+        // closure calls (complete, receiveGoods, confirm — no foreach in this
+        // body at all). So the acquire must precede the LAST foreach when one
+        // exists in this body.
+        $lastForeachPos = strrpos($body, 'foreach');
+
+        if ($lastForeachPos !== false) {
+            $this->assertLessThan(
+                $lastForeachPos,
+                $acquirePos,
+                "{$sig} in {$path} must acquire all product advisory locks UP-FRONT (sorted) "
+                .'before iterating — a per-iteration acquire accumulates unsorted locks and '
+                .'deadlocks (see WAC foundation review r2/r3/r4).'
+            );
+        }
+    }
+
     #[Test]
     public function test_lock_free_methods_operate_only_on_existing_rows(): void
     {
