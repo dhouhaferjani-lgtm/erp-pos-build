@@ -22,6 +22,7 @@ use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Inventory\Domain\StockTransfer;
 use App\Modules\Inventory\Domain\StockTransferLine;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -52,6 +53,13 @@ use InvalidArgumentException;
 class StockTransferService
 {
     private const QTY_SCALE = 4;
+
+    /**
+     * Intermediate scale for transfer-cost allocation arithmetic. Matches the
+     * WAC service's internal COST_SCALE (6) so the freight share carried into
+     * recordCostAdjustment is at the same working precision.
+     */
+    private const ALLOCATION_SCALE = 6;
 
     public function __construct(
         private readonly StockAdjustmentService $stockAdjustmentService,
@@ -200,8 +208,11 @@ class StockTransferService
             $transfer->completed_at = now();
             $transfer->save();
 
-            $transferCost = (float) $transfer->transfer_cost;
-            if ($transferCost > 0) {
+            // Keep transfer_cost as a numeric-string; allocation arithmetic is
+            // done in bcmath at the working scale (see capitalizeTransferCost).
+            /** @var numeric-string $transferCost */
+            $transferCost = (string) $transfer->transfer_cost;
+            if (bccomp($transferCost, '0', self::ALLOCATION_SCALE) > 0) {
                 $this->capitalizeTransferCost($transfer, $transferCost);
             }
 
@@ -384,11 +395,19 @@ class StockTransferService
     /**
      * Allocate transfer_cost across lines per the chosen distribution and
      * capitalize each share into the company-wide WAC of the line's product.
+     *
+     * @param  numeric-string  $transferCost
      */
-    private function capitalizeTransferCost(StockTransfer $transfer, float $transferCost): void
+    private function capitalizeTransferCost(StockTransfer $transfer, string $transferCost): void
     {
+        $working = self::ALLOCATION_SCALE;
+
         $weights = $this->computeAllocationWeights($transfer);
-        $totalWeight = array_sum($weights);
+        /** @var numeric-string $totalWeight */
+        $totalWeight = '0';
+        foreach ($weights as $weight) {
+            $totalWeight = bcadd($totalWeight, $weight, $working);
+        }
 
         foreach ($transfer->lines as $line) {
             $product = Product::query()
@@ -396,22 +415,26 @@ class StockTransferService
                 ->where('company_id', $transfer->company_id)
                 ->findOrFail($line->product_id);
 
-            if ($totalWeight > 0) {
-                $allocated = $transferCost * ($weights[$line->id] / $totalWeight);
+            if (bccomp($totalWeight, '0', $working) > 0) {
+                $allocated = bcmul($transferCost, bcdiv($weights[$line->id], $totalWeight, $working), $working);
             } else {
-                $allocated = $transferCost / max(1, $transfer->lines->count());
+                $allocated = bcdiv($transferCost, (string) max(1, $transfer->lines->count()), $working);
             }
 
-            if ($allocated <= 0) {
+            if (bccomp($allocated, '0', $working) <= 0) {
                 continue;
             }
 
-            $line->allocated_transfer_cost = (string) round($allocated, self::QTY_SCALE);
+            $line->allocated_transfer_cost = CurrencyScale::bcformat($allocated, self::QTY_SCALE);
             $line->save();
 
             $this->wacService->recordCostAdjustment(
                 product: $product,
-                additionalCost: $allocated,
+                // The (float) here is on a LOCAL bcmath numeric-string (not a
+                // decimal property), so PHPStan does not flag it. This float
+                // boundary is the existing WAC API; recordCostAdjustment
+                // immediately re-stringifies via CurrencyScale::bcformat.
+                additionalCost: (float) $allocated,
                 reason: 'stock_transfer_cost',
                 tenantId: $transfer->tenant_id,
                 companyId: $transfer->company_id,
@@ -423,19 +446,22 @@ class StockTransferService
     }
 
     /**
-     * @return array<string, float>
+     * @return array<string, numeric-string>
      */
     private function computeAllocationWeights(StockTransfer $transfer): array
     {
+        $working = self::ALLOCATION_SCALE;
+
         $weights = [];
         foreach ($transfer->lines as $line) {
-            $qty = (float) $line->quantity;
-            $cost = (float) ($line->unit_cost_snapshot ?? '0');
+            // Read decimal-cast attributes as numeric-strings (no float cast).
+            $qty = (string) $line->quantity;
+            $cost = (string) ($line->unit_cost_snapshot ?? '0');
 
             $weights[$line->id] = match ($transfer->transfer_cost_distribution) {
-                TransferCostDistribution::ProRataValue => $qty * $cost,
-                TransferCostDistribution::ProRataQuantity => $qty,
-                TransferCostDistribution::EqualPerLine => 1.0,
+                TransferCostDistribution::ProRataValue => bcmul($qty, $cost, $working),
+                TransferCostDistribution::ProRataQuantity => CurrencyScale::bcformat($qty, $working),
+                TransferCostDistribution::EqualPerLine => '1',
             };
         }
 
