@@ -17,6 +17,7 @@ use App\Modules\Accounting\Domain\OpeningBalanceImportRow;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
@@ -44,6 +45,7 @@ class InventoryOpeningService
     public function __construct(
         private readonly OpeningBalanceBatchService $batchService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly ProductCostLock $costLock,
     ) {}
 
     private function monetaryScale(): int
@@ -237,56 +239,65 @@ class InventoryOpeningService
                 $unitCost = $mappedData['unit_cost'] ?? '0.00';
                 $lineValue = bcmul($quantity, $unitCost, $this->monetaryScale());
 
-                // Get or create stock level (with lock for update)
-                $stockLevel = StockLevel::where('product_id', $mappedData['product_id'])
-                    ->where('location_id', $mappedData['location_id'])
-                    ->lockForUpdate()
-                    ->first();
+                $productId = (string) $mappedData['product_id'];
+                $locationId = $mappedData['location_id'];
 
-                $quantityBefore = $stockLevel !== null ? $stockLevel->quantity : '0.00';
-                $quantityAfter = bcadd($quantityBefore, $quantity, $this->quantityScale());
+                // Serialize the per-product row-create + cost recompute against any
+                // concurrent recompute for the same (tenant, company, product) tuple.
+                $movementId = $this->costLock->acquire($company->tenant_id, $company->id, [$productId], function () use ($company, $batch, $userId, $productId, $locationId, $quantity, $unitCost): string {
+                    // Get or create stock level (with lock for update)
+                    $stockLevel = StockLevel::where('product_id', $productId)
+                        ->where('location_id', $locationId)
+                        ->lockForUpdate()
+                        ->first();
 
-                // Create stock movement
-                $movement = StockMovement::create([
-                    'tenant_id' => $company->tenant_id,
-                    'company_id' => $company->id,
-                    'product_id' => $mappedData['product_id'],
-                    'location_id' => $mappedData['location_id'],
-                    'movement_type' => MovementType::Opening,
-                    'quantity' => $quantity,
-                    'quantity_before' => $quantityBefore,
-                    'quantity_after' => $quantityAfter,
-                    'reference' => "Opening Balance Batch: {$batch->name}",
-                    'notes' => 'Initial inventory from opening balance import',
-                    'user_id' => $userId,
-                    'is_historical' => true,
-                ]);
+                    $quantityBefore = $stockLevel !== null ? $stockLevel->quantity : '0.00';
+                    $quantityAfter = bcadd($quantityBefore, $quantity, $this->quantityScale());
 
-                // Update or create stock level
-                if ($stockLevel !== null) {
-                    $stockLevel->update(['quantity' => $quantityAfter]);
-                } else {
-                    StockLevel::create([
+                    // Create stock movement
+                    $movement = StockMovement::create([
                         'tenant_id' => $company->tenant_id,
                         'company_id' => $company->id,
-                        'product_id' => $mappedData['product_id'],
-                        'location_id' => $mappedData['location_id'],
-                        'quantity' => $quantityAfter,
-                        'reserved' => '0.00',
+                        'product_id' => $productId,
+                        'location_id' => $locationId,
+                        'movement_type' => MovementType::Opening,
+                        'quantity' => $quantity,
+                        'quantity_before' => $quantityBefore,
+                        'quantity_after' => $quantityAfter,
+                        'reference' => "Opening Balance Batch: {$batch->name}",
+                        'notes' => 'Initial inventory from opening balance import',
+                        'user_id' => $userId,
+                        'is_historical' => true,
                     ]);
-                }
 
-                // Update product cost_price (simple replacement for opening - no weighted average calculation needed)
-                if (bccomp($unitCost, '0.00', $this->monetaryScale()) > 0) {
-                    Product::where('id', $mappedData['product_id'])
-                        ->update([
-                            'cost_price' => $unitCost,
-                            'cost_updated_at' => now(),
+                    // Update or create stock level
+                    if ($stockLevel !== null) {
+                        $stockLevel->update(['quantity' => $quantityAfter]);
+                    } else {
+                        StockLevel::create([
+                            'tenant_id' => $company->tenant_id,
+                            'company_id' => $company->id,
+                            'product_id' => $productId,
+                            'location_id' => $locationId,
+                            'quantity' => $quantityAfter,
+                            'reserved' => '0.00',
                         ]);
-                }
+                    }
+
+                    // Update product cost_price (simple replacement for opening - no weighted average calculation needed)
+                    if (bccomp($unitCost, '0.00', $this->monetaryScale()) > 0) {
+                        Product::where('id', $productId)
+                            ->update([
+                                'cost_price' => $unitCost,
+                                'cost_updated_at' => now(),
+                            ]);
+                    }
+
+                    return $movement->id;
+                });
 
                 $totalInventoryValue = bcadd($totalInventoryValue, $lineValue, $this->monetaryScale());
-                $rowEntityMap[$row->id] = $movement->id;
+                $rowEntityMap[$row->id] = $movementId;
             }
 
             // Create GL entry: Dr. Inventory, Cr. Opening Balance Equity
