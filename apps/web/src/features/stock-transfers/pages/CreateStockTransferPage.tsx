@@ -7,8 +7,12 @@ import { useQuery } from '@tanstack/react-query'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { fetchLocations, type LocationApiResponse } from '@/features/location/api'
 import { Button } from '@/components/atoms/Button'
+import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
+import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
 import { ProductPicker, type ProductPickerValue } from '@/components/molecules/pickers/ProductPicker'
 import { textColors, borderColors, tokens } from '@/lib/designTokens'
+import { useCurrency } from '@/hooks/useCurrency'
+import { bccomp } from '@/lib/decimal'
 import { useCreateStockTransfer } from '../api/queries'
 import type { CreateStockTransferInput, TransferCostDistribution } from '../types'
 
@@ -35,6 +39,7 @@ function generateUid(): string {
 export function CreateStockTransferPage() {
   const { t } = useTranslation('stock-transfers')
   const navigate = useNavigate()
+  const { currency } = useCurrency()
 
   const locationsQuery = useQuery({
     queryKey: tenantScopedKey(['locations', 'all']),
@@ -85,8 +90,9 @@ export function CreateStockTransferPage() {
       return
     }
     for (const line of cleanLines) {
-      const q = Number(line.quantity)
-      if (Number.isNaN(q) || q <= 0) {
+      const qty = line.quantity.trim()
+      const isValidDecimal = /^\d*\.?\d+$/.test(qty)
+      if (!isValidDecimal || bccomp(qty, '0') <= 0) {
         toast.error(t('create.validation.quantityPositive'))
         return
       }
@@ -240,14 +246,13 @@ export function CreateStockTransferPage() {
                 </div>
                 <div className="col-span-3">
                   <label className={tokens.label.base}>{t('create.field.quantity')}</label>
-                  <input
-                    type="number"
-                    min="0.0001"
-                    step="0.0001"
+                  <QuantityInput
                     value={line.quantity}
-                    onChange={(e) => {
-                      updateLine(line.uid, { quantity: e.target.value })
+                    onChange={(value) => {
+                      updateLine(line.uid, { quantity: value })
                     }}
+                    decimalPlaces={4}
+                    min="0"
                     className={tokens.input.base}
                   />
                 </div>
@@ -279,15 +284,14 @@ export function CreateStockTransferPage() {
               <label htmlFor="cost" className={tokens.label.base}>
                 {t('create.field.transferCost')}
               </label>
-              <input
+              <MoneyInput
                 id="cost"
-                type="number"
-                min="0"
-                step="0.0001"
                 value={transferCost}
-                onChange={(e) => {
-                  setTransferCost(e.target.value)
+                onChange={(value) => {
+                  setTransferCost(value)
                 }}
+                currency={currency}
+                min="0"
                 className={tokens.input.base}
               />
             </div>
