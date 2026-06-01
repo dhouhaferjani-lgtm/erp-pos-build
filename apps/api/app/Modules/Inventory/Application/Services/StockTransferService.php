@@ -360,15 +360,18 @@ class StockTransferService
                 ->where('company_id', $transfer->company_id)
                 ->findOrFail($line->product_id);
 
-            /** @var numeric-string $costAtSend */
-            $costAtSend = (string) ($product->cost_price ?? '0');
-
             $stockLevel = StockLevel::query()
                 ->where('product_id', $product->id)
                 ->where('location_id', $transfer->source_location_id)
                 ->where('company_id', $transfer->company_id)
                 ->lockForUpdate()
                 ->first();
+
+            // Snapshot cost_price AFTER the source stock_level row is locked, so the
+            // dispatch cost is captured against the pinned row (tighter snapshot window).
+            // Product stays unlocked — no inversion of advisory -> stock_level -> product.
+            /** @var numeric-string $costAtSend */
+            $costAtSend = (string) ($product->cost_price ?? '0');
 
             /** @var numeric-string $available */
             $available = $stockLevel === null
