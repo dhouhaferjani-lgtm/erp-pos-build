@@ -111,7 +111,7 @@ final class StockAdjustmentService
 
                 return $movement;
             });
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -324,7 +324,7 @@ final class StockAdjustmentService
                     ));
                 });
             });
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -491,7 +491,7 @@ final class StockAdjustmentService
 
                 return $movement;
             });
-        });
+        }, attempts: 3);
     }
 
     /**

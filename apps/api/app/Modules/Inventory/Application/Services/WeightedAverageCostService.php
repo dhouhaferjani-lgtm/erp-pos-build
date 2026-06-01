@@ -242,7 +242,7 @@ class WeightedAverageCostService
 
                 return $movement;
             });
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -512,7 +512,7 @@ class WeightedAverageCostService
 
                 return $movement;
             });
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -683,7 +683,7 @@ class WeightedAverageCostService
 
                 return $movement;
             });
-        });
+        }, attempts: 3);
     }
 
     /**
