@@ -557,13 +557,12 @@ class WeightedAverageCostService
     ): ?StockMovement {
         return DB::transaction(function () use ($product, $additionalCost, $reason, $tenantId, $companyId, $reference, $referenceType, $referenceId): ?StockMovement {
             return $this->costLock->acquire($tenantId, $companyId, [$product->id], function () use ($product, $additionalCost, $reason, $tenantId, $companyId, $reference, $referenceType, $referenceId): ?StockMovement {
-                // Lock product first so the cost_price write is serialized.
-                $product = Product::query()
-                    ->where('tenant_id', $tenantId)
-                    ->where('company_id', $companyId)
-                    ->lockForUpdate()
-                    ->findOrFail($product->id);
-
+                // Canonical lock order: advisory (already held) -> stock_level
+                // rows -> product row LAST. recordSale() (outside the advisory
+                // seam) locks stock_level then product; taking the product row
+                // first here would invert that order and deadlock a concurrent
+                // sale on the same product (AB-BA).
+                //
                 // Company-wide on-hand quantity. Row-lock the ACTUAL stock_level
                 // rows (FOR UPDATE on each row), then sum in PHP — an aggregate
                 // sum()->lockForUpdate() locks no rows on PostgreSQL and would let
@@ -597,6 +596,15 @@ class WeightedAverageCostService
                     // Nothing owned to capitalize against — no-op, no movement.
                     return null;
                 }
+
+                // Lock the product row LAST (canonical order: advisory ->
+                // stock_level rows -> product row), just before the cost write,
+                // scoped to the input product's own tenant + company.
+                $product = Product::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->lockForUpdate()
+                    ->findOrFail($product->id);
 
                 // Capitalize the additional cost across every owned unit using
                 // bcmath only — mirror recordPurchase: carry the persisted cost at

@@ -516,4 +516,59 @@ class InventoryTransferServiceTest extends TestCase
             'Per-line transfer-cost allocations must sum to the total transfer cost.'
         );
     }
+
+    public function test_transfer_cost_allocation_conserves_total_across_seven_equal_lines(): void
+    {
+        // Seven equal lines sharing transfer cost 10: 10 / 7 = 1.428571...
+        // The weighted share rounds to 1.4285 at the PERSISTED 4-dp scale
+        // (the 6th digit is dropped). Six lines × 1.4285 = 8.5710; reconciling
+        // the residual at the 6-dp WORKING scale and then truncating it to 4 dp
+        // on persist (the pre-fix behaviour) yields Σ = 9.9995 ≠ 10.0000 — a
+        // millième LOST. The fix reconciles at the 4-dp persisted scale so the
+        // last cost-bearing line absorbs the residual (10.0000 − 8.5710 = 1.4290)
+        // and Σ allocated_transfer_cost == 10.0000 EXACTLY.
+        //
+        // (transferCost 100 / 7 does NOT expose this with EqualPerLine because
+        // 100 × (1/7) rounds to 14.285700 — exact at 4 dp. The bug needs a value
+        // whose per-line share has a non-zero 5th/6th decimal; 10 / 7 does.)
+        $lines = [];
+        for ($i = 0; $i < 7; $i++) {
+            $product = Product::create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'sku' => 'PROD-EQ-'.$i,
+                'name' => 'Equal Line Part '.$i,
+                'type' => ProductType::Part,
+                'is_active' => true,
+                'cost_price' => '5.0000',
+                'sale_price' => '10.0000',
+            ]);
+            $this->seedStock($product, $this->warehouse, '50.0000');
+            $lines[] = new InitiateTransferLineData($product->id, '10.0000');
+        }
+
+        $transfer = $this->service()->initiate(new InitiateTransferData(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            sourceLocationId: $this->warehouse->id,
+            destinationLocationId: $this->shop->id,
+            initiatedByUserId: $this->user->id,
+            lines: $lines,
+            transferCost: '10.0000',
+            transferCostDistribution: TransferCostDistribution::EqualPerLine,
+        ));
+
+        $completed = $this->service()->complete($transfer->id, $this->user->id);
+
+        $sumAllocated = '0';
+        foreach ($completed->lines as $line) {
+            $sumAllocated = bcadd($sumAllocated, (string) $line->allocated_transfer_cost, 4);
+        }
+
+        $this->assertSame(
+            '10.0000',
+            bcadd($sumAllocated, '0', 4),
+            'Seven equal-line allocations must sum to the total transfer cost at the persisted 4-dp scale.'
+        );
+    }
 }
