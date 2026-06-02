@@ -10,6 +10,7 @@ use App\Modules\Inventory\Presentation\Controllers\InventoryCountingController;
 use App\Modules\Inventory\Presentation\Controllers\StockLevelController;
 use App\Modules\Inventory\Presentation\Controllers\StockMovementController;
 use App\Modules\Inventory\Presentation\Controllers\StockReservationController;
+use App\Modules\Inventory\Presentation\Controllers\StockTransferController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -72,6 +73,27 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/stock-movements/transfer', [StockMovementController::class, 'transfer'])
         ->middleware('can:inventory.transfer')
         ->name('stock-movements.transfer');
+
+    // Stock Transfer documents (multi-line, lifecycle-tracked, WAC-aware).
+    Route::get('/stock-transfers', [StockTransferController::class, 'index'])
+        ->middleware('can:inventory.transfers.view')
+        ->name('stock-transfers.index');
+
+    Route::post('/stock-transfers', [StockTransferController::class, 'store'])
+        ->middleware('can:inventory.transfers.create')
+        ->name('stock-transfers.store');
+
+    Route::get('/stock-transfers/{transfer}', [StockTransferController::class, 'show'])
+        ->middleware('can:inventory.transfers.view')
+        ->name('stock-transfers.show');
+
+    Route::post('/stock-transfers/{transfer}/complete', [StockTransferController::class, 'complete'])
+        ->middleware('can:inventory.transfers.complete')
+        ->name('stock-transfers.complete');
+
+    Route::post('/stock-transfers/{transfer}/cancel', [StockTransferController::class, 'cancel'])
+        ->middleware('can:inventory.transfers.cancel')
+        ->name('stock-transfers.cancel');
 
     Route::post('/stock-movements/adjust', [StockMovementController::class, 'adjust'])
         ->middleware('can:inventory.adjust')

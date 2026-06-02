@@ -19,6 +19,7 @@ use App\Modules\Document\Domain\Services\ReturnNoteService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
@@ -60,7 +61,8 @@ class ReturnNoteServiceTest extends TestCase
         $wacService = $this->app->make(WeightedAverageCostService::class);
         $hashService = $this->app->make(FiscalHashService::class);
         $taxCalculationService = $this->app->make(TaxCalculationService::class);
-        $this->service = new ReturnNoteService($wacService, $hashService, $taxCalculationService);
+        $costLock = $this->app->make(ProductCostLock::class);
+        $this->service = new ReturnNoteService($wacService, $hashService, $taxCalculationService, $costLock);
 
         // Create location manually (no factory exists)
         $this->location = Location::create([

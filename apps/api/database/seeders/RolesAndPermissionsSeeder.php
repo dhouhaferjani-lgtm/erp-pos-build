@@ -122,6 +122,12 @@ class RolesAndPermissionsSeeder extends Seeder
             'inventory.transfer',
             'inventory.receive',
 
+            // Stock Transfer (document-based, lifecycle-tracked)
+            'inventory.transfers.view',
+            'inventory.transfers.create',
+            'inventory.transfers.complete',
+            'inventory.transfers.cancel',
+
             'deliveries.view',
             'deliveries.create',
             'deliveries.edit',
@@ -385,6 +391,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'invoices.view', 'invoices.create', 'invoices.update', 'invoices.post', 'invoices.print',
             'credit-notes.view', 'credit-notes.create', 'credit-notes.post',
             'inventory.view', 'inventory.adjust', 'inventory.transfer', 'inventory.receive',
+            'inventory.transfers.view', 'inventory.transfers.create', 'inventory.transfers.complete', 'inventory.transfers.cancel',
             'deliveries.view', 'deliveries.create', 'deliveries.edit', 'deliveries.delete', 'deliveries.confirm',
             'expenses.view', 'expenses.create', 'expenses.update', 'expenses.post',
             'expense-categories.view', 'expense-categories.create', 'expense-categories.update', 'expense-categories.delete',

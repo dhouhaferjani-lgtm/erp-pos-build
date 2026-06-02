@@ -15,6 +15,7 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\ReturnNoteConfirmed;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
+use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use Illuminate\Support\Facades\DB;
 
@@ -41,6 +42,7 @@ final class ReturnNoteService
         private readonly WeightedAverageCostService $wacService,
         private readonly FiscalHashService $hashService,
         private readonly TaxCalculationService $taxCalculationService,
+        private readonly ProductCostLock $costLock,
     ) {}
 
     /**
@@ -68,13 +70,34 @@ final class ReturnNoteService
             );
         }
 
-        return DB::transaction(function () use ($returnNote): Document {
-            $this->confirmWithFiscalChain($returnNote);
+        // Multi-product deadlock defense: receiveStockBack() loops the return
+        // lines and calls wacService->recordReturn() per physical line, and
+        // recordReturn() acquires that product's advisory lock. Inside this one
+        // outer transaction those nested per-line acquires accumulate in line
+        // order (unsorted), so two concurrent confirms over overlapping products
+        // in different line orders AB-BA deadlock. Acquire ALL the line product
+        // advisory locks UP-FRONT in ONE sorted call (ProductCostLock sorts
+        // internally); the nested per-line acquires are then re-entrant on the
+        // already-held xact locks. Mirrors StockTransferService::complete and
+        // GoodsReceiptService::receiveGoods.
+        /** @var list<string> $productIds */
+        $productIds = $returnNote->lines
+            ->pluck('product_id')
+            ->filter()
+            ->unique()
+            ->map(static fn (mixed $id): string => (string) $id)
+            ->values()
+            ->all();
 
-            $returnNote->refresh();
+        return DB::transaction(function () use ($returnNote, $productIds): Document {
+            return $this->costLock->acquire($returnNote->tenant_id, $returnNote->company_id, $productIds, function () use ($returnNote): Document {
+                $this->confirmWithFiscalChain($returnNote);
 
-            /** @var Document */
-            return $returnNote->load(['lines']);
+                $returnNote->refresh();
+
+                /** @var Document */
+                return $returnNote->load(['lines']);
+            });
         });
     }
 

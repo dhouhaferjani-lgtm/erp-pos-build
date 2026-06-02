@@ -6,9 +6,12 @@ namespace App\Modules\Inventory\Application\Services;
 
 use App\Modules\Company\Domain\Location;
 use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\Enums\TransferStatus;
 use App\Modules\Inventory\Domain\Events\StockMovementRecorded;
+use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\Inventory\Domain\StockTransferLine;
 use App\Modules\Product\Application\Services\MarginService;
 use App\Modules\Product\Domain\Events\ProductCostPriceUpdated;
 use App\Modules\Product\Domain\Product;
@@ -40,6 +43,7 @@ class WeightedAverageCostService
     public function __construct(
         private readonly MarginService $marginService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly ProductCostLock $costLock,
     ) {}
 
     private function scale(): int
@@ -93,150 +97,152 @@ class WeightedAverageCostService
         ?string $referenceId = null
     ): StockMovement {
         return DB::transaction(function () use ($product, $location, $quantity, $landedUnitCost, $reference, $referenceType, $referenceId): StockMovement {
-            // Lock stock level first to prevent concurrent modifications.
-            // company_id added to the tuple (api.inventory.032) so the lock
-            // cannot be satisfied by a StockLevel row from another company
-            // even if product_id + location_id happen to collide cross-company.
-            $stockLevel = StockLevel::where('product_id', $product->id)
-                ->where('location_id', $location->id)
-                ->where('tenant_id', $product->tenant_id)
-                ->where('company_id', $product->company_id)
-                ->lockForUpdate()
-                ->first();
+            return $this->costLock->acquire($product->tenant_id, $product->company_id, [$product->id], function () use ($product, $location, $quantity, $landedUnitCost, $reference, $referenceType, $referenceId): StockMovement {
+                // Lock stock level first to prevent concurrent modifications.
+                // company_id added to the tuple (api.inventory.032) so the lock
+                // cannot be satisfied by a StockLevel row from another company
+                // even if product_id + location_id happen to collide cross-company.
+                $stockLevel = StockLevel::where('product_id', $product->id)
+                    ->where('location_id', $location->id)
+                    ->where('tenant_id', $product->tenant_id)
+                    ->where('company_id', $product->company_id)
+                    ->lockForUpdate()
+                    ->first();
 
-            if ($stockLevel === null) {
-                $stockLevel = StockLevel::create([
+                if ($stockLevel === null) {
+                    $stockLevel = StockLevel::create([
+                        'id' => Str::uuid()->toString(),
+                        'product_id' => $product->id,
+                        'location_id' => $location->id,
+                        'tenant_id' => $product->tenant_id,
+                        'company_id' => $location->company_id,
+                        'quantity' => '0',
+                        'reserved' => '0',
+                    ]);
+                }
+
+                // Lock product for cost update — scope by the input product's
+                // own tenant + company so the lock cannot escalate to a foreign
+                // product (defense-in-depth on the upstream-trusted instance).
+                $product = Product::query()
+                    ->where('tenant_id', $product->tenant_id)
+                    ->where('company_id', $product->company_id)
+                    ->lockForUpdate()
+                    ->findOrFail($product->id);
+
+                $working = $this->workingScale();
+
+                // Normalise every operand into a numeric string before any
+                // arithmetic; quantities carry scale 4, monetary values the
+                // working precision. No native float math touches WAC.
+                $quantityStr = CurrencyScale::bcformat($quantity, 4);
+                $landedUnitCostStr = CurrencyScale::bcformat($landedUnitCost, $working);
+                $currentQty = CurrencyScale::bcformat($stockLevel->quantity, 4);
+                $currentCostPrice = CurrencyScale::bcformat($product->cost_price ?? '0', $working);
+                $currentValue = bcmul($currentQty, $currentCostPrice, $working);
+
+                $newQty = bcadd($currentQty, $quantityStr, 4);
+                $newValue = bcadd($currentValue, bcmul($quantityStr, $landedUnitCostStr, $working), $working);
+
+                // Persist the blended WAC at the higher internal COST_SCALE — NO
+                // truncation to the currency scale here. Rounding to the currency
+                // scale happens only at the GL/COGS posting (and display) boundary,
+                // so the running average no longer compounds a downward bias.
+                $costScale = $this->costScale();
+                $newAvgCost = bccomp($newQty, '0', 4) > 0
+                    ? CurrencyScale::bcformat(bcdiv($newValue, $newQty, $working), $costScale)
+                    : CurrencyScale::bcformat('0', $costScale);
+
+                // Record movement (cost ledger stored at the internal COST_SCALE).
+                $movement = StockMovement::create([
                     'id' => Str::uuid()->toString(),
+                    'tenant_id' => $product->tenant_id,
                     'product_id' => $product->id,
                     'location_id' => $location->id,
-                    'tenant_id' => $product->tenant_id,
                     'company_id' => $location->company_id,
-                    'quantity' => '0',
-                    'reserved' => '0',
+                    'movement_type' => MovementType::Receipt,
+                    'quantity' => $quantityStr,
+                    'quantity_before' => $currentQty,
+                    'quantity_after' => $newQty,
+                    'unit_cost' => CurrencyScale::bcformat($landedUnitCostStr, $costScale),
+                    'total_cost' => CurrencyScale::bcformat(bcmul($quantityStr, $landedUnitCostStr, $working), $costScale),
+                    'avg_cost_before' => CurrencyScale::bcformat($currentCostPrice, $costScale),
+                    'avg_cost_after' => $newAvgCost,
+                    'reference' => $reference,
+                    'reference_type' => $referenceType,
+                    'reference_id' => $referenceId,
                 ]);
-            }
 
-            // Lock product for cost update — scope by the input product's
-            // own tenant + company so the lock cannot escalate to a foreign
-            // product (defense-in-depth on the upstream-trusted instance).
-            $product = Product::query()
-                ->where('tenant_id', $product->tenant_id)
-                ->where('company_id', $product->company_id)
-                ->lockForUpdate()
-                ->findOrFail($product->id);
+                // Update stock level
+                $stockLevel->quantity = $newQty;
+                $stockLevel->save();
 
-            $working = $this->workingScale();
+                // Update product cost at the internal COST_SCALE (no boundary truncation).
+                $product->cost_price = $newAvgCost;
+                $product->last_purchase_cost = CurrencyScale::bcformat($landedUnitCostStr, $costScale);
+                $product->cost_updated_at = now();
+                $product->save();
 
-            // Normalise every operand into a numeric string before any
-            // arithmetic; quantities carry scale 4, monetary values the
-            // working precision. No native float math touches WAC.
-            $quantityStr = CurrencyScale::bcformat($quantity, 4);
-            $landedUnitCostStr = CurrencyScale::bcformat($landedUnitCost, $working);
-            $currentQty = CurrencyScale::bcformat($stockLevel->quantity, 4);
-            $currentCostPrice = CurrencyScale::bcformat($product->cost_price ?? '0', $working);
-            $currentValue = bcmul($currentQty, $currentCostPrice, $working);
+                // Auto-update sale price based on new weighted average cost
+                $oldSalePrice = (string) ($product->sale_price ?? '0.00');
+                $priceUpdated = $this->marginService->updateSalePrice($product);
 
-            $newQty = bcadd($currentQty, $quantityStr, 4);
-            $newValue = bcadd($currentValue, bcmul($quantityStr, $landedUnitCostStr, $working), $working);
+                // Capture data for events BEFORE afterCommit
+                $movementSnapshot = $movement;
+                /** @var Product $productSnapshot */
+                $productSnapshot = $product->fresh();
+                $locationSnapshot = $location;
+                $newStockLevelSnapshot = $stockLevel->quantity;
+                $priceUpdatedSnapshot = $priceUpdated;
+                // Audit-event cost figures reflect the at-rest COST_SCALE value.
+                $oldCostPriceSnapshot = CurrencyScale::bcformat($currentCostPrice, $costScale);
+                $newAvgCostSnapshot = $newAvgCost;
+                $oldSalePriceSnapshot = $oldSalePrice;
+                $referenceSnapshot = $reference;
 
-            // Persist the blended WAC at the higher internal COST_SCALE — NO
-            // truncation to the currency scale here. Rounding to the currency
-            // scale happens only at the GL/COGS posting (and display) boundary,
-            // so the running average no longer compounds a downward bias.
-            $costScale = $this->costScale();
-            $newAvgCost = bccomp($newQty, '0', 4) > 0
-                ? CurrencyScale::bcformat(bcdiv($newValue, $newQty, $working), $costScale)
-                : CurrencyScale::bcformat('0', $costScale);
+                // Emit audit event if prices changed - AFTER transaction commits
+                if ($priceUpdatedSnapshot) {
+                    DB::afterCommit(function () use (
+                        $productSnapshot,
+                        $oldCostPriceSnapshot,
+                        $newAvgCostSnapshot,
+                        $oldSalePriceSnapshot,
+                        $referenceSnapshot
+                    ): void {
+                        event(new ProductCostPriceUpdated(
+                            productId: $productSnapshot->id,
+                            tenantId: $productSnapshot->tenant_id,
+                            companyId: $productSnapshot->company_id,
+                            productSku: $productSnapshot->sku,
+                            oldCostPrice: $oldCostPriceSnapshot,
+                            newCostPrice: $newAvgCostSnapshot,
+                            oldSalePrice: $oldSalePriceSnapshot,
+                            newSalePrice: (string) $productSnapshot->sale_price,
+                            reason: 'purchase_receipt',
+                            referenceDocument: $referenceSnapshot,
+                        ));
+                    });
+                }
 
-            // Record movement (cost ledger stored at the internal COST_SCALE).
-            $movement = StockMovement::create([
-                'id' => Str::uuid()->toString(),
-                'tenant_id' => $product->tenant_id,
-                'product_id' => $product->id,
-                'location_id' => $location->id,
-                'company_id' => $location->company_id,
-                'movement_type' => MovementType::Receipt,
-                'quantity' => $quantityStr,
-                'quantity_before' => $currentQty,
-                'quantity_after' => $newQty,
-                'unit_cost' => CurrencyScale::bcformat($landedUnitCostStr, $costScale),
-                'total_cost' => CurrencyScale::bcformat(bcmul($quantityStr, $landedUnitCostStr, $working), $costScale),
-                'avg_cost_before' => CurrencyScale::bcformat($currentCostPrice, $costScale),
-                'avg_cost_after' => $newAvgCost,
-                'reference' => $reference,
-                'reference_type' => $referenceType,
-                'reference_id' => $referenceId,
-            ]);
-
-            // Update stock level
-            $stockLevel->quantity = $newQty;
-            $stockLevel->save();
-
-            // Update product cost at the internal COST_SCALE (no boundary truncation).
-            $product->cost_price = $newAvgCost;
-            $product->last_purchase_cost = CurrencyScale::bcformat($landedUnitCostStr, $costScale);
-            $product->cost_updated_at = now();
-            $product->save();
-
-            // Auto-update sale price based on new weighted average cost
-            $oldSalePrice = (string) ($product->sale_price ?? '0.00');
-            $priceUpdated = $this->marginService->updateSalePrice($product);
-
-            // Capture data for events BEFORE afterCommit
-            $movementSnapshot = $movement;
-            /** @var Product $productSnapshot */
-            $productSnapshot = $product->fresh();
-            $locationSnapshot = $location;
-            $newStockLevelSnapshot = $stockLevel->quantity;
-            $priceUpdatedSnapshot = $priceUpdated;
-            // Audit-event cost figures reflect the at-rest COST_SCALE value.
-            $oldCostPriceSnapshot = CurrencyScale::bcformat($currentCostPrice, $costScale);
-            $newAvgCostSnapshot = $newAvgCost;
-            $oldSalePriceSnapshot = $oldSalePrice;
-            $referenceSnapshot = $reference;
-
-            // Emit audit event if prices changed - AFTER transaction commits
-            if ($priceUpdatedSnapshot) {
+                // Dispatch StockMovementRecorded event for audit trail - AFTER transaction commits
                 DB::afterCommit(function () use (
+                    $movementSnapshot,
                     $productSnapshot,
-                    $oldCostPriceSnapshot,
-                    $newAvgCostSnapshot,
-                    $oldSalePriceSnapshot,
-                    $referenceSnapshot
+                    $locationSnapshot,
+                    $newStockLevelSnapshot
                 ): void {
-                    event(new ProductCostPriceUpdated(
-                        productId: $productSnapshot->id,
-                        tenantId: $productSnapshot->tenant_id,
-                        companyId: $productSnapshot->company_id,
-                        productSku: $productSnapshot->sku,
-                        oldCostPrice: $oldCostPriceSnapshot,
-                        newCostPrice: $newAvgCostSnapshot,
-                        oldSalePrice: $oldSalePriceSnapshot,
-                        newSalePrice: (string) $productSnapshot->sale_price,
-                        reason: 'purchase_receipt',
-                        referenceDocument: $referenceSnapshot,
-                    ));
+                    $this->dispatchStockMovementEvent(
+                        movement: $movementSnapshot,
+                        product: $productSnapshot,
+                        location: $locationSnapshot,
+                        movementType: 'purchase',
+                        newStockLevel: $newStockLevelSnapshot
+                    );
                 });
-            }
 
-            // Dispatch StockMovementRecorded event for audit trail - AFTER transaction commits
-            DB::afterCommit(function () use (
-                $movementSnapshot,
-                $productSnapshot,
-                $locationSnapshot,
-                $newStockLevelSnapshot
-            ): void {
-                $this->dispatchStockMovementEvent(
-                    movement: $movementSnapshot,
-                    product: $productSnapshot,
-                    location: $locationSnapshot,
-                    movementType: 'purchase',
-                    newStockLevel: $newStockLevelSnapshot
-                );
+                return $movement;
             });
-
-            return $movement;
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -368,143 +374,324 @@ class WeightedAverageCostService
         ?string $referenceId = null
     ): StockMovement {
         return DB::transaction(function () use ($product, $location, $quantity, $originalCost, $reference, $referenceType, $referenceId): StockMovement {
-            // Lock stock level first. company_id added to the tuple (api.inventory.032).
-            $stockLevel = StockLevel::where('product_id', $product->id)
-                ->where('location_id', $location->id)
-                ->where('tenant_id', $product->tenant_id)
-                ->where('company_id', $product->company_id)
-                ->lockForUpdate()
-                ->first();
+            return $this->costLock->acquire($product->tenant_id, $product->company_id, [$product->id], function () use ($product, $location, $quantity, $originalCost, $reference, $referenceType, $referenceId): StockMovement {
+                // Lock stock level first. company_id added to the tuple (api.inventory.032).
+                $stockLevel = StockLevel::where('product_id', $product->id)
+                    ->where('location_id', $location->id)
+                    ->where('tenant_id', $product->tenant_id)
+                    ->where('company_id', $product->company_id)
+                    ->lockForUpdate()
+                    ->first();
 
-            if ($stockLevel === null) {
-                $stockLevel = StockLevel::create([
+                if ($stockLevel === null) {
+                    $stockLevel = StockLevel::create([
+                        'id' => Str::uuid()->toString(),
+                        'product_id' => $product->id,
+                        'location_id' => $location->id,
+                        'tenant_id' => $product->tenant_id,
+                        'company_id' => $location->company_id,
+                        'quantity' => '0',
+                        'reserved' => '0',
+                    ]);
+                }
+
+                // Lock product for cost update — scoped to the input product's
+                // own tenant + company.
+                $product = Product::query()
+                    ->where('tenant_id', $product->tenant_id)
+                    ->where('company_id', $product->company_id)
+                    ->lockForUpdate()
+                    ->findOrFail($product->id);
+
+                $working = $this->workingScale();
+
+                // Normalise operands to numeric strings; quantity at scale 4,
+                // monetary values at the working precision. No native float math.
+                $quantityStr = CurrencyScale::bcformat($quantity, 4);
+                $originalCostStr = CurrencyScale::bcformat($originalCost, $working);
+                $currentQty = CurrencyScale::bcformat($stockLevel->quantity, 4);
+                $currentCostPrice = CurrencyScale::bcformat($product->cost_price ?? '0', $working);
+                $currentValue = bcmul($currentQty, $currentCostPrice, $working);
+
+                $newQty = bcadd($currentQty, $quantityStr, 4);
+                $newValue = bcadd($currentValue, bcmul($quantityStr, $originalCostStr, $working), $working);
+
+                // Persist the blended WAC at the higher internal COST_SCALE — NO
+                // boundary truncation (see recordPurchase()). Rounding to the
+                // currency scale happens only at the GL/COGS posting boundary.
+                $costScale = $this->costScale();
+                $newAvgCost = bccomp($newQty, '0', 4) > 0
+                    ? CurrencyScale::bcformat(bcdiv($newValue, $newQty, $working), $costScale)
+                    : CurrencyScale::bcformat('0', $costScale);
+
+                // Record movement (cost ledger stored at the internal COST_SCALE).
+                $movement = StockMovement::create([
                     'id' => Str::uuid()->toString(),
+                    'tenant_id' => $product->tenant_id,
                     'product_id' => $product->id,
                     'location_id' => $location->id,
-                    'tenant_id' => $product->tenant_id,
                     'company_id' => $location->company_id,
-                    'quantity' => '0',
-                    'reserved' => '0',
+                    'movement_type' => MovementType::Receipt,
+                    'quantity' => $quantityStr,
+                    'quantity_before' => $currentQty,
+                    'quantity_after' => $newQty,
+                    'unit_cost' => CurrencyScale::bcformat($originalCostStr, $costScale),
+                    'total_cost' => CurrencyScale::bcformat(bcmul($quantityStr, $originalCostStr, $working), $costScale),
+                    'avg_cost_before' => CurrencyScale::bcformat($currentCostPrice, $costScale),
+                    'avg_cost_after' => $newAvgCost,
+                    'reference' => $reference,
+                    'reference_type' => $referenceType,
+                    'reference_id' => $referenceId,
                 ]);
-            }
 
-            // Lock product for cost update — scoped to the input product's
-            // own tenant + company.
-            $product = Product::query()
-                ->where('tenant_id', $product->tenant_id)
-                ->where('company_id', $product->company_id)
-                ->lockForUpdate()
-                ->findOrFail($product->id);
+                // Update stock level
+                $stockLevel->quantity = $newQty;
+                $stockLevel->save();
 
-            $working = $this->workingScale();
+                // Update product cost at the internal COST_SCALE (no boundary truncation).
+                $product->cost_price = $newAvgCost;
+                $product->cost_updated_at = now();
+                $product->save();
 
-            // Normalise operands to numeric strings; quantity at scale 4,
-            // monetary values at the working precision. No native float math.
-            $quantityStr = CurrencyScale::bcformat($quantity, 4);
-            $originalCostStr = CurrencyScale::bcformat($originalCost, $working);
-            $currentQty = CurrencyScale::bcformat($stockLevel->quantity, 4);
-            $currentCostPrice = CurrencyScale::bcformat($product->cost_price ?? '0', $working);
-            $currentValue = bcmul($currentQty, $currentCostPrice, $working);
+                // Auto-update sale price based on new weighted average cost
+                $oldSalePrice = (string) ($product->sale_price ?? '0.00');
+                $priceUpdated = $this->marginService->updateSalePrice($product);
 
-            $newQty = bcadd($currentQty, $quantityStr, 4);
-            $newValue = bcadd($currentValue, bcmul($quantityStr, $originalCostStr, $working), $working);
+                // Capture data for events BEFORE afterCommit
+                $movementSnapshot = $movement;
+                /** @var Product $productSnapshot */
+                $productSnapshot = $product->fresh();
+                $locationSnapshot = $location;
+                $newStockLevelSnapshot = $stockLevel->quantity;
+                $priceUpdatedSnapshot = $priceUpdated;
+                // Audit-event cost figures reflect the at-rest COST_SCALE value.
+                $oldCostPriceSnapshot = CurrencyScale::bcformat($currentCostPrice, $costScale);
+                $newAvgCostSnapshot = $newAvgCost;
+                $oldSalePriceSnapshot = $oldSalePrice;
+                $referenceSnapshot = $reference;
 
-            // Persist the blended WAC at the higher internal COST_SCALE — NO
-            // boundary truncation (see recordPurchase()). Rounding to the
-            // currency scale happens only at the GL/COGS posting boundary.
-            $costScale = $this->costScale();
-            $newAvgCost = bccomp($newQty, '0', 4) > 0
-                ? CurrencyScale::bcformat(bcdiv($newValue, $newQty, $working), $costScale)
-                : CurrencyScale::bcformat('0', $costScale);
+                // Emit audit event if prices changed - AFTER transaction commits
+                if ($priceUpdatedSnapshot) {
+                    DB::afterCommit(function () use (
+                        $productSnapshot,
+                        $oldCostPriceSnapshot,
+                        $newAvgCostSnapshot,
+                        $oldSalePriceSnapshot,
+                        $referenceSnapshot
+                    ): void {
+                        event(new ProductCostPriceUpdated(
+                            productId: $productSnapshot->id,
+                            tenantId: $productSnapshot->tenant_id,
+                            companyId: $productSnapshot->company_id,
+                            productSku: $productSnapshot->sku,
+                            oldCostPrice: $oldCostPriceSnapshot,
+                            newCostPrice: $newAvgCostSnapshot,
+                            oldSalePrice: $oldSalePriceSnapshot,
+                            newSalePrice: (string) $productSnapshot->sale_price,
+                            reason: 'product_return',
+                            referenceDocument: $referenceSnapshot,
+                        ));
+                    });
+                }
 
-            // Record movement (cost ledger stored at the internal COST_SCALE).
-            $movement = StockMovement::create([
-                'id' => Str::uuid()->toString(),
-                'tenant_id' => $product->tenant_id,
-                'product_id' => $product->id,
-                'location_id' => $location->id,
-                'company_id' => $location->company_id,
-                'movement_type' => MovementType::Receipt,
-                'quantity' => $quantityStr,
-                'quantity_before' => $currentQty,
-                'quantity_after' => $newQty,
-                'unit_cost' => CurrencyScale::bcformat($originalCostStr, $costScale),
-                'total_cost' => CurrencyScale::bcformat(bcmul($quantityStr, $originalCostStr, $working), $costScale),
-                'avg_cost_before' => CurrencyScale::bcformat($currentCostPrice, $costScale),
-                'avg_cost_after' => $newAvgCost,
-                'reference' => $reference,
-                'reference_type' => $referenceType,
-                'reference_id' => $referenceId,
-            ]);
-
-            // Update stock level
-            $stockLevel->quantity = $newQty;
-            $stockLevel->save();
-
-            // Update product cost at the internal COST_SCALE (no boundary truncation).
-            $product->cost_price = $newAvgCost;
-            $product->cost_updated_at = now();
-            $product->save();
-
-            // Auto-update sale price based on new weighted average cost
-            $oldSalePrice = (string) ($product->sale_price ?? '0.00');
-            $priceUpdated = $this->marginService->updateSalePrice($product);
-
-            // Capture data for events BEFORE afterCommit
-            $movementSnapshot = $movement;
-            /** @var Product $productSnapshot */
-            $productSnapshot = $product->fresh();
-            $locationSnapshot = $location;
-            $newStockLevelSnapshot = $stockLevel->quantity;
-            $priceUpdatedSnapshot = $priceUpdated;
-            // Audit-event cost figures reflect the at-rest COST_SCALE value.
-            $oldCostPriceSnapshot = CurrencyScale::bcformat($currentCostPrice, $costScale);
-            $newAvgCostSnapshot = $newAvgCost;
-            $oldSalePriceSnapshot = $oldSalePrice;
-            $referenceSnapshot = $reference;
-
-            // Emit audit event if prices changed - AFTER transaction commits
-            if ($priceUpdatedSnapshot) {
+                // Dispatch StockMovementRecorded event for audit trail - AFTER transaction commits
                 DB::afterCommit(function () use (
+                    $movementSnapshot,
                     $productSnapshot,
-                    $oldCostPriceSnapshot,
-                    $newAvgCostSnapshot,
-                    $oldSalePriceSnapshot,
-                    $referenceSnapshot
+                    $locationSnapshot,
+                    $newStockLevelSnapshot
                 ): void {
-                    event(new ProductCostPriceUpdated(
-                        productId: $productSnapshot->id,
-                        tenantId: $productSnapshot->tenant_id,
-                        companyId: $productSnapshot->company_id,
-                        productSku: $productSnapshot->sku,
-                        oldCostPrice: $oldCostPriceSnapshot,
-                        newCostPrice: $newAvgCostSnapshot,
-                        oldSalePrice: $oldSalePriceSnapshot,
-                        newSalePrice: (string) $productSnapshot->sale_price,
-                        reason: 'product_return',
-                        referenceDocument: $referenceSnapshot,
-                    ));
+                    $this->dispatchStockMovementEvent(
+                        movement: $movementSnapshot,
+                        product: $productSnapshot,
+                        location: $locationSnapshot,
+                        movementType: 'return',
+                        newStockLevel: $newStockLevelSnapshot
+                    );
                 });
-            }
 
-            // Dispatch StockMovementRecorded event for audit trail - AFTER transaction commits
-            DB::afterCommit(function () use (
-                $movementSnapshot,
-                $productSnapshot,
-                $locationSnapshot,
-                $newStockLevelSnapshot
-            ): void {
-                $this->dispatchStockMovementEvent(
-                    movement: $movementSnapshot,
-                    product: $productSnapshot,
-                    location: $locationSnapshot,
-                    movementType: 'return',
-                    newStockLevel: $newStockLevelSnapshot
-                );
+                return $movement;
             });
+        }, attempts: 3);
+    }
 
-            return $movement;
-        });
+    /**
+     * Record a cost adjustment that capitalizes additional costs into the
+     * company-wide weighted average cost without moving any quantity.
+     *
+     * Use this for branch-transfer freight/handling, supplier rebates,
+     * duty adjustments, write-downs, or any other WAC-affecting event
+     * that does not change on-hand quantity.
+     *
+     * new_avg = current_avg + additional_cost / company_on_hand_qty
+     *
+     * If on-hand quantity is zero the adjustment is skipped (the WAC is
+     * undefined for an empty bucket — the caller should surface this).
+     *
+     * Concurrency (WAC Serialization Foundation):
+     *  - takes a per-product TRANSACTION-scoped advisory lock so the cost_price
+     *    write is serialized against every other recompute for this product;
+     *  - row-locks each stock_level row (real FOR UPDATE on the rows, then sums
+     *    in PHP — an aggregate sum()->lockForUpdate() locks NO rows on Postgres);
+     *  - includes in-transit transfer quantity in the denominator so the company
+     *    still "owns" stock that has left the source but not yet been received.
+     *
+     * @param  Product  $product  The product whose WAC is being adjusted
+     * @param  float  $additionalCost  Cost amount to capitalize (positive = increases WAC)
+     * @param  string  $reason  Free-text reason for audit trail (e.g. "transfer freight")
+     * @param  string  $tenantId  Owning tenant (resolved from the product, never a location)
+     * @param  string  $companyId  Owning company (WAC is company-wide)
+     * @param  string|null  $reference  Human-readable reference
+     * @param  string|null  $referenceType  Source model class for audit linking
+     * @param  string|null  $referenceId  Source model UUID for audit linking
+     */
+    public function recordCostAdjustment(
+        Product $product,
+        float $additionalCost,
+        string $reason,
+        string $tenantId,
+        string $companyId,
+        ?string $reference = null,
+        ?string $referenceType = null,
+        ?string $referenceId = null,
+    ): ?StockMovement {
+        return DB::transaction(function () use ($product, $additionalCost, $reason, $tenantId, $companyId, $reference, $referenceType, $referenceId): ?StockMovement {
+            return $this->costLock->acquire($tenantId, $companyId, [$product->id], function () use ($product, $additionalCost, $reason, $tenantId, $companyId, $reference, $referenceType, $referenceId): ?StockMovement {
+                // Canonical lock order: advisory (already held) -> stock_level
+                // rows -> product row LAST. recordSale() (outside the advisory
+                // seam) locks stock_level then product; taking the product row
+                // first here would invert that order and deadlock a concurrent
+                // sale on the same product (AB-BA).
+                //
+                // Company-wide on-hand quantity. Row-lock the ACTUAL stock_level
+                // rows (FOR UPDATE on each row), then sum in PHP — an aggregate
+                // sum()->lockForUpdate() locks no rows on PostgreSQL and would let
+                // concurrent stock motion race the WAC delta computation.
+                $levels = StockLevel::query()
+                    ->where('product_id', $product->id)
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->lockForUpdate()
+                    ->get();
+
+                $working = $this->workingScale();
+                $onHand = '0';
+                foreach ($levels as $level) {
+                    $onHand = bcadd($onHand, (string) $level->quantity, $working);
+                }
+
+                // Stock that has left the source but not yet been received still
+                // belongs to the company, so it shares in the capitalized cost.
+                $inTransit = (string) StockTransferLine::query()
+                    ->join('stock_transfers', 'stock_transfers.id', '=', 'stock_transfer_lines.transfer_id')
+                    ->where('stock_transfer_lines.product_id', $product->id)
+                    ->where('stock_transfers.tenant_id', $tenantId)
+                    ->where('stock_transfers.company_id', $companyId)
+                    ->where('stock_transfers.status', TransferStatus::InTransit)
+                    ->sum('stock_transfer_lines.quantity');
+
+                $totalOwned = bcadd($onHand, $inTransit, $working);
+
+                if (bccomp($totalOwned, '0', $working) <= 0) {
+                    // Nothing owned to capitalize against — no-op, no movement.
+                    return null;
+                }
+
+                // Lock the product row LAST (canonical order: advisory ->
+                // stock_level rows -> product row), just before the cost write,
+                // scoped to the input product's own tenant + company.
+                $product = Product::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->lockForUpdate()
+                    ->findOrFail($product->id);
+
+                // Capitalize the additional cost across every owned unit using
+                // bcmath only — mirror recordPurchase: carry the persisted cost at
+                // the internal COST_SCALE with NO truncation to the currency scale.
+                $costScale = $this->costScale();
+                $currentCostStr = CurrencyScale::bcformat($product->cost_price ?? '0', $working);
+                $additionalCostStr = CurrencyScale::bcformat($additionalCost, $working);
+                $delta = bcdiv($additionalCostStr, $totalOwned, $working);
+                $newAvgCost = CurrencyScale::bcformat(bcadd($currentCostStr, $delta, $working), $costScale);
+
+                // Anchor the adjustment movement at the product's "home" location
+                // (any stock_level row will do — we pick the one with the largest qty
+                // so the audit trail naturally points at where the cost lives).
+                /** @var StockLevel|null $anchor */
+                $anchor = StockLevel::query()
+                    ->where('product_id', $product->id)
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->orderByDesc('quantity')
+                    ->first();
+
+                if ($anchor === null) {
+                    return null;
+                }
+
+                // quantity = 0 movement — the qty isn't changing, only the average cost.
+                $movement = StockMovement::create([
+                    'id' => Str::uuid()->toString(),
+                    'tenant_id' => $product->tenant_id,
+                    'product_id' => $product->id,
+                    'location_id' => $anchor->location_id,
+                    'company_id' => $product->company_id,
+                    'movement_type' => MovementType::Adjustment,
+                    'quantity' => '0',
+                    'quantity_before' => $totalOwned,
+                    'quantity_after' => $totalOwned,
+                    'unit_cost' => CurrencyScale::bcformat($additionalCostStr, $costScale),
+                    'total_cost' => CurrencyScale::bcformat($additionalCostStr, $costScale),
+                    'avg_cost_before' => CurrencyScale::bcformat($currentCostStr, $costScale),
+                    'avg_cost_after' => $newAvgCost,
+                    'reference' => $reference,
+                    'reference_type' => $referenceType,
+                    'reference_id' => $referenceId,
+                    'notes' => $reason,
+                ]);
+
+                $product->cost_price = $newAvgCost;
+                $product->cost_updated_at = now();
+                $product->save();
+
+                $oldSalePrice = (string) ($product->sale_price ?? '0.00');
+                $priceUpdated = $this->marginService->updateSalePrice($product);
+
+                $productSnapshot = $product->fresh() ?? $product;
+                $oldCostPriceSnapshot = CurrencyScale::bcformat($currentCostStr, $costScale);
+                $newAvgCostSnapshot = $newAvgCost;
+                $oldSalePriceSnapshot = $oldSalePrice;
+                $referenceSnapshot = $reference;
+                $reasonSnapshot = $reason;
+
+                if ($priceUpdated) {
+                    DB::afterCommit(function () use (
+                        $productSnapshot,
+                        $oldCostPriceSnapshot,
+                        $newAvgCostSnapshot,
+                        $oldSalePriceSnapshot,
+                        $referenceSnapshot,
+                        $reasonSnapshot,
+                    ): void {
+                        event(new ProductCostPriceUpdated(
+                            productId: $productSnapshot->id,
+                            tenantId: $productSnapshot->tenant_id,
+                            companyId: $productSnapshot->company_id,
+                            productSku: $productSnapshot->sku,
+                            oldCostPrice: $oldCostPriceSnapshot,
+                            newCostPrice: $newAvgCostSnapshot,
+                            oldSalePrice: $oldSalePriceSnapshot,
+                            newSalePrice: (string) $productSnapshot->sale_price,
+                            reason: $reasonSnapshot,
+                            referenceDocument: $referenceSnapshot,
+                        ));
+                    });
+                }
+
+                return $movement;
+            });
+        }, attempts: 3);
     }
 
     /**

@@ -31,6 +31,10 @@ final class StockAdjustmentService
      */
     private const SCALE = 4;
 
+    public function __construct(
+        private readonly ProductCostLock $costLock,
+    ) {}
+
     /**
      * Receive stock into a location (e.g., from purchase order).
      *
@@ -47,63 +51,67 @@ final class StockAdjustmentService
         ?string $expectedCompanyId = null,
     ): StockMovement {
         return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId): StockMovement {
-            $stockLevel = $this->getOrCreateStockLevel($productId, $locationId, $expectedCompanyId ?? $this->resolveCompanyId($locationId));
+            $companyId = $expectedCompanyId ?? $this->resolveCompanyId($locationId);
 
-            /** @var numeric-string $quantityBefore */
-            $quantityBefore = $stockLevel->quantity;
-            $quantityAfter = bcadd($quantityBefore, $quantity, self::SCALE);
+            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $companyId): StockMovement {
+                $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId);
 
-            $stockLevel->update(['quantity' => $quantityAfter]);
+                /** @var numeric-string $quantityBefore */
+                $quantityBefore = $stockLevel->quantity;
+                $quantityAfter = bcadd($quantityBefore, $quantity, self::SCALE);
 
-            $movement = $this->recordMovement(
-                tenantId: $stockLevel->tenant_id,
-                companyId: $stockLevel->company_id,
-                productId: $productId,
-                locationId: $locationId,
-                type: MovementType::Receipt,
-                quantity: $quantity,
-                quantityBefore: $quantityBefore,
-                quantityAfter: $quantityAfter,
-                reference: $reference,
-                userId: $userId,
-            );
+                $stockLevel->update(['quantity' => $quantityAfter]);
 
-            // Record batch movement if batch ID provided
-            if ($batchId !== null) {
-                $this->recordBatchMovement(
+                $movement = $this->recordMovement(
                     tenantId: $stockLevel->tenant_id,
-                    batchId: $batchId,
-                    locationId: $locationId,
-                    movementId: $movement->id,
-                    quantity: $quantity,
-                );
-            }
-
-            // Dispatch StockMovementRecorded event after transaction commits
-            $movementSnapshot = $movement;
-            $tenantIdSnapshot = $stockLevel->tenant_id;
-            $companyIdSnapshot = $stockLevel->company_id;
-            $quantityAfterSnapshot = $quantityAfter;
-
-            DB::afterCommit(function () use ($movementSnapshot, $tenantIdSnapshot, $companyIdSnapshot, $productId, $locationId, $quantity, $quantityAfterSnapshot, $reference): void {
-                event(new StockMovementRecorded(
-                    movementId: $movementSnapshot->id,
-                    tenantId: $tenantIdSnapshot,
-                    companyId: $companyIdSnapshot,
+                    companyId: $stockLevel->company_id,
                     productId: $productId,
                     locationId: $locationId,
-                    movementType: 'receipt',
+                    type: MovementType::Receipt,
                     quantity: $quantity,
-                    unitCost: (string) ($movementSnapshot->unit_cost ?? '0.00'),
-                    totalCost: (string) ($movementSnapshot->total_cost ?? '0.00'),
-                    newStockLevel: $quantityAfterSnapshot,
+                    quantityBefore: $quantityBefore,
+                    quantityAfter: $quantityAfter,
                     reference: $reference,
-                    occurredAt: now()->toIso8601String(),
-                ));
-            });
+                    userId: $userId,
+                );
 
-            return $movement;
-        });
+                // Record batch movement if batch ID provided
+                if ($batchId !== null) {
+                    $this->recordBatchMovement(
+                        tenantId: $stockLevel->tenant_id,
+                        batchId: $batchId,
+                        locationId: $locationId,
+                        movementId: $movement->id,
+                        quantity: $quantity,
+                    );
+                }
+
+                // Dispatch StockMovementRecorded event after transaction commits
+                $movementSnapshot = $movement;
+                $tenantIdSnapshot = $stockLevel->tenant_id;
+                $companyIdSnapshot = $stockLevel->company_id;
+                $quantityAfterSnapshot = $quantityAfter;
+
+                DB::afterCommit(function () use ($movementSnapshot, $tenantIdSnapshot, $companyIdSnapshot, $productId, $locationId, $quantity, $quantityAfterSnapshot, $reference): void {
+                    event(new StockMovementRecorded(
+                        movementId: $movementSnapshot->id,
+                        tenantId: $tenantIdSnapshot,
+                        companyId: $companyIdSnapshot,
+                        productId: $productId,
+                        locationId: $locationId,
+                        movementType: 'receipt',
+                        quantity: $quantity,
+                        unitCost: (string) ($movementSnapshot->unit_cost ?? '0.00'),
+                        totalCost: (string) ($movementSnapshot->total_cost ?? '0.00'),
+                        newStockLevel: $quantityAfterSnapshot,
+                        reference: $reference,
+                        occurredAt: now()->toIso8601String(),
+                    ));
+                });
+
+                return $movement;
+            });
+        }, attempts: 3);
     }
 
     /**
@@ -214,106 +222,109 @@ final class StockAdjustmentService
         DB::transaction(function () use ($productId, $fromLocationId, $toLocationId, $quantity, $reference, $userId, $expectedCompanyId): void {
             $resolvedCompanyId = $expectedCompanyId ?? $this->resolveCompanyId($fromLocationId);
 
-            // Lock source stock
-            $sourceStock = $this->lockStockLevel($productId, $fromLocationId, $resolvedCompanyId);
+            // ONE product across two locations — acquire the single product key once.
+            $this->costLock->acquire($this->resolveTenantId($productId, $resolvedCompanyId), $resolvedCompanyId, [$productId], function () use ($productId, $fromLocationId, $toLocationId, $quantity, $reference, $userId, $resolvedCompanyId): void {
+                // Lock source stock
+                $sourceStock = $this->lockStockLevel($productId, $fromLocationId, $resolvedCompanyId);
 
-            /** @var numeric-string $available */
-            $available = $sourceStock->getAvailableQuantity();
+                /** @var numeric-string $available */
+                $available = $sourceStock->getAvailableQuantity();
 
-            if (bccomp($quantity, $available, self::SCALE) > 0) {
-                throw new InsufficientStockException(
+                if (bccomp($quantity, $available, self::SCALE) > 0) {
+                    throw new InsufficientStockException(
+                        productId: $productId,
+                        locationId: $fromLocationId,
+                        requested: $quantity,
+                        available: $available,
+                    );
+                }
+
+                // Deduct from source
+                /** @var numeric-string $sourceQuantityBefore */
+                $sourceQuantityBefore = $sourceStock->quantity;
+                $sourceQuantityAfter = bcsub($sourceQuantityBefore, $quantity, self::SCALE);
+                $sourceStock->update(['quantity' => $sourceQuantityAfter]);
+
+                $sourceMovement = $this->recordMovement(
+                    tenantId: $sourceStock->tenant_id,
+                    companyId: $sourceStock->company_id,
                     productId: $productId,
                     locationId: $fromLocationId,
-                    requested: $quantity,
-                    available: $available,
-                );
-            }
-
-            // Deduct from source
-            /** @var numeric-string $sourceQuantityBefore */
-            $sourceQuantityBefore = $sourceStock->quantity;
-            $sourceQuantityAfter = bcsub($sourceQuantityBefore, $quantity, self::SCALE);
-            $sourceStock->update(['quantity' => $sourceQuantityAfter]);
-
-            $sourceMovement = $this->recordMovement(
-                tenantId: $sourceStock->tenant_id,
-                companyId: $sourceStock->company_id,
-                productId: $productId,
-                locationId: $fromLocationId,
-                type: MovementType::TransferOut,
-                quantity: $quantity,
-                quantityBefore: $sourceQuantityBefore,
-                quantityAfter: $sourceQuantityAfter,
-                reference: $reference,
-                userId: $userId,
-            );
-
-            // Add to destination
-            $destStock = $this->getOrCreateStockLevel($productId, $toLocationId, $resolvedCompanyId);
-            /** @var numeric-string $destQuantityBefore */
-            $destQuantityBefore = $destStock->quantity;
-            $destQuantityAfter = bcadd($destQuantityBefore, $quantity, self::SCALE);
-            $destStock->update(['quantity' => $destQuantityAfter]);
-
-            $destMovement = $this->recordMovement(
-                tenantId: $destStock->tenant_id,
-                companyId: $destStock->company_id,
-                productId: $productId,
-                locationId: $toLocationId,
-                type: MovementType::TransferIn,
-                quantity: $quantity,
-                quantityBefore: $destQuantityBefore,
-                quantityAfter: $destQuantityAfter,
-                reference: $reference,
-                userId: $userId,
-            );
-
-            // Dispatch StockMovementRecorded events after transaction commits
-            $sourceMovementSnapshot = $sourceMovement;
-            $sourceTenantId = $sourceStock->tenant_id;
-            $sourceCompanyId = $sourceStock->company_id;
-            $sourceQuantityAfterSnapshot = $sourceQuantityAfter;
-
-            $destMovementSnapshot = $destMovement;
-            $destTenantId = $destStock->tenant_id;
-            $destCompanyId = $destStock->company_id;
-            $destQuantityAfterSnapshot = $destQuantityAfter;
-
-            DB::afterCommit(function () use (
-                $sourceMovementSnapshot, $sourceTenantId, $sourceCompanyId, $productId, $fromLocationId, $quantity, $sourceQuantityAfterSnapshot, $reference,
-                $destMovementSnapshot, $destTenantId, $destCompanyId, $toLocationId, $destQuantityAfterSnapshot,
-            ): void {
-                event(new StockMovementRecorded(
-                    movementId: $sourceMovementSnapshot->id,
-                    tenantId: $sourceTenantId,
-                    companyId: $sourceCompanyId,
-                    productId: $productId,
-                    locationId: $fromLocationId,
-                    movementType: 'transfer_out',
+                    type: MovementType::TransferOut,
                     quantity: $quantity,
-                    unitCost: (string) ($sourceMovementSnapshot->unit_cost ?? '0.00'),
-                    totalCost: (string) ($sourceMovementSnapshot->total_cost ?? '0.00'),
-                    newStockLevel: $sourceQuantityAfterSnapshot,
+                    quantityBefore: $sourceQuantityBefore,
+                    quantityAfter: $sourceQuantityAfter,
                     reference: $reference,
-                    occurredAt: now()->toIso8601String(),
-                ));
+                    userId: $userId,
+                );
 
-                event(new StockMovementRecorded(
-                    movementId: $destMovementSnapshot->id,
-                    tenantId: $destTenantId,
-                    companyId: $destCompanyId,
+                // Add to destination
+                $destStock = $this->lockStockLevel($productId, $toLocationId, $resolvedCompanyId);
+                /** @var numeric-string $destQuantityBefore */
+                $destQuantityBefore = $destStock->quantity;
+                $destQuantityAfter = bcadd($destQuantityBefore, $quantity, self::SCALE);
+                $destStock->update(['quantity' => $destQuantityAfter]);
+
+                $destMovement = $this->recordMovement(
+                    tenantId: $destStock->tenant_id,
+                    companyId: $destStock->company_id,
                     productId: $productId,
                     locationId: $toLocationId,
-                    movementType: 'transfer_in',
+                    type: MovementType::TransferIn,
                     quantity: $quantity,
-                    unitCost: (string) ($destMovementSnapshot->unit_cost ?? '0.00'),
-                    totalCost: (string) ($destMovementSnapshot->total_cost ?? '0.00'),
-                    newStockLevel: $destQuantityAfterSnapshot,
+                    quantityBefore: $destQuantityBefore,
+                    quantityAfter: $destQuantityAfter,
                     reference: $reference,
-                    occurredAt: now()->toIso8601String(),
-                ));
+                    userId: $userId,
+                );
+
+                // Dispatch StockMovementRecorded events after transaction commits
+                $sourceMovementSnapshot = $sourceMovement;
+                $sourceTenantId = $sourceStock->tenant_id;
+                $sourceCompanyId = $sourceStock->company_id;
+                $sourceQuantityAfterSnapshot = $sourceQuantityAfter;
+
+                $destMovementSnapshot = $destMovement;
+                $destTenantId = $destStock->tenant_id;
+                $destCompanyId = $destStock->company_id;
+                $destQuantityAfterSnapshot = $destQuantityAfter;
+
+                DB::afterCommit(function () use (
+                    $sourceMovementSnapshot, $sourceTenantId, $sourceCompanyId, $productId, $fromLocationId, $quantity, $sourceQuantityAfterSnapshot, $reference,
+                    $destMovementSnapshot, $destTenantId, $destCompanyId, $toLocationId, $destQuantityAfterSnapshot,
+                ): void {
+                    event(new StockMovementRecorded(
+                        movementId: $sourceMovementSnapshot->id,
+                        tenantId: $sourceTenantId,
+                        companyId: $sourceCompanyId,
+                        productId: $productId,
+                        locationId: $fromLocationId,
+                        movementType: 'transfer_out',
+                        quantity: $quantity,
+                        unitCost: (string) ($sourceMovementSnapshot->unit_cost ?? '0.00'),
+                        totalCost: (string) ($sourceMovementSnapshot->total_cost ?? '0.00'),
+                        newStockLevel: $sourceQuantityAfterSnapshot,
+                        reference: $reference,
+                        occurredAt: now()->toIso8601String(),
+                    ));
+
+                    event(new StockMovementRecorded(
+                        movementId: $destMovementSnapshot->id,
+                        tenantId: $destTenantId,
+                        companyId: $destCompanyId,
+                        productId: $productId,
+                        locationId: $toLocationId,
+                        movementType: 'transfer_in',
+                        quantity: $quantity,
+                        unitCost: (string) ($destMovementSnapshot->unit_cost ?? '0.00'),
+                        totalCost: (string) ($destMovementSnapshot->total_cost ?? '0.00'),
+                        newStockLevel: $destQuantityAfterSnapshot,
+                        reference: $reference,
+                        occurredAt: now()->toIso8601String(),
+                    ));
+                });
             });
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -432,51 +443,55 @@ final class StockAdjustmentService
         ?string $expectedCompanyId = null,
     ): StockMovement {
         return DB::transaction(function () use ($productId, $locationId, $newQuantity, $reason, $userId, $expectedCompanyId): StockMovement {
-            $stockLevel = $this->getOrCreateStockLevel($productId, $locationId, $expectedCompanyId ?? $this->resolveCompanyId($locationId));
+            $companyId = $expectedCompanyId ?? $this->resolveCompanyId($locationId);
 
-            /** @var numeric-string $quantityBefore */
-            $quantityBefore = $stockLevel->quantity;
-            $difference = bcsub($newQuantity, $quantityBefore, self::SCALE);
+            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $newQuantity, $reason, $userId, $companyId): StockMovement {
+                $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId);
 
-            $stockLevel->update(['quantity' => $newQuantity]);
+                /** @var numeric-string $quantityBefore */
+                $quantityBefore = $stockLevel->quantity;
+                $difference = bcsub($newQuantity, $quantityBefore, self::SCALE);
 
-            $movement = $this->recordMovement(
-                tenantId: $stockLevel->tenant_id,
-                companyId: $stockLevel->company_id,
-                productId: $productId,
-                locationId: $locationId,
-                type: MovementType::Adjustment,
-                quantity: $difference,
-                quantityBefore: $quantityBefore,
-                quantityAfter: $newQuantity,
-                reference: $reason,
-                userId: $userId,
-            );
+                $stockLevel->update(['quantity' => $newQuantity]);
 
-            // Dispatch StockMovementRecorded event after transaction commits
-            $movementSnapshot = $movement;
-            $tenantIdSnapshot = $stockLevel->tenant_id;
-            $companyIdSnapshot = $stockLevel->company_id;
-
-            DB::afterCommit(function () use ($movementSnapshot, $tenantIdSnapshot, $companyIdSnapshot, $productId, $locationId, $difference, $newQuantity, $reason): void {
-                event(new StockMovementRecorded(
-                    movementId: $movementSnapshot->id,
-                    tenantId: $tenantIdSnapshot,
-                    companyId: $companyIdSnapshot,
+                $movement = $this->recordMovement(
+                    tenantId: $stockLevel->tenant_id,
+                    companyId: $stockLevel->company_id,
                     productId: $productId,
                     locationId: $locationId,
-                    movementType: 'adjustment',
+                    type: MovementType::Adjustment,
                     quantity: $difference,
-                    unitCost: (string) ($movementSnapshot->unit_cost ?? '0.00'),
-                    totalCost: (string) ($movementSnapshot->total_cost ?? '0.00'),
-                    newStockLevel: $newQuantity,
+                    quantityBefore: $quantityBefore,
+                    quantityAfter: $newQuantity,
                     reference: $reason,
-                    occurredAt: now()->toIso8601String(),
-                ));
-            });
+                    userId: $userId,
+                );
 
-            return $movement;
-        });
+                // Dispatch StockMovementRecorded event after transaction commits
+                $movementSnapshot = $movement;
+                $tenantIdSnapshot = $stockLevel->tenant_id;
+                $companyIdSnapshot = $stockLevel->company_id;
+
+                DB::afterCommit(function () use ($movementSnapshot, $tenantIdSnapshot, $companyIdSnapshot, $productId, $locationId, $difference, $newQuantity, $reason): void {
+                    event(new StockMovementRecorded(
+                        movementId: $movementSnapshot->id,
+                        tenantId: $tenantIdSnapshot,
+                        companyId: $companyIdSnapshot,
+                        productId: $productId,
+                        locationId: $locationId,
+                        movementType: 'adjustment',
+                        quantity: $difference,
+                        unitCost: (string) ($movementSnapshot->unit_cost ?? '0.00'),
+                        totalCost: (string) ($movementSnapshot->total_cost ?? '0.00'),
+                        newStockLevel: $newQuantity,
+                        reference: $reason,
+                        occurredAt: now()->toIso8601String(),
+                    ));
+                });
+
+                return $movement;
+            });
+        }, attempts: 3);
     }
 
     /**
@@ -553,6 +568,22 @@ final class StockAdjustmentService
     private function resolveCompanyId(string $locationId): string
     {
         return Location::findOrFail($locationId)->company_id;
+    }
+
+    /**
+     * Resolve the owning tenant_id for the ProductCostLock key tuple.
+     *
+     * The lock key MUST be (tenant_id, company_id, product_id) — the SAME tuple
+     * WeightedAverageCostService::recordCostAdjustment uses. Location carries
+     * only company_id, so the tenant is resolved from the Product (scoped to the
+     * already-validated company) rather than the location.
+     */
+    private function resolveTenantId(string $productId, string $companyId): string
+    {
+        return Product::query()
+            ->where('company_id', $companyId)
+            ->findOrFail($productId)
+            ->tenant_id;
     }
 
     /**
