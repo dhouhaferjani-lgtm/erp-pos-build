@@ -34,7 +34,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
       {/* Row 1: Name + Line Total */}
       <div className="flex items-center justify-between gap-2">
         <h4 className="truncate text-sm font-semibold text-gray-900">
-          {item.product.name}
+          {item.product.variant_name ?? item.product.name}
         </h4>
         <span className="shrink-0 text-sm font-bold text-gray-900">
           {format(item.line_total)}

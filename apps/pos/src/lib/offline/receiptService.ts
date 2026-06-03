@@ -421,6 +421,13 @@ export async function createOfflineReceipt(
         input.cartItems.map((item) => ({
           product_id: item.product.sellableType === 'composite_item' ? undefined : item.product.id,
           composite_item_id: item.product.sellableType === 'composite_item' ? item.product.id : undefined,
+          // T2 — variant identity persisted alongside the line so the stored
+          // sale records exactly which variant was sold. This is OUT OF BAND
+          // from the fiscal canonical payload (built separately in
+          // buildSaleReceiptPayload, which reads only product_id/sku/price) —
+          // it never alters fiscal bytes. Wave-2 sync forwards this to the
+          // server; current sync ignores the extra field harmlessly.
+          variant_id: item.product.variant_id ?? undefined,
           name: item.product.name,
           sku: item.product.sku,
           quantity: item.quantity,

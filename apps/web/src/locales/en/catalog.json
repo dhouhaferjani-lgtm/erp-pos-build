@@ -35,7 +35,9 @@
     "deleteMessage": "Delete variant {{name}}? This cannot be undone.",
     "default": "Default",
     "loadError": "Failed to load variants",
-    "actionsColumn": "Actions"
+    "actionsColumn": "Actions",
+    "chooseVariant": "Choose a variant",
+    "loading": "Loading variants..."
   },
   "modifier": "Modifier",
   "modifiers": "Modifiers",

@@ -35,7 +35,9 @@
     "deleteMessage": "Supprimer la variante {{name}} ? Cette action est irréversible.",
     "default": "Par défaut",
     "loadError": "Échec du chargement des variantes",
-    "actionsColumn": "Actions"
+    "actionsColumn": "Actions",
+    "chooseVariant": "Choisir une variante",
+    "loading": "Chargement des variantes..."
   },
   "modifier": "Modificateur",
   "modifiers": "Modificateurs",

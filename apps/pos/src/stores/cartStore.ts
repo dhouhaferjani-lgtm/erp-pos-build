@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { CartItem, SelectedModifier } from '@/types/cart';
-import type { POSProduct } from '@/types/product';
+import type { POSProduct, POSProductVariant } from '@/types/product';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bcdiv, bcmul, bcsub, bcsum, bccomp, bcabs } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
@@ -24,7 +24,22 @@ interface CartState {
 }
 
 interface CartActions {
-  addItem: (product: POSProduct, selectedModifiers?: SelectedModifier[]) => void;
+  /**
+   * Add a product to the cart.
+   *
+   * T2 — when `variant` is supplied the line carries that variant's identity
+   * (`variant_id` / `variant_name`) and is priced at the variant's
+   * `price_override` (falling back to the product `sale_price`). Variant lines
+   * dedupe on `(product.id, variant_id)` so two distinct variants of the same
+   * product stay as separate lines while re-adding the same variant
+   * increments. The variant carries NO cost into the cart — inventory WAC
+   * stays product-grain (spec §6.7) and the fiscal payload is untouched.
+   */
+  addItem: (
+    product: POSProduct,
+    selectedModifiers?: SelectedModifier[],
+    variant?: POSProductVariant,
+  ) => void;
   addItemWithDefaults: (product: POSProduct) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
   updateLineModifiers: (lineId: string, newModifiers: SelectedModifier[]) => void;
@@ -162,16 +177,23 @@ const initialState: CartState = {
 export const useCartStore = create<CartStore>()((set, get) => ({
   ...initialState,
 
-  addItem: (product: POSProduct, selectedModifiers?: SelectedModifier[]) => {
+  addItem: (
+    product: POSProduct,
+    selectedModifiers?: SelectedModifier[],
+    variant?: POSProductVariant,
+  ) => {
     set((state) => {
       const hasModifiers = selectedModifiers && selectedModifiers.length > 0;
 
-      // For items without modifiers, try to find and increment existing
+      // For items without modifiers, try to find and increment existing.
+      // A variant line only merges with another line of the SAME variant of
+      // the SAME product — distinct variants stay as distinct lines.
       if (!hasModifiers) {
         const existingIndex = state.items.findIndex(
           (item) =>
             item.product.id === product.id &&
-            !item.product.selectedModifiers?.length,
+            !item.product.selectedModifiers?.length &&
+            (item.product.variant_id ?? null) === (variant?.id ?? null),
         );
 
         if (existingIndex !== -1) {
@@ -183,9 +205,15 @@ export const useCartStore = create<CartStore>()((set, get) => ({
         }
       }
 
-      // Add new item
+      // Add new item. When a variant is supplied, its `price_override` (when
+      // set) replaces the product base price; otherwise the product
+      // `sale_price` is used. Modifier adjustments stack on top either way.
       const decimals = getDecimals();
-      const basePrice = product.sale_price ?? '0';
+      const variantBasePrice =
+        variant && variant.price_override != null && variant.price_override !== ''
+          ? variant.price_override
+          : null;
+      const basePrice = variantBasePrice ?? product.sale_price ?? '0';
       const modifierAdjustment = hasModifiers
         ? bcsum(selectedModifiers.map((m) => m.price_adjustment), decimals)
         : (0).toFixed(decimals);
@@ -193,6 +221,12 @@ export const useCartStore = create<CartStore>()((set, get) => ({
 
       const cartProduct: CartItem['product'] = {
         id: product.id,
+        // The cart-line `sku` stays the PRODUCT sku so the fiscal canonical
+        // payload (which reads `product.sku`) is byte-identical to a
+        // no-variant sale — fiscal bytes are never touched by variant
+        // selection. The variant identity (and thus the variant sku) is
+        // carried out-of-band via `variant_id`; the server recovers the
+        // variant sku from it.
         name: product.name,
         sku: product.sku,
         price: priceValue,
@@ -200,6 +234,10 @@ export const useCartStore = create<CartStore>()((set, get) => ({
       };
       if (hasModifiers) {
         cartProduct.selectedModifiers = selectedModifiers;
+      }
+      if (variant) {
+        cartProduct.variant_id = variant.id;
+        cartProduct.variant_name = `${product.name}${variant.name_suffix}`;
       }
 
       const taxRate = product.tax_rate ?? '0';
