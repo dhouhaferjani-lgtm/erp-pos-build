@@ -110,6 +110,10 @@ class Promotion extends Model
             'metadata' => 'array',
             'usage_limit' => 'integer',
             'usage_count' => 'integer',
+            // decimal(12,4) — can be a percent (e.g. 10.5000) or a fixed money amount
+            'discount_value' => 'decimal:4',
+            // decimal(15,2) monetary cap — kept at :3 to match branch monetary contract
+            'max_discount_amount' => 'decimal:3',
         ];
     }
 

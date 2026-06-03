@@ -26,7 +26,7 @@ final class UpdateScheduleConfigRequest extends FormRequest
         return [
             'time_slot_minutes' => ['nullable', 'integer', 'min:5', 'max:120'],
             'default_appointment_duration_minutes' => ['nullable', 'integer', 'min:5', 'max:720'],
-            'walk_in_buffer_hours_per_day' => ['nullable', 'numeric', 'min:0', 'max:24'],
+            'walk_in_buffer_hours_per_day' => ['nullable', 'numeric', 'min:0', 'max:24', 'regex:/^\d+(\.\d{1,2})?$/'],
             'overbooking_threshold_percent' => ['nullable', 'integer', 'min:0', 'max:200'],
             'online_booking_enabled' => ['nullable', 'boolean'],
             'online_booking_advance_days' => ['nullable', 'integer', 'min:0', 'max:365'],
@@ -34,6 +34,16 @@ final class UpdateScheduleConfigRequest extends FormRequest
             'online_booking_auto_confirm' => ['nullable', 'boolean'],
             'reminder_sms_hours_before' => ['nullable', 'integer', 'min:1', 'max:168'],
             'reminder_email_hours_before' => ['nullable', 'integer', 'min:1', 'max:168'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'walk_in_buffer_hours_per_day.regex' => 'Walk-in buffer hours must have at most 2 decimal places.',
         ];
     }
 }

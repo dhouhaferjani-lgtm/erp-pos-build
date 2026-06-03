@@ -26,6 +26,7 @@ use App\Modules\Voucher\Domain\Enums\VoucherSource;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Modules\Voucher\Domain\VoucherLedger;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -803,19 +804,32 @@ final class GeneralLedgerService
         \DateTimeInterface $date,
         ?string $description = null
     ): ?JournalEntry {
-        // Calculate total COGS
-        $totalCOGS = '0';
+        // Calculate total COGS.
+        //
+        // unit_cost carries the perpetual WAC at higher internal precision (6 dp,
+        // see WeightedAverageCostService::COST_SCALE). We therefore accumulate
+        // quantity × unit_cost at a HIGH working precision (no per-line truncation
+        // that would bias the total downward / violate NC 01 §62) and round the
+        // TOTAL exactly once, HALF-UP, to the currency scale at this GL posting
+        // boundary. The single rounded $totalCOGS is used for BOTH the debit and
+        // the credit leg, so the entry balances by construction.
+        $scale = $this->scale();
+        $working = $scale + 6; // headroom beyond the 6-dp at-rest cost precision
+        $totalCOGSPrecise = '0';
         foreach ($lineItems as $item) {
             /** @var numeric-string $quantity */
             $quantity = $item['quantity'];
             /** @var numeric-string $unitCost */
             $unitCost = $item['unit_cost'];
-            $lineCost = bcmul($quantity, $unitCost, $this->scale());
-            $totalCOGS = bcadd($totalCOGS, $lineCost, $this->scale());
+            $lineCost = bcmul($quantity, $unitCost, $working);
+            $totalCOGSPrecise = bcadd($totalCOGSPrecise, $lineCost, $working);
         }
 
+        // Round HALF-UP at the posting boundary (presentation/recording boundary).
+        $totalCOGS = CurrencyScale::bcround($totalCOGSPrecise, $scale);
+
         // Don't create entry if no COGS
-        if (bccomp($totalCOGS, '0', $this->scale()) <= 0) {
+        if (bccomp($totalCOGS, '0', $scale) <= 0) {
             return null;
         }
 

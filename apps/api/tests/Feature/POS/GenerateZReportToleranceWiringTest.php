@@ -6,6 +6,7 @@ namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\ReportGenerationService;
 use App\Modules\POS\Domain\DTOs\CashCountInputDTO;
@@ -193,6 +194,7 @@ final class GenerateZReportToleranceWiringTest extends TestCase
             'tenant_id' => $tenant->id,
             'currency' => 'EUR',
         ]);
+        $this->app->make(CompanyContext::class)->setCompanyId($company->id);
         $location = Location::factory()->create(['company_id' => $company->id]);
         $cashier = User::factory()->create(['tenant_id' => $tenant->id]);
         $terminal = Terminal::factory()->create([

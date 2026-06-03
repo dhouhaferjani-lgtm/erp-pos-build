@@ -57,10 +57,10 @@ class StockLevel extends Model
     protected function casts(): array
     {
         return [
-            'quantity' => 'decimal:2',
-            'reserved' => 'decimal:2',
-            'min_quantity' => 'decimal:2',
-            'max_quantity' => 'decimal:2',
+            'quantity' => 'decimal:4',
+            'reserved' => 'decimal:4',
+            'min_quantity' => 'decimal:4',
+            'max_quantity' => 'decimal:4',
         ];
     }
 
@@ -113,7 +113,7 @@ class StockLevel extends Model
             return false;
         }
 
-        return bccomp($this->quantity, $this->min_quantity, 2) < 0;
+        return bccomp($this->quantity, $this->min_quantity, 4) < 0;
     }
 
     /**

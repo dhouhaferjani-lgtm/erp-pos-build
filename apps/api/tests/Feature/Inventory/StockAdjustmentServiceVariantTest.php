@@ -131,7 +131,7 @@ class StockAdjustmentServiceVariantTest extends TestCase
             ->first();
 
         $this->assertNotNull($level);
-        $this->assertEquals('5.00', $level->quantity);
+        $this->assertEquals('5.0000', $level->quantity);
         $this->assertSame($variant->id, $level->variant_id);
 
         // The stock_movements ROW carries the variant_id.
@@ -161,7 +161,7 @@ class StockAdjustmentServiceVariantTest extends TestCase
             ->first();
 
         $this->assertNotNull($level);
-        $this->assertEquals('7.00', $level->quantity);
+        $this->assertEquals('7.0000', $level->quantity);
         $this->assertNull($level->variant_id);
     }
 
@@ -201,7 +201,7 @@ class StockAdjustmentServiceVariantTest extends TestCase
             ->first();
 
         $this->assertNotNull($level);
-        $this->assertEquals('4.00', $level->quantity);
+        $this->assertEquals('4.0000', $level->quantity);
     }
 
     public function test_issue_variant_scoped(): void
@@ -233,7 +233,7 @@ class StockAdjustmentServiceVariantTest extends TestCase
             ->first();
 
         $this->assertNotNull($level);
-        $this->assertEquals('6.00', $level->quantity);
+        $this->assertEquals('6.0000', $level->quantity);
     }
 
     public function test_two_variants_keep_separate_stock_levels(): void
@@ -270,8 +270,8 @@ class StockAdjustmentServiceVariantTest extends TestCase
         $this->assertNotNull($levelA);
         $this->assertNotNull($levelB);
         $this->assertNotSame($levelA->id, $levelB->id);
-        $this->assertEquals('5.00', $levelA->quantity);
-        $this->assertEquals('8.00', $levelB->quantity);
+        $this->assertEquals('5.0000', $levelA->quantity);
+        $this->assertEquals('8.0000', $levelB->quantity);
     }
 
     public function test_adjust_variant_scoped(): void
@@ -293,7 +293,7 @@ class StockAdjustmentServiceVariantTest extends TestCase
             ->first();
 
         $this->assertNotNull($level);
-        $this->assertEquals('12.00', $level->quantity);
+        $this->assertEquals('12.0000', $level->quantity);
     }
 
     public function test_transfer_variant_moves_variant_scoped_stock(): void
@@ -338,7 +338,7 @@ class StockAdjustmentServiceVariantTest extends TestCase
             ->where('location_id', $this->warehouse->id)
             ->first();
         $this->assertNotNull($fromLevel);
-        $this->assertEquals('7.00', $fromLevel->quantity);
+        $this->assertEquals('7.0000', $fromLevel->quantity);
 
         // Variant-scoped to-location increased.
         $toLevel = StockLevel::query()
@@ -347,7 +347,7 @@ class StockAdjustmentServiceVariantTest extends TestCase
             ->where('location_id', $toLocation->id)
             ->first();
         $this->assertNotNull($toLevel);
-        $this->assertEquals('3.00', $toLevel->quantity);
+        $this->assertEquals('3.0000', $toLevel->quantity);
 
         // No product-level (variant_id NULL) row was created.
         $productLevelCount = StockLevel::query()
@@ -388,7 +388,7 @@ class StockAdjustmentServiceVariantTest extends TestCase
             ->where('location_id', $this->warehouse->id)
             ->first();
         $this->assertNotNull($variantLevel);
-        $this->assertEquals('2.00', $variantLevel->reserved);
+        $this->assertEquals('2.0000', $variantLevel->reserved);
 
         // No product-level (variant_id NULL) row was touched.
         $productLevel = StockLevel::query()

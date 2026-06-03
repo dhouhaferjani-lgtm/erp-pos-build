@@ -216,7 +216,7 @@ function seedCommonStores() {
   });
 
   useCartStore.setState({
-    items: [makeCartItem({ line_total: '50.00', tax_amount: '0.00' })],
+    items: [makeCartItem({ unit_price: '50.00', line_total: '50.00', tax_amount: '0.00' })],
   });
 
   usePaymentStore.setState({

@@ -75,8 +75,8 @@ class MarketplaceListing extends Model
         return [
             'listing_status' => ListingStatus::class,
             'price' => 'decimal:3',
-            'quantity_available' => 'decimal:2',
-            'min_order_quantity' => 'decimal:2',
+            'quantity_available' => 'decimal:4',
+            'min_order_quantity' => 'decimal:4',
             'price_updated_at' => 'datetime',
             'stock_updated_at' => 'datetime',
         ];

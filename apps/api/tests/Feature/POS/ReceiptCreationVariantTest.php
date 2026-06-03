@@ -147,7 +147,7 @@ final class ReceiptCreationVariantTest extends TestCase
         // Assert — variant-scoped row decremented from 10 to 9
         $variantStockLevel->refresh();
         $this->assertSame(
-            '9.00',
+            '9.0000',
             (string) $variantStockLevel->quantity,
             'Variant-scoped stock_levels row should be decremented by 1.',
         );
@@ -155,7 +155,7 @@ final class ReceiptCreationVariantTest extends TestCase
         // Assert — product-level row untouched (still 50)
         $productStockLevel->refresh();
         $this->assertSame(
-            '50.00',
+            '50.0000',
             (string) $productStockLevel->quantity,
             'Product-level (variant_id IS NULL) stock_levels row must not be touched by a variant sale.',
         );
@@ -221,7 +221,7 @@ final class ReceiptCreationVariantTest extends TestCase
         // Assert — product-level row decremented from 100 to 97
         $productStockLevel->refresh();
         $this->assertSame(
-            '97.00',
+            '97.0000',
             (string) $productStockLevel->quantity,
             'Product-level stock_levels row should be decremented by 3.',
         );

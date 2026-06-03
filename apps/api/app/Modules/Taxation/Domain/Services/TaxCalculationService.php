@@ -14,9 +14,40 @@ use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Taxation\Domain\Enums\TaxApplicationLevel;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 
 class TaxCalculationService
 {
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
+    /**
+     * Resolve the monetary scale for a document.
+     *
+     * Threads the document's own currency into the resolver so the scale never
+     * depends on a bound CompanyContext. The WorkOrder→Invoice generation path
+     * runs outside an HTTP request (no bound context); passing an explicit
+     * currency is both context-safe AND fiscally correct (EUR→2, TND→3).
+     *
+     * If the document has no currency set, fall back to the bound CompanyContext
+     * (so the company's country scale is honoured), and finally to scale 3 (safe
+     * maximum) when no context is bound either. Note: an empty currency string
+     * must NOT be passed through to the resolver, because the ISO 4217 map would
+     * silently return the default scale 2 instead of the company's true scale.
+     */
+    private function scaleFor(Document $document): int
+    {
+        $currency = $document->currency;
+
+        if ($currency !== '') {
+            return $this->scaleResolver->getScale($currency);
+        }
+
+        return $this->scaleResolver->getScaleSafe(null, 3);
+    }
+
     /**
      * Calculate all applicable taxes for a document
      */
@@ -27,9 +58,11 @@ class TaxCalculationService
         $documentType = $document->fiscal_category?->value ?? $document->type->value;
         $countryCode = $company->country_code;
 
+        $scale = $this->scaleFor($document);
+
         // Get line items subtotal (before any taxes)
         /** @var numeric-string $subtotal */
-        $subtotal = $this->calculateSubtotal($document);
+        $subtotal = $this->calculateSubtotal($document, $scale);
 
         // Check for partner exemption status
         $exemptionInfo = $this->getExemptionInfo($partner);
@@ -73,15 +106,27 @@ class TaxCalculationService
             });
 
             if ($matchingConfig) {
-                // Calculate tax for all lines with this rate
-                $taxAmount = '0';
+                // Calculate tax for all lines with this rate.
+                //
+                // Precision: quantity is stored at scale 4. bcmul(qty, unitPrice)
+                // is MONEY, so the qty×price intermediate and the ×rate
+                // intermediate both run at scale()+1 — keeping the 4th quantity
+                // decimal alive through both multiplies. The per-rate tax is
+                // accumulated at scale()+1 and rounded ONCE at the currency
+                // boundary, instead of truncating each line's tax to the
+                // boundary scale first (which discarded sub-boundary fractions).
+                /** @var numeric-string $rateFraction */
+                $rateFraction = bcdiv((string) $rate, '100', 6);
+                /** @var numeric-string $taxAccumulator */
+                $taxAccumulator = '0';
                 foreach ($linesWithRate as $line) {
-                    $lineSubtotal = bcmul((string) $line->quantity, (string) $line->unit_price, 3);
-                    $lineTax = bcmul($lineSubtotal, bcdiv((string) $rate, '100', 6), 3);
-                    $taxAmount = bcadd($taxAmount, $lineTax, 3);
+                    $lineSubtotal = bcmul((string) $line->quantity, (string) $line->unit_price, $scale + 1);
+                    $lineTax = bcmul($lineSubtotal, $rateFraction, $scale + 1);
+                    $taxAccumulator = bcadd($taxAccumulator, $lineTax, $scale + 1);
                 }
+                $taxAmount = CurrencyScale::bcformat($taxAccumulator, $scale);
 
-                $lineItemsTaxTotal = bcadd($lineItemsTaxTotal, $taxAmount, 3);
+                $lineItemsTaxTotal = bcadd($lineItemsTaxTotal, $taxAmount, $scale);
 
                 $calculatedTaxes[] = new CalculatedTax(
                     configurationId: $matchingConfig->id,
@@ -98,7 +143,7 @@ class TaxCalculationService
                     appliesTo: $matchingConfig->applies_to,
                 );
 
-                $runningTaxTotal = bcadd($runningTaxTotal, $taxAmount, 3);
+                $runningTaxTotal = bcadd($runningTaxTotal, $taxAmount, $scale);
             }
         }
 
@@ -108,7 +153,7 @@ class TaxCalculationService
                 $taxBase = $subtotal;
                 /** @var numeric-string $taxAmount */
                 $taxAmount = $taxConfig->calculateAmount($taxBase, $runningTaxTotal);
-                $documentTaxTotal = bcadd($documentTaxTotal, $taxAmount, 3);
+                $documentTaxTotal = bcadd($documentTaxTotal, $taxAmount, $scale);
 
                 $calculatedTaxes[] = new CalculatedTax(
                     configurationId: $taxConfig->id,
@@ -126,12 +171,12 @@ class TaxCalculationService
                 );
 
                 // Update running total for compound taxes
-                $runningTaxTotal = bcadd($runningTaxTotal, $taxAmount, 3);
+                $runningTaxTotal = bcadd($runningTaxTotal, $taxAmount, $scale);
             }
         }
 
-        $totalTax = bcadd($lineItemsTaxTotal, $documentTaxTotal, 3);
-        $total = bcadd($subtotal, $totalTax, 3);
+        $totalTax = bcadd($lineItemsTaxTotal, $documentTaxTotal, $scale);
+        $total = bcadd($subtotal, $totalTax, $scale);
 
         return new TaxCalculationResult(
             taxes: $calculatedTaxes,
@@ -147,18 +192,26 @@ class TaxCalculationService
     /**
      * Calculate line items subtotal
      */
-    private function calculateSubtotal(Document $document): string
+    private function calculateSubtotal(Document $document, int $scale): string
     {
         $subtotal = '0';
 
         foreach ($document->lines as $line) {
-            $lineTotal = bcmul((string) $line->quantity, (string) $line->unit_price, 3);
-            $subtotal = bcadd($subtotal, $lineTotal, 3);
+            // Money = qty(scale 4) × unitPrice. Use a scale+1 intermediate to
+            // keep the 4th quantity decimal alive through the multiply, then
+            // round each line to the currency boundary. This keeps the subtotal
+            // coherent with DocumentTotalsCalculator::recalculate, which sums
+            // per-line bcmul(qty, unitPrice, scale) values.
+            $lineTotal = CurrencyScale::bcformat(
+                bcmul((string) $line->quantity, (string) $line->unit_price, $scale + 1),
+                $scale,
+            );
+            $subtotal = bcadd($subtotal, $lineTotal, $scale);
         }
 
         // Apply document-level discount if any
         if ($document->discount_amount) {
-            $subtotal = bcsub($subtotal, (string) $document->discount_amount, 3);
+            $subtotal = bcsub($subtotal, (string) $document->discount_amount, $scale);
         }
 
         return $subtotal;

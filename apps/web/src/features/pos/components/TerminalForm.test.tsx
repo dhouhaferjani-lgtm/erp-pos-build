@@ -40,7 +40,7 @@ const mockTerminal: Terminal = {
   deactivation_reason: null,
   current_sequence: 0,
   current_year: 2025,
-  max_discount_percent: 100,
+  max_discount_percent: '100.00',
   allow_line_discounts: true,
   allow_transaction_discounts: true,
   created_at: '2025-01-01T00:00:00Z',

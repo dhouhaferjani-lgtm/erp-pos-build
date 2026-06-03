@@ -48,7 +48,7 @@ class WithholdingCertificateService
                 $calculation = $this->calculationService->calculateWithOverride(
                     $data->grossAmount,
                     $data->currency,
-                    $data->manualRatePercentage ?? 0.0,
+                    (float) ($data->manualRatePercentage ?? '0'),
                     $data->overrideReason ?? 'Manual override',
                     $data->transactionType
                 );

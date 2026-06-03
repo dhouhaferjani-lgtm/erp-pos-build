@@ -154,6 +154,64 @@ class PaymentTest extends TestCase
         $response->assertJsonPath('data.status', 'completed');
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Ingress precision — these bind to the REAL PaymentController::store()
+    // inline validator (app/Modules/Treasury/Presentation/Controllers/
+    // PaymentController.php:125 amount, :138 withholding_rate) via a true HTTP
+    // request, so they fail if a production scale is changed to the wrong value.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function test_store_rejects_over_precise_amount(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->customer->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'amount' => '100.1234', // 4 decimals — over the money scale-3 ceiling
+            'payment_date' => now()->toDateString(),
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('amount', $response->json('error.errors') ?? []);
+    }
+
+    public function test_store_rejects_over_precise_withholding_rate(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->customer->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'amount' => '100.000',
+            'payment_date' => now()->toDateString(),
+            'withholding_enabled' => true,
+            'withholding_rate' => '0.12345', // 5 decimals — over the decimal(5,4) ceiling
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('withholding_rate', $response->json('error.errors') ?? []);
+    }
+
+    public function test_store_accepts_4_decimal_withholding_rate(): void
+    {
+        // decimal(5,4) is a 0–1 fraction; real Tunisian rates like 0.015 (1.5%)
+        // and 4-dp fractions must be accepted.
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->customer->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'amount' => '100.000',
+            'payment_date' => now()->toDateString(),
+            'withholding_enabled' => true,
+            'withholding_rate' => '0.0150', // 4 decimals — within the decimal(5,4) ceiling
+        ]);
+
+        // The over-precision regex must NOT be the reason for any failure.
+        $errors = $response->json('error.errors') ?? [];
+        $this->assertArrayNotHasKey(
+            'withholding_rate',
+            $errors,
+            'withholding_rate=0.0150 must pass the scale-4 ceiling: '
+            .json_encode($errors)
+        );
+    }
+
     public function test_can_create_payment_with_allocation(): void
     {
         $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [

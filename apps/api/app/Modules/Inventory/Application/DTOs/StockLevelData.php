@@ -32,7 +32,7 @@ class StockLevelData extends Data
         /** @var numeric-string $available */
         $available = $stockLevel->getAvailableQuantity();
         /** @var numeric-string $incoming */
-        $projectedAvailable = bcadd($available, $incoming, 2);
+        $projectedAvailable = bcadd($available, $incoming, 4);
 
         return new self(
             id: $stockLevel->id,

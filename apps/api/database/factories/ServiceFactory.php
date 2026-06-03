@@ -9,6 +9,7 @@ use App\Modules\Service\Domain\Enums\PricingType;
 use App\Modules\Service\Domain\Service;
 use App\Modules\Service\Domain\ServiceCategory;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -28,6 +29,10 @@ class ServiceFactory extends Factory
      */
     public function definition(): array
     {
+        // Default currency TND (scale 3). Monetary fields are canonical
+        // numeric strings produced via bcmath (no float storage).
+        $scale = CurrencyScale::for('TND');
+
         return [
             'tenant_id' => Tenant::factory(),
             'company_id' => Company::factory(),
@@ -36,13 +41,39 @@ class ServiceFactory extends Factory
             'description' => $this->faker->optional()->sentence(),
             'category_id' => null,
             'pricing_type' => PricingType::FlatRate,
-            'base_price' => $this->faker->randomFloat(2, 10, 500),
+            'base_price' => CurrencyScale::bcformat($this->faker->randomFloat(2, 10, 500), $scale),
             'currency' => 'TND',
             'default_duration_minutes' => $this->faker->optional()->numberBetween(15, 480),
             'hourly_rate' => null,
-            'tax_rate' => '19.00',
+            'tax_rate' => CurrencyScale::bcformat('19.00', $scale),
             'is_active' => true,
         ];
+    }
+
+    /**
+     * Re-scale the monetary fields to the decimal scale of the given currency.
+     */
+    public function currency(string $currencyCode): static
+    {
+        $scale = CurrencyScale::for($currencyCode);
+
+        return $this->state(function (array $attributes) use ($currencyCode, $scale): array {
+            /** @var string|int|float|null $hourlyRate */
+            $hourlyRate = $attributes['hourly_rate'] ?? null;
+            /** @var string|int|float $basePrice */
+            $basePrice = $attributes['base_price'] ?? '0';
+            /** @var string|int|float $taxRate */
+            $taxRate = $attributes['tax_rate'] ?? '0';
+
+            return [
+                'currency' => $currencyCode,
+                'base_price' => CurrencyScale::bcformat($basePrice, $scale),
+                'hourly_rate' => $hourlyRate === null
+                    ? null
+                    : CurrencyScale::bcformat($hourlyRate, $scale),
+                'tax_rate' => CurrencyScale::bcformat($taxRate, $scale),
+            ];
+        });
     }
 
     /**
@@ -70,11 +101,11 @@ class ServiceFactory extends Factory
     /**
      * Set pricing type to flat rate.
      */
-    public function flatRate(string $price = '100.00'): static
+    public function flatRate(string $price = '100.000'): static
     {
         return $this->state(fn (array $attributes): array => [
             'pricing_type' => PricingType::FlatRate,
-            'base_price' => $price,
+            'base_price' => CurrencyScale::bcformat($price, 3),
             'hourly_rate' => null,
         ]);
     }
@@ -82,23 +113,23 @@ class ServiceFactory extends Factory
     /**
      * Set pricing type to hourly.
      */
-    public function hourly(string $rate = '50.00'): static
+    public function hourly(string $rate = '50.000'): static
     {
         return $this->state(fn (array $attributes): array => [
             'pricing_type' => PricingType::Hourly,
-            'hourly_rate' => $rate,
-            'base_price' => '0.00',
+            'hourly_rate' => CurrencyScale::bcformat($rate, 3),
+            'base_price' => CurrencyScale::bcformat('0', 3),
         ]);
     }
 
     /**
      * Set pricing type to percentage.
      */
-    public function percentage(string $rate = '10.00'): static
+    public function percentage(string $rate = '10.000'): static
     {
         return $this->state(fn (array $attributes): array => [
             'pricing_type' => PricingType::Percentage,
-            'base_price' => $rate,
+            'base_price' => CurrencyScale::bcformat($rate, 3),
             'hourly_rate' => null,
         ]);
     }
@@ -113,7 +144,7 @@ class ServiceFactory extends Factory
             'name' => 'Oil Change',
             'description' => 'Engine oil and filter replacement',
             'pricing_type' => PricingType::FlatRate,
-            'base_price' => '45.00',
+            'base_price' => CurrencyScale::bcformat('45.00', 3),
             'default_duration_minutes' => 30,
         ]);
     }
@@ -128,7 +159,7 @@ class ServiceFactory extends Factory
             'name' => 'Brake Service',
             'description' => 'Brake pad replacement and inspection',
             'pricing_type' => PricingType::FlatRate,
-            'base_price' => '120.00',
+            'base_price' => CurrencyScale::bcformat('120.00', 3),
             'default_duration_minutes' => 60,
         ]);
     }
@@ -143,7 +174,7 @@ class ServiceFactory extends Factory
             'name' => 'Diagnostic Service',
             'description' => 'Computer diagnostic and vehicle inspection',
             'pricing_type' => PricingType::FlatRate,
-            'base_price' => '35.00',
+            'base_price' => CurrencyScale::bcformat('35.00', 3),
             'default_duration_minutes' => 45,
         ]);
     }
@@ -158,8 +189,8 @@ class ServiceFactory extends Factory
             'name' => 'Labor',
             'description' => 'Hourly labor rate',
             'pricing_type' => PricingType::Hourly,
-            'hourly_rate' => '40.00',
-            'base_price' => '0.00',
+            'hourly_rate' => CurrencyScale::bcformat('40.00', 3),
+            'base_price' => CurrencyScale::bcformat('0', 3),
             'default_duration_minutes' => 60,
         ]);
     }

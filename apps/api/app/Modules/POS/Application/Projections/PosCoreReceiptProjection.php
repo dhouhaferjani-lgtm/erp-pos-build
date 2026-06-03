@@ -909,7 +909,10 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         /** @var numeric-string $stockQty */
         $stockQty = $stockLevel->quantity;
         $quantityBefore = $stockQty;
-        $quantityAfter = bcsub($stockQty, $qty, 2);
+        // stock_levels.quantity and the canonical line quantity are stored at
+        // scale 4 (canonical quantity storage scale). Subtract at scale 4 so
+        // sub-centi quantities are not truncated to zero.
+        $quantityAfter = bcsub($stockQty, $qty, 4); // 4 = canonical quantity storage scale
 
         $stockLevel->quantity = $quantityAfter;
         $stockLevel->save();

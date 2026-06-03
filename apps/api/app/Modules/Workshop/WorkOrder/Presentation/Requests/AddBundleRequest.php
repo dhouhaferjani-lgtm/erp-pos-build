@@ -20,8 +20,18 @@ final class AddBundleRequest extends FormRequest
     {
         return [
             'bundle_id' => ['required', 'uuid'],
-            'quantity' => ['required', 'numeric', 'min:0'],
+            'quantity' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
             'vehicle_id' => ['nullable', 'uuid'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'quantity.regex' => 'Quantity must have at most 4 decimal places.',
         ];
     }
 }

@@ -23,8 +23,8 @@ class PriceListItem extends Model
 
     protected $casts = [
         'price' => 'decimal:3',
-        'min_quantity' => 'decimal:2',
-        'max_quantity' => 'decimal:2',
+        'min_quantity' => 'decimal:4',
+        'max_quantity' => 'decimal:4',
     ];
 
     /** @return BelongsTo<PriceList, $this> */

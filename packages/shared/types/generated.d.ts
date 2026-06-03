@@ -623,7 +623,7 @@ lastLoginIp: string | null;
 createdAt: string;
 updatedAt: string;
 canDiscount: boolean | null;
-maxDiscountPercent: number | null;
+maxDiscountPercent: string | null;
 };
 }
 declare namespace App.Modules.Identity.Domain.Enums {
@@ -660,6 +660,9 @@ export type MovementReason = 'goods_receipt' | 'customer_return' | 'adjustment_p
 export type MovementType = 'receipt' | 'issue' | 'transfer_in' | 'transfer_out' | 'adjustment' | 'opening';
 export type ReleaseReason = 'delivered' | 'cancelled' | 'expired' | 'manual_release' | 'converted' | 'order_modified' | 'insufficient_stock';
 export type ReservationSource = 'sales_order' | 'ecommerce_cart' | 'marketplace_order' | 'manual_hold' | 'customer_return_pending' | 'quality_check' | 'transfer_pending' | 'work_order';
+export type TransferCostDistribution = 'pro_rata_value' | 'pro_rata_quantity' | 'equal_per_line';
+export type TransferStatus = 'draft' | 'in_transit' | 'completed' | 'cancelled';
+export type TransferType = 'intracompany' | 'intercompany';
 }
 declare namespace App.Modules.Loyalty.Application.DTOs {
 export type EarningConditionsData = {

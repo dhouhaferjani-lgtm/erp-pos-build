@@ -39,6 +39,8 @@ class CouponUsage extends Model
     {
         return [
             'used_at' => 'datetime',
+            // decimal(15,2) in DB — matches branch monetary scale
+            'discount_amount' => 'decimal:3',
         ];
     }
 

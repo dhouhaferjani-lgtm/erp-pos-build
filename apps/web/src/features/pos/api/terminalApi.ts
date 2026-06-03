@@ -22,7 +22,8 @@ export interface Terminal {
   has_history: boolean
   current_sequence: number
   current_year: number
-  max_discount_percent: number
+  // Numeric-string from TerminalResource (decimal:2 cast, no (float) launder).
+  max_discount_percent: string
   allow_line_discounts: boolean
   allow_transaction_discounts: boolean
   created_at: string

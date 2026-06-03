@@ -3,6 +3,7 @@ import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { createOfflineReceipt } from '@/lib/offline/receiptService';
 import { getCurrencyDecimals } from '@/lib/currency';
+import { bcsum } from '@/lib/decimal';
 import type { CartItem } from '@/types/cart';
 import type { SaleReceiptSellerInput } from '@/lib/fiscal/payloads/SaleReceiptPayload';
 
@@ -94,9 +95,10 @@ export async function executeCheckout(
   db: Database,
   input: CheckoutInput,
 ): Promise<CheckoutResult> {
-  const cartTotal = input.cartItems
-    .reduce((sum, item) => sum + parseFloat(item.line_total), 0)
-    .toFixed(getCurrencyDecimals(input.currency));
+  const cartTotal = bcsum(
+    input.cartItems.map((item) => item.line_total),
+    getCurrencyDecimals(input.currency),
+  );
   const defaultPayments = [{ methodCode: 'CASH', amount: cartTotal }];
 
   const result = await createOfflineReceipt(db, {

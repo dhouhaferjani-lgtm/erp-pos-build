@@ -62,9 +62,11 @@ class StockMovementController extends Controller
         $validated = $request->validate([
             'product_id' => ['required', 'string', 'uuid'],
             'location_id' => ['required', 'string', 'uuid'],
-            'quantity' => ['required', 'numeric', 'min:0.01'],
+            'quantity' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,4})?$/'],
             'reference' => ['required', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
+        ], [
+            'quantity.regex' => 'The quantity must have at most 4 decimal places.',
         ]);
 
         // Validate user has access to this location
@@ -101,9 +103,11 @@ class StockMovementController extends Controller
         $validated = $request->validate([
             'product_id' => ['required', 'string', 'uuid'],
             'location_id' => ['required', 'string', 'uuid'],
-            'quantity' => ['required', 'numeric', 'min:0.01'],
+            'quantity' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,4})?$/'],
             'reference' => ['required', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
+        ], [
+            'quantity.regex' => 'The quantity must have at most 4 decimal places.',
         ]);
 
         // Validate user has access to this location
@@ -156,8 +160,10 @@ class StockMovementController extends Controller
             'product_id' => ['required', 'string', 'uuid'],
             'from_location_id' => ['required', 'string', 'uuid'],
             'to_location_id' => ['required', 'string', 'uuid', 'different:from_location_id'],
-            'quantity' => ['required', 'numeric', 'min:0.01'],
+            'quantity' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,4})?$/'],
             'reference' => ['required', 'string', 'max:255'],
+        ], [
+            'quantity.regex' => 'The quantity must have at most 4 decimal places.',
         ]);
 
         // Validate user has access to BOTH source and destination locations
@@ -213,8 +219,10 @@ class StockMovementController extends Controller
         $validated = $request->validate([
             'product_id' => ['required', 'string', 'uuid'],
             'location_id' => ['required', 'string', 'uuid'],
-            'new_quantity' => ['required', 'numeric', 'min:0'],
+            'new_quantity' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
             'reason' => ['required', 'string', 'max:500'],
+        ], [
+            'new_quantity.regex' => 'The new quantity must have at most 4 decimal places.',
         ]);
 
         // Validate user has access to this location

@@ -33,15 +33,26 @@ class StoreModifierRequest extends FormRequest
         return [
             'code' => ['required', 'string', 'max:100'],
             'name' => ['required', 'string', 'max:255'],
-            'price_adjustment' => ['sometimes', 'numeric'],
+            'price_adjustment' => ['sometimes', 'numeric', 'regex:/^-?\d+(\.\d{1,4})?$/'],
             'component_type' => ['nullable', new Enum(ComponentType::class)],
             'component_id' => ['nullable', 'uuid', ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id)],
-            'component_quantity' => ['nullable', 'numeric', 'min:0'],
+            'component_quantity' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
             // api.catalog.022 round-2: units has nullable tenant_id (system rows = NULL).
             'component_unit_id' => ['nullable', 'uuid', ScopedExists::tenantOrSystem('units', $company->tenant_id)],
             'is_default' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
             'display_order' => ['sometimes', 'integer', 'min:0'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'price_adjustment.regex' => 'Price adjustment must have at most 4 decimal places.',
+            'component_quantity.regex' => 'Component quantity must have at most 4 decimal places.',
         ];
     }
 }

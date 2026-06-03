@@ -1,5 +1,5 @@
 import { getCurrencyDecimals } from '@/lib/currency';
-import { bcadd, bccomp, bcformat, bcsub } from '@/lib/decimal';
+import { bcadd, bccomp, bcformat, bcmul, bcsub } from '@/lib/decimal';
 import type {
   AddressInput,
   LineItemInput,
@@ -16,6 +16,44 @@ export class SaleReceiptPayloadInputError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'SaleReceiptPayloadInputError';
+  }
+}
+
+/**
+ * Thrown when a cart line is internally inconsistent at canonical-build time.
+ *
+ * The device authors the canonical receipt + hash; the server stores it
+ * verbatim and verifies by re-hashing the bytes — it does NOT recompute the
+ * arithmetic. So a cart bug (or a modifier `price_adjustment` not folded into
+ * `unit_price`/`discount`) could produce a line whose `line_total` differs from
+ * `unit_price * quantity - line_discount_amount`, and the hash would still
+ * verify (the chain proves *un-tampered*, not *arithmetically correct*). This
+ * error is the device-side guarantee of arithmetic correctness; it is NOT part
+ * of the hash chain. A line that trips it must never be signed.
+ */
+export class LineArithmeticInvariantError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LineArithmeticInvariantError';
+  }
+}
+
+/**
+ * Thrown when the receipt's own ticket AGGREGATES are internally inconsistent
+ * at canonical-build time.
+ *
+ * NF525 secures the ticket aggregates (subtotal / vat_total / total /
+ * vat_breakdown) — these carry the VAT-declaration integrity. The device
+ * authors and signs them; the server stores the bytes verbatim and re-hashes,
+ * so an internally-inconsistent aggregate (e.g. subtotal + vat_total != total,
+ * or a vat_breakdown that doesn't sum to the declared totals) would hash +
+ * verify fine yet be fiscally wrong. This error guarantees the device never
+ * signs an internally-inconsistent ticket; it is NOT part of the hash chain.
+ */
+export class SaleReceiptAggregateInvariantError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SaleReceiptAggregateInvariantError';
   }
 }
 
@@ -90,6 +128,24 @@ export function buildSaleReceiptPayload(
     );
   }
 
+  const total = bcformat(input.total, scale);
+  const vatTotal = bcformat(input.taxAmount, scale);
+
+  // ── Ticket-aggregate invariant (NF525 VAT-declaration integrity) ─────────
+  // The device authors + signs the aggregates; the server stores the bytes
+  // verbatim and re-hashes — it does NOT recompute prices. So the device must
+  // guarantee its own aggregates add up before signing:
+  //   1. subtotal + vat_total == total + transaction_discount_amount
+  //   2. Σ vat_breakdown[].net_amount == subtotal
+  //   3. Σ vat_breakdown[].vat_amount == vat_total
+  //   4. per group: gross_amount == net_amount + vat_amount
+  // All comparisons EXACT (bccomp == 0) at currency scale, never a tolerance.
+  // The subtotal/vat_total describe pre-transaction-discount gross; the device
+  // computes total = subtotalGross − transaction_discount_amount, so the
+  // identity must add the discount back to total to be symmetric with the
+  // server's validateSaleReceiptAggregateConsistency.
+  assertSaleReceiptAggregates(subtotalNet, vatTotal, total, discountAmount, vatBreakdown, scale);
+
   return {
     approval_references: input.approvalReferences ?? [],
     business_date: input.businessDate,
@@ -112,14 +168,65 @@ export function buildSaleReceiptPayload(
     subtotal: subtotalNet,
     table_id: input.tableId ?? null,
     terminal_id: input.terminalId,
-    total: bcformat(input.total, scale),
+    total,
     training_flag: input.isTraining,
     transaction_discount_amount: discountAmount,
     transaction_discount_reason: bccomp(discountAmount, '0') === 0 ? null : discountReason,
     vat_breakdown: vatBreakdown,
-    vat_total: bcformat(input.taxAmount, scale),
+    vat_total: vatTotal,
     vouchers_redeemed: vouchersRedeemed,
   };
+}
+
+/**
+ * Verify the receipt's ticket aggregates are internally consistent before the
+ * canonical payload is finalized and signed. EXACT comparison at currency scale.
+ */
+function assertSaleReceiptAggregates(
+  subtotal: string,
+  vatTotal: string,
+  total: string,
+  transactionDiscountAmount: string,
+  vatBreakdown: ReadonlyArray<VatBreakdownInput>,
+  scale: number,
+): void {
+  // 1. subtotal + vat_total == total + transaction_discount_amount
+  const subtotalPlusVat = bcformat(bcadd(subtotal, vatTotal, scale), scale);
+  const totalPlusDiscount = bcformat(bcadd(total, transactionDiscountAmount, scale), scale);
+  if (bccomp(subtotalPlusVat, totalPlusDiscount) !== 0) {
+    throw new SaleReceiptAggregateInvariantError(
+      `Aggregate invariant violated: subtotal (${subtotal}) + vat_total (${vatTotal}) `
+      + `= ${subtotalPlusVat} != total (${total}) + transaction_discount_amount `
+      + `(${transactionDiscountAmount}) = ${totalPlusDiscount}.`,
+    );
+  }
+
+  // 2 + 3 + 4. vat_breakdown nets/vats sum to subtotal/vat_total; per group gross == net + vat.
+  let sumNet = bcformat('0', scale);
+  let sumVat = bcformat('0', scale);
+  for (const group of vatBreakdown) {
+    const groupGross = bcformat(bcadd(group.net_amount, group.vat_amount, scale), scale);
+    if (bccomp(groupGross, group.gross_amount) !== 0) {
+      throw new SaleReceiptAggregateInvariantError(
+        `Aggregate invariant violated: vat_breakdown group (rate ${group.rate}, `
+        + `category "${group.tax_category_code}") gross_amount ${group.gross_amount} `
+        + `!= net_amount (${group.net_amount}) + vat_amount (${group.vat_amount}) = ${groupGross}.`,
+      );
+    }
+    sumNet = bcformat(bcadd(sumNet, group.net_amount, scale), scale);
+    sumVat = bcformat(bcadd(sumVat, group.vat_amount, scale), scale);
+  }
+
+  if (bccomp(sumNet, subtotal) !== 0) {
+    throw new SaleReceiptAggregateInvariantError(
+      `Aggregate invariant violated: Σ vat_breakdown.net_amount (${sumNet}) != subtotal ${subtotal}.`,
+    );
+  }
+  if (bccomp(sumVat, vatTotal) !== 0) {
+    throw new SaleReceiptAggregateInvariantError(
+      `Aggregate invariant violated: Σ vat_breakdown.vat_amount (${sumVat}) != vat_total ${vatTotal}.`,
+    );
+  }
 }
 
 function buildSellerBlock(input: SaleReceiptSellerInput): SellerBlockInput {
@@ -163,6 +270,42 @@ function buildLineItems(cartItems: CartItem[], scale: number): LineItemInput[] {
     }
     const lineVat = bcformat(item.tax_amount, scale);
     const lineSubtotal = bcformat(bcsub(item.line_total, item.tax_amount), scale);
+
+    // ── Device-side line-arithmetic invariant ──────────────────────────────
+    // GROSS self-consistency: line_total must equal unit_price * quantity
+    // - line_discount_amount, rounded with the SAME rule the cart/device uses
+    // (Big.RM half-up, currency scale — see cartStore.recalcLineTotal /
+    // decimal.bcmul). Threshold is EXACT (bccomp == 0), never a tolerance.
+    // A malformed line must be rejected BEFORE it is folded into the canonical
+    // payload + signed; the hash chain proves un-tampered, not correct.
+    const expectedGross = bcformat(
+      bcsub(bcmul(item.unit_price, String(item.quantity), scale), discountAmount, scale),
+      scale,
+    );
+    const actualGross = bcformat(item.line_total, scale);
+    if (bccomp(actualGross, expectedGross) !== 0) {
+      throw new LineArithmeticInvariantError(
+        `Line arithmetic invariant violated for product ${item.product.id} (${item.product.name}): `
+        + `line_total ${actualGross} != unit_price (${bcformat(item.unit_price, scale)}) `
+        + `× quantity (${bcformat(String(item.quantity), 3)}) − discount (${discountAmount}) `
+        + `= ${expectedGross}. A modifier price_adjustment was likely not folded into `
+        + `unit_price/discount before line_total was computed.`,
+      );
+    }
+
+    // NET/TAX decomposition: the payload derives line_subtotal as
+    // line_total − tax_amount, so line_subtotal + line_vat must reconstitute
+    // line_total at scale. A tax_amount carrying more precision than the
+    // currency allows can make the rounded subtotal + rounded vat drift.
+    const recomposedGross = bcformat(bcadd(lineSubtotal, lineVat, scale), scale);
+    if (bccomp(recomposedGross, actualGross) !== 0) {
+      throw new LineArithmeticInvariantError(
+        `Line net/tax decomposition invariant violated for product ${item.product.id} `
+        + `(${item.product.name}): line_subtotal (${lineSubtotal}) + line_vat (${lineVat}) `
+        + `= ${recomposedGross} != line_total ${actualGross}.`,
+      );
+    }
+
     return {
       gtin: null,
       line_discount_amount: discountAmount,

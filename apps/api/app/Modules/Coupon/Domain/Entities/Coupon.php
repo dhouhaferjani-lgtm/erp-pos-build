@@ -102,6 +102,11 @@ class Coupon extends Model
             'qualifying_category_ids' => 'array',
             'starts_at' => 'datetime',
             'expires_at' => 'datetime',
+            // decimal(12,4) — can be a percent (e.g. 10.5000) or a fixed money amount
+            'discount_value' => 'decimal:4',
+            // decimal(15,2) monetary caps — kept at :3 to match branch monetary contract
+            'max_discount_amount' => 'decimal:3',
+            'minimum_order_amount' => 'decimal:3',
         ];
     }
 

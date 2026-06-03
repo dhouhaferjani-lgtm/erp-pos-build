@@ -34,8 +34,8 @@ final class InvoicePaidNotification extends Notification implements ShouldQueue
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $amount = CurrencyScale::bcformat($this->invoice->total, 2);
         $currency = strtoupper($this->invoice->currency);
+        $amount = CurrencyScale::bcformat($this->invoice->total, CurrencyScale::for($currency));
 
         return (new MailMessage)
             ->subject("Invoice {$this->invoice->number} Paid - Thank You!")

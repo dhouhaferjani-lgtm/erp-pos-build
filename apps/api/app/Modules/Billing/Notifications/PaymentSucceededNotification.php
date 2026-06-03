@@ -34,8 +34,8 @@ final class PaymentSucceededNotification extends Notification implements ShouldQ
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $amount = CurrencyScale::bcformat($this->payment->amount, 2);
         $currency = strtoupper($this->payment->currency);
+        $amount = CurrencyScale::bcformat($this->payment->amount, CurrencyScale::for($currency));
 
         return (new MailMessage)
             ->subject('Payment Received - Thank You!')

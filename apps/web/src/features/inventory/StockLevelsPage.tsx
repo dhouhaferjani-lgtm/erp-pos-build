@@ -9,12 +9,12 @@ import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { bccomp, bcsub } from '../../lib/decimal'
+import { formatQuantity } from '../../lib/format'
 import { tokens } from '../../lib/designTokens'
 import { SearchInput } from '../../components/ui/SearchInput'
 import { FilterTabs } from '../../components/ui/FilterTabs'
 import { LocationSelector } from '../location/LocationSelector'
 import { useLocation } from '../../hooks/useLocation'
-import { useCurrency } from '../../hooks/useCurrency'
 import { getLocations } from '../locations/api/locations'
 import type { StockLevel, StockLevelsResponse } from './types'
 import { stockLevelsInvalidationPredicate } from './_invalidation'
@@ -43,7 +43,6 @@ export function StockLevelsPage() {
   usePageTitle('stockLevels.title', 'inventory')
   const queryClient = useQueryClient()
   const { currentLocationId } = useLocation()
-  const { decimals } = useCurrency()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -354,14 +353,14 @@ export function StockLevelsPage() {
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
-                      {stock.quantity}
+                      {formatQuantity(stock.quantity)}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-500">
-                      {stock.reserved}
+                      {formatQuantity(stock.reserved)}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end">
                       <span className={`text-sm font-semibold ${isLowOrOut ? 'text-red-600' : 'text-gray-900'}`}>
-                        {stock.available}
+                        {formatQuantity(stock.available)}
                       </span>
                       {stock.min_quantity != null && (
                         <span className="ml-1 text-xs text-gray-400">
@@ -505,7 +504,7 @@ export function StockLevelsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">{t('inventory:stock.modal.currentQuantity')}</label>
-                <p className="mt-1 text-sm text-gray-900">{selectedStock.quantity}</p>
+                <p className="mt-1 text-sm text-gray-900">{formatQuantity(selectedStock.quantity)}</p>
               </div>
 
               <div>
@@ -518,14 +517,16 @@ export function StockLevelsPage() {
                   value={adjustmentQuantity}
                   onChange={(e) => { setAdjustmentQuantity(e.target.value) }}
                   min="0"
-                  step="0.01"
+                  step="0.0001"
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   placeholder={adjustmentType === 'adjust' ? t('inventory:stock.modal.enterNewQuantity') : t('inventory:stock.modal.enterQuantity')}
                 />
                 {adjustmentType === 'adjust' && adjustmentQuantity && (() => {
                   // safeBig in lib/decimal.ts treats unparseable input as 0,
                   // so this runs safely even on programmatic paste of garbage.
-                  const delta = bcsub(adjustmentQuantity, selectedStock.quantity, decimals)
+                  // Quantities are 4-decimal (decimal(15,4)); the delta must use
+                  // the quantity scale, not the currency scale, or it truncates.
+                  const delta = bcsub(adjustmentQuantity, selectedStock.quantity, 4)
                   const sign = bccomp(delta, '0') >= 0 ? '+' : ''
                   return (
                     <p className="mt-1 text-sm text-gray-500">

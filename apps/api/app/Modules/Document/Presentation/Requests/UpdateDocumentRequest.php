@@ -83,15 +83,31 @@ class UpdateDocumentRequest extends FormRequest
                 ScopedExists::tenantAndCompany('services', $scopedTenantId, $companyId),
             ],
             'lines.*.description' => ['required_with:lines', 'string', 'min:1', 'max:500'],
-            'lines.*.quantity' => ['required_with:lines', 'numeric', 'gt:0'],
-            'lines.*.unit_price' => ['required_with:lines', 'numeric', 'min:0'],
-            'lines.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
-            'lines.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'lines.*.quantity' => ['required_with:lines', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'lines.*.unit_price' => ['required_with:lines', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'lines.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'lines.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'lines.*.notes' => ['nullable', 'string', 'max:1000'],
         ];
 
         return $this->withDiscountToleranceRules($rules);
+    }
+
+    /**
+     * Get custom messages for validator errors.
+     *
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'lines.*.quantity.regex' => 'Line quantity must have at most 4 decimal places',
+            'lines.*.unit_price.regex' => 'Line unit price must have at most 3 decimal places',
+            'lines.*.discount_percent.regex' => 'Line discount percentage must have at most 2 decimal places',
+            'lines.*.discount_amount.regex' => 'Line discount amount must have at most 3 decimal places',
+            'lines.*.tax_rate.regex' => 'Line tax rate must have at most 2 decimal places',
+        ];
     }
 
     protected function prepareForValidation(): void

@@ -130,3 +130,38 @@ export async function convertUnits(
     to_unit_id: toUnitId,
   })
 }
+
+/**
+ * Rounding method values used by the precision-settings endpoint.
+ * The UI works in PascalCase identifiers ('HalfUp' | 'Floor' | 'Ceil') for
+ * display, but the backend RoundingMethod enum is snake_case-backed
+ * ('half_up' | 'floor' | 'ceil') — the same wire format used by the legacy
+ * unit create/update flow. The mapping happens at the wire boundary below.
+ */
+export type RoundingMethod = 'HalfUp' | 'Floor' | 'Ceil'
+
+const ROUNDING_METHOD_WIRE: Record<RoundingMethod, Unit['rounding_method']> = {
+  HalfUp: 'half_up',
+  Floor: 'floor',
+  Ceil: 'ceil',
+}
+
+export interface UnitPrecisionPayload {
+  decimal_places: number
+  rounding_method: RoundingMethod
+}
+
+/**
+ * Update only the precision fields (decimal_places + rounding_method) of a unit.
+ * Distinct from updateUnit which updates all mutable fields. Maps the PascalCase
+ * UI value to the snake_case enum the backend validates against.
+ */
+export async function updateUnitPrecision(
+  id: string,
+  payload: UnitPrecisionPayload
+): Promise<Unit> {
+  return apiPut<Unit>(`/uom/units/${id}`, {
+    decimal_places: payload.decimal_places,
+    rounding_method: ROUNDING_METHOD_WIRE[payload.rounding_method],
+  })
+}

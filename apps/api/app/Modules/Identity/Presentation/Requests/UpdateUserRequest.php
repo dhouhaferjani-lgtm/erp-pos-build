@@ -47,7 +47,7 @@ class UpdateUserRequest extends FormRequest
             'locale' => ['sometimes', 'nullable', 'string', 'max:10'],
             'timezone' => ['sometimes', 'nullable', 'string', 'max:50'],
             'can_discount' => ['sometimes', 'boolean'],
-            'max_discount_percent' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
+            'max_discount_percent' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
         ];
     }
 
@@ -62,6 +62,7 @@ class UpdateUserRequest extends FormRequest
             'email.unique' => 'A user with this email already exists in your organization.',
             'phone.regex' => 'The phone number format is invalid. Use international format (e.g., +33612345678).',
             'role.exists' => 'The selected role does not exist.',
+            'max_discount_percent.regex' => 'Max discount percent must have at most 2 decimal places.',
         ];
     }
 }

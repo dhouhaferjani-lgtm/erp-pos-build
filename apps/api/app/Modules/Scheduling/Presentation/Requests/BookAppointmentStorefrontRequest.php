@@ -28,6 +28,14 @@ final class BookAppointmentStorefrontRequest extends FormRequest
     }
 
     /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [];
+    }
+
+    /**
      * @return array<string, array<int, mixed>>
      */
     public function rules(): array
@@ -54,6 +62,9 @@ final class BookAppointmentStorefrontRequest extends FormRequest
             'service_ids.*.service_ref_id' => ['required', 'uuid'],
             'service_ids.*.display_name' => ['required', 'string', 'max:200'],
             'service_ids.*.estimated_duration_minutes' => ['required', 'integer', 'min:1'],
+            // Normalize-on-write: AppointmentAuthoringService canonicalizes any precision
+            // to the company currency scale via CurrencyScale::bcformatStrict (Phase 4.14).
+            // No ingress decimal ceiling — the storefront may submit arbitrary precision.
             'service_ids.*.estimated_price' => ['nullable', 'numeric'],
             'service_ids.*.display_order' => ['nullable', 'integer', 'min:0'],
 

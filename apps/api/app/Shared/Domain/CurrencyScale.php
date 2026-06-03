@@ -78,13 +78,18 @@ final class CurrencyScale extends ValueObject
      * Replaces `number_format((float) $value, $scale, '.', '')` which suffers from
      * IEEE 754 floating-point precision loss (e.g. 5.000 → 4.9999).
      *
-     * @param  string|int|float|null  $value  The numeric value (string preferred to avoid float)
+     * @param  string|int|float|null  $value  Passing null is deprecated; use bcformatOrNull() instead.
      * @param  int  $scale  Number of decimal places
      * @return numeric-string Formatted decimal string
      */
     public static function bcformat(string|int|float|null $value, int $scale): string
     {
         if ($value === null) {
+            trigger_error(
+                'CurrencyScale::bcformat() called with null. Null will zero-fill silently — '
+                .'use bcformatOrNull() to preserve null or bcformatStrict() for guaranteed-non-null paths.',
+                E_USER_DEPRECATED,
+            );
             $str = '0';
         } elseif (is_float($value)) {
             // Avoid scientific notation from (string) cast (e.g., 1e-5 → "1.0E-5")
@@ -101,6 +106,116 @@ final class CurrencyScale extends ValueObject
 
         /** @phpstan-ignore argument.type */
         return bcadd($str, '0', $scale);
+    }
+
+    /**
+     * Format a numeric string to a fixed decimal scale using bcmath.
+     *
+     * Strict variant: rejects any input that is not a well-formed numeric string.
+     * Does NOT accept null, empty strings, or whitespace-only strings.
+     * Does NOT accept float (use string representation from the source instead).
+     * Leading/trailing whitespace is trimmed before validation and bcmath processing.
+     *
+     * Guard uses is_numeric() semantics. Note: PHP's is_numeric() accepts scientific
+     * notation (e.g. "1e5") but bcmath does not — passing scientific notation will
+     * pass this guard but bcadd() will throw a ValueError. Callers must normalise
+     * scientific notation before calling this method.
+     *
+     * @param  string  $value  A well-formed numeric string (e.g. "5.000", "-3.14", "42")
+     * @param  int  $scale  Number of decimal places
+     * @return numeric-string Formatted decimal string
+     *
+     * @throws \InvalidArgumentException If $value is not a well-formed numeric string
+     */
+    public static function bcformatStrict(string $value, int $scale): string
+    {
+        $trimmed = trim($value);
+
+        if (! is_numeric($trimmed)) {
+            throw new \InvalidArgumentException(
+                sprintf(
+                    'CurrencyScale::bcformatStrict() expects a numeric string; "%s" given.',
+                    $value,
+                ),
+            );
+        }
+
+        /** @phpstan-ignore argument.type */
+        return bcadd($trimmed, '0', $scale);
+    }
+
+    /**
+     * Round a numeric value HALF-UP (away from zero) to a fixed decimal scale,
+     * using pure bcmath (no float intermediary).
+     *
+     * Unlike {@see bcformat()} — which TRUNCATES toward zero (the bcmath default)
+     * and is correct only where truncation is intentional — this method applies
+     * banker-free half-away-from-zero rounding. Use it at PRESENTATION / GL-POSTING
+     * boundaries (e.g. rounding a high-precision perpetual WAC × quantity down to
+     * the currency scale for a COGS journal line). It mirrors PHP's default
+     * round() mode (PHP_ROUND_HALF_UP) for well-formed inputs while eliminating the
+     * IEEE-754 drift that round((float)$v, $s) incurs.
+     *
+     * NC 01 §62 (Tunisia) forbids rounding "dans l'enregistrement des opérations":
+     * costs are carried at higher internal precision at rest and only rounded at the
+     * posting/display boundary — this is that boundary helper.
+     *
+     * Negatives round away from zero (-0.0005 @ scale 3 → -0.001), symmetric with
+     * positives, so a debit and its mirror credit round to the same magnitude.
+     *
+     * @param  string  $value  A well-formed numeric string (e.g. "0.463636", "-3.1415")
+     * @param  int  $scale  Target number of decimal places (>= 0)
+     * @return numeric-string Rounded decimal string with exactly $scale digits
+     *
+     * @throws \InvalidArgumentException If $value is not a well-formed numeric string
+     */
+    public static function bcround(string $value, int $scale): string
+    {
+        $trimmed = trim($value);
+
+        if (! is_numeric($trimmed)) {
+            throw new \InvalidArgumentException(
+                sprintf(
+                    'CurrencyScale::bcround() expects a numeric string; "%s" given.',
+                    $value,
+                ),
+            );
+        }
+
+        // Half-increment at the target scale, built via bcmath so it is a proven
+        // numeric-string: scale 3 → "0.0005", scale 0 → "0.5".
+        $half = bcdiv('5', bcpow('10', (string) ($scale + 1), 0), $scale + 1);
+
+        // Add (positive) or subtract (negative) the half at one extra digit of
+        // precision, then truncate to $scale — yielding round-half-away-from-zero.
+        if (str_starts_with($trimmed, '-')) {
+            /** @phpstan-ignore argument.type */
+            return bcadd(bcsub($trimmed, $half, $scale + 1), '0', $scale);
+        }
+
+        /** @phpstan-ignore argument.type */
+        return bcadd(bcadd($trimmed, $half, $scale + 1), '0', $scale);
+    }
+
+    /**
+     * Format a nullable numeric string to a fixed decimal scale using bcmath.
+     *
+     * Preserves null — does NOT zero-fill. For non-null input, delegates to
+     * bcformatStrict() and will throw if the string is not numeric.
+     *
+     * @param  string|null  $value  A well-formed numeric string or null
+     * @param  int  $scale  Number of decimal places
+     * @return numeric-string|null Formatted decimal string, or null if input was null
+     *
+     * @throws \InvalidArgumentException If $value is non-null and not a well-formed numeric string
+     */
+    public static function bcformatOrNull(?string $value, int $scale): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return self::bcformatStrict($value, $scale);
     }
 
     public function equals(ValueObject $other): bool

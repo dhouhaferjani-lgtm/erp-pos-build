@@ -65,7 +65,7 @@ final class AddComponentTest extends TestCase
         $this->assertNull($component->service_id);
         $this->assertNull($component->nested_bundle_id);
         $this->assertSame(BundleComponentType::Part, $component->component_type);
-        $this->assertSame('2.500', $component->quantity);
+        $this->assertSame('2.5000', $component->quantity);
     }
 
     public function test_add_labor_component(): void

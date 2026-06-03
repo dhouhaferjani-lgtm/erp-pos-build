@@ -17,6 +17,30 @@ export function getCurrencyDecimals(currency: string): number {
   return CURRENCY_DECIMALS[currency] ?? 2;
 }
 
+/**
+ * Non-hook accessor for the active company's currency code.
+ *
+ * Reads `useAuthStore.getState()` directly so it is safe to call from
+ * non-React library/store code (cash-drawer offline fallback, cart math, …).
+ * Defaults to 'EUR' when no company is selected — the same fallback every
+ * checkout path already uses.
+ */
+export function getActiveCurrency(): string {
+  const state = useAuthStore.getState();
+  const company = state.companies.find((c) => c.id === state.companyId);
+  return company?.currency ?? 'EUR';
+}
+
+/**
+ * Currency decimals for the active company. Equivalent to
+ * `getCurrencyDecimals(getActiveCurrency())`. Use when money must be
+ * canonicalized at the device's currency scale (e.g. EUR=2, TND=3) from a
+ * context that has no currency in hand.
+ */
+export function getActiveCurrencyDecimals(): number {
+  return getCurrencyDecimals(getActiveCurrency());
+}
+
 export function formatCurrency(
   amount: number | string,
   currency = 'EUR',

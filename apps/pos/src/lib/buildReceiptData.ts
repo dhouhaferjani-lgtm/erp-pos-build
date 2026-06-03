@@ -196,18 +196,21 @@ export function buildEscPosFromOfflineReceipt(
   const currencySymbol = getCurrencySymbol(result.currency);
   const decimals = getCurrencyDecimals(result.currency);
 
-  // Build VAT breakdown from cart items
-  const vatByRate = new Map<string, { taxable: number; tax: number }>();
+  // Build VAT breakdown from cart items. Accumulate as currency-scale decimal
+  // strings (Big.js) — summing many lines with parseFloat drifted the printed
+  // taxable/tax totals.
+  const vatByRate = new Map<string, { taxable: string; tax: string }>();
   for (const item of cartItems) {
     const rate = item.tax_rate;
-    const tax = parseFloat(item.tax_amount);
-    if (tax === 0) continue;
-    const lineTotal = parseFloat(item.line_total);
-    const taxable = lineTotal - tax;
-    const existing = vatByRate.get(rate) ?? { taxable: 0, tax: 0 };
+    if (bccomp(item.tax_amount, '0') === 0) continue;
+    const taxable = bcsub(item.line_total, item.tax_amount, decimals);
+    const existing = vatByRate.get(rate) ?? {
+      taxable: (0).toFixed(decimals),
+      tax: (0).toFixed(decimals),
+    };
     vatByRate.set(rate, {
-      taxable: existing.taxable + taxable,
-      tax: existing.tax + tax,
+      taxable: bcadd(existing.taxable, taxable, decimals),
+      tax: bcadd(existing.tax, item.tax_amount, decimals),
     });
   }
 

@@ -19,6 +19,7 @@ import {
   TrendingUp,
 } from 'lucide-react'
 import { useMonitoringDashboard, useRetryFailedJob, useFlushFailedJobs, useRetryAllFailedJobs } from '../hooks/useMonitoring'
+import { useCurrency } from '@/hooks/useCurrency'
 import type { Alert, FailedJob } from '../api'
 
 function StatusBadge({ status }: { status: string }) {
@@ -156,6 +157,7 @@ export function MonitoringPage() {
   const retryJob = useRetryFailedJob()
   const retryAll = useRetryAllFailedJobs()
   const flushAll = useFlushFailedJobs()
+  const { format: formatRevenue } = useCurrency()
   const [activeTab, setActiveTab] = useState<'overview' | 'queues' | 'alerts'>('overview')
 
   if (isLoading) {
@@ -417,8 +419,8 @@ export function MonitoringPage() {
               />
               <MetricCard
                 title="Revenue Today"
-                value={`$${critical.billing.revenue.today.toFixed(2)}`}
-                subtitle={`$${critical.billing.revenue.this_month.toFixed(2)} this month`}
+                value={formatRevenue(critical.billing.revenue.today)}
+                subtitle={`${formatRevenue(critical.billing.revenue.this_month)} this month`}
                 icon={DollarSign}
                 trend="up"
               />

@@ -36,9 +36,13 @@ vi.mock('@/hooks/usePageTitle', () => ({
   usePageTitle: vi.fn(),
 }))
 
-vi.mock('@/hooks/useCurrency', () => ({
-  useCurrency: () => ({ decimals: 2 }),
-}))
+vi.mock('@/hooks/useCurrency', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/useCurrency')>()
+  return {
+    ...actual,
+    useCurrency: () => ({ decimals: 2 }),
+  }
+})
 
 vi.mock('../api/taxApi', () => ({
   fetchTaxBreakdown: mockFetchTaxBreakdown,

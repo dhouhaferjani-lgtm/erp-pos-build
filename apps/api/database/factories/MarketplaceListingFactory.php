@@ -7,6 +7,7 @@ namespace Database\Factories;
 use App\Modules\Marketplace\Domain\Enums\ListingStatus;
 use App\Modules\Marketplace\Domain\Models\MarketplaceListing;
 use App\Modules\Marketplace\Domain\Models\MarketplaceSeller;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -30,19 +31,33 @@ class MarketplaceListingFactory extends Factory
             'product_name' => fake()->randomElement(['Brake Pads', 'Oil Filter', 'Spark Plug', 'Air Filter', 'Timing Belt']),
             'supplier_brand' => fake()->randomElement($brands),
             'quality_tier' => fake()->randomElement(['oe', 'oem', 'aftermarket', null]),
-            'price' => fake()->randomFloat(3, 5, 500),
+            // price: money cast decimal:3 (default TND). quantity: cast decimal:4.
+            'price' => CurrencyScale::bcformat(fake()->randomFloat(3, 5, 500), 3),
             'currency' => 'TND',
-            'quantity_available' => fake()->randomFloat(2, 1, 100),
-            'min_order_quantity' => 1,
+            'quantity_available' => CurrencyScale::bcformat(fake()->randomFloat(2, 1, 100), 4),
+            'min_order_quantity' => CurrencyScale::bcformat(1, 4),
             'listing_status' => ListingStatus::Active,
         ];
+    }
+
+    /**
+     * Re-scale the listing price to the decimal scale of the given currency.
+     */
+    public function currency(string $currencyCode): static
+    {
+        $scale = CurrencyScale::for($currencyCode);
+
+        return $this->state(fn (array $attributes): array => [
+            'currency' => $currencyCode,
+            'price' => CurrencyScale::bcformat($attributes['price'] ?? '0', $scale),
+        ]);
     }
 
     public function available(): static
     {
         return $this->state(fn (array $attributes): array => [
             'listing_status' => ListingStatus::Active,
-            'quantity_available' => fake()->randomFloat(2, 10, 100),
+            'quantity_available' => CurrencyScale::bcformat(fake()->randomFloat(2, 10, 100), 4),
         ]);
     }
 
@@ -50,7 +65,7 @@ class MarketplaceListingFactory extends Factory
     {
         return $this->state(fn (array $attributes): array => [
             'listing_status' => ListingStatus::OutOfStock,
-            'quantity_available' => 0,
+            'quantity_available' => CurrencyScale::bcformat(0, 4),
         ]);
     }
 

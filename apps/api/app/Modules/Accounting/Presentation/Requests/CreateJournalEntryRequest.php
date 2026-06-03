@@ -38,9 +38,20 @@ class CreateJournalEntryRequest extends FormRequest
             // pre-existing tenant-only pipe-form to also pin company_id, so a
             // sibling-company account UUID cannot satisfy the FK validator.
             'lines.*.account_id' => ['required', 'uuid', ScopedExists::tenantAndCompany('accounts', $tenantId, $companyId)],
-            'lines.*.debit' => ['required', 'numeric', 'min:0'],
-            'lines.*.credit' => ['required', 'numeric', 'min:0'],
+            'lines.*.debit' => ['required', 'numeric', 'min:0', 'regex:/^-?\d+(\.\d{1,3})?$/'],
+            'lines.*.credit' => ['required', 'numeric', 'min:0', 'regex:/^-?\d+(\.\d{1,3})?$/'],
             'lines.*.description' => ['nullable', 'string', 'max:500'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'lines.*.debit.regex' => 'Debit amount must have at most 3 decimal places.',
+            'lines.*.credit.regex' => 'Credit amount must have at most 3 decimal places.',
         ];
     }
 }

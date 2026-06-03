@@ -8,10 +8,15 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 
 class RefundService
 {
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
     /**
      * Cancel an invoice (only if not posted or not paid)
      */
@@ -216,6 +221,10 @@ class RefundService
                 ]);
             }
 
+            // Resolve scale from the credited invoice's own currency so this
+            // never depends on a bound CompanyContext (context-safe AND
+            // fiscally correct: EUR→2, TND→3).
+            $scale = $this->scaleResolver->getScale($invoice->currency);
             $subtotal = '0.00';
             $taxAmount = '0.00';
             $total = '0.00';
@@ -235,9 +244,9 @@ class RefundService
                 ]);
 
                 $lineTotal = $item['line_total'] ?? $item['total'] ?? '0.00';
-                $subtotal = bcadd($subtotal, $lineTotal, 2);
-                $taxAmount = bcadd($taxAmount, $item['tax_amount'] ?? '0.00', 2);
-                $total = bcadd($total, $lineTotal, 2);
+                $subtotal = bcadd($subtotal, $lineTotal, $scale);
+                $taxAmount = bcadd($taxAmount, $item['tax_amount'] ?? '0.00', $scale);
+                $total = bcadd($total, $lineTotal, $scale);
             }
 
             // Update credit note totals
@@ -325,9 +334,10 @@ class RefundService
             ->where('type', DocumentType::CreditNote)
             ->get();
 
+        $scale = $this->scaleResolver->getScale($invoice->currency);
         $totalCredited = '0.00';
         foreach ($creditNotes as $cn) {
-            $totalCredited = bcadd($totalCredited, $cn->total ?? '0.00', 2);
+            $totalCredited = bcadd($totalCredited, $cn->total ?? '0.00', $scale);
         }
 
         return [

@@ -46,7 +46,7 @@ class MarketplaceSellerController extends Controller
             'display_name' => ['required', 'string', 'max:255'],
             'country_code' => ['required', 'string', 'size:2'],
             'currency' => ['required', 'string', 'size:3'],
-            'commission_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'commission_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
         ]);
 
         $seller = MarketplaceSeller::create(array_merge($validated, [
@@ -67,7 +67,7 @@ class MarketplaceSellerController extends Controller
 
         $validated = $request->validate([
             'display_name' => ['sometimes', 'string', 'max:255'],
-            'commission_rate' => ['sometimes', 'numeric', 'min:0', 'max:100'],
+            'commission_rate' => ['sometimes', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'seller_status' => ['sometimes', Rule::enum(SellerStatus::class)],
             'settings' => ['sometimes', 'array'],
         ]);

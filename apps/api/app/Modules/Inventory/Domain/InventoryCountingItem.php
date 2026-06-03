@@ -207,13 +207,16 @@ class InventoryCountingItem extends Model
     /**
      * Submit a count for this item.
      */
-    public function submitCount(int $phase, float $quantity, ?string $notes = null): void
+    /**
+     * @param  numeric-string  $quantity  Canonical numeric string (quantity scale 4, e.g. '1.2345')
+     */
+    public function submitCount(int $phase, string $quantity, ?string $notes = null): void
     {
         $qtyColumn = "count_{$phase}_qty";
         $atColumn = "count_{$phase}_at";
         $notesColumn = "count_{$phase}_notes";
 
-        $this->$qtyColumn = (string) $quantity;
+        $this->$qtyColumn = $quantity;
         $this->$atColumn = now();
         $this->$notesColumn = $notes;
         $this->save();

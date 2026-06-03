@@ -91,7 +91,7 @@ final class Plan extends Model
             return null;
         }
 
-        return new Money((float) $this->price_monthly, $this->currency);
+        return new Money((string) $this->price_monthly, $this->currency);
     }
 
     /**
@@ -103,7 +103,7 @@ final class Plan extends Model
             return null;
         }
 
-        return new Money((float) $this->price_yearly, $this->currency);
+        return new Money((string) $this->price_yearly, $this->currency);
     }
 
     /**

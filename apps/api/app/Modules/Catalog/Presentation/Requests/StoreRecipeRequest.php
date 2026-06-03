@@ -30,12 +30,22 @@ class StoreRecipeRequest extends FormRequest
 
         return [
             'version_name' => ['nullable', 'string', 'max:255'],
-            'yield_quantity' => ['sometimes', 'numeric', 'min:0.0001'],
+            'yield_quantity' => ['sometimes', 'numeric', 'min:0.0001', 'regex:/^\d+(\.\d{1,4})?$/'],
             // api.catalog.022 round-2: units has nullable tenant_id (system rows = NULL).
             'yield_unit_id' => ['nullable', 'uuid', ScopedExists::tenantOrSystem('units', $company->tenant_id)],
             'prep_time_minutes' => ['nullable', 'integer', 'min:0'],
             'cook_time_minutes' => ['nullable', 'integer', 'min:0'],
             'instructions' => ['nullable', 'string', 'max:10000'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'yield_quantity.regex' => 'Yield quantity must have at most 4 decimal places.',
         ];
     }
 }

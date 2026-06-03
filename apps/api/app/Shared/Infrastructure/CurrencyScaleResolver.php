@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Exceptions\UnboundCompanyContextException;
 use Closure;
 
 /**
@@ -18,7 +19,7 @@ use Closure;
  * 1. If explicit $currencyCode passed → use static ISO 4217 map
  * 2. Company's country → country.currency_decimal_places column
  * 3. Company's currency code → static ISO 4217 map
- * 4. Default: 2
+ * 4. No company bound → UnboundCompanyContextException (use getScaleSafe() for a silent fallback)
  */
 final class CurrencyScaleResolver implements CurrencyScaleResolverInterface
 {
@@ -42,7 +43,12 @@ final class CurrencyScaleResolver implements CurrencyScaleResolverInterface
         $company = $this->companyOverride ?? $this->companyContext->getCompany();
 
         if ($company === null) {
-            return CurrencyScale::for('');
+            throw new UnboundCompanyContextException(
+                'CurrencyScaleResolver::getScale() called with no currency code and no CompanyContext bound. '
+                .'Ensure CompanyContextMiddleware is applied or pass an explicit $currencyCode. '
+                .'For callers that intentionally run outside request context (queued jobs, console commands), '
+                .'use getScaleSafe($currencyCode, $fallback) instead. See audit finding F-RES-1.',
+            );
         }
 
         // Try country record's currency_decimal_places first
@@ -62,5 +68,14 @@ final class CurrencyScaleResolver implements CurrencyScaleResolverInterface
         $currency = $company->currency;
 
         return CurrencyScale::for($currency);
+    }
+
+    public function getScaleSafe(?string $currencyCode = null, int $fallback = 3): int
+    {
+        try {
+            return $this->getScale($currencyCode);
+        } catch (UnboundCompanyContextException $e) {
+            return $fallback;
+        }
     }
 }

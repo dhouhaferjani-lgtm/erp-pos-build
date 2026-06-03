@@ -7,6 +7,7 @@ import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useCurrency } from '../../hooks/useCurrency'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { MoneyInput } from '../../components/atoms/MoneyInput'
 
 interface PaymentMethod {
   id: string
@@ -46,7 +47,7 @@ export function SplitPaymentForm({
   onCancel,
 }: SplitPaymentFormProps) {
   const { t } = useTranslation(['treasury', 'common'])
-  const { format: formatCurrencyHook } = useCurrency()
+  const { currency, format: formatCurrencyHook } = useCurrency()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
@@ -251,17 +252,13 @@ export function SplitPaymentForm({
                 >
                   {t('treasury:payments.amount')}
                 </label>
-                <input
-                  type="number"
+                <MoneyInput
                   id={`amount-${line.id}`}
+                  currency={currency}
                   value={line.amount}
-                  onChange={(e) =>
-                    { updatePaymentLine(line.id, 'amount', e.target.value); }
-                  }
+                  onChange={(v) => { updatePaymentLine(line.id, 'amount', v) }}
                   min="0.01"
-                  step="0.01"
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder="0.00"
                   aria-label={t('treasury:payments.amount')}
                 />
               </div>

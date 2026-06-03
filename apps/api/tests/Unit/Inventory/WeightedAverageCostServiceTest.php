@@ -7,8 +7,18 @@ namespace Tests\Unit\Inventory;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\Enums\UserStatus;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
+use App\Modules\Inventory\Domain\Enums\TransferCostDistribution;
+use App\Modules\Inventory\Domain\Enums\TransferStatus;
+use App\Modules\Inventory\Domain\Enums\TransferType;
+use App\Modules\Inventory\Domain\Services\ProductCostLock;
+use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\Inventory\Domain\StockTransfer;
+use App\Modules\Inventory\Domain\StockTransferLine;
 use App\Modules\Product\Application\Services\MarginService;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
@@ -36,12 +46,19 @@ class WeightedAverageCostServiceTest extends TestCase
     {
         parent::setUp();
 
-        $marginService = $this->app->make(MarginService::class);
-        $this->service = new WeightedAverageCostService($marginService, $this->mockCurrencyScale());
-
-        // Create test entities
+        // Create test entities first so CompanyContext can be bound before service resolution
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+
+        // Bind CompanyContext so the real CurrencyScaleResolver used inside MarginService has context
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
+
+        $marginService = $this->app->make(MarginService::class);
+        $this->service = new WeightedAverageCostService(
+            $marginService,
+            $this->mockCurrencyScale(),
+            new ProductCostLock,
+        );
 
         // Create location manually (no factory exists yet)
         $this->location = Location::create([
@@ -131,6 +148,182 @@ class WeightedAverageCostServiceTest extends TestCase
     public function test_service_has_record_return_method(): void
     {
         $this->assertTrue(method_exists(WeightedAverageCostService::class, 'recordReturn'));
+    }
+
+    /**
+     * recordCostAdjustment capitalizes the additional cost across the
+     * COMPANY-WIDE on-hand quantity (sum across every stock_level row for the
+     * product within the company), not against any single location's quantity.
+     *
+     * Product P: 60 at WH-A + 40 at WH-B = 100 company-wide on hand, WAC 5.000000.
+     * Capitalizing 100 of freight => 100 / 100 = +1.000000 => 6.000000
+     * (NOT 100/60 nor 100/40).
+     */
+    public function test_cost_adjustment_capitalizes_against_company_wide_on_hand(): void
+    {
+        $warehouseA = $this->location; // seeded in setUp
+
+        $warehouseB = Location::create([
+            'id' => Str::uuid()->toString(),
+            'company_id' => $this->company->id,
+            'name' => 'Test Location B',
+            'type' => LocationType::Warehouse,
+            'is_default' => false,
+            'is_active' => true,
+            'pos_enabled' => false,
+        ]);
+
+        StockLevel::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $warehouseA->id,
+            'quantity' => '60.0000',
+        ]);
+
+        StockLevel::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $warehouseB->id,
+            'quantity' => '40.0000',
+        ]);
+
+        $this->product->forceFill(['cost_price' => '5.0000'])->save();
+
+        $this->service->recordCostAdjustment(
+            product: $this->product,
+            additionalCost: 100.0,
+            reason: 'freight',
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+        );
+
+        // 100 / 100 company-wide = +1.00 -> 6 (cost_price casts decimal:6).
+        $this->assertEquals('6.000000', $this->product->fresh()->cost_price);
+    }
+
+    /**
+     * In-transit transfer quantity must count toward the company-wide
+     * denominator exactly once: stock that has left the source but has not yet
+     * been received still belongs to the company and shares in the capitalized
+     * cost.
+     *
+     * Product P: 60 on hand at WH-A + 40 in_transit = 100 owned, WAC 5.000000.
+     * Capitalizing 100 of freight => 100 / 100 = +1.000000 => 6.000000
+     * (NOT 100/60 — which would prove in-transit was ignored — and NOT a
+     * doubled denominator).
+     *
+     * NOTE: this exercises the recordCostAdjustment SEAM in isolation. The
+     * separate StockTransferService::complete() double-count (received-into-
+     * on-hand while the line is still marked InTransit) is a known caller-
+     * sequencing issue owned by transfer-v5, NOT this seam.
+     */
+    public function test_cost_adjustment_includes_in_transit_in_company_wide_denominator(): void
+    {
+        $warehouseA = $this->location; // seeded in setUp
+
+        $warehouseB = Location::create([
+            'id' => Str::uuid()->toString(),
+            'company_id' => $this->company->id,
+            'name' => 'Test Location B',
+            'type' => LocationType::Warehouse,
+            'is_default' => false,
+            'is_active' => true,
+            'pos_enabled' => false,
+        ]);
+
+        // On-hand 60 at WH-A.
+        StockLevel::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $warehouseA->id,
+            'quantity' => '60.0000',
+        ]);
+
+        // A user is required as initiated_by_user_id (NOT NULL FK on stock_transfers).
+        $user = User::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Transfer User',
+            'email' => 'transfer-user@example.com',
+            'password' => bcrypt('password'),
+            'status' => UserStatus::Active,
+        ]);
+
+        // Build an isolated in_transit transfer directly (no create->dispatch
+        // flow) so it contributes ONLY an in-transit line and does NOT move any
+        // stock_level rows. 40 units in transit: WH-A -> WH-B.
+        $transfer = StockTransfer::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'transfer_number' => 'TR-IN-TRANSIT-001',
+            'transfer_type' => TransferType::Intracompany,
+            'status' => TransferStatus::InTransit,
+            'source_location_id' => $warehouseA->id,
+            'destination_location_id' => $warehouseB->id,
+            'transfer_cost' => '0',
+            'transfer_cost_distribution' => TransferCostDistribution::ProRataValue,
+            'initiated_by_user_id' => $user->id,
+            'initiated_at' => now(),
+        ]);
+
+        StockTransferLine::create([
+            'id' => Str::uuid()->toString(),
+            'transfer_id' => $transfer->id,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'quantity' => '40.0000',
+            'allocated_transfer_cost' => '0',
+        ]);
+
+        $this->product->forceFill(['cost_price' => '5.0000'])->save();
+
+        $this->service->recordCostAdjustment(
+            product: $this->product,
+            additionalCost: 100.0,
+            reason: 'freight',
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+        );
+
+        // denominator = 60 on_hand + 40 in_transit = 100 -> 5 + 100/100 = 6.
+        $fresh = $this->product->fresh();
+        $this->assertNotNull($fresh);
+        $this->assertEquals('6.000000', $fresh->cost_price);
+    }
+
+    /**
+     * When the company owns nothing (zero on hand, zero in transit), there is
+     * no denominator to capitalize against: the adjustment is a no-op — it
+     * returns null, leaves cost_price untouched, and records no movement.
+     */
+    public function test_cost_adjustment_is_noop_when_nothing_owned(): void
+    {
+        // No stock_level rows and no in-transit lines for this product.
+        $this->product->forceFill(['cost_price' => '5.0000'])->save();
+
+        $result = $this->service->recordCostAdjustment(
+            product: $this->product,
+            additionalCost: 100.0,
+            reason: 'freight',
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+        );
+
+        $this->assertNull($result);
+        $fresh = $this->product->fresh();
+        $this->assertNotNull($fresh);
+        $this->assertEquals('5.000000', $fresh->cost_price);
+        $this->assertDatabaseMissing('stock_movements', [
+            'product_id' => $this->product->id,
+        ]);
     }
 
     /**

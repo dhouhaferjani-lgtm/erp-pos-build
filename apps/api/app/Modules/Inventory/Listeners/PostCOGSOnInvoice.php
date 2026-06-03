@@ -9,6 +9,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -78,15 +79,21 @@ final class PostCOGSOnInvoice
             );
 
             if ($entry !== null) {
-                // Calculate total COGS for logging
-                $totalCogs = '0.00';
+                // Calculate total COGS for logging. unit_cost carries the WAC at
+                // higher internal precision; accumulate at a high working scale and
+                // round HALF-UP once at the boundary so the logged figure matches
+                // the journal entry (see GeneralLedgerService::createCOGSEntry).
+                $scale = $this->scale();
+                $working = $scale + 6;
+                $totalCogsPrecise = '0';
                 foreach ($lineItems as $item) {
                     /** @var numeric-string $qty */
                     $qty = $item['quantity'];
                     /** @var numeric-string $cost */
                     $cost = $item['unit_cost'];
-                    $totalCogs = bcadd($totalCogs, bcmul($qty, $cost, $this->scale()), $this->scale());
+                    $totalCogsPrecise = bcadd($totalCogsPrecise, bcmul($qty, $cost, $working), $working);
                 }
+                $totalCogs = CurrencyScale::bcround($totalCogsPrecise, $scale);
 
                 Log::info('PostCOGSOnInvoice: COGS entry created', [
                     'invoice_id' => $event->invoiceId,

@@ -7,6 +7,7 @@ namespace Tests\Feature\Fiscal;
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
@@ -98,6 +99,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
         $company = Company::factory()->create(['tenant_id' => $this->tenantId]);
         $this->companyId = $company->id;
+
+        app(CompanyContext::class)->setCompanyId($this->companyId);
 
         $location = Location::factory()->create(['company_id' => $this->companyId]);
         $this->locationId = $location->id;
@@ -501,7 +504,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
         // StockLevel decremented (10 - 2 = 8).
         $stockLevel->refresh();
-        $this->assertSame('8.00', $stockLevel->quantity);
+        $this->assertSame('8.0000', $stockLevel->quantity);
     }
 
     public function test_voucher_plus_stock_combined_both_side_effects_fire_and_are_idempotent(): void
@@ -558,7 +561,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
         // First apply — both side-effects fired exactly once.
         $this->assertSame(1, DB::table('stock_movements')->count());
         $stockLevel->refresh();
-        $this->assertSame('4.00', $stockLevel->quantity);
+        $this->assertSame('4.0000', $stockLevel->quantity);
         $voucher->refresh();
         $this->assertSame('40.00000', $voucher->current_balance);
         $redeemedRows = VoucherLedger::query()
@@ -572,7 +575,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $projector->apply($event);
         $this->assertSame(1, DB::table('stock_movements')->count(), 'stock movement must not duplicate on replay');
         $stockLevel->refresh();
-        $this->assertSame('4.00', $stockLevel->quantity, 'stock level must not double-decrement');
+        $this->assertSame('4.0000', $stockLevel->quantity, 'stock level must not double-decrement');
         $voucher->refresh();
         $this->assertSame('40.00000', $voucher->current_balance, 'voucher must not double-redeem');
         $redeemedRowsAfterReplay = VoucherLedger::query()

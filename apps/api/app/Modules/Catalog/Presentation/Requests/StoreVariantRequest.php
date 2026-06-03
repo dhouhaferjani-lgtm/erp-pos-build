@@ -24,11 +24,22 @@ class StoreVariantRequest extends FormRequest
             'code' => ['required', 'string', 'max:100'],
             'name' => ['required', 'string', 'max:255'],
             'price_adjustment_type' => ['sometimes', new Enum(PriceAdjustmentType::class)],
-            'price_adjustment' => ['sometimes', 'numeric'],
-            'recipe_multiplier' => ['sometimes', 'numeric', 'min:0.0001'],
+            'price_adjustment' => ['sometimes', 'numeric', 'regex:/^-?\d+(\.\d{1,4})?$/'],
+            'recipe_multiplier' => ['sometimes', 'numeric', 'min:0.0001', 'regex:/^\d+(\.\d{1,4})?$/'],
             'is_default' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
             'display_order' => ['sometimes', 'integer', 'min:0'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'price_adjustment.regex' => 'Price adjustment must have at most 4 decimal places.',
+            'recipe_multiplier.regex' => 'Recipe multiplier must have at most 4 decimal places.',
         ];
     }
 }

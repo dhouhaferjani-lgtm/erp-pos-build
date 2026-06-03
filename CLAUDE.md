@@ -66,6 +66,15 @@ Always use valid UUIDs for FK columns in tests/seeders. Check actual DB schema f
 ### 18. Design Tokens for Tailwind Colors
 When editing `.tsx` files in `apps/web/src/`, migrate hardcoded Tailwind color classes (e.g. `bg-blue-600`, `text-gray-700`, `border-red-500`) to design tokens from `lib/designTokens.ts`. Import `tokens`, `textColors`, `borderColors` from `@/lib/designTokens`. Only migrate classes in code you are already touching — do not refactor untouched lines. New feature directories must use tokens exclusively (enforced as ESLint error). A PostToolUse hook will remind you when editing files with hardcoded colors.
 
+### 19. Monetary & Quantity Precision Contract (post-2026-05-28)
+**Never let a float touch money or quantity.** Storage: currency `decimal(N,3)` floor, quantity `decimal(N,4)`. Full reference: [`docs/architecture/precision-contract.md`](docs/architecture/precision-contract.md).
+- **At rest:** `CurrencyScale::bcformatStrict($value, $scaleResolver->getScale($currency))` (never `bcformat($float, …)`); `QuantityScale` for quantities. Round once at the boundary (`bcformat` truncates). Intermediates at `scale+1` / `scale+4`.
+- **Scale resolver:** constructor-inject `CurrencyScaleResolverInterface` (never `app()`). In queued/console/transition contexts pass the entity currency (`getScale($currency)`) or `getScaleSafe($currency, 3)` — a bare no-arg `getScale()` throws there.
+- **FormRequests:** keep `numeric` and ADD a regex ceiling per column scale — money `/^-?\d+(\.\d{1,3})?$/`, quantity `…{1,4}`, percent `…{1,2}` (percent is NOT currency-scaled). Non-breaking.
+- **Frontend:** never `parseFloat`/`Number(...)` on money/quantity; use `<MoneyInput>`/`<QuantityInput>` (emit strings) + `formatCurrency`/`formatQuantity`. Payloads as strings.
+- **`unit_price` is context-overloaded — confirm the flow before any tax math:** tax-**INCLUSIVE** (TTC) in the B2C POS (the canonical SALE_RECEIPT `line_items[].unit_price` is the inclusive cart price; net is `line_subtotal`), but **net/HT** in B2B/documents. Never assert `line_subtotal == unit_price×qty − discount` on a POS line (compares net vs gross → false-positive); enforce fiscal integrity at the **aggregate** level. See the [`unit_price` semantics section](docs/architecture/precision-contract.md#unit_price-is-context-overloaded-tax-inclusive-b2c-pos-vs-nethtb2b--read-before-touching-price-fields) in the precision contract.
+- **Guards:** PHPStan (`ForbidFloatCastOnDecimalProperty`, `ForbidHardcodedBcmathScale`) + ESLint (`no-hardcoded-step`, `no-parsefloat-on-money`) fail CI on new drift.
+
 ---
 
 ## Context Files

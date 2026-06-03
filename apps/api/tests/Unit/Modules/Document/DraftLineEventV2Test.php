@@ -82,7 +82,7 @@ class DraftLineEventV2Test extends TestCase
 
         $this->service = new DraftPersistenceService(
             new DocumentNumberingService,
-            new DocumentTotalsCalculator(new TaxCalculationService),
+            new DocumentTotalsCalculator(app(TaxCalculationService::class)),
         );
     }
 

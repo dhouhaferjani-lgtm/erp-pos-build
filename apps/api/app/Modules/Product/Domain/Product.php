@@ -128,6 +128,17 @@ class Product extends Model implements SellableContract
             'cross_references' => 'array',
             'cost_updated_at' => 'datetime',
             'enrichment_status' => EnrichmentStatus::class,
+            'sale_price' => 'decimal:3',
+            'purchase_price' => 'decimal:3',
+            // WAC / cost-carrying columns carry higher internal precision (6 dp)
+            // at rest; rounded HALF-UP to the currency scale only at the GL/COGS
+            // posting (and display) boundary. See the scale-6 widening migration
+            // and WeightedAverageCostService.
+            'cost_price' => 'decimal:6',
+            'last_purchase_cost' => 'decimal:6',
+            'target_margin_override' => 'decimal:3',
+            'minimum_margin_override' => 'decimal:3',
+            'tax_rate' => 'decimal:2',
         ];
     }
 

@@ -13,6 +13,7 @@ use App\Modules\Accounting\Domain\Exceptions\ImmutableJournalEntryException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -164,6 +165,9 @@ final class CompleteGLHashChainE2ETest extends TestCase
         // Inject services
         $this->accountingService = app(AccountingService::class);
         $this->hashService = app(GeneralLedgerHashService::class);
+
+        // Pin CompanyContext so CurrencyScaleResolver can resolve scale without HTTP middleware.
+        app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     public function test_complete_business_cycle_maintains_valid_hash_chain(): void
@@ -382,7 +386,9 @@ final class CompleteGLHashChainE2ETest extends TestCase
 
         // Act: Post invoice for company 2 (also sequence 1, but independent chain)
         $invoice2 = $this->createInvoiceForCompany($company2, $customer2, $product2, 'INV-C2-001', '2000.00');
+        app(CompanyContext::class)->setCompanyId($company2->id);
         $this->accountingService->createInvoiceGLEntries($invoice2->fresh('lines'));
+        app(CompanyContext::class)->setCompanyId($this->company->id);
         $entry2 = JournalEntry::where('source_id', $invoice2->id)->first();
 
         // Assert: Both are genesis entries in their respective chains

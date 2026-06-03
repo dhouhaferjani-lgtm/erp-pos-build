@@ -87,7 +87,7 @@ final readonly class RewardRedemptionService
      */
     public function calculateCost(Reward $reward): PointsAmount
     {
-        return new PointsAmount((float) $reward->points_cost);
+        return PointsAmount::fromNumericString((string) $reward->points_cost);
     }
 
     /**

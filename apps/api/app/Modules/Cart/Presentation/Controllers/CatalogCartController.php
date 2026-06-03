@@ -174,10 +174,10 @@ class CatalogCartController extends Controller
         $validated = $request->validate([
             'source' => ['required', Rule::enum(CartItemSource::class)],
             'article_name' => ['required', 'string', 'max:255'],
-            'quantity' => ['required', 'numeric', 'min:0.01'],
+            'quantity' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,4})?$/'],
             'article_number' => ['nullable', 'string'],
             'supplier_brand' => ['nullable', 'string'],
-            'unit_price' => ['nullable', 'numeric', 'min:0'],
+            'unit_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'currency' => ['nullable', 'string', 'size:3'],
             'product_id' => ['nullable', 'string', 'uuid'],
             'platform_article_id' => ['nullable', 'string', 'uuid'],
@@ -185,6 +185,9 @@ class CatalogCartController extends Controller
             'preferred_supplier_partner_id' => ['nullable', 'string', 'uuid'],
             'notes' => ['nullable', 'string'],
             'sort_order' => ['nullable', 'integer'],
+        ], [
+            'quantity.regex' => 'The quantity must have at most 4 decimal places.',
+            'unit_price.regex' => 'The unit price must have at most 3 decimal places.',
         ]);
 
         try {
@@ -230,9 +233,11 @@ class CatalogCartController extends Controller
         $item = CatalogCartItem::where('cart_id', $cart->id)->findOrFail($itemId);
 
         $validated = $request->validate([
-            'quantity' => ['sometimes', 'numeric', 'min:0.01'],
+            'quantity' => ['sometimes', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,4})?$/'],
             'notes' => ['sometimes', 'nullable', 'string'],
             'sort_order' => ['sometimes', 'integer'],
+        ], [
+            'quantity.regex' => 'The quantity must have at most 4 decimal places.',
         ]);
 
         $item = $this->cartService->updateItem($item, $validated);

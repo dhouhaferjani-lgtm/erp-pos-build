@@ -540,6 +540,11 @@ final class FixedCurrencyScaleResolver implements CurrencyScaleResolverInterface
     {
         return $this->scale;
     }
+
+    public function getScaleSafe(?string $currencyCode = null, int $fallback = 3): int
+    {
+        return $this->scale;
+    }
 }
 
 final class ThrowingPartnerBalanceService extends PartnerBalanceService

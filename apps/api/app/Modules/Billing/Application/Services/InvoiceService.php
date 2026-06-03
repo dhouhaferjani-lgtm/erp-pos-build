@@ -10,6 +10,7 @@ use App\Modules\Billing\Domain\Invoice;
 use App\Modules\Billing\Domain\InvoiceItem;
 use App\Modules\Billing\Domain\TenantSubscription;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +21,10 @@ use Illuminate\Support\Facades\Storage;
  */
 final class InvoiceService
 {
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
     /**
      * Create an invoice for a subscription payment.
      */
@@ -92,7 +97,7 @@ final class InvoiceService
     /**
      * Create a manual invoice (not linked to subscription).
      *
-     * @param  array<array{description: string, amount: float, quantity?: float}>  $items
+     * @param  array<array{description: string, amount: float|string, quantity?: float|int}>  $items
      */
     public function createManualInvoice(
         Tenant $tenant,
@@ -103,18 +108,33 @@ final class InvoiceService
         return DB::transaction(function () use ($tenant, $items, $notes, $dueDate): Invoice {
             $taxRate = $this->getTaxRate($tenant);
 
-            // Calculate totals from items
-            $subtotal = 0;
-            $taxAmount = 0;
+            // Billing invoices are always EUR; use the resolver for forward-compatibility.
+            $currency = 'EUR';
+            $scale = $this->scaleResolver->getScale($currency);
+            $interScale = $scale + 1;
+
+            // Accumulate subtotal and tax using bcmath to avoid float precision drift.
+            /** @var numeric-string $subtotal */
+            $subtotal = '0';
+            /** @var numeric-string $taxAmount */
+            $taxAmount = '0';
 
             foreach ($items as $item) {
-                $quantity = $item['quantity'] ?? 1;
-                $itemAmount = (float) $item['amount'] * $quantity;
-                $subtotal += $itemAmount;
-                $taxAmount += $itemAmount * ($taxRate / 100);
+                /** @var numeric-string $quantity */
+                $quantity = (string) ($item['quantity'] ?? 1);
+                /** @var numeric-string $unitPrice */
+                $unitPrice = (string) $item['amount'];
+                /** @var numeric-string $itemAmount */
+                $itemAmount = bcmul($unitPrice, $quantity, $interScale);
+                $subtotal = bcadd($subtotal, $itemAmount, $interScale);
+                // Tax accumulation at intermediate scale to defer rounding.
+                /** @var numeric-string $taxRateFraction */
+                $taxRateFraction = bcdiv((string) $taxRate, '100', $interScale + 2);
+                $taxAmount = bcadd($taxAmount, bcmul($itemAmount, $taxRateFraction, $interScale), $interScale);
             }
 
-            $total = $subtotal + $taxAmount;
+            /** @var numeric-string $total */
+            $total = bcadd($subtotal, $taxAmount, $interScale);
 
             // Create invoice
             $invoice = Invoice::create([
@@ -124,11 +144,11 @@ final class InvoiceService
                 'status' => InvoiceStatus::Pending,
                 'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,
-                'discount_amount' => 0,
+                'discount_amount' => '0',
                 'total' => $total,
-                'amount_paid' => 0,
+                'amount_paid' => '0',
                 'amount_due' => $total,
-                'currency' => 'EUR',
+                'currency' => $currency,
                 'tax_rate' => $taxRate,
                 'billing_address' => $this->getBillingAddress($tenant),
                 'billing_email' => $tenant->email ?? '',
@@ -141,20 +161,27 @@ final class InvoiceService
 
             // Add line items
             foreach ($items as $index => $item) {
-                $quantity = $item['quantity'] ?? 1;
-                $itemAmount = (float) $item['amount'] * $quantity;
-                $itemTax = $itemAmount * ($taxRate / 100);
+                /** @var numeric-string $quantity */
+                $quantity = (string) ($item['quantity'] ?? 1);
+                /** @var numeric-string $unitPrice */
+                $unitPrice = (string) $item['amount'];
+                /** @var numeric-string $itemAmount */
+                $itemAmount = bcmul($unitPrice, $quantity, $interScale);
+                /** @var numeric-string $taxRateFraction */
+                $taxRateFraction = bcdiv((string) $taxRate, '100', $interScale + 2);
+                /** @var numeric-string $itemTax */
+                $itemTax = bcmul($itemAmount, $taxRateFraction, $interScale);
 
                 InvoiceItem::create([
                     'invoice_id' => $invoice->id,
                     'description' => $item['description'],
                     'quantity' => $quantity,
-                    'unit_price' => $item['amount'],
+                    'unit_price' => $unitPrice,
                     'amount' => $itemAmount,
                     'tax_rate' => $taxRate,
                     'tax_amount' => $itemTax,
-                    'discount_percent' => 0,
-                    'discount_amount' => 0,
+                    'discount_percent' => '0',
+                    'discount_amount' => '0',
                     'sort_order' => $index,
                 ]);
             }

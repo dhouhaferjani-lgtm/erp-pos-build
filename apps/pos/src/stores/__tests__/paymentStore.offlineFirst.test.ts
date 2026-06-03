@@ -577,8 +577,8 @@ describe('paymentStore offline-first cash checkout', () => {
       'term-1',
       useCartStore.getState().items,
       [
-        { payment_method_id: 'pm-cash', amount: 20, repository_id: 'repo-cash' },
-        { payment_method_id: 'pm-card', amount: 30, repository_id: 'repo-bank', card_last_four: '1234', transaction_reference: 'AUTH-2' },
+        { payment_method_id: 'pm-cash', amount: '20', repository_id: 'repo-cash' },
+        { payment_method_id: 'pm-card', amount: '30', repository_id: 'repo-bank', card_last_four: '1234', transaction_reference: 'AUTH-2' },
       ],
     );
 
@@ -597,7 +597,7 @@ describe('paymentStore offline-first cash checkout', () => {
     await usePaymentStore.getState().processAdvancedCheckout(
       'term-1',
       useCartStore.getState().items,
-      [{ payment_method_id: 'pm-cash', amount: 49, repository_id: 'repo-cash' }],
+      [{ payment_method_id: 'pm-cash', amount: '49', repository_id: 'repo-cash' }],
       undefined,
       undefined,
       undefined,
@@ -639,7 +639,7 @@ describe('paymentStore offline-first cash checkout', () => {
       usePaymentStore.getState().processAdvancedCheckout(
         'term-1',
         useCartStore.getState().items,
-        [{ payment_method_id: 'pm-ghost', amount: 50, repository_id: 'repo-cash' }],
+        [{ payment_method_id: 'pm-ghost', amount: '50', repository_id: 'repo-cash' }],
       ),
     ).rejects.toThrow(/unknown payment method|method not found/i);
   });
@@ -669,12 +669,12 @@ describe('paymentStore offline-first cash checkout', () => {
       useCartStore.getState().items,
       [
         // Cash half — no instrument fields.
-        { payment_method_id: 'pm-cash', amount: 25, repository_id: 'repo-cash' },
+        { payment_method_id: 'pm-cash', amount: '25', repository_id: 'repo-cash' },
         // Voucher half — instrument fields populated, mimicking the
         // AdvancedPaymentsModal merge of paymentStore.voucherTenders.
         {
           payment_method_id: 'pm-store-voucher',
-          amount: 25,
+          amount: '25',
           repository_id: 'repo-virtual',
           instrument_type: 'store_voucher',
           instrument_serial: 'SV-2026-0099',

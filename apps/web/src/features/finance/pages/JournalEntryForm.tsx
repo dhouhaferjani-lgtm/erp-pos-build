@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, ArrowLeft, Check, AlertCircle } from 'lucide-react'
 import { useAccounts } from '../hooks/useAccounts'
 import { useCreateJournalEntry } from '../hooks/useJournalEntryMutations'
+import { useCurrency } from '../../../hooks/useCurrency'
+import { MoneyInput } from '../../../components/atoms/MoneyInput'
 
 interface JournalLineForm {
   id: string
@@ -25,6 +27,7 @@ function createEmptyLine(): JournalLineForm {
 
 export function JournalEntryForm() {
   const { t } = useTranslation(['finance', 'common'])
+  const { currency } = useCurrency()
   const { data: accounts, isLoading: accountsLoading } = useAccounts()
   const createMutation = useCreateJournalEntry()
 
@@ -231,29 +234,25 @@ export function JournalEntryForm() {
                       </select>
                     </td>
                     <td className="px-4 py-3">
-                      <input
-                        type="number"
+                      <MoneyInput
+                        currency={currency}
                         value={line.debit}
-                        onChange={(e) =>
-                          { updateLine(line.id, 'debit', e.target.value); }
-                        }
-                        placeholder={t('finance:journalEntry.debit')}
+                        onChange={(v) => { updateLine(line.id, 'debit', v) }}
                         min="0"
-                        step="0.01"
                         className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm text-end focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        aria-label={t('finance:journalEntry.debit')}
+                        placeholder={t('finance:journalEntry.debit')}
                       />
                     </td>
                     <td className="px-4 py-3">
-                      <input
-                        type="number"
+                      <MoneyInput
+                        currency={currency}
                         value={line.credit}
-                        onChange={(e) =>
-                          { updateLine(line.id, 'credit', e.target.value); }
-                        }
-                        placeholder={t('finance:journalEntry.credit')}
+                        onChange={(v) => { updateLine(line.id, 'credit', v) }}
                         min="0"
-                        step="0.01"
                         className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm text-end focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        aria-label={t('finance:journalEntry.credit')}
+                        placeholder={t('finance:journalEntry.credit')}
                       />
                     </td>
                     <td className="px-4 py-3">
