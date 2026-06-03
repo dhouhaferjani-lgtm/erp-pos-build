@@ -139,8 +139,10 @@ Mirror the existing `showCompanySelect` structure, but the business picker fires
 because it writes local state). Requirements:
 
 - The page keeps `email` + `password` in its own React state (as today / as web does).
-- On a `requires_org_selection` outcome, render the picker (organization **name only**
-  — **not slug**, MINOR 1; minimizes pre-auth disclosure on a shared terminal).
+- On a `requires_org_selection` outcome, render the picker showing organization
+  **name + slug** (slug disambiguates same-named businesses; owner decision
+  2026-06-04). `tenant_id` is the selection value sent on the follow-up POST. See the
+  security note for the accepted pre-auth disclosure trade-off.
 - Selecting an org calls `login(email, password, { signal, tenantId })`.
 - **Concurrency guard:** organization buttons are disabled while a selection login is
   pending (`isLoading`); repeat clicks for the same tenant are ignored; a different
@@ -199,14 +201,16 @@ half-committed.
 - **Single-tenant email (common case):** one round-trip; token returned directly;
   `LOGIN_TENANT_ID` still recorded.
 
-## Security note (MINOR 1)
+## Security note (MINOR 1 — owner override 2026-06-04)
 
 The organization list is intentionally derived from a valid email alone (backend
-"Balanced stance"; the web client already exposes it). On a shared physical POS
-terminal this means anyone who can type a known multi-tenant email sees the associated
-business **names** pre-auth. To minimize disclosure, the POS picker shows **name only**
-(no slug). Rate-limiting/monitoring of `/auth/login` remain backend concerns, out of
-scope here.
+"Balanced stance"; the web client already exposes it, including slug). On a shared
+physical POS terminal this means anyone who can type a known multi-tenant email sees the
+associated business **name and slug** pre-auth. Owner accepted this trade-off: the
+disambiguation value (telling same-named businesses apart at a busy terminal) outweighs
+the marginal disclosure, which already exists on the web client. The picker therefore
+shows **name + slug**. Rate-limiting/monitoring of `/auth/login` remain backend
+concerns, out of scope here.
 
 ## Deferred to Sub-Spec B (Codex MAJOR 5 resolution)
 
@@ -252,8 +256,7 @@ working multi-tenant login.
 - inactive user `422` and suspended/archived `403` surfaced as their own messages.
 
 `LoginPage`:
-- renders the business picker (name only, no slug) on a `requires_org_selection`
-  outcome.
+- renders the business picker (name + slug) on a `requires_org_selection` outcome.
 - selecting an org re-invokes `login` with `{ tenantId }`.
 - **double-click same org** and **rapid two different orgs** → one tenant-bound POST,
   one committed auth state; buttons disabled while pending.
@@ -263,9 +266,9 @@ working multi-tenant login.
 1. Single-tenant-email POS user logs in unchanged (one round-trip).
 2. Multi-tenant-email user with a valid persisted tenant logs in with **no picker**, and
    the authenticating request carries `tenant_id`.
-3. Multi-tenant-email user with no/stale persisted tenant sees a name-only business
-   picker; selecting one logs in and persists the choice; subsequent logins skip the
-   picker.
+3. Multi-tenant-email user with no/stale persisted tenant sees a business picker showing
+   name + slug; selecting one logs in and persists the choice; subsequent logins skip
+   the picker.
 4. Cancel during any phase commits nothing.
 5. Concurrent picker selections produce exactly one authenticated session.
 6. Inactive-user and suspended/archived responses surface distinctly (not normalized).
