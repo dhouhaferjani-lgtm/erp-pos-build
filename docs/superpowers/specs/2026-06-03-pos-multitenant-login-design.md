@@ -260,6 +260,11 @@ working multi-tenant login.
 - selecting an org re-invokes `login` with `{ tenantId }`.
 - **double-click same org** and **rapid two different orgs** → one tenant-bound POST,
   one committed auth state; buttons disabled while pending.
+- **abort during a manual organization pick** (after the picker is shown) → the
+  tenant-bound POST receives a **fresh** `AbortController` signal (the form-submit
+  controller has already settled when the picker rendered), and cancel commits no
+  token/user/company/tenant state. (Codex r2 F-1: the manual-pick path needs its own
+  controller, separate from the submit-path controller.)
 
 ## Acceptance criteria
 
