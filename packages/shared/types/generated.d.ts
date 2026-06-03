@@ -330,6 +330,42 @@ modifiers: Array<App.Modules.Catalog.Application.DTOs.ModifierData> | null;
 created_at: string;
 updated_at: string | null;
 };
+export type ProductAttributeData = {
+id: string;
+tenant_id: string;
+code: string;
+name: string;
+data_type: App.Modules.Catalog.Domain.Enums.AttributeDataType;
+is_variant_axis: boolean;
+display_order: number;
+is_active: boolean;
+};
+export type ProductAttributeValueData = {
+id: string;
+tenant_id: string;
+attribute_id: string;
+code: string;
+label: string;
+hex_color: string | null;
+image_url: string | null;
+display_order: number;
+};
+export type ProductVariantData = {
+id: string;
+tenant_id: string;
+company_id: string;
+product_id: string;
+variant_code: string;
+sku: string;
+barcode: string | null;
+name_suffix: string;
+is_default: boolean;
+is_active: boolean;
+display_order: number;
+price_override: string | null;
+cost_override: string | null;
+image_url: string | null;
+};
 export type RecipeCostData = {
 total_cost: string;
 lines: Array<any>;
