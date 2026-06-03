@@ -121,39 +121,76 @@ class WeightedAverageCostService
                     ]);
                 }
 
-                // Lock product for cost update — scope by the input product's
-                // own tenant + company so the lock cannot escalate to a foreign
-                // product (defense-in-depth on the upstream-trusted instance).
+                $working = $this->workingScale();
+
+                // Company-wide on-hand quantity is the WAC blend basis: cost is
+                // company-wide per product (one company-level accounting cost),
+                // so the purchase blend must run against every stock_level row
+                // for the product, not just the receiving location's quantity —
+                // otherwise the running cost would depend on which location got
+                // the goods. Row-lock the ACTUAL stock_level rows (FOR UPDATE on
+                // each row), then sum in PHP — exactly like recordCostAdjustment;
+                // an aggregate sum()->lockForUpdate() locks no rows on Postgres.
+                // Canonical lock order: advisory (already held) -> stock_level
+                // rows FOR UPDATE -> product row LAST. Lock the company-wide
+                // rows BEFORE the product row.
+                $levels = StockLevel::query()
+                    ->where('product_id', $product->id)
+                    ->where('tenant_id', $product->tenant_id)
+                    ->where('company_id', $product->company_id)
+                    ->lockForUpdate()
+                    ->get();
+
+                // Company-wide qty BEFORE adding the incoming quantity.
+                $companyQty = '0';
+                foreach ($levels as $level) {
+                    $companyQty = bcadd($companyQty, (string) $level->quantity, $working);
+                }
+                $companyQty = CurrencyScale::bcformat($companyQty, 4);
+
+                // Lock product for cost update LAST (canonical order) — scope by
+                // the input product's own tenant + company so the lock cannot
+                // escalate to a foreign product (defense-in-depth on the
+                // upstream-trusted instance).
                 $product = Product::query()
                     ->where('tenant_id', $product->tenant_id)
                     ->where('company_id', $product->company_id)
                     ->lockForUpdate()
                     ->findOrFail($product->id);
 
-                $working = $this->workingScale();
-
                 // Normalise every operand into a numeric string before any
                 // arithmetic; quantities carry scale 4, monetary values the
                 // working precision. No native float math touches WAC.
                 $quantityStr = CurrencyScale::bcformat($quantity, 4);
                 $landedUnitCostStr = CurrencyScale::bcformat($landedUnitCost, $working);
+                // Receiving location qty (drives the stock_level row update only).
                 $currentQty = CurrencyScale::bcformat($stockLevel->quantity, 4);
                 $currentCostPrice = CurrencyScale::bcformat($product->cost_price ?? '0', $working);
-                $currentValue = bcmul($currentQty, $currentCostPrice, $working);
+                // WAC blend basis is the COMPANY-WIDE on-hand value, not the
+                // single receiving location's value.
+                $currentValue = bcmul($companyQty, $currentCostPrice, $working);
 
+                // Receiving location's new qty (only this row's quantity changes).
                 $newQty = bcadd($currentQty, $quantityStr, 4);
+                // Company-wide qty/value AFTER the incoming quantity — the blend
+                // denominator and numerator.
+                // precision-ok: quantities carry the canonical 4-dp quantity scale.
+                $newCompanyQty = bcadd($companyQty, $quantityStr, 4);
                 $newValue = bcadd($currentValue, bcmul($quantityStr, $landedUnitCostStr, $working), $working);
 
                 // Persist the blended WAC at the higher internal COST_SCALE — NO
                 // truncation to the currency scale here. Rounding to the currency
                 // scale happens only at the GL/COGS posting (and display) boundary,
                 // so the running average no longer compounds a downward bias.
+                // Blend against the COMPANY-WIDE quantity (denominator), not the
+                // single receiving location's quantity.
                 $costScale = $this->costScale();
-                $newAvgCost = bccomp($newQty, '0', 4) > 0
-                    ? CurrencyScale::bcformat(bcdiv($newValue, $newQty, $working), $costScale)
+                $newAvgCost = bccomp($newCompanyQty, '0', 4) > 0
+                    ? CurrencyScale::bcformat(bcdiv($newValue, $newCompanyQty, $working), $costScale)
                     : CurrencyScale::bcformat('0', $costScale);
 
                 // Record movement (cost ledger stored at the internal COST_SCALE).
+                // quantity_before/after track the RECEIVING location's row.
                 $movement = StockMovement::create([
                     'id' => Str::uuid()->toString(),
                     'tenant_id' => $product->tenant_id,
@@ -395,36 +432,65 @@ class WeightedAverageCostService
                     ]);
                 }
 
-                // Lock product for cost update — scoped to the input product's
-                // own tenant + company.
+                $working = $this->workingScale();
+
+                // Company-wide on-hand quantity is the WAC blend basis (mirrors
+                // recordPurchase / recordCostAdjustment): cost is company-wide
+                // per product, so a return into one location must blend against
+                // every stock_level row, not just the receiving location's qty.
+                // Row-lock the ACTUAL rows FOR UPDATE, then sum in PHP. Canonical
+                // lock order: advisory (already held) -> stock_level rows FOR
+                // UPDATE -> product row LAST.
+                $levels = StockLevel::query()
+                    ->where('product_id', $product->id)
+                    ->where('tenant_id', $product->tenant_id)
+                    ->where('company_id', $product->company_id)
+                    ->lockForUpdate()
+                    ->get();
+
+                // Company-wide qty BEFORE adding the incoming quantity.
+                $companyQty = '0';
+                foreach ($levels as $level) {
+                    $companyQty = bcadd($companyQty, (string) $level->quantity, $working);
+                }
+                $companyQty = CurrencyScale::bcformat($companyQty, 4);
+
+                // Lock product for cost update LAST (canonical order) — scoped to
+                // the input product's own tenant + company.
                 $product = Product::query()
                     ->where('tenant_id', $product->tenant_id)
                     ->where('company_id', $product->company_id)
                     ->lockForUpdate()
                     ->findOrFail($product->id);
 
-                $working = $this->workingScale();
-
                 // Normalise operands to numeric strings; quantity at scale 4,
                 // monetary values at the working precision. No native float math.
                 $quantityStr = CurrencyScale::bcformat($quantity, 4);
                 $originalCostStr = CurrencyScale::bcformat($originalCost, $working);
+                // Receiving location qty (drives the stock_level row update only).
                 $currentQty = CurrencyScale::bcformat($stockLevel->quantity, 4);
                 $currentCostPrice = CurrencyScale::bcformat($product->cost_price ?? '0', $working);
-                $currentValue = bcmul($currentQty, $currentCostPrice, $working);
+                // WAC blend basis is the COMPANY-WIDE on-hand value.
+                $currentValue = bcmul($companyQty, $currentCostPrice, $working);
 
+                // Receiving location's new qty (only this row's quantity changes).
                 $newQty = bcadd($currentQty, $quantityStr, 4);
+                // Company-wide qty/value AFTER the incoming quantity.
+                // precision-ok: quantities carry the canonical 4-dp quantity scale.
+                $newCompanyQty = bcadd($companyQty, $quantityStr, 4);
                 $newValue = bcadd($currentValue, bcmul($quantityStr, $originalCostStr, $working), $working);
 
                 // Persist the blended WAC at the higher internal COST_SCALE — NO
                 // boundary truncation (see recordPurchase()). Rounding to the
                 // currency scale happens only at the GL/COGS posting boundary.
+                // Blend against the COMPANY-WIDE quantity (denominator).
                 $costScale = $this->costScale();
-                $newAvgCost = bccomp($newQty, '0', 4) > 0
-                    ? CurrencyScale::bcformat(bcdiv($newValue, $newQty, $working), $costScale)
+                $newAvgCost = bccomp($newCompanyQty, '0', 4) > 0
+                    ? CurrencyScale::bcformat(bcdiv($newValue, $newCompanyQty, $working), $costScale)
                     : CurrencyScale::bcformat('0', $costScale);
 
                 // Record movement (cost ledger stored at the internal COST_SCALE).
+                // quantity_before/after track the RECEIVING location's row.
                 $movement = StockMovement::create([
                     'id' => Str::uuid()->toString(),
                     'tenant_id' => $product->tenant_id,
