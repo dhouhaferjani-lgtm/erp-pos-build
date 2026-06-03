@@ -56,6 +56,7 @@ import {
   Download,
   ShieldAlert,
   Cable,
+  Tags,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts'
@@ -173,6 +174,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
     { key: 'compositeItems', href: '/catalog/composite-items', icon: Combine, module: 'composite-items' },
     { key: 'modifierGroups', href: '/catalog/modifier-groups', icon: Layers, module: 'modifier-groups' },
     { key: 'menus', href: '/catalog/menus', icon: BookOpen, module: 'composite-items' },
+    { key: 'productAttributes', href: '/catalog/attributes', icon: Tags, module: 'composite-items' },
   ]
 
   const nav: NavModule[] = [
