@@ -74,6 +74,54 @@ class WeightedAverageCostService
     }
 
     /**
+     * Company-OWNED quantity for a product, as a numeric-string at workingScale.
+     *
+     * "Owned" = on-hand (sum of every stock_level row for the product within the
+     * company) PLUS in-transit (units that have left a source location but have
+     * not yet been received, so they live in NO stock_level row). This is the
+     * canonical WAC blend denominator basis shared by recordPurchase,
+     * recordReturn and recordCostAdjustment so all three agree even during an
+     * in-transit window.
+     *
+     * Concurrency (canonical lock order): this row-locks each stock_level row
+     * (real FOR UPDATE on the rows, then sums in PHP — an aggregate
+     * sum()->lockForUpdate() locks NO rows on PostgreSQL). It MUST be called
+     * INSIDE the per-product advisory lock and BEFORE the product row is locked,
+     * so the order stays advisory -> stock_level rows -> product row LAST.
+     *
+     * @return numeric-string
+     */
+    private function companyOwnedQuantity(string $productId, string $tenantId, string $companyId): string
+    {
+        $working = $this->workingScale();
+
+        // Row-lock the ACTUAL stock_level rows, then sum in PHP.
+        $levels = StockLevel::query()
+            ->where('product_id', $productId)
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->lockForUpdate()
+            ->get();
+
+        $onHand = '0';
+        foreach ($levels as $level) {
+            $onHand = bcadd($onHand, (string) $level->quantity, $working);
+        }
+
+        // Stock that has left the source but not yet been received still belongs
+        // to the company, so it shares in the WAC denominator.
+        $inTransit = (string) StockTransferLine::query()
+            ->join('stock_transfers', 'stock_transfers.id', '=', 'stock_transfer_lines.transfer_id')
+            ->where('stock_transfer_lines.product_id', $productId)
+            ->where('stock_transfers.tenant_id', $tenantId)
+            ->where('stock_transfers.company_id', $companyId)
+            ->where('stock_transfers.status', TransferStatus::InTransit)
+            ->sum('stock_transfer_lines.quantity');
+
+        return bcadd($onHand, $inTransit, $working);
+    }
+
+    /**
      * Record a purchase and update weighted average cost
      *
      * Uses pessimistic locking to prevent race conditions when multiple
@@ -123,30 +171,21 @@ class WeightedAverageCostService
 
                 $working = $this->workingScale();
 
-                // Company-wide on-hand quantity is the WAC blend basis: cost is
+                // Company-OWNED quantity is the WAC blend basis: cost is
                 // company-wide per product (one company-level accounting cost),
-                // so the purchase blend must run against every stock_level row
-                // for the product, not just the receiving location's quantity —
-                // otherwise the running cost would depend on which location got
-                // the goods. Row-lock the ACTUAL stock_level rows (FOR UPDATE on
-                // each row), then sum in PHP — exactly like recordCostAdjustment;
-                // an aggregate sum()->lockForUpdate() locks no rows on Postgres.
-                // Canonical lock order: advisory (already held) -> stock_level
-                // rows FOR UPDATE -> product row LAST. Lock the company-wide
-                // rows BEFORE the product row.
-                $levels = StockLevel::query()
-                    ->where('product_id', $product->id)
-                    ->where('tenant_id', $product->tenant_id)
-                    ->where('company_id', $product->company_id)
-                    ->lockForUpdate()
-                    ->get();
-
-                // Company-wide qty BEFORE adding the incoming quantity.
-                $companyQty = '0';
-                foreach ($levels as $level) {
-                    $companyQty = bcadd($companyQty, (string) $level->quantity, $working);
-                }
-                $companyQty = CurrencyScale::bcformat($companyQty, 4);
+                // so the purchase blend must run against every owned unit, not
+                // just the receiving location's quantity — otherwise the running
+                // cost would depend on which location got the goods, and would
+                // diverge from recordCostAdjustment during an in-transit window.
+                // "Owned" = on-hand (every stock_level row) + in-transit (units
+                // that left a source but aren't yet received, in no stock_level
+                // row). The shared helper row-locks the stock_level rows
+                // (canonical order: advisory held -> stock_level rows FOR UPDATE
+                // -> product row LAST) BEFORE the product row is locked below.
+                $companyQty = CurrencyScale::bcformat(
+                    $this->companyOwnedQuantity($product->id, $product->tenant_id, $product->company_id),
+                    4
+                );
 
                 // Lock product for cost update LAST (canonical order) — scope by
                 // the input product's own tenant + company so the lock cannot
@@ -434,26 +473,19 @@ class WeightedAverageCostService
 
                 $working = $this->workingScale();
 
-                // Company-wide on-hand quantity is the WAC blend basis (mirrors
+                // Company-OWNED quantity is the WAC blend basis (mirrors
                 // recordPurchase / recordCostAdjustment): cost is company-wide
                 // per product, so a return into one location must blend against
-                // every stock_level row, not just the receiving location's qty.
-                // Row-lock the ACTUAL rows FOR UPDATE, then sum in PHP. Canonical
-                // lock order: advisory (already held) -> stock_level rows FOR
-                // UPDATE -> product row LAST.
-                $levels = StockLevel::query()
-                    ->where('product_id', $product->id)
-                    ->where('tenant_id', $product->tenant_id)
-                    ->where('company_id', $product->company_id)
-                    ->lockForUpdate()
-                    ->get();
-
-                // Company-wide qty BEFORE adding the incoming quantity.
-                $companyQty = '0';
-                foreach ($levels as $level) {
-                    $companyQty = bcadd($companyQty, (string) $level->quantity, $working);
-                }
-                $companyQty = CurrencyScale::bcformat($companyQty, 4);
+                // every owned unit, not just the receiving location's qty.
+                // "Owned" = on-hand (every stock_level row) + in-transit, so the
+                // basis stays consistent with recordCostAdjustment during an
+                // in-transit window. The shared helper row-locks the stock_level
+                // rows (canonical order: advisory held -> stock_level rows FOR
+                // UPDATE -> product row LAST) BEFORE the product row below.
+                $companyQty = CurrencyScale::bcformat(
+                    $this->companyOwnedQuantity($product->id, $product->tenant_id, $product->company_id),
+                    4
+                );
 
                 // Lock product for cost update LAST (canonical order) — scoped to
                 // the input product's own tenant + company.
@@ -629,34 +661,15 @@ class WeightedAverageCostService
                 // first here would invert that order and deadlock a concurrent
                 // sale on the same product (AB-BA).
                 //
-                // Company-wide on-hand quantity. Row-lock the ACTUAL stock_level
-                // rows (FOR UPDATE on each row), then sum in PHP — an aggregate
-                // sum()->lockForUpdate() locks no rows on PostgreSQL and would let
-                // concurrent stock motion race the WAC delta computation.
-                $levels = StockLevel::query()
-                    ->where('product_id', $product->id)
-                    ->where('tenant_id', $tenantId)
-                    ->where('company_id', $companyId)
-                    ->lockForUpdate()
-                    ->get();
-
+                // Company-OWNED quantity = on-hand (every stock_level row,
+                // row-locked FOR UPDATE then summed in PHP) + in-transit (units
+                // that left a source but aren't yet received). The shared helper
+                // performs the stock_level row locking BEFORE the product row is
+                // locked below, preserving the canonical order. Stock that has
+                // left the source but not yet been received still belongs to the
+                // company, so it shares in the capitalized cost.
                 $working = $this->workingScale();
-                $onHand = '0';
-                foreach ($levels as $level) {
-                    $onHand = bcadd($onHand, (string) $level->quantity, $working);
-                }
-
-                // Stock that has left the source but not yet been received still
-                // belongs to the company, so it shares in the capitalized cost.
-                $inTransit = (string) StockTransferLine::query()
-                    ->join('stock_transfers', 'stock_transfers.id', '=', 'stock_transfer_lines.transfer_id')
-                    ->where('stock_transfer_lines.product_id', $product->id)
-                    ->where('stock_transfers.tenant_id', $tenantId)
-                    ->where('stock_transfers.company_id', $companyId)
-                    ->where('stock_transfers.status', TransferStatus::InTransit)
-                    ->sum('stock_transfer_lines.quantity');
-
-                $totalOwned = bcadd($onHand, $inTransit, $working);
+                $totalOwned = $this->companyOwnedQuantity($product->id, $tenantId, $companyId);
 
                 if (bccomp($totalOwned, '0', $working) <= 0) {
                     // Nothing owned to capitalize against — no-op, no movement.
