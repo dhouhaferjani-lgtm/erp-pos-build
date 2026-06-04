@@ -83,15 +83,20 @@ export function ProductPicker({
   const [activeIndex, setActiveIndex] = useState(-1)
   const debouncedQuery = useDebouncedValue(query, 250)
 
-  const searchEnabled = isOpen && debouncedQuery.trim().length >= 2
+  // Fetch whenever the dropdown is open so the user sees products immediately,
+  // before typing — matching the document line editor / product search select.
+  const listEnabled = isOpen && !disabled
+  const trimmedQuery = debouncedQuery.trim()
   const queryKey = ['pickers', 'product', productType, debouncedQuery] as const
 
   const { data, isLoading, isError } = useQuery({
     queryKey,
-    enabled: searchEnabled && !disabled,
+    enabled: listEnabled,
     queryFn: async () => {
       const params = new URLSearchParams({ per_page: '20', is_active: 'true' })
-      params.set('search', debouncedQuery.trim())
+      if (trimmedQuery.length > 0) {
+        params.set('search', trimmedQuery)
+      }
       if (productType !== 'all') {
         params.set('type', productType)
       }
@@ -149,43 +154,50 @@ export function ProductPicker({
   const effectiveLabel = label ?? t('product.label')
   const testIdAttr = testId ?? 'product-picker'
 
+  // Rendered identically in both selected and unselected states so the control
+  // keeps the same vertical footprint and stays aligned with sibling fields
+  // (e.g. the quantity column on the stock-transfer line).
+  const labelNode =
+    effectiveLabel !== '' ? (
+      <label className={tokens.label.base}>
+        {effectiveLabel}
+        {required ? <span className={tokens.label.required}> *</span> : null}
+      </label>
+    ) : null
+
   if (value !== null) {
     return (
-      <div
-        ref={containerRef}
-        className={`flex items-center gap-2 rounded-md border ${borderColors.default} bg-white px-3 py-2`}
-        data-testid={testIdAttr}
-      >
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className={`${tokens.table.cellMonoBadge}`}>{value.sku}</span>
-            <span className={`truncate text-sm font-medium ${textColors.primary}`}>{value.name}</span>
-          </div>
-        </div>
-        <button
-          type="button"
-          className={`${textColors.tertiary} ${textColors.hoverPrimary}`}
-          aria-label={t('common.clear')}
-          disabled={disabled}
-          onClick={() => {
-            onChange(null)
-            setQuery('')
-          }}
+      <div ref={containerRef} className="relative" data-testid={testIdAttr}>
+        {labelNode}
+        <div
+          className={`flex items-center gap-2 rounded-md border ${borderColors.default} bg-white px-3 py-2`}
         >
-          <X className="h-4 w-4" aria-hidden />
-        </button>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className={`${tokens.table.cellMonoBadge}`}>{value.sku}</span>
+              <span className={`truncate text-sm font-medium ${textColors.primary}`}>{value.name}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className={`${textColors.tertiary} ${textColors.hoverPrimary}`}
+            aria-label={t('common.clear')}
+            disabled={disabled}
+            onClick={() => {
+              onChange(null)
+              setQuery('')
+            }}
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
       </div>
     )
   }
 
   return (
     <div ref={containerRef} className="relative" data-testid={testIdAttr}>
-      {effectiveLabel !== '' ? (
-        <label className={tokens.label.base}>
-          {effectiveLabel}
-          {required ? <span className={tokens.label.required}> *</span> : null}
-        </label>
-      ) : null}
+      {labelNode}
       <input
         ref={inputRef}
         type="text"
@@ -212,11 +224,7 @@ export function ProductPicker({
           role="listbox"
           className={`absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border ${borderColors.light} bg-white py-1 shadow-lg`}
         >
-          {!searchEnabled ? (
-            <div className={`px-3 py-2 text-xs ${textColors.tertiary}`}>
-              {t('common.minCharacters')}
-            </div>
-          ) : isLoading ? (
+          {isLoading ? (
             <div className={`px-3 py-2 text-sm ${textColors.tertiary}`}>{t('common.loading')}</div>
           ) : isError ? (
             <div className={`px-3 py-2 text-sm ${textColors.error}`}>{t('common.error')}</div>
