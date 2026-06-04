@@ -1,148 +1,177 @@
 # POS Event-Sourced Audit / Fraud-Detection Pipeline — Sub-Spec C of 3
 
-- **Date:** 2026-06-04
-- **Branch:** `feat/pos-multitenant-login` (worktree off `origin/dev`; A + B already merged to `dev`)
-- **Status:** Design — pending Codex adversarial review before plan.
-- **Catalog:** event types defined in `docs/superpowers/specs/2026-06-04-pos-fraud-event-taxonomy.md` (P0 + P1 + P2, owner-approved scope).
-- **Predecessors:** A (login) + B (logout separation) merged. B's spec enumerated the auth/session events C must capture; this spec captures those PLUS the P1/P2 fraud signals.
+- **Date:** 2026-06-04 (revised after Codex adversarial review)
+- **Branch:** `feat/pos-multitenant-login` (A + B already merged to `dev`)
+- **Status:** Design — revised per Codex review
+  (`docs/superpowers/reviews/2026-06-04-pos-mt-login-C-spec-codex-review.md`).
+- **Catalog:** `docs/superpowers/specs/2026-06-04-pos-fraud-event-taxonomy.md` (P0+P1+P2).
+- **Predecessors:** A (login) + B (logout separation) merged.
 
 ## Goal
 
-Offline-first audit pipeline: POS client actions emit fraud-relevant audit events → queued in local SQLite → drained by the existing sync tick → a new backend ingest endpoint → written idempotently to the tenant `audit_events` table (the existing compliance audit trail, queryable for the fraud-detection center + ML).
+Offline-first audit pipeline: POS client actions emit fraud-relevant audit events → queued in
+local SQLite (durable **outbox**) → drained by the sync tick → a backend ingest endpoint →
+written **idempotently** to the tenant `audit_events` table (queryable for the fraud-detection
+center + ML). Detection only — never enforcement; emit is best-effort and never breaks the host
+action.
 
 ## Architecture
 
 ```
-store action ──► recordAuditEvent(type, aggregate, payload)   [best-effort, never throws]
-                      │ stamps event_id, context, occurred_at
-                      ▼
-              enqueueAuditEvent() ──► SQLite queued_audit_events (status=pending)
-                      │
-        syncService tick ──► pushQueuedAuditEvents() ──► POST /pos/audit-events/sync (batch ≤100)
-                      │                                          │
-              markSynced / markFailed                   idempotent write (event_id = audit_events.id)
-                                                                 ▼
-                                                   tenant audit_events table
+store action (snapshot before/after, call set(), THEN outside the updater:)
+   └─ void recordAuditEvent(type, aggregate, payload).catch(warn)   [best-effort, never throws]
+          │ stamps event_id(uuid), tenant/company/operator, metadata, occurred_at
+          ▼
+       enqueueAuditEvent() ──► SQLite queued_audit_events (status=pending)   [OUTBOX]
+          │
+   syncService tick ──► pushQueuedAuditEvents() (drain MULTIPLE batches ≤100 to a budget)
+          │                          │
+   markSynced / markFailed(+retry)   └─► POST /pos/audit-events/sync
+                                              │ per-event insert, dup-key→duplicate (race-safe)
+                                              ▼  AuditEvent::fromClientEnvelope() (id=event_id,
+                                                 client occurred_at preserved, hash over it)
+                                         tenant audit_events
 ```
 
-The pipeline is **event-type-agnostic** — adding event types is just more `recordAuditEvent()` call sites + payload shapes; the queue, sync, and backend never change. The backend validates the envelope only (it does not know the `pos.*` catalog).
+The pipeline is **event-type-agnostic** (backend validates the envelope only). Adding event
+types = more `recordAuditEvent()` call sites; the queue/sync/backend never change.
 
 ## Client design (`apps/pos`)
 
-### 1. SQLite migration v46 — `queued_audit_events`
+### 1. SQLite migration v46 — `queued_audit_events` (outbox)
+As before, with `event_id TEXT NOT NULL UNIQUE`. Indexed on `status`. (Full DDL in plan.)
 
-```sql
-CREATE TABLE IF NOT EXISTS queued_audit_events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  event_id TEXT NOT NULL UNIQUE,          -- client UUID = audit_events.id (idempotency)
-  event_type TEXT NOT NULL,
-  aggregate_type TEXT NOT NULL,
-  aggregate_id TEXT NOT NULL,
-  tenant_id TEXT NOT NULL,
-  company_id TEXT,
-  operator_id TEXT,
-  payload TEXT NOT NULL,                   -- JSON
-  metadata TEXT NOT NULL,                  -- JSON (device_id, terminal_id, shift_id, is_offline, app_version)
-  occurred_at TEXT NOT NULL,               -- ISO-8601, client wall-clock
-  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','syncing','synced','failed')),
-  retry_count INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  synced_at TEXT,
-  sync_error TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_queued_audit_events_status ON queued_audit_events(status);
-```
+### 2. `queuedAuditEventRepository.ts` — OUTBOX (not a PIN clone) [MAJOR 2]
+Mirror the **fiscalEventRepository / cashDrawerRepository** retry pattern, NOT
+`queuedPinUpdateRepository`:
+- `enqueueAuditEvent(db, row)`
+- `getPendingAuditEvents(db, limit)` → `WHERE status IN ('pending','failed') AND retry_count < MAX_RETRIES ORDER BY id ASC LIMIT ?` (failed rows are retried).
+- `markAuditEventsSyncing(db, ids)` / `markAuditEventSynced(db, id)` / `markAuditEventFailed(db, id, error)` (increments retry_count).
+- `recoverStrandedSyncingAuditEvents(db)` on boot → demote `syncing` → `pending` (crash recovery, mirrors receipt recovery).
+- `pruneSyncedAuditEvents(db, keepDays)` on boot → delete `status='synced'` older than N days. Failed rows are NEVER pruned silently (they surface via a pending-audit count).
+- `MAX_RETRIES` cap; rows exceeding it stay queryable (dead-letter) and counted, not dropped.
 
-### 2. `queuedAuditEventRepository.ts`
-Mirror `queuedPinUpdateRepository.ts`: `enqueueAuditEvent(db, row)`, `getPendingAuditEvents(db, limit=200)`, `markAuditEventSynced(db, id)`, `markAuditEventFailed(db, id, error)`. Plus a **retention prune**: `pruneSyncedAuditEvents(db, keepDays)` (synced rows older than N days deleted on boot) — high-volume P2 events must not grow the local DB unbounded.
+### 3. `lib/audit/recordAuditEvent.ts` — emit helper + typed catalog
+Typed `PosAuditEventType` union (wired P0/P1/P2 from the taxonomy, excluding the two DEFERRED
+events). `recordAuditEvent(input)` stamps `event_id` (uuid), context (tenant/company/operator
+from stores; device/terminal/shift/is_offline in metadata) + `occurred_at` (client ISO), and
+enqueues. **Best-effort:** the entire body is try/catch; a missing tenant or `getDb()` failure
+→ `console.warn` + return; it NEVER throws into the caller. Callers `void
+recordAuditEvent(...).catch(()=>{})` **outside** any Zustand `set()` updater [MINOR 2].
+For `pos.login` the tenant/operator are passed explicitly (the just-resolved user), since the
+store may not be committed yet.
 
-### 3. `lib/audit/recordAuditEvent.ts` — the emit helper + typed catalog
+### 4. `cart_session_id` lifecycle [MINOR 1]
+Add `cartSessionId: string | null` to `cartStore`, owned like `pendingIdempotencyKey`:
+- **Generate** (uuid) on the first mutation of an empty cart.
+- **Include** in the `pos.sale_held` payload *before* `holdCurrentCart` clears the cart.
+- **Regenerate** on `recallTransaction` / `replaceCart` / `replaceReturnItems` (a recalled/
+  replaced cart is a new correlation), UNLESS restoring a persisted refund draft that
+  intentionally keeps its own id.
+- **Clear** on checkout success, discard (`clearCart` non-checkout), hold, shift close, operator switch.
 
-```ts
-export type PosAuditEventType =
-  | 'pos.login' | 'pos.operator_signin' | ... ;   // the full P0/P1/P2 union from the taxonomy
+### 5. Emission points (wire only REAL code paths) [MAJOR 4, MAJOR 5]
+Wire `recordAuditEvent` at every emit point in the taxonomy whose action EXISTS. Notably:
+- **Line discounts (MAJOR 5):** add `applyLineDiscount` / `removeLineDiscount` actions to
+  `cartStore`, MOVE the current `HomePage` `useCartStore.setState(...)` discount logic into them,
+  and emit `pos.line_discount_applied` there. (Direct-setState today would be missed.)
+- **Manager-PIN / override failures:** emit `pos.manager_pin_failed` from `operatorStore.verifyPin`'s
+  bcrypt-mismatch catch, and `pos.manager_override_denied` from `verifyScopedManagerPin`'s
+  scope-mismatch / failure branch (real branches confirmed).
+- **DEFERRED (no action exists — NOT wired by C):** `pos.no_sale_drawer_open` (no no-sale
+  drawer action), `pos.refund_no_original_receipt` (refund requires a located/scanned receipt).
+  Documented in the taxonomy as requiring a new product surface; tracked, not faked.
+- Collapse `pos.screen_lock` (P0) + `pos.operator_locked` (P2) into ONE `pos.screen_lock` with `{reason, idle_ms}`.
 
-export interface RecordAuditEventInput {
-  type: PosAuditEventType;
-  aggregateType: string;
-  aggregateId: string;
-  payload?: Record<string, unknown>;
-  occurredAt?: string;                              // defaults to new Date().toISOString()
-}
+### 6. `pushQueuedAuditEvents()` + scheduler [MAJOR 6]
+In one sync tick, **drain multiple batches** (≤100 each) until the queue is empty or a
+row/time budget is hit (e.g. ≤1000 rows or ≤2s per tick), then stop and resume next tick.
+Wire AFTER receipts/PINs (audit is lowest priority). Expose `pendingAuditCount` for visibility.
+On boot: `recoverStrandedSyncingAuditEvents` then `pruneSyncedAuditEvents(db, 14)`.
 
-// Stamps event_id (uuid), tenant/company/operator + metadata (device/terminal/shift/is_offline),
-// enqueues. BEST-EFFORT: wraps everything in try/catch; on any failure it console.warns and
-// returns — it must NEVER throw into the calling store action.
-export async function recordAuditEvent(input: RecordAuditEventInput): Promise<void>;
-```
-
-Context sources (read at emit time): `getDeviceId()`; `useTerminalStore.getState().terminal?.id`; `useTerminalStore.getState().shift?.id`; `useAuthStore.getState().user?.{tenantId,id}`; `useAuthStore.getState().companyId`; `useConnectivityStore.getState().isOnline`. If `tenant_id` is missing (not logged in) the helper drops the event (auth events stamp tenant from the just-resolved user — pass it explicitly where needed, e.g. `pos.login`).
-
-### 4. `cart_session_id`
-Cart-level events (`cart_discarded`, `cart_line_removed`, `cart_quantity_updated`, discount events) need a stable correlation id. Add a `cartSessionId: string | null` to `cartStore`, generated (uuid) on the first mutation of an empty cart, cleared on checkout success or discard. Cart events use it as `aggregate_id`.
-
-### 5. Emission points
-Wire `recordAuditEvent(...)` at every emit point in the taxonomy (P0+P1+P2). Each is a best-effort one-liner inside the existing action. Group by store for implementation (auth/operator, cart, hold, refund, payment/voucher/customer, connectivity/sync, drawer, settings). Collapse `screen_lock`/`operator_locked` into one `pos.screen_lock` with `{reason, idle_ms}`.
-
-### 6. `pushQueuedAuditEvents()` in `syncService`
-Mirror `pushQueuedPinUpdates`: pull pending (≤100 per batch), POST, mark synced/failed, `logSyncOperation`. Wire into the sync tick AFTER receipts/PINs (audit is lower priority than fiscal/receipt sync). On boot, run `pruneSyncedAuditEvents(db, 14)`.
+### 7. Connectivity transition subscriber [MAJOR 3]
+`connectivityStore` only holds current state. Add a dedicated transition module (or extend the
+store) that tracks `offlineStartedAt`/`onlineStartedAt`, compares previous↔current `isOnline`,
+and emits **exactly once per edge**: `pos.went_offline { online_duration_ms }` on online→offline,
+`pos.went_online { offline_duration_ms, queued_receipts, queued_cash_ops, queued_audit }` on
+offline→online (counts read from SQLite). Subscribe once at app init.
 
 ## Backend design (`apps/api`)
 
+### `AuditEvent::fromClientEnvelope()` factory [BLOCKER]
+The existing custom constructor forces `occurred_at = now()` and `HasUuids` overwrites `id`. Add
+a static factory that force-fills `id` (= client `event_id`), `tenant_id`, `company_id`,
+`user_id` (= operator_id), `aggregate_*`, `payload`, `metadata`, and the **parsed client
+`occurred_at`**, then computes `event_hash` over the preserved timestamp, WITHOUT triggering the
+`HasUuids` overwrite (set the key explicitly and ensure the creating-hook respects a present key,
+or insert via a path that bypasses uuid generation). Unit test: saved PK == client `event_id`,
+saved `occurred_at` == client value, `event_hash` hashes the preserved timestamp.
+
 ### Route + controller
-New `POST /api/v1/pos/audit-events/sync` under the POS middleware group (Sanctum + `EnforceTokenTenantClaim` + `SetPermissionsTeam`), `Gate::authorize('pos.operate_terminal')`. New `AuditEventSyncController` (or method on a POS sync controller). Request:
+`POST /api/v1/pos/audit-events/sync` under the POS group (`api`, `auth:sanctum`,
+`SetPermissionsTeam`, `EnforceTokenTenantClaim`; tenancy resolved by `ResolveTenancy`).
+Authorize a **dedicated ability** `pos.audit_sync` (not `pos.operate_terminal`) [open-Q 3].
+Per request:
+1. Validate: `events` 1..100; required fields; `occurred_at` ISO; `event_type` ≤100; **payload +
+   metadata byte caps** (e.g. ≤8 KB each) [NIT].
+2. **Tenant guard:** reject 422 if any event `tenant_id` ≠ `$request->user()->tenant_id`, before
+   writing anything.
+3. **Per-event idempotent insert (race-safe) [MAJOR 1]:** `try { AuditEvent::fromClientEnvelope($e)
+   ->saveOrFail(); $created++; } catch (UniqueConstraintViolationException) { $duplicates++; }`.
+   **No batch-wide transaction** that could roll back valid rows on one duplicate.
+4. Enrich `metadata` server-side with `ingested_at` (server time) and `client_clock_skew_ms`
+   (server_now − client occurred_at) [NIT] + request `ip`.
+5. Response: `{ data: { created, duplicates } }`.
 
-```
-{ "events": [ { event_id(uuid), event_type, aggregate_type, aggregate_id,
-                tenant_id(uuid), company_id(uuid|null), operator_id(uuid|null),
-                payload(object), metadata(object), occurred_at(iso8601) }, ... ] }  // 1..100
-```
-
-Logic per request:
-1. Validate (batch 1..100; types; `occurred_at` date; `event_type` ≤100).
-2. **Tenant guard:** reject (422) if any event's `tenant_id` ≠ `$request->user()->tenant_id`.
-3. **Idempotent write per event:** if `AuditEvent::whereKey($event_id)->exists()` → skip (already ingested); else create via the existing `AuditEvent` model with `id = event_id`, `user_id = operator_id`, `occurred_at` preserved, `metadata` merged with server-side `{ ip, ingested_via: 'pos-sync' }`. Server computes `event_hash`. Wrap the batch in a DB transaction; a single bad row should not 500 the whole batch — collect per-event `{event_id, status: 'created'|'duplicate'}`.
-4. Response: `{ data: { synced, duplicates } }`.
-
-### Idempotency / tenancy
-- `event_id` (client UUID) = `audit_events.id` (PK) → dedup on resend without a schema change to the shared compliance table.
-- Write runs in the token's tenant context (`audit_events` is on the tenant DB; the POS token carries the tenant claim → tenancy initialized by existing middleware). Per-event `tenant_id` validated against the token defends against a tampered client batch.
-
-### No new server-side audit emission
-The existing `DomainEventSubscriber` server-side path is untouched. This adds a client-ingest path alongside it. No hash chain (per-row hash, existing behavior).
+### Tenancy [MINOR 3]
+Write runs in the token's tenant DB (POS token carries the tenant claim → `ResolveTenancy`
+initializes the tenant connection). Per-event `tenant_id` validated against the token. Feature
+test with `TENANCY_DB_PER_TENANT=true`: post to the endpoint, assert the row lands in the TENANT
+db, assert a foreign payload `tenant_id` is rejected before any write.
 
 ## Scope
 
-- **In:** `apps/pos` (migration, repo, helper, cart_session_id, ~24 emit points, sync drain, retention prune) + `apps/api` (one ingest endpoint/controller + route + tests).
-- **Out:** `apps/web`; the fraud-detection ANALYSIS/alerting (downstream, separate — this only SOURCES events); changing existing server-side domain-event audit; sampling/aggregation (capture-all per owner, with retention prune as the only volume control).
+- **In:** `apps/pos` (migration v46, outbox repo, recordAuditEvent helper + typed catalog,
+  cart_session_id, line-discount actions, connectivity transition subscriber, ~20 real emit
+  points, multi-batch drain, boot recovery+prune) + `apps/api` (`fromClientEnvelope` factory,
+  ingest controller + route + `pos.audit_sync` ability + tests).
+- **Out:** `apps/web`; the fraud ANALYSIS/alerting (downstream); existing server-side domain
+  audit; the 2 DEFERRED events (need new product surfaces); sampling (capture-all + retention).
 
 ## Testing
 
-Client:
-- repo: enqueue/getPending(limit)/markSynced/markFailed/prune.
-- `recordAuditEvent`: stamps event_id+context+occurred_at and enqueues; **best-effort** — getDb failure / missing tenant → no throw, event dropped/warned; never throws into caller.
-- `cartSessionId` lifecycle: generated on first mutation, stable across edits, cleared on checkout/discard.
-- `pushQueuedAuditEvents`: success→synced; failure→failed+retry; batches ≤100; offline → no-op.
-- a representative emit point per group actually enqueues the right type+payload (e.g. cart_discarded carries discount_total; manager_pin_failed carries NO pin; went_online carries queued counts) — and that emit failure never breaks the host action.
+Client: outbox repo (enqueue; getPending selects pending+failed under retry cap; markSyncing/
+Synced/Failed; recoverStranded; prune synced only); `recordAuditEvent` best-effort (no throw on
+getDb/missing-tenant; never breaks caller); `cartSessionId` lifecycle (create/include-in-hold/
+regenerate-on-recall/clear); `pushQueuedAuditEvents` multi-batch drain + offline no-op + failed
+retry; connectivity subscriber emits once per edge with counts; a representative emit per group
+enqueues correct type/payload (no PIN/token/hash); line-discount via the new action emits even
+when invoked from HomePage.
 
-Backend:
-- idempotent: same `event_id` twice → one row, second reports duplicate.
-- tenant guard: event with foreign `tenant_id` → 422, nothing written.
-- batch validation (size, required fields, occurred_at format).
-- `event_hash` computed; `occurred_at` preserved; metadata merged with server fields; `user_id` = operator_id.
-- writes land on the correct tenant DB.
+Backend: `fromClientEnvelope` (PK==event_id, occurred_at preserved, hash over it); idempotent
+(same event_id twice → 1 row, second=duplicate; concurrent dup → caught, no 500); tenant guard
+(foreign tenant_id → 422, nothing written); batch + byte-cap validation; metadata enriched with
+ingested_at/skew; DB-per-tenant routing test.
 
 ## Acceptance criteria
 
-1. The pipeline ingests POS audit events offline-first: enqueued locally, drained on sync, written once to tenant `audit_events`, idempotent on resend.
-2. All P0+P1+P2 event types from the taxonomy are emitted at their points, best-effort (an audit failure never breaks the host action; no PIN/token/hash in any payload).
-3. Cross-tenant events are rejected server-side; events carry operator/terminal/shift/occurred_at for ML features.
-4. High-volume events captured (capture-all) with a local retention prune; `audit_events` write is event-type-agnostic.
-5. No `apps/web` changes; existing server-side audit untouched; no hash-chain change.
+1. Offline-first ingest: enqueued locally (durable outbox; failed rows retried, stranded
+   recovered on boot), drained multi-batch on sync, written once to tenant `audit_events`,
+   idempotent on resend (PK = client event_id; concurrent dup never 500s or double-writes).
+2. Every WIRED P0/P1/P2 event (taxonomy minus the 2 DEFERRED) emits at a REAL code path,
+   best-effort (never breaks the host action; no PIN/token/hash in payloads; emitted outside
+   Zustand `set()` updaters).
+3. Client `occurred_at` preserved as the business timestamp; server adds `ingested_at` +
+   `client_clock_skew_ms`; payload/metadata byte-capped.
+4. Cross-tenant events rejected before any write; ingest authorized by a dedicated
+   `pos.audit_sync` ability; write lands on the correct tenant DB (tested in DB-per-tenant mode).
+5. High-volume capture with multi-batch drain + retention prune; no `apps/web` changes; existing
+   server-side audit + hash behavior untouched.
 
-## Open questions for review
-
-- `cart_session_id` placement in `cartStore` — does any existing logic key off cart identity that this could collide with?
-- Should the sync drain batch-cap (100) + per-tick frequency risk a backlog for very high P2 volume, and is `getPendingAuditEvents` ordering by `id ASC` (insertion order) sufficient given `occurred_at` is the canonical order?
-- Is `Gate pos.operate_terminal` the right authorization for audit ingest, or should it be a dedicated ability?
-- Best-effort emit reads several stores synchronously at call time — any re-entrancy/perf concern wiring it into hot paths like `cartStore.removeItem` / `updateQuantity`?
+## Resolved review questions
+1. `cart_session_id` lifecycle defined (§4), owned like `pendingIdempotencyKey`.
+2. Multi-batch drain per tick to a budget; `id ASC` for retry fairness, `occurred_at` canonical
+   business order; expose pending count.
+3. Dedicated `pos.audit_sync` ability (not `pos.operate_terminal`).
+4. Emit outside `set()` updaters, fire-and-forget with internal catch; tested that audit failure
+   never changes cart/payment/operator behavior.
