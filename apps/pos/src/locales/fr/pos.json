@@ -513,6 +513,11 @@
     "footerText": "Texte de pied de page",
     "footerTextPlaceholder": "Merci pour votre achat !",
     "encoding": "Encodage des caractères",
+    "deviceSecurity": "Appareil et sécurité",
+    "deviceUnbind": "Déconnecter et dissocier l'appareil",
+    "deviceUnbindConfirmTitle": "Dissocier cet appareil ?",
+    "deviceUnbindConfirmMessage": "Cela déconnecte entièrement le terminal. Une connexion complète sera requise la prochaine fois, et l'établissement enregistré sera effacé.",
+    "deviceUnbindConfirm": "Dissocier l'appareil",
     "cfd": {
       "title": "Affichage client",
       "desktopOnly": "L'affichage client est disponible uniquement dans l'application de bureau.",

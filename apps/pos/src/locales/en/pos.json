@@ -513,6 +513,11 @@
     "footerText": "Footer Text",
     "footerTextPlaceholder": "Thank you for your purchase!",
     "encoding": "Character Encoding",
+    "deviceSecurity": "Device & Security",
+    "deviceUnbind": "Sign out & unbind device",
+    "deviceUnbindConfirmTitle": "Unbind this device?",
+    "deviceUnbindConfirmMessage": "This signs the terminal out completely. A full login will be required next time, and the saved business will be cleared.",
+    "deviceUnbindConfirm": "Unbind device",
     "cfd": {
       "title": "Customer Display",
       "desktopOnly": "Customer display is only available in the desktop app.",
