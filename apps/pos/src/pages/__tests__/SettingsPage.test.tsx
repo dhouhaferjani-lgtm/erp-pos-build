@@ -2,7 +2,7 @@
  * Sub-Spec B: SettingsPage Device & Security section — manager-gated.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
@@ -84,8 +84,8 @@ vi.mock('@/lib/session/teardownPosSession', () => ({
   teardownPosSessionStores: () => teardownSpy(),
 }));
 
-// Auth store mock
-const unbindSpy = vi.fn();
+// Auth store mock — unbindDevice is async (FIX 1)
+const unbindSpy = vi.fn().mockResolvedValue(undefined);
 vi.mock('@/stores/authStore', () => ({
   useAuthStore: <T,>(selector: (s: unknown) => T): T => {
     return selector({ serverUrl: 'http://localhost:8002', unbindDevice: () => unbindSpy() });
@@ -93,15 +93,19 @@ vi.mock('@/stores/authStore', () => ({
 }));
 
 // Operator store — operator roles are controlled per test
-let mockOperatorRoles: string[] = ['manager'];
+let mockOperatorRoles: string[] | null = ['manager'];
 
-function setOperatorRoles(roles: string[]) {
+function setOperatorRoles(roles: string[] | null) {
   mockOperatorRoles = roles;
 }
 
 vi.mock('@/stores/operatorStore', () => ({
   useOperatorStore: <T,>(selector: (s: unknown) => T): T => {
-    return selector({ operator: { id: 'op-1', name: 'Test Op', roles: mockOperatorRoles } });
+    return selector({
+      operator: mockOperatorRoles !== null
+        ? { id: 'op-1', name: 'Test Op', roles: mockOperatorRoles }
+        : null,
+    });
   },
 }));
 
@@ -144,10 +148,41 @@ describe('SettingsPage – Device & Security (Sub-Spec B)', () => {
     setOperatorRoles(['manager']);
     teardownSpy.mockReset();
     unbindSpy.mockReset();
+    unbindSpy.mockResolvedValue(undefined);
+  });
+
+  // --- FIX 3: fail-closed for operator === null ---
+  it('hides Device & Security section for operator === null', () => {
+    setOperatorRoles(null);
+    render(<SettingsPage />);
+    expect(screen.queryByTestId('device-security-section')).toBeNull();
+    expect(screen.queryByTestId('device-unbind-button')).toBeNull();
+  });
+
+  it('hides Device & Security section for roles === [] (operator present, no manager role)', () => {
+    // Operator exists but has no roles — isManagerRole([]) === false → section hidden.
+    setOperatorRoles([]);
+    render(<SettingsPage />);
+    expect(screen.queryByTestId('device-security-section')).toBeNull();
+    expect(screen.queryByTestId('device-unbind-button')).toBeNull();
   });
 
   it('shows Device & Security section (incl. unbind) only for a manager operator', () => {
     setOperatorRoles(['manager']);
+    render(<SettingsPage />);
+    expect(screen.getByTestId('device-security-section')).toBeInTheDocument();
+    expect(screen.getByTestId('device-unbind-button')).toBeInTheDocument();
+  });
+
+  it('shows Device & Security section for admin operator', () => {
+    setOperatorRoles(['admin']);
+    render(<SettingsPage />);
+    expect(screen.getByTestId('device-security-section')).toBeInTheDocument();
+    expect(screen.getByTestId('device-unbind-button')).toBeInTheDocument();
+  });
+
+  it('shows Device & Security section for owner operator', () => {
+    setOperatorRoles(['owner']);
     render(<SettingsPage />);
     expect(screen.getByTestId('device-security-section')).toBeInTheDocument();
     expect(screen.getByTestId('device-unbind-button')).toBeInTheDocument();
@@ -160,13 +195,64 @@ describe('SettingsPage – Device & Security (Sub-Spec B)', () => {
     expect(screen.queryByTestId('device-unbind-button')).toBeNull();
   });
 
-  it('confirming unbind runs teardown then unbindDevice', () => {
+  // --- FIX 3: change-terminal hidden for cashier ---
+  it('"Change terminal" control hidden for a cashier operator', () => {
+    // With a terminal set, the change-terminal button appears inside the manager-gated section.
+    // For cashier it should not appear.
+    setOperatorRoles(['cashier']);
+    render(<SettingsPage />);
+    // The change terminal button is inside the manager-gated section, so it won't appear.
+    expect(screen.queryByText('terminal.changeTerminal')).toBeNull();
+  });
+
+  // --- FIX 2: confirm-time guard — modal hidden / actions blocked when isManager is false ---
+  it('FIX 2: modal does not render at all for non-manager — even if showUnbindConfirm were true', () => {
+    // For cashier, the unbind button is hidden (so modal can't be triggered),
+    // and the modal itself is also gated on isManager.
+    setOperatorRoles(['cashier']);
+    render(<SettingsPage />);
+    expect(screen.queryByTestId('modal')).toBeNull();
+  });
+
+  // --- FIX 2: role changes to cashier between open and confirm → actions NOT called ---
+  it('FIX 2: if operator role becomes cashier after modal opens → teardown and unbind NOT called', async () => {
+    // Render as manager first so the section and button appear.
     setOperatorRoles(['manager']);
+    const { rerender } = render(<SettingsPage />);
+
+    // Open the unbind confirm modal.
+    fireEvent.click(screen.getByTestId('device-unbind-button'));
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
+
+    // Simulate operator role change to cashier before confirming.
+    setOperatorRoles(['cashier']);
+    rerender(<SettingsPage />);
+
+    // Modal is now gated off — it disappears because isManager is false.
+    // So confirm button is gone — teardown/unbind must not be called.
+    expect(screen.queryByTestId('device-unbind-confirm')).toBeNull();
+    expect(teardownSpy).not.toHaveBeenCalled();
+    expect(unbindSpy).not.toHaveBeenCalled();
+  });
+
+  // --- Normal confirm path ---
+  it('confirming unbind calls teardownPosSessionStores BEFORE unbindDevice (order)', async () => {
+    setOperatorRoles(['manager']);
+    const callOrder: string[] = [];
+    teardownSpy.mockImplementation(() => { callOrder.push('teardown'); });
+    unbindSpy.mockImplementation(async () => { callOrder.push('unbind'); });
+
     render(<SettingsPage />);
     fireEvent.click(screen.getByTestId('device-unbind-button'));
-    fireEvent.click(screen.getByTestId('device-unbind-confirm'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('device-unbind-confirm'));
+    });
+
     expect(teardownSpy).toHaveBeenCalledTimes(1);
     expect(unbindSpy).toHaveBeenCalledTimes(1);
+    // teardown must come BEFORE unbind.
+    expect(callOrder).toEqual(['teardown', 'unbind']);
   });
 
   it('cancelling unbind does not run teardown or unbindDevice', () => {

@@ -187,6 +187,24 @@ describe('Header (Sub-Spec B)', () => {
     expect(screen.queryByTitle('header.logout')).toBeNull();
   });
 
+  it('renders no device-logout button for an admin operator', () => {
+    mockOperator = { name: 'Admin', roles: ['admin'], id: 'op-3' };
+    render(<Header />);
+    expect(screen.queryByTitle('header.logout')).toBeNull();
+  });
+
+  it('renders no device-logout button for an owner operator', () => {
+    mockOperator = { name: 'Owner', roles: ['owner'], id: 'op-4' };
+    render(<Header />);
+    expect(screen.queryByTitle('header.logout')).toBeNull();
+  });
+
+  it('renders no device-logout button when operator is null', () => {
+    mockOperator = null;
+    render(<Header />);
+    expect(screen.queryByTitle('header.logout')).toBeNull();
+  });
+
   it('still renders the Switch button', () => {
     render(<Header />);
     expect(screen.getByTitle('header.switch')).toBeInTheDocument();

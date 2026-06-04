@@ -11,6 +11,7 @@ import { useOperatorStore } from '@/stores/operatorStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { Modal } from '@/components/pos/Modal';
 import { teardownPosSessionStores } from '@/lib/session/teardownPosSession';
+import { isManagerRole } from '@/lib/auth/roles';
 import {
   discoverPrinters,
   printTestPage,
@@ -58,11 +59,19 @@ export function SettingsPage() {
   const unbindDevice = useAuthStore((s) => s.unbindDevice);
 
   const operator = useOperatorStore((s) => s.operator);
-  const isManager = operator?.roles?.some((r) =>
-    ['manager', 'admin', 'owner'].includes(r),
-  ) ?? false;
+  const isManager = isManagerRole(operator?.roles);
 
   const [showUnbindConfirm, setShowUnbindConfirm] = useState(false);
+
+  // FIX 2 (MAJOR): re-check isManager at confirm time. If the operator role
+  // changed between opening the modal and clicking confirm (e.g. role change
+  // race), the destructive action must not proceed.
+  const handleConfirmUnbind = async () => {
+    if (!isManager) { setShowUnbindConfirm(false); return; }
+    setShowUnbindConfirm(false);
+    teardownPosSessionStores();
+    await unbindDevice();
+  };
 
   const isOnline = useConnectivityStore((s) => s.isOnline);
 
@@ -600,6 +609,7 @@ export function SettingsPage() {
                 <div className="mb-3">
                   <p className="mb-2 text-xs text-gray-500">{t('terminal.changeTerminalDesc')}</p>
                   <button
+                    type="button"
                     onClick={() => {
                       if (window.confirm(t('terminal.changeTerminalConfirm'))) {
                         useTerminalStore.getState().reset();
@@ -613,6 +623,7 @@ export function SettingsPage() {
                 </div>
               )}
               <button
+                type="button"
                 data-testid="device-unbind-button"
                 onClick={() => setShowUnbindConfirm(true)}
                 className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 hover:bg-red-100"
@@ -664,37 +675,37 @@ export function SettingsPage() {
         </div>
       </div>
 
-      {/* Device Unbind Confirmation Modal */}
-      <Modal
-        isOpen={showUnbindConfirm}
-        onClose={() => setShowUnbindConfirm(false)}
-        title={t('settings.deviceUnbindConfirmTitle')}
-        size="sm"
-        footer={
-          <div className="flex gap-3">
-            <button
-              data-testid="device-unbind-cancel"
-              onClick={() => setShowUnbindConfirm(false)}
-              className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              {t('settings.cancel')}
-            </button>
-            <button
-              data-testid="device-unbind-confirm"
-              onClick={() => {
-                setShowUnbindConfirm(false);
-                teardownPosSessionStores();
-                unbindDevice();
-              }}
-              className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700"
-            >
-              {t('settings.deviceUnbindConfirm')}
-            </button>
-          </div>
-        }
-      >
-        <p className="text-sm text-gray-600">{t('settings.deviceUnbindConfirmMessage')}</p>
-      </Modal>
+      {/* Device Unbind Confirmation Modal — FIX 2: only rendered for managers */}
+      {isManager && showUnbindConfirm && (
+        <Modal
+          isOpen={showUnbindConfirm}
+          onClose={() => setShowUnbindConfirm(false)}
+          title={t('settings.deviceUnbindConfirmTitle')}
+          size="sm"
+          footer={
+            <div className="flex gap-3">
+              <button
+                type="button"
+                data-testid="device-unbind-cancel"
+                onClick={() => setShowUnbindConfirm(false)}
+                className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                {t('settings.cancel')}
+              </button>
+              <button
+                type="button"
+                data-testid="device-unbind-confirm"
+                onClick={() => void handleConfirmUnbind()}
+                className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700"
+              >
+                {t('settings.deviceUnbindConfirm')}
+              </button>
+            </div>
+          }
+        >
+          <p className="text-sm text-gray-600">{t('settings.deviceUnbindConfirmMessage')}</p>
+        </Modal>
+      )}
     </div>
   );
 }

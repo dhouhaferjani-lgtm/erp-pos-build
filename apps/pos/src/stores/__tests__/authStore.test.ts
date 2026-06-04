@@ -781,12 +781,53 @@ describe('authStore', () => {
       vi.clearAllMocks();
       useAuthStore.setState({ user: mockUser, token: 'tok', companies: mockCompanies, isAuthenticated: true });
     });
-    it('clears LOGIN_TENANT_ID and tears down the session', () => {
-      useAuthStore.getState().unbindDevice();
+
+    it('clears LOGIN_TENANT_ID FIRST (awaited), then tears down the session', async () => {
+      const removeStoredValueMock = vi.mocked(removeStoredValue);
+      const callOrder: string[] = [];
+
+      // Track call order: removeStoredValue for login_tenant_id vs isAuthenticated flip.
+      removeStoredValueMock.mockImplementation(async (key: string) => {
+        callOrder.push(`remove:${key}`);
+        return undefined;
+      });
+
+      // Spy on the state change that logout() makes synchronously.
+      const unsubscribe = useAuthStore.subscribe((state) => {
+        if (!state.isAuthenticated && callOrder.every((e) => !e.startsWith('remove:login_tenant_id'))) {
+          // If isAuthenticated flipped before the key was removed that would be the bug.
+          // We just record the flip order here.
+        }
+        if (!state.isAuthenticated) {
+          callOrder.push('logout:isAuthenticated=false');
+        }
+      });
+
+      await useAuthStore.getState().unbindDevice();
+      unsubscribe();
+
       expect(removeStoredValue).toHaveBeenCalledWith('login_tenant_id');
       expect(useAuthStore.getState().isAuthenticated).toBe(false);
       expect(useAuthStore.getState().token).toBeNull();
+
+      // LOGIN_TENANT_ID must have been removed BEFORE logout ran.
+      const tenantKeyIdx = callOrder.indexOf('remove:login_tenant_id');
+      const logoutIdx = callOrder.indexOf('logout:isAuthenticated=false');
+      expect(tenantKeyIdx).toBeGreaterThanOrEqual(0);
+      expect(logoutIdx).toBeGreaterThan(tenantKeyIdx);
     });
+
+    it('removeStoredValue rejects → unbindDevice still completes (logout still runs, no throw)', async () => {
+      vi.mocked(removeStoredValue).mockRejectedValueOnce(new Error('storage failure'));
+
+      // Must not throw.
+      await expect(useAuthStore.getState().unbindDevice()).resolves.toBeUndefined();
+
+      // logout() must still have run despite the storage error.
+      expect(useAuthStore.getState().isAuthenticated).toBe(false);
+      expect(useAuthStore.getState().token).toBeNull();
+    });
+
     it('logout() does NOT clear LOGIN_TENANT_ID (binding survives 401/setup paths)', () => {
       useAuthStore.getState().logout();
       expect(removeStoredValue).not.toHaveBeenCalledWith('login_tenant_id');

@@ -68,7 +68,6 @@ export function PinEntryPage({ isLocked }: PinEntryPageProps) {
           onSubmit={() => void handleSubmit()}
           disabled={verifying}
         />
-
       </div>
     </div>
   );

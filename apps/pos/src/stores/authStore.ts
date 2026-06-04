@@ -98,7 +98,7 @@ interface AuthActions {
     opts?: { signal?: AbortSignal; tenantId?: string },
   ) => Promise<LoginOutcome>;
   logout: () => void;
-  unbindDevice: () => void;
+  unbindDevice: () => Promise<void>;
   checkSession: (opts?: { signal?: AbortSignal }) => Promise<void>;
   setCompany: (companyId: string) => void;
   initialize: (opts?: { signal?: AbortSignal }) => Promise<void>;
@@ -434,8 +434,17 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   // login re-resolves the tenant email-first. Auth-owned only — feature-store
   // cleanup is done by teardownPosSessionStores() at the UI layer to avoid an
   // operatorStore<->authStore import cycle.
-  unbindDevice: () => {
+  //
+  // FIX 1 (MAJOR): clear LOGIN_TENANT_ID FIRST (awaited) so the key is gone
+  // before logout() flips isAuthenticated→false and routes to login. A
+  // fire-and-forget delete after logout() can race against the next login
+  // attempt, letting the old binding survive an unbind.
+  unbindDevice: async () => {
+    try {
+      await removeStoredValue(StorageKeys.LOGIN_TENANT_ID);
+    } catch (e) {
+      console.warn('[auth] failed to clear LOGIN_TENANT_ID during unbind:', e);
+    }
     get().logout();
-    void removeStoredValue(StorageKeys.LOGIN_TENANT_ID);
   },
 }));
