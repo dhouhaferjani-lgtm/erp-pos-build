@@ -218,15 +218,9 @@ export function CreateStockTransferPage() {
 
         {/* Lines section */}
         <section className={`rounded-lg border ${borderColors.light} bg-white p-6`}>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className={`text-lg font-semibold ${textColors.primary}`}>
-              {t('create.section.lines')}
-            </h2>
-            <Button type="button" variant="secondary" size="sm" onClick={addLine}>
-              <Plus className="me-1 h-4 w-4" />
-              {t('create.field.addLine')}
-            </Button>
-          </div>
+          <h2 className={`mb-4 text-lg font-semibold ${textColors.primary}`}>
+            {t('create.section.lines')}
+          </h2>
           {/* Compact line table: column headers shown once, an inline product
               selector on every row so entering many lines needs no extra clicks. */}
           <div className={`rounded-lg border ${borderColors.light}`}>
@@ -283,6 +277,14 @@ export function CreateStockTransferPage() {
                 </div>
               ))}
             </div>
+          </div>
+          {/* Add-line control sits after the last row: users enter top-down,
+              matching the sales/purchase order grids. */}
+          <div className="mt-3">
+            <Button type="button" variant="secondary" size="sm" onClick={addLine}>
+              <Plus className="me-1 h-4 w-4" />
+              {t('create.field.addLine')}
+            </Button>
           </div>
         </section>
 
