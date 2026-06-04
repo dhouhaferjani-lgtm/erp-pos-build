@@ -21,6 +21,9 @@ export const StorageKeys = {
   PENDING_TERMINAL_ID: 'pending_terminal_id',
   SHIFT: 'current_shift',
   C2_MIGRATION_BANNER: 'c2_migration_banner',
+  // Sub-Spec A: device-bound preferred tenant for email-first login.
+  // Non-authoritative hint (auto-selects the org picker); NOT encrypted.
+  LOGIN_TENANT_ID: 'login_tenant_id',
 } as const;
 
 const ENCRYPTED_KEYS = new Set<string>([StorageKeys.TOKEN]);
