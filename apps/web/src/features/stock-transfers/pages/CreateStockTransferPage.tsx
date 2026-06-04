@@ -10,7 +10,7 @@ import { Button } from '@/components/atoms/Button'
 import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
 import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
 import { ProductPicker, type ProductPickerValue } from '@/components/molecules/pickers/ProductPicker'
-import { textColors, borderColors, tokens } from '@/lib/designTokens'
+import { textColors, borderColors, tokens, colors } from '@/lib/designTokens'
 import { useCurrency } from '@/hooks/useCurrency'
 import { bccomp } from '@/lib/decimal'
 import { useCreateStockTransfer } from '../api/queries'
@@ -54,13 +54,13 @@ export function CreateStockTransferPage() {
   const [transferCostLabel, setTransferCostLabel] = useState('')
   const [distribution, setDistribution] = useState<TransferCostDistribution>('pro_rata_value')
   const [lines, setLines] = useState<DraftLine[]>([
-    { uid: generateUid(), product: null, quantity: '' },
+    { uid: generateUid(), product: null, quantity: '1' },
   ])
 
   const createMutation = useCreateStockTransfer()
 
   const addLine = () => {
-    setLines((prev) => [...prev, { uid: generateUid(), product: null, quantity: '' }])
+    setLines((prev) => [...prev, { uid: generateUid(), product: null, quantity: '1' }])
   }
 
   const removeLine = (uid: string) => {
@@ -218,59 +218,73 @@ export function CreateStockTransferPage() {
 
         {/* Lines section */}
         <section className={`rounded-lg border ${borderColors.light} bg-white p-6`}>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className={`text-lg font-semibold ${textColors.primary}`}>
-              {t('create.section.lines')}
-            </h2>
+          <h2 className={`mb-4 text-lg font-semibold ${textColors.primary}`}>
+            {t('create.section.lines')}
+          </h2>
+          {/* Compact line table: column headers shown once, an inline product
+              selector on every row so entering many lines needs no extra clicks. */}
+          <div className={`rounded-lg border ${borderColors.light}`}>
+            <div
+              className={`grid grid-cols-12 gap-3 rounded-t-lg border-b ${borderColors.light} ${colors.neutral[50]} px-3 py-2`}
+            >
+              <div className={`col-span-8 text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
+                {t('create.field.product')}
+              </div>
+              <div className={`col-span-3 text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
+                {t('create.field.quantity')}
+              </div>
+              <div className="col-span-1" />
+            </div>
+            <div className={`divide-y ${borderColors.light}`}>
+              {lines.map((line) => (
+                <div key={line.uid} className="grid grid-cols-12 items-center gap-3 px-3 py-2">
+                  <div className="col-span-8">
+                    <ProductPicker
+                      value={line.product}
+                      onChange={(p) => {
+                        updateLine(line.uid, { product: p })
+                      }}
+                      label=""
+                      placeholder={t('create.field.selectProduct')}
+                      productType="all"
+                    />
+                  </div>
+                  <div className="col-span-3">
+                    <QuantityInput
+                      value={line.quantity}
+                      onChange={(value) => {
+                        updateLine(line.uid, { quantity: value })
+                      }}
+                      decimalPlaces={4}
+                      min="0"
+                      aria-label={t('create.field.quantity')}
+                      className={tokens.input.base}
+                    />
+                  </div>
+                  <div className="col-span-1 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        removeLine(line.uid)
+                      }}
+                      disabled={lines.length <= 1}
+                      aria-label={t('create.field.removeLine')}
+                      className={`rounded p-2 ${textColors.error} ${textColors.hoverError} ${colors.hover.red50} disabled:opacity-30`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Add-line control sits after the last row: users enter top-down,
+              matching the sales/purchase order grids. */}
+          <div className="mt-3">
             <Button type="button" variant="secondary" size="sm" onClick={addLine}>
               <Plus className="me-1 h-4 w-4" />
               {t('create.field.addLine')}
             </Button>
-          </div>
-          <div className="space-y-3">
-            {lines.map((line) => (
-              <div
-                key={line.uid}
-                className={`grid grid-cols-12 gap-3 rounded border ${borderColors.light} p-3`}
-              >
-                <div className="col-span-7">
-                  <ProductPicker
-                    value={line.product}
-                    onChange={(p) => {
-                      updateLine(line.uid, { product: p })
-                    }}
-                    label={t('create.field.product')}
-                    placeholder={t('create.field.selectProduct')}
-                    productType="all"
-                  />
-                </div>
-                <div className="col-span-3">
-                  <label className={tokens.label.base}>{t('create.field.quantity')}</label>
-                  <QuantityInput
-                    value={line.quantity}
-                    onChange={(value) => {
-                      updateLine(line.uid, { quantity: value })
-                    }}
-                    decimalPlaces={4}
-                    min="0"
-                    className={tokens.input.base}
-                  />
-                </div>
-                <div className="col-span-2 flex items-end justify-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      removeLine(line.uid)
-                    }}
-                    disabled={lines.length <= 1}
-                    aria-label={t('create.field.removeLine')}
-                    className={`rounded p-2 ${textColors.error} ${textColors.hoverError} hover:bg-red-50 disabled:opacity-30`}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
           </div>
         </section>
 

@@ -53,6 +53,45 @@ describe('ProductPicker', () => {
     expect(screen.getByRole('combobox')).toBeInTheDocument()
   })
 
+  it('lists products on open before any typing (no min-character gate)', async () => {
+    mockApiGet.mockResolvedValue(response([oilFilter, brakePad]))
+    const user = userEvent.setup()
+    renderWithProviders(<ProductPicker value={null} onChange={() => undefined} />)
+
+    const combo = screen.getByRole('combobox')
+    await user.click(combo)
+
+    // Opening the picker must fetch and show products without requiring input.
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalled()
+    })
+    await waitFor(() => {
+      expect(screen.getAllByRole('option').length).toBeGreaterThan(0)
+    })
+    const [url] = mockApiGet.mock.calls[0] as [string]
+    expect(url).toContain('/products')
+    expect(url).not.toContain('search=')
+  })
+
+  it('renders the field label in the selected state so it aligns with sibling fields', () => {
+    renderWithProviders(
+      <ProductPicker value={oilFilter} onChange={() => undefined} label="Product" />,
+    )
+    expect(screen.getByText('Product')).toBeInTheDocument()
+  })
+
+  it('exposes the placeholder as the combobox accessible name when no visible label', () => {
+    renderWithProviders(
+      <ProductPicker value={null} onChange={() => undefined} label="" placeholder="Select a product" />,
+    )
+    expect(screen.getByRole('combobox', { name: 'Select a product' })).toBeInTheDocument()
+  })
+
+  it('uses the visible label as the combobox accessible name', () => {
+    renderWithProviders(<ProductPicker value={null} onChange={() => undefined} label="Product" />)
+    expect(screen.getByRole('combobox', { name: 'Product' })).toBeInTheDocument()
+  })
+
   it('debounces and issues a request scoped to type=part by default', async () => {
     mockApiGet.mockResolvedValue(response([oilFilter]))
     const user = userEvent.setup()
@@ -63,12 +102,14 @@ describe('ProductPicker', () => {
     await user.type(combo, 'filt')
 
     await waitFor(() => {
-      expect(mockApiGet).toHaveBeenCalled()
+      const urls = mockApiGet.mock.calls.map((c) => c[0] as string)
+      expect(urls.some((u) => u.includes('search=filt'))).toBe(true)
     })
-    const [url] = mockApiGet.mock.calls[mockApiGet.mock.calls.length - 1] as [string]
-    expect(url).toContain('/products')
-    expect(url).toContain('search=filt')
-    expect(url).toContain('type=part')
+    const searchUrl = mockApiGet.mock.calls
+      .map((c) => c[0] as string)
+      .find((u) => u.includes('search=filt'))
+    expect(searchUrl).toContain('/products')
+    expect(searchUrl).toContain('type=part')
   })
 
   it('shows the empty state when no rows match', async () => {
