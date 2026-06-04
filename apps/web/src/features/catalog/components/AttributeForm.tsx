@@ -1,3 +1,4 @@
+import type { FormEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -62,8 +63,17 @@ export function AttributeForm({ onCreated, onCancel }: AttributeFormProps) {
     }
   })
 
+  const handleFormSubmit = (e: FormEvent<HTMLFormElement>) => {
+    // Stop the native form submission unconditionally so a successful save
+    // never triggers a full-page navigation. react-hook-form's handleSubmit
+    // also calls preventDefault, but guarding here keeps the no-navigation
+    // contract independent of library internals and async timing.
+    e.preventDefault()
+    void onSubmit(e)
+  }
+
   return (
-    <form onSubmit={(e) => { void onSubmit(e) }} className={`${tokens.card.base} space-y-4`}>
+    <form onSubmit={handleFormSubmit} className={`${tokens.card.base} space-y-4`}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="attr-code" className={tokens.label.base}>
