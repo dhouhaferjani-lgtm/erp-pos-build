@@ -54,13 +54,13 @@ export function CreateStockTransferPage() {
   const [transferCostLabel, setTransferCostLabel] = useState('')
   const [distribution, setDistribution] = useState<TransferCostDistribution>('pro_rata_value')
   const [lines, setLines] = useState<DraftLine[]>([
-    { uid: generateUid(), product: null, quantity: '' },
+    { uid: generateUid(), product: null, quantity: '1' },
   ])
 
   const createMutation = useCreateStockTransfer()
 
   const addLine = () => {
-    setLines((prev) => [...prev, { uid: generateUid(), product: null, quantity: '' }])
+    setLines((prev) => [...prev, { uid: generateUid(), product: null, quantity: '1' }])
   }
 
   const removeLine = (uid: string) => {
