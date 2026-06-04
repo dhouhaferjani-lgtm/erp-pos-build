@@ -92,16 +92,20 @@ final class ParapharmacyMultiBranchSeeder extends ParapharmacySeeder
         $this->command->info('🏥 Seeding PharmaBio France - MULTI-BRANCH Parapharmacy demo');
         $this->command->newLine();
 
-        // 1. Reference data + roles/permissions (shared with single-branch seeder).
+        // 1. Tenant FIRST (identical provisioning path — db-per-tenant safe).
+        //    In db-per-tenant mode this provisions + migrates the tenant
+        //    database and swaps the default connection into it, so reference
+        //    data and everything below land in the tenant database.
+        $this->command->info('🏢 Creating tenant...');
+        $this->tenant = $this->createParapharmacyTenant();
+        $this->command->info("✓ Tenant: {$this->tenant->name} (parapharmacy vertical)");
+
+        // 2. Reference data + roles/permissions (shared with single-branch
+        //    seeder; now inside tenant context when db-per-tenant is on).
         $this->command->info('📚 Checking reference data...');
         $this->call(RolesAndPermissionsSeeder::class);
         $this->seedReferenceDataIfMissing();
         $this->command->info('✓ Reference data ready');
-
-        // 2. Tenant (identical provisioning path — db-per-tenant safe).
-        $this->command->info('🏢 Creating tenant...');
-        $this->tenant = $this->createParapharmacyTenant();
-        $this->command->info("✓ Tenant: {$this->tenant->name} (parapharmacy vertical)");
 
         // 3. Company + 3 locations (warehouse + 2 POS shops).
         $this->command->info('🏪 Creating company with 3 branches...');
@@ -143,6 +147,9 @@ final class ParapharmacyMultiBranchSeeder extends ParapharmacySeeder
         $this->createLocationScopedCashiers($this->tenant, $this->company);
 
         $this->printDemoSummary();
+
+        // Revert the default connection back to central (no-op in single-DB).
+        $this->endTenancy();
     }
 
     /**
@@ -422,6 +429,10 @@ final class ParapharmacyMultiBranchSeeder extends ParapharmacySeeder
                 'email_verified_at' => now(),
                 'preferences' => [],
             ]);
+
+            // Register the per-shop cashier in the central identity index so
+            // email-first login resolves this tenant with no manual backfill.
+            $this->recordIdentity($user, $tenant);
 
             UserCompanyMembership::create([
                 'user_id' => $user->id,
