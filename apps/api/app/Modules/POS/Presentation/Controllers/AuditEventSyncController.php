@@ -6,11 +6,13 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Compliance\Domain\AuditEvent;
+use App\Shared\Presentation\Validation\ScopedExists;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -29,7 +31,11 @@ use Illuminate\Validation\ValidationException;
  *   There is NO batch-wide transaction — a single duplicate must never roll
  *   back the valid rows already written in the same batch.
  * - Tenant-guarded: any event whose `tenant_id` differs from the token's
- *   tenant is rejected 422 BEFORE anything is written.
+ *   tenant is rejected 422 BEFORE anything is written. Likewise, a non-null
+ *   `company_id` / `operator_id` that does not resolve to a row owned by the
+ *   token's tenant is rejected 422 BEFORE anything is written — otherwise a
+ *   tenant-A token could plant rows referencing tenant-B's company/operator
+ *   and poison company-scoped fraud / NF525 queries.
  */
 final class AuditEventSyncController extends Controller
 {
@@ -57,18 +63,40 @@ final class AuditEventSyncController extends Controller
         ]);
 
         $user = $request->user();
-        $tenantId = $user?->getAttribute('tenant_id');
+        $tenantId = (string) $user?->getAttribute('tenant_id');
 
         /** @var list<array<string, mixed>> $events */
         $events = $validated['events'];
 
-        // Validate the whole batch BEFORE writing anything: a foreign tenant or
-        // an oversized field must reject the request with zero side effects.
+        // Validate the whole batch BEFORE writing anything: a foreign tenant, a
+        // cross-tenant company_id / operator_id, or an oversized field must reject
+        // the request with zero side effects.
         foreach ($events as $event) {
             if ($event['tenant_id'] !== $tenantId) {
                 throw ValidationException::withMessages([
                     'events' => ['Event tenant mismatch.'],
                 ]);
+            }
+
+            // A non-null company_id / operator_id must resolve to a row owned by
+            // the token's tenant. ScopedExists pins the existence query to the
+            // tenant so tenant-B ids cannot satisfy the check.
+            $scopeRules = [];
+            if ($event['company_id'] !== null) {
+                $scopeRules['company_id'] = [ScopedExists::tenant('companies', $tenantId)];
+            }
+            if ($event['operator_id'] !== null) {
+                $scopeRules['operator_id'] = [ScopedExists::tenant('users', $tenantId)];
+            }
+
+            if ($scopeRules !== []) {
+                Validator::make([
+                    'company_id' => $event['company_id'],
+                    'operator_id' => $event['operator_id'],
+                ], $scopeRules, [
+                    'company_id.*' => 'Event company is not owned by this tenant.',
+                    'operator_id.*' => 'Event operator is not owned by this tenant.',
+                ])->validate();
             }
 
             $payloadBytes = strlen((string) json_encode($event['payload']));
@@ -83,15 +111,20 @@ final class AuditEventSyncController extends Controller
         $created = 0;
         $duplicates = 0;
 
+        // Capture the server clock ONCE for the whole batch so `ingested_at` and
+        // the skew share a single reference point.
+        $serverNow = CarbonImmutable::now();
+
         foreach ($events as $event) {
             /** @var array<string, mixed> $metadata */
             $metadata = $event['metadata'];
             $event['metadata'] = array_merge($metadata, [
-                'ingested_at' => now()->toIso8601String(),
-                'client_clock_skew_ms' => now()->diffInMilliseconds(
-                    Carbon::parse((string) $event['occurred_at']),
-                    false,
-                ),
+                'ingested_at' => $serverNow->toIso8601String(),
+                // Spec: client_clock_skew_ms = server_now - client_occurred_at.
+                // diffInMilliseconds($serverNow, false) on the client time yields
+                // (server - client), i.e. positive when the client is behind.
+                'client_clock_skew_ms' => CarbonImmutable::parse((string) $event['occurred_at'])
+                    ->diffInMilliseconds($serverNow, false),
                 'ip' => $request->ip(),
             ]);
 
