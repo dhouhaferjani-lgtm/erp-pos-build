@@ -2,8 +2,10 @@
 
 **Date:** 2026-06-04
 **Branch:** `feat/branch-tax-id-spec` · worktree `apps/erp.branch-tax-id`
-**Status:** Design — approved in brainstorming 2026-06-04; pending written-spec review.
+**Status:** Design — **rev 2** after Codex adversarial review 2026-06-04 (`docs/superpowers/reviews/2026-06-04-branch-tax-id-P0-codex-adversarial-review.md`, verdict NEEDS-REWORK → findings remediated below). Pending re-review.
 **Research basis:** Docs 01–05 (`docs/superpowers/research/2026-06-04-branch-tax-id-01..05-*.md`).
+
+**Rev-2 changes (Codex review remediation):** B1 — entry validation sourced from the **fiscal** per-country regex table, not the divergent Partner `TaxIdValidationService` (§6). B2 — tax-ID **required at branch creation** when a sellable `Shop` is in a country whose config marks it required (§3 D4, §6). M1 — corrected the "no hash-chain risk" wording (§7). M2 — only **2** sites are truly location-scoped; NF525/TEJ/cert are company-level (§5). M3 — corrected the ACCOUNT_CHARGE device reference (§8). m1/n1 — terminal refresh paths + `ReceiptPdfService` boundary (§8).
 
 ## Scope statement (read first)
 
@@ -34,7 +36,7 @@ Tax identity (`tax_id`, `vat_number`, `legal_identifiers`) lives **only on `Comp
 | D1 | **Model A** — nullable override columns on `locations`, not a separate `establishments` entity. |
 | D2 | Override **fields = `tax_id` + `vat_number` + `legal_identifiers`** (full FacturX parity); per-field fallback `location.X ?? company.X`. |
 | D3 | Columns on **all** locations, all nullable, **null = inherit company**. (Establishment *identity* is meaningful only for sellable locations, but the column is universal and inheriting; no type-gating logic.) |
-| D4 | Validation = **country-driven format check when a value is provided** (reuse `TaxIdValidationService`); **never required**. FR multi-branch "should use SIRET" = non-blocking. |
+| D4 | Validation = **country-driven format check**, sourced from the **fiscal validator's per-country regex table** (NOT the Partner `TaxIdValidationService`, which diverges — §6). **Required at branch creation when the location is a sellable `Shop` AND the country config's `branch_tax_id_required` is true** (FR/TN-like); optional/inherit otherwise. *(rev 2 — was "never required"; owner refined 2026-06-04: require for sellable shops in structural-ID countries, config-driven.)* |
 | D5 | Migration is **pure-additive, no backfill** (no live tenants). |
 | D6 | **No fiscal payload version bump** — value-source change only (see §7). |
 | D7 | **No per-branch invoice numbering.** |
@@ -66,46 +68,63 @@ resolve(Location|locationId): TaxIdentityDTO
 
 A `TaxIdentityDTO` (Shared/Contracts DTO, strict-typed) carries the resolved identity. Constructor injection only; no `app()`.
 
-**The five server output sites call ONLY this resolver** (no scattered `?? company->tax_id`):
+**Rev 2 (Codex M2):** only **two** server outputs are genuinely location-scoped today and call the resolver. The other three (NF525 JET, TEJ, withholding cert) are **company-wide exports with no single `location_id` to resolve** — they stay company-level here; per-branch export scoping is a Doc 08 (reporting) concern.
+
+**Location-scoped sites — call the resolver per the document/receipt's location:**
 
 | # | Site | File | Change |
 |---|---|---|---|
-| 1 | POS receipt print | `resources/views/pos/receipt.blade.php:328-329` via `ReceiptController` | Controller resolves the receipt's `location_id` → pass resolved `tax_id` to the view. |
-| 2 | FacturX seller block | `Document/.../FacturXService.php:110-145` | Resolve from `documents.location_id`; feed `VA`=vatNumber, `FC`=taxId, legal-org from `legalIdentifiers['siret']`, plus seller name/address (address stays company-level unless a branch address override is later added — out of scope). |
-| 3 | NF525 JET header | `POS/.../Nf525DataProvider.php:524-558` (`buildCompanyHeader`) | **Fix the null-SIRET bug** (reads non-existent `siret`/`address` magic attrs today → null) by sourcing `siret` from the resolver. |
-| 4 | Tunisia TEJ declarant | `Taxation/.../TEJExportService.php:79` | Resolve the declarant matricule per the export's establishment scope (export-level location, if available; else company). |
-| 5 | Withholding certificate | `Taxation/.../CertificatePDFService.php:74` | Resolve `company_tax_id` via the resolver. |
+| 1 | POS receipt print | `resources/views/pos/receipt.blade.php:328-329` rendered by **`ReceiptPdfService`** (loads `$receipt->location` already, `ReceiptPdfService.php:46-65,140-144`) | Resolve from the receipt's `location_id` in `ReceiptPdfService`; pass the resolved `tax_id` into the view (not in `ReceiptController` — n1). |
+| 2 | FacturX seller block | `Document/.../FacturXService.php:110-145` (currently loads only company/partner/lines `:69-83`) | **Add `location` loading**, resolve from `documents.location_id` (fallback company when null); feed `VA`=vatNumber, `FC`=taxId, legal-org from `legalIdentifiers['siret']`. Seller address stays company-level (branch address override out of scope). |
 
-**The device (Phase 2) is the 6th site** and applies the **identical fallback rule** on its local mirror (`terminal.location.tax_id ?? company.tax_id`) — same resolution contract, kept in parity with the PHP resolver. The PHP `TaxIdentityResolver` does **not** build the fiscal `seller` block (that is device-authored, §7).
+**Company-level sites — fix/keep at company scope (no per-branch resolution):**
 
-## 6. Entry-time validation (D4)
+| # | Site | File | Change |
+|---|---|---|---|
+| 3 | NF525 JET header | `POS/.../Nf525DataProvider.php:524-558` (`buildCompanyHeader`, company-wide export `:86-99`) | **Fix the null-SIRET bug** (reads non-existent `siret`/`address` magic attrs → null) by sourcing from `Company` (or the export's per-terminal establishment if a future per-establishment export is built). Not a single-location resolve. |
+| 4 | Tunisia TEJ declarant | `Taxation/.../TEJExportService.php:47-79` (batch uses first cert as declarant; `withholding_certificates` has no `location_id`) | **Company-level** declarant. Per-branch TEJ = future reporting scope. |
+| 5 | Withholding certificate | `Taxation/.../CertificatePDFService.php:59-76` (no certificate-level location) | **Company-level.** Per-branch = future. |
 
-Wire `Partner\Domain\Services\TaxIdValidationService` into `CreateLocationRequest`/`UpdateLocationRequest`:
-- When `tax_id` (or `vat_number`) is **present**, validate its **format for the location's country** (`address_country ?? company.country_code`). Reject malformed (FR 14-digit SIRET+Luhn / 9-digit SIREN, TN compact matricule, etc. — already implemented in the service).
-- When **absent**, accept (inherit). Never required.
-- A **country-mode config** (Doc 05 §5, 4 modes: structural / separate-linked / branch-code / none) drives whether a branch value is *applicable* and which validator to apply. Initial config: FR/TN/MA = structural (validate); DZ = separate-linked (optional); IT/ES/DE/UAE/UK = none (typically inherit); EG/KSA = branch-code (e-invoice concern, deferred). Lives as a typed map (`config/tax_identity.php` or a Company-module enum/map) — the single source for "applicable per country."
-- FR multi-branch "should use SIRET(14) not SIREN(9)": **non-blocking warning**, not a hard gate.
+**The device is the 6th, fiscal-path site** (Phase 2): it applies the **identical fallback rule** on its local mirror (`terminal.location.tax_id ?? company.tax_id`) — same resolution contract, kept in parity with the PHP resolver. The PHP `TaxIdentityResolver` does **not** build the fiscal `seller` block (device-authored, §7).
 
-> Note: this is stricter than `Company.tax_id` (which has no validation today). Resolving that inconsistency for the company field is out of scope; flag it for the company-settings cleanup.
+## 6. Entry-time validation (D4) — rev 2 (Codex B1 + B2)
+
+**Do NOT reuse `Partner\Domain\Services\TaxIdValidationService`** — Codex confirmed it diverges from the fiscal/legal formats the device must author:
+- FR: it requires **exactly 14 digits + Luhn** (`TaxIdValidationService.php:26-44`), rejecting the 9-digit SIREN the fiscal validator accepts.
+- TN: it is `^\d{7}[A-Z][A-Z0-9]{3}$` = **1 letter** (e.g. `1234567A000`, `:67-91`), but the locked compact matricule is **2 letters** (`1234567AM000`, `FiscalPayloadConstraintValidator.php:150-156`).
+- No MA/DZ path (unknown countries return *valid*), and it is wrong for `vat_number` (a FR `FR…` VAT id is not a SIRET).
+
+**Single source of truth = the fiscal validator's per-country regex table** (`FiscalPayloadConstraintValidator` `TAX_NUMBER_PATTERNS`). Extract it into a shared validator (e.g. `Shared/Contracts` or a Taxation service) used by **both** entry-time Location requests **and** the fiscal path, so Phase 1 can never reject a value Phase 2/fiscal must author. Validate **per field** — `tax_id`, `vat_number`, and `legal_identifiers['siret']` have different formats.
+
+**Required-vs-optional (owner decision 2026-06-04):** the **country-mode config** carries a per-country `branch_tax_id_required` flag (alongside the Doc 05 §5 4-mode: structural / separate-linked / branch-code / none). Rule:
+- If the location is a **sellable `Shop`** AND `branch_tax_id_required` is true for its country (FR/TN-like, structural) → **`tax_id` is REQUIRED at branch creation** (hard validation on `CreateLocationRequest`).
+- Otherwise → optional; `null` ⇒ inherit company.
+- Non-shop locations (warehouse/office/mobile) → never required.
+- Config lives as a typed map (`config/tax_identity.php` or a Company-module enum/map) — the single source for both "applicable" and "required" per country. Initial: FR/TN/MA structural + required; DZ separate-linked optional; IT/ES/DE/UAE/UK none; EG/KSA branch-code (deferred).
+
+> The DB columns stay nullable (a warehouse, or a shop in a non-requiring country, is null=inherit); "required" is enforced at the **request** layer for sellable shops in requiring countries — not a NOT NULL constraint.
+
+> Note: this is stricter than `Company.tax_id` (no validation today). Resolving that for the company field is out of scope; flag for company-settings cleanup.
 
 ## 7. Fiscal-payload risk — reconciliation (D6, corrects Doc 02)
 
 Doc 02 framed moving `seller.tax_number` to the branch as HIGH-RISK / versioned-event. **That conflated a value change with a schema change.** Reality:
 - The canonical `seller` block keeps its exact 4-key shape `{address, name, tax_jurisdiction_country_code, tax_number}`. `seller.tax_number` still holds a per-country-valid tax number — **only the device's data *source* changes** (branch instead of company).
-- ⇒ **No new key, no exact-key-set change, no `event_version` bump, no hash-chain risk.** `FiscalPayloadConstraintValidator`'s per-country `tax_number` regex already validates the branch value unchanged.
-- **Golden fixtures stay valid** — they test that a *given* payload encodes/hashes correctly; they are not tied to company-vs-branch sourcing. No structural regen.
+- ⇒ **No new key, no exact-key-set change, no `event_version` bump.** This is a **forward-only v1 semantic cutover** (deliberate, documented). `FiscalPayloadConstraintValidator`'s per-country `tax_number` regex already validates the branch value unchanged.
+- **Precise hash statement (rev 2 — Codex M1, corrects "no hash-chain risk"):** `seller.tax_number` **is** hash-covered (`FiscalEventEngine.ts:608-629` → `canonicalCore.ts:39-83`; server re-hashes verbatim, `HashChainIntegrityProvider.php:16-23`). So each **new** affected receipt's canonical bytes + event hash **naturally differ** when the value is the branch's — that is expected and fine (the chain verifies device bytes; it does not recompute). What is NOT true is any *retroactive* or *schema/version* break. Add **cross-language source-path tests** (device sources branch over company; PHP validator accepts it) to lock the behavior.
+- **Golden fixtures stay valid** — they pin a *given* payload's bytes→hash; they are not tied to company-vs-branch sourcing. No structural regen. (If a golden *authoring* fixture is later changed to demonstrate branch sourcing, its bytes/hash update via the documented golden-update path `v3-golden-hashes/README.md` — that is a fixture edit, not a chain break.)
 - Already-signed historical receipts keep their original (company) `tax_number` — the chain is immutable and the cutover is forward-only. Acceptable and expected.
 
 ## 8. Phasing
 
 ### Phase 1 — Server (moderate, NO fiscal risk) · its own PR
-Migration (§4) · `Location` model/resource/requests + controller whitelist · `TaxIdentityResolver` + `TaxIdentityDTO` · country-mode config · entry validation (§6) · repoint the **5 server sites** (§5) incl. the **NF525 null-SIRET fix** · Location settings UI (web). Fully shippable alone; nothing fiscal.
+Migration (§4) · `Location` model/resource/requests + controller whitelist · `TaxIdentityResolver` + `TaxIdentityDTO` · country-mode config (incl. `branch_tax_id_required`) · shared fiscal-aligned validator + conditional-required entry validation (§6) · repoint the **2 location-scoped sites** (§5 #1 `ReceiptPdfService`, #2 `FacturXService`) · the **company-level NF525 null-SIRET fix** (§5 #3) · Location settings UI (web). Fully shippable alone; nothing fiscal.
 
 ### Phase 2 — Device (moderate, touches device, NO payload version bump) · its own PR
 Confirmed device path: the device **already** syncs its `location` object (`terminal.location = {id,name,code}`) via `TerminalResource`.
-1. **Backend:** add `tax_id`/`vat_number`/`legal_identifiers` to the location object in `POS/.../TerminalResource.php` (the location already eager-loads on activate `TerminalController.php:247`).
-2. **Device store:** extend `terminalStore.ts` `Terminal.location` type with the tax fields (persisted to localStorage + SQLite mirror as today).
-3. **Seller sourcing:** flip the binding in `paymentStore.ts:545` (SALE_RECEIPT), `:654` (ACCOUNT_PAYMENT), and `AccountChargePayload.ts:256` (ACCOUNT_CHARGE) to **prefer the branch**: `taxNumber: terminal.location?.tax_id ?? companyField(company, 'taxId', 'tax_id')`.
+1. **Backend:** add `tax_id`/`vat_number`/`legal_identifiers` to the `location` object in `POS/.../TerminalResource.php:27-34`. **(m1)** Cover **every** terminal endpoint the device store can consume, not just activate — `show`/`index`/`claim`/`by-device`/`toggle-training` (`TerminalController.php:50-82,247-249,300-308,470-481,522-523`) all shape the terminal object; ensure each loads `location` so the device never caches a tax-less location.
+2. **Device store:** extend `terminalStore.ts` `Terminal.location` type with the tax fields (persisted to localStorage + SQLite mirror, `terminalStore.ts:390-451,527-570`).
+3. **Seller sourcing (rev 2 — Codex M3):** flip the **live** bindings in `paymentStore.ts:543-550` (SALE_RECEIPT) and `:654-661` (ACCOUNT_PAYMENT) to **prefer the branch**: `taxNumber: terminal.location?.tax_id ?? companyField(company, 'taxId', 'tax_id')`. **ACCOUNT_CHARGE is NOT covered by `AccountChargePayload.ts:256`** — that line is inside `goldenAccountChargePayload()` (a fixture). The live builder is `accountChargeService.ts` (accepts `input.seller`, `:66-77,318-333`) and Codex found **no production caller** supplying account-charge seller data. ⇒ ACCOUNT_CHARGE seller sourcing is **out of P0** (not live); if/when a real account-charge UI/store caller is added, it must source the branch the same way. Document this rather than patching a fixture.
 4. Parity: the device fallback rule mirrors the PHP `TaxIdentityResolver` exactly.
 
 ## 9. Testing (TDD)

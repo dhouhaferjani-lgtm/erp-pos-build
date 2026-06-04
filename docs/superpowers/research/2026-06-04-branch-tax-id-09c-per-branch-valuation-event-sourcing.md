@@ -12,16 +12,22 @@
 ## 1. WAC is company-wide (confirmed) — and cost changes are only weakly audited (gap)
 
 - `WeightedAverageCostService` recomputes one product-level WAC and writes `products.cost_price` (single `decimal(12,2)`, no location dimension). A purchase at any branch shifts the company-wide cost. `recordPurchase` `:87-130`, `recordSale` reads company cost `:231-255`, `recordReturn` recomputes `:342-378`. Cost column: `2025_12_02_064541_add_cost_and_margin_fields_to_products_table.php:15-19`. **No per-location cost column anywhere.** ✅ matches the design intent.
-- **Audit gap:** `ProductCostPriceUpdated` is emitted **only when the sale price also changed** (`WeightedAverageCostService.php:149-170,397-418`) and is **not subscribed** in `DomainEventSubscriber` (`:941-1000`) → no durable audit-log row; only websocket broadcast. **No cost-history table, no `recordCostAdjustment` in the main tree** (the memory note about `recordCostAdjustment` is a *planned/transfer-branch* seam, not present). Cost history is only weakly reconstructable from `stock_movements.avg_cost_before/after` — and only on paths that populate them (§2).
+- **Audit gap:** `ProductCostPriceUpdated` is emitted **only when the sale price also changed** (`WeightedAverageCostService.php:149-170,397-418`) and is **not subscribed** in `DomainEventSubscriber` (`:941-1000`) → no durable audit-log row; only websocket broadcast. **No cost-history table.** Cost history is only weakly reconstructable from `stock_movements.avg_cost_before/after` — and only on paths that populate them (§2).
+- **CORRECTION (2026-06-04, Codex review):** an earlier draft said `recordCostAdjustment` is not present — **that was wrong.** `WeightedAverageCostService::recordCostAdjustment()` **exists** (`WeightedAverageCostService.php:646-731`) and is called by stock transfers (`StockTransferService.php:506-521`). It is the canonical company-WAC adjustment entry point (reuses the landed-cost capitalization pattern); per-branch valuation work must route through it, not around it.
 
 ## 2. `stock_movements` has the right shape but the high-volume path leaves cost NULL
 
 `stock_movements` is a per-event ledger with `location_id`, `quantity`, `quantity_before/after`, `unit_cost`, `total_cost`, `avg_cost_before/after`, `movement_type`, `reason`, `reference_*`, `is_historical` (model `StockMovement.php:55-94`; cols across `2025_11_30_110000_create_inventory_tables.php:32-50`, `2025_12_02_065035_add_cost_tracking_to_stock_movements_table.php`, `2025_12_24_133827_extend_stock_movements_table.php`). Indexed `(tenant_id, location_id, created_at)` → **queryable per-location over time.**
 
-**But cost columns are populated inconsistently across the 6 writers:**
+**But cost columns are populated inconsistently — POS is NOT the only null-cost writer (corrected per Codex review 2026-06-04):**
 - `WeightedAverageCostService` — full cost fields ✅ (`:103-120,242-259,352-369`).
-- **`POS/ReceiptCreationService::issueStock` (the high-volume sale path) — writes `location_id` + qty but NO `unit_cost`/`total_cost`/`avg_cost_*`** ❌ (`:894-910`). POS sales bypass `recordSale` and write the movement directly with null cost.
-- `StockAdjustmentService` reads `unit_cost ?? '0.00'` defensively (`:88,461,571`) — cost may be null on adjustments too.
+- **`POS/ReceiptCreationService::issueStock` (the high-volume sale path) — writes `location_id` + qty but NO `unit_cost`/`total_cost`/`avg_cost_*`** ❌ (`:900-918`). POS sales bypass `recordSale` and write the movement directly with null cost.
+- **`StockAdjustmentService` — creates movements without cost fields** ❌ (`:611-622`; reads `unit_cost ?? '0.00'` defensively at `:88,461,571`).
+- **`ReceiptVoidService` — void returns omit costs** ❌ (`:160-175`).
+- **`ReceiptReturnService` — returns omit costs** ❌ (`:1019-1032`).
+- **`InventoryOpeningService` — creates movement rows without cost fields** ❌ (`:279-315`) even though it later updates product cost.
+
+⇒ The P2 task "populate cost on every `stock_movements` writer" must enumerate **all** of these, not just the POS sale path.
 
 **Reconstruction verdict:** per-location **quantity** over time is fully reconstructable; per-location **cost-at-time** is **not** reliably reconstructable today because the dominant POS path leaves cost null.
 
