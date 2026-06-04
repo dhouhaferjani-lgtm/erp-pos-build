@@ -134,6 +134,9 @@ export function LoginPage() {
           <h2 className="mb-6 text-center text-xl font-bold text-gray-900">
             {t('auth.selectOrganization')}
           </h2>
+          {error && (
+            <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+          )}
           <div className="space-y-3" data-testid="org-picker">
             {organizations.map((org) => (
               <button

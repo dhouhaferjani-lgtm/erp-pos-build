@@ -291,18 +291,20 @@ describe('LoginPage — business picker', () => {
 
   it('aborting a manual pick commits no auth state (fresh controller)', async () => {
     // First POST resolves the picker immediately; second POST hangs so we can abort it.
+    let capturedPickSignal: AbortSignal | undefined;
     vi.mocked(apiPost)
       .mockResolvedValueOnce({
         requires_org_selection: true,
         organizations: [{ tenant_id: 't-1', name: 'Alpha', slug: 'alpha' }, { tenant_id: 't-2', name: 'Beta', slug: 'beta' }],
       })
-      .mockImplementationOnce((_url, _body, opts) =>
-        new Promise((_res, rej) => {
-          (opts as { signal?: AbortSignal })?.signal?.addEventListener('abort', () =>
+      .mockImplementationOnce((_url, _body, opts) => {
+        capturedPickSignal = (opts as { signal?: AbortSignal })?.signal;
+        return new Promise((_res, rej) => {
+          capturedPickSignal?.addEventListener('abort', () =>
             rej(new DOMException('Aborted', 'AbortError')),
           );
-        }),
-      );
+        });
+      });
 
     render(<LoginPage />);
     fireEvent.change(screen.getByLabelText('auth.email'), { target: { value: 'm@e.com' } });
@@ -322,9 +324,135 @@ describe('LoginPage — business picker', () => {
     vi.useRealTimers();
 
     // Now the org-pick-cancel button should be present; click it to abort.
-    await act(async () => { fireEvent.click(screen.getByTestId('org-pick-cancel')); });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('org-pick-cancel'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     expect(useAuthStore.getState().isAuthenticated).toBe(false);
     expect(useAuthStore.getState().token).toBeNull();
+    // Strengthened: the second apiPost's signal must have been aborted.
+    expect(capturedPickSignal).toBeDefined();
+    expect(capturedPickSignal!.aborted).toBe(true);
+  });
+
+  it('pick failure shows error message in the picker (account not active, 422)', async () => {
+    const { ApiRequestError } = await import('@/lib/api');
+    vi.mocked(apiPost)
+      .mockResolvedValueOnce({
+        requires_org_selection: true,
+        organizations: [{ tenant_id: 't-1', name: 'Alpha', slug: 'alpha' }],
+      })
+      .mockRejectedValueOnce(
+        new ApiRequestError(422, 'Your account is not active. Please contact support.', 'VALIDATION_ERROR'),
+      );
+
+    render(<LoginPage />);
+    fireEvent.change(screen.getByLabelText('auth.email'), { target: { value: 'm@e.com' } });
+    fireEvent.change(screen.getByLabelText('auth.password'), { target: { value: 'password123' } });
+    await act(async () => { fireEvent.submit(screen.getByRole('button', { name: 'auth.signIn' }).closest('form')!); });
+    await screen.findByTestId('org-picker');
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Alpha/ })); });
+
+    expect(await screen.findByText('Your account is not active. Please contact support.')).toBeInTheDocument();
+    // Picker must remain available for retry.
+    expect(screen.getByTestId('org-picker')).toBeInTheDocument();
+  });
+
+  it('suspended org (403) shows error message in the picker', async () => {
+    const { ApiRequestError } = await import('@/lib/api');
+    vi.mocked(apiPost)
+      .mockResolvedValueOnce({
+        requires_org_selection: true,
+        organizations: [{ tenant_id: 't-1', name: 'Alpha', slug: 'alpha' }],
+      })
+      .mockRejectedValueOnce(
+        new ApiRequestError(403, 'This organization is currently unavailable.', 'ORGANIZATION_UNAVAILABLE'),
+      );
+
+    render(<LoginPage />);
+    fireEvent.change(screen.getByLabelText('auth.email'), { target: { value: 'm@e.com' } });
+    fireEvent.change(screen.getByLabelText('auth.password'), { target: { value: 'password123' } });
+    await act(async () => { fireEvent.submit(screen.getByRole('button', { name: 'auth.signIn' }).closest('form')!); });
+    await screen.findByTestId('org-picker');
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Alpha/ })); });
+
+    expect(await screen.findByText('This organization is currently unavailable.')).toBeInTheDocument();
+    // Picker must remain available for retry.
+    expect(screen.getByTestId('org-picker')).toBeInTheDocument();
+  });
+
+  it('double-click same org → one tenant-bound POST', async () => {
+    vi.mocked(apiPost)
+      .mockResolvedValueOnce({
+        requires_org_selection: true,
+        organizations: [{ tenant_id: 't-1', name: 'Alpha', slug: 'alpha' }],
+      })
+      .mockResolvedValueOnce({ user: mockUser, token: 'tok', tokenType: 'Bearer', deviceId: null });
+    vi.mocked(apiGet).mockResolvedValueOnce(mockCompanies);
+
+    render(<LoginPage />);
+    fireEvent.change(screen.getByLabelText('auth.email'), { target: { value: 'm@e.com' } });
+    fireEvent.change(screen.getByLabelText('auth.password'), { target: { value: 'password123' } });
+    await act(async () => { fireEvent.submit(screen.getByRole('button', { name: 'auth.signIn' }).closest('form')!); });
+    await screen.findByTestId('org-picker');
+
+    const orgButton = screen.getByRole('button', { name: /Alpha/ });
+
+    // Click twice in quick succession — after the first click, pendingTenantId is set,
+    // disabling the button so the second click is a no-op.
+    await act(async () => {
+      fireEvent.click(orgButton);
+      fireEvent.click(orgButton);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Wait for auth to complete.
+    await act(async () => { await Promise.resolve(); });
+
+    // Exactly 2 total apiPost calls: the initial email-first + one tenant-bound pick.
+    expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(2);
+    const tenantCall = vi.mocked(apiPost).mock.calls[1]!;
+    expect((tenantCall[1] as Record<string, unknown>).tenant_id).toBe('t-1');
+  });
+
+  it('rapid two different orgs → only first fires', async () => {
+    vi.mocked(apiPost)
+      .mockResolvedValueOnce({
+        requires_org_selection: true,
+        organizations: [
+          { tenant_id: 't-1', name: 'Alpha', slug: 'alpha' },
+          { tenant_id: 't-2', name: 'Beta', slug: 'beta' },
+        ],
+      })
+      .mockResolvedValueOnce({ user: mockUser, token: 'tok', tokenType: 'Bearer', deviceId: null });
+    vi.mocked(apiGet).mockResolvedValueOnce(mockCompanies);
+
+    render(<LoginPage />);
+    fireEvent.change(screen.getByLabelText('auth.email'), { target: { value: 'm@e.com' } });
+    fireEvent.change(screen.getByLabelText('auth.password'), { target: { value: 'password123' } });
+    await act(async () => { fireEvent.submit(screen.getByRole('button', { name: 'auth.signIn' }).closest('form')!); });
+    await screen.findByTestId('org-picker');
+
+    // Click Alpha then Beta rapidly — Beta is disabled after Alpha sets pendingTenantId.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Alpha/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Beta/ }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => { await Promise.resolve(); });
+
+    // Exactly 2 total apiPost calls: initial + one tenant-bound pick for Alpha only.
+    expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(2);
+    const tenantCall = vi.mocked(apiPost).mock.calls[1]!;
+    expect((tenantCall[1] as Record<string, unknown>).tenant_id).toBe('t-1');
+    // Auth completed with one authenticated end-state.
+    expect(useAuthStore.getState().isAuthenticated).toBe(true);
   });
 });
