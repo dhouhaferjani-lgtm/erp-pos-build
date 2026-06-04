@@ -73,11 +73,11 @@ class ParapharmacySeeder extends Seeder
      */
     private const DEFAULT_SCALE = 1;
 
-    private Tenant $tenant;
+    protected Tenant $tenant;
 
-    private Company $company;
+    protected Company $company;
 
-    private Location $location;
+    protected Location $location;
 
     /**
      * Resolve the catalog scale at run time. Reads the
@@ -87,7 +87,7 @@ class ParapharmacySeeder extends Seeder
      * deploys, local dev) where a hard error on a malformed env var
      * would block unrelated work.
      */
-    private function resolveScale(): int
+    protected function resolveScale(): int
     {
         // The `?? ?? getenv()` chain returns string|false (getenv returns
         // false when unset), so $raw is never null after the fallback.
@@ -190,7 +190,7 @@ class ParapharmacySeeder extends Seeder
     /**
      * Create a parapharmacy tenant.
      */
-    private function createParapharmacyTenant(): Tenant
+    protected function createParapharmacyTenant(): Tenant
     {
         // Check if tenant already exists
         $existingTenant = Tenant::where('slug', 'pharmabio-france')->first();
@@ -250,7 +250,7 @@ class ParapharmacySeeder extends Seeder
      *
      * @return array{0: Company, 1: Location}
      */
-    private function createCompanyWithLocation(Tenant $tenant): array
+    protected function createCompanyWithLocation(Tenant $tenant): array
     {
         $company = Company::create([
             'tenant_id' => $tenant->id,
@@ -297,7 +297,7 @@ class ParapharmacySeeder extends Seeder
     /**
      * Setup financial foundation (GL accounts, payment methods, repositories).
      */
-    private function setupFinancialFoundation(Company $company): void
+    protected function setupFinancialFoundation(Company $company): void
     {
         // French chart of accounts
         $franceSeeder = new FranceChartOfAccountsSeeder;
@@ -319,7 +319,7 @@ class ParapharmacySeeder extends Seeder
      *
      * @return Collection<int, Product>
      */
-    private function seedProducts(Company $company): Collection
+    protected function seedProducts(Company $company): Collection
     {
         // TODO(go-live-followup): bulk-insert refactor for SCALE>1 (deferred from
         //   T1.0 PR #89). seedProducts currently does one Eloquent ::create per
@@ -652,7 +652,7 @@ class ParapharmacySeeder extends Seeder
     /**
      * Seed partners (customers and suppliers).
      */
-    private function seedPartners(Tenant $tenant, Company $company): void
+    protected function seedPartners(Tenant $tenant, Company $company): void
     {
         // 150 individual customers (B2C)
         Partner::factory()
@@ -696,7 +696,7 @@ class ParapharmacySeeder extends Seeder
     /**
      * Seed stock levels for 90% of products.
      */
-    private function seedStockLevels(
+    protected function seedStockLevels(
         Company $company,
         Location $location,
         Collection $products
@@ -738,7 +738,7 @@ class ParapharmacySeeder extends Seeder
     /**
      * Create test users (owner, manager, cashier).
      */
-    private function createTestUsers(Tenant $tenant, Company $company): void
+    protected function createTestUsers(Tenant $tenant, Company $company): void
     {
         // Set the team (tenant) context for Spatie permissions
         setPermissionsTeamId($tenant->id);
