@@ -49,9 +49,9 @@ New nullable columns on `locations` (tenant DB), mirroring `Company`'s tax-ident
 |---|---|---|
 | `tax_id` | `string(50)` nullable | Establishment tax number (FR SIRET, TN matricule, MA ICE…). `null` ⇒ inherit `company.tax_id`. |
 | `vat_number` | `string(50)` nullable | Branch VAT registration (FacturX `VA`). `null` ⇒ inherit `company.vat_number`. |
-| `legal_identifiers` | `jsonb default '{}'` | Branch country-specific identifiers; the `siret` key feeds FacturX legal-org. Empty/absent key ⇒ inherit `company.legal_identifiers`. |
+| `legal_identifiers` | `jsonb` nullable | Branch country-specific identifiers; the `siret` key feeds FacturX legal-org. `null`/empty/absent key ⇒ inherit `company.legal_identifiers`. |
 
-**Migration:** new tenant migration `..._add_tax_fields_to_locations.php` (mirror `2025_12_30_103000_add_tax_fields_to_companies.php`). Additive only; no data step. `locations` already sits correctly in the tenant DB (3-tier rule — no rename).
+**Migration:** new tenant migration `..._add_tax_fields_to_locations.php` (mirror the tax-identity column shapes in `2025_11_30_104000_create_companies_table.php`, while keeping all location overrides nullable per D3). Additive only; no data step. `locations` already sits correctly in the tenant DB (3-tier rule — no rename).
 
 **Model/contract changes:** `Location.php` fillable + casts (`legal_identifiers` ⇒ `array`) + docblock; `LocationResource.php:23-41` (+3 fields); `CreateLocationRequest`/`UpdateLocationRequest` (+rules, §6); `LocationController::store` whitelist (`:95-108`); frontend `features/locations/types.ts`, `features/location/api.ts` (all 4 shapes + `transformLocationResponse`), `LocationsPage.tsx`/`AddLocationModal`.
 

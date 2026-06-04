@@ -78,7 +78,7 @@ class LocationTaxFieldsMigrationTest extends TestCase
 Run: `cd apps/api && php artisan test tests/Feature/Location/LocationTaxFieldsMigrationTest.php`
 Expected: FAIL — `hasColumn('locations','tax_id')` returns false.
 
-- [ ] **Step 3: Write the migration** (mirrors `2025_12_30_103000_add_tax_fields_to_companies.php`)
+- [ ] **Step 3: Write the migration** (mirrors the tax-identity column shapes in `2025_11_30_104000_create_companies_table.php`, while keeping all location overrides nullable per the spec)
 
 ```php
 <?php
