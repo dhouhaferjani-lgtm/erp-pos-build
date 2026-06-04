@@ -41,6 +41,7 @@ vi.mock('@/lib/storage', () => ({
     COMPANIES: 'companies',
     TERMINAL: 'terminal',
     PENDING_TERMINAL_ID: 'pending_terminal_id',
+    LOGIN_TENANT_ID: 'login_tenant_id',
   },
 }));
 
@@ -504,5 +505,53 @@ describe('authStore', () => {
     expect(state.isAuthenticated).toBe(false);
     expect(state.token).toBeNull();
     expect(state.user).toBeNull();
+  });
+
+  describe('login — email-first multi-tenant', () => {
+    beforeEach(() => {
+      vi.mocked(getStoredValue).mockResolvedValue(null);
+      useAuthStore.setState({
+        user: null, token: null, companies: [], companyId: null,
+        isAuthenticated: false, isLoading: false,
+      });
+    });
+
+    it('single-tenant email: authenticates and POSTs without tenant_id', async () => {
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        user: mockUser, token: 'tok-1', tokenType: 'Bearer', deviceId: 'dev-1',
+      });
+      vi.mocked(apiGet).mockResolvedValueOnce(mockCompanies);
+
+      const result = await useAuthStore.getState().login('test@example.com', 'password123');
+
+      expect(result).toEqual({ status: 'authenticated' });
+      expect(apiPost).toHaveBeenCalledTimes(1);
+      const body = vi.mocked(apiPost).mock.calls[0]![1] as Record<string, unknown>;
+      expect(body).not.toHaveProperty('tenant_id');
+      expect(useAuthStore.getState().isAuthenticated).toBe(true);
+    });
+
+    it('multi-tenant email with no stored tenant: returns requires_org_selection', async () => {
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        requires_org_selection: true,
+        organizations: [
+          { tenant_id: 't-1', name: 'Alpha', slug: 'alpha' },
+          { tenant_id: 't-2', name: 'Beta', slug: 'beta' },
+        ],
+      });
+
+      const result = await useAuthStore.getState().login('multi@example.com', 'password123');
+
+      expect(result).toEqual({
+        status: 'requires_org_selection',
+        organizations: [
+          { tenant_id: 't-1', name: 'Alpha', slug: 'alpha' },
+          { tenant_id: 't-2', name: 'Beta', slug: 'beta' },
+        ],
+      });
+      expect(apiPost).toHaveBeenCalledTimes(1);
+      expect(useAuthStore.getState().isAuthenticated).toBe(false);
+      expect(apiGet).not.toHaveBeenCalled(); // never fetched companies
+    });
   });
 });

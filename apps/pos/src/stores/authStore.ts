@@ -42,6 +42,44 @@ export interface Company {
   timezone: string;
 }
 
+export interface Organization {
+  tenant_id: string;
+  name: string;
+  slug: string;
+}
+
+interface LoginSuccessResponse {
+  user: User;
+  token: string;
+  tokenType: string;
+  deviceId: string | null;
+}
+
+interface OrgSelectionResponse {
+  requires_org_selection: true;
+  organizations: Organization[];
+}
+
+type LoginApiResponse = LoginSuccessResponse | OrgSelectionResponse;
+
+export type LoginOutcome =
+  | { status: 'authenticated' }
+  | { status: 'requires_org_selection'; organizations: Organization[] };
+
+/** Thrown when the backend returns an org-picker shape for a call that
+ *  already supplied an explicit tenant_id (contract violation). Prevents
+ *  any re-POST loop. */
+export class UnexpectedLoginResponseError extends Error {
+  constructor() {
+    super('Unexpected login response: org selection returned for an explicit tenant.');
+    this.name = 'UnexpectedLoginResponseError';
+  }
+}
+
+function isOrgSelection(r: LoginApiResponse): r is OrgSelectionResponse {
+  return 'requires_org_selection' in r;
+}
+
 interface AuthState {
   user: User | null;
   token: string | null;
@@ -57,8 +95,8 @@ interface AuthActions {
   login: (
     email: string,
     password: string,
-    opts?: { signal?: AbortSignal },
-  ) => Promise<void>;
+    opts?: { signal?: AbortSignal; tenantId?: string },
+  ) => Promise<LoginOutcome>;
   logout: () => void;
   checkSession: (opts?: { signal?: AbortSignal }) => Promise<void>;
   setCompany: (companyId: string) => void;
@@ -145,51 +183,21 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   login: async (
     email: string,
     password: string,
-    opts?: { signal?: AbortSignal },
-  ) => {
+    opts?: { signal?: AbortSignal; tenantId?: string },
+  ): Promise<LoginOutcome> => {
     const serverUrl = getServerUrl();
     set({ isLoading: true, serverUrl });
 
-    try {
-      console.log('[auth] Attempting login to', serverUrl);
+    // Local helper: given an authenticated login response, run the existing
+    // transactional companies-fetch + persist, then best-effort persist the
+    // device tenant hint. Reused by the auto-select re-POST (Task 3).
+    const completeAuthentication = async (
+      res: LoginSuccessResponse,
+    ): Promise<void> => {
+      const { user, token } = res;
 
-      const response = await apiPost<{
-        user: User;
-        token: string;
-        tokenType: string;
-        deviceId: string | null;
-      }>('/auth/login', {
-        email,
-        password,
-        device_id: getDeviceId(),
-        device_name: 'IziPOS Desktop',
-        platform: getTauriPlatform(),
-      }, { signal: opts?.signal });
-
-      console.log('[auth] Login successful, got token');
-
-      const { user, token } = response;
-
-      // T1.1 Step 1.1: transactional persist. The previous flow persisted
-      // TOKEN+USER and flipped isAuthenticated=true BEFORE fetching
-      // /user/companies. A network drop in the small window between the
-      // login POST returning and companies resolving left a half-finished
-      // session: TOKEN+USER persisted in Tauri Store, isAuthenticated:true
-      // in memory, companies:[]. On the next boot, AppRouter routed to
-      // TerminalSetupPage which immediately threw because companyId was
-      // null. We now hold all in-memory and on-disk state changes until
-      // BOTH /auth/login AND /user/companies have resolved successfully —
-      // a failure in either leaves the prior auth state untouched.
-      console.log('[auth] Fetching companies...');
-
-      // Use a short-lived auth header for this single fetch — apiGet reads
-      // the in-store token via getHeaders(), but we haven't committed it
-      // yet. Codex round-1 finding (c): snapshot the FULL prior auth
-      // state before the temp write so a failure restores exactly what
-      // was there. Otherwise re-attempting login() over an already-valid
-      // session corrupts the in-memory snapshot when /user/companies
-      // fails (token gets nulled while user/companies/isAuthenticated
-      // still describe the previous session).
+      // T1.1: snapshot prior auth, write a temp token for the companies
+      // fetch, restore verbatim on failure. (Unchanged behavior.)
       const priorAuth = {
         token: get().token,
         user: get().user,
@@ -205,33 +213,54 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
           signal: opts?.signal,
         });
       } catch (error) {
-        // Restore the prior in-memory auth verbatim; we never persisted
-        // anything new and we must not corrupt a previously-valid
-        // session. Disk persistence is untouched.
         set(priorAuth);
         throw error;
       }
 
-      console.log('[auth] Got companies:', companies.length);
-
-      // Persist auth data only after BOTH calls succeeded.
       await setStoredValue(StorageKeys.TOKEN, token);
       await setStoredValue(StorageKeys.USER, user);
       await setStoredValue(StorageKeys.COMPANIES, companies);
 
-      set({
-        user,
-        token,
-        companies,
-        isAuthenticated: true,
-      });
+      set({ user, token, companies, isAuthenticated: true });
 
-      // Auto-select if single company
       if (companies.length === 1 && companies[0]) {
         const companyId = companies[0].id;
         await setStoredValue(StorageKeys.COMPANY_ID, companyId);
         set({ companyId });
       }
+
+      // Best-effort, non-authoritative device tenant hint (MAJOR 4):
+      // a failure here must NEVER throw or corrupt the committed auth state.
+      try {
+        await setStoredValue(StorageKeys.LOGIN_TENANT_ID, user.tenantId);
+      } catch (e) {
+        console.warn('[auth] failed to persist LOGIN_TENANT_ID (non-fatal):', e);
+      }
+    };
+
+    try {
+      const body: Record<string, unknown> = {
+        email,
+        password,
+        device_id: getDeviceId(),
+        device_name: 'IziPOS Desktop',
+        platform: getTauriPlatform(),
+      };
+      if (opts?.tenantId) body.tenant_id = opts.tenantId;
+
+      const response = await apiPost<LoginApiResponse>('/auth/login', body, {
+        signal: opts?.signal,
+      });
+
+      if (isOrgSelection(response)) {
+        // An explicit-tenant call must never receive a picker shape.
+        if (opts?.tenantId) throw new UnexpectedLoginResponseError();
+        // Task 3 inserts auto-select here. For now, surface the list.
+        return { status: 'requires_org_selection', organizations: response.organizations };
+      }
+
+      await completeAuthentication(response);
+      return { status: 'authenticated' };
     } catch (error) {
       console.error('[auth] Login failed:', error);
       throw error;
