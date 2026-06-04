@@ -263,6 +263,7 @@ export function CreateStockTransferPage() {
                       }}
                       decimalPlaces={4}
                       min="0"
+                      aria-label={t('create.field.quantity')}
                       className={tokens.input.base}
                     />
                   </div>

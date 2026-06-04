@@ -77,6 +77,7 @@ export function ProductPicker({
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const listboxId = useId()
+  const inputId = useId()
 
   const [query, setQuery] = useState('')
   const [isOpen, setIsOpen] = useState(false)
@@ -159,7 +160,7 @@ export function ProductPicker({
   // (e.g. the quantity column on the stock-transfer line).
   const labelNode =
     effectiveLabel !== '' ? (
-      <label className={tokens.label.base}>
+      <label htmlFor={inputId} className={tokens.label.base}>
         {effectiveLabel}
         {required ? <span className={tokens.label.required}> *</span> : null}
       </label>
@@ -200,11 +201,13 @@ export function ProductPicker({
       {labelNode}
       <input
         ref={inputRef}
+        id={inputId}
         type="text"
         role="combobox"
         aria-expanded={isOpen}
         aria-controls={listboxId}
         aria-autocomplete="list"
+        aria-label={effectiveLabel !== '' ? effectiveLabel : effectivePlaceholder}
         className={tokens.input.base}
         placeholder={effectivePlaceholder}
         value={query}

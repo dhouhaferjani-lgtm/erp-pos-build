@@ -80,6 +80,18 @@ describe('ProductPicker', () => {
     expect(screen.getByText('Product')).toBeInTheDocument()
   })
 
+  it('exposes the placeholder as the combobox accessible name when no visible label', () => {
+    renderWithProviders(
+      <ProductPicker value={null} onChange={() => undefined} label="" placeholder="Select a product" />,
+    )
+    expect(screen.getByRole('combobox', { name: 'Select a product' })).toBeInTheDocument()
+  })
+
+  it('uses the visible label as the combobox accessible name', () => {
+    renderWithProviders(<ProductPicker value={null} onChange={() => undefined} label="Product" />)
+    expect(screen.getByRole('combobox', { name: 'Product' })).toBeInTheDocument()
+  })
+
   it('debounces and issues a request scoped to type=part by default', async () => {
     mockApiGet.mockResolvedValue(response([oilFilter]))
     const user = userEvent.setup()
