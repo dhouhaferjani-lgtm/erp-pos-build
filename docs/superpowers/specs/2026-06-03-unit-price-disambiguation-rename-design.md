@@ -21,11 +21,11 @@ The overload has already produced a real false-positive in fiscal line-arithmeti
 
 ### Locked classification rule (CORRECTED — by tax semantics, verified per-surface)
 
-> **The Codex review disproved a naive "B2C app ⇒ inclusive" rule.** The signed `ACCOUNT_CHARGE` event is a B2C POS event (`invoice_classification: b2c_charge_receipt`) whose canonical `unit_price` is **net** (`unit_price == line_subtotal == 100.000`, VAT separate). Classification is therefore **per surface, by what the stored number actually means**, not by which app or channel it lives in.
+> Classification is **per surface, by what the stored number actually means** — but for **device-authored** events the governing invariant is stronger: *the POS device cart is always tax-inclusive, and a device-authored event's `unit_price` is the cart's gross figure written verbatim, with `line_subtotal` carrying the net.* This holds for `SALE_RECEIPT` (validator confirms, lines 1708–1714) and, by the same architecture, for `ACCOUNT_CHARGE` (see the ACCOUNT_CHARGE note in §6).
 
-- **`unit_price_incl_tax`** ⇐ the value INCLUDES VAT (gross). Today the only confirmed inclusive surfaces are the **SALE_RECEIPT** cart→storage→canonical path.
-- **`unit_price_excl_tax`** ⇐ the value EXCLUDES VAT (net/HT). Documents, workshop, billing, catalog cart, **and the `ACCOUNT_CHARGE` canonical line** (net despite being B2C).
-- Every `unit_price` occurrence MUST be assigned in the §7 classification table with cited evidence before it is touched. No blanket per-app assumption.
+- **`unit_price_incl_tax`** ⇐ the value INCLUDES VAT (gross). The **device-authored** sale path: SALE_RECEIPT and ACCOUNT_CHARGE line items, plus the cart/POS storage/projection surfaces that mirror them.
+- **`unit_price_excl_tax`** ⇐ the value EXCLUDES VAT (net/HT). Documents, workshop, billing, catalog cart, marketplace — the B2B/document layer where lines are authored net.
+- Every `unit_price` occurrence MUST be assigned in the §7 classification table with cited evidence before it is touched. No blanket per-app assumption — but note the device-inclusive invariant above resolves both signed events to inclusive.
 
 ---
 
@@ -76,14 +76,14 @@ Rename the inclusive `unit_price` everywhere **except** the signed canonical byt
 - **POS receipt projection/storage (ADDED — was missed):** `pos_receipt_lines.unit_price` (`decimal(15,3)`); `ReceiptLine` model; `PosCoreReceiptProjection` (currently writes `LineItemDTO::unitPrice` → `pos_receipt_lines.unit_price`); `ReceiptCreationService`, `ReceiptFinalizationService`, `StoreReceiptRequest`. **`canonical_bytes` stays untouched** — only the projection target column/readers are renamed.
 - **POS device (`apps/pos`):** `src/types/cart.ts` (`CartItem.unit_price`), `src/stores/cartStore.ts`, `src/types/receipt.ts`, `src/lib/buildReceiptData.ts`, `src/lib/offline/receiptService.ts` + `offline/types.ts` + `offline/zReportService.ts`, `src/lib/refundFlow/hydrateFromReceipt.ts`, `src/api/holdApi.ts` + `reportApi.ts`, cart/receipt components (`TransactionCart`, `CartLineItem`), `src/pages/HomePage.tsx`.
 - **Web POS (`apps/web/src/features/pos/**`) — kept distinct from device** (the prior spec conflated them): `POSPage` and related admin/web-POS components.
-- **Discount/coupon preview (classify first — see §6):** `ValidateCouponRequest`, `CouponController`, `DiscountController`, `couponApi.ts` — if confirmed B2C-inclusive they belong here; if net, Phase 1.
+- **Discount/coupon preview (RESOLVED inclusive — §6):** `ValidateCouponRequest`, `CouponController`, `DiscountController`, `couponApi.ts` — POS cart preview (`pos.operate_terminal`), tax-inclusive.
 - **Fiscal-byte impact:** none — the canonical builders still emit the current `unit_price` key; the cart/projection field names and the canonical key are intentionally **decoupled** until Phase 3 (the only documented name-mismatch window).
 
 ### Phase 3 — Canonical signed bytes (SALE_RECEIPT + ACCOUNT_CHARGE) (HIGH RISK) — **OPTIONAL / DEFERRED, owner-gated**
 
-Renames the key *inside the signed canonical payloads* — the irreversible, chain-affecting part. Covers **both** signed events that carry `line_items[].unit_price`:
+Renames the key *inside the signed canonical payloads* — the irreversible, chain-affecting part. Covers **both** signed device-authored events that carry `line_items[].unit_price`:
 - **SALE_RECEIPT** → `unit_price_incl_tax` (inclusive).
-- **ACCOUNT_CHARGE** → `unit_price_excl_tax` (net) — *or* an explicit carve-out with rationale + follow-up owner decision. Same registry/parser/golden-vector discipline; must not mutate existing v1 bytes.
+- **ACCOUNT_CHARGE** → `unit_price_incl_tax` (inclusive). **Rename + semantics correction** — current placeholder test data authors it net (`unit_price == line_subtotal`), but as a device-authored event from the inclusive cart it must be gross-verbatim like SALE_RECEIPT (owner decision 2026-06-04; see §6). Safe to change: not UI-wired, validator is tax-agnostic for this event, no production v1 events expected. B2B-facture-classification customers derive net downstream from `line_subtotal` (the device payload stays inclusive). Same registry/parser/golden-vector discipline; must not mutate any existing v1 bytes.
 
 **Multi-version registry + parser design (CORRECTED — the core BLOCKER fix):**
 - The current server parser validates `envelope.event_version === registry.eventVersionFor(type)` (single value) and the device append path asks the registry for one version. **Merely bumping the mapping would reject all stored prior-version bytes.**
@@ -122,6 +122,8 @@ Renames the key *inside the signed canonical payloads* — the irreversible, cha
 
 **Coupon / discount preview — RESOLVED inclusive (Phase 2).** Verified 2026-06-04: `ValidateCouponRequest` requires the `pos.operate_terminal` permission and `CouponController::validate` is documented "for POS preview"; the `items.*.unit_price` are POS cart lines, which are tax-**inclusive**. Classified **Phase 2 / incl-tax** (`ValidateCouponRequest`, `CouponController`, `DiscountController`, `couponApi.ts`).
 
+**ACCOUNT_CHARGE — RESOLVED inclusive + semantics correction (owner, 2026-06-04).** ACCOUNT_CHARGE is the POS "sell on account / on credit" flow: goods are taken now, no payment is collected (`assertNoPaymentLines`), and the total is written to the customer's receivable balance to settle later. Research findings: (1) it is **not yet UI-wired** — `buildAccountChargePayload`/`authorAccountCharge` are only referenced by the service file + tests, so no production v1 events are expected; (2) the PHP `validateAccountChargeLineItem` does **not** assert any net/gross relationship — net-ness exists only as a convention in placeholder fixtures (`unit_price == line_subtotal`); (3) it is **device-authored from the inclusive POS cart**, exactly like SALE_RECEIPT, for which the validator documents `unit_price` as the cart's tax-INCLUSIVE figure written verbatim (lines 1708–1714). Decision: ACCOUNT_CHARGE `line_items[].unit_price` is **tax-INCLUSIVE → `unit_price_incl_tax`**, correcting the placeholder net convention, with fixtures regenerated to inclusive. The charge amount itself (`totals.amount_charged_to_account`, `local_balance_snapshot`) is a separate concept and is **not** a unit_price — no change there. *Caveat:* for business customers (`invoice_classification: b2b_facture_draft_requested`) the downstream B2B facture's net figures derive from `line_subtotal`; the device payload remains inclusive to preserve the single device-cart representation. Implement only as part of Phase 3 (new versioned payload).
+
 **`fiscal_schema_version` note.** Already a 2→3 cutover lever (default 2, advanced to 3 by `FiscalSchemaCutoverService`); distinct from `fiscal_events.event_version` (per-event payload version). Phase 3 needs a NEW lever value/capability (§4). Existing `sale-receipt-golden/v4` fixtures imply the canonical schema is further along than the cutover service's "3" — reconcile the version landscape at impl before choosing numbers.
 
 **After-T2 note.** Do not start execution until T2 product-variants is merged to `dev` (§3); re-run §7 inventory against post-T2 `dev` first.
@@ -158,7 +160,7 @@ Renames the key *inside the signed canonical payloads* — the irreversible, cha
 | Event | Files | Target name | Note |
 |---|---|---|---|
 | SALE_RECEIPT | TS `payloads/SaleReceiptPayload.ts`, `FiscalEventEngine.ts`, `FiscalEventPayloadRegistry.ts`; PHP `Fiscal/Domain/DTOs/SaleReceiptPayload.php`, `Canonical/LineItemDTO.php`, `Canonical/SaleReceiptCanonicalView.php`, `CanonicalPayloadReader.php`, `FiscalEventPayloadRegistry.php`, `FiscalPayloadConstraintValidator.php`, `Nf525DataProvider.php` | `unit_price_incl_tax` | inclusive |
-| ACCOUNT_CHARGE | TS `payloads/AccountChargePayload.ts`, `accountCharge/accountChargeService.ts`; PHP `Fiscal/Domain/DTOs/AccountChargePayload.php`, `FiscalPayloadConstraintValidator.php:1328` | `unit_price_excl_tax` | **net** (`unit_price==line_subtotal`) |
+| ACCOUNT_CHARGE | TS `payloads/AccountChargePayload.ts`, `accountCharge/accountChargeService.ts` + tests; PHP `Fiscal/Domain/DTOs/AccountChargePayload.php`, `FiscalPayloadConstraintValidator.php:1328` | `unit_price_incl_tax` | **inclusive** — rename + semantics correction (placeholder net → gross verbatim from cart); regen fixtures; see §6 |
 | Fixtures/helpers | `tests/Fixtures/Fiscal/canonical-golden-vectors.json`, `sale-receipt-golden/v4/*`, `v3-golden-hashes/*`; `GoldenFixtureBuilder`, `LargeReceiptFixtureGenerator`; parity tests `apps/pos/.../__tests__/*CanonicalParity.test.ts`, `FiscalPayloadConstraintValidatorTest` | — | freeze current as regression; gen new-version |
 
 ### Resolved classifications (formerly classify-first — see §6)
@@ -191,6 +193,8 @@ TDD throughout (red → green → refactor); existing PHPUnit + Vitest + real-se
 | Wrong replacement column scale (precision-contract violation) | High | Use effective `decimal(15,3)` + `decimal:3` casts, not create-migration scales |
 | Cutover lever collision with existing v3 | High | New `fiscal_schema_version` step or dedicated `sale_receipt_payload_version` capability |
 | Device/server drift on new bytes | High | Cross-language parity test as Phase 3 merge gate |
+| ACCOUNT_CHARGE semantics change (net→incl) regresses a wired flow | Medium | Verified not UI-wired + validator tax-agnostic; ride Phase 3's new versioned payload; regen fixtures to inclusive; re-confirm no production v1 events before execution |
+| Re-overloading `unit_price` inside ACCOUNT_CHARGE across B2C/B2B classifications | Medium | Single inclusive device representation; B2B-facture net derived downstream from `line_subtotal`, never re-authored in the event |
 | Missed surface preserves overload | High | Authoritative §7 table; re-inventory post-T2; classify marketplace/coupon first |
 | Expand/contract dual-write divergence across tenant DBs | Medium | Dual-write equivalence test; drop column only after all tenants read-switched |
 | Conflict with in-flight T2 | Medium | Hard sequencing gate (§3) + re-inventory |
@@ -203,7 +207,7 @@ TDD throughout (red → green → refactor); existing PHPUnit + Vitest + real-se
 1. ~~Classify `marketplace_order_lines.unit_price` and coupon/discount-preview `unit_price`.~~ **RESOLVED 2026-06-04** — marketplace = Phase 1/net, coupon/discount = Phase 2/inclusive (§6). Remaining: log the `product.sale_price` net-vs-gross latent concern separately.
 2. Re-run the §7 surface inventory against post-T2 `dev`.
 3. Reconcile the canonical version landscape (cutover service "3" vs `sale-receipt-golden/v4` fixtures) and choose the exact new version number + cutover lever — Phase 3 only.
-4. Decide ACCOUNT_CHARGE in Phase 3: rename to `unit_price_excl_tax` vs explicit carve-out.
+4. ~~Decide ACCOUNT_CHARGE in Phase 3.~~ **RESOLVED 2026-06-04** — inclusive (`unit_price_incl_tax`) + semantics correction; B2B-facture net derived downstream (§6). Remaining: re-confirm no production v1 ACCOUNT_CHARGE events exist before executing Phase 3.
 5. Confirm the actual `REALIGNMENT-LOG.md` path at the monorepo root.
 6. Owner decision on whether/when to execute Phase 3 at all.
 
@@ -212,7 +216,8 @@ TDD throughout (red → green → refactor); existing PHPUnit + Vitest + real-se
 ## 11. Changelog — v1 → v2 (Codex review incorporation)
 
 - **BLOCKER (parser):** added explicit multi-version registry/parser design (accepted-vs-authoring split); was "register v2" only.
-- **BLOCKER (ACCOUNT_CHARGE):** removed the false "canonical line_items only on SALE_RECEIPT" claim; added ACCOUNT_CHARGE as a second signed surface (net) to Phase 3.
+- **BLOCKER (ACCOUNT_CHARGE):** removed the false "canonical line_items only on SALE_RECEIPT" claim; added ACCOUNT_CHARGE as a second signed surface to Phase 3.
+- **(v2.1, 2026-06-04) ACCOUNT_CHARGE resolved inclusive:** research showed it is device-authored from the inclusive cart, not UI-wired, and validator-agnostic; the placeholder "net" was test-data convention. Target is `unit_price_incl_tax` (rename + semantics correction), B2B-facture net derived downstream. Coupon/discount = inclusive (Phase 2); marketplace = net (Phase 1) — both verified.
 - **BLOCKER (cutover):** `fiscal_schema_version` already a 2→3 lever; Phase 3 now requires a distinct new lever; version numbers derived from actual state (fixtures at v4), not hardcoded "v2".
 - **MAJOR (DB scale):** corrected to effective `decimal(15,3)` + `decimal:3` casts on `tenant/` path; not create-migration scales.
 - **MAJOR (missed modules):** added Billing, Catalog cart (resolved net), Marketplace (classify), Coupon/discount (classify), Taxation/Pricing helpers, additional document controllers.
