@@ -118,9 +118,9 @@ Renames the key *inside the signed canonical payloads* — the irreversible, cha
 
 **Catalog cart — RESOLVED net (no longer deferred).** Code shows catalog cart prices flow into `DocumentLine::create([... 'unit_price' => ...])` via `CartConversionService` and feed PO/SO creation → net. Classified **Phase 1 / excl-tax** unless product owners identify a separate B2C online-ordering flow that displays VAT-inclusive prices.
 
-**Marketplace order lines — CLASSIFY FIRST.** `marketplace_order_lines.unit_price` (`MarketplaceOrderService`, `MarketplaceOrderData`, `MarketplaceOrderLine`, migration `2026_03_10_400002`) takes its value from `listing->price`. Whether listing prices are stored inclusive (consumer-facing online ordering, see `project_online_ordering`) or net is **not** determinable from the field alone. Resolve with the owner before assigning a phase; default-guess is B2C online-ordering (inclusive) but it must be confirmed.
+**Marketplace order lines — RESOLVED net (Phase 1).** Verified 2026-06-04: `marketplace_order_lines.unit_price` (`MarketplaceOrderService`, `MarketplaceOrderData`, `MarketplaceOrderLine`, migration `2026_03_10_400002`) takes its value from `listing->price`, and `MarketplaceListing.price` is synced from **the seller tenant's own `product.sale_price`** (`ListingSyncService::syncProduct:54` → `'price' => $product->sale_price`) — i.e. the tenant's own product price, **not** a centralized Synerivia platform price. This is a **B2B marketplace** (`buyer_tenant_id` buys from a `MarketplaceSeller` = another tenant); the order line has **no per-line tax columns** and the order is converted into a **B2B `Document`** (net lines). Classified **Phase 1 / excl-tax**. *Latent-concern flag (out of scope for the rename, log only):* whether `product.sale_price` itself is stored net vs gross is the same overload one level up — the marketplace path treats it as net; if POS treats the same `sale_price` as gross there is a pre-existing inconsistency to raise separately, not fix here.
 
-**Coupon / discount preview — CLASSIFY FIRST.** `ValidateCouponRequest`/`CouponController`/`DiscountController` carry `items.*.unit_price` for POS discount preview — likely B2C inclusive (POS cart), but confirm before placing in Phase 1 vs Phase 2.
+**Coupon / discount preview — RESOLVED inclusive (Phase 2).** Verified 2026-06-04: `ValidateCouponRequest` requires the `pos.operate_terminal` permission and `CouponController::validate` is documented "for POS preview"; the `items.*.unit_price` are POS cart lines, which are tax-**inclusive**. Classified **Phase 2 / incl-tax** (`ValidateCouponRequest`, `CouponController`, `DiscountController`, `couponApi.ts`).
 
 **`fiscal_schema_version` note.** Already a 2→3 cutover lever (default 2, advanced to 3 by `FiscalSchemaCutoverService`); distinct from `fiscal_events.event_version` (per-event payload version). Phase 3 needs a NEW lever value/capability (§4). Existing `sale-receipt-golden/v4` fixtures imply the canonical schema is further along than the cutover service's "3" — reconcile the version landscape at impl before choosing numbers.
 
@@ -142,6 +142,7 @@ Renames the key *inside the signed canonical payloads* — the irreversible, cha
 | Billing | `billing_invoice_items.unit_price` (`2025_12_16_100003_*`, widened `2026_03_11_200000_*:161`); `InvoiceItem.php` (`decimal:3`, separate `tax_rate`/`tax_amount`); `InvoiceService` | `qty*unit_price` net |
 | Catalog cart | `catalog_cart_items.unit_price` (`2026_03_10_500000_*`); `CatalogCartItem`, `CartService`, `CartConversionService`, `MarketplaceCheckoutService`, `CatalogCartController`, `CatalogCartItemData` | converts to document net lines |
 | Tax/pricing helpers | `TaxCalculationService:123,206`, `PricingController`, `AuditDiscountsCommand` | net inputs |
+| Marketplace (B2B) | `marketplace_order_lines.unit_price` (`2026_03_10_400002_*`); `MarketplaceOrderLine`, `MarketplaceOrderData`, `MarketplaceOrderService`; `MarketplaceListing.price` (synced from `product.sale_price` via `ListingSyncService`) | seller-tenant product price; converts to B2B Document net lines; no per-line tax |
 | Web | `generated.d.ts` (auto), `apps/web/src/types/document.ts`, `DocumentLineEditor`, detail pages, credit/return note pages, landed-cost, goods-receipt, fixtures, e2e | mirrors document DTO |
 
 ### Phase 2 — inclusive non-fiscal/projection → `unit_price_incl_tax`
@@ -151,6 +152,7 @@ Renames the key *inside the signed canonical payloads* — the irreversible, cha
 | POS receipt projection/storage | `pos_receipt_lines.unit_price` (`2026_01_08_190638_*`, widened `2026_03_11_200000_*:78`); `ReceiptLine`, `PosCoreReceiptProjection`, `ReceiptCreationService`, `ReceiptFinalizationService`, `StoreReceiptRequest` | projection of canonical line; **bytes untouched** |
 | POS device | `apps/pos/src/types/cart.ts`, `stores/cartStore.ts`, `types/receipt.ts`, `lib/buildReceiptData.ts`, `lib/offline/{receiptService,types,zReportService}.ts`, `lib/refundFlow/hydrateFromReceipt.ts`, `api/{holdApi,reportApi}.ts`, `components/.../{TransactionCart,CartLineItem}`, `pages/HomePage.tsx` | inclusive |
 | Web POS | `apps/web/src/features/pos/**` | inclusive (distinct from device) |
+| Coupon/discount preview | `ValidateCouponRequest`, `CouponController`, `DiscountController`, `apps/web/src/features/coupons/api/couponApi.ts` | POS cart lines (`pos.operate_terminal`); inclusive |
 
 ### Phase 3 — signed canonical bytes (OPTIONAL/DEFERRED)
 | Event | Files | Target name | Note |
@@ -159,8 +161,9 @@ Renames the key *inside the signed canonical payloads* — the irreversible, cha
 | ACCOUNT_CHARGE | TS `payloads/AccountChargePayload.ts`, `accountCharge/accountChargeService.ts`; PHP `Fiscal/Domain/DTOs/AccountChargePayload.php`, `FiscalPayloadConstraintValidator.php:1328` | `unit_price_excl_tax` | **net** (`unit_price==line_subtotal`) |
 | Fixtures/helpers | `tests/Fixtures/Fiscal/canonical-golden-vectors.json`, `sale-receipt-golden/v4/*`, `v3-golden-hashes/*`; `GoldenFixtureBuilder`, `LargeReceiptFixtureGenerator`; parity tests `apps/pos/.../__tests__/*CanonicalParity.test.ts`, `FiscalPayloadConstraintValidatorTest` | — | freeze current as regression; gen new-version |
 
-### Classify-before-assigning (§6)
-`marketplace_order_lines.unit_price`; coupon/discount preview `unit_price`.
+### Resolved classifications (formerly classify-first — see §6)
+- `marketplace_order_lines.unit_price` → **Phase 1 / net** (B2B marketplace; seller-tenant `product.sale_price`; converts to B2B documents).
+- Coupon/discount preview `unit_price` → **Phase 2 / inclusive** (POS cart preview).
 
 ### Shared/seed surfaces (touched by whichever phase owns the DTO)
 `packages/shared/types/generated.d.ts`; factories (`CatalogCartItemFactory`, `ServiceBundleComponentFactory`, `Workshop/WorkOrderLineFactory`); `DemoTenantSeeder`.
@@ -197,7 +200,7 @@ TDD throughout (red → green → refactor); existing PHPUnit + Vitest + real-se
 
 ## 10. Open items to resolve in the plan / at execution
 
-1. Classify `marketplace_order_lines.unit_price` and coupon/discount-preview `unit_price` (§6) with the owner.
+1. ~~Classify `marketplace_order_lines.unit_price` and coupon/discount-preview `unit_price`.~~ **RESOLVED 2026-06-04** — marketplace = Phase 1/net, coupon/discount = Phase 2/inclusive (§6). Remaining: log the `product.sale_price` net-vs-gross latent concern separately.
 2. Re-run the §7 surface inventory against post-T2 `dev`.
 3. Reconcile the canonical version landscape (cutover service "3" vs `sale-receipt-golden/v4` fixtures) and choose the exact new version number + cutover lever — Phase 3 only.
 4. Decide ACCOUNT_CHARGE in Phase 3: rename to `unit_price_excl_tax` vs explicit carve-out.
