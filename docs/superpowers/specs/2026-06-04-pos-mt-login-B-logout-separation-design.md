@@ -166,11 +166,21 @@ are not everyday-operations teardown surfaces:
 
 Removing the PIN-screen Sign Out means a terminal **locked** with **no available manager**
 cannot be unbound *in-app* (Settings is unreachable while `isLocked`). This is the
-**intended** anti-manipulation posture: a locked terminal cannot be casually torn down. The
-documented **out-of-band recovery** is the same as Sub-Spec A's reset: **clear the Tauri
-app data / reinstall** (a deliberate admin/physical action). Operationally: a manager
-unlocks with their PIN and uses Settings; with no manager PIN available at all, recovery is
-clear-app-data. This is an explicit, accepted operational criterion, not an oversight.
+**intended** anti-manipulation posture: a locked terminal cannot be casually torn down.
+Operationally: a manager unlocks with their PIN and uses Settings.
+
+With no manager PIN available at all, the documented **out-of-band recovery** is to
+**clear the Tauri app data / reinstall**. Precisely (per Codex r2): clearing app data
+removes the **local auth/tenant session** (token, user, companies, terminal cache, and
+`LOGIN_TENANT_ID`), which is exactly what is needed to escape the locked-screen *auth*
+dead-end — the next launch forces a fresh email-first login. It does **not** unpair the
+**server-side `device_id → terminal` mapping**: on re-login, `terminalStore.initialize()`
+re-fetches `/pos/terminals/by-device/${deviceId}` and the device re-pairs to its assigned
+register (normal, usually desired). Reassigning the device to a *different* terminal is the
+manager-gated **"Change terminal"** action (or a server-side admin reassignment), NOT part
+of clear-app-data. So clear-app-data is a valid recovery for the locked-*auth* dead-end;
+the terminal pairing is a separate binding handled by the gated Change-terminal flow. This
+is an explicit, accepted operational criterion, not an oversight.
 
 ## Events Sub-Spec C must capture (enumerated so nothing is missed)
 
