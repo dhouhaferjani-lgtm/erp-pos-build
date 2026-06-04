@@ -28,10 +28,19 @@ import { recordAuditEvent } from './recordAuditEvent';
  * the event.
  */
 
+/**
+ * How long after `start()` we treat connectivity flips as boot-settle rather
+ * than real transitions. During this window we still update `previousIsOnline`
+ * and the window timers so the very first genuine edge after the grace period
+ * has accurate duration data — but we do NOT emit.
+ */
+export const BOOT_GRACE_MS = 5000;
+
 let unsubscribe: (() => void) | null = null;
 let previousIsOnline = false;
 let onlineWindowStartedAt = 0;
 let offlineWindowStartedAt = 0;
+let startedAt = 0;
 
 interface QueuedCounts {
   queued_receipts: number | null;
@@ -73,11 +82,19 @@ function handleTransition(isOnline: boolean): void {
   const now = Date.now();
   const deviceId = getDeviceId();
 
+  // Boot-grace window: a flip within the first BOOT_GRACE_MS after start()
+  // is a boot-settle discovery, not a real user-visible transition. Update
+  // state (previous + window timers) so later genuine edges have accurate
+  // duration data, but DO NOT emit.
+  const inBootGrace = startedAt > 0 && now - startedAt < BOOT_GRACE_MS;
+
   if (isOnline) {
     // offline → online
     const offlineDurationMs = offlineWindowStartedAt > 0 ? now - offlineWindowStartedAt : 0;
     onlineWindowStartedAt = now;
     previousIsOnline = true;
+
+    if (inBootGrace) return; // suppress boot-settle emit
 
     void (async () => {
       const queued = await readQueuedCounts();
@@ -99,6 +116,8 @@ function handleTransition(isOnline: boolean): void {
     offlineWindowStartedAt = now;
     previousIsOnline = false;
 
+    if (inBootGrace) return; // suppress boot-settle emit
+
     void recordAuditEvent({
       type: 'pos.went_offline',
       aggregateType: 'PosSession',
@@ -119,6 +138,7 @@ export function startConnectivityAuditSubscriber(): () => void {
   if (unsubscribe) return stopConnectivityAuditSubscriber;
 
   const now = Date.now();
+  startedAt = now; // record boot time for the grace-window check
   previousIsOnline = useConnectivityStore.getState().isOnline;
   if (previousIsOnline) {
     onlineWindowStartedAt = now;
@@ -149,4 +169,5 @@ export function __resetConnectivityAuditSubscriberForTests(): void {
   previousIsOnline = false;
   onlineWindowStartedAt = 0;
   offlineWindowStartedAt = 0;
+  startedAt = 0;
 }

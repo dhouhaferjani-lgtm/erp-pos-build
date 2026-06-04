@@ -276,6 +276,72 @@ describe('operatorStore — Task 7 / Task 11 audit emits', () => {
     });
   });
 
+  describe('pos.operator_unlocked', () => {
+    it('emits when verifyPin succeeds and the store was locked (offline path)', async () => {
+      vi.mocked(apiPost).mockImplementation(() => new Promise(() => {}));
+      vi.mocked(getAllOperators).mockResolvedValue([offlineOperatorRow]);
+
+      // Lock the operator first.
+      useOperatorStore.setState({
+        operator: { ...mockApiOperator, id: 'op-1' },
+        isLocked: true,
+        lastActivity: Date.now(),
+      });
+      useOperatorStore.getState().lock();
+      vi.clearAllMocks();
+      recordAuditEvent.mockResolvedValue(undefined);
+
+      await useOperatorStore.getState().verifyPin('1234');
+
+      const call = lastCallOfType('pos.operator_unlocked');
+      expect(call).toBeDefined();
+      expect(call!.aggregateType).toBe('Operator');
+      expect(call!.aggregateId).toBe('op-1');
+      expect(call!.operatorId).toBe('op-1');
+      const payload = call!.payload as Record<string, unknown>;
+      // locked_duration_ms is present and is a number (>= 0).
+      expect(typeof payload.locked_duration_ms === 'number' || payload.locked_duration_ms === null).toBe(true);
+    });
+
+    it('does NOT emit pos.operator_unlocked on a fresh sign-in (wasLocked = false)', async () => {
+      vi.mocked(apiPost).mockImplementation(() => new Promise(() => {}));
+      vi.mocked(getAllOperators).mockResolvedValue([offlineOperatorRow]);
+
+      // Ensure the store is NOT locked before verifying.
+      useOperatorStore.setState({
+        operator: null,
+        isLocked: false,
+        lastActivity: Date.now(),
+      });
+
+      await useOperatorStore.getState().verifyPin('1234');
+
+      expect(lastCallOfType('pos.operator_unlocked')).toBeUndefined();
+      // signin IS emitted.
+      expect(lastCallOfType('pos.operator_signin')).toBeDefined();
+    });
+
+    it('emits pos.operator_unlocked on the online path when wasLocked', async () => {
+      vi.mocked(getAllOperators).mockResolvedValue([]); // offline miss
+      vi.mocked(apiPost).mockResolvedValue(mockApiOperator);
+
+      useOperatorStore.setState({
+        operator: { ...mockApiOperator, id: 'op-2' },
+        isLocked: true,
+        lastActivity: Date.now(),
+      });
+      useOperatorStore.getState().lock();
+      vi.clearAllMocks();
+      recordAuditEvent.mockResolvedValue(undefined);
+
+      await useOperatorStore.getState().verifyPin('9999');
+
+      const call = lastCallOfType('pos.operator_unlocked');
+      expect(call).toBeDefined();
+      expect(call!.aggregateId).toBe('op-2');
+    });
+  });
+
   describe('pos.screen_lock', () => {
     it('emits on lock with reason=manual and idle_ms derived from lastActivity', () => {
       const past = Date.now() - 5000;

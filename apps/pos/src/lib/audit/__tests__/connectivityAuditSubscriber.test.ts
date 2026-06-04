@@ -39,6 +39,7 @@ import { useConnectivityStore } from '@/stores/connectivityStore';
 import {
   startConnectivityAuditSubscriber,
   __resetConnectivityAuditSubscriberForTests,
+  BOOT_GRACE_MS,
 } from '../connectivityAuditSubscriber';
 
 function setOnline(value: boolean): void {
@@ -69,6 +70,8 @@ async function flush(): Promise<void> {
 }
 
 describe('connectivityAuditSubscriber', () => {
+  let dateNowSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     recordAuditEvent.mockResolvedValue(undefined);
@@ -80,9 +83,24 @@ describe('connectivityAuditSubscriber', () => {
     __resetConnectivityAuditSubscriberForTests();
     // Start in a known online state.
     useConnectivityStore.setState({ isOnline: true });
+    // Simulate the subscriber being started well in the past so that all
+    // transitions in the existing test suite are already past the boot-grace
+    // window. We do this by making the first call to Date.now() (inside
+    // startConnectivityAuditSubscriber) return a time far in the past, and
+    // subsequent calls return a time BOOT_GRACE_MS+1 later.
+    const BASE = 1_000_000_000_000;
+    let callCount = 0;
+    dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => {
+      callCount += 1;
+      // The first call is from start() recording startedAt; return a base value.
+      // All subsequent calls (from handleTransition checks) are BOOT_GRACE_MS+1
+      // after the base, so Date.now() - startedAt > BOOT_GRACE_MS.
+      return callCount === 1 ? BASE : BASE + BOOT_GRACE_MS + 1;
+    });
   });
 
   afterEach(() => {
+    dateNowSpy.mockRestore();
     __resetConnectivityAuditSubscriberForTests();
   });
 
@@ -227,5 +245,85 @@ describe('connectivityAuditSubscriber', () => {
     // Both returned stop fns reference the same subscription.
     expect(typeof stop1).toBe('function');
     expect(typeof stop2).toBe('function');
+  });
+});
+
+describe('connectivityAuditSubscriber — boot-grace window (Fix 3)', () => {
+  let dateNowSpy: ReturnType<typeof vi.spyOn>;
+  // A controlled, mutable "current time" for the boot-grace tests.
+  let fakeNow: number;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    recordAuditEvent.mockResolvedValue(undefined);
+    getDatabase.mockResolvedValue({});
+    getPendingReceiptCount.mockResolvedValue(0);
+    getPendingCashDrawerOps.mockResolvedValue([]);
+    countPendingAuditEvents.mockResolvedValue(0);
+    authState.companyId = 'company-1';
+    __resetConnectivityAuditSubscriberForTests();
+    useConnectivityStore.setState({ isOnline: true });
+
+    // Seed fakeNow at a known base; spy intercepts all Date.now() calls.
+    fakeNow = 1_700_000_000_000;
+    dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => fakeNow);
+  });
+
+  afterEach(() => {
+    dateNowSpy.mockRestore();
+    __resetConnectivityAuditSubscriberForTests();
+  });
+
+  it('does NOT emit for a transition within the boot-grace window', async () => {
+    startConnectivityAuditSubscriber(); // records startedAt = fakeNow
+
+    // Advance time slightly (still inside grace window).
+    fakeNow += BOOT_GRACE_MS - 1;
+    setOnline(false);
+    await flush();
+
+    const offlineCalls = recordAuditEvent.mock.calls.filter(
+      (c) => (c[0] as { type: string }).type === 'pos.went_offline',
+    );
+    expect(offlineCalls).toHaveLength(0);
+  });
+
+  it('updates previousIsOnline during boot-grace so the first post-grace emit is correct', async () => {
+    startConnectivityAuditSubscriber(); // startedAt = fakeNow, previousIsOnline = true
+
+    // Boot-settle flip (suppressed): true → false within grace window.
+    fakeNow += BOOT_GRACE_MS - 1;
+    setOnline(false); // previousIsOnline updated to false, no emit
+    await flush();
+    expect(recordAuditEvent).not.toHaveBeenCalled();
+
+    // Advance past the grace window.
+    fakeNow += 2; // now fakeNow - startedAt > BOOT_GRACE_MS
+    // Next genuine flip (false → true): should emit went_online, NOT went_offline.
+    setOnline(true);
+    await flush();
+
+    const onlineCalls = recordAuditEvent.mock.calls.filter(
+      (c) => (c[0] as { type: string }).type === 'pos.went_online',
+    );
+    const offlineCalls = recordAuditEvent.mock.calls.filter(
+      (c) => (c[0] as { type: string }).type === 'pos.went_offline',
+    );
+    expect(onlineCalls).toHaveLength(1);
+    expect(offlineCalls).toHaveLength(0);
+  });
+
+  it('DOES emit for a transition after the boot-grace window expires', async () => {
+    startConnectivityAuditSubscriber(); // startedAt = fakeNow
+
+    // Advance past the grace window.
+    fakeNow += BOOT_GRACE_MS + 1;
+    setOnline(false);
+    await flush();
+
+    const offlineCalls = recordAuditEvent.mock.calls.filter(
+      (c) => (c[0] as { type: string }).type === 'pos.went_offline',
+    );
+    expect(offlineCalls).toHaveLength(1);
   });
 });

@@ -51,7 +51,7 @@ describe('cartStore — cart_session_id lifecycle', () => {
     recordAuditEvent.mockResolvedValue(undefined);
     // Reset to an empty, session-less cart without going through the
     // discard path (which would emit). Use replaceCart then null the id.
-    useCartStore.setState({ items: [], transactionDiscount: undefined, cartSessionId: null });
+    useCartStore.setState({ items: [], transactionDiscount: undefined, cartSessionId: null, cartLinesRemovedThisSession: 0 });
   });
 
   it('has no session id on a fresh empty cart', () => {
@@ -118,13 +118,151 @@ describe('cartStore — cart_session_id lifecycle', () => {
     expect(after).toMatch(UUID_RE);
     expect(after).not.toBe(before);
   });
+
+  // Fix 1 regression: removing the last line must clear the session id so the
+  // next sale gets a fresh id (not stale session A reused for a new sale).
+  it('clears session id when removeItem empties the cart', () => {
+    useCartStore.getState().addItem(makeProduct());
+    const sessionA = useCartStore.getState().cartSessionId;
+    expect(sessionA).toMatch(UUID_RE);
+
+    const itemId = useCartStore.getState().items[0]!.id;
+    useCartStore.getState().removeItem(itemId);
+
+    expect(useCartStore.getState().cartSessionId).toBeNull();
+    expect(useCartStore.getState().items).toHaveLength(0);
+  });
+
+  it('generates a NEW session id after removing last line and adding again (no stale reuse)', () => {
+    useCartStore.getState().addItem(makeProduct());
+    const sessionA = useCartStore.getState().cartSessionId;
+
+    // Remove last line → session cleared
+    const itemId = useCartStore.getState().items[0]!.id;
+    useCartStore.getState().removeItem(itemId);
+    expect(useCartStore.getState().cartSessionId).toBeNull();
+
+    // Add again → fresh session
+    useCartStore.getState().addItem(makeProduct({ id: 'prod-2' }));
+    const sessionB = useCartStore.getState().cartSessionId;
+    expect(sessionB).toMatch(UUID_RE);
+    expect(sessionB).not.toBe(sessionA);
+  });
+
+  it('keeps session id when removeItem does NOT empty the cart', () => {
+    useCartStore.getState().addItem(makeProduct({ id: 'prod-1' }));
+    useCartStore.getState().addItem(makeProduct({ id: 'prod-2' }));
+    const sessionBefore = useCartStore.getState().cartSessionId;
+    expect(useCartStore.getState().items).toHaveLength(2);
+
+    const firstItemId = useCartStore.getState().items[0]!.id;
+    useCartStore.getState().removeItem(firstItemId);
+
+    expect(useCartStore.getState().items).toHaveLength(1);
+    expect(useCartStore.getState().cartSessionId).toBe(sessionBefore);
+  });
+});
+
+describe('cartStore — cartLinesRemovedThisSession counter (Fix 2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    recordAuditEvent.mockResolvedValue(undefined);
+    useCartStore.setState({ items: [], transactionDiscount: undefined, cartSessionId: null, cartLinesRemovedThisSession: 0 });
+  });
+
+  it('starts at 0 on a fresh cart', () => {
+    expect(useCartStore.getState().cartLinesRemovedThisSession).toBe(0);
+  });
+
+  it('increments on each removeItem while the cart is not emptied', () => {
+    useCartStore.getState().addItem(makeProduct({ id: 'p1' }));
+    useCartStore.getState().addItem(makeProduct({ id: 'p2' }));
+    useCartStore.getState().addItem(makeProduct({ id: 'p3' }));
+    expect(useCartStore.getState().items).toHaveLength(3);
+
+    const [id0, id1] = useCartStore.getState().items.map((i) => i.id);
+    useCartStore.getState().removeItem(id0!);
+    expect(useCartStore.getState().cartLinesRemovedThisSession).toBe(1);
+    useCartStore.getState().removeItem(id1!);
+    expect(useCartStore.getState().cartLinesRemovedThisSession).toBe(2);
+  });
+
+  it('resets to 0 when removeItem empties the cart (session cleared)', () => {
+    useCartStore.getState().addItem(makeProduct());
+    const itemId = useCartStore.getState().items[0]!.id;
+
+    useCartStore.getState().removeItem(itemId);
+
+    expect(useCartStore.getState().cartSessionId).toBeNull();
+    expect(useCartStore.getState().cartLinesRemovedThisSession).toBe(0);
+  });
+
+  it('resets to 0 on replaceCart (new session)', () => {
+    useCartStore.getState().addItem(makeProduct({ id: 'p1' }));
+    useCartStore.getState().addItem(makeProduct({ id: 'p2' }));
+    const idToRemove = useCartStore.getState().items[0]!.id;
+    useCartStore.getState().removeItem(idToRemove);
+    expect(useCartStore.getState().cartLinesRemovedThisSession).toBe(1);
+
+    useCartStore.getState().replaceCart(
+      [{ id: 'line-r', product: { id: 'p', name: 'P', sku: 'S', price: '1.00' }, quantity: 1, unit_price: '1.00', line_total: '1.00', tax_rate: '0', tax_amount: '0.00' }],
+      undefined,
+    );
+    expect(useCartStore.getState().cartLinesRemovedThisSession).toBe(0);
+  });
+
+  it('resets to 0 on clearCart (session cleared)', () => {
+    useCartStore.getState().addItem(makeProduct({ id: 'p1' }));
+    useCartStore.getState().addItem(makeProduct({ id: 'p2' }));
+    const idToRemove = useCartStore.getState().items[0]!.id;
+    useCartStore.getState().removeItem(idToRemove);
+    expect(useCartStore.getState().cartLinesRemovedThisSession).toBe(1);
+
+    useCartStore.getState().clearCart();
+
+    expect(useCartStore.getState().cartLinesRemovedThisSession).toBe(0);
+  });
+
+  it('includes line_count_removed_before in pos.cart_discarded payload', () => {
+    useCartStore.getState().addItem(makeProduct({ id: 'p1' }));
+    useCartStore.getState().addItem(makeProduct({ id: 'p2' }));
+    useCartStore.getState().addItem(makeProduct({ id: 'p3' }));
+
+    // Remove one line first, then discard the rest
+    const idToRemove = useCartStore.getState().items[0]!.id;
+    useCartStore.getState().removeItem(idToRemove);
+    expect(useCartStore.getState().cartLinesRemovedThisSession).toBe(1);
+
+    useCartStore.getState().clearCart(); // discard
+
+    const call = lastCallOfType('pos.cart_discarded');
+    expect(call).toBeDefined();
+    const payload = call!.payload as Record<string, unknown>;
+    expect(payload.line_count_removed_before).toBe(1);
+  });
+
+  it('resets counter to 0 on new session after adding to empty cart', () => {
+    // Add, remove-all (empties, resets counter+session), then add again
+    useCartStore.getState().addItem(makeProduct({ id: 'p1' }));
+    useCartStore.getState().addItem(makeProduct({ id: 'p2' }));
+    const [id0, id1] = useCartStore.getState().items.map((i) => i.id);
+    useCartStore.getState().removeItem(id0!); // counter = 1
+    useCartStore.getState().removeItem(id1!); // empties cart → counter reset = 0, session null
+
+    expect(useCartStore.getState().cartSessionId).toBeNull();
+    expect(useCartStore.getState().cartLinesRemovedThisSession).toBe(0);
+
+    // New sale
+    useCartStore.getState().addItem(makeProduct({ id: 'p3' }));
+    expect(useCartStore.getState().cartLinesRemovedThisSession).toBe(0);
+  });
 });
 
 describe('cartStore — line-discount actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     recordAuditEvent.mockResolvedValue(undefined);
-    useCartStore.setState({ items: [], transactionDiscount: undefined, cartSessionId: null });
+    useCartStore.setState({ items: [], transactionDiscount: undefined, cartSessionId: null, cartLinesRemovedThisSession: 0 });
   });
 
   it('applyLineDiscount sets a percentage discount and recomputes the line total', () => {
@@ -181,7 +319,7 @@ describe('cartStore — audit emits', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     recordAuditEvent.mockResolvedValue(undefined);
-    useCartStore.setState({ items: [], transactionDiscount: undefined, cartSessionId: null });
+    useCartStore.setState({ items: [], transactionDiscount: undefined, cartSessionId: null, cartLinesRemovedThisSession: 0 });
   });
 
   it('emits pos.cart_discarded on discard with a pre-clear snapshot', () => {

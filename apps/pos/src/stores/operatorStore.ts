@@ -70,6 +70,13 @@ async function getDb(): Promise<import('@tauri-apps/plugin-sql').default> {
  */
 let consecutivePinFailures = 0;
 
+/**
+ * Wall-clock timestamp (ms) when the current operator lock was engaged. Set in
+ * `lock()`, read in `verifyPin` to compute `locked_duration_ms` for the
+ * `pos.operator_unlocked` audit event. Null when not locked.
+ */
+let lockedAt: number | null = null;
+
 function getApiErrorStatus(error: unknown): number | null {
   if (typeof error === 'object' && error !== null && 'status' in error) {
     const status = (error as { status?: unknown }).status;
@@ -156,6 +163,10 @@ export const useOperatorStore = create<OperatorStore>()((set, get) => ({
   ...initialState,
 
   verifyPin: async (pin: string) => {
+    // Snapshot the lock state BEFORE any mutation: used to distinguish an
+    // unlock (was locked → verify succeeds) from a fresh sign-in.
+    const wasLocked = get().isLocked;
+
     // Offline-first: check cached bcrypt hashes in SQLite BEFORE the API.
     // The POS is offline-first, so authentication should be offline-first too.
     // If the local cache matches, accept immediately and fire the API call in
@@ -211,6 +222,20 @@ export const useOperatorStore = create<OperatorStore>()((set, get) => ({
         operatorId: offlineMatch.id,
         payload: { method: 'pin' },
       }).catch(() => {});
+      // pos.operator_unlocked: emitted only when this verify is UNLOCKING a
+      // locked screen (not a fresh sign-in). locked_duration_ms derived from
+      // the module-scoped lockedAt timestamp set in lock().
+      if (wasLocked) {
+        const lockedDurationMs = lockedAt !== null ? Date.now() - lockedAt : null;
+        lockedAt = null;
+        void recordAuditEvent({
+          type: 'pos.operator_unlocked',
+          aggregateType: 'Operator',
+          aggregateId: offlineMatch.id,
+          operatorId: offlineMatch.id,
+          payload: { locked_duration_ms: lockedDurationMs },
+        }).catch(() => {});
+      }
       // Fire-and-forget telemetry: tell the server we verified a PIN.
       // Any failure here is swallowed — it must not affect UX.
       void apiPost<Operator>('/pos/auth/verify-pin', { pin }).catch((err: unknown) => {
@@ -258,6 +283,19 @@ export const useOperatorStore = create<OperatorStore>()((set, get) => ({
         operatorId: operator.id,
         payload: { method: 'pin' },
       }).catch(() => {});
+      // pos.operator_unlocked: emitted only when this verify is UNLOCKING a
+      // locked screen (not a fresh sign-in).
+      if (wasLocked) {
+        const lockedDurationMs = lockedAt !== null ? Date.now() - lockedAt : null;
+        lockedAt = null;
+        void recordAuditEvent({
+          type: 'pos.operator_unlocked',
+          aggregateType: 'Operator',
+          aggregateId: operator.id,
+          operatorId: operator.id,
+          payload: { locked_duration_ms: lockedDurationMs },
+        }).catch(() => {});
+      }
     } catch {
       // Task 11 (audit): wrong PIN — offline bcrypt missed AND the API rejected.
       // pos.manager_pin_failed carries ONLY context + attempt count; never the
@@ -396,6 +434,7 @@ export const useOperatorStore = create<OperatorStore>()((set, get) => ({
     const { operator, lastActivity } = get();
     const idleMs = Math.max(0, Date.now() - lastActivity);
 
+    lockedAt = Date.now();
     set({ isLocked: true });
 
     void recordAuditEvent({

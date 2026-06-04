@@ -47,6 +47,14 @@ interface CartState {
    * shift-close/operator-switch.
    */
   cartSessionId: string | null;
+  /**
+   * Count of lines removed from the cart during the current cart session (i.e.
+   * since the last `cartSessionId` was generated). Used as the
+   * `line_count_removed_before` field in `pos.cart_discarded` — a key fraud
+   * signal for "build sale, strip lines, discard" patterns. Reset to 0
+   * whenever `cartSessionId` is cleared or regenerated.
+   */
+  cartLinesRemovedThisSession: number;
 }
 
 interface CartActions {
@@ -197,6 +205,7 @@ const initialState: CartState = {
   items: [],
   transactionDiscount: undefined,
   cartSessionId: null,
+  cartLinesRemovedThisSession: 0,
 };
 
 /**
@@ -214,7 +223,12 @@ export const useCartStore = create<CartStore>()((set, get) => ({
 
   addItem: (product: POSProduct, selectedModifiers?: SelectedModifier[]) => {
     set((state) => {
-      const cartSessionId = ensureCartSessionId(state.cartSessionId);
+      const prevSessionId = state.cartSessionId;
+      const cartSessionId = ensureCartSessionId(prevSessionId);
+      // If a new session was just generated (first mutation of an empty cart),
+      // reset the removed-line counter for this session.
+      const cartLinesRemovedThisSession =
+        prevSessionId === null ? 0 : state.cartLinesRemovedThisSession;
       const hasModifiers = selectedModifiers && selectedModifiers.length > 0;
 
       // For items without modifiers, try to find and increment existing
@@ -230,7 +244,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
           const updated = recalcLineTotal(existing, existing.quantity + 1);
           const newItems = [...state.items];
           newItems[existingIndex] = updated;
-          return { items: newItems, cartSessionId };
+          return { items: newItems, cartSessionId, cartLinesRemovedThisSession };
         }
       }
 
@@ -264,7 +278,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
         tax_amount: computeTaxAmount(priceValue, taxRate),
       };
 
-      return { items: [...state.items, newItem], cartSessionId };
+      return { items: [...state.items, newItem], cartSessionId, cartLinesRemovedThisSession };
     });
   },
 
@@ -335,9 +349,22 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     const removed = get().items.find((item) => item.id === itemId);
     const cartSessionId = get().cartSessionId;
 
-    set((state) => ({
-      items: state.items.filter((item) => item.id !== itemId),
-    }));
+    set((state) => {
+      const nextItems = state.items.filter((item) => item.id !== itemId);
+      const lineWasRemoved = nextItems.length < state.items.length;
+      // When removing the last line, null the session id (the cart is now empty
+      // / idle). A new sale later will get a fresh session id. Also increment
+      // the removed-line counter only when a line actually left the cart.
+      const nextSessionId = nextItems.length === 0 ? null : state.cartSessionId;
+      const nextRemovedCount = lineWasRemoved
+        ? (nextItems.length === 0 ? 0 : state.cartLinesRemovedThisSession + 1)
+        : state.cartLinesRemovedThisSession;
+      return {
+        items: nextItems,
+        cartSessionId: nextSessionId,
+        cartLinesRemovedThisSession: nextRemovedCount,
+      };
+    });
 
     if (removed) {
       void recordAuditEvent({
@@ -366,8 +393,9 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     const subtotal = state.subtotal();
     const discountTotal = state.discountAmount();
     const hadReturnItems = state.items.some((i) => (i.kind ?? 'sale') === 'return');
+    const linesRemovedBefore = state.cartLinesRemovedThisSession;
 
-    set({ items: [], transactionDiscount: undefined, cartSessionId: null });
+    set({ items: [], transactionDiscount: undefined, cartSessionId: null, cartLinesRemovedThisSession: 0 });
 
     // Only a genuine discard (operator dumping a built sale) is fraud-relevant.
     // Checkout/hold/shift-close/operator-switch end the cart without a discard
@@ -382,6 +410,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
           subtotal,
           discount_total: discountTotal,
           had_return_items: hadReturnItems,
+          line_count_removed_before: linesRemovedBefore,
         },
       }).catch(() => {});
     }
@@ -475,8 +504,9 @@ export const useCartStore = create<CartStore>()((set, get) => ({
   },
 
   replaceCart: (items, transactionDiscount) => {
-    // A recalled / replaced cart is a NEW correlation — regenerate the session.
-    set({ items, transactionDiscount, cartSessionId: crypto.randomUUID() });
+    // A recalled / replaced cart is a NEW correlation — regenerate the session
+    // and reset the removed-line counter.
+    set({ items, transactionDiscount, cartSessionId: crypto.randomUUID(), cartLinesRemovedThisSession: 0 });
   },
 
   replaceReturnItems: (newReturnItems) => {
@@ -485,22 +515,41 @@ export const useCartStore = create<CartStore>()((set, get) => ({
         ...state.items.filter((i) => (i.kind ?? 'sale') !== 'return'),
         ...newReturnItems,
       ],
-      // Replacing the return section is a new correlation — regenerate.
+      // Replacing the return section is a new correlation — regenerate and reset
+      // the removed-line counter.
       cartSessionId: crypto.randomUUID(),
+      cartLinesRemovedThisSession: 0,
     }));
   },
 
   clearReturnItems: () => {
-    set((state) => ({
-      items: state.items.filter((i) => (i.kind ?? 'sale') !== 'return'),
-    }));
+    set((state) => {
+      const nextItems = state.items.filter((i) => (i.kind ?? 'sale') !== 'return');
+      // If clearing return items empties the cart entirely, null the session id.
+      const nextSessionId = nextItems.length === 0 ? null : state.cartSessionId;
+      const nextRemovedCount = nextItems.length === 0 ? 0 : state.cartLinesRemovedThisSession;
+      return {
+        items: nextItems,
+        cartSessionId: nextSessionId,
+        cartLinesRemovedThisSession: nextRemovedCount,
+      };
+    });
   },
 
   addReturnItems: (newItems) => {
-    set((state) => ({
-      items: [...state.items, ...newItems],
-      cartSessionId: ensureCartSessionId(state.cartSessionId),
-    }));
+    set((state) => {
+      const prevSessionId = state.cartSessionId;
+      const cartSessionId = ensureCartSessionId(prevSessionId);
+      // If this is the first mutation of an empty cart (new session), reset the
+      // removed-line counter.
+      const cartLinesRemovedThisSession =
+        prevSessionId === null ? 0 : state.cartLinesRemovedThisSession;
+      return {
+        items: [...state.items, ...newItems],
+        cartSessionId,
+        cartLinesRemovedThisSession,
+      };
+    });
   },
 
   // Derived selectors keep their `number` return type (external store shape),
