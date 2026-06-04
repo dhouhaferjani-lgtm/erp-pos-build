@@ -168,6 +168,7 @@
     "stillTrying": "Still working… check your connection.",
     "cancel": "Cancel",
     "selectCompany": "Select Company",
+    "selectOrganization": "Select Your Business",
     "noConnection": "No Internet Connection",
     "noConnectionMessage": "An internet connection is required to sign in. Please check your connection and try again."
   },

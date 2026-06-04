@@ -168,6 +168,7 @@
     "stillTrying": "Toujours en cours… vérifiez votre connexion.",
     "cancel": "Annuler",
     "selectCompany": "Sélectionner l'entreprise",
+    "selectOrganization": "Sélectionnez votre établissement",
     "noConnection": "Pas de connexion Internet",
     "noConnectionMessage": "Une connexion Internet est nécessaire pour se connecter. Veuillez vérifier votre connexion et réessayer."
   },
