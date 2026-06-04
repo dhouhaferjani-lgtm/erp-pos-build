@@ -667,5 +667,112 @@ describe('authStore', () => {
       expect(removeStoredValue).not.toHaveBeenCalledWith('login_tenant_id');
       expect(useAuthStore.getState().isAuthenticated).toBe(false);
     });
+
+    // FIX 2: LOGIN_TENANT_ID read failure must degrade to picker, not crash.
+    it('FIX 2: LOGIN_TENANT_ID read failure degrades to picker (one POST only)', async () => {
+      vi.mocked(getStoredValue).mockImplementation(async (key: string) => {
+        if (key === 'login_tenant_id') throw new Error('storage read error');
+        return null;
+      });
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        requires_org_selection: true,
+        organizations: [
+          { tenant_id: 't-1', name: 'Alpha', slug: 'alpha' },
+          { tenant_id: 't-2', name: 'Beta', slug: 'beta' },
+        ],
+      });
+
+      const result = await useAuthStore.getState().login('multi@example.com', 'password123');
+
+      expect(result).toEqual({
+        status: 'requires_org_selection',
+        organizations: [
+          { tenant_id: 't-1', name: 'Alpha', slug: 'alpha' },
+          { tenant_id: 't-2', name: 'Beta', slug: 'beta' },
+        ],
+      });
+      // Only one POST — no re-POST attempted because read failed → no match.
+      expect(apiPost).toHaveBeenCalledTimes(1);
+      expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    });
+
+    // FIX 1 (abort gate 1): abort after /user/companies resolves, before commit.
+    it('FIX 1: abort after /user/companies resolves does not commit auth state', async () => {
+      const controller = new AbortController();
+
+      vi.mocked(getStoredValue).mockResolvedValue(null);
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        user: mockUser,
+        token: 'tok-abort',
+        tokenType: 'Bearer',
+        deviceId: null,
+      });
+      // apiGet resolves companies but aborts the signal before returning,
+      // simulating a cancel that fires in the gap between resolve and commit.
+      vi.mocked(apiGet).mockImplementationOnce(async () => {
+        controller.abort();
+        return mockCompanies;
+      });
+
+      await expect(
+        useAuthStore.getState().login('test@example.com', 'password123', {
+          signal: controller.signal,
+        }),
+      ).rejects.toThrow('Aborted');
+
+      const state = useAuthStore.getState();
+      expect(state.isAuthenticated).toBe(false);
+      expect(state.token).toBeNull();
+      // setStoredValue must NOT have been called with 'auth_token'.
+      expect(setStoredValue).not.toHaveBeenCalledWith('auth_token', expect.anything());
+    });
+
+    // FIX: companies-fetch failure after auto-select re-POST restores prior auth.
+    it('FIX: companies-fetch failure after auto-select re-POST restores prior auth (no persistence)', async () => {
+      vi.mocked(getStoredValue).mockImplementation(async (key: string) =>
+        key === 'login_tenant_id' ? 't-2' : null,
+      );
+      vi.mocked(apiPost)
+        .mockResolvedValueOnce({
+          requires_org_selection: true,
+          organizations: [
+            { tenant_id: 't-1', name: 'Alpha', slug: 'alpha' },
+            { tenant_id: 't-2', name: 'Beta', slug: 'beta' },
+          ],
+        })
+        .mockResolvedValueOnce({
+          user: { ...mockUser, tenantId: 't-2' }, token: 'tok-2', tokenType: 'Bearer', deviceId: null,
+        });
+      vi.mocked(apiGet).mockRejectedValueOnce(new Error('companies fetch failed'));
+
+      await expect(
+        useAuthStore.getState().login('multi@example.com', 'password123'),
+      ).rejects.toThrow('companies fetch failed');
+
+      const state = useAuthStore.getState();
+      expect(state.isAuthenticated).toBe(false);
+      expect(state.token).toBeNull();
+      // No auth was persisted.
+      expect(setStoredValue).not.toHaveBeenCalledWith('auth_token', expect.anything());
+    });
+
+    // FIX 4 (quality): LOGIN_TENANT_ID write failure must NOT fail the login.
+    it('FIX 4: LOGIN_TENANT_ID write failure is swallowed — login still resolves authenticated', async () => {
+      vi.mocked(getStoredValue).mockResolvedValue(null);
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        user: mockUser, token: 'tok-ok', tokenType: 'Bearer', deviceId: null,
+      });
+      vi.mocked(apiGet).mockResolvedValueOnce(mockCompanies);
+      // setStoredValue rejects ONLY for 'login_tenant_id'; all others succeed.
+      vi.mocked(setStoredValue).mockImplementation(async (key: string) => {
+        if (key === 'login_tenant_id') throw new Error('write error');
+        return undefined;
+      });
+
+      const result = await useAuthStore.getState().login('test@example.com', 'password123');
+
+      expect(result).toEqual({ status: 'authenticated' });
+      expect(useAuthStore.getState().isAuthenticated).toBe(true);
+    });
   });
 });

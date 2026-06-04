@@ -192,6 +192,26 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     const serverUrl = getServerUrl();
     set({ isLoading: true, serverUrl });
 
+    // FIX 1: tiny abort-check helper — throws AbortError when the signal
+    // has already fired. Called at every await boundary before committing
+    // state or returning a result. Matches the pattern used in
+    // checkSession / fetchCompanies.
+    const abortIfCancelled = (signal?: AbortSignal): void => {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    };
+
+    // FIX 3: hoist the duplicated request-body builder. The first POST
+    // includes tenant_id ONLY when opts.tenantId was supplied (preserving
+    // existing semantics). The auto-select re-POST passes storedTenantId.
+    const buildLoginBody = (tenantId?: string): Record<string, unknown> => ({
+      email,
+      password,
+      device_id: getDeviceId(),
+      device_name: 'IziPOS Desktop',
+      platform: getTauriPlatform(),
+      ...(tenantId ? { tenant_id: tenantId } : {}),
+    });
+
     // Local helper: given an authenticated login response, run the existing
     // transactional companies-fetch + persist, then best-effort persist the
     // device tenant hint. Reused by the auto-select re-POST (Task 3).
@@ -221,6 +241,14 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         throw error;
       }
 
+      // FIX 1 (abort gate 1): a cancel that fires after /user/companies
+      // resolves but before we commit storage/state must still roll back
+      // and propagate the abort — never commit half-auth state.
+      if (opts?.signal?.aborted) {
+        set(priorAuth);
+        throw new DOMException('Aborted', 'AbortError');
+      }
+
       await setStoredValue(StorageKeys.TOKEN, token);
       await setStoredValue(StorageKeys.USER, user);
       await setStoredValue(StorageKeys.COMPANIES, companies);
@@ -243,39 +271,41 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     };
 
     try {
-      const body: Record<string, unknown> = {
-        email,
-        password,
-        device_id: getDeviceId(),
-        device_name: 'IziPOS Desktop',
-        platform: getTauriPlatform(),
-      };
-      if (opts?.tenantId) body.tenant_id = opts.tenantId;
-
-      const response = await apiPost<LoginApiResponse>('/auth/login', body, {
-        signal: opts?.signal,
-      });
+      const response = await apiPost<LoginApiResponse>(
+        '/auth/login',
+        buildLoginBody(opts?.tenantId),
+        { signal: opts?.signal },
+      );
 
       if (isOrgSelection(response)) {
         // Contract: an explicit-tenant call can never get a picker shape.
         if (opts?.tenantId) throw new UnexpectedLoginResponseError();
 
-        // Auto-select the device-bound persisted tenant IF it is one of the
-        // returned orgs. Exactly one extra POST (no recursion / no loop).
-        const storedTenantId = await getStoredValue<string>(StorageKeys.LOGIN_TENANT_ID);
+        // FIX 2: wrap LOGIN_TENANT_ID read as best-effort. A read failure
+        // degrades to "no stored tenant" → show picker; must NOT crash login.
+        let storedTenantId: string | null = null;
+        try {
+          storedTenantId = await getStoredValue<string>(StorageKeys.LOGIN_TENANT_ID);
+        } catch (e) {
+          console.warn('[auth] failed to read LOGIN_TENANT_ID (non-fatal, showing picker):', e);
+          storedTenantId = null;
+        }
+
+        // FIX 1 (abort gate 2): check after the getStoredValue read and
+        // before we either re-POST or return the picker.
+        abortIfCancelled(opts?.signal);
+
         const match =
           storedTenantId != null &&
           response.organizations.some((o) => o.tenant_id === storedTenantId);
 
         if (match) {
-          const second = await apiPost<LoginApiResponse>('/auth/login', {
-            email,
-            password,
-            tenant_id: storedTenantId,
-            device_id: getDeviceId(),
-            device_name: 'IziPOS Desktop',
-            platform: getTauriPlatform(),
-          }, { signal: opts?.signal });
+          // Auto-select: exactly one extra POST (no recursion / no loop).
+          const second = await apiPost<LoginApiResponse>(
+            '/auth/login',
+            buildLoginBody(storedTenantId ?? undefined),
+            { signal: opts?.signal },
+          );
 
           if (isOrgSelection(second)) throw new UnexpectedLoginResponseError();
           await completeAuthentication(second);
