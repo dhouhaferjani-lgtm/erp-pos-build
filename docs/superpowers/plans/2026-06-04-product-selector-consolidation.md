@@ -47,6 +47,29 @@ Goal: **(A)** one canonical line-item table + field set used by every line-entry
 
 **Risk:** `DocumentLineEditor` is the largest, fiscally-sensitive consumer (line totals feed documents). Extraction must be behavior-preserving — snapshot/regression document totals; never alter canonical/fiscal payloads.
 
+## Transfer line-table spec (research-backed, 2026-06-04)
+
+Multi-source research across Odoo, SAP S/4HANA STO, Dynamics 365 Business Central, NetSuite, Zoho Inventory, ERPNext (22 sources, adversarially verified). Confidence noted per point.
+
+**Confirmed (high):**
+- A transfer line is **product + quantity, with NO per-line unit price / tax / amount** — Zoho's transfer line has `item, description, quantity_transfer, unit, serial_numbers, batches` but no rate/tax/amount (its PO/SO lines do); SAP forbids prices on intra-company STOs. Validates our product+quantity model with cost allocated separately. [zoho.com/inventory/api/v1/transferorders, help.sap.com STO docs]
+- The one transfer-specific column with **no PO analog is source on-hand/available** (Zoho `Source Stock`/`Destination Stock`). Add it; we already have per-location available/reserved. [zoho.com/.../transfer-orders.html]
+- **Two-step transfers add a second quantity column** (demand vs received/done): Odoo Demand/Done, BC Qty-to-Ship/Shipped/Qty-to-Receive, SAP in-transit vs received → surface only post-draft (in_transit/completed), keep the create screen single-quantity. [odoo two_steps docs, learn.microsoft.com BC, help.sap.com]
+- **Header-level source/destination** is the norm; per-line warehouses are rare (ERPNext only). Keep from/to at header. [docs.frappe.io stock-entry]
+
+**Medium / inferred:**
+- **Lot/expiry/serial via a per-line picker action/modal gated by the product's tracking flag — not always-on columns.** For pharma (lot+expiry, FEFO) and automotive (serial), add a gated "details" action. [zoho nested batch/serial arrays; BC Get Bin Content]
+- Data entry = per-line fill **+ a bulk "Select items" action** for many lines. Barcode-scan-to-add-line / paste-from-spreadsheet / tab-to-append were NOT verified — plausible, not proven. [learn.microsoft.com BC]
+- **Add-line control placement is NOT directly documented in any verified source.** Putting it **after the last row** (auto-appending bottom row) is inferred from the universally grid-based, downward-appending entry model and matches our PO `DocumentLineEditor` + the owner's top-down-entry requirement. Treat as a design decision, not a citation.
+
+**Resulting column config for `<LineItemsTable>`:**
+- **Transfer (create):** `Product (SKU+name) | Available @ source | Quantity | remove` — add-line **after the last row**; no price/tax/total, no totals footer.
+- **Transfer (detail/receive):** add demand-vs-received second quantity column; keep existing `unit_cost_snapshot` / `allocated_transfer_cost` here (NOT on create).
+- **Purchase/Sales (PO DocumentLineEditor):** `drag | Article | Description | Qty | Unit price | Tax % | Total | remove` + totals footer.
+- **Both:** bottom add-line, inline product search, gated lot/serial/expiry detail action.
+
+Open follow-ups (not blocking): cite exact add-line placement per ERP via UI screenshots; confirm keyboard/scan ergonomics; decide how the source-available readout behaves during draft (avoid implying a reservation before in_transit).
+
 ## Workstream B — Unit-aware quantity precision
 
 Problem: qty step/decimals are hardcoded (transfer `decimalPlaces=4`, PO `step=1`). They should reflect each product's **unit of measure** — pieces → integer (step 1, 0 decimals); weight/volume → configured decimals.
