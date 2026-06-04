@@ -253,15 +253,10 @@ class EnrichmentEventFlowTest extends TestCase
             'platform_submission_id' => $trackingId,
         ]);
 
+        // A failed enrichment carries no reviewable data: lookup-status must
+        // not be hit and no review-queue row may be created.
         $mockSubmission = $this->createMock(PlatformSubmissionInterface::class);
-        $mockSubmission->method('checkStatus')->willReturn(new SubmissionStatusDTO(
-            trackingId: $trackingId,
-            status: 'failed',
-            enrichmentQuality: null,
-            enrichedData: [],
-            assignedBarcode: null,
-            vertical: 'automotive',
-        ));
+        $mockSubmission->expects($this->never())->method('checkStatus');
 
         $reviewService = new EnrichmentReviewService($mockSubmission);
         $listener = new ProcessEnrichmentEventListener($reviewService);
@@ -278,6 +273,11 @@ class EnrichmentEventFlowTest extends TestCase
 
         $product->refresh();
         $this->assertSame(EnrichmentStatus::Failed, $product->enrichment_status);
+
+        // No phantom review-queue row
+        $this->assertDatabaseMissing('enrichment_results', [
+            'tracking_id' => $trackingId,
+        ]);
 
         // Failed enrichment should NOT trigger notification event
         Event::assertNotDispatched(EnrichmentResultReadyEvent::class);

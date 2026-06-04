@@ -152,3 +152,39 @@ The BLOCKER (webhook `locale` is parsed but not threaded through to `fetchAndSto
 | — | Polling path (`CheckPendingEnrichmentsCommand`) | **No change needed.** The poller only ever holds the lookup-status response, and `fetchAndStore` re-fetches that same lookup-status into `SubmissionStatusDTO` (which now parses `locale`). So the poller persists locale via the `$statusDTO->locale` fallback — threading `response['locale']` through its event dispatch would be redundant. |
 
 **Verification after fixes:** 254 module tests green (3 PG-only skips); PHPStan L8 clean; Pint clean.
+
+## Round 2 Verification (Codex)
+
+### Item 1 — BLOCKER: locale threading
+FAIL — New webhook payloads thread locale from `EnrichmentWebhookPayload::fromWebhook()` through `ProcessEnrichmentWebhookJob::handle()` and `ProcessEnrichmentEventListener::handle()` into `EnrichmentReviewService::fetchAndStore()` (`apps/api/app/Modules/PlatformIntegration/Application/DTOs/EnrichmentWebhookPayload.php:26`, `apps/api/app/Modules/PlatformIntegration/Application/Jobs/ProcessEnrichmentWebhookJob.php:29`, `apps/api/app/Modules/Product/Application/Listeners/ProcessEnrichmentEventListener.php:21`, `apps/api/app/Modules/Product/Application/Services/EnrichmentReviewService.php:28`), but in-flight queued jobs serialized before the new typed `locale` property can still fatal when `handle()` reads `$this->payload->locale` (`apps/api/app/Modules/PlatformIntegration/Application/Jobs/ProcessEnrichmentWebhookJob.php:37`).
+
+### Item 2 — P1: terminal-status gate
+PASS — The listener always persists the product terminal status first and only calls `fetchAndStore()`/dispatches notification for `EnrichmentStatus::Completed`, so `failed`, `rejected`, and `not_enrichable` map to product status without creating `enrichment_results` rows (`apps/api/app/Modules/Product/Application/Listeners/ProcessEnrichmentEventListener.php:52`, `apps/api/app/Modules/Product/Application/Listeners/ProcessEnrichmentEventListener.php:60`, `apps/api/app/Shared/Enums/EnrichmentStatus.php:24`).
+
+### Item 3 — New issues introduced
+FAIL — In-flight `ProcessEnrichmentWebhookJob` payloads queued before this change can deserialize with `EnrichmentWebhookPayload::$locale` uninitialized and crash on the new direct read in `ProcessEnrichmentWebhookJob::handle()` (`apps/api/app/Modules/PlatformIntegration/Application/DTOs/EnrichmentWebhookPayload.php:20`, `apps/api/app/Modules/PlatformIntegration/Application/Jobs/ProcessEnrichmentWebhookJob.php:37`).
+
+### Item 4 — Test quality
+FAIL — The updated tests genuinely assert persisted webhook locale and no `not_enrichable` phantom row (`apps/api/tests/Unit/Shared/EnrichmentEventFlowTest.php:181`, `apps/api/tests/Unit/Shared/EnrichmentEventFlowTest.php:215`, `apps/api/tests/Unit/Shared/EnrichmentEventFlowTest.php:235`), but the `failed` test still stubs `checkStatus()` and only asserts status/no notification, so it would not catch a failed-status `enrichment_results` row (`apps/api/tests/Unit/Shared/EnrichmentEventFlowTest.php:256`, `apps/api/tests/Unit/Shared/EnrichmentEventFlowTest.php:280`).
+
+### Item 5 — CheckPendingEnrichmentsCommand claim
+PASS — The poller dispatches the event without locale after `checkStatusRaw()`, but the synchronous listener re-enters `fetchAndStore()`, which re-fetches via `ProductSubmissionService::checkStatus()` into `SubmissionStatusDTO::fromApiResponse()` and persists `$statusDTO->locale` as the fallback (`apps/api/app/Modules/PlatformIntegration/Application/Commands/CheckPendingEnrichmentsCommand.php:69`, `apps/api/app/Modules/PlatformIntegration/Application/Commands/CheckPendingEnrichmentsCommand.php:93`, `apps/api/app/Modules/PlatformIntegration/Application/Services/ProductSubmissionService.php:125`, `apps/api/app/Shared/DTOs/SubmissionStatusDTO.php:37`, `apps/api/app/Modules/Product/Application/Services/EnrichmentReviewService.php:58`).
+
+### Overall Round 2 Verdict
+REQUEST-CHANGES
+
+The functional fixes for new webhook deliveries look correct, and focused tests plus targeted PHPStan passed, but the queued-job compatibility hazard is a concrete deployment risk and the failed terminal path is still under-tested. Address the uninitialized typed-property read for old queued payloads and strengthen the failed-status test to assert no `enrichment_results` row and no `checkStatus()` call.
+
+---
+
+## Author Responses (round 2) — Claude
+
+| Round-2 item | Disposition |
+|--------------|-------------|
+| Item 1 — FAIL: queue-deserialization risk (in-flight `ProcessEnrichmentWebhookJob` whose deserialized `EnrichmentWebhookPayload::$locale` is uninitialized) | **Valid — FIXED.** Confirmed empirically: direct access of an uninitialized typed property throws `must not be accessed before initialization`; `?? null` reads it safely (isset semantics). `handle()` now dispatches `$this->payload->locale ?? null`. New `ProcessEnrichmentWebhookJobTest::test_handle_tolerates_in_flight_payload_missing_locale` reproduces the exact error (RED) and pins the fix (GREEN), building the payload via `newInstanceWithoutConstructor()` with `$locale` left uninitialized. (Note: the SYNC listener path was never at risk; only the queued Job's serialized payload.) |
+| Item 2 — PASS: terminal-status gate | Acknowledged. |
+| Item 3 — CONDITIONAL PASS | The only structural risk (Item 1) is now closed. |
+| Item 4 — FAIL: `failed`/`not_enrichable` test gaps | **FIXED.** `not_enrichable` already asserted `assertDatabaseMissing` + `checkStatus` never called. Extended the **`failed`** test (`test_listener_does_not_dispatch_event_for_failed_enrichments`) with the same two assertions now that `failed` is also gated out of `fetchAndStore`. |
+| Item 5 — PASS: `CheckPendingEnrichmentsCommand` | Acknowledged — no change needed. |
+
+**Verification after round-2 fixes:** 256 module tests green (3 PG-only skips); PHPStan L8 clean; Pint clean.
