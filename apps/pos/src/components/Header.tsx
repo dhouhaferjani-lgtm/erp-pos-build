@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeftRight, BarChart3, Lock, LogOut, Minimize2, Settings } from 'lucide-react';
+import { ArrowLeftRight, BarChart3, Lock, Minimize2, Settings } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -9,7 +9,6 @@ import { applyFullscreen } from '@/lib/fullscreen';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useCartStore } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
-import { useProductStore } from '@/stores/productStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { SyncButton } from '@/components/atoms/SyncButton/SyncButton';
@@ -43,7 +42,6 @@ import { getTerminalState, setManagerPinThrottle, setManagerPinFailedAttempts } 
 export function Header() {
   const { t } = useTranslation('pos');
   const navigate = useNavigate();
-  const logout = useAuthStore((s) => s.logout);
   const terminal = useTerminalStore((s) => s.terminal);
   const shift = useTerminalStore((s) => s.shift);
   const closeShift = useTerminalStore((s) => s.closeShift);
@@ -78,16 +76,11 @@ export function Header() {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [showCashDrawerModal, setShowCashDrawerModal] = useState(false);
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-
   // Refs for passing EOD data to handlePrintZReport after confirmation
   const lastCashCountPayloadRef = useRef<CashCountCommitPayload | null>(null);
   const lastZReportCashCountsRef = useRef<ZReportCountEntry[] | null>(null);
   const lastPreviewPaymentMethodsRef = useRef<PaymentMethodItem[] | null>(null);
 
-  const isManager = operator?.roles?.some((r) =>
-    ['manager', 'admin', 'owner'].includes(r),
-  ) ?? false;
   const approvalContext = useMemo(() => {
     if (!tenantId || !companyId || !terminal) return undefined;
     const cashierUserId = operator?.id ?? userId;
@@ -379,17 +372,6 @@ export function Header() {
     clearOperator();
   }
 
-  function handleLogout() {
-    useCartStore.getState().clearCart();
-    useRefundFlowStore.getState().clearAll();
-    useRefundDraftStore.getState().clearDraftState();
-    usePaymentStore.getState().clearVoucherTenders();
-    usePaymentStore.getState().reset();
-    useProductStore.getState().reset();
-    useOperatorStore.getState().clearOperator();
-    logout();
-  }
-
   return (
     <>
       <header className="flex h-12 items-center justify-between border-b border-gray-200 bg-white px-4">
@@ -501,16 +483,6 @@ export function Header() {
             <Settings className="h-4 w-4" />
           </button>
 
-          {/* Logout — manager/admin only */}
-          {isManager && (
-            <button
-              onClick={() => setShowLogoutConfirm(true)}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-              title={t('header.logout')}
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-          )}
         </div>
       </header>
 
@@ -562,36 +534,6 @@ export function Header() {
         />
       )}
 
-      {/* Logout Confirmation */}
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="mx-4 w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-bold text-gray-900">
-              {t('settings.signOutTerminal')}
-            </h3>
-            <p className="mt-2 text-sm text-gray-600">
-              {t('settings.signOutConfirmMessage')}
-            </p>
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => setShowLogoutConfirm(false)}
-                className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                {t('settings.cancel')}
-              </button>
-              <button
-                onClick={() => {
-                  setShowLogoutConfirm(false);
-                  handleLogout();
-                }}
-                className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700"
-              >
-                {t('settings.signOut')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }
