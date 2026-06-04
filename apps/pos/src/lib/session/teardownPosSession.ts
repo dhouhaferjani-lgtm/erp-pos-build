@@ -11,7 +11,7 @@ import { useOperatorStore } from '@/stores/operatorStore';
  * Kept out of authStore to avoid an operatorStore<->authStore import cycle.
  */
 export function teardownPosSessionStores(): void {
-  useCartStore.getState().clearCart();
+  useCartStore.getState().clearCart('operator_switch');
   useRefundFlowStore.getState().clearAll();
   useRefundDraftStore.getState().clearDraftState();
   usePaymentStore.getState().clearVoucherTenders();

@@ -5,6 +5,7 @@ import { getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bcdiv, bcmul, bcsub, bcsum, bccomp, bcabs } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
 import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
+import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
 
 // Quantities carry up to 4 decimal places (weight/volume sales); money carries
 // the currency scale. Multiply at quantity precision so a fractional qty never
@@ -18,9 +19,42 @@ export interface CartTransactionDiscount {
   approvalEvidence?: PosOverrideEvidence;
 }
 
+export interface LineDiscountInput {
+  type: 'percentage' | 'fixed';
+  value: string;
+  reason?: string;
+  approvalEvidence?: PosOverrideEvidence;
+}
+
+/**
+ * Why the cart is being cleared. Drives the `cart_session_id` lifecycle and the
+ * `pos.cart_discarded` audit emit: a `discard` clear is an operator dumping a
+ * built-but-untendered sale (fraud-relevant → emitted); every other reason
+ * (checkout success, hold, shift close, operator switch) ends the cart without
+ * a discard signal. All reasons clear the session id.
+ */
+export type ClearCartReason = 'discard' | 'checkout' | 'hold' | 'shift_close' | 'operator_switch';
+
 interface CartState {
   items: CartItem[];
   transactionDiscount?: CartTransactionDiscount;
+  /**
+   * Client-side correlation id for the in-progress sale. Used as the
+   * `aggregate_id` of cart-scoped audit events so a discard / line-remove /
+   * discount can be correlated. NOT a backend column. Owned like
+   * `pendingIdempotencyKey`: generated on the first mutation of an empty cart,
+   * regenerated on recall/replace, cleared on checkout/discard/hold/
+   * shift-close/operator-switch.
+   */
+  cartSessionId: string | null;
+  /**
+   * Count of lines removed from the cart during the current cart session (i.e.
+   * since the last `cartSessionId` was generated). Used as the
+   * `line_count_removed_before` field in `pos.cart_discarded` — a key fraud
+   * signal for "build sale, strip lines, discard" patterns. Reset to 0
+   * whenever `cartSessionId` is cleared or regenerated.
+   */
+  cartLinesRemovedThisSession: number;
 }
 
 interface CartActions {
@@ -29,7 +63,18 @@ interface CartActions {
   updateQuantity: (itemId: string, quantity: number) => void;
   updateLineModifiers: (lineId: string, newModifiers: SelectedModifier[]) => void;
   removeItem: (itemId: string) => void;
-  clearCart: () => void;
+  /**
+   * Clear the cart. `reason` defaults to `'discard'` (the cart's clear button) —
+   * the only reason that emits `pos.cart_discarded`. Non-discard callers
+   * (checkout success, hold, shift close, operator switch) MUST pass their
+   * reason so the discard signal is not falsely emitted. All reasons reset the
+   * `cart_session_id`.
+   */
+  clearCart: (reason?: ClearCartReason) => void;
+  /** Apply/replace a line-level discount on a single cart line. */
+  applyLineDiscount: (itemId: string, input: LineDiscountInput) => void;
+  /** Remove the line-level discount from a single cart line. */
+  removeLineDiscount: (itemId: string) => void;
   setTransactionDiscount: (discount: CartTransactionDiscount | undefined) => void;
   replaceCart: (
     items: CartItem[],
@@ -68,6 +113,8 @@ interface CartDerived {
    * Positive → cashier collects money; negative → cashier owes a refund.
    */
   netTotal: () => number;
+  /** Current cart-session correlation id (null when the cart is empty/idle). */
+  getCartSessionId: () => string | null;
 }
 
 type CartStore = CartState & CartActions & CartDerived;
@@ -157,13 +204,31 @@ function resolveDefaultModifiers(product: POSProduct): SelectedModifier[] {
 const initialState: CartState = {
   items: [],
   transactionDiscount: undefined,
+  cartSessionId: null,
+  cartLinesRemovedThisSession: 0,
 };
+
+/**
+ * Returns the current cart-session id, generating one (uuid) when the cart is
+ * idle (no id yet). Call at the top of every mutating action so the first
+ * mutation of an empty cart opens a session. Pure id management — does not call
+ * `set()`; the caller folds the returned id into its own `set()`.
+ */
+function ensureCartSessionId(current: string | null): string {
+  return current ?? crypto.randomUUID();
+}
 
 export const useCartStore = create<CartStore>()((set, get) => ({
   ...initialState,
 
   addItem: (product: POSProduct, selectedModifiers?: SelectedModifier[]) => {
     set((state) => {
+      const prevSessionId = state.cartSessionId;
+      const cartSessionId = ensureCartSessionId(prevSessionId);
+      // If a new session was just generated (first mutation of an empty cart),
+      // reset the removed-line counter for this session.
+      const cartLinesRemovedThisSession =
+        prevSessionId === null ? 0 : state.cartLinesRemovedThisSession;
       const hasModifiers = selectedModifiers && selectedModifiers.length > 0;
 
       // For items without modifiers, try to find and increment existing
@@ -179,7 +244,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
           const updated = recalcLineTotal(existing, existing.quantity + 1);
           const newItems = [...state.items];
           newItems[existingIndex] = updated;
-          return { items: newItems };
+          return { items: newItems, cartSessionId, cartLinesRemovedThisSession };
         }
       }
 
@@ -213,7 +278,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
         tax_amount: computeTaxAmount(priceValue, taxRate),
       };
 
-      return { items: [...state.items, newItem] };
+      return { items: [...state.items, newItem], cartSessionId, cartLinesRemovedThisSession };
     });
   },
 
@@ -228,11 +293,31 @@ export const useCartStore = create<CartStore>()((set, get) => ({
       return;
     }
 
+    // Snapshot BEFORE the set() for the audit emit (old qty + line context).
+    const existing = get().items.find((item) => item.id === itemId);
+    const cartSessionId = get().cartSessionId;
+
     set((state) => ({
       items: state.items.map((item) =>
         item.id === itemId ? recalcLineTotal(item, quantity) : item,
       ),
     }));
+
+    // Best-effort audit emit OUTSIDE the updater — never throws into the action.
+    if (existing) {
+      void recordAuditEvent({
+        type: 'pos.cart_quantity_updated',
+        aggregateType: 'PosSale',
+        aggregateId: cartSessionId ?? itemId,
+        payload: {
+          line_id: itemId,
+          product_id: existing.product.id,
+          old_qty: existing.quantity,
+          new_qty: quantity,
+          kind: existing.kind ?? 'sale',
+        },
+      }).catch(() => {});
+    }
   },
 
   updateLineModifiers: (lineId: string, newModifiers: SelectedModifier[]) => {
@@ -260,21 +345,168 @@ export const useCartStore = create<CartStore>()((set, get) => ({
   },
 
   removeItem: (itemId: string) => {
+    // Snapshot the removed line BEFORE the set() for the audit emit.
+    const removed = get().items.find((item) => item.id === itemId);
+    const cartSessionId = get().cartSessionId;
+
+    set((state) => {
+      const nextItems = state.items.filter((item) => item.id !== itemId);
+      const lineWasRemoved = nextItems.length < state.items.length;
+      // When removing the last line, null the session id (the cart is now empty
+      // / idle). A new sale later will get a fresh session id. Also increment
+      // the removed-line counter only when a line actually left the cart.
+      const nextSessionId = nextItems.length === 0 ? null : state.cartSessionId;
+      const nextRemovedCount = lineWasRemoved
+        ? (nextItems.length === 0 ? 0 : state.cartLinesRemovedThisSession + 1)
+        : state.cartLinesRemovedThisSession;
+      return {
+        items: nextItems,
+        cartSessionId: nextSessionId,
+        cartLinesRemovedThisSession: nextRemovedCount,
+      };
+    });
+
+    if (removed) {
+      void recordAuditEvent({
+        type: 'pos.cart_line_removed',
+        aggregateType: 'PosSale',
+        aggregateId: cartSessionId ?? itemId,
+        payload: {
+          product_id: removed.product.id,
+          qty: removed.quantity,
+          unit_price: removed.unit_price,
+          line_total: removed.line_total,
+          kind: removed.kind ?? 'sale',
+        },
+      }).catch(() => {});
+    }
+  },
+
+  clearCart: (reason: ClearCartReason = 'discard') => {
+    // Snapshot the cart BEFORE clearing — the discard emit needs the pre-clear
+    // state, and any reason that ends a non-empty cart should still reset the
+    // session id.
+    const state = get();
+    const hadItems = state.items.length > 0;
+    const cartSessionId = state.cartSessionId;
+    const lineCount = state.items.length;
+    const subtotal = state.subtotal();
+    const discountTotal = state.discountAmount();
+    const hadReturnItems = state.items.some((i) => (i.kind ?? 'sale') === 'return');
+    const linesRemovedBefore = state.cartLinesRemovedThisSession;
+
+    set({ items: [], transactionDiscount: undefined, cartSessionId: null, cartLinesRemovedThisSession: 0 });
+
+    // Only a genuine discard (operator dumping a built sale) is fraud-relevant.
+    // Checkout/hold/shift-close/operator-switch end the cart without a discard
+    // signal. Never emit for an already-empty cart.
+    if (reason === 'discard' && hadItems) {
+      void recordAuditEvent({
+        type: 'pos.cart_discarded',
+        aggregateType: 'PosSale',
+        aggregateId: cartSessionId ?? crypto.randomUUID(),
+        payload: {
+          line_count: lineCount,
+          subtotal,
+          discount_total: discountTotal,
+          had_return_items: hadReturnItems,
+          line_count_removed_before: linesRemovedBefore,
+        },
+      }).catch(() => {});
+    }
+  },
+
+  applyLineDiscount: (itemId, input) => {
+    const decimals = getDecimals();
+    const cartSessionId = get().cartSessionId;
+
     set((state) => ({
-      items: state.items.filter((item) => item.id !== itemId),
+      items: state.items.map((item) => {
+        if (item.id !== itemId) return item;
+        const grossTotal = parseFloat(item.unit_price) * item.quantity;
+        let discountAmount = 0;
+        if (input.type === 'percentage') {
+          discountAmount = (grossTotal * parseFloat(input.value)) / 100;
+        } else {
+          discountAmount = parseFloat(input.value);
+        }
+        const lineTotal = Math.max(0, grossTotal - discountAmount);
+        return {
+          ...item,
+          discount_type: input.type,
+          discount_percent: input.type === 'percentage' ? input.value : undefined,
+          discount_amount: discountAmount.toFixed(decimals),
+          discount_reason: input.reason || undefined,
+          discount_approval_evidence: input.approvalEvidence,
+          line_total: lineTotal.toFixed(decimals),
+          tax_amount: computeTaxAmount(lineTotal, item.tax_rate),
+        };
+      }),
+    }));
+
+    const target = get().items.find((item) => item.id === itemId);
+    if (target) {
+      void recordAuditEvent({
+        type: 'pos.line_discount_applied',
+        aggregateType: 'PosSale',
+        aggregateId: cartSessionId ?? itemId,
+        payload: {
+          line_id: itemId,
+          product_id: target.product.id,
+          discount_type: input.type,
+          discount_amount: target.discount_amount ?? null,
+          discount_percent: input.type === 'percentage' ? input.value : null,
+          has_approval_evidence: input.approvalEvidence !== undefined,
+        },
+      }).catch(() => {});
+    }
+  },
+
+  removeLineDiscount: (itemId) => {
+    const decimals = getDecimals();
+    set((state) => ({
+      items: state.items.map((item) => {
+        if (item.id !== itemId) return item;
+        const grossTotal = parseFloat(item.unit_price) * item.quantity;
+        return {
+          ...item,
+          discount_type: undefined,
+          discount_percent: undefined,
+          discount_amount: undefined,
+          discount_reason: undefined,
+          discount_approval_evidence: undefined,
+          line_total: grossTotal.toFixed(decimals),
+          tax_amount: computeTaxAmount(grossTotal, item.tax_rate),
+        };
+      }),
     }));
   },
 
-  clearCart: () => {
-    set({ items: [], transactionDiscount: undefined });
-  },
-
   setTransactionDiscount: (discount) => {
+    const cartSessionId = get().cartSessionId;
     set({ transactionDiscount: discount });
+
+    // Emit only when SETTING a discount, not when clearing it.
+    if (discount) {
+      void recordAuditEvent({
+        type: 'pos.transaction_discount_applied',
+        aggregateType: 'PosSale',
+        aggregateId: cartSessionId ?? crypto.randomUUID(),
+        payload: {
+          discount_type: discount.type,
+          discount_amount: discount.type === 'fixed' ? discount.value : null,
+          discount_percent: discount.type === 'percentage' ? discount.value : null,
+          reason: discount.reason ?? null,
+          has_approval_evidence: discount.approvalEvidence !== undefined,
+        },
+      }).catch(() => {});
+    }
   },
 
   replaceCart: (items, transactionDiscount) => {
-    set({ items, transactionDiscount });
+    // A recalled / replaced cart is a NEW correlation — regenerate the session
+    // and reset the removed-line counter.
+    set({ items, transactionDiscount, cartSessionId: crypto.randomUUID(), cartLinesRemovedThisSession: 0 });
   },
 
   replaceReturnItems: (newReturnItems) => {
@@ -283,19 +515,41 @@ export const useCartStore = create<CartStore>()((set, get) => ({
         ...state.items.filter((i) => (i.kind ?? 'sale') !== 'return'),
         ...newReturnItems,
       ],
+      // Replacing the return section is a new correlation — regenerate and reset
+      // the removed-line counter.
+      cartSessionId: crypto.randomUUID(),
+      cartLinesRemovedThisSession: 0,
     }));
   },
 
   clearReturnItems: () => {
-    set((state) => ({
-      items: state.items.filter((i) => (i.kind ?? 'sale') !== 'return'),
-    }));
+    set((state) => {
+      const nextItems = state.items.filter((i) => (i.kind ?? 'sale') !== 'return');
+      // If clearing return items empties the cart entirely, null the session id.
+      const nextSessionId = nextItems.length === 0 ? null : state.cartSessionId;
+      const nextRemovedCount = nextItems.length === 0 ? 0 : state.cartLinesRemovedThisSession;
+      return {
+        items: nextItems,
+        cartSessionId: nextSessionId,
+        cartLinesRemovedThisSession: nextRemovedCount,
+      };
+    });
   },
 
   addReturnItems: (newItems) => {
-    set((state) => ({
-      items: [...state.items, ...newItems],
-    }));
+    set((state) => {
+      const prevSessionId = state.cartSessionId;
+      const cartSessionId = ensureCartSessionId(prevSessionId);
+      // If this is the first mutation of an empty cart (new session), reset the
+      // removed-line counter.
+      const cartLinesRemovedThisSession =
+        prevSessionId === null ? 0 : state.cartLinesRemovedThisSession;
+      return {
+        items: [...state.items, ...newItems],
+        cartSessionId,
+        cartLinesRemovedThisSession,
+      };
+    });
   },
 
   // Derived selectors keep their `number` return type (external store shape),
@@ -383,4 +637,6 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     const net = bcsub(saleTotal, returnTotal, decimals);
     return Number(bcsub(net, get().discountAmountString(), decimals));
   },
+
+  getCartSessionId: () => get().cartSessionId,
 }));

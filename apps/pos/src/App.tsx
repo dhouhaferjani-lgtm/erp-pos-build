@@ -17,6 +17,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppShell } from '@/components/AppShell';
 import { BootstrapErrorScreen } from '@/components/BootstrapErrorScreen';
 import { runC2BareCartLineDump } from '@/lib/migration/c2BareCartLineDump';
+import { startConnectivityAuditSubscriber } from '@/lib/audit/connectivityAuditSubscriber';
 import { useC2MigrationBannerStore } from '@/stores/c2MigrationBannerStore';
 import { useBootstrapErrorTelemetry } from '@/hooks/useBootstrapErrorTelemetry';
 import { CustomerDisplayPage } from '@/pages/CustomerDisplayPage';
@@ -380,7 +381,16 @@ export function MainApp() {
   // spin up a redundant monitor.
   useEffect(() => {
     const stopMonitoring = useConnectivityStore.getState().startMonitoring();
-    return stopMonitoring;
+    // Sub-Spec C Task 12: arm the connectivity-transition audit subscriber
+    // ONCE alongside monitoring. It seeds `previousIsOnline` from the store's
+    // current state, then emits `pos.went_offline` / `pos.went_online` exactly
+    // once per online↔offline edge. `start()` is idempotent (guards against
+    // StrictMode double-invoke); the returned stop fn unsubscribes.
+    const stopConnectivityAudit = startConnectivityAuditSubscriber();
+    return () => {
+      stopConnectivityAudit();
+      stopMonitoring();
+    };
   }, []);
 
   // Auto-open customer display on startup if enabled

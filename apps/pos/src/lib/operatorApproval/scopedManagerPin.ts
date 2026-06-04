@@ -2,8 +2,29 @@ import bcrypt from 'bcryptjs';
 import { ApiRequestError, apiPost } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
 import { getAllOperators } from '@/lib/db/repositories/operatorPinRepository';
+import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
 import { verifyOfflineApprovalPin, type ApprovalScope } from './approvalVerifier';
 import type { PosOverrideContext } from './posOverrideAuthoring';
+
+/**
+ * Taxonomy scope for the `pos.manager_override_denied` audit event. Maps the
+ * internal {@link ApprovalScope} onto the canonical fraud-taxonomy scope value
+ * for the well-known override scopes; other approval scopes (shift-variance,
+ * cash-drawer, credit/account) pass through verbatim rather than being
+ * mislabelled as one of the four canonical values.
+ */
+function toTaxonomyScope(scope: ApprovalScope): string {
+  switch (scope) {
+    case 'discount_limit_override':
+      return 'discount_limit';
+    case 'tender_tolerance_override':
+      return 'tender_tolerance';
+    case 'void_or_return_override':
+      return 'void';
+    default:
+      return scope;
+  }
+}
 
 export interface ScopedManagerPinApprovalInput {
   pin: string;
@@ -51,6 +72,22 @@ export async function verifyScopedManagerPin(
   }
 
   if (matched === null) {
+    // Task 11 (audit): pos.manager_override_denied — no operator's PIN matched
+    // for the requested scope (failed override). NO pin/hash in the payload.
+    // requested_amount / cart_total are not carried by this seam → null.
+    void recordAuditEvent({
+      type: 'pos.manager_override_denied',
+      aggregateType: 'Override',
+      aggregateId: input.context.terminalId,
+      tenantId: input.context.tenantId,
+      companyId: input.context.companyId,
+      payload: {
+        scope: toTaxonomyScope(input.approvalScope),
+        requested_amount: null,
+        cart_total: null,
+        reason: input.reason,
+      },
+    }).catch(() => {});
     throw new Error('manager_pin_scope_mismatch');
   }
 
@@ -81,6 +118,22 @@ export async function verifyScopedManagerPin(
     };
   } catch (error) {
     if (error instanceof ApiRequestError && error.status < 500) {
+      // Task 11 (audit): the server rejected the override (4xx). This is a
+      // denied override too — emit before rethrowing. NO pin/hash.
+      void recordAuditEvent({
+        type: 'pos.manager_override_denied',
+        aggregateType: 'Override',
+        aggregateId: input.context.terminalId,
+        tenantId: input.context.tenantId,
+        companyId: input.context.companyId,
+        operatorId: matched.id,
+        payload: {
+          scope: toTaxonomyScope(input.approvalScope),
+          requested_amount: null,
+          cart_total: null,
+          reason: input.reason,
+        },
+      }).catch(() => {});
       throw error;
     }
   }

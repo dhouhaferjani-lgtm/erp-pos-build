@@ -11,6 +11,7 @@ import {
 import { getDeviceId } from '@/lib/device';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { clearScanCache } from '@/lib/scan/scanResolutionCache';
+import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
 
 export interface User {
   id: string;
@@ -218,6 +219,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     // device tenant hint. Reused by the auto-select re-POST (Task 3).
     const completeAuthentication = async (
       res: LoginSuccessResponse,
+      loginContext: { multiTenant: boolean; viaPicker: boolean },
     ): Promise<void> => {
       const { user, token } = res;
 
@@ -256,10 +258,15 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
 
       set({ user, token, companies, isAuthenticated: true });
 
+      // Resolved company for the audit emit: auto-selected when exactly one
+      // company is returned, else null (selection still pending). Captured
+      // explicitly so the emit stamps the just-resolved context, not stale
+      // store state.
+      let resolvedCompanyId: string | null = null;
       if (companies.length === 1 && companies[0]) {
-        const companyId = companies[0].id;
-        await setStoredValue(StorageKeys.COMPANY_ID, companyId);
-        set({ companyId });
+        resolvedCompanyId = companies[0].id;
+        await setStoredValue(StorageKeys.COMPANY_ID, resolvedCompanyId);
+        set({ companyId: resolvedCompanyId });
       }
 
       // Best-effort, non-authoritative device tenant hint (MAJOR 4):
@@ -269,6 +276,25 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       } catch (e) {
         console.warn('[auth] failed to persist LOGIN_TENANT_ID (non-fatal):', e);
       }
+
+      // Task 7 (audit): pos.login. Fire-and-forget OUTSIDE any set(). Pass the
+      // just-resolved tenant/operator/company EXPLICITLY — store state may lag
+      // the commit above, and recordAuditEvent uses these to target the right
+      // tenant DB. multi_tenant = the user belongs to an org that required a
+      // picker (more than one organization); via_picker = the login resolved
+      // through an explicit tenant_id (auto-select re-POST or caller-supplied).
+      void recordAuditEvent({
+        type: 'pos.login',
+        aggregateType: 'PosSession',
+        aggregateId: getDeviceId(),
+        tenantId: user.tenantId,
+        companyId: resolvedCompanyId,
+        operatorId: user.id,
+        payload: {
+          multi_tenant: loginContext.multiTenant,
+          via_picker: loginContext.viaPicker,
+        },
+      }).catch(() => {});
     };
 
     try {
@@ -309,7 +335,9 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
           );
 
           if (isOrgSelection(second)) throw new UnexpectedLoginResponseError();
-          await completeAuthentication(second);
+          // Auto-select re-POST: the account is multi-tenant (backend offered a
+          // picker) and this login resolved through an explicit tenant_id.
+          await completeAuthentication(second, { multiTenant: true, viaPicker: true });
           return { status: 'authenticated' };
         }
 
@@ -317,7 +345,12 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         return { status: 'requires_org_selection', organizations: response.organizations };
       }
 
-      await completeAuthentication(response);
+      // Direct single-tenant login: no picker was shown. via_picker is true
+      // only when the caller supplied an explicit tenant_id up front.
+      await completeAuthentication(response, {
+        multiTenant: false,
+        viaPicker: opts?.tenantId != null,
+      });
       return { status: 'authenticated' };
     } catch (error) {
       console.error('[auth] Login failed:', error);
@@ -440,11 +473,31 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   // fire-and-forget delete after logout() can race against the next login
   // attempt, letting the old binding survive an unbind.
   unbindDevice: async () => {
+    // Task 7 (audit): capture tenant/operator/company BEFORE the teardown —
+    // logout() clears auth state, so recordAuditEvent would otherwise have no
+    // tenant to route the event to. Snapshot first, emit (fire-and-forget)
+    // AFTER the teardown so the unbind itself is never blocked.
+    const { user, companyId } = get();
+    const tenantId = user?.tenantId;
+    const operatorId = user?.id ?? null;
+
     try {
       await removeStoredValue(StorageKeys.LOGIN_TENANT_ID);
     } catch (e) {
       console.warn('[auth] failed to clear LOGIN_TENANT_ID during unbind:', e);
     }
     get().logout();
+
+    if (tenantId) {
+      void recordAuditEvent({
+        type: 'pos.device_unbind',
+        aggregateType: 'PosSession',
+        aggregateId: getDeviceId(),
+        tenantId,
+        companyId,
+        operatorId,
+        payload: {},
+      }).catch(() => {});
+    }
   },
 }));
