@@ -47,7 +47,7 @@ Mirror the **fiscalEventRepository / cashDrawerRepository** retry pattern, NOT
 - `enqueueAuditEvent(db, row)`
 - `getPendingAuditEvents(db, limit)` → `WHERE status IN ('pending','failed') AND retry_count < MAX_RETRIES ORDER BY id ASC LIMIT ?` (failed rows are retried).
 - `markAuditEventsSyncing(db, ids)` / `markAuditEventSynced(db, id)` / `markAuditEventFailed(db, id, error)` (increments retry_count).
-- `recoverStrandedSyncingAuditEvents(db)` on boot → demote `syncing` → `pending` (crash recovery, mirrors receipt recovery).
+- `recoverStrandedSyncingAuditEvents(db)` on boot → `UPDATE queued_audit_events SET status='pending' WHERE status='syncing'` (crash between markSyncing and the response handler), the exact pattern of `recoverStrandedSyncingReceipts` / cash-drawer recovery.
 - `pruneSyncedAuditEvents(db, keepDays)` on boot → delete `status='synced'` older than N days. Failed rows are NEVER pruned silently (they surface via a pending-audit count).
 - `MAX_RETRIES` cap; rows exceeding it stay queryable (dead-letter) and counted, not dropped.
 
@@ -62,7 +62,10 @@ For `pos.login` the tenant/operator are passed explicitly (the just-resolved use
 store may not be committed yet.
 
 ### 4. `cart_session_id` lifecycle [MINOR 1]
-Add `cartSessionId: string | null` to `cartStore`, owned like `pendingIdempotencyKey`:
+`cart_session_id` is a CLIENT-side correlation id used as the **`aggregate_id`** of cart-scoped
+events (`pos.cart_discarded`/`cart_line_removed`/`cart_quantity_updated`/discount events). It is
+**NOT** a new `audit_events` column — no backend migration. Add `cartSessionId: string | null` to
+`cartStore`, owned like `pendingIdempotencyKey`:
 - **Generate** (uuid) on the first mutation of an empty cart.
 - **Include** in the `pos.sale_held` payload *before* `holdCurrentCart` clears the cart.
 - **Regenerate** on `recallTransaction` / `replaceCart` / `replaceReturnItems` (a recalled/
@@ -82,6 +85,9 @@ Wire `recordAuditEvent` at every emit point in the taxonomy whose action EXISTS.
   drawer action), `pos.refund_no_original_receipt` (refund requires a located/scanned receipt).
   Documented in the taxonomy as requiring a new product surface; tracked, not faked.
 - Collapse `pos.screen_lock` (P0) + `pos.operator_locked` (P2) into ONE `pos.screen_lock` with `{reason, idle_ms}`.
+- **Shift open/close and Z-reports are NOT client-emitted here** — they are already captured
+  server-side (`ShiftOpened`/`ShiftClosed`/`ZReportGenerated` via `DomainEventSubscriber`). No
+  `pos.shift_*` event exists in the catalog; do not add one (avoids double-audit).
 
 ### 6. `pushQueuedAuditEvents()` + scheduler [MAJOR 6]
 In one sync tick, **drain multiple batches** (≤100 each) until the queue is empty or a
@@ -99,13 +105,25 @@ offline→online (counts read from SQLite). Subscribe once at app init.
 ## Backend design (`apps/api`)
 
 ### `AuditEvent::fromClientEnvelope()` factory [BLOCKER]
-The existing custom constructor forces `occurred_at = now()` and `HasUuids` overwrites `id`. Add
-a static factory that force-fills `id` (= client `event_id`), `tenant_id`, `company_id`,
-`user_id` (= operator_id), `aggregate_*`, `payload`, `metadata`, and the **parsed client
-`occurred_at`**, then computes `event_hash` over the preserved timestamp, WITHOUT triggering the
-`HasUuids` overwrite (set the key explicitly and ensure the creating-hook respects a present key,
-or insert via a path that bypasses uuid generation). Unit test: saved PK == client `event_id`,
-saved `occurred_at` == client value, `event_hash` hashes the preserved timestamp.
+The existing custom constructor forces `occurred_at = now()` and computes the hash from it; the
+factory must NOT use that path. Concrete mechanism (all verified feasible against `AuditEvent.php`):
+1. Build an instance WITHOUT the company-supplied custom-constructor branch (e.g. `new AuditEvent()`
+   with no positional args, or a `make`/`newInstance` path) so it does NOT auto-stamp `occurred_at`
+   or hash.
+2. Explicitly assign the model key: `$event->id = $clientEventId;`. `HasUuids` only generates a
+   UUID on the `creating` event **when the key is empty**, so a pre-set key is preserved (it will
+   NOT overwrite).
+3. Set `tenant_id`, `company_id`, `user_id` (= operator_id), `event_type`, `aggregate_type`,
+   `aggregate_id`, `payload`, `metadata`, and `occurred_at` = the **parsed client timestamp**.
+4. Compute `event_hash` LAST, over the now-set `occurred_at` (reuse the same field set as the
+   existing `calculateHash`, which hashes `$this->occurredAt` — so with `occurredAt` = client value,
+   the hash is deterministic over the preserved timestamp).
+5. `saveOrFail()`.
+
+Unit-test contract: saved PK == client `event_id`; saved `occurred_at` == the client value (not
+`now()`); `event_hash` == `sha256` over the payload-set including the **client** `occurred_at`
+(recompute in the test and assert equality); re-running the factory with the same `event_id` and
+saving raises a unique-constraint violation (drives the controller's duplicate path).
 
 ### Route + controller
 `POST /api/v1/pos/audit-events/sync` under the POS group (`api`, `auth:sanctum`,
