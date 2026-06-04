@@ -631,6 +631,25 @@ describe('authStore', () => {
       expect(useAuthStore.getState().isAuthenticated).toBe(false);
     });
 
+    it('rejects a concurrent login while one is already in flight', async () => {
+      useAuthStore.setState({ isLoading: false, isAuthenticated: false });
+      let resolveFirst: (v: unknown) => void = () => {};
+      vi.mocked(getStoredValue).mockResolvedValue(null);
+      vi.mocked(apiPost).mockImplementationOnce(
+        () => new Promise((res) => { resolveFirst = res; }),
+      );
+      vi.mocked(apiGet).mockResolvedValue(mockCompanies);
+
+      const first = useAuthStore.getState().login('a@example.com', 'password123');
+      // Second call while the first is pending:
+      await expect(
+        useAuthStore.getState().login('a@example.com', 'password123'),
+      ).rejects.toThrow(/already in progress/);
+
+      resolveFirst({ user: mockUser, token: 'tok', tokenType: 'Bearer', deviceId: null });
+      await first;
+    });
+
     it('wrong password after auto-select: error surfaced, tenant NOT cleared', async () => {
       vi.mocked(getStoredValue).mockImplementation(async (key: string) =>
         key === 'login_tenant_id' ? 't-2' : null,

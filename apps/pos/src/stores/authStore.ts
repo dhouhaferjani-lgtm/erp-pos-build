@@ -185,6 +185,10 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     password: string,
     opts?: { signal?: AbortSignal; tenantId?: string },
   ): Promise<LoginOutcome> => {
+    if (get().isLoading) {
+      throw new Error('A login is already in progress.');
+    }
+
     const serverUrl = getServerUrl();
     set({ isLoading: true, serverUrl });
 
