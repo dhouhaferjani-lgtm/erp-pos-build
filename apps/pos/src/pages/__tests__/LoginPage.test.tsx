@@ -17,7 +17,7 @@
  *   - Re-clicking Sign in after cancellation creates a fresh
  *     AbortController.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 vi.mock('react-i18next', () => ({
@@ -54,6 +54,7 @@ vi.mock('@/lib/storage', () => ({
     COMPANIES: 'companies',
     TERMINAL: 'terminal',
     PENDING_TERMINAL_ID: 'pending_terminal_id',
+    LOGIN_TENANT_ID: 'login_tenant_id',
   },
 }));
 
@@ -71,7 +72,44 @@ vi.mock('@/lib/device', () => ({
 
 import { LoginPage } from '../LoginPage';
 import { useAuthStore } from '@/stores/authStore';
+import type { User, Company } from '@/stores/authStore';
+// Capture the real login action before any test can replace it with a spy.
+// This lets the picker describe's beforeEach restore the real implementation.
+let originalLoginAction: ReturnType<typeof useAuthStore.getState>['login'];
 import { useConnectivityStore } from '@/stores/connectivityStore';
+import { apiGet, apiPost } from '@/lib/api';
+import { getStoredValue } from '@/lib/storage';
+
+const mockUser: User = {
+  id: 'user-1',
+  name: 'Test User',
+  email: 'test@example.com',
+  tenantId: 'tenant-1',
+  phone: null,
+  status: 'active',
+  locale: 'en',
+  timezone: 'UTC',
+  roles: ['admin'],
+  permissions: ['pos.access'],
+  emailVerified: true,
+};
+
+const mockCompanies: Company[] = [
+  {
+    id: 'company-1',
+    name: 'Test Co',
+    legalName: 'Test Company SAS',
+    countryCode: 'FR',
+    currency: 'EUR',
+    locale: 'fr',
+    timezone: 'Europe/Paris',
+  },
+];
+
+// Capture the real login implementation ONCE, before any test mutates the store.
+beforeAll(() => {
+  originalLoginAction = useAuthStore.getState().login;
+});
 
 describe('LoginPage — T1.1 Step 1.5 still-trying + Cancel', () => {
   beforeEach(() => {
@@ -190,5 +228,103 @@ describe('LoginPage — T1.1 Step 1.5 still-trying + Cancel', () => {
     expect(useAuthStore.getState().isLoading).toBe(false);
     expect(screen.queryByTestId('login-still-trying')).not.toBeInTheDocument();
     expect(screen.queryByTestId('login-cancel')).not.toBeInTheDocument();
+  });
+});
+
+describe('LoginPage — business picker', () => {
+  beforeEach(() => {
+    vi.mocked(getStoredValue).mockResolvedValue(null);
+    vi.mocked(apiPost).mockReset();
+    vi.mocked(apiGet).mockReset();
+    useConnectivityStore.setState({
+      isOnline: true,
+      serverReachable: true,
+      lastCheckedAt: Date.now(),
+    } as never);
+    // Restore the real login action in case a prior test replaced it with a spy.
+    useAuthStore.setState({
+      user: null, token: null, companies: [], companyId: null,
+      isAuthenticated: false, isLoading: false,
+      login: originalLoginAction,
+    } as never);
+  });
+
+  it('renders the org picker (name + slug) when login requires selection', async () => {
+    vi.mocked(apiPost).mockResolvedValueOnce({
+      requires_org_selection: true,
+      organizations: [
+        { tenant_id: 't-1', name: 'Alpha', slug: 'alpha' },
+        { tenant_id: 't-2', name: 'Beta', slug: 'beta' },
+      ],
+    });
+    render(<LoginPage />);
+    fireEvent.change(screen.getByLabelText('auth.email'), { target: { value: 'm@e.com' } });
+    fireEvent.change(screen.getByLabelText('auth.password'), { target: { value: 'password123' } });
+    await act(async () => { fireEvent.submit(screen.getByRole('button', { name: 'auth.signIn' }).closest('form')!); });
+
+    expect(await screen.findByTestId('org-picker')).toBeInTheDocument();
+    expect(screen.getByText('Alpha')).toBeInTheDocument();
+    expect(screen.getByText('alpha')).toBeInTheDocument(); // slug shown
+  });
+
+  it('selecting an org re-invokes login with tenantId', async () => {
+    vi.mocked(apiPost)
+      .mockResolvedValueOnce({
+        requires_org_selection: true,
+        organizations: [{ tenant_id: 't-1', name: 'Alpha', slug: 'alpha' }, { tenant_id: 't-2', name: 'Beta', slug: 'beta' }],
+      })
+      .mockResolvedValueOnce({ user: mockUser, token: 'tok', tokenType: 'Bearer', deviceId: null });
+    vi.mocked(apiGet).mockResolvedValueOnce(mockCompanies);
+
+    render(<LoginPage />);
+    fireEvent.change(screen.getByLabelText('auth.email'), { target: { value: 'm@e.com' } });
+    fireEvent.change(screen.getByLabelText('auth.password'), { target: { value: 'password123' } });
+    await act(async () => { fireEvent.submit(screen.getByRole('button', { name: 'auth.signIn' }).closest('form')!); });
+    await screen.findByTestId('org-picker');
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Beta/ })); });
+
+    const calls = vi.mocked(apiPost).mock.calls;
+    const lastCall = calls[calls.length - 1]!;
+    expect((lastCall[1] as Record<string, unknown>).tenant_id).toBe('t-2');
+  });
+
+  it('aborting a manual pick commits no auth state (fresh controller)', async () => {
+    // First POST resolves the picker immediately; second POST hangs so we can abort it.
+    vi.mocked(apiPost)
+      .mockResolvedValueOnce({
+        requires_org_selection: true,
+        organizations: [{ tenant_id: 't-1', name: 'Alpha', slug: 'alpha' }, { tenant_id: 't-2', name: 'Beta', slug: 'beta' }],
+      })
+      .mockImplementationOnce((_url, _body, opts) =>
+        new Promise((_res, rej) => {
+          (opts as { signal?: AbortSignal })?.signal?.addEventListener('abort', () =>
+            rej(new DOMException('Aborted', 'AbortError')),
+          );
+        }),
+      );
+
+    render(<LoginPage />);
+    fireEvent.change(screen.getByLabelText('auth.email'), { target: { value: 'm@e.com' } });
+    fireEvent.change(screen.getByLabelText('auth.password'), { target: { value: 'password123' } });
+    // Submit the form — first apiPost returns org-picker immediately.
+    await act(async () => { fireEvent.submit(screen.getByRole('button', { name: 'auth.signIn' }).closest('form')!); });
+    // Picker should be visible now (real timers).
+    await screen.findByTestId('org-picker');
+
+    // Use fake timers only for the STILL_TRYING threshold, around the pick click.
+    vi.useFakeTimers();
+    // Start the pick (second apiPost hangs). void discards the promise so the
+    // outer act() resolves immediately after the click handler fires.
+    act(() => { fireEvent.click(screen.getByRole('button', { name: /Beta/ })); });
+    // Advance past STILL_TRYING_THRESHOLD_MS so the cancel button appears.
+    act(() => { vi.advanceTimersByTime(8000); });
+    vi.useRealTimers();
+
+    // Now the org-pick-cancel button should be present; click it to abort.
+    await act(async () => { fireEvent.click(screen.getByTestId('org-pick-cancel')); });
+
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    expect(useAuthStore.getState().token).toBeNull();
   });
 });
