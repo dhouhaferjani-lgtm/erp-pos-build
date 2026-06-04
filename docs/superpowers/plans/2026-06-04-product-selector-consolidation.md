@@ -82,13 +82,33 @@ Problem: qty step/decimals are hardcoded (transfer `decimalPlaces=4`, PO `step=1
 
 **Risk:** keep storage precision (4 decimals) decoupled from display/step precision so no data is lost; fiscal/canonical payloads unaffected.
 
+## Workstream C — Batch & expiry management, incl. in transfers (para-pharmacy first client)
+
+**Context — already exists:** `Batch` (batch_number, manufacturing_date, expiry_date, `expiry_status` OK/APPROACHING/WARNING/CRITICAL/EXPIRED, is_recalled, can_be_sold, days_until_expiry) + per-location `BatchStock` (quantity/reserved/available). Frontend at `features/batches/`. **Gap:** `StockTransferLine` (product_id, quantity, unit_cost_snapshot, allocated_transfer_cost) has **no batch reference** — transfers move product quantity without preserving batch identity/expiry. Sales/POS/receipts batch selection should be audited for FEFO too.
+
+**Goal:** full batch lifecycle including within inventory transfers — the first client is a para-pharmacy, so batch + expiry + FEFO are mandatory.
+
+- **C1 — Transfer-with-batches (PRIORITY, tied to the transfer rebuild in Workstream A):**
+  - Transfer line → batch allocation: for batch-tracked products, the gated per-line lot/expiry **detail action** (from the research spec) lets the user pick which batch(es) + qty to move, defaulting to **FEFO**, showing expiry date + `expiry_status`, and blocking expired/recalled (`can_be_sold = false`).
+  - On completion, move `BatchStock` source→destination preserving batch identity + expiry; respect the two-step lifecycle (batch qty in-transit then received). WAC unaffected (cost is company-wide per product).
+  - Backend: `StockTransferLine` gains batch allocations (batch_id + qty); validate available batch stock at source.
+- **C2 — Batch selection across the app (FEFO):** sales/POS (auto-FEFO at sale, block expired/recalled), purchase/goods-receipt (capture batch_number + expiry on receipt), adjustments/counting (batch-aware).
+- **C3 — Expiry surfaces:** expiry dashboard/report by status, recall workflow, FEFO/expiry settings.
+- **C4 — Vertical gating:** batch/expiry detail action appears only when the product is batch-tracked (pharma); automotive serial reuses the same gated-action pattern with serial instead of batch.
+
+**Risks:** if batch identity is part of the signed/canonical SALE_RECEIPT, treat as a versioned event (like unit_price) — do NOT alter signed bytes silently. Keep per-location batch stock consistent with `stock_levels`. FEFO + recall are correctness-sensitive — test thoroughly.
+
 ## Sequencing
 
-1. **Workstream B helper + seeding** (small, unblocks correct qty everywhere). Optional interim: transfer qty `step=1` to match the PO until B lands.
-2. **Extract `<LineItemsTable>` + `<QuantityCell>`** from `DocumentLineEditor` (behavior-preserving + regression tests).
-3. **Migrate transfer** → shared table (replaces interim from PR #166).
-4. **Product-selector consolidation** (A.4) folds in.
-5. **Migrate remaining screens** (counting, recipes, modifiers, batches).
+1. **Inventory transfer FIRST** — rebuild the transfer create table to the research-backed spec (product + available@source + quantity; add-line after the last row; gated batch/expiry detail-action stub). Reference screen + para-pharmacy priority.
+2. **Workstream B** — unit-aware quantity helper + seeding, so transfer (and everything) steps correctly.
+3. **Extract `<LineItemsTable>` + `<QuantityCell>`** from `DocumentLineEditor` (behavior-preserving + document-total regression tests), then refactor the transfer onto the shared component.
+4. **Workstream C1 — batch-in-transfers** (FEFO, `BatchStock` source→destination move) once the transfer table + detail action exist.
+5. **Product-selector consolidation** — retire `ProductSearchSelect` + `ProductSelector` (multi) onto the canonical `ProductPicker` / new `ProductMultiPicker`.
+6. **Migrate remaining line-entry screens** (counting, recipes, modifiers, batches) onto the shared primitives.
+7. **Workstream C2/C3** — batch selection across sales/POS/receipts + expiry surfaces.
+
+Each step: own branch, TDD, Codex review saved to `docs/superpowers/reviews/`, PR to `dev`, document-total regression checks where applicable.
 
 Each step: TDD, own PR, Codex review, document-total regression checks where applicable.
 
