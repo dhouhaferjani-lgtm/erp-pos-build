@@ -253,9 +253,32 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       });
 
       if (isOrgSelection(response)) {
-        // An explicit-tenant call must never receive a picker shape.
+        // Contract: an explicit-tenant call can never get a picker shape.
         if (opts?.tenantId) throw new UnexpectedLoginResponseError();
-        // Task 3 inserts auto-select here. For now, surface the list.
+
+        // Auto-select the device-bound persisted tenant IF it is one of the
+        // returned orgs. Exactly one extra POST (no recursion / no loop).
+        const storedTenantId = await getStoredValue<string>(StorageKeys.LOGIN_TENANT_ID);
+        const match =
+          storedTenantId != null &&
+          response.organizations.some((o) => o.tenant_id === storedTenantId);
+
+        if (match) {
+          const second = await apiPost<LoginApiResponse>('/auth/login', {
+            email,
+            password,
+            tenant_id: storedTenantId,
+            device_id: getDeviceId(),
+            device_name: 'IziPOS Desktop',
+            platform: getTauriPlatform(),
+          }, { signal: opts?.signal });
+
+          if (isOrgSelection(second)) throw new UnexpectedLoginResponseError();
+          await completeAuthentication(second);
+          return { status: 'authenticated' };
+        }
+
+        // Stale or no stored tenant → let the UI show the picker.
         return { status: 'requires_org_selection', organizations: response.organizations };
       }
 

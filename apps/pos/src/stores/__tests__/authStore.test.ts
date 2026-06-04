@@ -49,7 +49,7 @@ vi.mock('@/lib/device', () => ({
   getDeviceId: vi.fn(() => 'device-123'),
 }));
 
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet, apiPost, ApiRequestError } from '@/lib/api';
 import { disconnectEcho } from '@/lib/echo';
 import { getStoredValue, setStoredValue, removeStoredValue } from '@/lib/storage';
 
@@ -552,6 +552,101 @@ describe('authStore', () => {
       expect(apiPost).toHaveBeenCalledTimes(1);
       expect(useAuthStore.getState().isAuthenticated).toBe(false);
       expect(apiGet).not.toHaveBeenCalled(); // never fetched companies
+    });
+  });
+
+  describe('login — auto-select persisted tenant', () => {
+    beforeEach(() => {
+      useAuthStore.setState({
+        user: null, token: null, companies: [], companyId: null,
+        isAuthenticated: false, isLoading: false,
+      });
+    });
+
+    it('persisted tenant in org list: re-POSTs with tenant_id, no picker', async () => {
+      vi.mocked(getStoredValue).mockImplementation(async (key: string) =>
+        key === 'login_tenant_id' ? 't-2' : null,
+      );
+      vi.mocked(apiPost)
+        .mockResolvedValueOnce({
+          requires_org_selection: true,
+          organizations: [
+            { tenant_id: 't-1', name: 'Alpha', slug: 'alpha' },
+            { tenant_id: 't-2', name: 'Beta', slug: 'beta' },
+          ],
+        })
+        .mockResolvedValueOnce({
+          user: { ...mockUser, tenantId: 't-2' }, token: 'tok-2', tokenType: 'Bearer', deviceId: null,
+        });
+      vi.mocked(apiGet).mockResolvedValueOnce(mockCompanies);
+
+      const result = await useAuthStore.getState().login('multi@example.com', 'password123');
+
+      expect(result).toEqual({ status: 'authenticated' });
+      expect(apiPost).toHaveBeenCalledTimes(2);
+      const secondBody = vi.mocked(apiPost).mock.calls[1]![1] as Record<string, unknown>;
+      expect(secondBody.tenant_id).toBe('t-2');
+      expect(useAuthStore.getState().isAuthenticated).toBe(true);
+    });
+
+    it('persisted tenant NOT in org list (stale): returns picker, no re-POST', async () => {
+      vi.mocked(getStoredValue).mockImplementation(async (key: string) =>
+        key === 'login_tenant_id' ? 't-stale' : null,
+      );
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        requires_org_selection: true,
+        organizations: [{ tenant_id: 't-1', name: 'Alpha', slug: 'alpha' }, { tenant_id: 't-2', name: 'Beta', slug: 'beta' }],
+      });
+
+      const result = await useAuthStore.getState().login('multi@example.com', 'password123');
+
+      expect(result).toEqual({
+        status: 'requires_org_selection',
+        organizations: [{ tenant_id: 't-1', name: 'Alpha', slug: 'alpha' }, { tenant_id: 't-2', name: 'Beta', slug: 'beta' }],
+      });
+      expect(apiPost).toHaveBeenCalledTimes(1);
+    });
+
+    it('manual pick with tenantId persists LOGIN_TENANT_ID', async () => {
+      vi.mocked(getStoredValue).mockResolvedValue(null);
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        user: { ...mockUser, tenantId: 't-2' }, token: 'tok-2', tokenType: 'Bearer', deviceId: null,
+      });
+      vi.mocked(apiGet).mockResolvedValueOnce(mockCompanies);
+
+      await useAuthStore.getState().login('multi@example.com', 'password123', { tenantId: 't-2' });
+
+      expect(setStoredValue).toHaveBeenCalledWith('login_tenant_id', 't-2');
+    });
+
+    it('explicit tenant returns picker shape: throws, no loop, no auth', async () => {
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        requires_org_selection: true, organizations: [],
+      });
+
+      await expect(
+        useAuthStore.getState().login('multi@example.com', 'password123', { tenantId: 't-1' }),
+      ).rejects.toThrow(/Unexpected login response/);
+      expect(apiPost).toHaveBeenCalledTimes(1);
+      expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    });
+
+    it('wrong password after auto-select: error surfaced, tenant NOT cleared', async () => {
+      vi.mocked(getStoredValue).mockImplementation(async (key: string) =>
+        key === 'login_tenant_id' ? 't-2' : null,
+      );
+      vi.mocked(apiPost)
+        .mockResolvedValueOnce({
+          requires_org_selection: true,
+          organizations: [{ tenant_id: 't-1', name: 'A', slug: 'a' }, { tenant_id: 't-2', name: 'B', slug: 'b' }],
+        })
+        .mockRejectedValueOnce(new ApiRequestError(422, 'The provided credentials are incorrect.', 'VALIDATION_ERROR'));
+
+      await expect(
+        useAuthStore.getState().login('multi@example.com', 'wrong'),
+      ).rejects.toThrow(/credentials/);
+      expect(removeStoredValue).not.toHaveBeenCalledWith('login_tenant_id');
+      expect(useAuthStore.getState().isAuthenticated).toBe(false);
     });
   });
 });
