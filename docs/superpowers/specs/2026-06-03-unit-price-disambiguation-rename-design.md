@@ -1,8 +1,8 @@
 # `unit_price` Disambiguation Rename — Design / Spec
 
-> **Status:** Approved design, **v3.1 (three-zone model, post-2nd-Codex-review)** — 2026-06-04. Spec only — no code.
+> **Status:** Approved design, **v3.2 (three-zone model, post-3rd-Codex-review)** — 2026-06-04. Spec only — no code.
 > **Branch:** `feat/unit-price-rename-spec` (off `dev`).
-> **Adversarial reviews:** [r1 v1](../reviews/2026-06-03-unit-price-rename-spec-codex-review.md) — REQUEST-CHANGES (2 BLOCKER + MAJOR/MINOR + 7 missed-surface groups); [r2 v3](../reviews/2026-06-04-unit-price-rename-spec-v3-codex-review.md) — REQUEST-CHANGES (1 BLOCKER / 2 MAJOR / 2 MINOR / 1 NIT). All findings verified against code and addressed. v3 dissolved the signed-byte blockers by **not renaming the canonical payload**; v3.1 fixes the ACCOUNT_CHARGE facture-bridge coupling and expands the backend POS seam/read surfaces. Changelog in §11.
+> **Adversarial reviews:** [r1 v1](../reviews/2026-06-03-unit-price-rename-spec-codex-review.md) — REQUEST-CHANGES (2 BLOCKER + MAJOR/MINOR + 7 missed-surface groups); [r2 v3](../reviews/2026-06-04-unit-price-rename-spec-v3-codex-review.md) — REQUEST-CHANGES (1 BLOCKER / 2 MAJOR / 2 MINOR / 1 NIT); [r3 v3.1](../reviews/2026-06-04-unit-price-rename-spec-v3.1-codex-review.md) — REQUEST-CHANGES (r2 findings all resolved; 1 wording BLOCKER + a few unclassified surfaces). All findings verified against code and addressed. Changelog in §11.
 > **Companion plan:** `docs/superpowers/plans/2026-06-03-unit-price-disambiguation-rename-plan.md` (written after this spec is reviewed).
 > **References:** [`docs/architecture/precision-contract.md` — `unit_price` section](../../architecture/precision-contract.md), [CLAUDE.md §19](../../../CLAUDE.md).
 
@@ -16,11 +16,11 @@
 
 | Zone | Scope | Treatment |
 |---|---|---|
-| **Zone 1 — the boss + fiscal chain** | POS device (`apps/pos`): cart, device storage, canonical payload builder, **signed canonical bytes** (SALE_RECEIPT, ACCOUNT_CHARGE), and the PHP DTOs that *mirror* those bytes | **Keep `unit_price`.** Always inclusive; documented as such. **Never renamed** → no versioned fiscal event, no fixture regeneration for the rename, "device authors / server re-hashes never recomputes" untouched. |
+| **Zone 1 — the boss + fiscal chain** | POS device (`apps/pos`): cart, device storage, canonical payload builder, **signed canonical bytes** (SALE_RECEIPT, ACCOUNT_CHARGE), and the PHP DTOs that *mirror* those bytes | **Keep `unit_price`** — the device-authored value verbatim. **SALE_RECEIPT = inclusive; ACCOUNT_CHARGE = currently net** (a known inconsistency the charge-to-account finalization will correct to inclusive — not this rename). **Never renamed** → no versioned fiscal event, no fixture regeneration for the rename, "device authors / server re-hashes never recomputes" untouched. |
 | **Zone 2 — the seam** | The POS→backend ingestion: canonical parse + `PosCoreReceiptProjection` + POS order/receipt persistence | **Translate at the boundary.** Read canonical `unit_price` (inclusive) → write the backend column `unit_price_incl_tax`. One well-defined, tested mapping; zero hash impact (bytes are verified before projection). |
 | **Zone 3 — the backend** | All backend storage/DTOs/web | **Rename everything; no bare `unit_price` survives in the backend.** POS-origin inclusive → `unit_price_incl_tax`; B2B/net → `unit_price_excl_tax`. |
 
-After this change the **only** bare `unit_price` left in the system is inside the immutable signed bytes (Zone 1), where it is documented as "always inclusive for device-authored events." Every queryable backend column/DTO is explicit.
+After this change the **only** bare `unit_price` left in the system is inside the immutable signed bytes (Zone 1) — the device-authored value verbatim (inclusive for SALE_RECEIPT, net for ACCOUNT_CHARGE pending its correction), consult the event type. Every queryable backend column/DTO is explicit (`_incl_tax` or `_excl_tax`).
 
 ---
 
@@ -56,7 +56,7 @@ Two rename phases + one small fiscal-value correction. All backend DB work uses 
 All backend net surfaces (authoritative list in §7):
 - **Document module:** `DocumentLineData` DTO; `document_lines.unit_price` (`decimal(15,3)`); services (`DocumentTotalsCalculator`, `DraftPersistenceService`, `Conversion/Concerns/CopiesDocumentData` + the 3 converters, `CreditNoteService`, `RefundService`, `FacturXService`, `POSAccountChargeDraftService`); FormRequests/controllers (`UpdateDocumentRequest`, `RefundController`, `Quote/SalesOrder/Invoice/DeliveryNote/PurchaseOrder/ReturnNote` controllers, `DocumentAdditionalCostController`).
 - **Immutable events (Rule 8):** `DraftLineAdded`/`DraftLineAddedV2`/`DraftLineModifiedV2` carry `unit_price` → add versioned successors `DraftLineAddedV3`/`DraftLineModifiedV3` with `unit_price_excl_tax`; leave existing event classes + keys untouched.
-- **Workshop:** `BundleExpansionLineData`, `WorkOrderLineData`, `ServiceBundleComponentData.override_unit_price` (→ `override_unit_price_excl_tax`) + factories.
+- **Workshop:** `BundleExpansionLineData`, `WorkOrderLineData`, `ServiceBundleComponentData.override_unit_price` (→ `override_unit_price_excl_tax`) + factories; **presentation layer** `Bundle/Presentation/Requests/AddComponentRequest`, `PatchComponentRequest`, `Bundle/Presentation/Controllers/BundleComponentController`.
 - **Billing:** `billing_invoice_items.unit_price` (`decimal(15,3)`, net), `InvoiceItem`, `InvoiceService`.
 - **Catalog cart (net):** `catalog_cart_items.unit_price`, `CatalogCartItem` model/factory, `CartService`, `CartConversionService`, `MarketplaceCheckoutService`, `CatalogCartController`, `CatalogCartItemData`.
 - **Marketplace (B2B, net):** `marketplace_order_lines.unit_price`, `MarketplaceOrderLine`, `MarketplaceOrderData`, `MarketplaceOrderService`, `MarketplaceListing.price` lineage (synced from `product.sale_price`).
@@ -74,7 +74,8 @@ Rename the backend storage/DTOs that hold POS (inclusive) data, and make the Zon
 - **Receipt / refund / reporting re-exposure:** `ReceiptController`, `ReceiptReturnService`, `Nf525DataProvider` (legacy NF525 export reads `pos_receipt_lines`), `resources/views/pos/receipt.blade.php` (print view).
 - **The projection seam (Zone 2):** `PosCoreReceiptProjection` reads canonical `LineItemDTO::unitPrice` (key `unit_price`, inclusive) and writes the renamed column `unit_price_incl_tax`. Document the boundary in code + the precision contract; add a test asserting canonical `unit_price` → storage `unit_price_incl_tax`, value preserved verbatim.
 - **Wire-contract rule (Codex r2 M2):** the HTTP boundary between the POS device and the backend keeps the JSON key **`unit_price`** (device speaks inclusive `unit_price`; no app churn, stays aligned with canonical). The backend ingress maps wire `unit_price` → storage `unit_price_incl_tax` at the request/controller layer (`AddOrderLineRequest`, `HoldOrderRequest`, `OrderController`), and `OrderLineResource`/receipt responses map storage `unit_price_incl_tax` → wire `unit_price` on the way out. `apps/pos/src/api/{holdApi,reportApi}.ts` therefore stay `unit_price` **as a wire contract** (not device-local state) — documented as such, with the mapping + tests living on the backend boundary.
-- **Coupon/discount preview (POS, inclusive):** `ValidateCouponRequest`, `CouponController`, `DiscountController`, `apps/web/src/features/coupons/api/couponApi.ts` — request payloads carrying POS cart lines (apply the same wire-contract rule: wire `unit_price`, backend treats as inclusive).
+- **Coupon/discount preview (POS, inclusive):** `ValidateCouponRequest`, `CouponController`, `POS/Presentation/Controllers/DiscountController`, `apps/web/src/features/coupons/api/couponApi.ts` — request payloads carrying POS cart lines (apply the same wire-contract rule: wire `unit_price`, backend treats as inclusive).
+- **POS exchange flow (inclusive):** `POS/Application/DTOs/ExchangeRequestInput.php` (`newSaleItems[].unit_price`) + its controller/service — POS sale half, inclusive (wire-contract rule applies).
 - **Web POS (`apps/web/src/features/pos/**`):** consumes the renamed inclusive backend fields.
 - **DB constraints (Codex r2 m1):** `pos_receipt_lines` has PostgreSQL CHECK constraints referencing `unit_price` (incl. `line_total = (unit_price * quantity) - discount_amount`, defined `2026_01_08_190638`, replaced `2026_03_09_200000`). Expand/contract sub-step: add new column, backfill, dual-write, **replace constraints to reference `unit_price_incl_tax`**, switch reads, drop old column in the later tenant migration. Check `pos_order_lines` for the same.
 - **Zone-1 PHP canonical-mirror DTOs stay `unit_price`:** `Fiscal/Domain/DTOs/Canonical/LineItemDTO.php` (`$unitPrice`), `SaleReceiptCanonicalView`, `CanonicalPayloadReader`, `SaleReceiptPayload.php`, `AccountChargePayload.php`, `FiscalPayloadConstraintValidator` — these mirror the signed bytes and are explicitly **not** renamed.
@@ -90,7 +91,7 @@ Therefore this correction is **out of scope for the rename** and is handed to th
 
 ### Canonical contract (replaces the old "Phase 3 rename")
 
-Keep `unit_price` in SALE_RECEIPT and ACCOUNT_CHARGE canonical payloads. Update `precision-contract.md` + CLAUDE.md §19 to state the resolved rule: **a device-authored canonical `unit_price` is always tax-inclusive; the backend never stores a bare `unit_price` (it is `unit_price_incl_tax` post-seam or `unit_price_excl_tax` for B2B).**
+Keep `unit_price` in SALE_RECEIPT and ACCOUNT_CHARGE canonical payloads. Update `precision-contract.md` + CLAUDE.md §19 to state the resolved rule: **within the canonical signed bytes, `unit_price` is the device-authored value verbatim — tax-inclusive for SALE_RECEIPT, and net for ACCOUNT_CHARGE until the charge-to-account finalization corrects it to inclusive (consult the event type). The backend never stores a bare `unit_price`** — it is `unit_price_incl_tax` post-seam or `unit_price_excl_tax` for B2B.
 
 ---
 
@@ -133,7 +134,7 @@ Keep `unit_price` in SALE_RECEIPT and ACCOUNT_CHARGE canonical payloads. Update 
 | Document line DTO/DB/events | `DocumentLineData`, `document_lines` (`2025_11_30_080001`, widened `2026_03_11_200000:60`), `DocumentLine`, `DraftLineAdded(V2)`, `DraftLineModifiedV2` |
 | Document services/controllers | `DocumentTotalsCalculator`, `DraftPersistenceService`, `Conversion/*`, `CreditNoteService`, `RefundService`, `FacturXService`, `POSAccountChargeDraftService`; `UpdateDocumentRequest`, `RefundController`, `Quote/SalesOrder/Invoice/DeliveryNote/PurchaseOrder/ReturnNote` controllers, `DocumentAdditionalCostController` |
 | ACCOUNT_CHARGE→document-net seam (B2B) | `DocumentAccountChargeFactureBridge`, `POSAccountChargeDraftService:88,220`, `DocumentAccountChargeFactureBridgeTest:96` — reads canonical `unit_price`, writes `document_lines` → `unit_price_excl_tax` (value stays net; canonical→inclusive correction owned by charge-to-account finalization) |
-| Workshop | `BundleExpansionLineData`, `WorkOrderLineData`, `ServiceBundleComponentData.override_unit_price`; factories |
+| Workshop | `BundleExpansionLineData`, `WorkOrderLineData`, `ServiceBundleComponentData.override_unit_price`; factories; presentation `Bundle/Presentation/Requests/{AddComponentRequest,PatchComponentRequest}`, `Bundle/Presentation/Controllers/BundleComponentController` |
 | Billing | `billing_invoice_items` (`2025_12_16_100003`, widened `…:161`), `InvoiceItem`, `InvoiceService` |
 | Catalog cart | `catalog_cart_items` (`2026_03_10_500000`), `CatalogCartItem`, `CartService`, `CartConversionService`, `MarketplaceCheckoutService`, `CatalogCartController`, `CatalogCartItemData` |
 | Marketplace (B2B) | `marketplace_order_lines` (`2026_03_10_400002`), `MarketplaceOrderLine`, `MarketplaceOrderData`, `MarketplaceOrderService` |
@@ -149,7 +150,8 @@ Keep `unit_price` in SALE_RECEIPT and ACCOUNT_CHARGE canonical payloads. Update 
 | Receipt/refund/reporting re-exposure | `ReceiptController:314`, `ReceiptReturnService:799`, `Nf525DataProvider:1069`, `resources/views/pos/receipt.blade.php:398` |
 | **Projection seam (Zone 2)** | `PosCoreReceiptProjection` — canonical `unit_price` → column `unit_price_incl_tax`; document + test (value preserved) |
 | **Wire-contract boundary (Zone 2)** | HTTP keeps key `unit_price`; backend ingress (`AddOrderLineRequest`/`HoldOrderRequest`/`OrderController`) maps → storage `unit_price_incl_tax`; `OrderLineResource`/receipt responses map back to wire `unit_price` |
-| Coupon/discount preview | `ValidateCouponRequest`, `CouponController`, `DiscountController`, `apps/web/src/features/coupons/api/couponApi.ts` |
+| Coupon/discount preview | `ValidateCouponRequest`, `CouponController`, `POS/Presentation/Controllers/DiscountController`, `apps/web/src/features/coupons/api/couponApi.ts` |
+| POS exchange | `POS/Application/DTOs/ExchangeRequestInput.php` (`newSaleItems[].unit_price`) + controller/service |
 | Web POS | `apps/web/src/features/pos/**` |
 
 ### Shared/seed + generated/baseline/archive disposition (Codex r2 m2)
@@ -157,6 +159,7 @@ Keep `unit_price` in SALE_RECEIPT and ACCOUNT_CHARGE canonical payloads. Update 
 - **Update if still referenced:** `apps/api/phpstan-baseline.neon` entries mentioning `unit_price`.
 - **Update or mark test-only:** diagnostic commands `TestTaxRecoverability`, `TestE2EGLPosting`.
 - **Exclude (immutable archive, not runtime/source policy):** `apps/api/backup_before_phase0.sql`.
+- **Leave as-is (external column-name alias, not our field):** `Import/Services/MigrationWizardService:168` lists `'unit_price'` among candidate *source* CSV headers it maps onto `base_price` — it recognizes external file columns and must keep matching the literal `unit_price`. Not renamed.
 - ACCOUNT_CHARGE fixtures: **not changed by this rename** (value correction deferred to charge-to-account finalization; key unchanged).
 
 ---
@@ -202,4 +205,5 @@ TDD throughout (PHPUnit + Vitest + real seeders).
 - **v2 (Codex review):** per-surface classification; added ACCOUNT_CHARGE as a second signed surface; multi-version parser design; effective `decimal(15,3)`; added Billing/catalog-cart/marketplace/coupon/pos_receipt_lines/extra controllers; REALIGNMENT-LOG path + pos UI split.
 - **v2.1:** marketplace = net (Phase 1); coupon = inclusive (Phase 2); ACCOUNT_CHARGE = inclusive (then via versioned rename).
 - **v3 (three-zone model, owner 2026-06-04):** **canonical payload no longer renamed** — keep `unit_price` in signed bytes + POS device + canonical-mirror DTOs (Zone 1); rename only the backend (Zone 3) with an explicit POS→backend seam (Zone 2). Dissolves Codex r1 BLOCKER #1 (multi-version parser) and the cutover/versioning MAJORs (no versioned event needed). Verified ACCOUNT_CHARGE UI is unbuilt → separate finalization handoff.
+- **v3.2 (Codex r3):** r2 findings confirmed resolved. Fixed wording BLOCKER — canonical `unit_price` is no longer claimed "always inclusive": SALE_RECEIPT = inclusive, ACCOUNT_CHARGE = currently net (pending finalization correction); reworded §1/§4 + the CLAUDE.md §19 rule. Classified ExchangeRequestInput (Phase 2, POS incl), Workshop bundle presentation layer (Phase 1), MigrationWizardService import-alias (leave as-is); confirmed DiscountController + `apps/pos/src/api/*` already covered; `pos_order_lines` constraints flagged verify-and-replace.
 - **v3.1 (Codex r2):** B1 — ACCOUNT_CHARGE value correction is **coupled** to `DocumentAccountChargeFactureBridge` (copies canonical `unit_price` into the net `document_lines` field), so it is **removed from this rename** and handed to charge-to-account finalization; this rename only renames the bridge's write target (value stays net). M1 — expanded Phase 2 with backend POS order/held-order/receipt/refund/NF525/print seam+read surfaces. M2 — wire-contract rule: HTTP key stays `unit_price`, backend maps to `unit_price_incl_tax`; `apps/pos/src/api/*` reclassified as wire contract, not device-local. m1 — PG CHECK-constraint replacement migration sub-step. m2 — generated/baseline/diagnostic/archive disposition. n1 — corrected r1 BLOCKER count (2).
