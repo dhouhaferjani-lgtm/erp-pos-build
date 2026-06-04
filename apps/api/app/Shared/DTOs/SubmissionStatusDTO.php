@@ -34,7 +34,9 @@ final readonly class SubmissionStatusDTO
             enrichedData: $response['enriched_data'] ?? [],
             assignedBarcode: $response['enriched_data']['assigned_barcode'] ?? $response['assigned_barcode'] ?? null,
             vertical: $response['vertical'] ?? null,
-            locale: $response['locale'] ?? null,
+            // Guard the ?string property: a malformed payload (non-string
+            // locale) degrades to null instead of a strict_types TypeError.
+            locale: isset($response['locale']) && is_string($response['locale']) ? $response['locale'] : null,
         );
     }
 }

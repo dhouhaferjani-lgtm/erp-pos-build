@@ -34,4 +34,19 @@ class SubmissionStatusDTOTest extends TestCase
 
         $this->assertNull($dto->locale);
     }
+
+    public function test_from_api_response_ignores_non_string_locale(): void
+    {
+        // A malformed platform payload (locale not a string) must degrade to
+        // null rather than throwing a TypeError into the ?string property
+        // under declare(strict_types=1).
+        $dto = SubmissionStatusDTO::fromApiResponse([
+            'tracking_id' => 'track-123',
+            'status' => 'approved',
+            'locale' => ['fr_FR'],
+            'enriched_data' => [],
+        ]);
+
+        $this->assertNull($dto->locale);
+    }
 }
