@@ -185,12 +185,21 @@ export async function pruneSyncedAuditEvents(
   );
 }
 
+/**
+ * Count ALL non-synced rows in the outbox: pending + failed (including
+ * dead-letter / retry-capped rows) + in-flight syncing rows.
+ *
+ * Intentionally does NOT filter on `retry_count` so dead-letter rows
+ * (retry_count >= MAX_AUDIT_RETRIES) remain visible here — they are
+ * excluded from the active drain (`getPendingAuditEvents`) but MUST surface
+ * in this count so the caller can alert on a permanently-stuck queue.
+ */
 export async function countPendingAuditEvents(db: Database): Promise<number> {
   const row = await queryOne<{ count: number }>(
     db,
     `SELECT COUNT(*) AS count FROM queued_audit_events
-      WHERE status IN ('pending', 'failed') AND retry_count < $1`,
-    [MAX_AUDIT_RETRIES],
+      WHERE status IN ('pending', 'failed', 'syncing')`,
+    [],
   );
   return row?.count ?? 0;
 }

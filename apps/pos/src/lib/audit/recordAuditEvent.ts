@@ -48,6 +48,12 @@ export async function recordAuditEvent(input: RecordAuditEventInput): Promise<vo
     const tenantId = input.tenantId ?? auth.user?.tenantId;
     if (!tenantId) return; // drop silently if no tenant context
 
+    // Resolve companyId ONCE so the row stamp and the DB open target are
+    // always consistent. For pos.login, input.companyId is supplied explicitly
+    // (the store lags the just-resolved company); using auth.companyId there
+    // would open the wrong / empty DB and stamp the wrong company on the row.
+    const companyId = input.companyId !== undefined ? input.companyId : (auth.companyId ?? null);
+
     const term = useTerminalStore.getState();
     const operatorId =
       input.operatorId ??
@@ -61,7 +67,7 @@ export async function recordAuditEvent(input: RecordAuditEventInput): Promise<vo
       aggregateType: input.aggregateType,
       aggregateId: input.aggregateId,
       tenantId,
-      companyId: input.companyId ?? auth.companyId ?? null,
+      companyId,
       operatorId,
       payload: JSON.stringify(input.payload ?? {}),
       metadata: JSON.stringify({
@@ -76,7 +82,7 @@ export async function recordAuditEvent(input: RecordAuditEventInput): Promise<vo
       retryCount: 0,
     };
 
-    const db = await getDatabase(auth.companyId ?? '');
+    const db = await getDatabase(companyId ?? '');
     await enqueueAuditEvent(db, row);
   } catch (error) {
     console.warn('[audit] recordAuditEvent failed (non-fatal):', error);

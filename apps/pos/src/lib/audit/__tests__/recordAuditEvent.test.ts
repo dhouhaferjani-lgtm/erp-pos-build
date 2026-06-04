@@ -133,6 +133,29 @@ describe('recordAuditEvent', () => {
     expect(row.occurredAt).toBe('2026-06-04T08:00:00.000Z');
   });
 
+  it('FIX 2: when input.companyId differs from auth.companyId, getDatabase opens input.companyId and row carries it', async () => {
+    // auth.companyId is 'company-1' (set in beforeEach); the caller supplies
+    // 'just-resolved-company' — simulates pos.login where the store lags.
+    authState.companyId = 'stale-company-in-store';
+
+    await recordAuditEvent({
+      type: 'pos.login',
+      aggregateType: 'PosSession',
+      aggregateId: 'device-abc',
+      tenantId: 'tenant-1',
+      companyId: 'just-resolved-company',
+      payload: { multi_tenant: true },
+    });
+
+    // getDatabase must be called with the explicitly-supplied companyId, NOT
+    // the stale store value — they must be consistent.
+    expect(getDatabase).toHaveBeenCalledWith('just-resolved-company');
+
+    // The enqueued row must carry the same companyId.
+    const [, row] = enqueueAuditEvent.mock.calls[0] as [unknown, Record<string, unknown>];
+    expect(row.companyId).toBe('just-resolved-company');
+  });
+
   it('records is_offline=true when connectivity reports offline', async () => {
     connectivityState.isOnline = false;
     await recordAuditEvent({

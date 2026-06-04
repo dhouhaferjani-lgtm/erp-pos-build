@@ -1012,6 +1012,15 @@ export async function pushQueuedPinUpdates(db: Database): Promise<number> {
 export const MAX_AUDIT_BATCHES_PER_TICK = 10;
 
 /**
+ * Wall-clock time budget (ms) for a single audit drain tick. Even if
+ * MAX_AUDIT_BATCHES_PER_TICK has not been exhausted, the loop breaks once
+ * this many milliseconds have elapsed since the tick started. Guards against
+ * unexpectedly slow network or SQLite stalls monopolising the JS thread when
+ * the batch count cap alone is insufficient.
+ */
+export const AUDIT_DRAIN_BUDGET_MS = 2000;
+
+/**
  * Convert a queued audit-event row into the ingest envelope expected by
  * `POST /pos/audit-events/sync`. `payload` / `metadata` are stored as JSON
  * TEXT in SQLite and re-hydrated to objects on the wire (the backend
@@ -1035,10 +1044,11 @@ function auditEventToEnvelope(row: QueuedAuditEvent): Record<string, unknown> {
 /**
  * Drain the `queued_audit_events` outbox (Sub-Spec C). Multi-batch: in one
  * tick it posts up to `MAX_AUDIT_BATCHES_PER_TICK` batches of ≤100 events,
- * stopping early when the queue is empty or a POST fails (the failed batch's
- * rows are marked `failed` + retry_count incremented; the tick yields and the
- * next tick retries them). Wired AFTER receipts/PINs — audit is lowest
- * priority and must never block the fiscal chain.
+ * stopping early when the queue is empty, a POST fails, or the elapsed-time
+ * budget (`AUDIT_DRAIN_BUDGET_MS`) is exceeded (failed batch rows are marked
+ * `failed` + retry_count incremented; the tick yields and the next tick
+ * retries them). Wired AFTER receipts/PINs — audit is lowest priority and
+ * must never block the fiscal chain.
  *
  * No-op when offline (the scheduler already gates `runFullSync` on
  * connectivity, but the explicit guard keeps the function safe to call
@@ -1048,7 +1058,10 @@ export async function pushQueuedAuditEvents(db: Database): Promise<number> {
   if (!useConnectivityStore.getState().isOnline) return 0;
 
   let total = 0;
+  const start = Date.now();
   for (let i = 0; i < MAX_AUDIT_BATCHES_PER_TICK; i++) {
+    if (Date.now() - start > AUDIT_DRAIN_BUDGET_MS) break;
+
     const pending = await getPendingAuditEvents(db, 100);
     if (pending.length === 0) break;
 

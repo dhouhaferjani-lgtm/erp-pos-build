@@ -174,15 +174,42 @@ describe('queuedAuditEventRepository', () => {
     expect(sql).toMatch(/-14 days/);
   });
 
-  it('counts pending+failed rows under the cap', async () => {
-    vi.mocked(queryOne).mockResolvedValue({ count: 5 });
+  it('counts pending+failed+syncing rows WITHOUT a retry_count filter (dead-letter rows visible)', async () => {
+    vi.mocked(queryOne).mockResolvedValue({ count: 7 });
     const n = await countPendingAuditEvents(db);
-    expect(n).toBe(5);
+    expect(n).toBe(7);
     const [, sql, params] = vi.mocked(queryOne).mock.calls[0]!;
     expect(sql).toMatch(/SELECT COUNT\(\*\) AS count FROM queued_audit_events/);
-    expect(sql).toMatch(/status IN \('pending', 'failed'\)/);
-    expect(sql).toMatch(/retry_count < /);
-    expect(params).toEqual([MAX_AUDIT_RETRIES]);
+    // Must include syncing (in-flight rows count as non-synced)
+    expect(sql).toMatch(/status IN \('pending', 'failed', 'syncing'\)/);
+    // Must NOT filter on retry_count so dead-letter rows are counted
+    expect(sql).not.toMatch(/retry_count/);
+    // No retry cap bound param
+    expect(params).toEqual([]);
+  });
+
+  it('dead-letter row: excluded from getPendingAuditEvents but included in countPendingAuditEvents', async () => {
+    // A row at exactly MAX_AUDIT_RETRIES is a dead-letter: the drain selector
+    // (getPending) uses retry_count < MAX and excludes it; the count function
+    // has no retry_count filter and includes it.
+
+    // getPendingAuditEvents: returns nothing for a dead-letter row
+    vi.mocked(queryAll).mockResolvedValue([]);
+    const drainable = await getPendingAuditEvents(db, 100);
+    expect(drainable).toHaveLength(0);
+    // Confirm the drain SQL still has the retry_count gate
+    const [, drainSql, drainParams] = vi.mocked(queryAll).mock.calls[0]!;
+    expect(drainSql).toMatch(/retry_count < /);
+    expect(drainParams).toEqual(expect.arrayContaining([MAX_AUDIT_RETRIES]));
+
+    vi.clearAllMocks();
+
+    // countPendingAuditEvents: counts the dead-letter row (no retry filter)
+    vi.mocked(queryOne).mockResolvedValue({ count: 1 });
+    const counted = await countPendingAuditEvents(db);
+    expect(counted).toBe(1);
+    const [, countSql] = vi.mocked(queryOne).mock.calls[0]!;
+    expect(countSql).not.toMatch(/retry_count/);
   });
 
   it('countPending returns 0 when the count query yields null', async () => {

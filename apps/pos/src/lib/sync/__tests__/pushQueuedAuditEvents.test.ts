@@ -36,6 +36,7 @@ vi.mock('@/stores/connectivityStore', () => ({
 import {
   pushQueuedAuditEvents,
   MAX_AUDIT_BATCHES_PER_TICK,
+  AUDIT_DRAIN_BUDGET_MS,
 } from '../syncService';
 import { apiPost } from '@/lib/api';
 import type { QueuedAuditEvent } from '@/lib/db/repositories/queuedAuditEventRepository';
@@ -164,5 +165,42 @@ describe('pushQueuedAuditEvents', () => {
     const total = await pushQueuedAuditEvents(db);
     expect(total).toBe(0);
     expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  // FIX 3: elapsed-time budget guard
+  it('AUDIT_DRAIN_BUDGET_MS is exported and equals 2000', () => {
+    expect(AUDIT_DRAIN_BUDGET_MS).toBe(2000);
+  });
+
+  it('breaks out of the drain loop when the elapsed-time budget is exceeded', async () => {
+    // Date.now() call sequence inside pushQueuedAuditEvents:
+    //   call 0: `const start = Date.now()` → 0
+    //   call 1: top of iteration i=0 → `Date.now() - start` = 0 → under budget → proceed
+    //   call 2: top of iteration i=1 → `Date.now() - start` = BUDGET+1 → over budget → break
+    let callCount = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => {
+      const idx = callCount++;
+      if (idx === 0) return 0;           // start timestamp
+      if (idx === 1) return 0;           // i=0 check: 0-0=0 → under budget, process batch1
+      return AUDIT_DRAIN_BUDGET_MS + 1;  // i=1 check: over budget → break
+    });
+
+    // Both batches would succeed if time weren't the gate.
+    const batch1 = [makeEvent(1)];
+    const batch2 = [makeEvent(2)];
+    auditRepo.getPendingAuditEvents
+      .mockResolvedValueOnce(batch1)
+      .mockResolvedValueOnce(batch2);
+
+    const total = await pushQueuedAuditEvents(db);
+
+    // Budget fires at the top of iteration i=1, before batch2 is fetched.
+    // Only batch1 (iteration i=0) was processed.
+    expect(total).toBe(1);
+    expect(apiPost).toHaveBeenCalledTimes(1);
+    // getPendingAuditEvents only called once (iteration 0; iteration 1 breaks before it)
+    expect(auditRepo.getPendingAuditEvents).toHaveBeenCalledTimes(1);
+
+    vi.restoreAllMocks();
   });
 });
