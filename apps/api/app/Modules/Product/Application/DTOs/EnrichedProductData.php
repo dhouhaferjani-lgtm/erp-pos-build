@@ -30,5 +30,6 @@ class EnrichedProductData extends Data
         public ?array $enrichment_sources,
         public ?string $assigned_barcode,
         public ?string $assigned_barcode_type,
+        public ?string $locale = null,
     ) {}
 }

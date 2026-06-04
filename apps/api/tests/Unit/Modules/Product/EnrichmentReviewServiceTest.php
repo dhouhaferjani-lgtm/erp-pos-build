@@ -137,6 +137,35 @@ class EnrichmentReviewServiceTest extends TestCase
         ]);
     }
 
+    public function test_fetch_and_store_persists_locale_from_lookup_status(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Original Product',
+        ]);
+
+        $trackingId = (string) Str::uuid();
+
+        Http::fake([
+            'platform.test/*' => Http::response([
+                'tracking_id' => $trackingId,
+                'status' => 'approved',
+                'enrichment_quality' => 'full',
+                'locale' => 'fr_FR',
+                'enriched_data' => [
+                    'name' => 'Doliprane 1000mg',
+                    'confidence_score' => 90,
+                ],
+            ]),
+        ]);
+
+        $result = $this->service->fetchAndStore($trackingId, $product);
+
+        $this->assertNotNull($result);
+        $this->assertSame('fr_FR', $result->enriched_data->locale);
+    }
+
     public function test_accept_merges_fields_into_product(): void
     {
         $product = Product::factory()->create([

@@ -51,6 +51,7 @@ final class EnrichmentReviewService
                     enrichment_sources: $enrichedData['enrichment_sources'] ?? null,
                     assigned_barcode: $enrichedData['assigned_barcode'] ?? null,
                     assigned_barcode_type: $enrichedData['assigned_barcode_type'] ?? null,
+                    locale: $statusDTO->locale ?? ($enrichedData['locale'] ?? null),
                 ),
                 'enrichment_quality' => $statusDTO->enrichmentQuality ?? 'unknown',
                 'assigned_barcode' => $statusDTO->assignedBarcode,
