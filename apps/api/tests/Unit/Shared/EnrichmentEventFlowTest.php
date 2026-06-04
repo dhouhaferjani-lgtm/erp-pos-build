@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Product\Application\Listeners\ProcessEnrichmentEventListener;
 use App\Modules\Product\Application\Services\EnrichmentReviewService;
+use App\Modules\Product\Domain\EnrichmentResult;
 use App\Modules\Product\Domain\Events\EnrichmentWebhookReceived;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -137,6 +138,10 @@ class EnrichmentEventFlowTest extends TestCase
             'platform_submission_id' => $trackingId,
         ]);
 
+        // The lookup-status response deliberately omits locale, so the only
+        // surviving source is the webhook's top-level locale field. This
+        // pins the contract that the webhook locale is threaded through to
+        // persistence (not silently dropped in favour of lookup-status).
         $mockSubmission = $this->createMock(PlatformSubmissionInterface::class);
         $mockSubmission->method('checkStatus')->willReturn(new SubmissionStatusDTO(
             trackingId: $trackingId,
@@ -148,7 +153,7 @@ class EnrichmentEventFlowTest extends TestCase
             ],
             assignedBarcode: '3400930000000',
             vertical: 'parapharmacy',
-            locale: 'fr_FR',
+            locale: null,
         ));
 
         $reviewService = new EnrichmentReviewService($mockSubmission);
@@ -160,6 +165,7 @@ class EnrichmentEventFlowTest extends TestCase
             'full',
             true,
             'parapharmacy',
+            'fr_FR',
         ));
 
         // Approved maps to a terminal status → product marked Completed
@@ -171,6 +177,10 @@ class EnrichmentEventFlowTest extends TestCase
             'tracking_id' => $trackingId,
             'product_id' => $product->id,
         ]);
+
+        // The webhook locale must be persisted (lookup-status omitted it)
+        $stored = EnrichmentResult::where('tracking_id', $trackingId)->sole();
+        $this->assertSame('fr_FR', $stored->enriched_data->locale);
 
         // The user must be notified
         Event::assertDispatched(EnrichmentResultReadyEvent::class, function (EnrichmentResultReadyEvent $event) use ($product): bool {
@@ -198,16 +208,12 @@ class EnrichmentEventFlowTest extends TestCase
             'platform_submission_id' => $trackingId,
         ]);
 
+        // A not-enrichable resolution has no enriched data to fetch, so the
+        // platform lookup-status must NOT be hit and no review-queue row may
+        // be created — otherwise an operator sees a phantom pending_review
+        // item for a permanently un-enrichable product.
         $mockSubmission = $this->createMock(PlatformSubmissionInterface::class);
-        $mockSubmission->method('checkStatus')->willReturn(new SubmissionStatusDTO(
-            trackingId: $trackingId,
-            status: 'not_enrichable',
-            enrichmentQuality: null,
-            enrichedData: [],
-            assignedBarcode: null,
-            vertical: 'parapharmacy',
-            locale: 'fr_FR',
-        ));
+        $mockSubmission->expects($this->never())->method('checkStatus');
 
         $reviewService = new EnrichmentReviewService($mockSubmission);
         $listener = new ProcessEnrichmentEventListener($reviewService);
@@ -218,11 +224,17 @@ class EnrichmentEventFlowTest extends TestCase
             null,
             false,
             'parapharmacy',
+            'fr_FR',
         ));
 
         // Submission is marked resolved-without-data (terminal, non-Completed)
         $product->refresh();
         $this->assertSame(EnrichmentStatus::NotEnrichable, $product->enrichment_status);
+
+        // No phantom review-queue row
+        $this->assertDatabaseMissing('enrichment_results', [
+            'tracking_id' => $trackingId,
+        ]);
 
         // No user notification for a not-enrichable resolution
         Event::assertNotDispatched(EnrichmentResultReadyEvent::class);

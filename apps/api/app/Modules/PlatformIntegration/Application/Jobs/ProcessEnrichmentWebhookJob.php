@@ -34,6 +34,7 @@ final class ProcessEnrichmentWebhookJob implements ShouldQueue
             $this->payload->enrichmentQuality,
             $this->payload->hasBarcodeAssigned,
             $this->payload->vertical,
+            $this->payload->locale,
         );
     }
 }

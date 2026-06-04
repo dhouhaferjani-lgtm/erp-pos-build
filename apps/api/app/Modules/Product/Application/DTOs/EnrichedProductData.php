@@ -30,6 +30,9 @@ class EnrichedProductData extends Data
         public ?array $enrichment_sources,
         public ?string $assigned_barcode,
         public ?string $assigned_barcode_type,
+        // Persisted inside the enriched_data JSONB. If H3 introduces
+        // locale-based routing/analytics or filtering, promote this to a
+        // dedicated enrichment_results.locale column (index-friendly).
         public ?string $locale = null,
     ) {}
 }
