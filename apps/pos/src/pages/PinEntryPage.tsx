@@ -1,13 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PinPad } from '@/components/PinPad';
-import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
-import { useCartStore } from '@/stores/cartStore';
-import { usePaymentStore } from '@/stores/paymentStore';
-import { useProductStore } from '@/stores/productStore';
-import { useRefundFlowStore } from '@/stores/refundFlowStore';
-import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { getErrorMessage } from '@/lib/api';
 
 const MAX_PIN_LENGTH = 6;
@@ -22,19 +16,6 @@ export function PinEntryPage({ isLocked }: PinEntryPageProps) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
-  const [showSignOut, setShowSignOut] = useState(false);
-
-  function handleSignOut() {
-    setShowSignOut(false);
-    useCartStore.getState().clearCart();
-    useRefundFlowStore.getState().clearAll();
-    useRefundDraftStore.getState().clearDraftState();
-    usePaymentStore.getState().clearVoucherTenders();
-    usePaymentStore.getState().reset();
-    useProductStore.getState().reset();
-    useOperatorStore.getState().clearOperator();
-    useAuthStore.getState().logout();
-  }
 
   async function handleSubmit() {
     if (pin.length < 4) return;
@@ -88,41 +69,7 @@ export function PinEntryPage({ isLocked }: PinEntryPageProps) {
           disabled={verifying}
         />
 
-        <button
-          onClick={() => setShowSignOut(true)}
-          className="mt-6 w-full text-center text-sm text-gray-400 hover:text-gray-600"
-        >
-          {t('settings.signOutFromPin')}
-        </button>
       </div>
-
-      {/* Sign Out Confirmation */}
-      {showSignOut && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="mx-4 w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-bold text-gray-900">
-              {t('settings.signOutTerminal')}
-            </h3>
-            <p className="mt-2 text-sm text-gray-600">
-              {t('settings.signOutConfirmMessage')}
-            </p>
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => setShowSignOut(false)}
-                className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                {t('settings.cancel')}
-              </button>
-              <button
-                onClick={handleSignOut}
-                className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700"
-              >
-                {t('settings.signOut')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
