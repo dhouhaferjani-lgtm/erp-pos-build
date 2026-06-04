@@ -1,6 +1,26 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// Sub-Spec C Task 12 — mock the audit emit + terminal store so chain-break /
+// sync-failed emits can be asserted without hitting SQLite.
+const recordAuditEvent = vi.fn().mockResolvedValue(undefined);
+vi.mock('@/lib/audit/recordAuditEvent', () => ({
+  recordAuditEvent: (...args: unknown[]) => recordAuditEvent(...args),
+}));
+
+const terminalState: { terminal: { id: string } | null } = { terminal: { id: 'terminal-7' } };
+vi.mock('@/stores/terminalStore', () => ({
+  useTerminalStore: { getState: () => terminalState },
+}));
+
 import { useSyncStore } from '../syncStore';
 import type { SyncResult } from '@/lib/sync/syncService';
+
+interface AuditCall {
+  type: string;
+  aggregateType: string;
+  aggregateId: string;
+  payload: Record<string, unknown>;
+}
 
 function makeSyncResult(overrides: Partial<SyncResult> = {}): SyncResult {
   return {
@@ -28,8 +48,23 @@ function makeSyncResult(overrides: Partial<SyncResult> = {}): SyncResult {
   };
 }
 
+function auditCalls(type: string): AuditCall[] {
+  return recordAuditEvent.mock.calls
+    .map((c) => c[0] as AuditCall)
+    .filter((a) => a.type === type);
+}
+
+function firstAuditCall(type: string): AuditCall {
+  const call = auditCalls(type)[0];
+  if (!call) throw new Error(`no audit call recorded for ${type}`);
+  return call;
+}
+
 describe('syncStore', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    recordAuditEvent.mockResolvedValue(undefined);
+    terminalState.terminal = { id: 'terminal-7' };
     useSyncStore.getState().reset();
   });
 
@@ -177,5 +212,67 @@ describe('syncStore', () => {
     const s = useSyncStore.getState();
     expect(s.chainBreak).toBe(true); // NOT cleared
     expect(s.chainBreakAcknowledgedAt).toBeTruthy();
+  });
+
+  // ── Sub-Spec C Task 12: fiscal-chain-break + sync-orphaned emits ─────────
+
+  it('Task 12: setChainBreak(true, "R7") emits pos.fiscal_chain_break {acknowledged:false} on FiscalChain/terminal', () => {
+    useSyncStore.getState().setChainBreak(true, 'R7');
+
+    expect(auditCalls('pos.fiscal_chain_break')).toHaveLength(1);
+    const call = firstAuditCall('pos.fiscal_chain_break');
+    expect(call.aggregateType).toBe('FiscalChain');
+    expect(call.aggregateId).toBe('terminal-7');
+    expect(call.payload).toEqual({ receipt_number: 'R7', acknowledged: false });
+  });
+
+  it('Task 12: setChainBreak(false, null) (resolution path) does NOT emit', () => {
+    useSyncStore.getState().setChainBreak(false, null);
+    expect(auditCalls('pos.fiscal_chain_break')).toHaveLength(0);
+  });
+
+  it('Task 12: acknowledgeChainBreak emits pos.fiscal_chain_break {acknowledged:true} with the current receipt number', () => {
+    useSyncStore.setState({ chainBreak: true, chainBreakReceiptNumber: 'R9', chainBreakAcknowledgedAt: null });
+    useSyncStore.getState().acknowledgeChainBreak();
+
+    expect(auditCalls('pos.fiscal_chain_break')).toHaveLength(1);
+    expect(firstAuditCall('pos.fiscal_chain_break').payload).toEqual({
+      receipt_number: 'R9',
+      acknowledged: true,
+    });
+  });
+
+  it('Task 12: failSync emits pos.sync_failed_orphaned ONCE with aggregate summary (receipt_id null)', () => {
+    useSyncStore.getState().failSync('Network unreachable');
+
+    expect(auditCalls('pos.sync_failed_orphaned')).toHaveLength(1);
+    const call = firstAuditCall('pos.sync_failed_orphaned');
+    expect(call.aggregateType).toBe('OfflineReceipt');
+    expect(call.aggregateId).toBe('terminal-7');
+    expect(call.payload).toEqual({
+      receipt_id: null,
+      idempotency_key: null,
+      retry_count: null,
+      error: 'Network unreachable',
+    });
+  });
+
+  it('Task 12: a chain-break emit failure never breaks setChainBreak (best-effort)', () => {
+    recordAuditEvent.mockRejectedValue(new Error('enqueue failed'));
+    expect(() => useSyncStore.getState().setChainBreak(true, 'R1')).not.toThrow();
+    // State still mutated despite the emit rejection.
+    expect(useSyncStore.getState().chainBreak).toBe(true);
+  });
+
+  it('Task 12: a sync-failed emit failure never breaks failSync (best-effort)', () => {
+    recordAuditEvent.mockRejectedValue(new Error('enqueue failed'));
+    expect(() => useSyncStore.getState().failSync('boom')).not.toThrow();
+    expect(useSyncStore.getState().lastError).toBe('boom');
+  });
+
+  it('Task 12: falls back to aggregateId "unknown" when no terminal is hydrated', () => {
+    terminalState.terminal = null;
+    useSyncStore.getState().setChainBreak(true, 'R1');
+    expect(firstAuditCall('pos.fiscal_chain_break').aggregateId).toBe('unknown');
   });
 });
