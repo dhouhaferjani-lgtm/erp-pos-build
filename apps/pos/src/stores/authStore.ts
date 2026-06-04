@@ -98,6 +98,7 @@ interface AuthActions {
     opts?: { signal?: AbortSignal; tenantId?: string },
   ) => Promise<LoginOutcome>;
   logout: () => void;
+  unbindDevice: () => void;
   checkSession: (opts?: { signal?: AbortSignal }) => Promise<void>;
   setCompany: (companyId: string) => void;
   initialize: (opts?: { signal?: AbortSignal }) => Promise<void>;
@@ -425,5 +426,16 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     void import('@/stores/bootstrapStore').then(({ useBootstrapStore }) => {
       useBootstrapStore.getState().reset();
     });
+  },
+
+  // Sub-Spec B: deliberate, manager-initiated full device sign-out. Unlike
+  // logout() (used by automatic 401s / setup / bootstrap, which keep the
+  // device's tenant binding), this ALSO clears LOGIN_TENANT_ID so the next
+  // login re-resolves the tenant email-first. Auth-owned only — feature-store
+  // cleanup is done by teardownPosSessionStores() at the UI layer to avoid an
+  // operatorStore<->authStore import cycle.
+  unbindDevice: () => {
+    get().logout();
+    void removeStoredValue(StorageKeys.LOGIN_TENANT_ID);
   },
 }));

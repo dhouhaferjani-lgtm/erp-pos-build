@@ -775,4 +775,21 @@ describe('authStore', () => {
       expect(useAuthStore.getState().isAuthenticated).toBe(true);
     });
   });
+
+  describe('unbindDevice', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      useAuthStore.setState({ user: mockUser, token: 'tok', companies: mockCompanies, isAuthenticated: true });
+    });
+    it('clears LOGIN_TENANT_ID and tears down the session', () => {
+      useAuthStore.getState().unbindDevice();
+      expect(removeStoredValue).toHaveBeenCalledWith('login_tenant_id');
+      expect(useAuthStore.getState().isAuthenticated).toBe(false);
+      expect(useAuthStore.getState().token).toBeNull();
+    });
+    it('logout() does NOT clear LOGIN_TENANT_ID (binding survives 401/setup paths)', () => {
+      useAuthStore.getState().logout();
+      expect(removeStoredValue).not.toHaveBeenCalledWith('login_tenant_id');
+    });
+  });
 });
