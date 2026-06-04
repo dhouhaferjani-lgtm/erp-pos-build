@@ -1,186 +1,156 @@
 # `unit_price` Disambiguation Rename — Design / Spec
 
-> **Status:** Approved design, **v2 (post-Codex-review)** — 2026-06-03. Spec only — no code.
+> **Status:** Approved design, **v3 (three-zone model)** — 2026-06-04. Spec only — no code.
 > **Branch:** `feat/unit-price-rename-spec` (off `dev`).
-> **Adversarial review:** [`docs/superpowers/reviews/2026-06-03-unit-price-rename-spec-codex-review.md`](../reviews/2026-06-03-unit-price-rename-spec-codex-review.md) — Codex REQUEST-CHANGES (3 BLOCKER / 4 MAJOR / 4 MINOR / 7+ missed surfaces). All findings verified against code and incorporated below; the changelog is in §11.
+> **Adversarial review:** [`docs/superpowers/reviews/2026-06-03-unit-price-rename-spec-codex-review.md`](../reviews/2026-06-03-unit-price-rename-spec-codex-review.md) — Codex REQUEST-CHANGES (3 BLOCKER / 4 MAJOR / 4 MINOR / 7+ missed surfaces). All findings verified and addressed; v3 dissolves the two signed-byte blockers by **not renaming the canonical payload**. Changelog in §11.
 > **Companion plan:** `docs/superpowers/plans/2026-06-03-unit-price-disambiguation-rename-plan.md` (written after this spec is reviewed).
 > **References:** [`docs/architecture/precision-contract.md` — `unit_price` section](../../architecture/precision-contract.md), [CLAUDE.md §19](../../../CLAUDE.md).
 
 ---
 
-## 1. Problem
+## 1. Problem & the three-zone model
 
-The field name `unit_price` is **context-overloaded** with two incompatible tax semantics that share the same name across many layers and modules:
+`unit_price` is **context-overloaded**: tax-**INCLUSIVE** (TTC) on the B2C / POS side, **net / HT** on the B2B / documents side. The same name means different things, which has already caused a real fiscal false-positive. The precision contract documents this overload as the live mitigation and flags the rename as deferred. This spec resolves it.
 
-| Context | `unit_price` means | Canonical evidence |
+**Key insight (owner, 2026-06-04):** the overload is only dangerous *where the two worlds meet* — the backend, where a developer can see two `unit_price`s meaning different things. *Inside* the POS ("the boss") everything is uniformly tax-inclusive, so there is nothing there to confuse. We therefore fix the ambiguity at the boundary, not everywhere, via three zones:
+
+| Zone | Scope | Treatment |
 |---|---|---|
-| **B2C POS cart / SALE_RECEIPT** | **tax-INCLUSIVE (TTC)** | `cartStore.computeTaxAmount` extracts VAT from gross; canonical `SALE_RECEIPT.line_items[].unit_price` is the inclusive cart price; net is `line_subtotal` |
-| **B2B / documents** (quotes, orders, invoices, credit/return notes, delivery notes, workshop, billing) | **net / HT** | `DocumentTotalsCalculator`/`FacturXService` do `bcmul(quantity, unit_price)` = net subtotal |
+| **Zone 1 — the boss + fiscal chain** | POS device (`apps/pos`): cart, device storage, canonical payload builder, **signed canonical bytes** (SALE_RECEIPT, ACCOUNT_CHARGE), and the PHP DTOs that *mirror* those bytes | **Keep `unit_price`.** Always inclusive; documented as such. **Never renamed** → no versioned fiscal event, no fixture regeneration for the rename, "device authors / server re-hashes never recomputes" untouched. |
+| **Zone 2 — the seam** | The POS→backend ingestion: canonical parse + `PosCoreReceiptProjection` + POS order/receipt persistence | **Translate at the boundary.** Read canonical `unit_price` (inclusive) → write the backend column `unit_price_incl_tax`. One well-defined, tested mapping; zero hash impact (bytes are verified before projection). |
+| **Zone 3 — the backend** | All backend storage/DTOs/web | **Rename everything; no bare `unit_price` survives in the backend.** POS-origin inclusive → `unit_price_incl_tax`; B2B/net → `unit_price_excl_tax`. |
 
-The overload has already produced a real false-positive in fiscal line-arithmetic work. The precision contract documents the overload as the live mitigation and flags the rename as **deferred**. This spec resolves the deferral by renaming to **English**, unambiguous names: `unit_price_excl_tax` (net) and `unit_price_incl_tax` (inclusive).
-
-### Locked classification rule (CORRECTED — by tax semantics, verified per-surface)
-
-> Classification is **per surface, by what the stored number actually means** — but for **device-authored** events the governing invariant is stronger: *the POS device cart is always tax-inclusive, and a device-authored event's `unit_price` is the cart's gross figure written verbatim, with `line_subtotal` carrying the net.* This holds for `SALE_RECEIPT` (validator confirms, lines 1708–1714) and, by the same architecture, for `ACCOUNT_CHARGE` (see the ACCOUNT_CHARGE note in §6).
-
-- **`unit_price_incl_tax`** ⇐ the value INCLUDES VAT (gross). The **device-authored** sale path: SALE_RECEIPT and ACCOUNT_CHARGE line items, plus the cart/POS storage/projection surfaces that mirror them.
-- **`unit_price_excl_tax`** ⇐ the value EXCLUDES VAT (net/HT). Documents, workshop, billing, catalog cart, marketplace — the B2B/document layer where lines are authored net.
-- Every `unit_price` occurrence MUST be assigned in the §7 classification table with cited evidence before it is touched. No blanket per-app assumption — but note the device-inclusive invariant above resolves both signed events to inclusive.
+After this change the **only** bare `unit_price` left in the system is inside the immutable signed bytes (Zone 1), where it is documented as "always inclusive for device-authored events." Every queryable backend column/DTO is explicit.
 
 ---
 
 ## 2. Goals / Non-Goals
 
 **Goals**
-- Eliminate the `unit_price` name overload by renaming each occurrence to `unit_price_excl_tax` or `unit_price_incl_tax` per verified semantics.
-- Preserve the fiscal model exactly: **device authors canonical bytes; server re-hashes stored `canonical_bytes`, never recomputes/re-serializes.**
-- Never invalidate an existing signed chain: already-signed canonical bytes (carrying the old `unit_price` key) must keep verifying byte-for-byte forever, for **both** SALE_RECEIPT and ACCOUNT_CHARGE.
+- Remove the backend `unit_price` overload: every backend per-unit-money column/DTO becomes `unit_price_incl_tax` or `unit_price_excl_tax`.
+- Preserve the fiscal model exactly: canonical bytes keep `unit_price`; **device authors bytes, server re-hashes stored `canonical_bytes`, never recomputes/re-serializes.**
+- Make the POS→backend tax-context shift explicit and tested (Zone 2 seam).
 - Each phase independently shippable as its own PR.
 
 **Non-Goals**
-- No change to precision/scale/storage tiers/value objects (precision contract stands; this rename preserves the **effective** `decimal(15,3)` scale — see §4/§6).
-- No change to tax math, rounding, or aggregate fiscal-integrity invariants — only field *names* change.
-- No renaming of `line_subtotal` / `line_vat` / `vat_breakdown` (already unambiguous).
-- No new product/pricing features.
+- **No rename of the canonical payload / signed bytes** (`unit_price` stays in SALE_RECEIPT and ACCOUNT_CHARGE). No versioned fiscal event, no cutover lever, no canonical fixture regeneration *for the rename*.
+- **No rename inside the POS device** (cart, device SQLite, canonical builder) — it stays `unit_price` (uniformly inclusive). Avoids churn with no ambiguity gain and keeps the device aligned with the canonical key.
+- No change to precision/scale/value objects; preserve the **effective** `decimal(15,3)` money scale (§4/§6).
+- No change to tax math, rounding, or fiscal-integrity invariants — names change; the one *value* change is the ACCOUNT_CHARGE correction (§4.3), which is separate and unwired.
+- No rename of `line_subtotal` / `line_vat` / `vat_breakdown` (already unambiguous).
 
 ---
 
 ## 3. Sequencing constraint — **AFTER T2 variants**
 
-> **This rename MUST land after T2 product-variants implementation is merged to `dev`** (see `project_t2_variants_impl`). T2 rewrites the same line DTOs/services this rename touches; running concurrently produces large conflict-prone diffs. Treat T2-merged as a precondition, and **re-run the §7 surface inventory against post-T2 `dev`** before executing — T2 may add/move `unit_price` callsites.
+> **Land this after T2 product-variants merges to `dev`** (`project_t2_variants_impl`): T2 rewrites the same line DTOs/services. Treat T2-merged as a precondition and **re-run the §7 inventory against post-T2 `dev`** before executing.
 
 ---
 
-## 4. Phase structure (by risk)
+## 4. Phase structure
 
-Four phases. **Phase 3 (canonical signed bytes) is OPTIONAL / DEFERRED** behind owner sign-off; Phases 1–2 remove the overload from every *editable / projected* surface. The canonical payloads can remain on their current version (documented) until the owner elects to do Phase 3.
+Two rename phases + one small fiscal-value correction. All backend DB work uses **expand/contract** (add → backfill → dual-write → switch reads → drop in a *later* migration after all tenant DBs are read-switched) at the **effective `decimal(15,3)`** scale with `decimal:3` model casts. Migrations live under `apps/api/database/migrations/tenant/` (per-tenant DB).
 
-> **DB rule for all phases (CORRECTED):** every replacement column is created at the **effective** schema scale, which is `decimal(15,3)` for money columns (document lines were widened in `2026_03_11_200000`; POS order columns were narrowed to scale 3 in `2026_05_29_100001`). **Do not** copy the original create-migration scales (15,2 / 15,4) — that would lose TND precision or reintroduce a 4th POS decimal the precision contract intentionally removed. Update the corresponding model `decimal:3` casts. All migrations live under `apps/api/database/migrations/tenant/` (DB-per-tenant; the `tenant/` path runs per tenant DB). **Drop the old column only in a later migration, after every tenant DB has completed read-switch verification.**
+### Phase 1 — B2B / net backend → `unit_price_excl_tax` (moderate risk)
 
-### Phase 1 — B2B / net → `unit_price_excl_tax` (moderate risk)
-
-Every net `unit_price` (see §7 for the authoritative list). Highlights:
-- **Document module:** `DocumentLineData` DTO; `document_lines.unit_price` → `unit_price_excl_tax` (`decimal(15,3)`, model cast `decimal:3`); services (`DocumentTotalsCalculator`, `DraftPersistenceService`, `Conversion/Concerns/CopiesDocumentData` + the 3 converters, `CreditNoteService`, `RefundService`, `FacturXService`, `POSAccountChargeDraftService`); FormRequests/controllers (`UpdateDocumentRequest`, `RefundController`, `QuoteController`, `SalesOrderController`, `InvoiceController`, `DeliveryNoteController`, `PurchaseOrderController`, `ReturnNoteController`, `DocumentAdditionalCostController`).
-- **Immutable events (Rule 8):** `unit_price` is in `DraftLineAdded` / `DraftLineAddedV2` / `DraftLineModifiedV2` payloads → introduce versioned successors (`DraftLineAddedV3`, `DraftLineModifiedV3`) carrying `unit_price_excl_tax`; leave existing event classes + their serialized key untouched.
+All backend net surfaces (authoritative list in §7):
+- **Document module:** `DocumentLineData` DTO; `document_lines.unit_price` (`decimal(15,3)`); services (`DocumentTotalsCalculator`, `DraftPersistenceService`, `Conversion/Concerns/CopiesDocumentData` + the 3 converters, `CreditNoteService`, `RefundService`, `FacturXService`, `POSAccountChargeDraftService`); FormRequests/controllers (`UpdateDocumentRequest`, `RefundController`, `Quote/SalesOrder/Invoice/DeliveryNote/PurchaseOrder/ReturnNote` controllers, `DocumentAdditionalCostController`).
+- **Immutable events (Rule 8):** `DraftLineAdded`/`DraftLineAddedV2`/`DraftLineModifiedV2` carry `unit_price` → add versioned successors `DraftLineAddedV3`/`DraftLineModifiedV3` with `unit_price_excl_tax`; leave existing event classes + keys untouched.
 - **Workshop:** `BundleExpansionLineData`, `WorkOrderLineData`, `ServiceBundleComponentData.override_unit_price` (→ `override_unit_price_excl_tax`) + factories.
-- **Billing:** `billing_invoice_items.unit_price` (`decimal(15,3)`, net — `tax_rate`/`tax_amount` separate), `InvoiceItem` model, `InvoiceService`.
-- **Catalog cart (RESOLVED as net — was deferred):** `catalog_cart_items.unit_price`, `CatalogCartItem` model/factory, `CartService`, `CartConversionService` (creates document lines via `DocumentLine::create([... 'unit_price' => ...])`), `MarketplaceCheckoutService`, `CatalogCartController`, `CatalogCartItemData`.
-- **Taxation / pricing helpers** consuming generic net `unit_price`: `TaxCalculationService`, `PricingController`, `Treasury/.../AuditDiscountsCommand`.
-- **Web (`apps/web`):** regenerate `packages/shared/types/generated.d.ts` (`php artisan typescript:transform`); update manual mirror `apps/web/src/types/document.ts`; `DocumentLineEditor`, detail pages, `CreateCreditNotePage`, `CreateReturnNotePage`, `PurchaseOrderLandedCostBreakdown`, `GoodsReceiptListPage`, coupon API types (if classified net), fixtures + e2e.
+- **Billing:** `billing_invoice_items.unit_price` (`decimal(15,3)`, net), `InvoiceItem`, `InvoiceService`.
+- **Catalog cart (net):** `catalog_cart_items.unit_price`, `CatalogCartItem` model/factory, `CartService`, `CartConversionService`, `MarketplaceCheckoutService`, `CatalogCartController`, `CatalogCartItemData`.
+- **Marketplace (B2B, net):** `marketplace_order_lines.unit_price`, `MarketplaceOrderLine`, `MarketplaceOrderData`, `MarketplaceOrderService`, `MarketplaceListing.price` lineage (synced from `product.sale_price`).
+- **Tax/pricing helpers:** `TaxCalculationService`, `PricingController`, `AuditDiscountsCommand`.
+- **Web (`apps/web`) B2B:** regenerate `packages/shared/types/generated.d.ts` (`php artisan typescript:transform`); manual mirror `apps/web/src/types/document.ts`; `DocumentLineEditor`, document detail pages, `CreateCreditNotePage`, `CreateReturnNotePage`, landed-cost, goods-receipt; fixtures + e2e.
 - **Fiscal-byte impact:** none.
 
-### Phase 2 — B2C inclusive, non-fiscal storage + projections → `unit_price_incl_tax` (moderate risk)
+### Phase 2 — backend POS-origin (inclusive) → `unit_price_incl_tax` + the seam (moderate risk)
 
-Rename the inclusive `unit_price` everywhere **except** the signed canonical bytes. Lands **before** Phase 3.
+Rename the backend storage/DTOs that hold POS (inclusive) data, and make the Zone-2 seam explicit. **Canonical bytes and the POS device are NOT touched.**
 - **POS order storage:** `pos_order_lines.unit_price` → `unit_price_incl_tax` (`decimal(15,3)`); `OrderLineData` DTO (+ regenerated TS).
-- **POS receipt projection/storage (ADDED — was missed):** `pos_receipt_lines.unit_price` (`decimal(15,3)`); `ReceiptLine` model; `PosCoreReceiptProjection` (currently writes `LineItemDTO::unitPrice` → `pos_receipt_lines.unit_price`); `ReceiptCreationService`, `ReceiptFinalizationService`, `StoreReceiptRequest`. **`canonical_bytes` stays untouched** — only the projection target column/readers are renamed.
-- **POS device (`apps/pos`):** `src/types/cart.ts` (`CartItem.unit_price`), `src/stores/cartStore.ts`, `src/types/receipt.ts`, `src/lib/buildReceiptData.ts`, `src/lib/offline/receiptService.ts` + `offline/types.ts` + `offline/zReportService.ts`, `src/lib/refundFlow/hydrateFromReceipt.ts`, `src/api/holdApi.ts` + `reportApi.ts`, cart/receipt components (`TransactionCart`, `CartLineItem`), `src/pages/HomePage.tsx`.
-- **Web POS (`apps/web/src/features/pos/**`) — kept distinct from device** (the prior spec conflated them): `POSPage` and related admin/web-POS components.
-- **Discount/coupon preview (RESOLVED inclusive — §6):** `ValidateCouponRequest`, `CouponController`, `DiscountController`, `couponApi.ts` — POS cart preview (`pos.operate_terminal`), tax-inclusive.
-- **Fiscal-byte impact:** none — the canonical builders still emit the current `unit_price` key; the cart/projection field names and the canonical key are intentionally **decoupled** until Phase 3 (the only documented name-mismatch window).
+- **POS receipt projection/storage:** `pos_receipt_lines.unit_price` → `unit_price_incl_tax` (`decimal(15,3)`); `ReceiptLine`; `ReceiptCreationService`, `ReceiptFinalizationService`, `StoreReceiptRequest`.
+- **The seam (Zone 2):** `PosCoreReceiptProjection` reads canonical `LineItemDTO::unitPrice` (key `unit_price`, inclusive) and writes the renamed column `unit_price_incl_tax`. Document the boundary in code + the precision contract; add a test asserting canonical `unit_price` → storage `unit_price_incl_tax` with the value preserved verbatim.
+- **Coupon/discount preview (POS, inclusive):** `ValidateCouponRequest`, `CouponController`, `DiscountController`, `apps/web/src/features/coupons/api/couponApi.ts` — request payloads carrying POS cart lines.
+- **Web POS (`apps/web/src/features/pos/**`):** consumes the renamed inclusive backend fields.
+- **Zone-1 PHP canonical-mirror DTOs stay `unit_price`:** `Fiscal/Domain/DTOs/Canonical/LineItemDTO.php` (`$unitPrice`), `SaleReceiptCanonicalView`, `CanonicalPayloadReader`, `SaleReceiptPayload.php`, `AccountChargePayload.php`, `FiscalPayloadConstraintValidator` — these mirror the signed bytes and are explicitly **not** renamed.
+- **Fiscal-byte impact:** none.
 
-### Phase 3 — Canonical signed bytes (SALE_RECEIPT + ACCOUNT_CHARGE) (HIGH RISK) — **OPTIONAL / DEFERRED, owner-gated**
+### Phase 4.3 — ACCOUNT_CHARGE value correction (net → inclusive) — small, separate, OPTIONAL
 
-Renames the key *inside the signed canonical payloads* — the irreversible, chain-affecting part. Covers **both** signed device-authored events that carry `line_items[].unit_price`:
-- **SALE_RECEIPT** → `unit_price_incl_tax` (inclusive).
-- **ACCOUNT_CHARGE** → `unit_price_incl_tax` (inclusive). **Rename + semantics correction** — current placeholder test data authors it net (`unit_price == line_subtotal`), but as a device-authored event from the inclusive cart it must be gross-verbatim like SALE_RECEIPT (owner decision 2026-06-04; see §6). Safe to change: not UI-wired, validator is tax-agnostic for this event, no production v1 events expected. B2B-facture-classification customers derive net downstream from `line_subtotal` (the device payload stays inclusive). Same registry/parser/golden-vector discipline; must not mutate any existing v1 bytes.
+> Not a rename — a **value-semantics correction** inside Zone 1, kept under the unchanged key `unit_price`.
 
-**Multi-version registry + parser design (CORRECTED — the core BLOCKER fix):**
-- The current server parser validates `envelope.event_version === registry.eventVersionFor(type)` (single value) and the device append path asks the registry for one version. **Merely bumping the mapping would reject all stored prior-version bytes.**
-- Required design: split **accepted/parseable versions** from **authoring version**.
-  - Parsing/validation resolves the DTO + validator by `(event_type, envelope.event_version)` — a multi-version map, not a single `eventVersionFor`.
-  - Authoring selects the version via `eventVersionForAuthoring(event_type, terminal_capability)`.
-  - Tests must prove a stored prior-version fixture still parses/verifies **after** the new version is registered.
+ACCOUNT_CHARGE is device-authored from the inclusive cart, so its `line_items[].unit_price` should be the gross/inclusive cart price verbatim (net in `line_subtotal`), exactly like SALE_RECEIPT. Today it is authored **net** *only as a placeholder convention in test fixtures* (`unit_price == line_subtotal`); the feature is **not UI-wired** (verified 2026-06-04: no caller of `authorAccountCharge` in any UI/store/flow on any branch — see the charge-to-account finalization handoff) and the PHP validator is **tax-agnostic** for this event. Correct the authoring + fixtures to inclusive. **No key rename, no version bump** (the canonical key stays `unit_price`). Prerequisite: re-confirm zero production v1 ACCOUNT_CHARGE events before changing fixtures. May be done with the charge-to-account UI finalization rather than here.
 
-**Version numbering (CORRECTED — derive from actual current state):**
-- Fixtures already contain `tests/Fixtures/Fiscal/sale-receipt-golden/v4/` and `v3-golden-hashes/`, so SALE_RECEIPT is **not** at v1 — the new version is **N+1 from the current maximum**, derived at implementation time, **not** "v2".
-- Freeze all current-version golden vectors as permanent regression anchors; generate new-version vectors (TND-3dp + EUR-2dp) from the new builder.
+### Canonical contract (replaces the old "Phase 3 rename")
 
-**Cutover lever (CORRECTED):**
-- `pos_terminals.fiscal_schema_version` is **already** a 2→3 lever (`FiscalSchemaCutoverService`, sync accepts `2|3`, finalization branches on 2 vs 3). "Bump it" is ambiguous and could collide with existing v3 behavior.
-- Phase 3 must define a **distinct** lever: either a new `fiscal_schema_version` step beyond the current max (derive the exact value at impl), **or** a dedicated per-terminal capability such as `sale_receipt_payload_version`. State explicitly whether existing v3 terminals stay on the current canonical version until a separate cutover.
-- Device authors the new version only once its lever is advanced; server accepts old + new indefinitely (mixed-version fleet).
-
-**v-aware readers:** `SaleReceiptCanonicalView`, `LineItemDTO`, `CanonicalPayloadReader`, `Nf525DataProvider`, `FiscalPayloadConstraintValidator`, `AccountChargePayload` (TS + PHP) must read the version and select the correct key.
+Keep `unit_price` in SALE_RECEIPT and ACCOUNT_CHARGE canonical payloads. Update `precision-contract.md` + CLAUDE.md §19 to state the resolved rule: **a device-authored canonical `unit_price` is always tax-inclusive; the backend never stores a bare `unit_price` (it is `unit_price_incl_tax` post-seam or `unit_price_excl_tax` for B2B).**
 
 ---
 
 ## 5. Cross-cutting deliverables
 
-- **Docs:** update `precision-contract.md` (unit_price section) + CLAUDE.md §19 incrementally per phase (after Phase 2: overload gone from editable/projected surfaces, canonical keys unchanged; after Phase 3: fully resolved).
-- **REALIGNMENT-LOG (path corrected):** the integration realignment log lives at the **syneriva monorepo root** (`docs/03-ERP-INTEGRATION/REALIGNMENT-LOG.md`), **outside** `apps/erp` — it is absent from this worktree. Confirm the exact path at impl and log the canonical DB/API shape changes (and, for Phase 3, the canonical payload shape change) there.
+- **Docs:** update `precision-contract.md` (unit_price section) + CLAUDE.md §19 from "deferred" to the resolved three-zone contract, per phase.
+- **REALIGNMENT-LOG:** lives at the **syneriva monorepo root** (`docs/03-ERP-INTEGRATION/REALIGNMENT-LOG.md`), outside `apps/erp` — confirm the exact path at impl; log the backend column/DTO renames there.
 - **Guards stay green:** PHPStan (`ForbidFloatCastOnDecimalProperty`, `ForbidHardcodedBcmathScale`), ESLint money/quantity rules, Deptrac, Pint.
-- **PR-per-phase:** Phases 1, 2, (optional) 3 each merge independently. Phase 3 carries the owner-sign-off gate.
+- **PR-per-phase:** Phase 1, Phase 2 each merge independently. The ACCOUNT_CHARGE value correction is a small separate change (here or folded into the charge-to-account UI work).
 
 ---
 
-## 6. Owner-flagged notes (carry into the plan)
+## 6. Owner-flagged resolutions & notes
 
-**Catalog cart — RESOLVED net (no longer deferred).** Code shows catalog cart prices flow into `DocumentLine::create([... 'unit_price' => ...])` via `CartConversionService` and feed PO/SO creation → net. Classified **Phase 1 / excl-tax** unless product owners identify a separate B2C online-ordering flow that displays VAT-inclusive prices.
-
-**Marketplace order lines — RESOLVED net (Phase 1).** Verified 2026-06-04: `marketplace_order_lines.unit_price` (`MarketplaceOrderService`, `MarketplaceOrderData`, `MarketplaceOrderLine`, migration `2026_03_10_400002`) takes its value from `listing->price`, and `MarketplaceListing.price` is synced from **the seller tenant's own `product.sale_price`** (`ListingSyncService::syncProduct:54` → `'price' => $product->sale_price`) — i.e. the tenant's own product price, **not** a centralized Synerivia platform price. This is a **B2B marketplace** (`buyer_tenant_id` buys from a `MarketplaceSeller` = another tenant); the order line has **no per-line tax columns** and the order is converted into a **B2B `Document`** (net lines). Classified **Phase 1 / excl-tax**. *Latent-concern flag (out of scope for the rename, log only):* whether `product.sale_price` itself is stored net vs gross is the same overload one level up — the marketplace path treats it as net; if POS treats the same `sale_price` as gross there is a pre-existing inconsistency to raise separately, not fix here.
-
-**Coupon / discount preview — RESOLVED inclusive (Phase 2).** Verified 2026-06-04: `ValidateCouponRequest` requires the `pos.operate_terminal` permission and `CouponController::validate` is documented "for POS preview"; the `items.*.unit_price` are POS cart lines, which are tax-**inclusive**. Classified **Phase 2 / incl-tax** (`ValidateCouponRequest`, `CouponController`, `DiscountController`, `couponApi.ts`).
-
-**ACCOUNT_CHARGE — RESOLVED inclusive + semantics correction (owner, 2026-06-04).** ACCOUNT_CHARGE is the POS "sell on account / on credit" flow: goods are taken now, no payment is collected (`assertNoPaymentLines`), and the total is written to the customer's receivable balance to settle later. Research findings: (1) it is **not yet UI-wired** — `buildAccountChargePayload`/`authorAccountCharge` are only referenced by the service file + tests, so no production v1 events are expected; (2) the PHP `validateAccountChargeLineItem` does **not** assert any net/gross relationship — net-ness exists only as a convention in placeholder fixtures (`unit_price == line_subtotal`); (3) it is **device-authored from the inclusive POS cart**, exactly like SALE_RECEIPT, for which the validator documents `unit_price` as the cart's tax-INCLUSIVE figure written verbatim (lines 1708–1714). Decision: ACCOUNT_CHARGE `line_items[].unit_price` is **tax-INCLUSIVE → `unit_price_incl_tax`**, correcting the placeholder net convention, with fixtures regenerated to inclusive. The charge amount itself (`totals.amount_charged_to_account`, `local_balance_snapshot`) is a separate concept and is **not** a unit_price — no change there. *Caveat:* for business customers (`invoice_classification: b2b_facture_draft_requested`) the downstream B2B facture's net figures derive from `line_subtotal`; the device payload remains inclusive to preserve the single device-cart representation. Implement only as part of Phase 3 (new versioned payload).
-
-**`fiscal_schema_version` note.** Already a 2→3 cutover lever (default 2, advanced to 3 by `FiscalSchemaCutoverService`); distinct from `fiscal_events.event_version` (per-event payload version). Phase 3 needs a NEW lever value/capability (§4). Existing `sale-receipt-golden/v4` fixtures imply the canonical schema is further along than the cutover service's "3" — reconcile the version landscape at impl before choosing numbers.
-
-**After-T2 note.** Do not start execution until T2 product-variants is merged to `dev` (§3); re-run §7 inventory against post-T2 `dev` first.
+- **Catalog cart — net (Phase 1).** Catalog cart prices flow into `DocumentLine::create([...'unit_price'...])` via `CartConversionService` → net.
+- **Marketplace — net (Phase 1).** B2B marketplace (`buyer_tenant_id` ⇐ `MarketplaceSeller`); `listing.price` synced from the seller tenant's own `product.sale_price` (`ListingSyncService:54`); no per-line tax; converts to B2B `Document` net lines. *Latent-concern flag (out of scope):* whether `product.sale_price` itself is stored net vs gross is the same overload one level up — raise separately if POS treats the same `sale_price` as gross.
+- **Coupon/discount preview — inclusive (Phase 2).** `pos.operate_terminal`-gated POS cart preview.
+- **ACCOUNT_CHARGE — inclusive value, key unchanged (§4.3).** Charge amount (`totals.amount_charged_to_account`, `local_balance_snapshot`) is separate and is not a `unit_price`.
+- **`fiscal_schema_version` / versioned events — NOT needed** in v3 (no canonical rename). The earlier cutover-lever concern is moot.
+- **ACCOUNT_CHARGE UI is unbuilt** — engine/service/projection are on `dev`; the checkout wiring is not. Tracked via a separate finalization handoff (the charge-to-account spec/plan already exist on `dev`).
+- **After-T2** — re-run §7 inventory against post-T2 `dev` before executing.
 
 ---
 
 ## 7. Surface classification table (snapshot — re-verify post-T2)
 
-> Captured 2026-06-03 against `origin/dev`; expanded per Codex missed-surfaces. **Authoritative scope lives here** — every `unit_price` outside tests/archives must appear with a phase + evidence. Re-run before execution.
+> Captured 2026-06-03/04 against `origin/dev`. Authoritative scope. Every `unit_price` outside tests/archives must appear with a zone + phase + evidence.
 
-### Phase 1 — net → `unit_price_excl_tax`
-| Surface | Files (representative) | Evidence of net |
+### Zone 1 — keep `unit_price` (NOT renamed)
+| Surface | Files | Why kept |
 |---|---|---|
-| Document line DTO/DB/events | `Document/Application/DTOs/DocumentLineData.php`; `migrations/tenant/2025_11_30_080001_*`, widened `2026_03_11_200000_*:60`; `DocumentLine.php`; `DraftLineAdded(V2)`, `DraftLineModifiedV2` | `bcmul(qty, unit_price)`=net subtotal; tax separate |
-| Document services | `DocumentTotalsCalculator`, `DraftPersistenceService`, `Conversion/*`, `CreditNoteService`, `RefundService`, `FacturXService`, `POSAccountChargeDraftService` | net line math |
-| Document controllers/requests | `UpdateDocumentRequest`, `RefundController`, `Quote/SalesOrder/Invoice/DeliveryNote/PurchaseOrder/ReturnNote Controller`, `DocumentAdditionalCostController` | document net lines |
-| Workshop | `BundleExpansionLineData`, `WorkOrderLineData`, `ServiceBundleComponentData.override_unit_price`; factories | service/component net cost |
-| Billing | `billing_invoice_items.unit_price` (`2025_12_16_100003_*`, widened `2026_03_11_200000_*:161`); `InvoiceItem.php` (`decimal:3`, separate `tax_rate`/`tax_amount`); `InvoiceService` | `qty*unit_price` net |
-| Catalog cart | `catalog_cart_items.unit_price` (`2026_03_10_500000_*`); `CatalogCartItem`, `CartService`, `CartConversionService`, `MarketplaceCheckoutService`, `CatalogCartController`, `CatalogCartItemData` | converts to document net lines |
-| Tax/pricing helpers | `TaxCalculationService:123,206`, `PricingController`, `AuditDiscountsCommand` | net inputs |
-| Marketplace (B2B) | `marketplace_order_lines.unit_price` (`2026_03_10_400002_*`); `MarketplaceOrderLine`, `MarketplaceOrderData`, `MarketplaceOrderService`; `MarketplaceListing.price` (synced from `product.sale_price` via `ListingSyncService`) | seller-tenant product price; converts to B2B Document net lines; no per-line tax |
-| Web | `generated.d.ts` (auto), `apps/web/src/types/document.ts`, `DocumentLineEditor`, detail pages, credit/return note pages, landed-cost, goods-receipt, fixtures, e2e | mirrors document DTO |
+| POS device cart/storage/UI | `apps/pos/src/types/cart.ts`, `stores/cartStore.ts`, `types/receipt.ts`, `lib/buildReceiptData.ts`, `lib/offline/*`, `lib/refundFlow/*`, `api/{holdApi,reportApi}.ts`, cart/receipt components, `pages/HomePage.tsx` | uniformly inclusive; aligned with canonical key |
+| Canonical builders (device) | `apps/pos/src/lib/fiscal/payloads/SaleReceiptPayload.ts`, `AccountChargePayload.ts`, `FiscalEventEngine.ts`, `FiscalEventPayloadRegistry.ts` | signed bytes — never renamed |
+| Canonical-mirror DTOs (server) | `Fiscal/Domain/DTOs/Canonical/LineItemDTO.php`, `SaleReceiptCanonicalView.php`, `CanonicalPayloadReader.php`, `SaleReceiptPayload.php`, `AccountChargePayload.php`, `FiscalPayloadConstraintValidator.php` | mirror the bytes verbatim |
 
-### Phase 2 — inclusive non-fiscal/projection → `unit_price_incl_tax`
-| Surface | Files | Note |
-|---|---|---|
-| POS order storage | `pos_order_lines.unit_price` (`2026_03_11_400001_*`, narrowed `2026_05_29_100001_*`); `OrderLineData` | inclusive cart price |
-| POS receipt projection/storage | `pos_receipt_lines.unit_price` (`2026_01_08_190638_*`, widened `2026_03_11_200000_*:78`); `ReceiptLine`, `PosCoreReceiptProjection`, `ReceiptCreationService`, `ReceiptFinalizationService`, `StoreReceiptRequest` | projection of canonical line; **bytes untouched** |
-| POS device | `apps/pos/src/types/cart.ts`, `stores/cartStore.ts`, `types/receipt.ts`, `lib/buildReceiptData.ts`, `lib/offline/{receiptService,types,zReportService}.ts`, `lib/refundFlow/hydrateFromReceipt.ts`, `api/{holdApi,reportApi}.ts`, `components/.../{TransactionCart,CartLineItem}`, `pages/HomePage.tsx` | inclusive |
-| Web POS | `apps/web/src/features/pos/**` | inclusive (distinct from device) |
-| Coupon/discount preview | `ValidateCouponRequest`, `CouponController`, `DiscountController`, `apps/web/src/features/coupons/api/couponApi.ts` | POS cart lines (`pos.operate_terminal`); inclusive |
+### Zone 3 — Phase 1, net → `unit_price_excl_tax`
+| Surface | Files (representative) |
+|---|---|
+| Document line DTO/DB/events | `DocumentLineData`, `document_lines` (`2025_11_30_080001`, widened `2026_03_11_200000:60`), `DocumentLine`, `DraftLineAdded(V2)`, `DraftLineModifiedV2` |
+| Document services/controllers | `DocumentTotalsCalculator`, `DraftPersistenceService`, `Conversion/*`, `CreditNoteService`, `RefundService`, `FacturXService`, `POSAccountChargeDraftService`; `UpdateDocumentRequest`, `RefundController`, `Quote/SalesOrder/Invoice/DeliveryNote/PurchaseOrder/ReturnNote` controllers, `DocumentAdditionalCostController` |
+| Workshop | `BundleExpansionLineData`, `WorkOrderLineData`, `ServiceBundleComponentData.override_unit_price`; factories |
+| Billing | `billing_invoice_items` (`2025_12_16_100003`, widened `…:161`), `InvoiceItem`, `InvoiceService` |
+| Catalog cart | `catalog_cart_items` (`2026_03_10_500000`), `CatalogCartItem`, `CartService`, `CartConversionService`, `MarketplaceCheckoutService`, `CatalogCartController`, `CatalogCartItemData` |
+| Marketplace (B2B) | `marketplace_order_lines` (`2026_03_10_400002`), `MarketplaceOrderLine`, `MarketplaceOrderData`, `MarketplaceOrderService` |
+| Tax/pricing helpers | `TaxCalculationService:123,206`, `PricingController`, `AuditDiscountsCommand` |
+| Web (B2B) | `generated.d.ts` (auto), `apps/web/src/types/document.ts`, `DocumentLineEditor`, document detail pages, credit/return note pages, landed-cost, goods-receipt, fixtures, e2e |
 
-### Phase 3 — signed canonical bytes (OPTIONAL/DEFERRED)
-| Event | Files | Target name | Note |
-|---|---|---|---|
-| SALE_RECEIPT | TS `payloads/SaleReceiptPayload.ts`, `FiscalEventEngine.ts`, `FiscalEventPayloadRegistry.ts`; PHP `Fiscal/Domain/DTOs/SaleReceiptPayload.php`, `Canonical/LineItemDTO.php`, `Canonical/SaleReceiptCanonicalView.php`, `CanonicalPayloadReader.php`, `FiscalEventPayloadRegistry.php`, `FiscalPayloadConstraintValidator.php`, `Nf525DataProvider.php` | `unit_price_incl_tax` | inclusive |
-| ACCOUNT_CHARGE | TS `payloads/AccountChargePayload.ts`, `accountCharge/accountChargeService.ts` + tests; PHP `Fiscal/Domain/DTOs/AccountChargePayload.php`, `FiscalPayloadConstraintValidator.php:1328` | `unit_price_incl_tax` | **inclusive** — rename + semantics correction (placeholder net → gross verbatim from cart); regen fixtures; see §6 |
-| Fixtures/helpers | `tests/Fixtures/Fiscal/canonical-golden-vectors.json`, `sale-receipt-golden/v4/*`, `v3-golden-hashes/*`; `GoldenFixtureBuilder`, `LargeReceiptFixtureGenerator`; parity tests `apps/pos/.../__tests__/*CanonicalParity.test.ts`, `FiscalPayloadConstraintValidatorTest` | — | freeze current as regression; gen new-version |
+### Zone 3 — Phase 2, inclusive → `unit_price_incl_tax` (+ Zone 2 seam)
+| Surface | Files |
+|---|---|
+| POS order storage | `pos_order_lines` (`2026_03_11_400001`, narrowed `2026_05_29_100001`), `OrderLineData` |
+| POS receipt storage | `pos_receipt_lines` (`2026_01_08_190638`, widened `2026_03_11_200000:78`), `ReceiptLine`, `ReceiptCreationService`, `ReceiptFinalizationService`, `StoreReceiptRequest` |
+| **Seam (Zone 2)** | `PosCoreReceiptProjection` — canonical `unit_price` → column `unit_price_incl_tax`; document + test |
+| Coupon/discount preview | `ValidateCouponRequest`, `CouponController`, `DiscountController`, `apps/web/src/features/coupons/api/couponApi.ts` |
+| Web POS | `apps/web/src/features/pos/**` |
 
-### Resolved classifications (formerly classify-first — see §6)
-- `marketplace_order_lines.unit_price` → **Phase 1 / net** (B2B marketplace; seller-tenant `product.sale_price`; converts to B2B documents).
-- Coupon/discount preview `unit_price` → **Phase 2 / inclusive** (POS cart preview).
-
-### Shared/seed surfaces (touched by whichever phase owns the DTO)
-`packages/shared/types/generated.d.ts`; factories (`CatalogCartItemFactory`, `ServiceBundleComponentFactory`, `Workshop/WorkOrderLineFactory`); `DemoTenantSeeder`.
+### Shared/seed
+`packages/shared/types/generated.d.ts`; factories (`CatalogCartItemFactory`, `ServiceBundleComponentFactory`, `Workshop/WorkOrderLineFactory`); `DemoTenantSeeder`. ACCOUNT_CHARGE fixtures corrected to inclusive under §4.3 (key unchanged).
 
 ---
 
 ## 8. Testing strategy
 
-TDD throughout (red → green → refactor); existing PHPUnit + Vitest + real-seeder discipline.
-- **Phases 1–2:** existing suites stay green post-rename; add expand/contract migration tests per column (add, backfill correctness, dual-write equivalence, post-drop reads) on the `tenant/` migration path; web type-check + ESLint + e2e.
-- **Phase 3 (if executed):**
-  1. **Red:** prior-version regression — a stored current-version fixture (old `unit_price` key) still parses + verifies after the new version is registered (per signed event).
-  2. **Red:** cross-language parity — device-built new-version bytes == PHP-built new-version bytes, byte-for-byte (SALE_RECEIPT and ACCOUNT_CHARGE).
-  3. **Red:** semantic + routing — new version carries the renamed key; parser resolves DTO/validator by `(event_type, event_version)`; authoring picks version by terminal capability.
-  4. Implement until green.
+TDD throughout (PHPUnit + Vitest + real seeders).
+- **Phases 1–2:** existing suites stay green post-rename; expand/contract migration tests per column (add, backfill, dual-write equivalence, post-drop reads) on the `tenant/` path; **Zone-2 seam test** (canonical `unit_price` → `pos_receipt_lines.unit_price_incl_tax`, value preserved); web type-check + ESLint + e2e.
+- **Canonical regression:** assert SALE_RECEIPT/ACCOUNT_CHARGE canonical bytes and hashes are **unchanged** by Phases 1–2 (the rename must not touch the signed payload).
+- **§4.3 ACCOUNT_CHARGE correction:** red test that authored `unit_price` equals the gross/inclusive cart price (not net), fixtures regenerated to inclusive; re-confirm no production v1 events first.
 
 ---
 
@@ -188,39 +158,28 @@ TDD throughout (red → green → refactor); existing PHPUnit + Vitest + real-se
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| Breaking an existing signed chain (SALE_RECEIPT or ACCOUNT_CHARGE) | Critical | Multi-version parse-by-`(type,version)`; freeze current golden vectors; server only re-hashes stored bytes |
-| Single-version registry/parser silently rejects prior bytes | Critical | Explicit accepted-vs-authoring version split + regression test (§4/§8) |
-| Wrong replacement column scale (precision-contract violation) | High | Use effective `decimal(15,3)` + `decimal:3` casts, not create-migration scales |
-| Cutover lever collision with existing v3 | High | New `fiscal_schema_version` step or dedicated `sale_receipt_payload_version` capability |
-| Device/server drift on new bytes | High | Cross-language parity test as Phase 3 merge gate |
-| ACCOUNT_CHARGE semantics change (net→incl) regresses a wired flow | Medium | Verified not UI-wired + validator tax-agnostic; ride Phase 3's new versioned payload; regen fixtures to inclusive; re-confirm no production v1 events before execution |
-| Re-overloading `unit_price` inside ACCOUNT_CHARGE across B2C/B2B classifications | Medium | Single inclusive device representation; B2B-facture net derived downstream from `line_subtotal`, never re-authored in the event |
-| Missed surface preserves overload | High | Authoritative §7 table; re-inventory post-T2; classify marketplace/coupon first |
-| Expand/contract dual-write divergence across tenant DBs | Medium | Dual-write equivalence test; drop column only after all tenants read-switched |
+| Accidentally renaming a canonical-mirror DTO and changing signed bytes | High | Zone-1 keep-list (§7); canonical bytes/hash unchanged-regression test |
+| Wrong replacement column scale (precision violation) | High | Effective `decimal(15,3)` + `decimal:3` casts, not create-migration scales |
+| Seam mismaps inclusive↔net at POS→backend | High | Explicit Zone-2 mapping + value-preservation test |
+| Missed surface preserves overload | Medium | Authoritative §7 table; re-inventory post-T2 |
+| Expand/contract dual-write divergence across tenant DBs | Medium | Dual-write equivalence test; drop only after all tenants read-switched |
+| ACCOUNT_CHARGE value correction regresses a wired flow | Low | Verified not UI-wired + validator tax-agnostic; re-confirm no production v1 events; can ride the charge-to-account UI work |
 | Conflict with in-flight T2 | Medium | Hard sequencing gate (§3) + re-inventory |
-| Stale name-mismatch window (cart/projection renamed, canonical key unchanged) | Low | Documented decoupling; closes at Phase 3 |
 
 ---
 
 ## 10. Open items to resolve in the plan / at execution
 
-1. ~~Classify `marketplace_order_lines.unit_price` and coupon/discount-preview `unit_price`.~~ **RESOLVED 2026-06-04** — marketplace = Phase 1/net, coupon/discount = Phase 2/inclusive (§6). Remaining: log the `product.sale_price` net-vs-gross latent concern separately.
-2. Re-run the §7 surface inventory against post-T2 `dev`.
-3. Reconcile the canonical version landscape (cutover service "3" vs `sale-receipt-golden/v4` fixtures) and choose the exact new version number + cutover lever — Phase 3 only.
-4. ~~Decide ACCOUNT_CHARGE in Phase 3.~~ **RESOLVED 2026-06-04** — inclusive (`unit_price_incl_tax`) + semantics correction; B2B-facture net derived downstream (§6). Remaining: re-confirm no production v1 ACCOUNT_CHARGE events exist before executing Phase 3.
-5. Confirm the actual `REALIGNMENT-LOG.md` path at the monorepo root.
-6. Owner decision on whether/when to execute Phase 3 at all.
+1. Re-run the §7 surface inventory against post-T2 `dev`.
+2. Confirm the actual `REALIGNMENT-LOG.md` path at the monorepo root.
+3. §4.3: re-confirm zero production v1 ACCOUNT_CHARGE events before correcting fixtures; decide whether to do it here or with the charge-to-account UI finalization.
+4. Log the `product.sale_price` net-vs-gross latent concern (§6) separately.
 
 ---
 
-## 11. Changelog — v1 → v2 (Codex review incorporation)
+## 11. Changelog
 
-- **BLOCKER (parser):** added explicit multi-version registry/parser design (accepted-vs-authoring split); was "register v2" only.
-- **BLOCKER (ACCOUNT_CHARGE):** removed the false "canonical line_items only on SALE_RECEIPT" claim; added ACCOUNT_CHARGE as a second signed surface to Phase 3.
-- **(v2.1, 2026-06-04) ACCOUNT_CHARGE resolved inclusive:** research showed it is device-authored from the inclusive cart, not UI-wired, and validator-agnostic; the placeholder "net" was test-data convention. Target is `unit_price_incl_tax` (rename + semantics correction), B2B-facture net derived downstream. Coupon/discount = inclusive (Phase 2); marketplace = net (Phase 1) — both verified.
-- **BLOCKER (cutover):** `fiscal_schema_version` already a 2→3 lever; Phase 3 now requires a distinct new lever; version numbers derived from actual state (fixtures at v4), not hardcoded "v2".
-- **MAJOR (DB scale):** corrected to effective `decimal(15,3)` + `decimal:3` casts on `tenant/` path; not create-migration scales.
-- **MAJOR (missed modules):** added Billing, Catalog cart (resolved net), Marketplace (classify), Coupon/discount (classify), Taxation/Pricing helpers, additional document controllers.
-- **MAJOR (POS projection):** added `pos_receipt_lines` + projection/printing/offline/reporting readers to Phase 2.
-- **MAJOR/MINOR (cart, realignment-log, pos UI split):** catalog cart resolved in-spec; REALIGNMENT-LOG path corrected to monorepo root; `apps/pos` device vs `apps/web/src/features/pos` split.
-- Restructured into a per-surface classification table (§7) as the authoritative scope.
+- **v1:** initial three-phase design (B2B; B2C non-fiscal; canonical SALE_RECEIPT v2, deferred).
+- **v2 (Codex review):** per-surface classification; added ACCOUNT_CHARGE as a second signed surface; multi-version parser design; effective `decimal(15,3)`; added Billing/catalog-cart/marketplace/coupon/pos_receipt_lines/extra controllers; REALIGNMENT-LOG path + pos UI split.
+- **v2.1:** marketplace = net (Phase 1); coupon = inclusive (Phase 2); ACCOUNT_CHARGE = inclusive (then via versioned rename).
+- **v3 (three-zone model, owner 2026-06-04):** **canonical payload no longer renamed** — keep `unit_price` in signed bytes + POS device + canonical-mirror DTOs (Zone 1); rename only the backend (Zone 3) with an explicit POS→backend seam (Zone 2). Dissolves Codex BLOCKER #1 (multi-version parser) and the cutover/versioning MAJORs (no versioned event needed). ACCOUNT_CHARGE becomes a value-only correction under the unchanged key (§4.3). Verified ACCOUNT_CHARGE UI is unbuilt → separate finalization handoff.
