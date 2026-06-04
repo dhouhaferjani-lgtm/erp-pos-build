@@ -49,6 +49,12 @@ vi.mock('@/lib/device', () => ({
   getDeviceId: vi.fn(() => 'device-123'),
 }));
 
+// Audit emits are best-effort and fire OUTSIDE the action; mock so existing
+// auth tests don't reach the real recordAuditEvent (which would open SQLite).
+vi.mock('@/lib/audit/recordAuditEvent', () => ({
+  recordAuditEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { apiGet, apiPost, ApiRequestError } from '@/lib/api';
 import { disconnectEcho } from '@/lib/echo';
 import { getStoredValue, setStoredValue, removeStoredValue } from '@/lib/storage';

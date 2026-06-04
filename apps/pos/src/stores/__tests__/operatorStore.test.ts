@@ -29,6 +29,12 @@ vi.mock('@/lib/db/repositories/queuedPinUpdateRepository', () => ({
   markPinUpdateFailed: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Audit emits are best-effort and fire OUTSIDE the action; mock so the
+// existing operator tests don't reach the real recordAuditEvent.
+vi.mock('@/lib/audit/recordAuditEvent', () => ({
+  recordAuditEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
 const defaultUser = {
   id: 'op-1',
   name: 'Jane Cashier',

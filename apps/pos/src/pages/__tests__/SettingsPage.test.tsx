@@ -1,7 +1,7 @@
 /**
  * Sub-Spec B: SettingsPage Device & Security section — manager-gated.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 vi.mock('react-i18next', () => ({
@@ -141,6 +141,11 @@ vi.mock('@/stores/connectivityStore', () => ({
   },
 }));
 
+const recordAuditEventSpy = vi.fn().mockResolvedValue(undefined);
+vi.mock('@/lib/audit/recordAuditEvent', () => ({
+  recordAuditEvent: (...args: unknown[]) => recordAuditEventSpy(...args),
+}));
+
 import { SettingsPage } from '../SettingsPage';
 
 describe('SettingsPage – Device & Security (Sub-Spec B)', () => {
@@ -264,5 +269,63 @@ describe('SettingsPage – Device & Security (Sub-Spec B)', () => {
     fireEvent.click(cancelBtn);
     expect(teardownSpy).not.toHaveBeenCalled();
     expect(unbindSpy).not.toHaveBeenCalled();
+  });
+
+  // --- Task 7 (audit): pos.terminal_change ---
+  describe('pos.terminal_change audit emit', () => {
+    let confirmSpy: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      setOperatorRoles(['manager']);
+      recordAuditEventSpy.mockClear();
+      recordAuditEventSpy.mockResolvedValue(undefined);
+      mockTerminalStoreState.reset.mockClear();
+      mockTerminalStoreState.terminal = {
+        id: 'terminal-42',
+        name: 'Front Desk',
+        location: { name: 'Main' },
+      };
+      confirmSpy = vi.fn().mockReturnValue(true);
+      window.confirm = confirmSpy as unknown as typeof window.confirm;
+    });
+
+    afterEach(() => {
+      mockTerminalStoreState.terminal = null;
+    });
+
+    it('emits pos.terminal_change with previous_terminal_id, captured before reset()', () => {
+      render(<SettingsPage />);
+      fireEvent.click(screen.getByText('terminal.changeTerminal'));
+
+      expect(mockTerminalStoreState.reset).toHaveBeenCalledTimes(1);
+      const call = recordAuditEventSpy.mock.calls.find(
+        (c) => (c[0] as Record<string, unknown>).type === 'pos.terminal_change',
+      );
+      expect(call).toBeDefined();
+      const arg = call![0] as Record<string, unknown>;
+      expect(arg.aggregateType).toBe('Terminal');
+      expect(arg.aggregateId).toBe('terminal-42');
+      expect((arg.payload as Record<string, unknown>).previous_terminal_id).toBe('terminal-42');
+    });
+
+    it('does NOT emit when the confirm dialog is cancelled', () => {
+      confirmSpy.mockReturnValue(false);
+      render(<SettingsPage />);
+      fireEvent.click(screen.getByText('terminal.changeTerminal'));
+
+      expect(mockTerminalStoreState.reset).not.toHaveBeenCalled();
+      expect(
+        recordAuditEventSpy.mock.calls.some(
+          (c) => (c[0] as Record<string, unknown>).type === 'pos.terminal_change',
+        ),
+      ).toBe(false);
+    });
+
+    it('does not break the change-terminal flow when the emit rejects', () => {
+      recordAuditEventSpy.mockRejectedValue(new Error('audit down'));
+      render(<SettingsPage />);
+      expect(() => fireEvent.click(screen.getByText('terminal.changeTerminal'))).not.toThrow();
+      expect(mockTerminalStoreState.reset).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -41,12 +41,23 @@ const recoverStrandedSyncingCashDrawerOpsSpy = vi.fn().mockResolvedValue(0);
 // Sub-Spec C: audit-outbox boot maintenance spies — demote stranded
 // `'syncing'` audit events then prune `'synced'` rows past the retention
 // window, alongside the receipt/cash-drawer recoveries.
-const recoverStrandedSyncingAuditEventsSpy = vi.fn().mockResolvedValue(0);
-const pruneSyncedAuditEventsSpy = vi.fn().mockResolvedValue(undefined);
+//
+// These MUST be `vi.hoisted()`: now that `recordAuditEvent` is imported by
+// authStore (Task 7), the `queuedAuditEventRepository` module is pulled into
+// this test's EAGER import graph via `import { useAuthStore }` below. Its mock
+// factory therefore runs during that static import — before plain top-level
+// `const` spies would initialize — so the spies must be hoisted to be ready.
+const { recoverStrandedSyncingAuditEventsSpy, pruneSyncedAuditEventsSpy } = vi.hoisted(() => ({
+  recoverStrandedSyncingAuditEventsSpy: vi.fn().mockResolvedValue(0),
+  pruneSyncedAuditEventsSpy: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock('@/lib/db/repositories/queuedAuditEventRepository', () => ({
   recoverStrandedSyncingAuditEvents: recoverStrandedSyncingAuditEventsSpy,
   pruneSyncedAuditEvents: pruneSyncedAuditEventsSpy,
+  // recordAuditEvent (via authStore) imports enqueueAuditEvent at module load;
+  // provide a no-op so the eager import graph resolves cleanly.
+  enqueueAuditEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/lib/db', () => ({
