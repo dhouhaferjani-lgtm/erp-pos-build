@@ -1,13 +1,16 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield, RefreshCw, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSettingsStore, SUPPORTED_LANGUAGES } from '@/stores/settingsStore';
 import { usePrinterStore } from '@/stores/printerStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useOperatorStore } from '@/stores/operatorStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
+import { Modal } from '@/components/pos/Modal';
+import { teardownPosSessionStores } from '@/lib/session/teardownPosSession';
 import {
   discoverPrinters,
   printTestPage,
@@ -52,6 +55,14 @@ export function SettingsPage() {
   const shift = useTerminalStore((s) => s.shift);
 
   const serverUrl = useAuthStore((s) => s.serverUrl);
+  const unbindDevice = useAuthStore((s) => s.unbindDevice);
+
+  const operator = useOperatorStore((s) => s.operator);
+  const isManager = operator?.roles?.some((r) =>
+    ['manager', 'admin', 'owner'].includes(r),
+  ) ?? false;
+
+  const [showUnbindConfirm, setShowUnbindConfirm] = useState(false);
 
   const isOnline = useConnectivityStore((s) => s.isOnline);
 
@@ -579,26 +590,37 @@ export function SettingsPage() {
                 </div>
               )}
             </div>
-            {terminal && (
-              <div className="mt-4 border-t border-gray-100 pt-4">
-                <p className="mb-2 text-xs text-gray-500">
-                  {t('terminal.changeTerminalDesc')}
-                </p>
-                <button
-                  onClick={() => {
-                    if (window.confirm(t('terminal.changeTerminalConfirm'))) {
-                      useTerminalStore.getState().reset();
-                      navigate('/');
-                    }
-                  }}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-orange-300 bg-orange-50 px-4 py-3 text-sm font-medium text-orange-700 hover:bg-orange-100"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  {t('terminal.changeTerminal')}
-                </button>
-              </div>
-            )}
           </section>
+
+          {/* Device & Security — manager only */}
+          {isManager && (
+            <section data-testid="device-security-section" className="rounded-xl bg-white p-4 shadow-sm">
+              <h2 className="mb-4 text-base font-bold text-gray-900">{t('settings.deviceSecurity')}</h2>
+              {terminal && (
+                <div className="mb-3">
+                  <p className="mb-2 text-xs text-gray-500">{t('terminal.changeTerminalDesc')}</p>
+                  <button
+                    onClick={() => {
+                      if (window.confirm(t('terminal.changeTerminalConfirm'))) {
+                        useTerminalStore.getState().reset();
+                        navigate('/');
+                      }
+                    }}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-orange-300 bg-orange-50 px-4 py-3 text-sm font-medium text-orange-700 hover:bg-orange-100"
+                  >
+                    <RefreshCw className="h-4 w-4" />{t('terminal.changeTerminal')}
+                  </button>
+                </div>
+              )}
+              <button
+                data-testid="device-unbind-button"
+                onClick={() => setShowUnbindConfirm(true)}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 hover:bg-red-100"
+              >
+                <LogOut className="h-4 w-4" />{t('settings.deviceUnbind')}
+              </button>
+            </section>
+          )}
 
           {/* About */}
           <section className="rounded-xl bg-white p-4 shadow-sm">
@@ -641,6 +663,38 @@ export function SettingsPage() {
           </button>
         </div>
       </div>
+
+      {/* Device Unbind Confirmation Modal */}
+      <Modal
+        isOpen={showUnbindConfirm}
+        onClose={() => setShowUnbindConfirm(false)}
+        title={t('settings.deviceUnbindConfirmTitle')}
+        size="sm"
+        footer={
+          <div className="flex gap-3">
+            <button
+              data-testid="device-unbind-cancel"
+              onClick={() => setShowUnbindConfirm(false)}
+              className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              {t('settings.cancel')}
+            </button>
+            <button
+              data-testid="device-unbind-confirm"
+              onClick={() => {
+                setShowUnbindConfirm(false);
+                teardownPosSessionStores();
+                unbindDevice();
+              }}
+              className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700"
+            >
+              {t('settings.deviceUnbindConfirm')}
+            </button>
+          </div>
+        }
+      >
+        <p className="text-sm text-gray-600">{t('settings.deviceUnbindConfirmMessage')}</p>
+      </Modal>
     </div>
   );
 }
