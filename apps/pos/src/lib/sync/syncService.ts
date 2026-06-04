@@ -24,6 +24,14 @@ import {
   markPinUpdateSynced,
   markPinUpdateFailed,
 } from '@/lib/db/repositories/queuedPinUpdateRepository';
+import {
+  getPendingAuditEvents,
+  markAuditEventsSyncing,
+  markAuditEventSynced,
+  markAuditEventFailed,
+  type QueuedAuditEvent,
+} from '@/lib/db/repositories/queuedAuditEventRepository';
+import { useConnectivityStore } from '@/stores/connectivityStore';
 import { upsertFloors, upsertTables } from '@/lib/db/repositories/tableRepository';
 import {
   upsertMenuCategories,
@@ -995,6 +1003,86 @@ export async function pushQueuedPinUpdates(db: Database): Promise<number> {
   }
 }
 
+/**
+ * Per-tick batch budget for the audit drain. Each batch is ≤100 events; the
+ * loop drains up to this many batches before yielding the tick (audit is the
+ * lowest-priority sync surface — receipts/PINs/Z-reports run first). The
+ * remainder, if any, drains on the next tick.
+ */
+export const MAX_AUDIT_BATCHES_PER_TICK = 10;
+
+/**
+ * Convert a queued audit-event row into the ingest envelope expected by
+ * `POST /pos/audit-events/sync`. `payload` / `metadata` are stored as JSON
+ * TEXT in SQLite and re-hydrated to objects on the wire (the backend
+ * validates them as arrays/objects).
+ */
+function auditEventToEnvelope(row: QueuedAuditEvent): Record<string, unknown> {
+  return {
+    event_id: row.eventId,
+    event_type: row.eventType,
+    aggregate_type: row.aggregateType,
+    aggregate_id: row.aggregateId,
+    tenant_id: row.tenantId,
+    company_id: row.companyId,
+    operator_id: row.operatorId,
+    payload: JSON.parse(row.payload) as unknown,
+    metadata: JSON.parse(row.metadata) as unknown,
+    occurred_at: row.occurredAt,
+  };
+}
+
+/**
+ * Drain the `queued_audit_events` outbox (Sub-Spec C). Multi-batch: in one
+ * tick it posts up to `MAX_AUDIT_BATCHES_PER_TICK` batches of ≤100 events,
+ * stopping early when the queue is empty or a POST fails (the failed batch's
+ * rows are marked `failed` + retry_count incremented; the tick yields and the
+ * next tick retries them). Wired AFTER receipts/PINs — audit is lowest
+ * priority and must never block the fiscal chain.
+ *
+ * No-op when offline (the scheduler already gates `runFullSync` on
+ * connectivity, but the explicit guard keeps the function safe to call
+ * directly). Returns the number of events successfully synced this tick.
+ */
+export async function pushQueuedAuditEvents(db: Database): Promise<number> {
+  if (!useConnectivityStore.getState().isOnline) return 0;
+
+  let total = 0;
+  for (let i = 0; i < MAX_AUDIT_BATCHES_PER_TICK; i++) {
+    const pending = await getPendingAuditEvents(db, 100);
+    if (pending.length === 0) break;
+
+    await markAuditEventsSyncing(db, pending.map((p) => p.id));
+
+    try {
+      await apiPost('/pos/audit-events/sync', {
+        events: pending.map(auditEventToEnvelope),
+      });
+      for (const row of pending) {
+        await markAuditEventSynced(db, row.id);
+      }
+      total += pending.length;
+      await logSyncOperation(
+        db,
+        'push',
+        'audit_event',
+        null,
+        'success',
+        `${pending.length} audit events`,
+      );
+    } catch (error) {
+      const message = coerceSyncError(error);
+      for (const row of pending) {
+        await markAuditEventFailed(db, row.id, message);
+      }
+      await logSyncOperation(db, 'push', 'audit_event', null, 'error', message);
+      break; // stop this tick on error; retry next tick
+    }
+  }
+
+  return total;
+}
+
 interface PulledActiveMenuItem {
   id: string;
   sellable_id: string;
@@ -1491,6 +1579,16 @@ export async function runFullSync(
     errors: voucherLedgerPushErrors,
   } = await pushVoucherLedgerEntries(db);
   errors.push(...voucherLedgerPushErrors);
+
+  // Drain the audit / fraud-detection outbox LAST among the pushes — audit is
+  // the lowest-priority sync surface (Sub-Spec C) and is best-effort: a failed
+  // batch is left for the next tick and never halts the fiscal-chain pushes
+  // above. Failures are logged inside the drain, not surfaced as sync errors.
+  try {
+    await pushQueuedAuditEvents(db);
+  } catch (err) {
+    console.warn('[POS][sync] audit drain failed (non-fatal)', serializeErrorForLog(err));
+  }
 
   // Then pull (always pull even if push had failures, to keep local data fresh)
   const productsPulled = await pullProducts(db);

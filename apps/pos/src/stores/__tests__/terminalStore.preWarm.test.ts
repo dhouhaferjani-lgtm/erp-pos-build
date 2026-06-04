@@ -38,6 +38,17 @@ const recoverStrandedSyncingReceiptsSpy = vi.fn().mockResolvedValue(0);
 // before the HTTP call.
 const recoverStrandedSyncingCashDrawerOpsSpy = vi.fn().mockResolvedValue(0);
 
+// Sub-Spec C: audit-outbox boot maintenance spies — demote stranded
+// `'syncing'` audit events then prune `'synced'` rows past the retention
+// window, alongside the receipt/cash-drawer recoveries.
+const recoverStrandedSyncingAuditEventsSpy = vi.fn().mockResolvedValue(0);
+const pruneSyncedAuditEventsSpy = vi.fn().mockResolvedValue(undefined);
+
+vi.mock('@/lib/db/repositories/queuedAuditEventRepository', () => ({
+  recoverStrandedSyncingAuditEvents: recoverStrandedSyncingAuditEventsSpy,
+  pruneSyncedAuditEvents: pruneSyncedAuditEventsSpy,
+}));
+
 vi.mock('@/lib/db', () => ({
   getDatabase: vi.fn().mockResolvedValue({}),
 }));
@@ -119,6 +130,10 @@ describe('T1.2 Step 2.4 — seedOfflineHashChain pre-warms payment config', () =
     recoverStrandedSyncingReceiptsSpy.mockResolvedValue(0);
     recoverStrandedSyncingCashDrawerOpsSpy.mockClear();
     recoverStrandedSyncingCashDrawerOpsSpy.mockResolvedValue(0);
+    recoverStrandedSyncingAuditEventsSpy.mockClear();
+    recoverStrandedSyncingAuditEventsSpy.mockResolvedValue(0);
+    pruneSyncedAuditEventsSpy.mockClear();
+    pruneSyncedAuditEventsSpy.mockResolvedValue(undefined);
 
     useAuthStore.setState({ companyId: 'company-1' } as never);
   });
@@ -429,6 +444,46 @@ describe('T1.2 Step 2.4 — seedOfflineHashChain pre-warms payment config', () =
     expect(recoverStrandedSyncingReceiptsSpy).toHaveBeenCalledTimes(1);
     expect(startSpy).toHaveBeenCalledTimes(1);
 
+    consoleError.mockRestore();
+  });
+
+  // ---------------------------------------------------------------------
+  // Sub-Spec C audit-outbox boot maintenance: recover stranded 'syncing'
+  // audit events then prune 'synced' rows past the 14-day retention window,
+  // BEFORE scheduler.start so the first tick drains a clean outbox.
+  // ---------------------------------------------------------------------
+
+  it('audit C.1: seedOfflineHashChain recovers stranded syncing audit events + prunes on boot', async () => {
+    recoverStrandedSyncingAuditEventsSpy.mockResolvedValueOnce(2);
+
+    await seedOfflineHashChain('term-1');
+
+    expect(recoverStrandedSyncingAuditEventsSpy).toHaveBeenCalledTimes(1);
+    expect(recoverStrandedSyncingAuditEventsSpy).toHaveBeenCalledWith(expect.anything());
+    expect(pruneSyncedAuditEventsSpy).toHaveBeenCalledTimes(1);
+    expect(pruneSyncedAuditEventsSpy).toHaveBeenCalledWith(expect.anything(), 14);
+  });
+
+  it('audit C.2: audit recovery + prune run BEFORE scheduler.start()', async () => {
+    await seedOfflineHashChain('term-1');
+
+    expect(startSpy).toHaveBeenCalledTimes(1);
+    const recoverOrder = recoverStrandedSyncingAuditEventsSpy.mock.invocationCallOrder[0]!;
+    const pruneOrder = pruneSyncedAuditEventsSpy.mock.invocationCallOrder[0]!;
+    const startOrder = startSpy.mock.invocationCallOrder[0]!;
+    expect(recoverOrder).toBeLessThan(pruneOrder);
+    expect(pruneOrder).toBeLessThan(startOrder);
+  });
+
+  it('audit C.3: audit-maintenance error is caught (does NOT block scheduler.start)', async () => {
+    recoverStrandedSyncingAuditEventsSpy.mockRejectedValueOnce(
+      new Error('audit SQLite blip'),
+    );
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(seedOfflineHashChain('term-1')).resolves.toBeUndefined();
+
+    expect(startSpy).toHaveBeenCalledTimes(1);
     consoleError.mockRestore();
   });
 });
