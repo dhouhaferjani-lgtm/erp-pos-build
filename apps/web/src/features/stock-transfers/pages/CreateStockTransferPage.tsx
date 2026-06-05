@@ -6,10 +6,10 @@ import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { fetchLocations, type LocationApiResponse } from '@/features/location/api'
-import { Button } from '@/components/atoms/Button'
-import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
+import { Button } from '@/components/atoms/Button/Button'
 import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
 import { ProductPicker, type ProductPickerValue } from '@/components/molecules/pickers/ProductPicker'
+import { LineItemsTable, QuantityCell, type LineItemsTableColumn } from '@/components/molecules/line-items/LineItemsTable'
 import { textColors, borderColors, tokens, colors } from '@/lib/designTokens'
 import { useCurrency } from '@/hooks/useCurrency'
 import { bccomp } from '@/lib/decimal'
@@ -132,6 +132,61 @@ export function CreateStockTransferPage() {
     }
   }
 
+  const lineColumns: LineItemsTableColumn<DraftLine>[] = [
+    {
+      id: 'product',
+      header: t('create.field.product'),
+      Cell: ({ line }) => (
+        <ProductPicker
+          value={line.product}
+          onChange={(product) => {
+            updateLine(line.uid, { product })
+          }}
+          label=""
+          placeholder={t('create.field.selectProduct')}
+          productType="all"
+        />
+      ),
+    },
+    {
+      id: 'quantity',
+      header: t('create.field.quantity'),
+      headerClassName: 'w-40 text-start md:text-end',
+      cellClassName: 'md:text-end',
+      Cell: ({ line }) => (
+        <QuantityCell
+          value={line.quantity}
+          onChange={(value) => {
+            updateLine(line.uid, { quantity: value })
+          }}
+          decimalPlaces={4}
+          min="0"
+          ariaLabel={t('create.field.quantity')}
+          className="w-full md:w-28"
+        />
+      ),
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">{t('create.field.removeLine')}</span>,
+      headerClassName: 'w-12',
+      cellClassName: 'text-end',
+      Cell: ({ line }) => (
+        <button
+          type="button"
+          onClick={() => {
+            removeLine(line.uid)
+          }}
+          disabled={lines.length <= 1}
+          aria-label={t('create.field.removeLine')}
+          className={`rounded p-2 ${textColors.error} ${textColors.hoverError} ${colors.hover.red50} disabled:opacity-30`}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      ),
+    },
+  ]
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -221,71 +276,18 @@ export function CreateStockTransferPage() {
           <h2 className={`mb-4 text-lg font-semibold ${textColors.primary}`}>
             {t('create.section.lines')}
           </h2>
-          {/* Compact line table: column headers shown once, an inline product
-              selector on every row so entering many lines needs no extra clicks. */}
-          <div className={`rounded-lg border ${borderColors.light}`}>
-            <div
-              className={`grid grid-cols-12 gap-3 rounded-t-lg border-b ${borderColors.light} ${colors.neutral[50]} px-3 py-2`}
-            >
-              <div className={`col-span-8 text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
-                {t('create.field.product')}
-              </div>
-              <div className={`col-span-3 text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
-                {t('create.field.quantity')}
-              </div>
-              <div className="col-span-1" />
-            </div>
-            <div className={`divide-y ${borderColors.light}`}>
-              {lines.map((line) => (
-                <div key={line.uid} className="grid grid-cols-12 items-center gap-3 px-3 py-2">
-                  <div className="col-span-8">
-                    <ProductPicker
-                      value={line.product}
-                      onChange={(p) => {
-                        updateLine(line.uid, { product: p })
-                      }}
-                      label=""
-                      placeholder={t('create.field.selectProduct')}
-                      productType="all"
-                    />
-                  </div>
-                  <div className="col-span-3">
-                    <QuantityInput
-                      value={line.quantity}
-                      onChange={(value) => {
-                        updateLine(line.uid, { quantity: value })
-                      }}
-                      decimalPlaces={4}
-                      min="0"
-                      aria-label={t('create.field.quantity')}
-                      className={tokens.input.base}
-                    />
-                  </div>
-                  <div className="col-span-1 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        removeLine(line.uid)
-                      }}
-                      disabled={lines.length <= 1}
-                      aria-label={t('create.field.removeLine')}
-                      className={`rounded p-2 ${textColors.error} ${textColors.hoverError} ${colors.hover.red50} disabled:opacity-30`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          {/* Add-line control sits after the last row: users enter top-down,
-              matching the sales/purchase order grids. */}
-          <div className="mt-3">
-            <Button type="button" variant="secondary" size="sm" onClick={addLine}>
-              <Plus className="me-1 h-4 w-4" />
-              {t('create.field.addLine')}
-            </Button>
-          </div>
+          <LineItemsTable
+            lines={lines}
+            columns={lineColumns}
+            getLineKey={(line) => line.uid}
+            emptyTitle={t('create.validation.linesRequired')}
+            addControls={(
+              <Button type="button" variant="secondary" size="sm" onClick={addLine}>
+                <Plus className="me-1 h-4 w-4" />
+                {t('create.field.addLine')}
+              </Button>
+            )}
+          />
         </section>
 
         {/* Costs section */}
