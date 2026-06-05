@@ -301,6 +301,9 @@
       "city": "City",
       "postalCode": "Postal Code",
       "country": "Country",
+      "taxId": "Tax ID",
+      "taxIdRequiredHint": "Required for shop locations in France, Tunisia, and Morocco.",
+      "vatNumber": "VAT Number",
       "posEnabled": "Enable Point of Sale"
     },
     "empty": {
