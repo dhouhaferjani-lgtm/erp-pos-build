@@ -223,6 +223,19 @@ describe('processAccountCharge', () => {
     expect(useCartStore.getState().items).toHaveLength(0);
   });
 
+  it('clears voucher tenders on a successful charge (On Account is exclusive of tenders)', async () => {
+    // Seed voucher tenders entered before the cashier switched to On Account.
+    usePaymentStore.getState().addVoucherPayment('VCH-1', '10.000');
+    usePaymentStore.getState().addVoucherPayment('VCH-2', '5.000');
+    expect(usePaymentStore.getState().voucherTenders).toHaveLength(2);
+    expect(usePaymentStore.getState().appliedVoucherCodes.size).toBe(2);
+
+    await usePaymentStore.getState().processAccountCharge('term-1');
+
+    expect(usePaymentStore.getState().voucherTenders).toHaveLength(0);
+    expect(usePaymentStore.getState().appliedVoucherCodes.size).toBe(0);
+  });
+
   it('does not author when no eligible customer is attached', async () => {
     usePaymentStore.setState({ selectedCustomer: null });
 

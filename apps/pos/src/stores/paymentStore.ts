@@ -1356,6 +1356,10 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       // authorAccountCharge already increments the pending count and triggers a
       // sync internally — do NOT re-trigger here.
       useCartStore.getState().clearCart();
+      // On Account is mutually exclusive with tenders: any voucher tenders the
+      // cashier entered before switching to charge mode must not survive into
+      // the next sale. Mirror the canonical voucher-clear used elsewhere.
+      get().clearVoucherTenders();
       return result;
     } catch (error) {
       console.error('[POS][account-charge] failed', {

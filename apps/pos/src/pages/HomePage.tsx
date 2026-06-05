@@ -6,6 +6,7 @@ import { useOperatorStore } from '@/stores/operatorStore';
 import { useProductStore } from '@/stores/productStore';
 import { useCartStore, computeTaxAmount } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
+import type { AccountChargeOverrideApprovalInput } from '@/lib/accountCharge/accountChargeService';
 import { useHoldStore } from '@/stores/holdStore';
 import { useScannerStore } from '@/stores/scannerStore';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
@@ -126,6 +127,7 @@ export function HomePage() {
   const paymentMethods = usePaymentStore((s) => s.paymentMethods);
   const processCashCheckout = usePaymentStore((s) => s.processCashCheckout);
   const processAdvancedCheckout = usePaymentStore((s) => s.processAdvancedCheckout);
+  const processAccountCharge = usePaymentStore((s) => s.processAccountCharge);
   const paymentRepositories = usePaymentStore((s) => s.paymentRepositories);
   const isProcessing = usePaymentStore((s) => s.isProcessing);
   const lastReceipt = usePaymentStore((s) => s.lastReceipt);
@@ -873,6 +875,29 @@ export function HomePage() {
     [terminal, cartItems, transactionDiscount, processAdvancedCheckout, isFnB, consumptionMode, selectedTableId],
   );
 
+  const handleChargeToAccount = useCallback(
+    async (overrideApproval?: AccountChargeOverrideApprovalInput | null) => {
+      if (!terminal) return;
+      try {
+        const result = await processAccountCharge(terminal.id, {
+          overrideApproval: overrideApproval ?? null,
+        });
+        if (result) {
+          setShowAdvancedModal(false);
+          setShowSuccessModal(true);
+        }
+      } catch (chargeError) {
+        // paymentStore.error already holds the user-visible banner shown in the
+        // modal; surface the raw throwable for devtools.
+        console.error('[POS][HomePage][handleChargeToAccount] processAccountCharge threw', {
+          ...serializeErrorForLog(chargeError),
+          terminalId: terminal.id,
+        });
+      }
+    },
+    [terminal, processAccountCharge],
+  );
+
   const handleHold = useCallback(async () => {
     if (cartItems.length === 0) return;
     await holdCurrentCart('');
@@ -1194,6 +1219,7 @@ export function HomePage() {
         paymentMethods={paymentMethods}
         paymentRepositories={paymentRepositories}
         onComplete={handleAdvancedComplete}
+        onChargeToAccount={handleChargeToAccount}
         isProcessing={isProcessing}
         error={paymentError}
         voucherDb={voucherDb}
