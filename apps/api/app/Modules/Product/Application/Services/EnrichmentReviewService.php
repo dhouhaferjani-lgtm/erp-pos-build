@@ -20,8 +20,12 @@ final class EnrichmentReviewService
 
     /**
      * Fetch enrichment status from the platform and store the result locally.
+     *
+     * @param  string|null  $webhookLocale  Locale carried on the webhook push;
+     *                                      authoritative at approval time and
+     *                                      preferred over the lookup-status echo.
      */
-    public function fetchAndStore(string $trackingId, Product $product): ?EnrichmentResult
+    public function fetchAndStore(string $trackingId, Product $product, ?string $webhookLocale = null): ?EnrichmentResult
     {
         $statusDTO = $this->submissionService->checkStatus($trackingId);
 
@@ -51,6 +55,7 @@ final class EnrichmentReviewService
                     enrichment_sources: $enrichedData['enrichment_sources'] ?? null,
                     assigned_barcode: $enrichedData['assigned_barcode'] ?? null,
                     assigned_barcode_type: $enrichedData['assigned_barcode_type'] ?? null,
+                    locale: $webhookLocale ?? $statusDTO->locale ?? ($enrichedData['locale'] ?? null),
                 ),
                 'enrichment_quality' => $statusDTO->enrichmentQuality ?? 'unknown',
                 'assigned_barcode' => $statusDTO->assignedBarcode,
