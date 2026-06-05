@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Document;
 
+use App\Modules\Company\Application\Services\TaxIdentityResolver;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Application\Services\FacturXService;
 use App\Modules\Document\Domain\Document;
@@ -31,7 +32,7 @@ final class FacturXEligibilityTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new FacturXService;
+        $this->service = new FacturXService(new TaxIdentityResolver);
 
         $this->tenant = Tenant::create([
             'name' => 'Test Tenant',
