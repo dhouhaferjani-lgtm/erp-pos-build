@@ -20,7 +20,7 @@ These protocols close that gap. Each one is a self-contained script: setup → p
 
 ## The order — protocol catalog
 
-Run protocols **top to bottom** within a session: each group builds on the setup of the one above it (you need a working terminal + shift before you can test a deposit, etc.). Status legend: ✅ ready to run · 🟡 draft / needs review · ⬜ outstanding (not written yet).
+Run protocols **top to bottom** within a session: each group builds on the setup of the one above it (you need a working terminal + shift before you can test a deposit, etc.). Status legend: ✅ ready to run · 🟡 draft / needs review · ⬜ outstanding (not written yet) · ⛔ blocked (feature not usable on dev yet).
 
 ### Group A — Foundation (must pass before anything else)
 | # | Protocol | Status | Source feature(s) |
@@ -32,7 +32,7 @@ Run protocols **top to bottom** within a session: each group builds on the setup
 | # | Protocol | Status | Source feature(s) |
 |---|----------|--------|-------------------|
 | **B1** | **[Customer-account deposit (money-in)](01-customer-account-deposit.md)** | ✅ **ready** | `feat/pos-customer-accounts-phase2` |
-| B2 | Charge-to-account (credit sale / money-out) | ⬜ outstanding | `feat/fiscal-phase-3-charge-to-account` |
+| B2 | Charge-to-account (credit sale / money-out) | ⛔ blocked — engine merged, but no cashier UI on dev yet; the "On Account" checkout tender is in flight on `feat/pos-charge-to-account-checkout-ui`. Not manually testable until that lands. | `feat/fiscal-phase-3-charge-to-account` (engine) + `feat/pos-charge-to-account-checkout-ui` (UI, in flight) |
 | B3 | Account status overrides + manager approval | ⬜ outstanding | `feat/fiscal-phase-4-account-status-overrides-approval` |
 | B4 | Per-country tax-number validation on customer | ⬜ outstanding | `feat/fiscal-phase-1-5-2-per-country-tax-validation` |
 | B5 | Parse-failure resolution UX | ⬜ outstanding | `feat/fiscal-phase-1-5-3-parse-failure-resolution-ux` |
