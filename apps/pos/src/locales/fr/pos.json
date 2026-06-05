@@ -749,6 +749,46 @@
       "col_writeoff": "Remise"
     }
   },
+  "account_charge": {
+    "tile": "À crédit",
+    "title": "Facturer sur compte",
+    "no_customer": "Associez un client avant de facturer sur compte.",
+    "cancel": "Annuler",
+    "confirm": "Facturer sur compte",
+    "customer": "Client",
+    "charge_amount": "Montant à débiter",
+    "receivable_balance": "Solde débiteur",
+    "current": "Actuel",
+    "projected": "Prévu",
+    "credit_limit": "Plafond de crédit",
+    "available_before": "Disponible",
+    "available_after": "Après",
+    "payment_terms": "Conditions de paiement",
+    "terms_days": "{{days}} jours",
+    "stale_warning": "Le solde client n'est plus à jour. Veuillez actualiser avant de facturer.",
+    "override_captured": "Dérogation autorisée par un responsable.",
+    "reject": {
+      "customer_tenant_mismatch": "Ce client appartient à un autre établissement.",
+      "customer_company_mismatch": "Ce client appartient à une autre entreprise.",
+      "customer_inactive": "Ce compte client est inactif.",
+      "account_suspended": "Ce compte est suspendu. Un responsable peut autoriser une dérogation.",
+      "account_closed": "Ce compte est clôturé et ne peut pas être débité.",
+      "account_disputed": "Ce compte est en litige. Un responsable peut autoriser une dérogation.",
+      "charge_account_disabled": "La facturation sur compte n'est pas activée pour ce client.",
+      "charge_policy_missing": "Aucune politique de crédit n'est configurée pour ce client.",
+      "balance_snapshot_missing": "Le solde du client est indisponible. Veuillez actualiser.",
+      "balance_snapshot_invalid": "Le solde du client est invalide. Veuillez actualiser.",
+      "balance_snapshot_hard_stale": "Le solde du client est trop ancien. Veuillez actualiser.",
+      "customer_alias_ambiguous": "Ce client n'a pas pu être identifié de manière unique.",
+      "money_scale_invalid": "Les montants n'ont pas pu être validés.",
+      "credit_limit_exceeded": "Ce débit dépasse le plafond de crédit. Un responsable peut autoriser une dérogation.",
+      "override_evidence_mismatch": "L'autorisation de dérogation ne correspond pas à ce débit."
+    },
+    "errors": {
+      "customer_required": "Un client est requis pour la facturation sur compte.",
+      "not_enabled": "Ce client n'est pas autorisé à facturer sur compte."
+    }
+  },
   "voucherTender": {
     "title": "Appliquer un bon",
     "codeLabel": "Code du bon",
