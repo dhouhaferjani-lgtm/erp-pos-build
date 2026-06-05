@@ -1,4 +1,4 @@
-import { useState, type ComponentType, type DragEvent, type ReactNode } from 'react'
+import { Fragment, useState, type ComponentType, type DragEvent, type ReactNode } from 'react'
 import { GripVertical } from 'lucide-react'
 import { QuantityInput } from '../../atoms/QuantityInput/QuantityInput'
 import { borderColors, colors, textColors, tokens } from '../../../lib/designTokens'
@@ -27,6 +27,11 @@ export interface LineItemsTableProps<TLine> {
   footer?: ReactNode
   addControls?: ReactNode
   dragAndDrop?: LineItemsTableDragConfig
+  /**
+   * Optional full-width detail row rendered directly beneath a line (e.g. an
+   * expandable batch/lot allocation panel). Return null to render nothing.
+   */
+  renderLineDetail?: (line: TLine, index: number) => ReactNode
 }
 
 export function LineItemsTable<TLine>({
@@ -40,6 +45,7 @@ export function LineItemsTable<TLine>({
   footer,
   addControls,
   dragAndDrop,
+  renderLineDetail,
 }: LineItemsTableProps<TLine>) {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const dragEnabled = !readonly && dragAndDrop !== undefined
@@ -97,39 +103,51 @@ export function LineItemsTable<TLine>({
                 </tr>
               </thead>
               <tbody className={`divide-y ${borderColors.divideDefault}`}>
-                {lines.map((line, index) => (
-                  <tr
-                    key={getLineKey(line, index)}
-                    draggable={dragEnabled}
-                    onDragStart={() => {
-                      if (dragEnabled) handleDragStart(index)
-                    }}
-                    onDragOver={(event) => {
-                      if (dragEnabled) handleDragOver(event, index)
-                    }}
-                    onDragEnd={handleDragEnd}
-                    className={draggedIndex === index ? colors.primary[50] : colors.hover.gray50}
-                  >
-                    {dragEnabled && (
-                      <td className="px-3 py-3 text-center">
-                        <span
-                          className={`cursor-grab ${textColors.disabled} ${textColors.hoverSecondary}`}
-                          aria-hidden="true"
-                        >
-                          <GripVertical className="h-4 w-4" />
-                        </span>
-                      </td>
-                    )}
-                    {columns.map((column) => {
-                      const Cell = column.Cell
-                      return (
-                        <td key={column.id} className={`px-4 py-3 ${column.cellClassName ?? ''}`}>
-                          <Cell line={line} index={index} />
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
+                {lines.map((line, index) => {
+                  const detail = renderLineDetail?.(line, index)
+                  const totalColumns = columns.length + (dragEnabled ? 1 : 0)
+                  return (
+                    <Fragment key={getLineKey(line, index)}>
+                      <tr
+                        draggable={dragEnabled}
+                        onDragStart={() => {
+                          if (dragEnabled) handleDragStart(index)
+                        }}
+                        onDragOver={(event) => {
+                          if (dragEnabled) handleDragOver(event, index)
+                        }}
+                        onDragEnd={handleDragEnd}
+                        className={draggedIndex === index ? colors.primary[50] : colors.hover.gray50}
+                      >
+                        {dragEnabled && (
+                          <td className="px-3 py-3 text-center">
+                            <span
+                              className={`cursor-grab ${textColors.disabled} ${textColors.hoverSecondary}`}
+                              aria-hidden="true"
+                            >
+                              <GripVertical className="h-4 w-4" />
+                            </span>
+                          </td>
+                        )}
+                        {columns.map((column) => {
+                          const Cell = column.Cell
+                          return (
+                            <td key={column.id} className={`px-4 py-3 ${column.cellClassName ?? ''}`}>
+                              <Cell line={line} index={index} />
+                            </td>
+                          )
+                        })}
+                      </tr>
+                      {detail !== undefined && detail !== null && (
+                        <tr>
+                          <td colSpan={totalColumns} className="p-0">
+                            {detail}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </div>

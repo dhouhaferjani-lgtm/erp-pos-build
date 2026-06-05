@@ -1412,6 +1412,7 @@ quantity_decimals: number;
 barcode: string | null;
 is_active: boolean;
 is_physical: boolean;
+requires_batch_tracking: boolean;
 oem_numbers: Array<any> | null;
 cross_references: Array<any> | null;
 target_margin_override: string | null;

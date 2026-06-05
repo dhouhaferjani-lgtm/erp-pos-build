@@ -46,6 +46,18 @@
       "addLine": "Add line",
       "removeLine": "Remove line"
     },
+    "batch": {
+      "column": "Lots",
+      "action": "Lots and expiry",
+      "allocated": "{{count}} lot",
+      "allocated_other": "{{count}} lots",
+      "title": "Lot and expiry allocation",
+      "fefoHint": "FEFO defaults to earliest expiry first.",
+      "quantityFor": "Quantity from {{batch}}",
+      "statusLabel": "Status",
+      "availableLabel": "Available",
+      "required": "Select lots for every batch-tracked product."
+    },
     "distribution": {
       "pro_rata_value": "Pro-rata by value",
       "pro_rata_quantity": "Pro-rata by quantity",

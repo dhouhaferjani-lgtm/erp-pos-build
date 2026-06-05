@@ -6,6 +6,7 @@ namespace App\Modules\Inventory\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\DTOs\InitiateTransferBatchAllocationData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
 use App\Modules\Inventory\Application\Services\StockTransferService;
@@ -35,7 +36,7 @@ class StockTransferController extends Controller
         $query = StockTransfer::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
-            ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'lines.product']);
+            ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'lines.product', 'lines.batchAllocations.batch']);
 
         if ($request->filled('status')) {
             $status = TransferStatus::tryFrom((string) $request->input('status'));
@@ -86,7 +87,7 @@ class StockTransferController extends Controller
         $model = StockTransfer::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
-            ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'completedBy', 'cancelledBy', 'lines.product'])
+            ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'completedBy', 'cancelledBy', 'lines.product', 'lines.batchAllocations.batch'])
             ->findOrFail($transfer);
 
         return response()->json([
@@ -100,16 +101,26 @@ class StockTransferController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        /** @var array<int, array{product_id: string, quantity: string|int|float}> $rawLines */
+        /** @var array<int, array{product_id: string, quantity: string|int|float, batch_allocations?: array<int, array{batch_id: int|string, quantity: string|int|float}>}> $rawLines */
         $rawLines = $request->input('lines', []);
 
         $lines = [];
         foreach ($rawLines as $line) {
             /** @var numeric-string $qty */
             $qty = (string) $line['quantity'];
+            $batchAllocations = [];
+            foreach ($line['batch_allocations'] ?? [] as $allocation) {
+                /** @var numeric-string $allocationQty */
+                $allocationQty = (string) $allocation['quantity'];
+                $batchAllocations[] = new InitiateTransferBatchAllocationData(
+                    batchId: (int) $allocation['batch_id'],
+                    quantity: $allocationQty,
+                );
+            }
             $lines[] = new InitiateTransferLineData(
                 productId: (string) $line['product_id'],
                 quantity: $qty,
+                batchAllocations: $batchAllocations,
             );
         }
 
@@ -146,7 +157,7 @@ class StockTransferController extends Controller
             ], 422);
         }
 
-        $transfer->load(['sourceLocation', 'destinationLocation', 'initiatedBy', 'lines.product']);
+        $transfer->load(['sourceLocation', 'destinationLocation', 'initiatedBy', 'lines.product', 'lines.batchAllocations.batch']);
 
         return response()->json([
             'data' => $this->formatTransfer($transfer, includeLines: true),
@@ -174,7 +185,7 @@ class StockTransferController extends Controller
             return $this->stateExceptionResponse($e);
         }
 
-        $completed->load(['sourceLocation', 'destinationLocation', 'completedBy', 'lines.product']);
+        $completed->load(['sourceLocation', 'destinationLocation', 'completedBy', 'lines.product', 'lines.batchAllocations.batch']);
 
         return response()->json([
             'data' => $this->formatTransfer($completed, includeLines: true),
@@ -210,7 +221,7 @@ class StockTransferController extends Controller
             return $this->stateExceptionResponse($e);
         }
 
-        $cancelled->load(['sourceLocation', 'destinationLocation', 'cancelledBy', 'lines.product']);
+        $cancelled->load(['sourceLocation', 'destinationLocation', 'cancelledBy', 'lines.product', 'lines.batchAllocations.batch']);
 
         return response()->json([
             'data' => $this->formatTransfer($cancelled, includeLines: true),
@@ -258,6 +269,15 @@ class StockTransferController extends Controller
                 'quantity' => $line->quantity,
                 'unit_cost_snapshot' => $line->unit_cost_snapshot,
                 'allocated_transfer_cost' => $line->allocated_transfer_cost,
+                'batch_allocations' => $line->batchAllocations->map(fn ($allocation) => [
+                    'id' => $allocation->id,
+                    'batch_id' => $allocation->batch_id,
+                    'batch_number' => $allocation->batch->batch_number,
+                    'expiry_date' => $allocation->batch->expiry_date->toDateString(),
+                    'expiry_status' => $allocation->batch->expiryStatus()->value,
+                    'can_be_sold' => $allocation->batch->canBeSold(),
+                    'quantity' => $allocation->quantity,
+                ])->all(),
             ])->all();
         }
 

@@ -26,6 +26,17 @@ export interface StockTransferLine {
   quantity: string
   unit_cost_snapshot: string | null
   allocated_transfer_cost: string
+  batch_allocations: StockTransferLineBatchAllocation[]
+}
+
+export interface StockTransferLineBatchAllocation {
+  id: string
+  batch_id: number
+  batch_number: string | null
+  expiry_date: string | null
+  expiry_status: string | null
+  can_be_sold: boolean | null
+  quantity: string
 }
 
 export interface StockTransfer {
@@ -58,6 +69,12 @@ export interface StockTransfer {
 
 export interface CreateStockTransferLineInput {
   product_id: string
+  quantity: string
+  batch_allocations?: CreateStockTransferLineBatchAllocationInput[]
+}
+
+export interface CreateStockTransferLineBatchAllocationInput {
+  batch_id: number
   quantity: string
 }
 

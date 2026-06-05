@@ -36,6 +36,7 @@ const oilFilter: ProductPickerValue = {
   name: 'Filtre à huile standard',
   sale_price: '25.000',
   currency: 'TND',
+  requires_batch_tracking: true,
 }
 const brakePad: ProductPickerValue = {
   id: '22222222-2222-4222-8222-222222222222',
@@ -185,6 +186,27 @@ describe('ProductPicker', () => {
     await user.keyboard('{ArrowDown}{Enter}')
 
     expect(onChange).toHaveBeenCalledWith(oilFilter)
+  })
+
+  it('preserves the batch-tracking flag from product list results', async () => {
+    mockApiGet.mockResolvedValue(response([oilFilter]))
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    renderWithProviders(<ProductPicker value={null} onChange={onChange} />)
+
+    const combo = screen.getByRole('combobox')
+    await user.click(combo)
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('option').length).toBeGreaterThan(0)
+    })
+    ;(combo as HTMLInputElement).focus()
+    await user.keyboard('{ArrowDown}{Enter}')
+
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      id: oilFilter.id,
+      requires_batch_tracking: true,
+    }))
   })
 
   it('renders the selected value chip and clears it via the X button', async () => {

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Application\Services;
 
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
@@ -22,6 +24,7 @@ use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Inventory\Domain\StockTransfer;
 use App\Modules\Inventory\Domain\StockTransferLine;
+use App\Modules\Inventory\Domain\StockTransferLineBatchAllocation;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\DB;
@@ -143,7 +146,7 @@ class StockTransferService
                     throw new InvalidArgumentException('Each transfer line must have quantity greater than zero.');
                 }
 
-                StockTransferLine::create([
+                $transferLine = StockTransferLine::create([
                     'id' => Str::uuid()->toString(),
                     'transfer_id' => $transfer->id,
                     'tenant_id' => $data->tenantId,
@@ -151,6 +154,17 @@ class StockTransferService
                     'product_id' => $line->productId,
                     'quantity' => $line->quantity,
                 ]);
+
+                foreach ($line->batchAllocations as $allocation) {
+                    StockTransferLineBatchAllocation::create([
+                        'id' => Str::uuid()->toString(),
+                        'stock_transfer_line_id' => $transferLine->id,
+                        'tenant_id' => $data->tenantId,
+                        'company_id' => $data->companyId,
+                        'batch_id' => $allocation->batchId,
+                        'quantity' => $allocation->quantity,
+                    ]);
+                }
             }
 
             // Move stock into in_transit immediately.
@@ -203,23 +217,32 @@ class StockTransferService
                 ->where('company_id', $transfer->company_id)
                 ->findOrFail($line->product_id);
 
-            $this->stockAdjustmentService->receive(
-                productId: $product->id,
-                locationId: $transfer->destination_location_id,
-                quantity: (string) $line->quantity,
-                reference: $reference,
-                userId: $userId,
-                expectedCompanyId: $transfer->company_id,
-            );
+            if ($line->batchAllocations->isNotEmpty()) {
+                foreach ($line->batchAllocations as $allocation) {
+                    $movement = $this->stockAdjustmentService->receive(
+                        productId: $product->id,
+                        locationId: $transfer->destination_location_id,
+                        quantity: (string) $allocation->quantity,
+                        reference: $reference,
+                        userId: $userId,
+                        batchId: $allocation->batch_id,
+                        expectedCompanyId: $transfer->company_id,
+                    );
 
-            $this->relabelLatestMovement(
-                reference: $reference,
-                productId: $product->id,
-                locationId: $transfer->destination_location_id,
-                fromType: MovementType::Receipt,
-                toType: MovementType::TransferIn,
-                transferId: $transfer->id,
-            );
+                    $this->markMovementAsTransfer($movement, MovementType::TransferIn, $transfer->id);
+                }
+            } else {
+                $movement = $this->stockAdjustmentService->receive(
+                    productId: $product->id,
+                    locationId: $transfer->destination_location_id,
+                    quantity: (string) $line->quantity,
+                    reference: $reference,
+                    userId: $userId,
+                    expectedCompanyId: $transfer->company_id,
+                );
+
+                $this->markMovementAsTransfer($movement, MovementType::TransferIn, $transfer->id);
+            }
         }
 
         // Persist the Completed status BEFORE capitalizing the transfer cost.
@@ -288,23 +311,32 @@ class StockTransferService
 
                 $this->costLock->acquire($transfer->tenant_id, $transfer->company_id, $productIds, function () use ($transfer, $userId, $cancelReference): void {
                     foreach ($transfer->lines as $line) {
-                        $this->stockAdjustmentService->receive(
-                            productId: $line->product_id,
-                            locationId: $transfer->source_location_id,
-                            quantity: (string) $line->quantity,
-                            reference: $cancelReference,
-                            userId: $userId,
-                            expectedCompanyId: $transfer->company_id,
-                        );
+                        if ($line->batchAllocations->isNotEmpty()) {
+                            foreach ($line->batchAllocations as $allocation) {
+                                $movement = $this->stockAdjustmentService->receive(
+                                    productId: $line->product_id,
+                                    locationId: $transfer->source_location_id,
+                                    quantity: (string) $allocation->quantity,
+                                    reference: $cancelReference,
+                                    userId: $userId,
+                                    batchId: $allocation->batch_id,
+                                    expectedCompanyId: $transfer->company_id,
+                                );
 
-                        $this->relabelLatestMovement(
-                            reference: $cancelReference,
-                            productId: $line->product_id,
-                            locationId: $transfer->source_location_id,
-                            fromType: MovementType::Receipt,
-                            toType: MovementType::TransferIn,
-                            transferId: $transfer->id,
-                        );
+                                $this->markMovementAsTransfer($movement, MovementType::TransferIn, $transfer->id);
+                            }
+                        } else {
+                            $movement = $this->stockAdjustmentService->receive(
+                                productId: $line->product_id,
+                                locationId: $transfer->source_location_id,
+                                quantity: (string) $line->quantity,
+                                reference: $cancelReference,
+                                userId: $userId,
+                                expectedCompanyId: $transfer->company_id,
+                            );
+
+                            $this->markMovementAsTransfer($movement, MovementType::TransferIn, $transfer->id);
+                        }
                     }
                 });
             }
@@ -387,23 +419,34 @@ class StockTransferService
                 );
             }
 
-            $this->stockAdjustmentService->issue(
-                productId: $product->id,
-                locationId: $transfer->source_location_id,
-                quantity: (string) $line->quantity,
-                reference: $reference,
-                userId: $userId,
-                expectedCompanyId: $transfer->company_id,
-            );
+            if ($line->batchAllocations->isNotEmpty() || $product->requires_batch_tracking) {
+                $this->assertBatchAllocationsCanIssue($line, $product, $transfer);
 
-            $this->relabelLatestMovement(
-                reference: $reference,
-                productId: $product->id,
-                locationId: $transfer->source_location_id,
-                fromType: MovementType::Issue,
-                toType: MovementType::TransferOut,
-                transferId: $transfer->id,
-            );
+                foreach ($line->batchAllocations as $allocation) {
+                    $movement = $this->stockAdjustmentService->issue(
+                        productId: $product->id,
+                        locationId: $transfer->source_location_id,
+                        quantity: (string) $allocation->quantity,
+                        reference: $reference,
+                        userId: $userId,
+                        batchId: $allocation->batch_id,
+                        expectedCompanyId: $transfer->company_id,
+                    );
+
+                    $this->markMovementAsTransfer($movement, MovementType::TransferOut, $transfer->id);
+                }
+            } else {
+                $movement = $this->stockAdjustmentService->issue(
+                    productId: $product->id,
+                    locationId: $transfer->source_location_id,
+                    quantity: (string) $line->quantity,
+                    reference: $reference,
+                    userId: $userId,
+                    expectedCompanyId: $transfer->company_id,
+                );
+
+                $this->markMovementAsTransfer($movement, MovementType::TransferOut, $transfer->id);
+            }
 
             $line->unit_cost_snapshot = $costAtSend;
             $line->save();
@@ -545,43 +588,90 @@ class StockTransferService
         return $weights;
     }
 
-    /**
-     * Re-label the most recent StockMovement created by the stock-adjustment
-     * service to a transfer-specific movement type and anchor it to the
-     * StockTransfer aggregate via reference_type/reference_id.
-     */
-    private function relabelLatestMovement(
-        string $reference,
-        string $productId,
-        string $locationId,
-        MovementType $fromType,
-        MovementType $toType,
-        string $transferId,
-    ): void {
-        StockMovement::query()
-            ->where('reference', $reference)
-            ->where('product_id', $productId)
-            ->where('location_id', $locationId)
-            ->where('movement_type', $fromType)
-            ->whereNull('reference_id')
-            ->orderByDesc('created_at')
-            ->limit(1)
-            ->update([
-                'movement_type' => $toType->value,
-                'reference_type' => StockTransfer::class,
-                'reference_id' => $transferId,
-            ]);
-    }
-
     private function lockTransfer(string $transferId): StockTransfer
     {
         /** @var StockTransfer $transfer */
         $transfer = StockTransfer::query()
-            ->with('lines')
+            ->with('lines.batchAllocations')
             ->lockForUpdate()
             ->findOrFail($transferId);
 
         return $transfer;
+    }
+
+    private function markMovementAsTransfer(StockMovement $movement, MovementType $type, string $transferId): void
+    {
+        $movement->update([
+            'movement_type' => $type->value,
+            'reference_type' => StockTransfer::class,
+            'reference_id' => $transferId,
+        ]);
+    }
+
+    private function assertBatchAllocationsCanIssue(
+        StockTransferLine $line,
+        Product $product,
+        StockTransfer $transfer,
+    ): void {
+        if ($line->batchAllocations->isEmpty()) {
+            throw new InvalidArgumentException('Batch-tracked products require batch allocations.');
+        }
+
+        /** @var numeric-string $allocatedQuantity */
+        $allocatedQuantity = '0';
+        $seenBatchIds = [];
+
+        foreach ($line->batchAllocations as $allocation) {
+            if (isset($seenBatchIds[$allocation->batch_id])) {
+                throw new InvalidArgumentException('Each batch can only be allocated once per transfer line.');
+            }
+            $seenBatchIds[$allocation->batch_id] = true;
+
+            $allocatedQuantity = bcadd($allocatedQuantity, (string) $allocation->quantity, self::QTY_SCALE);
+            $this->assertBatchCanIssue($allocation, $product, $transfer);
+        }
+
+        if (bccomp($allocatedQuantity, (string) $line->quantity, self::QTY_SCALE) !== 0) {
+            throw new InvalidArgumentException('Batch allocation quantity must equal the transfer line quantity.');
+        }
+    }
+
+    private function assertBatchCanIssue(
+        StockTransferLineBatchAllocation $allocation,
+        Product $product,
+        StockTransfer $transfer,
+    ): void {
+        $batch = Batch::query()
+            ->where('tenant_id', $transfer->tenant_id)
+            ->where('company_id', $transfer->company_id)
+            ->where('product_id', $product->id)
+            ->find($allocation->batch_id);
+
+        if ($batch === null) {
+            throw new InvalidArgumentException('Batch allocation does not belong to the transfer product.');
+        }
+
+        if (! $batch->canBeSold()) {
+            throw new InvalidArgumentException('Batch cannot be transferred because it is expired, recalled, or inactive.');
+        }
+
+        $batchStock = BatchStock::query()
+            ->where('tenant_id', $transfer->tenant_id)
+            ->where('batch_id', $allocation->batch_id)
+            ->where('location_id', $transfer->source_location_id)
+            ->lockForUpdate()
+            ->first();
+
+        /** @var numeric-string $available */
+        $available = $batchStock === null
+            ? '0.0000'
+            : bcsub((string) $batchStock->quantity, (string) $batchStock->reserved_quantity, self::QTY_SCALE);
+
+        if (bccomp((string) $allocation->quantity, $available, self::QTY_SCALE) > 0) {
+            throw new InvalidArgumentException(
+                "Insufficient batch stock for transfer. Batch ID: {$allocation->batch_id}, Available: {$available}, Requested: {$allocation->quantity}"
+            );
+        }
     }
 
     private function loadLocationOrFail(string $locationId, string $companyId, string $side): Location

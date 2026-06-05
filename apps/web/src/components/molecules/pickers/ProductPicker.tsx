@@ -22,6 +22,7 @@ export interface ProductPickerValue {
   sale_price?: string | null
   currency?: string | null
   quantity_decimals?: number | null
+  requires_batch_tracking?: boolean
 }
 
 interface ProductPickerProps {
@@ -47,6 +48,7 @@ interface ProductListItem {
   sale_price?: string | null
   currency?: string | null
   quantity_decimals?: number | null
+  requires_batch_tracking?: boolean
 }
 
 interface ProductListResponse {
@@ -67,6 +69,9 @@ function toValue(item: ProductListItem): ProductPickerValue {
   }
   if (item.quantity_decimals !== undefined && item.quantity_decimals !== null) {
     value.quantity_decimals = item.quantity_decimals
+  }
+  if (item.requires_batch_tracking !== undefined) {
+    value.requires_batch_tracking = item.requires_batch_tracking
   }
   return value
 }

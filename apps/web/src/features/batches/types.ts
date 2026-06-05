@@ -40,10 +40,10 @@ export interface Batch {
     sku: string
   }
   batch_stock?: Array<{
-    location_id: number
-    quantity: number
-    reserved_quantity: number
-    available_quantity: number
+    location_id: string | number
+    quantity: string | number
+    reserved_quantity: string | number
+    available_quantity: string | number
   }>
 }
 

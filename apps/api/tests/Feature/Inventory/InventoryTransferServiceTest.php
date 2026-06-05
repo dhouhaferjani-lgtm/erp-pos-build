@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Inventory;
 
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
@@ -11,6 +13,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\DTOs\InitiateTransferBatchAllocationData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
 use App\Modules\Inventory\Application\Services\StockTransferService;
@@ -178,6 +181,37 @@ class InventoryTransferServiceTest extends TestCase
             reference: 'SEED',
             userId: $this->user->id,
         );
+    }
+
+    private function seedBatchStock(Product $product, Batch $batch, Location $location, string $qty): void
+    {
+        app(StockAdjustmentService::class)->receive(
+            productId: $product->id,
+            locationId: $location->id,
+            quantity: $qty,
+            reference: 'BATCH-SEED',
+            userId: $this->user->id,
+            batchId: (int) $batch->id,
+            expectedCompanyId: $this->company->id,
+        );
+    }
+
+    private function createBatch(Product $product, string $batchNumber = 'LOT-A', ?string $expiryDate = null): Batch
+    {
+        /** @var Batch $batch */
+        $batch = Batch::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'batch_number' => $batchNumber,
+            'manufacturing_date' => now()->subMonth()->toDateString(),
+            'expiry_date' => $expiryDate ?? now()->addMonths(8)->toDateString(),
+            'is_active' => true,
+            'is_expired' => false,
+            'is_recalled' => false,
+        ]);
+
+        return $batch;
     }
 
     /**
@@ -380,6 +414,150 @@ class InventoryTransferServiceTest extends TestCase
             ->count());
 
         Event::assertDispatched(StockTransferCompleted::class);
+    }
+
+    public function test_batch_allocations_move_source_to_in_transit_then_destination_on_complete(): void
+    {
+        $this->productA->update(['requires_batch_tracking' => true]);
+        $batch = $this->createBatch($this->productA, 'LOT-FEFO-1');
+        $this->seedBatchStock($this->productA, $batch, $this->warehouse, '10.0000');
+
+        $transfer = $this->service()->initiate($this->initiateData(
+            $this->warehouse->id,
+            $this->shop->id,
+            [
+                new InitiateTransferLineData(
+                    productId: $this->productA->id,
+                    quantity: '4.0000',
+                    batchAllocations: [
+                        new InitiateTransferBatchAllocationData((int) $batch->id, '4.0000'),
+                    ],
+                ),
+            ],
+        ));
+
+        $line = $transfer->lines->first();
+        $this->assertNotNull($line);
+        $this->assertCount(1, $line->batchAllocations);
+        $this->assertSame((int) $batch->id, $line->batchAllocations->first()->batch_id);
+        $this->assertEquals('4.0000', $line->batchAllocations->first()->quantity);
+
+        $sourceAfterInitiate = BatchStock::query()
+            ->where('batch_id', $batch->id)
+            ->where('location_id', $this->warehouse->id)
+            ->first();
+        $destinationAfterInitiate = BatchStock::query()
+            ->where('batch_id', $batch->id)
+            ->where('location_id', $this->shop->id)
+            ->first();
+
+        $this->assertNotNull($sourceAfterInitiate);
+        $this->assertEquals('6.0000', $sourceAfterInitiate->quantity);
+        $this->assertTrue($destinationAfterInitiate === null || bccomp((string) $destinationAfterInitiate->quantity, '0.0000', 4) === 0);
+
+        $completed = $this->service()->complete($transfer->id, $this->user->id);
+        $completedLine = $completed->lines->first();
+        $this->assertNotNull($completedLine);
+        $this->assertCount(1, $completedLine->batchAllocations);
+
+        $sourceAfterComplete = BatchStock::query()
+            ->where('batch_id', $batch->id)
+            ->where('location_id', $this->warehouse->id)
+            ->first();
+        $destinationAfterComplete = BatchStock::query()
+            ->where('batch_id', $batch->id)
+            ->where('location_id', $this->shop->id)
+            ->first();
+
+        $this->assertNotNull($sourceAfterComplete);
+        $this->assertNotNull($destinationAfterComplete);
+        $this->assertEquals('6.0000', $sourceAfterComplete->quantity);
+        $this->assertEquals('4.0000', $destinationAfterComplete->quantity);
+    }
+
+    public function test_batch_tracked_transfer_requires_allocations_that_match_line_quantity(): void
+    {
+        $this->productA->update(['requires_batch_tracking' => true]);
+        $batch = $this->createBatch($this->productA, 'LOT-QTY-MISMATCH');
+        $this->seedBatchStock($this->productA, $batch, $this->warehouse, '10.0000');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Batch allocation quantity must equal the transfer line quantity.');
+
+        $this->service()->initiate($this->initiateData(
+            $this->warehouse->id,
+            $this->shop->id,
+            [
+                new InitiateTransferLineData(
+                    productId: $this->productA->id,
+                    quantity: '4.0000',
+                    batchAllocations: [
+                        new InitiateTransferBatchAllocationData((int) $batch->id, '3.0000'),
+                    ],
+                ),
+            ],
+        ));
+    }
+
+    public function test_batch_tracked_transfer_blocks_recalled_or_expired_batches(): void
+    {
+        $this->productA->update(['requires_batch_tracking' => true]);
+        $batch = $this->createBatch($this->productA, 'LOT-RECALLED');
+        $batch->recall('supplier recall');
+        $this->seedBatchStock($this->productA, $batch, $this->warehouse, '10.0000');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Batch cannot be transferred because it is expired, recalled, or inactive.');
+
+        $this->service()->initiate($this->initiateData(
+            $this->warehouse->id,
+            $this->shop->id,
+            [
+                new InitiateTransferLineData(
+                    productId: $this->productA->id,
+                    quantity: '4.0000',
+                    batchAllocations: [
+                        new InitiateTransferBatchAllocationData((int) $batch->id, '4.0000'),
+                    ],
+                ),
+            ],
+        ));
+    }
+
+    public function test_cancelling_batch_transfer_returns_batch_stock_to_source(): void
+    {
+        $this->productA->update(['requires_batch_tracking' => true]);
+        $batch = $this->createBatch($this->productA, 'LOT-CANCEL');
+        $this->seedBatchStock($this->productA, $batch, $this->warehouse, '10.0000');
+
+        $transfer = $this->service()->initiate($this->initiateData(
+            $this->warehouse->id,
+            $this->shop->id,
+            [
+                new InitiateTransferLineData(
+                    productId: $this->productA->id,
+                    quantity: '4.0000',
+                    batchAllocations: [
+                        new InitiateTransferBatchAllocationData((int) $batch->id, '4.0000'),
+                    ],
+                ),
+            ],
+        ));
+
+        $this->service()->cancel($transfer->id, $this->user->id, 'shipment cancelled');
+
+        $sourceAfterCancel = BatchStock::query()
+            ->where('batch_id', $batch->id)
+            ->where('location_id', $this->warehouse->id)
+            ->first();
+        $destinationAfterCancel = BatchStock::query()
+            ->where('batch_id', $batch->id)
+            ->where('location_id', $this->shop->id)
+            ->first();
+
+        $this->assertNotNull($sourceAfterCancel);
+        $this->assertEquals('10.0000', $sourceAfterCancel->quantity);
+        $this->assertTrue($destinationAfterCancel === null || bccomp((string) $destinationAfterCancel->quantity, '0.0000', 4) === 0);
     }
 
     public function test_cannot_complete_an_already_completed_transfer(): void
