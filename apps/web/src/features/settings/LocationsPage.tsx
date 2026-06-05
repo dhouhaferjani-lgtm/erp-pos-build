@@ -177,8 +177,11 @@ export function LocationsPage() {
       if (formData.addressCity) updateData.addressCity = formData.addressCity
       if (formData.addressPostalCode) updateData.addressPostalCode = formData.addressPostalCode
       if (formData.addressCountry) updateData.addressCountry = formData.addressCountry
-      if (formData.taxId) updateData.taxId = formData.taxId
-      if (formData.vatNumber) updateData.vatNumber = formData.vatNumber
+      // Always send tax fields on update so an emptied field clears the branch
+      // override back to inheriting the company value (null = inherit). The API
+      // blocks clearing for a sellable shop in a country that requires it.
+      updateData.taxId = formData.taxId.trim() === '' ? null : formData.taxId
+      updateData.vatNumber = formData.vatNumber.trim() === '' ? null : formData.vatNumber
 
       updateMutation.mutate({
         id: editingLocation.id,

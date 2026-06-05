@@ -147,4 +147,34 @@ class CreateLocationTaxValidationTest extends TestCase
 
         $response->assertCreated();
     }
+
+    public function test_rejects_malformed_fr_siret_in_legal_identifiers(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/locations', [
+                'name' => 'Branch A',
+                'type' => 'shop',
+                'address_country' => 'FR',
+                'tax_id' => '73282932000074',
+                'legal_identifiers' => ['siret' => 'NOT-A-SIRET'],
+            ]);
+
+        $this->assertApiValidationErrors($response, ['legal_identifiers.siret']);
+    }
+
+    public function test_accepts_valid_fr_siret_in_legal_identifiers(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/locations', [
+                'name' => 'Branch A',
+                'type' => 'shop',
+                'address_country' => 'FR',
+                'tax_id' => '73282932000074',
+                'legal_identifiers' => ['siret' => '73282932000074'],
+            ]);
+
+        $response->assertCreated();
+    }
 }

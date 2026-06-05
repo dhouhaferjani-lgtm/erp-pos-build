@@ -177,4 +177,46 @@ class UpdateLocationTaxValidationTest extends TestCase
 
         $response->assertOk();
     }
+
+    public function test_rejects_clearing_required_shop_tax_id(): void
+    {
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'B',
+            'code' => 'B',
+            'type' => LocationType::Shop,
+            'address_country' => 'FR',
+            'is_default' => false,
+            'is_active' => true,
+            'tax_id' => '73282932000074',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson("/api/v1/locations/{$location->id}", ['tax_id' => null]);
+
+        $this->assertApiValidationErrors($response, ['tax_id']);
+    }
+
+    public function test_rejects_malformed_siret_in_legal_identifiers_on_update(): void
+    {
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'B',
+            'code' => 'B',
+            'type' => LocationType::Shop,
+            'address_country' => 'FR',
+            'is_default' => false,
+            'is_active' => true,
+            'tax_id' => '73282932000074',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson("/api/v1/locations/{$location->id}", [
+                'legal_identifiers' => ['siret' => 'NOT-A-SIRET'],
+            ]);
+
+        $this->assertApiValidationErrors($response, ['legal_identifiers.siret']);
+    }
 }

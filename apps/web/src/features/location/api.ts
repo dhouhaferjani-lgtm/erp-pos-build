@@ -58,9 +58,10 @@ export interface UpdateLocationInput {
   addressCity?: string
   addressPostalCode?: string
   addressCountry?: string
-  taxId?: string
-  vatNumber?: string
-  legalIdentifiers?: Record<string, unknown>
+  // null clears the branch override (re-inherit the company value)
+  taxId?: string | null
+  vatNumber?: string | null
+  legalIdentifiers?: Record<string, unknown> | null
   isActive?: boolean
   posEnabled?: boolean
 }
@@ -94,9 +95,9 @@ interface UpdateLocationPayload {
   address_city?: string
   address_postal_code?: string
   address_country?: string
-  tax_id?: string
-  vat_number?: string
-  legal_identifiers?: Record<string, unknown>
+  tax_id?: string | null
+  vat_number?: string | null
+  legal_identifiers?: Record<string, unknown> | null
   is_active?: boolean
   pos_enabled?: boolean
 }

@@ -48,6 +48,19 @@ class CreateLocationRequest extends FormRequest
             ],
             'vat_number' => ['nullable', 'string', 'max:50'],
             'legal_identifiers' => ['nullable', 'array'],
+            'legal_identifiers.siret' => [
+                'sometimes',
+                'nullable',
+                'string',
+                function (string $_attribute, string|int|float|bool|array|null $value, Closure $fail): void {
+                    // 'siret' is FR-specific; validate against the FR tax-number pattern
+                    // only when the location country is FR (other countries carry other keys).
+                    $country = strtoupper((string) ($this->input('address_country') ?? ''));
+                    if (is_string($value) && $value !== '' && $country === 'FR' && ! CountryTaxNumberRules::matches('FR', $value)) {
+                        $fail('The branch SIRET in legal identifiers is invalid.');
+                    }
+                },
+            ],
         ];
     }
 
