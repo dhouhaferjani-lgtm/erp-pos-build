@@ -151,7 +151,7 @@ final class BatchStockService
 
             if (bccomp($available, $quantity, 4) < 0) {
                 /** @var numeric-string $shortfall */
-                $shortfall = bcsub($quantity, $available, 4);
+                $shortfall = bcsub($quantity, $available, 4); // precision-ok: batch quantity is decimal(15,4), canonical scale 4
                 throw new InsufficientBatchStockException(
                     shortfall: $shortfall,
                     message: "Insufficient batch stock. Batch ID: {$batchId}, Available: {$available}, Requested: {$quantity}",

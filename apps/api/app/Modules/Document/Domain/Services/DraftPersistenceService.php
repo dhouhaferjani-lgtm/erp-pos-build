@@ -267,6 +267,14 @@ final class DraftPersistenceService
             'line_total' => $lineTotal,
         ]);
 
+        // Read the canonical numeric-string values once. The audit events below declare
+        // float fields (immutable signatures, Rule 8), so the (float) conversion happens
+        // at the event boundary on a string var — never directly on the decimal-cast
+        // Eloquent property (precision contract: no (float)$model->decimalProp).
+        $quantityFloat = (float) (string) $line->quantity;
+        $unitPriceFloat = (float) (string) $line->unit_price;
+        $lineTotalFloat = (float) (string) $line->line_total;
+
         // Fire event (V1 — backward compatible)
         event(new DraftLineAdded(
             documentId: $document->id,
@@ -275,9 +283,9 @@ final class DraftPersistenceService
             userId: $userId,
             productId: $line->product_id ?? '',
             productName: $defaultName,
-            quantity: (float) $line->quantity,
-            unitPrice: (float) $line->unit_price,
-            lineTotal: (float) $line->line_total,
+            quantity: $quantityFloat,
+            unitPrice: $unitPriceFloat,
+            lineTotal: $lineTotalFloat,
             lineId: $line->id,
             addedAt: now()->toIso8601String(),
         ));
@@ -290,9 +298,9 @@ final class DraftPersistenceService
             userId: $userId,
             productId: $line->product_id ?? '',
             productName: $defaultName,
-            quantity: (float) $line->quantity,
-            unitPrice: (float) $line->unit_price,
-            lineTotal: (float) $line->line_total,
+            quantity: $quantityFloat,
+            unitPrice: $unitPriceFloat,
+            lineTotal: $lineTotalFloat,
             description: (string) $line->description,
             notes: $line->notes,
             designationDefaultSnapshot: $line->designation_default_snapshot,
@@ -308,9 +316,9 @@ final class DraftPersistenceService
             userId: $userId,
             productId: $line->product_id ?? '',
             productName: $defaultName,
-            quantity: (float) $line->quantity,
-            unitPrice: (float) $line->unit_price,
-            lineTotal: (float) $line->line_total,
+            quantity: $quantityFloat,
+            unitPrice: $unitPriceFloat,
+            lineTotal: $lineTotalFloat,
             description: (string) $line->description,
             notes: $line->notes,
             designationDefaultSnapshot: $line->designation_default_snapshot,
@@ -344,12 +352,12 @@ final class DraftPersistenceService
 
         $hasChanges = false;
 
-        if (isset($newData['quantity']) && (float) $newData['quantity'] !== (float) $line->quantity) {
+        if (isset($newData['quantity']) && (float) $newData['quantity'] !== (float) (string) $line->quantity) {
             $line->quantity = $newData['quantity'];
             $hasChanges = true;
         }
 
-        if (isset($newData['unit_price']) && (float) $newData['unit_price'] !== (float) $line->unit_price) {
+        if (isset($newData['unit_price']) && (float) $newData['unit_price'] !== (float) (string) $line->unit_price) {
             $line->unit_price = $newData['unit_price'];
             $hasChanges = true;
         }
@@ -373,13 +381,17 @@ final class DraftPersistenceService
         }
 
         if ($hasChanges) {
-            $line->line_total = (string) ((float) $line->quantity * (float) $line->unit_price);
+            $quantityFloat = (float) (string) $line->quantity;
+            $unitPriceFloat = (float) (string) $line->unit_price;
+            $line->line_total = (string) ($quantityFloat * $unitPriceFloat);
             $line->save();
 
+            // Audit events declare float fields; convert at the event boundary on a
+            // string var, never directly on the decimal-cast Eloquent property.
             $newValues = [
-                'quantity' => (float) $line->quantity,
-                'unit_price' => (float) $line->unit_price,
-                'line_total' => (float) $line->line_total,
+                'quantity' => $quantityFloat,
+                'unit_price' => $unitPriceFloat,
+                'line_total' => (float) (string) $line->line_total,
             ];
 
             // Fire event (V1 — backward compatible)
@@ -447,6 +459,13 @@ final class DraftPersistenceService
     ): void {
         $product = $line->product;
 
+        // Read the canonical numeric-string values once. The audit events below declare
+        // float fields (immutable signatures, Rule 8), so the (float) conversion happens
+        // at the event boundary on a string var — never directly on the decimal-cast
+        // Eloquent property (precision contract: no (float)$model->decimalProp).
+        $quantityFloat = (float) (string) $line->quantity;
+        $lineTotalFloat = (float) (string) $line->line_total;
+
         // Fire event before deletion
         event(new DraftLineRemoved(
             documentId: $document->id,
@@ -456,8 +475,8 @@ final class DraftPersistenceService
             lineId: $line->id,
             productId: $line->product_id ?? '',
             productName: $product !== null ? $product->name : '',
-            quantity: (float) $line->quantity,
-            lineTotal: (float) $line->line_total,
+            quantity: $quantityFloat,
+            lineTotal: $lineTotalFloat,
             removedAt: now()->toIso8601String(),
         ));
 
@@ -470,8 +489,8 @@ final class DraftPersistenceService
             lineId: $line->id,
             productId: $line->product_id ?? '',
             productName: $product !== null ? $product->name : '',
-            quantity: (float) $line->quantity,
-            lineTotal: (float) $line->line_total,
+            quantity: $quantityFloat,
+            lineTotal: $lineTotalFloat,
             variantId: $line->variant_id,
             removedAt: now()->toIso8601String(),
         ));

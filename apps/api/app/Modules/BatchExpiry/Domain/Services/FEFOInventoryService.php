@@ -167,7 +167,7 @@ class FEFOInventoryService
             $consumed = [];
 
             foreach ($rows as $row) {
-                if (bccomp($remaining, '0', 4) <= 0) {
+                if (bccomp($remaining, '0', 4) <= 0) { // precision-ok: batch quantity is decimal(15,4), canonical scale 4
                     break;
                 }
 
@@ -176,12 +176,10 @@ class FEFOInventoryService
 
                 // Normalize to a 4dp decimal string so every consumed quantity and
                 // movement row carries a consistent scale, regardless of caller input.
+                // precision-ok: batch quantity is decimal(15,4), canonical scale 4
+                $takeSource = bccomp($available, $remaining, 4) < 0 ? $available : $remaining;
                 /** @var numeric-string $take */
-                $take = bcadd(
-                    bccomp($available, $remaining, 4) < 0 ? $available : $remaining,
-                    '0',
-                    4,
-                );
+                $take = bcadd($takeSource, '0', 4); // precision-ok: batch quantity is decimal(15,4), canonical scale 4
 
                 // Decrement quantity at full decimal precision; the GENERATED
                 // available_quantity recomputes. We hold a FOR UPDATE lock on this
@@ -191,7 +189,7 @@ class FEFOInventoryService
                 $storedQuantity = (string) $row->stored_quantity;
 
                 /** @var numeric-string $newQuantity */
-                $newQuantity = bcsub($storedQuantity, $take, 4);
+                $newQuantity = bcsub($storedQuantity, $take, 4); // precision-ok: batch quantity is decimal(15,4), canonical scale 4
 
                 DB::table('inventory_batch_stock')
                     ->where('id', $row->batch_stock_id)
@@ -201,7 +199,7 @@ class FEFOInventoryService
                 // the NEGATIVE magnitude — matching BatchStockService::issueBatchStock()
                 // (bcmul($quantity, '-1', 4)). Receipts are positive, issues negative.
                 /** @var numeric-string $movementQuantity */
-                $movementQuantity = bcmul($take, '-1', 4);
+                $movementQuantity = bcmul($take, '-1', 4); // precision-ok: batch quantity is decimal(15,4), canonical scale 4
 
                 DB::table('inventory_batch_movements')->insert([
                     'tenant_id' => $tenantId,
@@ -220,13 +218,14 @@ class FEFOInventoryService
                     expiryDate: Carbon::parse($row->expiry_date),
                 );
 
-                $remaining = bcsub($remaining, $take, 4);
+                $remaining = bcsub($remaining, $take, 4); // precision-ok: batch quantity is decimal(15,4), canonical scale 4
             }
 
             // Normalize the shortfall to a consistent 4dp decimal string.
             /** @var numeric-string $shortfall */
-            $shortfall = bcadd($remaining, '0', 4);
+            $shortfall = bcadd($remaining, '0', 4); // precision-ok: batch quantity is decimal(15,4), canonical scale 4
 
+            // precision-ok: batch quantity is decimal(15,4), canonical scale 4
             if ($strictFulfillment && bccomp($shortfall, '0', 4) > 0) {
                 throw new InsufficientBatchStockException($shortfall);
             }
