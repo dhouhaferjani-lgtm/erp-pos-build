@@ -117,9 +117,15 @@ export async function verifyScopedManagerPin(
       roles: matched.roles,
     };
   } catch (error) {
-    if (error instanceof ApiRequestError && error.status < 500) {
-      // Task 11 (audit): the server rejected the override (4xx). This is a
-      // denied override too — emit before rethrowing. NO pin/hash.
+    // 4xx codes that mean "server busy / couldn't decide" (NOT an authorization
+    // rejection) → treat like a 5xx and fall back to the local approval.
+    const isServerBusy4xx =
+      error instanceof ApiRequestError && (error.status === 408 || error.status === 429);
+
+    if (error instanceof ApiRequestError && error.status < 500 && !isServerBusy4xx) {
+      // The server gave an EXPLICIT non-approval (4xx: valid:false → 403, bad
+      // request 422, forbidden, …). The server is up and said no → DENY.
+      // Denied override → emit before rethrowing. NO pin/hash.
       void recordAuditEvent({
         type: 'pos.manager_override_denied',
         aggregateType: 'Override',
@@ -136,6 +142,30 @@ export async function verifyScopedManagerPin(
       }).catch(() => {});
       throw error;
     }
+
+    // OFFLINE-IS-REALLY-FIRST: the server could NOT give an authorization
+    // decision — either a 5xx (reachable but erroring, ApiRequestError >= 500)
+    // or a genuine transport failure (non-ApiRequestError: network down /
+    // timeout). Keep the terminal working: fall back to the already-validated
+    // LOCAL manager PIN. But this approval bypassed the server's checks (caps,
+    // revocation), so it must be VISIBLE to fraud — emit
+    // pos.manager_override_offline_approved (NOT a denial). `degraded_kind`
+    // distinguishes a server error from true offline. NO pin/hash.
+    const degradedKind = error instanceof ApiRequestError ? 'server_error' : 'transport';
+    void recordAuditEvent({
+      type: 'pos.manager_override_offline_approved',
+      aggregateType: 'Override',
+      aggregateId: input.context.terminalId,
+      tenantId: input.context.tenantId,
+      companyId: input.context.companyId,
+      operatorId: matched.id,
+      payload: {
+        scope: toTaxonomyScope(input.approvalScope),
+        reason: input.reason,
+        degraded_kind: degradedKind,
+      },
+    }).catch(() => {});
+    // fall through to the local-bcrypt approval below
   }
 
   return {

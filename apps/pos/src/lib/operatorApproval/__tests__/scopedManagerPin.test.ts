@@ -107,4 +107,37 @@ describe('verifyScopedManagerPin', () => {
 
     await expect(verifyScopedManagerPin(input)).rejects.toBeInstanceOf(ApiRequestError);
   });
+
+  it.each([408, 429])(
+    'falls back to the local approval on a "server busy" %i (not an explicit denial)',
+    async (status) => {
+      // 408 (Request Timeout) / 429 (Too Many Requests) mean the server was
+      // busy/couldn't decide — NOT "the PIN is wrong". Offline-is-really-first:
+      // keep working off the local manager PIN, same as a 5xx.
+      vi.mocked(apiPost).mockRejectedValue(new ApiRequestError(status, 'busy', 'BUSY'));
+
+      await expect(verifyScopedManagerPin(input)).resolves.toEqual({
+        id: 'supervisor-1',
+        name: 'Supervisor',
+        roles: ['manager'],
+      });
+    },
+  );
+
+  it('falls back to the local manager-PIN approval on a server 5xx (offline-first)', async () => {
+    // Offline-is-really-first: a 5xx means the server could not authorize, so
+    // keep working off the valid LOCAL manager PIN — exactly like a genuine
+    // transport failure. The server-unconfirmed approval is made visible to
+    // fraud via pos.manager_override_offline_approved (see the audit test).
+    // Only an EXPLICIT server denial (valid:false / 4xx) blocks the override.
+    vi.mocked(apiPost).mockRejectedValue(
+      new ApiRequestError(503, 'Service Unavailable', 'SERVICE_UNAVAILABLE'),
+    );
+
+    await expect(verifyScopedManagerPin(input)).resolves.toEqual({
+      id: 'supervisor-1',
+      name: 'Supervisor',
+      roles: ['manager'],
+    });
+  });
 });

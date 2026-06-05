@@ -73,12 +73,16 @@ const input = {
   reason: 'High discount',
 };
 
-function lastDenied(): Record<string, unknown> | undefined {
+function lastOfType(type: string): Record<string, unknown> | undefined {
   for (let i = recordAuditEvent.mock.calls.length - 1; i >= 0; i--) {
     const arg = recordAuditEvent.mock.calls[i]![0] as Record<string, unknown>;
-    if (arg.type === 'pos.manager_override_denied') return arg;
+    if (arg.type === type) return arg;
   }
   return undefined;
+}
+
+function lastDenied(): Record<string, unknown> | undefined {
+  return lastOfType('pos.manager_override_denied');
 }
 
 describe('verifyScopedManagerPin — Task 11 pos.manager_override_denied', () => {
@@ -133,13 +137,53 @@ describe('verifyScopedManagerPin — Task 11 pos.manager_override_denied', () =>
     expect(JSON.stringify(payload)).not.toContain('1234');
   });
 
-  it('does NOT emit when verification succeeds', async () => {
+  it('emits offline_approved (NOT denied) on a 5xx — offline-first fallback, server_error kind', async () => {
+    // Offline-is-really-first: a 5xx falls back to the local manager-PIN
+    // approval (terminal keeps working). The server-unconfirmed approval is
+    // recorded as pos.manager_override_offline_approved, never as a denial.
+    vi.mocked(getAllOperators).mockResolvedValue([operator()]);
+    vi.mocked(apiPost).mockRejectedValue(
+      new ApiRequestError(503, 'Service Unavailable', 'SERVICE_UNAVAILABLE'),
+    );
+
+    await expect(verifyScopedManagerPin(input)).resolves.toMatchObject({ id: 'supervisor-1' });
+
+    expect(lastDenied()).toBeUndefined();
+    const call = lastOfType('pos.manager_override_offline_approved');
+    expect(call).toBeDefined();
+    expect(call!.operatorId).toBe('supervisor-1');
+    const payload = call!.payload as Record<string, unknown>;
+    expect(payload.scope).toBe('discount_limit');
+    expect(payload.degraded_kind).toBe('server_error');
+    expect(JSON.stringify(payload)).not.toContain('1234');
+  });
+
+  it('emits offline_approved on a genuine transport failure — transport kind, no denial', async () => {
+    // A non-ApiRequestError = network/transport down → offline-first local
+    // approval. NOT a denial; recorded as offline_approved with transport kind.
+    vi.mocked(getAllOperators).mockResolvedValue([operator()]);
+    vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
+
+    await expect(verifyScopedManagerPin(input)).resolves.toMatchObject({ id: 'supervisor-1' });
+
+    expect(lastDenied()).toBeUndefined();
+    const call = lastOfType('pos.manager_override_offline_approved');
+    expect(call).toBeDefined();
+    const payload = call!.payload as Record<string, unknown>;
+    expect(payload.degraded_kind).toBe('transport');
+    expect(JSON.stringify(payload)).not.toContain('1234');
+  });
+
+  it('does NOT emit denied OR offline_approved when the server confirms (valid:true)', async () => {
     vi.mocked(getAllOperators).mockResolvedValue([operator()]);
     vi.mocked(apiPost).mockResolvedValue({ valid: true, user_id: 'supervisor-1' });
 
     await verifyScopedManagerPin(input);
 
+    // Server-confirmed approval: neither a denial nor a server-unconfirmed
+    // (offline) approval should be emitted.
     expect(lastDenied()).toBeUndefined();
+    expect(lastOfType('pos.manager_override_offline_approved')).toBeUndefined();
   });
 
   it('still rejects when the audit emit itself rejects', async () => {
