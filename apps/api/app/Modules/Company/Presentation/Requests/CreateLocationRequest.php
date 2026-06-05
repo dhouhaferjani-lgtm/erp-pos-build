@@ -39,7 +39,7 @@ class CreateLocationRequest extends FormRequest
                 'nullable',
                 'string',
                 'max:50',
-                function (string $_attribute, string|array|null $value, Closure $fail): void {
+                function (string $_attribute, string|int|float|bool|array|null $value, Closure $fail): void {
                     $country = strtoupper((string) ($this->input('address_country') ?? ''));
                     if (is_string($value) && $value !== '' && $country !== '' && ! CountryTaxNumberRules::matches($country, $value)) {
                         $fail('The branch tax ID format is invalid for '.$country.'.');

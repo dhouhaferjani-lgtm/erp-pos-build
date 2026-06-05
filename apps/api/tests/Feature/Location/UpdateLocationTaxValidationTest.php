@@ -20,7 +20,7 @@ use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
 
-class CreateLocationTaxValidationTest extends TestCase
+class UpdateLocationTaxValidationTest extends TestCase
 {
     use AssertsApiValidation;
     use RefreshDatabase;
@@ -52,15 +52,6 @@ class CreateLocationTaxValidationTest extends TestCase
             'status' => CompanyStatus::Active,
         ]);
 
-        Location::create([
-            'company_id' => $this->company->id,
-            'name' => 'Main Shop',
-            'code' => 'MAIN',
-            'type' => LocationType::Shop,
-            'is_default' => true,
-            'is_active' => true,
-        ]);
-
         app(PermissionRegistrar::class)->setPermissionsTeamId($tenant->id);
         $this->seed(RolesAndPermissionsSeeder::class);
 
@@ -80,15 +71,46 @@ class CreateLocationTaxValidationTest extends TestCase
         ]);
     }
 
-    public function test_rejects_malformed_fr_tax_id(): void
+    public function test_rejects_malformed_tax_id_on_update_when_country_is_submitted(): void
     {
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'B',
+            'code' => 'B',
+            'type' => LocationType::Shop,
+            'address_country' => 'FR',
+            'is_default' => false,
+            'is_active' => true,
+            'tax_id' => '73282932000074',
+        ]);
+
         $response = $this->actingAs($this->user, 'sanctum')
             ->withHeader('X-Company-Id', $this->company->id)
-            ->postJson('/api/v1/locations', [
-                'name' => 'Branch A',
-                'type' => 'shop',
+            ->patchJson("/api/v1/locations/{$location->id}", [
                 'address_country' => 'FR',
-                'tax_id' => '123',
+                'tax_id' => 'BAD',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['tax_id']);
+    }
+
+    public function test_rejects_malformed_tax_id_on_update_using_existing_country(): void
+    {
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'B',
+            'code' => 'B',
+            'type' => LocationType::Shop,
+            'address_country' => 'FR',
+            'is_default' => false,
+            'is_active' => true,
+            'tax_id' => '73282932000074',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson("/api/v1/locations/{$location->id}", [
+                'tax_id' => 'BAD',
             ]);
 
         $this->assertApiValidationErrors($response, ['tax_id']);
@@ -96,55 +118,63 @@ class CreateLocationTaxValidationTest extends TestCase
 
     public function test_numeric_tax_id_returns_validation_error_instead_of_server_error(): void
     {
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'B',
+            'code' => 'B',
+            'type' => LocationType::Shop,
+            'address_country' => 'FR',
+            'is_default' => false,
+            'is_active' => true,
+        ]);
+
         $response = $this->actingAs($this->user, 'sanctum')
             ->withHeader('X-Company-Id', $this->company->id)
-            ->postJson('/api/v1/locations', [
-                'name' => 'Branch A',
-                'type' => 'shop',
-                'address_country' => 'FR',
+            ->patchJson("/api/v1/locations/{$location->id}", [
                 'tax_id' => 123,
             ]);
 
         $this->assertApiValidationErrors($response, ['tax_id']);
     }
 
-    public function test_accepts_valid_fr_siret(): void
+    public function test_accepts_valid_siret_on_update_using_existing_country(): void
     {
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'B',
+            'code' => 'B',
+            'type' => LocationType::Shop,
+            'address_country' => 'FR',
+            'is_default' => false,
+            'is_active' => true,
+        ]);
+
         $response = $this->actingAs($this->user, 'sanctum')
             ->withHeader('X-Company-Id', $this->company->id)
-            ->postJson('/api/v1/locations', [
-                'name' => 'Branch A',
-                'type' => 'shop',
-                'address_country' => 'FR',
+            ->patchJson("/api/v1/locations/{$location->id}", [
                 'tax_id' => '73282932000074',
             ]);
 
-        $response->assertCreated();
+        $response->assertOk();
     }
 
-    public function test_requires_tax_id_for_sellable_shop_in_fr(): void
+    public function test_accepts_clearing_tax_id_to_inherit(): void
     {
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'B',
+            'code' => 'B',
+            'type' => LocationType::Warehouse,
+            'address_country' => 'FR',
+            'is_default' => false,
+            'is_active' => true,
+            'tax_id' => '73282932000074',
+        ]);
+
         $response = $this->actingAs($this->user, 'sanctum')
             ->withHeader('X-Company-Id', $this->company->id)
-            ->postJson('/api/v1/locations', [
-                'name' => 'Branch A',
-                'type' => 'shop',
-                'address_country' => 'FR',
-            ]);
+            ->patchJson("/api/v1/locations/{$location->id}", ['tax_id' => null]);
 
-        $this->assertApiValidationErrors($response, ['tax_id']);
-    }
-
-    public function test_does_not_require_tax_id_for_warehouse(): void
-    {
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->withHeader('X-Company-Id', $this->company->id)
-            ->postJson('/api/v1/locations', [
-                'name' => 'WH',
-                'type' => 'warehouse',
-                'address_country' => 'FR',
-            ]);
-
-        $response->assertCreated();
+        $response->assertOk();
     }
 }
