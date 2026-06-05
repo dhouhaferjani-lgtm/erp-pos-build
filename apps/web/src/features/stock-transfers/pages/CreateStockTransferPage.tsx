@@ -13,6 +13,7 @@ import { LineItemsTable, QuantityCell, type LineItemsTableColumn } from '@/compo
 import { textColors, borderColors, tokens, colors } from '@/lib/designTokens'
 import { useCurrency } from '@/hooks/useCurrency'
 import { bccomp } from '@/lib/decimal'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import { useCreateStockTransfer } from '../api/queries'
 import type { CreateStockTransferInput, TransferCostDistribution } from '../types'
 
@@ -159,7 +160,7 @@ export function CreateStockTransferPage() {
           onChange={(value) => {
             updateLine(line.uid, { quantity: value })
           }}
-          decimalPlaces={4}
+          decimalPlaces={getQuantityDecimals(line.product)}
           min="0"
           ariaLabel={t('create.field.quantity')}
           className="w-full md:w-28"

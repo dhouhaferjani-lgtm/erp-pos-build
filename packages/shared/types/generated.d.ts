@@ -1408,6 +1408,7 @@ cost_price: string | null;
 tax_rate: string | null;
 default_tax_configuration_id: string | null;
 unit: string | null;
+quantity_decimals: number;
 barcode: string | null;
 is_active: boolean;
 is_physical: boolean;

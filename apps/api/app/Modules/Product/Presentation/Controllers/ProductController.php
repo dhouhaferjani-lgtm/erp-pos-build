@@ -63,7 +63,7 @@ class ProductController extends Controller
         $perPage = min((int) $request->input('per_page', 25), 2000);
 
         // Build query with conditional vertical-specific metadata loading
-        $with = ['category', 'primaryImage'];
+        $with = ['category', 'primaryImage', 'unitOfMeasure'];
         if ($company->tenant->vertical === Vertical::Parapharmacy) {
             $with[] = 'parapharmacyMetadata.ingredients';
             $with[] = 'parapharmacyMetadata.keyComponents';
@@ -229,7 +229,7 @@ class ProductController extends Controller
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->where('id', $product)
-            ->with('primaryImage')
+            ->with(['primaryImage', 'unitOfMeasure'])
             ->first();
 
         if (! $productModel) {
@@ -367,7 +367,7 @@ class ProductController extends Controller
             ]);
         }
 
-        $product->load('primaryImage');
+        $product->load(['primaryImage', 'unitOfMeasure']);
 
         return response()->json([
             'data' => ProductData::fromModel($product),
@@ -507,7 +507,7 @@ class ProductController extends Controller
             ]);
         }
 
-        $freshProduct->load('primaryImage');
+        $freshProduct->load(['primaryImage', 'unitOfMeasure']);
 
         return response()->json([
             'data' => ProductData::fromModel($freshProduct),

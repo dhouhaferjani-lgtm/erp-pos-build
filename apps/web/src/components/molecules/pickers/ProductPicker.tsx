@@ -4,6 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useDebouncedValue } from '@/lib/hooks'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
 
 /**
@@ -18,6 +21,7 @@ export interface ProductPickerValue {
   name: string
   sale_price?: string | null
   currency?: string | null
+  quantity_decimals?: number | null
 }
 
 interface ProductPickerProps {
@@ -42,6 +46,7 @@ interface ProductListItem {
   name: string
   sale_price?: string | null
   currency?: string | null
+  quantity_decimals?: number | null
 }
 
 interface ProductListResponse {
@@ -59,6 +64,9 @@ function toValue(item: ProductListItem): ProductPickerValue {
   }
   if (item.currency !== undefined && item.currency !== null) {
     value.currency = item.currency
+  }
+  if (item.quantity_decimals !== undefined && item.quantity_decimals !== null) {
+    value.quantity_decimals = item.quantity_decimals
   }
   return value
 }
@@ -87,12 +95,14 @@ export function ProductPicker({
   // Fetch whenever the dropdown is open so the user sees products immediately,
   // before typing — matching the document line editor / product search select.
   const listEnabled = isOpen && !disabled
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const trimmedQuery = debouncedQuery.trim()
-  const queryKey = ['pickers', 'product', productType, debouncedQuery] as const
+  const queryKey = tenantScopedKey(['pickers', 'product', productType, debouncedQuery])
 
   const { data, isLoading, isError } = useQuery({
     queryKey,
-    enabled: listEnabled,
+    enabled: listEnabled && tenantId !== null && companyId !== null,
     queryFn: async () => {
       const params = new URLSearchParams({ per_page: '20', is_active: 'true' })
       if (trimmedQuery.length > 0) {
@@ -107,12 +117,13 @@ export function ProductPicker({
   })
 
   useEffect(() => {
-    setActiveIndex(-1)
-  }, [data])
-
-  useEffect(() => {
     function onClick(e: MouseEvent) {
-      if (containerRef.current !== null && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target
+      if (
+        target instanceof Node &&
+        containerRef.current !== null &&
+        !containerRef.current.contains(target)
+      ) {
         setIsOpen(false)
       }
     }
@@ -139,7 +150,7 @@ export function ProductPicker({
       setActiveIndex((i) => Math.max(i - 1, 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      const choice = results[activeIndex]
+      const choice = results.find((_product, idx) => idx === activeIndex)
       if (choice !== undefined) {
         onChange(choice)
         setQuery('')
@@ -175,7 +186,9 @@ export function ProductPicker({
         >
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className={`${tokens.table.cellMonoBadge}`}>{value.sku}</span>
+              <span className={`${tokens.table.cellMonoBadge} max-w-24 truncate whitespace-nowrap`}>
+                {value.sku}
+              </span>
               <span className={`truncate text-sm font-medium ${textColors.primary}`}>{value.name}</span>
             </div>
           </div>
@@ -187,6 +200,7 @@ export function ProductPicker({
             onClick={() => {
               onChange(null)
               setQuery('')
+              setActiveIndex(-1)
             }}
           >
             <X className="h-4 w-4" aria-hidden />
@@ -214,9 +228,11 @@ export function ProductPicker({
         disabled={disabled}
         onChange={(e) => {
           setQuery(e.target.value)
+          setActiveIndex(-1)
           setIsOpen(true)
         }}
         onFocus={() => {
+          setActiveIndex(-1)
           setIsOpen(true)
         }}
         onKeyDown={handleKeyDown}
@@ -251,10 +267,13 @@ export function ProductPicker({
                   onClick={() => {
                     onChange(product)
                     setQuery('')
+                    setActiveIndex(-1)
                     setIsOpen(false)
                   }}
                 >
-                  <span className={tokens.table.cellMonoBadge}>{product.sku}</span>
+                  <span className={`${tokens.table.cellMonoBadge} max-w-24 truncate whitespace-nowrap`}>
+                    {product.sku}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <div className={`truncate text-sm font-medium ${textColors.primary}`}>
                       {product.name}

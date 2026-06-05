@@ -29,6 +29,7 @@ class ProductData extends Data
         public ?string $tax_rate,
         public ?string $default_tax_configuration_id,
         public ?string $unit,
+        public int $quantity_decimals,
         public ?string $barcode,
         public bool $is_active,
         public bool $is_physical,
@@ -57,6 +58,7 @@ class ProductData extends Data
             tax_rate: $product->tax_rate !== null ? (string) $product->tax_rate : null,
             default_tax_configuration_id: $product->default_tax_configuration_id,
             unit: $product->unit,
+            quantity_decimals: self::quantityDecimals($product),
             barcode: $product->barcode,
             is_active: $product->is_active,
             is_physical: $product->is_physical,
@@ -82,5 +84,14 @@ class ProductData extends Data
                 ? AutomotiveProductMetadataData::fromModel($product->automotiveMetadata)
                 : null,
         );
+    }
+
+    private static function quantityDecimals(Product $product): int
+    {
+        if ($product->relationLoaded('unitOfMeasure') && $product->unitOfMeasure !== null) {
+            return $product->unitOfMeasure->decimal_places;
+        }
+
+        return 4;
     }
 }
