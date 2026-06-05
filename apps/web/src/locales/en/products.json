@@ -6,6 +6,9 @@
   "selectedProducts_plural": "{{count}} products selected",
   "barcodeScannerHint": "Barcode scanning available in mobile app",
   "selectProducts": "Select Products",
+  "sections": {
+    "images": "Product Images"
+  },
   "images": {
     "title": "Images",
     "uploadNew": "Upload New Image",
