@@ -46,8 +46,11 @@
 | 4 | **Playwright live-SPA visual test not performed** | GAP | DB-per-tenant + auth not reliably bootable headlessly here. Receipt rendering is render-tested; form is component-tested. Run live E2E in the dev env (or Codex with the stack up). |
 
 ## 4. Full backend suite
-<!-- FULL_SUITE_RESULT -->
-(pending — full `php artisan test` running; result appended below)
+Full `php artisan test`: **7091 passed**, 2 failed, 3 incomplete, 206 skipped (29,743 assertions; 2452s).
+**Both failures are pre-existing and unrelated to this feature** (neither file touched by the branch):
+- `Tests\Feature\Tenant\TenantCreationTest > tenant get database name` — asserts the old `tenant_schema-test` name vs the current DB-per-tenant `tenant_<uuid>` naming (tenancy-model transition).
+- `Tests\Feature\Console\Sweep\SweepInventoryDeferCommandTest > defer…` — inventory-sweep console tooling.
+Every branch-tax-id test passes. (Pre-existing POS `migrations.v37` device-DB failure likewise untouched by this branch.)
 
 ## 5. Bottom line
 The P0 implementation is **complete, correct, fiscally safe (no fixture/version change), green on all new tests + Pint + PHPStan + web + POS-focused + fiscal parity, and convention-compliant.** The fresh Codex review's blockers don't hold up under verification (2 of 3 contradict the rev-2 decisions or the actual schema). The only true open work is **(a)** the optional minor edits above and **(b)** the **visual E2E gap**, which needs the booted multi-tenant stack. Recommend: land Phase 1 + Phase 2 behind the minor edits, and run the live Playwright pass in an environment with services up.
