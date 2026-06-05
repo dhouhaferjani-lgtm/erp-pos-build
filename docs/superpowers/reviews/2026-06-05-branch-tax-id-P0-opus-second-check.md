@@ -43,7 +43,18 @@
 | 1 | `legal_identifiers['siret']` not format-validated at entry | MINOR | Optional: add a SIRET check for the `siret` key (reuse `CountryTaxNumberRules` for FR). |
 | 2 | UI cannot clear a branch override to inherit (update omits empty) | MINOR (owner-gated) | Decide whether update should allow clear and whether it re-enforces "required" for FR/TN shops; then send `null` on empty. |
 | 3 | Server receipt-PDF reprint re-resolves current branch tax_id, not the signed value | MINOR edge | Document; if exactness on reprints is wanted, read the signed `seller.tax_number` for the PDF instead of re-resolving. |
-| 4 | **Playwright live-SPA visual test not performed** | GAP | DB-per-tenant + auth not reliably bootable headlessly here. Receipt rendering is render-tested; form is component-tested. Run live E2E in the dev env (or Codex with the stack up). |
+| 4 | **Visual testing — partially done (see §6)** | DONE (receipt) / DEFERRED (live SPA) | Receipt output **browser-rendered + screenshotted** (branch + company-fallback), see §6. Live click-through of the SPA deferred (dev DB didn't exist; full multi-tenant bring-up out of proportion). |
+
+## 6. Visual testing (2026-06-05)
+The dev database (`synerivia_central`) did not exist, so a full live-SPA click-through would have required standing up the entire DB-per-tenant stack (docker PG → central migrate → seed → per-tenant DB provisioning → domain routing → API+web → auth) — disproportionate/fragile for a visual check, and without the backend the SPA only renders the login screen.
+
+**What I DID do (genuine browser rendering of the feature's key user-visible output):** rendered the actual `pos.receipt` blade via the real `ReceiptPdfService` path with (a) a branch tax-ID override and (b) no override, served them over HTTP, and screenshotted both in a real browser (Playwright):
+- `screenshots/2026-06-04-P0/receipt-branch-taxid.{html,png}` — seller header shows **`Tax ID: FR-BRANCH-SIRET-99999`** (the branch value). ✔
+- `screenshots/2026-06-04-P0/receipt-company-fallback.{html,png}` — seller header shows **`Tax ID: COMPANY-TAX`** (inherited when branch is null). ✔
+
+This visually confirms the branch-over-company resolution on the printed receipt. The **form** UI is covered by the `LocationsPage` component test (renders the tax field, marks it required for FR/TN/MA shops, submits). 
+
+**Deferred (needs stack-up env):** live click-through of Settings → Locations and an end-to-end POS sale in the running SPA. Recommend running it in a dev environment with services up (or a Codex run with the stack booted); the recipe is the standard local bring-up + `DemoTenantSeeder`.
 
 ## 4. Full backend suite
 Full `php artisan test`: **7091 passed**, 2 failed, 3 incomplete, 206 skipped (29,743 assertions; 2452s).
