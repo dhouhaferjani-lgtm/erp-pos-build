@@ -102,4 +102,23 @@ class CreateLocationTaxPersistenceTest extends TestCase
         $this->assertSame('FR40303265045', $location->vat_number);
         $this->assertSame(['siret' => '73282932000074'], $location->legal_identifiers);
     }
+
+    public function test_resource_exposes_all_tax_fields(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/locations', [
+                'name' => 'Branch B',
+                'type' => 'shop',
+                'address_country' => 'FR',
+                'tax_id' => '73282932000074',
+                'vat_number' => 'FR40303265045',
+                'legal_identifiers' => ['siret' => '73282932000074'],
+            ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.tax_id', '73282932000074')
+            ->assertJsonPath('data.vat_number', 'FR40303265045')
+            ->assertJsonPath('data.legal_identifiers.siret', '73282932000074');
+    }
 }
