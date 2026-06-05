@@ -21,7 +21,14 @@ function makeTerminal(over: Partial<Terminal> = {}): Terminal {
     fiscal_schema_version: 2,
     is_training_mode: false,
     hardware_identifier: null,
-    location: { id: 'l-1', name: 'Main', code: 'MAIN' },
+    location: {
+      id: 'l-1',
+      name: 'Main',
+      code: 'MAIN',
+      tax_id: null,
+      vat_number: null,
+      legal_identifiers: null,
+    },
     ...over,
   };
 }

@@ -47,6 +47,9 @@ export interface Terminal {
     id: string;
     name: string;
     code: string;
+    tax_id: string | null;
+    vat_number: string | null;
+    legal_identifiers: Record<string, unknown> | null;
   };
 }
 

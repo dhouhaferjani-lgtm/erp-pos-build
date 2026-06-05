@@ -9,7 +9,24 @@ describe('TerminalNotReadyBanner', () => {
   beforeEach(() => {
     useTerminalStore.setState({
       hashChainReady: true,
-      terminal: { id: 't1', code: 'T001', name: 'Counter 1', type: 'fixed', is_active: true, fiscal_schema_version: 2, is_training_mode: false, hardware_identifier: null, location: { id: 'loc1', name: 'Main', code: 'MAIN' } },
+      terminal: {
+        id: 't1',
+        code: 'T001',
+        name: 'Counter 1',
+        type: 'fixed',
+        is_active: true,
+        fiscal_schema_version: 2,
+        is_training_mode: false,
+        hardware_identifier: null,
+        location: {
+          id: 'loc1',
+          name: 'Main',
+          code: 'MAIN',
+          tax_id: null,
+          vat_number: null,
+          legal_identifiers: null,
+        },
+      },
       pendingTerminalId: null,
       shift: null,
       isLoading: false,
