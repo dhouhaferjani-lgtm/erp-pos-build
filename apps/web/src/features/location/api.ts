@@ -16,6 +16,9 @@ export interface LocationApiResponse {
   address_city: string | null
   address_postal_code: string | null
   address_country: string | null
+  tax_id: string | null
+  vat_number: string | null
+  legal_identifiers: Record<string, unknown> | null
   is_default: boolean
   is_active: boolean
   pos_enabled: boolean
@@ -36,6 +39,9 @@ export interface CreateLocationInput {
   addressCity?: string | undefined
   addressPostalCode?: string | undefined
   addressCountry?: string | undefined
+  taxId?: string | undefined
+  vatNumber?: string | undefined
+  legalIdentifiers?: Record<string, unknown> | undefined
   posEnabled?: boolean | undefined
 }
 
@@ -52,6 +58,9 @@ export interface UpdateLocationInput {
   addressCity?: string
   addressPostalCode?: string
   addressCountry?: string
+  taxId?: string
+  vatNumber?: string
+  legalIdentifiers?: Record<string, unknown>
   isActive?: boolean
   posEnabled?: boolean
 }
@@ -69,6 +78,9 @@ interface CreateLocationPayload {
   address_city?: string | undefined
   address_postal_code?: string | undefined
   address_country?: string | undefined
+  tax_id?: string | undefined
+  vat_number?: string | undefined
+  legal_identifiers?: Record<string, unknown> | undefined
   pos_enabled?: boolean | undefined
 }
 
@@ -82,6 +94,9 @@ interface UpdateLocationPayload {
   address_city?: string
   address_postal_code?: string
   address_country?: string
+  tax_id?: string
+  vat_number?: string
+  legal_identifiers?: Record<string, unknown>
   is_active?: boolean
   pos_enabled?: boolean
 }
@@ -114,6 +129,9 @@ export async function createLocation(input: CreateLocationInput): Promise<Locati
     address_city: input.addressCity,
     address_postal_code: input.addressPostalCode,
     address_country: input.addressCountry,
+    tax_id: input.taxId,
+    vat_number: input.vatNumber,
+    legal_identifiers: input.legalIdentifiers,
     pos_enabled: input.posEnabled,
   }
 
@@ -135,6 +153,9 @@ export async function updateLocation(id: string, input: UpdateLocationInput): Pr
   if (input.addressCity !== undefined) payload.address_city = input.addressCity
   if (input.addressPostalCode !== undefined) payload.address_postal_code = input.addressPostalCode
   if (input.addressCountry !== undefined) payload.address_country = input.addressCountry
+  if (input.taxId !== undefined) payload.tax_id = input.taxId
+  if (input.vatNumber !== undefined) payload.vat_number = input.vatNumber
+  if (input.legalIdentifiers !== undefined) payload.legal_identifiers = input.legalIdentifiers
   if (input.isActive !== undefined) payload.is_active = input.isActive
   if (input.posEnabled !== undefined) payload.pos_enabled = input.posEnabled
 
@@ -171,6 +192,9 @@ export function transformLocationResponse(response: LocationApiResponse) {
     addressCity: response.address_city,
     addressPostalCode: response.address_postal_code,
     addressCountry: response.address_country,
+    taxId: response.tax_id,
+    vatNumber: response.vat_number,
+    legalIdentifiers: response.legal_identifiers,
     isDefault: response.is_default,
     isActive: response.is_active,
     posEnabled: response.pos_enabled,
