@@ -12,6 +12,7 @@ import { useTerminalStore } from '@/stores/terminalStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useCartStore } from './cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
+import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
 
 export interface TransactionDiscount {
   type: 'percentage' | 'fixed';
@@ -28,6 +29,8 @@ export interface HeldTransaction {
   total: number;
   itemCount: number;
   heldAt: string;
+  /** Operator who parked the sale — used for cross-operator recall detection. */
+  heldByOperatorId: string;
 }
 
 interface HoldState {
@@ -59,6 +62,7 @@ function rowToHeldTransaction(row: HeldTransactionRow): HeldTransaction {
     total: parseFloat(row.total),
     itemCount: row.item_count,
     heldAt: row.held_at,
+    heldByOperatorId: row.operator_id,
   };
 }
 
@@ -103,8 +107,12 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
     const subtotal = cartState.subtotal();
     const total = cartState.total();
     const itemCount = cartState.itemCount();
+    const discountTotal = cartState.discountAmount();
     const heldAt = new Date().toISOString();
     const id = crypto.randomUUID();
+    // Snapshot the cart session id BEFORE clearCart('hold') nulls it — this
+    // correlates the parked sale with the prior cart session.
+    const cartSessionId = cartState.getCartSessionId();
 
     const row: HeldTransactionRow = {
       id,
@@ -135,12 +143,27 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
       heldTransactions: [heldTransaction, ...state.heldTransactions],
       error: null,
     }));
-    cartState.clearCart();
+    cartState.clearCart('hold');
     // T0.2 (Codex F-2): hold-then-clear ends the current cart submission
     // attempt. Drop the pending idempotency key so the next sale (or recall
     // of a different held cart) gets a fresh allocation. Without this, a
     // stale key from a half-attempted checkout-then-hold flow would leak.
     usePaymentStore.getState().discardPendingSubmission();
+
+    // Best-effort audit emit OUTSIDE the set() — never throws into the action.
+    // cart_session_id (snapshotted pre-clear) is carried in the payload so the
+    // held sale correlates with the cart session that produced it.
+    void recordAuditEvent({
+      type: 'pos.sale_held',
+      aggregateType: 'HeldSale',
+      aggregateId: id,
+      payload: {
+        line_count: itemCount,
+        total,
+        discount_total: discountTotal,
+        cart_session_id: cartSessionId,
+      },
+    }).catch(() => {});
   },
 
   recallTransaction: async (id: string) => {
@@ -159,10 +182,31 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
     set((state) => ({
       heldTransactions: state.heldTransactions.filter((t) => t.id !== id),
     }));
+
+    // Best-effort audit emit OUTSIDE the set() — never throws into the action.
+    const currentOperatorId = useOperatorStore.getState().operator?.id ?? null;
+    const heldDurationMs = Date.now() - new Date(found.heldAt).getTime();
+    void recordAuditEvent({
+      type: 'pos.sale_recalled',
+      aggregateType: 'HeldSale',
+      aggregateId: id,
+      payload: {
+        held_duration_ms: heldDurationMs,
+        held_by_operator_id: found.heldByOperatorId,
+        cross_operator: currentOperatorId !== found.heldByOperatorId,
+        // cross_shift: held rows do not record the shift they were parked in,
+        // so this cannot be derived from existing state — emit null rather than
+        // inventing state. (See Task 9 note.)
+        cross_shift: null,
+      },
+    }).catch(() => {});
+
     return found;
   },
 
   discardTransaction: async (id: string) => {
+    // Snapshot the held row BEFORE deletion for the audit duration calc.
+    const found = get().heldTransactions.find((t) => t.id === id);
     try {
       const db = await getDb();
       await deleteHeldTransaction(db, id);
@@ -174,5 +218,16 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
     set((state) => ({
       heldTransactions: state.heldTransactions.filter((t) => t.id !== id),
     }));
+
+    // Best-effort audit emit OUTSIDE the set() — never throws into the action.
+    if (found) {
+      const heldDurationMs = Date.now() - new Date(found.heldAt).getTime();
+      void recordAuditEvent({
+        type: 'pos.sale_hold_discarded',
+        aggregateType: 'HeldSale',
+        aggregateId: id,
+        payload: { held_duration_ms: heldDurationMs },
+      }).catch(() => {});
+    }
   },
 }));

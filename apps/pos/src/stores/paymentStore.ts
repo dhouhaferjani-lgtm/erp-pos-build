@@ -25,6 +25,25 @@ import {
   authorPosOverride,
   type PosOverrideEvidence,
 } from '@/lib/operatorApproval/posOverrideAuthoring';
+import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
+import { useCartStore } from '@/stores/cartStore';
+
+/**
+ * Epoch-ms when the currently-attached checkout customer was attached, used to
+ * derive `attached_duration_ms` for the `pos.customer_detached` audit emit.
+ * Module-local (not part of PaymentState) so it stays out of the sealed fiscal
+ * snapshot / reset surface. Set on attachCustomer, cleared on detach.
+ */
+let customerAttachedAt: number | null = null;
+
+/** Aggregate id for customer attach/detach: the cart session id, else null. */
+function checkoutAggregateId(): string | null {
+  try {
+    return useCartStore.getState().getCartSessionId();
+  } catch {
+    return null;
+  }
+}
 
 export class ActiveTerminalRequiredError extends Error {
   constructor() {
@@ -1265,6 +1284,19 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
   addVoucherPayment: (code: string, amount: string) => {
     const { appliedVoucherCodes } = get();
     if (appliedVoucherCodes.has(code)) {
+      // Best-effort audit emit OUTSIDE any set() — the idempotent guard caught
+      // a re-add of an already-applied voucher (double-spend attempt). The
+      // voucher code is the aggregate id; it is NOT a secret. Never log PAN /
+      // card data here.
+      void recordAuditEvent({
+        type: 'pos.voucher_double_spend_attempt',
+        aggregateType: 'Voucher',
+        aggregateId: code,
+        payload: {
+          attempted_amount: amount,
+          caught_by: 'idempotent_check',
+        },
+      }).catch(() => {});
       throw new Error(
         i18n.t('voucherTender.alreadyApplied', { ns: 'pos', defaultValue: 'This voucher has already been applied to this sale.' }),
       );
@@ -1294,11 +1326,40 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
 
   attachCustomer: (customer: AttachedCheckoutCustomer) => {
     assertAttachedCustomerScope(customer);
+    // Snapshot the checkout aggregate id BEFORE the set() for the audit emit.
+    const aggregateId = checkoutAggregateId() ?? customer.id;
+    customerAttachedAt = Date.now();
     set({ selectedCustomer: customer });
+
+    void recordAuditEvent({
+      type: 'pos.customer_attached',
+      aggregateType: 'Checkout',
+      aggregateId,
+      payload: { customer_id: customer.id },
+    }).catch(() => {});
   },
 
   detachCustomer: () => {
+    // Snapshot the detaching customer + attach time BEFORE the set().
+    const detaching = get().selectedCustomer;
+    const attachedAt = customerAttachedAt;
+    const aggregateId = checkoutAggregateId() ?? detaching?.id ?? null;
+    customerAttachedAt = null;
     set({ selectedCustomer: null });
+
+    if (detaching) {
+      void recordAuditEvent({
+        type: 'pos.customer_detached',
+        aggregateType: 'Checkout',
+        aggregateId: aggregateId ?? detaching.id,
+        payload: {
+          customer_id: detaching.id,
+          // null when attach time is unknown (e.g. customer hydrated into
+          // state without going through attachCustomer this session).
+          attached_duration_ms: attachedAt !== null ? Date.now() - attachedAt : null,
+        },
+      }).catch(() => {});
+    }
   },
 
   reset: () => {

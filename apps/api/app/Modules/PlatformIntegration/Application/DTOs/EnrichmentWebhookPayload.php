@@ -17,6 +17,7 @@ class EnrichmentWebhookPayload extends Data
         public bool $hasBarcodeAssigned,
         public string $vertical,
         public string $timestamp,
+        public ?string $locale = null,
     ) {}
 
     /**
@@ -32,6 +33,7 @@ class EnrichmentWebhookPayload extends Data
             enrichmentQuality: isset($webhook['enrichment_quality']) ? (string) $webhook['enrichment_quality'] : null,
             hasBarcodeAssigned: (bool) ($webhook['has_barcode_assigned'] ?? false),
             vertical: (string) ($webhook['vertical'] ?? ''),
+            locale: isset($webhook['locale']) ? (string) $webhook['locale'] : null,
             timestamp: (string) ($webhook['timestamp'] ?? now()->toIso8601String()),
         );
     }

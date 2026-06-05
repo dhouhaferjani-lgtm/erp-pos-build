@@ -16,5 +16,6 @@ final class EnrichmentWebhookReceived
         public readonly ?string $enrichmentQuality,
         public readonly bool $hasBarcodeAssigned,
         public readonly string $vertical,
+        public readonly ?string $locale = null,
     ) {}
 }

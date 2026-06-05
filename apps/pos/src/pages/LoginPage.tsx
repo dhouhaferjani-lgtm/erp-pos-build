@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useAuthStore, type Company } from '@/stores/authStore';
+import { useAuthStore, type Company, type Organization } from '@/stores/authStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { getErrorMessage } from '@/lib/api';
 import { WifiOff } from 'lucide-react';
@@ -23,6 +23,8 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [showCompanySelect, setShowCompanySelect] = useState(false);
   const [showStillTrying, setShowStillTrying] = useState(false);
+  const [organizations, setOrganizations] = useState<Organization[] | null>(null);
+  const [pendingTenantId, setPendingTenantId] = useState<string | null>(null);
 
   // T1.1 Step 1.5: stored AbortController so the Cancel button can
   // abort the in-flight login(). A fresh controller is created on each
@@ -30,6 +32,10 @@ export function LoginPage() {
   // single-use, so re-clicking Sign in after a cancel ALWAYS produces
   // a new instance — Codex preempt (e) cancel-twice / late-resolve.
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Dedicated controller for picker selections — the submit-path controller
+  // has already settled by the time the picker renders (Codex r2 F-1).
+  const pickAbortRef = useRef<AbortController | null>(null);
 
   // Show the still-trying affordance + Cancel button once isLoading has
   // been true for STILL_TRYING_THRESHOLD_MS.
@@ -54,9 +60,14 @@ export function LoginPage() {
     abortControllerRef.current = controller;
 
     try {
-      await login(email, password, { signal: controller.signal });
+      const outcome = await login(email, password, { signal: controller.signal });
 
-      // Check if company selection is needed
+      if (outcome.status === 'requires_org_selection') {
+        setOrganizations(outcome.organizations);
+        return;
+      }
+
+      // Authenticated — check if company selection is needed.
       const state = useAuthStore.getState();
       if (state.companies.length > 1 && !state.companyId) {
         setShowCompanySelect(true);
@@ -84,6 +95,75 @@ export function LoginPage() {
   function handleCompanySelect(company: Company) {
     setCompany(company.id);
     setShowCompanySelect(false);
+  }
+
+  async function handleOrgSelect(org: Organization) {
+    if (pendingTenantId) return; // ignore repeat / concurrent clicks
+    setPendingTenantId(org.tenant_id);
+    setError(null);
+    const controller = new AbortController();
+    pickAbortRef.current = controller;
+    try {
+      const outcome = await login(email, password, {
+        signal: controller.signal,
+        tenantId: org.tenant_id,
+      });
+      if (outcome.status === 'authenticated') {
+        setOrganizations(null);
+        const state = useAuthStore.getState();
+        if (state.companies.length > 1 && !state.companyId) {
+          setShowCompanySelect(true);
+        }
+      }
+    } catch (err) {
+      if (!controller.signal.aborted) setError(getErrorMessage(err));
+    } finally {
+      if (pickAbortRef.current === controller) pickAbortRef.current = null;
+      setPendingTenantId(null);
+    }
+  }
+
+  function handleCancelPick() {
+    pickAbortRef.current?.abort();
+  }
+
+  if (organizations) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-md">
+          <h2 className="mb-6 text-center text-xl font-bold text-gray-900">
+            {t('auth.selectOrganization')}
+          </h2>
+          {error && (
+            <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+          )}
+          <div className="space-y-3" data-testid="org-picker">
+            {organizations.map((org) => (
+              <button
+                key={org.tenant_id}
+                type="button"
+                disabled={pendingTenantId !== null}
+                onClick={() => void handleOrgSelect(org)}
+                className="w-full rounded-lg border border-gray-200 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50 disabled:opacity-50"
+              >
+                <div className="font-medium text-gray-900">{org.name}</div>
+                <div className="text-sm text-gray-500">{org.slug}</div>
+              </button>
+            ))}
+          </div>
+          {showStillTrying && pendingTenantId && (
+            <button
+              type="button"
+              data-testid="org-pick-cancel"
+              onClick={handleCancelPick}
+              className="mt-4 w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              {t('auth.cancel')}
+            </button>
+          )}
+        </div>
+      </div>
+    );
   }
 
   if (showCompanySelect && companies.length > 1 && !companyId) {

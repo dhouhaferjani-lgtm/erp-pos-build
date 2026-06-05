@@ -1313,6 +1313,7 @@ field_confidence: Array<any> | null;
 enrichment_sources: Array<any> | null;
 assigned_barcode: string | null;
 assigned_barcode_type: string | null;
+locale: string | null;
 };
 export type EnrichmentResultData = {
 id: string;

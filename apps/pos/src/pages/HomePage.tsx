@@ -4,7 +4,7 @@ import { useTerminalStore } from '@/stores/terminalStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useProductStore } from '@/stores/productStore';
-import { useCartStore, computeTaxAmount } from '@/stores/cartStore';
+import { useCartStore } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
 import { useHoldStore } from '@/stores/holdStore';
 import { useScannerStore } from '@/stores/scannerStore';
@@ -82,7 +82,7 @@ async function lookupQrToken(receiptNumber: string, companyId: string | null): P
 
 export function HomePage() {
   const { t } = useTranslation();
-  const { decimals: currencyDecimals, currency } = useCurrency();
+  const { currency } = useCurrency();
   const { shift, terminal, openShift, isLoading: terminalLoading } = useTerminalStore();
   const hashChainReady = useTerminalStore((s) => s.hashChainReady);
   const operator = useOperatorStore((s) => s.operator);
@@ -938,55 +938,23 @@ export function HomePage() {
   }, []);
 
   const handleRemoveLineDiscount = useCallback((itemId: string) => {
-    useCartStore.setState((state) => ({
-      items: state.items.map((item) => {
-        if (item.id !== itemId) return item;
-        const grossTotal = parseFloat(item.unit_price) * item.quantity;
-        return {
-          ...item,
-          discount_type: undefined,
-          discount_percent: undefined,
-	          discount_amount: undefined,
-	          discount_reason: undefined,
-	          discount_approval_evidence: undefined,
-	          line_total: grossTotal.toFixed(currencyDecimals),
-	          tax_amount: computeTaxAmount(grossTotal, item.tax_rate),
-	        };
-      }),
-    }));
-  }, [currencyDecimals]);
+    useCartStore.getState().removeLineDiscount(itemId);
+  }, []);
 
   const handleApplyLineDiscount = useCallback(
     (data: { type: 'percentage' | 'fixed'; value: string; reason: string; approvalEvidence?: PosOverrideEvidence }) => {
       if (!discountItemId) return;
 
-      useCartStore.setState((state) => ({
-        items: state.items.map((item) => {
-          if (item.id !== discountItemId) return item;
-          const grossTotal = parseFloat(item.unit_price) * item.quantity;
-          let discountAmount = 0;
-          if (data.type === 'percentage') {
-            discountAmount = (grossTotal * parseFloat(data.value)) / 100;
-          } else {
-            discountAmount = parseFloat(data.value);
-          }
-          const lineTotal = Math.max(0, grossTotal - discountAmount);
-          return {
-            ...item,
-            discount_type: data.type,
-            discount_percent: data.type === 'percentage' ? data.value : undefined,
-	            discount_amount: discountAmount.toFixed(currencyDecimals),
-	            discount_reason: data.reason || undefined,
-	            discount_approval_evidence: data.approvalEvidence,
-	            line_total: lineTotal.toFixed(currencyDecimals),
-            tax_amount: computeTaxAmount(lineTotal, item.tax_rate),
-          };
-        }),
-      }));
+      useCartStore.getState().applyLineDiscount(discountItemId, {
+        type: data.type,
+        value: data.value,
+        reason: data.reason,
+        approvalEvidence: data.approvalEvidence,
+      });
 
       setDiscountItemId(null);
     },
-    [discountItemId, currencyDecimals],
+    [discountItemId],
   );
 
   const handleQuantityTap = useCallback((itemId: string) => {
@@ -1013,7 +981,8 @@ export function HomePage() {
 
   const handleNewSale = useCallback(() => {
     setShowSuccessModal(false);
-    clearCart();
+    // Checkout-success teardown — NOT a discard (no fraud signal).
+    clearCart('checkout');
     clearLastReceipt();
     setSelectedTableId(null);
 

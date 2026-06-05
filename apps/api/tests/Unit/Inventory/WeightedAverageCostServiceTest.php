@@ -327,6 +327,306 @@ class WeightedAverageCostServiceTest extends TestCase
     }
 
     /**
+     * recordPurchase must blend the new weighted-average cost against the
+     * COMPANY-WIDE on-hand quantity (sum of every stock_level row for the
+     * product within the company), not against the single receiving location's
+     * quantity. Cost is company-wide per product, so the blend basis must match
+     * recordCostAdjustment's company-wide basis.
+     *
+     * Seed P: 60 @ warehouse + 40 @ shop = 100 company-wide on hand, all @ 5.
+     * Purchase 100 @ 11 into the warehouse:
+     *   company-wide: (100*5 + 100*11) / (100 + 100) = 1600 / 200 = 8.000000
+     *   per-location (the bug): (60*5 + 100*11) / 160 = 1400 / 160 = 8.75
+     * Only the receiving (warehouse) location's quantity changes: 60 -> 160.
+     * The shop stays at 40.
+     */
+    public function test_record_purchase_blends_against_company_wide_on_hand(): void
+    {
+        $warehouse = $this->location; // seeded in setUp
+
+        $shop = Location::create([
+            'id' => Str::uuid()->toString(),
+            'company_id' => $this->company->id,
+            'name' => 'Test Shop',
+            'type' => LocationType::Shop,
+            'is_default' => false,
+            'is_active' => true,
+            'pos_enabled' => false,
+        ]);
+
+        StockLevel::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $warehouse->id,
+            'quantity' => '60.0000',
+        ]);
+
+        StockLevel::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $shop->id,
+            'quantity' => '40.0000',
+        ]);
+
+        $this->product->forceFill(['cost_price' => '5.0000'])->save();
+
+        $this->service->recordPurchase(
+            product: $this->product,
+            location: $warehouse,
+            quantity: 100.0,
+            landedUnitCost: 11.0,
+        );
+
+        $fresh = $this->product->fresh();
+        $this->assertNotNull($fresh);
+        // Company-wide blend: (100*5 + 100*11) / 200 = 8.000000.
+        $this->assertEquals('8.000000', $fresh->cost_price);
+        // The per-location blend (the bug) would wrongly give 8.75.
+        $this->assertNotEquals('8.750000', $fresh->cost_price);
+
+        // Only the receiving (warehouse) location's quantity changed.
+        $warehouseLevel = StockLevel::where('product_id', $this->product->id)
+            ->where('location_id', $warehouse->id)
+            ->firstOrFail();
+        $shopLevel = StockLevel::where('product_id', $this->product->id)
+            ->where('location_id', $shop->id)
+            ->firstOrFail();
+
+        $this->assertEquals('160.0000', $warehouseLevel->quantity);
+        $this->assertEquals('40.0000', $shopLevel->quantity);
+    }
+
+    /**
+     * recordReturn must blend the new weighted-average cost against the
+     * COMPANY-WIDE on-hand quantity, mirroring recordPurchase. Cost is
+     * company-wide per product, so a return into one location must blend
+     * against every location's on-hand, not just the receiving location.
+     *
+     * Seed P: 60 @ warehouse + 40 @ shop = 100 company-wide on hand, all @ 5.
+     * Return 100 @ original cost 11 into the warehouse:
+     *   company-wide: (100*5 + 100*11) / (100 + 100) = 1600 / 200 = 8.000000
+     *   per-location (the bug): (60*5 + 100*11) / 160 = 1400 / 160 = 8.75
+     * Only the receiving (warehouse) location's quantity changes: 60 -> 160.
+     * The shop stays at 40.
+     */
+    public function test_record_return_blends_against_company_wide_on_hand(): void
+    {
+        $warehouse = $this->location; // seeded in setUp
+
+        $shop = Location::create([
+            'id' => Str::uuid()->toString(),
+            'company_id' => $this->company->id,
+            'name' => 'Test Shop',
+            'type' => LocationType::Shop,
+            'is_default' => false,
+            'is_active' => true,
+            'pos_enabled' => false,
+        ]);
+
+        StockLevel::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $warehouse->id,
+            'quantity' => '60.0000',
+        ]);
+
+        StockLevel::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $shop->id,
+            'quantity' => '40.0000',
+        ]);
+
+        $this->product->forceFill(['cost_price' => '5.0000'])->save();
+
+        $this->service->recordReturn(
+            product: $this->product,
+            location: $warehouse,
+            quantity: 100.0,
+            originalCost: 11.0,
+        );
+
+        $fresh = $this->product->fresh();
+        $this->assertNotNull($fresh);
+        // Company-wide blend: (100*5 + 100*11) / 200 = 8.000000.
+        $this->assertEquals('8.000000', $fresh->cost_price);
+        // The per-location blend (the bug) would wrongly give 8.75.
+        $this->assertNotEquals('8.750000', $fresh->cost_price);
+
+        // Only the receiving (warehouse) location's quantity changed.
+        $warehouseLevel = StockLevel::where('product_id', $this->product->id)
+            ->where('location_id', $warehouse->id)
+            ->firstOrFail();
+        $shopLevel = StockLevel::where('product_id', $this->product->id)
+            ->where('location_id', $shop->id)
+            ->firstOrFail();
+
+        $this->assertEquals('160.0000', $warehouseLevel->quantity);
+        $this->assertEquals('40.0000', $shopLevel->quantity);
+    }
+
+    /**
+     * Build an isolated InTransit transfer + line directly (no create->dispatch
+     * flow) so it contributes ONLY an in-transit line and does NOT move any
+     * stock_level rows. Mirrors the recordCostAdjustment in-transit fixture.
+     *
+     * @param  numeric-string  $quantity
+     */
+    private function seedInTransitTransfer(Location $source, Location $destination, string $quantity): void
+    {
+        // A user is required as initiated_by_user_id (NOT NULL FK on stock_transfers).
+        $user = User::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Transfer User',
+            'email' => 'transfer-user-'.Str::uuid()->toString().'@example.com',
+            'password' => bcrypt('password'),
+            'status' => UserStatus::Active,
+        ]);
+
+        $transfer = StockTransfer::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'transfer_number' => 'TR-'.Str::uuid()->toString(),
+            'transfer_type' => TransferType::Intracompany,
+            'status' => TransferStatus::InTransit,
+            'source_location_id' => $source->id,
+            'destination_location_id' => $destination->id,
+            'transfer_cost' => '0',
+            'transfer_cost_distribution' => TransferCostDistribution::ProRataValue,
+            'initiated_by_user_id' => $user->id,
+            'initiated_at' => now(),
+        ]);
+
+        StockTransferLine::create([
+            'id' => Str::uuid()->toString(),
+            'transfer_id' => $transfer->id,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'quantity' => $quantity,
+            'allocated_transfer_cost' => '0',
+        ]);
+    }
+
+    /**
+     * recordPurchase must blend against the COMPANY-OWNED quantity, which
+     * includes in-transit units: when a transfer goes in-transit the source
+     * stock_level row is decremented, so those units live in NO stock_level
+     * row — yet the company still owns them and they share the WAC. This
+     * matches recordCostAdjustment's on-hand + in-transit denominator. During
+     * the in-transit window, an on-hand-only denominator would understate the
+     * divisor and diverge from recordCostAdjustment.
+     *
+     * Seed P: 60 on-hand @ WH-A + 40 in-transit (WH-A -> WH-B) = 100 owned @ 5.
+     * Purchase 100 @ 11 into WH-A:
+     *   company-owned: (100*5 + 100*11) / (100 + 100) = 1600 / 200 = 8.000000
+     *   on-hand-only (the bug): (60*5 + 100*11) / 160 = 1400 / 160 = 8.75
+     */
+    public function test_record_purchase_blends_against_company_owned_including_in_transit(): void
+    {
+        $warehouseA = $this->location; // seeded in setUp
+
+        $warehouseB = Location::create([
+            'id' => Str::uuid()->toString(),
+            'company_id' => $this->company->id,
+            'name' => 'Test Warehouse B',
+            'type' => LocationType::Warehouse,
+            'is_default' => false,
+            'is_active' => true,
+            'pos_enabled' => false,
+        ]);
+
+        // On-hand 60 at WH-A.
+        StockLevel::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $warehouseA->id,
+            'quantity' => '60.0000',
+        ]);
+
+        // 40 in transit (WH-A -> WH-B): owned by the company, in no stock_level row.
+        $this->seedInTransitTransfer($warehouseA, $warehouseB, '40.0000');
+
+        $this->product->forceFill(['cost_price' => '5.0000'])->save();
+
+        $this->service->recordPurchase(
+            product: $this->product,
+            location: $warehouseA,
+            quantity: 100.0,
+            landedUnitCost: 11.0,
+        );
+
+        $fresh = $this->product->fresh();
+        $this->assertNotNull($fresh);
+        // Company-owned blend incl. in-transit: (100*5 + 100*11) / 200 = 8.000000.
+        $this->assertEquals('8.000000', $fresh->cost_price);
+        // On-hand-only (the bug, ignores in-transit) would wrongly give 8.75.
+        $this->assertNotEquals('8.750000', $fresh->cost_price);
+    }
+
+    /**
+     * recordReturn mirrors recordPurchase: blends against on-hand + in-transit.
+     *
+     * Seed P: 60 on-hand @ WH-A + 40 in-transit (WH-A -> WH-B) = 100 owned @ 5.
+     * Return 100 @ original cost 11 into WH-A:
+     *   company-owned: (100*5 + 100*11) / 200 = 8.000000
+     *   on-hand-only (the bug): (60*5 + 100*11) / 160 = 8.75
+     */
+    public function test_record_return_blends_against_company_owned_including_in_transit(): void
+    {
+        $warehouseA = $this->location; // seeded in setUp
+
+        $warehouseB = Location::create([
+            'id' => Str::uuid()->toString(),
+            'company_id' => $this->company->id,
+            'name' => 'Test Warehouse B',
+            'type' => LocationType::Warehouse,
+            'is_default' => false,
+            'is_active' => true,
+            'pos_enabled' => false,
+        ]);
+
+        StockLevel::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $warehouseA->id,
+            'quantity' => '60.0000',
+        ]);
+
+        $this->seedInTransitTransfer($warehouseA, $warehouseB, '40.0000');
+
+        $this->product->forceFill(['cost_price' => '5.0000'])->save();
+
+        $this->service->recordReturn(
+            product: $this->product,
+            location: $warehouseA,
+            quantity: 100.0,
+            originalCost: 11.0,
+        );
+
+        $fresh = $this->product->fresh();
+        $this->assertNotNull($fresh);
+        // Company-owned blend incl. in-transit: (100*5 + 100*11) / 200 = 8.000000.
+        $this->assertEquals('8.000000', $fresh->cost_price);
+        // On-hand-only (the bug, ignores in-transit) would wrongly give 8.75.
+        $this->assertNotEquals('8.750000', $fresh->cost_price);
+    }
+
+    /**
      * Phase 1.1: Audit Trail Tests
      * These tests verify that reference_type and reference_id are properly populated
      */
