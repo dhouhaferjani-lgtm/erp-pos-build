@@ -57,6 +57,16 @@ class RolesAndPermissionsSeeder extends Seeder
             'modifier-groups.view',
             'modifier-groups.manage',
 
+            // Product variants & attributes (T2)
+            'catalog.attributes.view',
+            'catalog.attributes.create',
+            'catalog.attributes.update',
+            'catalog.attributes.delete',
+            'catalog.variants.view',
+            'catalog.variants.create',
+            'catalog.variants.update',
+            'catalog.variants.delete',
+
             // Workshop Service Bundles (automotive menu pricing)
             'workshop-bundles.view',
             'workshop-bundles.manage',
@@ -433,6 +443,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'settings.view', 'settings.manage',
             'composite-items.view', 'composite-items.create', 'composite-items.update', 'composite-items.delete', 'composite-items.manage-recipes',
             'modifier-groups.view', 'modifier-groups.manage',
+            'catalog.attributes.view', 'catalog.attributes.create', 'catalog.attributes.update', 'catalog.attributes.delete',
+            'catalog.variants.view', 'catalog.variants.create', 'catalog.variants.update', 'catalog.variants.delete',
             'workshop-bundles.view', 'workshop-bundles.manage',
             'menus.view', 'menus.manage',
             'promotions.view', 'promotions.manage',

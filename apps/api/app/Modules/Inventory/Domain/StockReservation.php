@@ -16,6 +16,9 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property string|null $variant_id
+ */
 class StockReservation extends Model
 {
     use HasUuids;
@@ -23,6 +26,7 @@ class StockReservation extends Model
     protected $fillable = [
         'company_id',
         'product_id',
+        'variant_id',
         'location_id',
         'batch_id',
         'quantity',

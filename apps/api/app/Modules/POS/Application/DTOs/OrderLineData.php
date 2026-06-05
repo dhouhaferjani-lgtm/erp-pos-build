@@ -20,6 +20,8 @@ class OrderLineData extends Data
         public string $order_id,
         public int $line_number,
         public string $product_id,
+        /** @var string|null Variant UUID — null for non-variant (plain-product) lines. */
+        public ?string $variantId,
         public string $product_name,
         public ?string $variant_name,
         public ?string $barcode,
@@ -47,6 +49,7 @@ class OrderLineData extends Data
             order_id: $line->order_id,
             line_number: $line->line_number,
             product_id: $line->product_id,
+            variantId: $line->variant_id ?? null,
             product_name: $line->product_name,
             variant_name: $line->variant_name,
             barcode: $line->barcode,

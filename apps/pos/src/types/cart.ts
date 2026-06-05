@@ -18,6 +18,15 @@ export interface CartItem {
     sellableType?: 'product' | 'composite_item';
     selectedModifiers?: SelectedModifier[];
     comboComponents?: string[];
+    /**
+     * T2 — variant identity carried on the cart line so the sale records
+     * exactly which variant was sold. Populated when the cashier picks a
+     * variant via the variant picker; left undefined for non-variant
+     * products. `variant_name` is the human label (product name + variant
+     * suffix) used for cart-line + receipt display.
+     */
+    variant_id?: string;
+    variant_name?: string;
   };
   quantity: number;
   unit_price: string;

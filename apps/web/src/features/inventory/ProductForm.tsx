@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Plus, X, Image } from 'lucide-react'
+import { ArrowLeft, Plus, X, Image, Layers } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost, apiPatch } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
@@ -17,6 +17,9 @@ import { CatalogBanner } from './components/CatalogBanner'
 import { useProductSubmission } from './api/platformQueries'
 import type { LookupState, SuggestedProduct } from './types/platform'
 import { ProductImageSection, ParapharmacyMetadataFields } from '../products/components'
+import { ProductVariantMatrixEditor } from '../catalog/components/ProductVariantMatrixEditor'
+import { useVariantsForProduct } from '../catalog/hooks/useVariants'
+import { tokens, textColors } from '../../lib/designTokens'
 import { useCompanyConfig } from '../../contexts/CompanyConfigContext'
 import { useCurrency } from '../../hooks/useCurrency'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
@@ -92,6 +95,7 @@ export function ProductForm() {
   const { isOtospex } = useProductConfig()
   const { decimals } = useCurrency()
 
+  const [showVariants, setShowVariants] = useState(false)
   const [oemInput, setOemInput] = useState('')
   const [lookupState, setLookupState] = useState<LookupState>('idle')
   const [enrichmentOptIn, setEnrichmentOptIn] = useState(true)
@@ -181,6 +185,19 @@ export function ProductForm() {
     },
     enabled: isEditing && !!tenantId && !!companyId,
   })
+
+  // Existing variants for this product (edit mode only). If any exist, default
+  // the variants section open so the user lands on the matrix editor.
+  const { data: existingVariants } = useVariantsForProduct(isEditing ? id : '')
+  const hasExistingVariants = (existingVariants ?? []).length > 0
+
+  const variantsToggleSeededRef = useRef(false)
+  useEffect(() => {
+    if (!variantsToggleSeededRef.current && hasExistingVariants) {
+      variantsToggleSeededRef.current = true
+      setShowVariants(true)
+    }
+  }, [hasExistingVariants])
 
   const hasPopulatedRef = useRef(false)
 
@@ -641,6 +658,32 @@ export function ProductForm() {
               <h2 className="text-lg font-semibold text-gray-900">Product Images</h2>
             </div>
             <ProductImageSection productId={id} />
+          </div>
+        )}
+
+        {/* Variants Section - Only when editing (matrix generation needs a persisted product id) */}
+        {isEditing && id && (
+          <div className={tokens.card.base}>
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Layers className={`h-5 w-5 ${textColors.disabled}`} />
+                <h2 className={`text-lg font-semibold ${textColors.primary}`}>
+                  {t('catalog:variants.title')}
+                </h2>
+              </div>
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  className={tokens.checkbox.base}
+                  checked={showVariants}
+                  onChange={(e) => { setShowVariants(e.target.checked) }}
+                />
+                <span className={`text-sm ${textColors.secondary}`}>
+                  {t('catalog:variants.hasVariants')}
+                </span>
+              </label>
+            </div>
+            {showVariants && <ProductVariantMatrixEditor productId={id} />}
           </div>
         )}
 

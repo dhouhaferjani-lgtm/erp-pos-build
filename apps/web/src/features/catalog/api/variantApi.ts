@@ -1,0 +1,106 @@
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api'
+
+/**
+ * Type aliases over the backend-generated DTOs (source of truth lives in
+ * `packages/shared/types/generated.d.ts`, produced by `php artisan
+ * typescript:transform`). Never hand-edit those generated types; re-export them
+ * here for ergonomic local consumption.
+ */
+export type ProductAttribute = App.Modules.Catalog.Application.DTOs.ProductAttributeData
+export type ProductAttributeValue = App.Modules.Catalog.Application.DTOs.ProductAttributeValueData
+export type ProductVariant = App.Modules.Catalog.Application.DTOs.ProductVariantData
+export type AttributeDataType = App.Modules.Catalog.Domain.Enums.AttributeDataType
+
+export interface CreateAttributePayload {
+  code: string
+  name: string
+  data_type: AttributeDataType
+  is_variant_axis: boolean
+  display_order?: number
+}
+
+export interface AddAttributeValuePayload {
+  code: string
+  label: string
+  hex_color?: string | null
+  image_url?: string | null
+  display_order?: number
+}
+
+/**
+ * Partial update of a variant. cost_override is advisory only (spec §6.7) — the
+ * backend persists it for display and never feeds it into the inventory WAC
+ * pipeline.
+ */
+export interface UpdateVariantPayload {
+  variant_code?: string
+  sku?: string
+  name_suffix?: string
+  is_active?: boolean
+  display_order?: number
+  barcode?: string | null
+  price_override?: string | null
+  cost_override?: string | null
+  image_url?: string | null
+}
+
+// --- Attributes ---
+
+export async function getAttributes(): Promise<ProductAttribute[]> {
+  return apiGet<ProductAttribute[]>('/product-attributes')
+}
+
+export async function createAttribute(
+  payload: CreateAttributePayload,
+): Promise<ProductAttribute> {
+  return apiPost<ProductAttribute>('/product-attributes', payload)
+}
+
+export async function deleteAttribute(attributeId: string): Promise<void> {
+  await apiDelete<unknown>(`/product-attributes/${attributeId}`)
+}
+
+export async function getAttributeValues(
+  attributeId: string,
+): Promise<ProductAttributeValue[]> {
+  return apiGet<ProductAttributeValue[]>(`/product-attributes/${attributeId}/values`)
+}
+
+export async function addAttributeValue(
+  attributeId: string,
+  payload: AddAttributeValuePayload,
+): Promise<ProductAttributeValue> {
+  return apiPost<ProductAttributeValue>(
+    `/product-attributes/${attributeId}/values`,
+    payload,
+  )
+}
+
+// --- Variants ---
+
+export async function getVariantsForProduct(
+  productId: string,
+): Promise<ProductVariant[]> {
+  return apiGet<ProductVariant[]>(`/products/${productId}/variants`)
+}
+
+export async function generateVariantMatrix(
+  productId: string,
+  attributeIds: string[],
+): Promise<ProductVariant[]> {
+  return apiPost<ProductVariant[]>(
+    `/products/${productId}/variants/generate-matrix`,
+    { attribute_ids: attributeIds },
+  )
+}
+
+export async function updateVariant(
+  variantId: string,
+  payload: UpdateVariantPayload,
+): Promise<ProductVariant> {
+  return apiPatch<ProductVariant>(`/product-variants/${variantId}`, payload)
+}
+
+export async function deleteVariant(variantId: string): Promise<void> {
+  await apiDelete<unknown>(`/product-variants/${variantId}`)
+}

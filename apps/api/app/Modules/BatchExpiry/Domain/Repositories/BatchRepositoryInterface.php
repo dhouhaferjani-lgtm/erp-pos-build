@@ -15,6 +15,21 @@ interface BatchRepositoryInterface
 
     public function findByBatchNumber(string $companyId, string $productId, string $batchNumber): ?Batch;
 
+    /**
+     * Find a batch by its unique key including variant_id.
+     *
+     * When $variantId is null the lookup is scoped to the product-level partial
+     * index (variant_id IS NULL).  When set, it is scoped to the variant partial
+     * index (variant_id = $variantId).  Both slices can share the same batch
+     * number without colliding — see Task 7 partial unique indexes.
+     */
+    public function findByBatchNumberAndVariant(
+        string $companyId,
+        string $productId,
+        string $batchNumber,
+        ?string $variantId,
+    ): ?Batch;
+
     /** @return Collection<int, Batch> */
     public function getByProduct(string $tenantId, string $companyId, string $productId, bool $activeOnly = true): Collection;
 

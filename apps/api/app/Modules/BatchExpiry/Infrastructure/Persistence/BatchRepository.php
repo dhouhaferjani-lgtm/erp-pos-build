@@ -29,6 +29,25 @@ class BatchRepository implements BatchRepositoryInterface
             ->first();
     }
 
+    public function findByBatchNumberAndVariant(
+        string $companyId,
+        string $productId,
+        string $batchNumber,
+        ?string $variantId,
+    ): ?Batch {
+        $query = Batch::where('company_id', $companyId)
+            ->where('product_id', $productId)
+            ->where('batch_number', $batchNumber);
+
+        if ($variantId === null) {
+            $query->whereNull('variant_id');
+        } else {
+            $query->where('variant_id', $variantId);
+        }
+
+        return $query->first();
+    }
+
     /** @return Collection<int, Batch> */
     public function getByProduct(string $tenantId, string $companyId, string $productId, bool $activeOnly = true): Collection
     {

@@ -313,7 +313,7 @@ function ReturnLineItem({
       {/* Row 1: Name + Line Total (red with − prefix) */}
       <div className="flex items-center justify-between gap-2">
         <h4 className="truncate text-sm font-semibold text-red-800">
-          {item.product.name}
+          {item.product.variant_name ?? item.product.name}
         </h4>
         <span className="shrink-0 text-sm font-bold text-red-700">
           −{format(absTotal)}

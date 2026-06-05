@@ -64,8 +64,18 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
             // This preserves stock movements that occurred during the counting period
             $delta = bcsub($finalQty, $theoreticalQty, 4);
 
+            // Scope the current-stock lookup to the variant row when the item
+            // was counted against a specific variant (Task 20).  Without this
+            // scope the query would land on the product-level row (variant_id IS
+            // NULL) even when the item carries a variant, and the adjustment
+            // would target the wrong stock bucket.
             $currentStock = StockLevel::where('product_id', $item->product_id)
                 ->where('location_id', $item->location_id)
+                ->when(
+                    $item->variant_id !== null,
+                    fn ($q) => $q->where('variant_id', $item->variant_id),
+                    fn ($q) => $q->whereNull('variant_id'),
+                )
                 ->value('quantity') ?? '0.0000';
 
             /** @var numeric-string $newQuantity */
@@ -78,6 +88,7 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
                 reason: $reference,
                 userId: $event->completedBy,
                 expectedCompanyId: $counting->company_id,
+                variantId: $item->variant_id,
             );
 
             $adjustedCount++;
