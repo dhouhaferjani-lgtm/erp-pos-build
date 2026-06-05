@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePaymentStore } from '@/stores/paymentStore';
 import { formatCurrency, getCurrencyDecimals } from '@/lib/currency';
-import { bcadd } from '@/lib/decimal';
+import { bcadd, bcformat } from '@/lib/decimal';
 import {
   evaluateAccountChargeCreditDecision,
   type AccountChargeRejectionCode,
@@ -69,6 +69,12 @@ export function AccountChargeConfirmation(props: AccountChargeConfirmationProps)
   });
   const [override, setOverride] = useState<AccountChargeOverrideApprovalInput | null>(null);
 
+  // Normalize the incoming total to the currency scale before feeding it to the
+  // strict credit-decision parser (which requires an exact `^\d+\.\d{scale}$`
+  // match). This keeps the engine seam robust regardless of how the caller
+  // formats the amount (e.g. `'119'` or `'119.5'` for a scale-2 currency).
+  const chargeAmount = bcformat(props.total, scale);
+
   const decision = useMemo(() => {
     if (!customer) return null;
     return evaluateAccountChargeCreditDecision({
@@ -86,7 +92,7 @@ export function AccountChargeConfirmation(props: AccountChargeConfirmationProps)
       receivable_balance: customer.receivable_balance,
       credit_balance: customer.credit_balance,
       credit_limit: customer.credit_limit,
-      charge_amount: props.total,
+      charge_amount: chargeAmount,
       currency_scale: scale,
       balance_updated_at: customer.balance_updated_at,
       now: now(),
@@ -95,7 +101,7 @@ export function AccountChargeConfirmation(props: AccountChargeConfirmationProps)
     });
     // `now` is intentionally read each render via now(); excluded from deps to avoid loops.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customer, props.total, scale]);
+  }, [customer, chargeAmount, scale]);
 
   const rejection: AccountChargeRejectionCode | null =
     decision && !decision.ok ? decision.error.code : null;

@@ -943,7 +943,10 @@ describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /account_charge.tile/i }));
 
-    expect(screen.getByTestId('acc-total').textContent).toBe('119');
+    // The modal formats the numeric total to the currency scale (EUR, 2dp)
+    // before handing it to AccountChargeConfirmation, so the strict
+    // credit-decision parser sees a canonical `^\d+\.\d{2}$` amount.
+    expect(screen.getByTestId('acc-total').textContent).toBe('119.00');
     expect(screen.getByTestId('acc-currency').textContent).toBe('EUR');
     expect(screen.getByTestId('acc-cashier').textContent).toBe('cashier-1');
   });

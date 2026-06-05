@@ -186,6 +186,44 @@ describe('AccountChargeConfirmation', () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  // Defensive normalization (final-review bug): the modal could hand a
+  // non-canonical `total` like `'119'` (whole number, no decimals) for a
+  // scale-2 currency. The strict credit-decision parser requires an exact
+  // `^\d+\.\d{2}$` match, so without normalization this rejects with
+  // `money_scale_invalid` and the Confirm button stays disabled. The
+  // confirmation normalizes `props.total` to the currency scale before
+  // feeding the engine, so a whole-number total must still be confirmable.
+  it('normalizes a non-canonical whole-number total to the currency scale (no money_scale_invalid)', async () => {
+    currentCustomer = makeCustomer({
+      // Scale-2 (EUR) balances so the engine runs at scale 2.
+      receivable_balance: '0.00',
+      credit_balance: '0.00',
+      credit_limit: '500.00',
+    });
+    const onConfirm = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <AccountChargeConfirmation
+        total="119"
+        currency="EUR"
+        cashierUserId="c1"
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+        isProcessing={false}
+        now={() => FIXED_NOW}
+      />,
+    );
+
+    // The strict-parser rejection must NOT appear...
+    expect(screen.queryByTestId('rejection-message')).not.toBeInTheDocument();
+    // ...and the Confirm button is enabled (approved decision).
+    const confirm = await screen.findByRole('button', { name: /charge to account/i });
+    expect(confirm).toBeEnabled();
+
+    fireEvent.click(confirm);
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(null));
+  });
+
   it('blocks with a message and no PIN on a hard rejection (account closed)', async () => {
     currentCustomer = makeCustomer({ account_status: 'closed' });
     render(

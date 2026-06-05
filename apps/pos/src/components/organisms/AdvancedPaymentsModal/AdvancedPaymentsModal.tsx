@@ -677,7 +677,7 @@ export function AdvancedPaymentsModal({
         {accountChargeMode ? (
           <div className="flex flex-1 items-center justify-center bg-gray-50 p-4">
             <AccountChargeConfirmation
-              total={String(total)}
+              total={bcformat(String(total), decimals)}
               currency={currency}
               cashierUserId={cashierUserId}
               isProcessing={isProcessing}
