@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Modules\Catalog\Domain\Entities\ProductAttribute;
+use App\Modules\Catalog\Domain\Entities\ProductAttributeValue;
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
+use App\Modules\Catalog\Domain\Entities\ProductVariantAttributeValue;
+use App\Modules\Catalog\Domain\Enums\AttributeDataType;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\LocationType;
@@ -13,6 +18,8 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Partner\Domain\Enums\CustomerAccountStatus;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Certification;
@@ -129,13 +136,19 @@ final class ParapharmacyMultiBranchSeeder extends ParapharmacySeeder
         $products = $this->seedProducts($this->company);
         $this->command->info("✓ Created {$products->count()} products across 6 categories");
 
-        // 6. Partners (shared).
+        // 6. Partners (shared) + one explicit house-account customer.
         $this->command->info('👥 Seeding partners...');
         $this->seedPartners($this->tenant, $this->company);
+        $this->seedHouseAccountCustomer($this->tenant, $this->company);
 
         // 7. Multi-location stock distribution (warehouse bulk + small shop stock).
         $this->command->info('📊 Distributing stock across branches...');
         $this->seedMultiBranchStock($this->company, $products);
+
+        // 7b. Sized-goods variant products (orthopedic shoe + compression stocking),
+        //     one SKU per size, stocked at the warehouse + both shops.
+        $this->command->info('👟 Seeding variant (sized-goods) products...');
+        $this->seedVariantProducts($this->company);
 
         // 8. One POS terminal per shop.
         $this->command->info('🖥️  Creating POS terminals...');
@@ -220,6 +233,12 @@ final class ParapharmacyMultiBranchSeeder extends ParapharmacySeeder
             'email' => 'warehouse@pharmabio.fr',
         ]);
 
+        // Per-branch tax identity. In France each établissement has its own
+        // 14-digit SIRET (company SIREN 123456789 + a 5-digit establishment NIC).
+        // The shops override the company tax_id with their establishment SIRET so
+        // each shop's receipts/fiscal events carry the right seller identifier via
+        // {@see TaxIdentityResolver}. The warehouse leaves these NULL and inherits
+        // the company values — exercising the inheritance branch of the resolver.
         $parisShop = Location::create([
             'id' => Str::uuid()->toString(),
             'company_id' => $company->id,
@@ -233,6 +252,13 @@ final class ParapharmacyMultiBranchSeeder extends ParapharmacySeeder
             'address_city' => 'Paris',
             'address_postal_code' => '75008',
             'address_country' => 'FR',
+            'tax_id' => '12345678900015',
+            'vat_number' => 'FR12345678901',
+            'legal_identifiers' => [
+                'siren' => '123456789',
+                'siret' => '12345678900015',
+                'nic' => '00015',
+            ],
             'phone' => '+33 1 23 45 67 89',
             'email' => 'paris@pharmabio.fr',
         ]);
@@ -250,6 +276,13 @@ final class ParapharmacyMultiBranchSeeder extends ParapharmacySeeder
             'address_city' => 'Lyon',
             'address_postal_code' => '69002',
             'address_country' => 'FR',
+            'tax_id' => '12345678900023',
+            'vat_number' => 'FR12345678901',
+            'legal_identifiers' => [
+                'siren' => '123456789',
+                'siret' => '12345678900023',
+                'nic' => '00023',
+            ],
             'phone' => '+33 4 78 00 00 02',
             'email' => 'lyon@pharmabio.fr',
         ]);
@@ -352,6 +385,173 @@ final class ParapharmacyMultiBranchSeeder extends ParapharmacySeeder
             'quantity' => $quantity,
             'reserved' => '0',
         ]);
+    }
+
+    /**
+     * Seed sized-goods variant products typical of a parapharmacy: an
+     * orthopedic shoe and a class-II compression stocking. Each parent product
+     * carries one variant (SKU) per EU size (38–42); size 40 is the default
+     * variant. Variants are stocked in bulk at the warehouse and in small
+     * quantities at both shops, so the demo can sell a sized SKU at a shop AND
+     * transfer it warehouse → shop.
+     */
+    private function seedVariantProducts(Company $company): void
+    {
+        // One variant axis: EU size. Flagged is_variant_axis so the catalog UI
+        // treats it as a dimension that spawns SKUs.
+        $sizeAttribute = ProductAttribute::create([
+            'tenant_id' => $company->tenant_id,
+            'code' => 'size',
+            'name' => 'Taille (EU)',
+            'data_type' => AttributeDataType::Selection,
+            'is_variant_axis' => true,
+            'display_order' => 1,
+            'is_active' => true,
+        ]);
+
+        $sizes = ['38', '39', '40', '41', '42'];
+
+        /** @var array<string, ProductAttributeValue> $sizeValues */
+        $sizeValues = [];
+        $valueOrder = 1;
+        foreach ($sizes as $size) {
+            $sizeValues[$size] = ProductAttributeValue::create([
+                'tenant_id' => $company->tenant_id,
+                'attribute_id' => $sizeAttribute->id,
+                'code' => $size,
+                'label' => 'EU '.$size,
+                'display_order' => $valueOrder++,
+            ]);
+        }
+
+        $parents = [
+            ['sku' => 'PB-ORT-SHOE', 'name' => 'Chaussure Orthopédique Confort', 'cost' => '42.0000', 'price' => '79.9000'],
+            ['sku' => 'PB-COMP-STOCK', 'name' => 'Bas de Contention Classe II', 'cost' => '18.0000', 'price' => '34.5000'],
+        ];
+
+        // '301'-prefixed EAN-13 keeps these barcodes distinct from the base
+        // catalog's '300'-prefixed ones (ParapharmacySeeder::generateBarcode).
+        $barcodeOrdinal = 0;
+        $variantCount = 0;
+
+        foreach ($parents as $parent) {
+            $product = Product::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $company->id,
+                'name' => $parent['name'],
+                'sku' => $parent['sku'],
+                'barcode' => $this->variantBarcode($barcodeOrdinal++),
+                'is_physical' => true,
+                'purchase_price' => $parent['cost'],
+                'sale_price' => $parent['price'],
+                'tax_rate' => 20.00,
+                'is_active' => true,
+                'requires_batch_tracking' => false,
+            ]);
+
+            $displayOrder = 1;
+            foreach ($sizes as $size) {
+                $variant = ProductVariant::create([
+                    'tenant_id' => $company->tenant_id,
+                    'company_id' => $company->id,
+                    'product_id' => $product->id,
+                    'variant_code' => $size,
+                    'sku' => $parent['sku'].'-'.$size,
+                    'barcode' => $this->variantBarcode($barcodeOrdinal++),
+                    'name_suffix' => 'EU '.$size,
+                    'is_default' => $size === '40',
+                    'is_active' => true,
+                    'display_order' => $displayOrder++,
+                ]);
+
+                ProductVariantAttributeValue::create([
+                    'variant_id' => $variant->id,
+                    'attribute_id' => $sizeAttribute->id,
+                    'attribute_value_id' => $sizeValues[$size]->id,
+                ]);
+
+                // Bulk at the warehouse; small front-of-house at each shop.
+                $this->createVariantStockRow($company, $this->warehouse, $product, $variant, (string) rand(40, 120));
+                $this->createVariantStockRow($company, $this->parisShop, $product, $variant, (string) rand(2, 8));
+                $this->createVariantStockRow($company, $this->lyonShop, $product, $variant, (string) rand(2, 8));
+
+                $variantCount++;
+            }
+        }
+
+        $this->command->info(
+            '✓ Variant products: '.count($parents).' sized parents × '.count($sizes)." sizes ({$variantCount} SKUs)",
+        );
+    }
+
+    /**
+     * Insert one stock_levels row for a specific variant at a location.
+     *
+     * The variant-aware unique index (tenant, product, variant, location)
+     * requires variant_id to be set for variant rows.
+     */
+    private function createVariantStockRow(
+        Company $company,
+        Location $location,
+        Product $product,
+        ProductVariant $variant,
+        string $quantity,
+    ): void {
+        StockLevel::create([
+            'tenant_id' => $company->tenant_id,
+            'company_id' => $company->id,
+            'product_id' => $product->id,
+            'variant_id' => $variant->id,
+            'location_id' => $location->id,
+            'quantity' => $quantity,
+            'reserved' => '0',
+        ]);
+    }
+
+    /**
+     * Generate a valid EAN-13 barcode for a variant SKU. Uses a '301' prefix so
+     * variant barcodes never collide with the base catalog's '300'-prefixed
+     * codes (see {@see ParapharmacySeeder::generateBarcode}).
+     */
+    private function variantBarcode(int $ordinal): string
+    {
+        $base = '301'.str_pad((string) ($ordinal % 1000000000), 9, '0', STR_PAD_LEFT);
+
+        $sum = 0;
+        for ($i = 0; $i < 12; $i++) {
+            $digit = (int) $base[$i];
+            $sum += ($i % 2 === 0) ? $digit : $digit * 3;
+        }
+        $checkDigit = (10 - ($sum % 10)) % 10;
+
+        return $base.$checkDigit;
+    }
+
+    /**
+     * Seed one explicit, easy-to-find customer house account so the demo can
+     * exercise charge-to-account (spend side) checkout. A corporate clinic with
+     * an active account status and a non-zero credit limit (so
+     * {@see Partner::hasCreditLimit()} is true and the credit-rules engine can
+     * authorise a charge).
+     */
+    private function seedHouseAccountCustomer(Tenant $tenant, Company $company): Partner
+    {
+        $customer = Partner::factory()
+            ->customer()
+            ->france()
+            ->create([
+                'tenant_id' => $tenant->id,
+                'company_id' => $company->id,
+                'code' => 'CUST-HOUSE-01',
+                'name' => 'Clinique Saint-Louis (Compte Maison)',
+                'email' => 'compte@clinique-saint-louis.fr',
+                'account_status' => CustomerAccountStatus::Active,
+                'credit_limit' => '5000.0000',
+            ]);
+
+        $this->command->info('✓ House-account customer: '.$customer->name.' (credit limit €5000)');
+
+        return $customer;
     }
 
     /**
@@ -484,6 +684,19 @@ final class ParapharmacyMultiBranchSeeder extends ParapharmacySeeder
         $this->command->newLine();
 
         $this->command->info('🖥️  POS Terminals: POS01 @ Paris, POS01 @ Lyon');
+        $this->command->newLine();
+
+        $this->command->info('🧾 Per-branch tax IDs (SIRET overrides; warehouse inherits company):');
+        $this->command->info('   Paris SIRET: '.$this->parisShop->tax_id);
+        $this->command->info('   Lyon SIRET:  '.$this->lyonShop->tax_id);
+        $this->command->newLine();
+
+        $this->command->info('👟 Variant (sized-goods) products: search SKU "PB-ORT-SHOE" / "PB-COMP-STOCK"');
+        $this->command->info('   Sizes EU 38–42, one SKU each (e.g. PB-ORT-SHOE-40); size 40 is the default variant.');
+        $this->command->newLine();
+
+        $this->command->info('🏥 House-account customer (charge-to-account): Clinique Saint-Louis (Compte Maison)');
+        $this->command->info('   compte@clinique-saint-louis.fr — account active, credit limit €5000.');
         $this->command->newLine();
 
         $this->command->info('🔑 Credentials (password: "password" for all):');
