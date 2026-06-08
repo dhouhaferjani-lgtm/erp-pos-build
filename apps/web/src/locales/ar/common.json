@@ -44,7 +44,8 @@
     "goHome": "الذهاب إلى الرئيسية",
     "retry": "إعادة المحاولة",
     "import": "استيراد",
-    "export": "تصدير"
+    "export": "تصدير",
+    "actions": "إجراءات"
   },
   "common": {
     "create": "إنشاء",
@@ -155,7 +156,9 @@
   "errors": {
     "realtimeConnectionFailed": "التحديثات الفورية غير متاحة. قد لا تظهر التغييرات تلقائيًا.",
     "locationsFetchFailed": "تعذّر تحميل المواقع.",
-    "operationFailed": "فشلت العملية. يرجى المحاولة مرة أخرى."
+    "operationFailed": "فشلت العملية. يرجى المحاولة مرة أخرى.",
+    "unexpectedError": "حدث خطأ ما",
+    "unexpectedErrorDetails": "حدث خطأ غير متوقّع. يرجى المحاولة مرة أخرى أو تحديث الصفحة."
   },
   "dashboard": {
     "title": "لوحة التحكم",
