@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, PackageSearch, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
+import { apiGet } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { fetchLocations, type LocationApiResponse } from '@/features/location/api'
 import { Button } from '@/components/atoms/Button/Button'
@@ -244,6 +245,57 @@ function BatchDetailRow({ line, sourceLocationId, onChange }: BatchDetailRowProp
   )
 }
 
+interface ProductStockLevelLocation {
+  location_id: string
+  available: string
+}
+
+interface ProductStockLevelsResponse {
+  locations: ProductStockLevelLocation[]
+}
+
+interface AvailabilityCellProps {
+  line: DraftLine
+  sourceLocationId: string
+}
+
+/** Shows on-hand availability of the line's product at the chosen source. */
+function AvailabilityCell({ line, sourceLocationId }: AvailabilityCellProps) {
+  const { t } = useTranslation('stock-transfers')
+  const product = line.product
+  const productId = product?.id ?? ''
+  const stockQuery = useQuery({
+    queryKey: tenantScopedKey(['stock-levels', productId]),
+    queryFn: () => apiGet<ProductStockLevelsResponse>(`/products/${productId}/stock-levels`),
+    enabled: productId !== '' && sourceLocationId !== '',
+  })
+
+  if (product === null) {
+    return <span className={`text-sm ${textColors.disabled}`}>—</span>
+  }
+  if (sourceLocationId === '') {
+    return <span className={`text-xs ${textColors.tertiary}`}>{t('create.availability.selectSource')}</span>
+  }
+  if (stockQuery.isLoading) {
+    return <span className={`text-xs ${textColors.tertiary}`}>{t('create.availability.loading')}</span>
+  }
+  if (stockQuery.isError) {
+    return <span className={`text-xs ${textColors.error}`}>{t('create.availability.error')}</span>
+  }
+
+  const available = stockQuery.data?.locations.find((loc) => loc.location_id === sourceLocationId)?.available ?? '0'
+  const exceeds = line.quantity.trim() !== '' && bccomp(line.quantity, available) > 0
+
+  return (
+    <div className="text-sm">
+      <span className={exceeds ? textColors.error : textColors.secondary}>{available}</span>
+      {exceeds ? (
+        <span className={`block text-xs ${textColors.error}`}>{t('create.availability.exceeds')}</span>
+      ) : null}
+    </div>
+  )
+}
+
 export function CreateStockTransferPage() {
   const { t } = useTranslation('stock-transfers')
   const navigate = useNavigate()
@@ -375,6 +427,13 @@ export function CreateStockTransferPage() {
           productType="all"
         />
       ),
+    },
+    {
+      id: 'available',
+      header: t('create.field.availableAtSource'),
+      headerClassName: 'w-36 text-start md:text-end',
+      cellClassName: 'md:text-end',
+      Cell: ({ line }) => <AvailabilityCell line={line} sourceLocationId={sourceLocationId} />,
     },
     {
       id: 'quantity',
