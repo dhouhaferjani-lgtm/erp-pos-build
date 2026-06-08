@@ -759,6 +759,46 @@
       "col_writeoff": "Write-off"
     }
   },
+  "account_charge": {
+    "tile": "On Account",
+    "title": "Charge to account",
+    "no_customer": "Attach a customer before charging to account.",
+    "cancel": "Cancel",
+    "confirm": "Charge to account",
+    "customer": "Customer",
+    "charge_amount": "Charge amount",
+    "receivable_balance": "Receivable balance",
+    "current": "Current",
+    "projected": "Projected",
+    "credit_limit": "Credit limit",
+    "available_before": "Available",
+    "available_after": "After",
+    "payment_terms": "Payment terms",
+    "terms_days": "{{days}} days",
+    "stale_warning": "The customer balance is out of date. Please refresh before charging.",
+    "override_captured": "Override authorized by a manager.",
+    "reject": {
+      "customer_tenant_mismatch": "This customer belongs to a different tenant.",
+      "customer_company_mismatch": "This customer belongs to a different company.",
+      "customer_inactive": "This customer account is inactive.",
+      "account_suspended": "This account is suspended. A manager can authorize an override.",
+      "account_closed": "This account is closed and cannot be charged.",
+      "account_disputed": "This account is in dispute. A manager can authorize an override.",
+      "charge_account_disabled": "Charge-to-account is not enabled for this customer.",
+      "charge_policy_missing": "No charge policy is configured for this customer.",
+      "balance_snapshot_missing": "The customer balance is unavailable. Please refresh.",
+      "balance_snapshot_invalid": "The customer balance is invalid. Please refresh.",
+      "balance_snapshot_hard_stale": "The customer balance is too out of date. Please refresh.",
+      "customer_alias_ambiguous": "This customer could not be uniquely identified.",
+      "money_scale_invalid": "The amounts could not be validated.",
+      "credit_limit_exceeded": "This charge exceeds the credit limit. A manager can authorize an override.",
+      "override_evidence_mismatch": "The override authorization did not match this charge."
+    },
+    "errors": {
+      "customer_required": "Customer is required for account charge.",
+      "not_enabled": "This customer is not enabled for account charge."
+    }
+  },
   "voucherTender": {
     "title": "Apply voucher",
     "codeLabel": "Voucher code",

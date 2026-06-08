@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { CartItem, SelectedModifier } from '@/types/cart';
+export type { CartItem } from '@/types/cart';
 import type { POSProduct, POSProductVariant } from '@/types/product';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bcdiv, bcmul, bcsub, bcsum, bccomp, bcabs } from '@/lib/decimal';

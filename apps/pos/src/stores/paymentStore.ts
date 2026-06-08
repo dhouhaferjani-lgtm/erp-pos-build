@@ -10,6 +10,15 @@ import { getDatabase } from '@/lib/db';
 import { getAllPaymentMethods, getAllPaymentRepositories } from '@/lib/db/repositories/paymentRepository';
 import { createOfflineReceipt, type OfflineReceiptResult } from '@/lib/offline/receiptService';
 import { createAccountPayment, type AccountPaymentResult } from '@/lib/offline/accountPaymentService';
+import { authorAccountCharge } from '@/lib/accountCharge/accountChargeService';
+import type {
+  AccountChargeOverrideApprovalInput,
+  AccountChargeResult,
+} from '@/lib/accountCharge/accountChargeService';
+import { buildAccountChargeCart } from '@/lib/accountCharge/accountChargeCartMapper';
+import { buildEscPosAccountChargeReceiptData } from '@/lib/buildReceiptData';
+import { isBalanceStale } from '@/lib/db/repositories/customerRepository';
+import { useCartStore } from '@/stores/cartStore';
 import { lockTerminal } from '@/lib/offline/terminalMutex';
 import { ConcurrentChainAdvanceError } from '@/lib/fiscal/FiscalEventEngine';
 import { useSyncStore } from '@/stores/syncStore';
@@ -288,6 +297,10 @@ interface PaymentActions {
       customerSnapshotStale?: boolean;
     },
   ) => Promise<AccountPaymentResult | null>;
+  processAccountCharge: (
+    terminalId: string,
+    options?: { overrideApproval?: AccountChargeOverrideApprovalInput | null },
+  ) => Promise<AccountChargeResult | null>;
   reset: () => void;
   clearLastReceipt: () => void;
   /**
@@ -687,6 +700,98 @@ async function createAccountPaymentLocalFirst(
       isTraining: terminal.is_training_mode === true,
       balanceSnapshotStale: options?.balanceSnapshotStale,
       customerSnapshotStale: options?.customerSnapshotStale,
+    }),
+  );
+}
+
+async function createAccountChargeLocalFirst(
+  terminalId: string,
+  selectedCustomer: AttachedCheckoutCustomer,
+  options?: { overrideApproval?: AccountChargeOverrideApprovalInput | null },
+): Promise<AccountChargeResult> {
+  const authState = useAuthStore.getState();
+  const operatorState = useOperatorStore.getState();
+
+  const companyId = authState.companyId;
+  if (!companyId) {
+    throw new Error(i18n.t('errors.noCompanySelected', { ns: 'pos' }));
+  }
+  const company = authState.companies.find((c) => c.id === companyId);
+  const currency = company?.currency ?? 'EUR';
+  const tenantId = authState.user?.tenantId;
+  if (!tenantId) {
+    throw new Error(i18n.t('errors.noOperatorIdentified', { ns: 'pos' }));
+  }
+  if (selectedCustomer.tenant_id !== tenantId || selectedCustomer.company_id !== companyId) {
+    throw new Error('Customer belongs to a different tenant or company.');
+  }
+
+  const operator = operatorState.operator;
+  const operatorId = operator?.id ?? authState.user?.id;
+  const operatorName = operator?.name ?? authState.user?.name;
+  if (!operatorId || !operatorName) {
+    throw new Error(i18n.t('errors.noOperatorIdentified', { ns: 'pos' }));
+  }
+
+  const terminalState = useTerminalStore.getState();
+  const terminal = terminalState.terminal;
+  const shift = terminalState.shift;
+  if (!terminal || terminal.id !== terminalId || !shift) {
+    throw new ActiveTerminalRequiredError();
+  }
+
+  const cartState = useCartStore.getState();
+  const cart = buildAccountChargeCart({
+    cartItems: cartState.items,
+    currency,
+    transactionDiscount: cartState.transactionDiscount ?? null,
+  });
+
+  // Mirror CustomerAttachPanel's isBalanceStale call: project the attached
+  // snapshot onto a CustomerMirrorRow shape (the panel uses a configurable
+  // threshold; the checkout path uses the 30-minute default).
+  const balanceSnapshotStale = isBalanceStale(
+    {
+      ...selectedCustomer,
+      is_active: 1,
+      sync_version: null,
+      updated_at: null,
+      synced_at: selectedCustomer.balance_updated_at ?? new Date().toISOString(),
+    },
+    new Date(),
+    30,
+  );
+
+  const db = await getDatabase(companyId);
+  return lockTerminal(tenantId, terminalId, () =>
+    authorAccountCharge(db, {
+      tenantId,
+      companyId,
+      terminalId,
+      terminalName: terminal.name,
+      operatorId,
+      operatorName,
+      shiftId: shift.id,
+      currency,
+      seller: {
+        name: companyField(company, 'legalName', 'legal_name') ?? company?.name ?? null,
+        taxNumber: companyField(company, 'taxId', 'tax_id'),
+        countryCode: companyField(company, 'countryCode', 'country_code'),
+        street: companyField(company, 'addressStreet', 'address_street'),
+        city: companyField(company, 'addressCity', 'address_city'),
+        postalCode: companyField(company, 'addressPostalCode', 'address_postal_code'),
+      },
+      customer: selectedCustomer,
+      lines: cart.lines,
+      vatBreakdown: cart.vatBreakdown,
+      subtotal: cart.subtotal,
+      vatTotal: cart.vatTotal,
+      total: cart.total,
+      transactionDiscountAmount: cart.transactionDiscountAmount,
+      transactionDiscountReason: cart.transactionDiscountReason,
+      isTraining: terminal.is_training_mode === true,
+      balanceSnapshotStale,
+      overrideApproval: options?.overrideApproval ?? null,
     }),
   );
 }
@@ -1195,6 +1300,88 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       return result;
     } catch (error) {
       console.error('[POS][account-payment] failed', {
+        ...serializeErrorForLog(error),
+        terminalId,
+        customerId: selectedCustomer.id,
+      });
+      set({
+        isProcessing: false,
+        error: formatCheckoutError(error),
+      });
+      throw error;
+    }
+  },
+
+  processAccountCharge: async (terminalId, options) => {
+    const { selectedCustomer } = get();
+    if (!selectedCustomer) {
+      const msg = i18n.t('account_charge.errors.customer_required', {
+        ns: 'pos',
+        defaultValue: 'Customer is required for account charge.',
+      });
+      set({ error: msg });
+      throw new Error(msg);
+    }
+    const enabled =
+      selectedCustomer.charge_account_enabled === true ||
+      selectedCustomer.charge_account_enabled === 1;
+    if (!enabled) {
+      const msg = i18n.t('account_charge.errors.not_enabled', {
+        ns: 'pos',
+        defaultValue: 'This customer is not enabled for account charge.',
+      });
+      set({ error: msg });
+      throw new Error(msg);
+    }
+
+    let alreadyInFlight = false;
+    set((state) => {
+      if (state.isProcessing) {
+        alreadyInFlight = true;
+        return state;
+      }
+      return { isProcessing: true, error: null };
+    });
+    if (alreadyInFlight) return null;
+
+    try {
+      const result = await createAccountChargeLocalFirst(terminalId, selectedCustomer, options);
+      const snapshot = result.payload.local_balance_snapshot;
+      set({
+        isProcessing: false,
+        changeDue: 0,
+        lastReceipt: {
+          id: result.fiscalEventId,
+          receipt_number: result.accountChargeUuid,
+          total: result.total,
+          subtotal: '0',
+          tax_amount: '0',
+          discount_amount: '0',
+          currency: result.currency,
+        } satisfies CreateReceiptResponse,
+        lastReceiptIdempotencyKey: null,
+        lastReceiptServerId: null,
+        lastReceiptPrintData: buildEscPosAccountChargeReceiptData({
+          payload: result.printable,
+          currencyCode: result.currency,
+        }),
+        selectedCustomer: {
+          ...selectedCustomer,
+          receivable_balance: snapshot.projected_receivable_balance_after,
+          credit_balance: snapshot.projected_credit_balance_after,
+          balance_updated_at: result.payload.event_time_device,
+        },
+      });
+      // authorAccountCharge already increments the pending count and triggers a
+      // sync internally — do NOT re-trigger here.
+      useCartStore.getState().clearCart();
+      // On Account is mutually exclusive with tenders: any voucher tenders the
+      // cashier entered before switching to charge mode must not survive into
+      // the next sale. Mirror the canonical voucher-clear used elsewhere.
+      get().clearVoucherTenders();
+      return result;
+    } catch (error) {
+      console.error('[POS][account-charge] failed', {
         ...serializeErrorForLog(error),
         terminalId,
         customerId: selectedCustomer.id,
