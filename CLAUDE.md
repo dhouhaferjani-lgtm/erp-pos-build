@@ -117,7 +117,7 @@ Read these when working on specific areas:
 | Layer | Technology |
 |-------|------------|
 | Backend | Laravel 12, PHP 8.2+ (strict types) |
-| Database | PostgreSQL 16+ (**row-level** multi-tenancy via `tenant_id`/`company_id` + query scoping; DB-per-tenant migration planned — the Stancl schema manager is configured but unused) |
+| Database | PostgreSQL 16+ — **database-per-tenant** via Stancl `PostgreSQLDatabaseManager` (T6 Phase 0b, merged 2026-05-28). One `synerivia_central` DB holds the tenant directory + auth (tenants/domains/plans/tenant_subscriptions/super_admins/central_identities/personal_access_tokens); one `tenant_<uuid>` DB per tenant holds every tenant-scoped table. The default Laravel connection (`central`) is swapped per-request to the per-tenant DB by `DatabaseTenancyBootstrapper`. |
 | Cache/Queue | Redis 7+, Laravel Horizon |
 | Search | Meilisearch (infrastructure ready, not yet integrated with Scout) |
 | Desktop | Tauri 2 (IziPOS) |

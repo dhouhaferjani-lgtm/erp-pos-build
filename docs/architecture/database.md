@@ -7,30 +7,42 @@
 ## Overview
 
 - **Database**: PostgreSQL 16+
-- **Multi-Tenancy**: Schema-based isolation
-- **Total Tables**: 85+
-- **Migrations**: 90 files
+- **Multi-Tenancy**: **Database-per-tenant** (Stancl `PostgreSQLDatabaseManager`). One central DB + one physical DB per tenant. Flipped 2026-05-28 (T6 Phase 0b, PRs #141–#146 + #148).
+- **Total Tables**: 85+ (counts below reflect post-flip state)
+- **Migrations**: `apps/api/database/migrations/` (central) + `apps/api/database/migrations/tenant/` (per-tenant)
 
 ---
 
-## Schema Organization
+## Database Organization
 
 ```
-public              # Shared data, tenant registry, super admins
-tenant_{slug}       # Per-tenant schema (auto-created by Stancl)
+synerivia_central       # Tenant directory + auth + backup metadata
+tenant_<tenant-uuid>    # One physical database per tenant
+                        # (created by Stancl CreateDatabase job on signup)
 ```
 
-### Public Schema Tables
-- `tenants` - Tenant registry
-- `domains` - Custom domains
-- `super_admins` - Platform administrators
-- `countries` - Country master data
-- `country_tax_rates` - Tax configurations
-- `country_payment_settings` - Payment rules
-- `plans` - Subscription plans
+### Central DB (`synerivia_central`) tables
+The Laravel `central` connection is pinned to this database and never swapped. Holds:
 
-### Per-Tenant Tables
-All other tables are created in tenant schemas.
+- `tenants` — tenant directory (uuid, slug, name, status, plan, etc.)
+- `domains` — custom domains per tenant
+- `central_identities` — email → tenant pointer index (T6 Phase 0a)
+- `tenant_subscriptions` — billing rows
+- `tenant_backups` — per-tenant backup attempt metadata (PR #148: status, file_path, sha256, started_at, completed_at)
+- `super_admins` — platform administrators
+- `personal_access_tokens` — Sanctum tokens (`CentralPersonalAccessToken` pins `$connection='central'` so `auth:sanctum` lookups work after the per-request DB swap)
+- `plans` — subscription plans
+- `countries` — country master data
+- `country_tax_rates` — tax configurations
+- `country_payment_settings` — payment rules
+
+### Per-Tenant DB (`tenant_<uuid>`) tables
+The Laravel default connection is swapped per-request to the tenant's database by `DatabaseTenancyBootstrapper`. Holds every tenant-scoped table (users, products, documents, stock_*, fiscal events, etc.). Many still carry a `tenant_id` column for defense-in-depth (`WHERE tenant_id = ?` scoping at every callsite from the pre-flip tenant-isolation sweep).
+
+### Migration paths
+
+- `apps/api/database/migrations/` — central migrations. Run via `php artisan migrate`.
+- `apps/api/database/migrations/tenant/` — tenant migrations. Run per tenant DB via `tenants:migrate`; Stancl `MigrateDatabase` runs them during signup; `tenant:migrate-rolling` walks every tenant for ongoing migrations.
 
 ---
 
@@ -112,7 +124,9 @@ INDEX (email), (is_active, email)
 
 ---
 
-### 2. Multi-Tenancy
+### 2. Tenant Directory (central DB)
+
+> **Cross-DB FK note (post-flip):** the `tenant_id UUID FK → tenants(id) CASCADE` annotations shown on per-tenant tables (`users`, `companies`, etc.) below are accurate as columns but the FK constraint **does not exist post-flip** — `tenants` lives in `synerivia_central` and the column references it from a separate `tenant_<uuid>` database, which PostgreSQL doesn't support across databases. The column is kept for defense-in-depth tenant scoping (`WHERE tenant_id = ?` at every callsite from the pre-flip tenant-isolation sweep) and as an audit identifier.
 
 #### tenants
 ```sql
