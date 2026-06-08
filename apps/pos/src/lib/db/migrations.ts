@@ -904,7 +904,8 @@ export const migrations: Migration[] = [
     // the assembler / fiscal-event seal end-to-end.
     //
     // Column shape mirrors Phase 1 spec v7 §3.1 (device); chain
-    // invariants — UNIQUE(tenant_id, terminal_id, sequence_number),
+    // invariants — UNIQUE(tenant_id, company_id, terminal_id, chain_context,
+    // sequence_number) (chain-context scoped; Phase 4.2 foundation),
     // 64-char lowercase hex hashes — mirror the server-side §3.2.
     version: 37,
     name: 'create_fiscal_events_and_chain_head',

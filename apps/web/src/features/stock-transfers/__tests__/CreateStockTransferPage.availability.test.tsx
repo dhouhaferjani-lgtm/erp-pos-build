@@ -42,6 +42,7 @@ function loc(id: string, name: string): LocationApiResponse {
   return {
     id, company_id: 'c1', name, code: id.toUpperCase(), type: 'warehouse', phone: null, email: null,
     address_street: null, address_city: null, address_postal_code: null, address_country: null,
+    tax_id: null, vat_number: null, legal_identifiers: null,
     is_default: false, is_active: true, pos_enabled: false,
     created_at: '2026-06-08T00:00:00Z', updated_at: '2026-06-08T00:00:00Z',
   }

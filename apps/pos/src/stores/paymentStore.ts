@@ -475,9 +475,12 @@ function companyField(company: unknown, camel: string, snake: string): string | 
 }
 
 function branchTaxNumberFromTerminal(
-  terminal: { location: { tax_id: string | null } },
+  terminal: { location?: { tax_id?: string | null } | null },
 ): string | null {
-  return terminal.location.tax_id;
+  // A terminal may have no location/branch-tax configured — fall back to the
+  // company tax id downstream (per-branch tax IDs are optional, company is the
+  // baseline). Guard the optional chain so the account-payment path can't crash.
+  return terminal.location?.tax_id ?? null;
 }
 
 async function createOfflineReceiptWithChainRetry(
