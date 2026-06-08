@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Ticket,
+  UserRound,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCurrency } from '@/lib/currency';
@@ -19,8 +20,11 @@ import { NumPad } from '@/components/molecules/NumPad';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { requiresInstrumentForMethodCode } from '@/lib/payment/paymentMethodKind';
 import { VoucherTenderModal } from '@/components/pos/VoucherTenderModal';
+import { AccountChargeConfirmation } from '@/components/customers/AccountChargeConfirmation';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import { usePaymentStore, type AdvancedPaymentLine } from '@/stores/paymentStore';
+import { useAuthStore } from '@/stores/authStore';
+import type { AccountChargeOverrideApprovalInput } from '@/lib/accountCharge/accountChargeService';
 
 const METHOD_ICONS: Record<string, typeof Banknote> = {
   CASH: Banknote,
@@ -91,6 +95,20 @@ export interface AdvancedPaymentsModalProps {
    * `getDatabase(companyId)` once `companyId` is non-null.
    */
   voucherDb?: Database | null;
+  /**
+   * Task 5 (2026-06-04): whole-cart charge-to-account handler. When supplied
+   * AND an eligible customer (charge_account_enabled) is attached with a
+   * positive total, the modal renders a synthetic "On Account" tile. Tapping
+   * it switches the modal into account-charge mode, replacing the split-tender
+   * working area with the credit-decision confirmation. A charge-to-account
+   * collects NO payment and is mutually exclusive with tenders, so it never
+   * mixes with the `onComplete` tender path. The optional override approval is
+   * captured by AccountChargeConfirmation (manager-PIN gated) and forwarded to
+   * the store's `processAccountCharge` action by the parent.
+   */
+  onChargeToAccount?: (
+    overrideApproval?: AccountChargeOverrideApprovalInput | null,
+  ) => Promise<void>;
 }
 
 export function AdvancedPaymentsModal({
@@ -103,6 +121,7 @@ export function AdvancedPaymentsModal({
   isProcessing,
   error,
   voucherDb = null,
+  onChargeToAccount,
 }: AdvancedPaymentsModalProps) {
   const { t } = useTranslation('pos');
   const { format, decimals, currency } = useCurrency();
@@ -132,6 +151,22 @@ export function AdvancedPaymentsModal({
   // serial in the hash — exactly the original B3 production bug.
   const voucherTenders = usePaymentStore((s) => s.voucherTenders);
   const removeVoucherPayment = usePaymentStore((s) => s.removeVoucherPayment);
+
+  // Task 5 (2026-06-04): charge-to-account is whole-cart and collects no
+  // payment, so it cannot be mixed with tenders. The "On Account" tile is only
+  // offered when the parent wired `onChargeToAccount`, an eligible customer is
+  // attached (charge_account_enabled), and the total is positive. Tapping it
+  // flips `accountChargeMode`, which swaps the tender working area for the
+  // credit-decision confirmation while keeping the dialog shell unchanged.
+  const selectedCustomer = usePaymentStore((s) => s.selectedCustomer);
+  const [accountChargeMode, setAccountChargeMode] = useState(false);
+  const chargeEligible =
+    !!onChargeToAccount
+    && selectedCustomer != null
+    && (selectedCustomer.charge_account_enabled === true
+      || selectedCustomer.charge_account_enabled === 1)
+    && total > 0;
+  const cashierUserId = useAuthStore.getState().user?.id ?? '';
 
   const activeMethods = useMemo(
     () => paymentMethods.filter((m) => m.is_active),
@@ -435,6 +470,8 @@ export function AdvancedPaymentsModal({
     setTenderTolerancePin('');
     setValidationError(null);
     setIsVoucherTenderModalOpen(false);
+    // Task 5: leave account-charge mode so a reopen starts in split-tender mode.
+    setAccountChargeMode(false);
     onClose();
   }, [isProcessing, onClose]);
 
@@ -526,6 +563,32 @@ export function AdvancedPaymentsModal({
                 </button>
               );
             })}
+
+            {/*
+              Task 5 (2026-06-04): synthetic "On Account" tile, rendered after
+              the real payment-method tiles and only when an eligible customer
+              is attached with a positive total. It is not a PaymentMethod — a
+              charge-to-account collects no tender — so tapping it switches the
+              modal into account-charge mode rather than the free-form line flow.
+            */}
+            {chargeEligible && (
+              <button
+                type="button"
+                data-testid="on-account-tile"
+                onClick={() => setAccountChargeMode(true)}
+                className={cn(
+                  'flex min-h-[52px] items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-colors',
+                  accountChargeMode
+                    ? 'border-primary-500 bg-primary-50 text-primary-700'
+                    : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50',
+                )}
+              >
+                <UserRound className="h-5 w-5 shrink-0 text-blue-600" />
+                <span className="text-sm font-medium">
+                  {t('account_charge.tile', { defaultValue: 'On Account' })}
+                </span>
+              </button>
+            )}
           </div>
 
           {/* Config fields — shown when method selected */}
@@ -603,6 +666,29 @@ export function AdvancedPaymentsModal({
           )}
         </div>
 
+        {/*
+          Task 5 (2026-06-04): in account-charge mode the tender working area
+          (center NumPad + right balance/Complete columns) is replaced by the
+          credit-decision confirmation. The dialog shell and its fixed layout
+          are untouched — only this inner region swaps, per the modal-sizing
+          rule. A charge-to-account collects no tender, so none of the
+          split-tender controls apply while it is active.
+        */}
+        {accountChargeMode ? (
+          <div className="flex flex-1 items-center justify-center bg-gray-50 p-4">
+            <AccountChargeConfirmation
+              total={bcformat(String(total), decimals)}
+              currency={currency}
+              cashierUserId={cashierUserId}
+              isProcessing={isProcessing}
+              onCancel={() => setAccountChargeMode(false)}
+              onConfirm={async (o) => {
+                await onChargeToAccount!(o);
+              }}
+            />
+          </div>
+        ) : (
+          <>
         {/* CENTER COLUMN (35%): Amount + NumPad */}
         <div className="flex w-[35%] flex-col bg-gray-50 p-4">
           {/* Amount display */}
@@ -791,6 +877,8 @@ export function AdvancedPaymentsModal({
             </button>
           </div>
         </div>
+          </>
+        )}
       </div>
 
       {/*

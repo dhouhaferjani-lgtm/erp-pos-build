@@ -88,18 +88,74 @@ vi.mock('@/components/molecules/NumPad', () => ({
 // Voucher tender state — the test mutates this between cases.
 let mockVoucherTenders: VoucherTenderRow[] = [];
 const mockRemoveVoucherPayment = vi.fn<(code: string) => void>();
+// On Account mode (Task 5): the attached customer the modal reads from
+// paymentStore to decide whether to show the "On Account" tile. Tests mutate
+// this between cases.
+let mockSelectedCustomer: unknown = null;
 
 vi.mock('@/stores/paymentStore', () => ({
   usePaymentStore: <T,>(selector: (s: {
     voucherTenders: VoucherTenderRow[];
     removeVoucherPayment: (code: string) => void;
+    selectedCustomer: unknown;
   }) => T): T => selector({
     voucherTenders: mockVoucherTenders,
     removeVoucherPayment: mockRemoveVoucherPayment,
+    selectedCustomer: mockSelectedCustomer,
   }),
 }));
 
+// On Account mode (Task 5): the modal reads the cashier id from authStore via
+// getState(). A thin getState() stub is sufficient for the tile/mode wiring.
+vi.mock('@/stores/authStore', () => ({
+  useAuthStore: {
+    getState: () => ({ user: { id: 'cashier-1' } }),
+  },
+}));
+
+// On Account mode (Task 5): stub AccountChargeConfirmation so these tests
+// focus on the modal's tile + mode wiring rather than the credit-decision
+// component (which has its own dedicated test suite and pulls in heavier
+// deps — ManagerPinPanel, managersApi, etc.).
+const mockAccountChargeConfirmationProps =
+  vi.fn<(props: unknown) => void>();
+vi.mock('@/components/customers/AccountChargeConfirmation', () => ({
+  AccountChargeConfirmation: (props: {
+    total: string;
+    currency: string;
+    cashierUserId: string;
+    onCancel: () => void;
+    onConfirm: (o: unknown) => Promise<void>;
+    isProcessing: boolean;
+  }) => {
+    mockAccountChargeConfirmationProps(props);
+    return (
+      <div data-testid="account-charge-confirmation-stub">
+        <span data-testid="acc-total">{props.total}</span>
+        <span data-testid="acc-currency">{props.currency}</span>
+        <span data-testid="acc-cashier">{props.cashierUserId}</span>
+        <button
+          data-testid="acc-confirm"
+          onClick={() => void props.onConfirm(null)}
+        >
+          Charge to account
+        </button>
+        <button data-testid="acc-cancel" onClick={() => props.onCancel()}>
+          Back
+        </button>
+      </div>
+    );
+  },
+}));
+
 import { AdvancedPaymentsModal } from '../AdvancedPaymentsModal';
+
+// On Account mode (Task 5): a minimal eligible attached customer. The modal
+// only inspects `charge_account_enabled` for tile eligibility; the rest of the
+// shape is consumed by AccountChargeConfirmation, which is stubbed here.
+const eligibleCustomer = {
+  charge_account_enabled: true,
+} as unknown;
 
 const cashMethod: PaymentMethod = {
   id: 'pm-cash',
@@ -721,6 +777,280 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
         expect.objectContaining({ repository_id: 'repo-bank' }),
       ]),
     );
+  });
+});
+
+/**
+ * Task 5 (2026-06-04): "On Account" mode. When an eligible attached customer
+ * is present (charge_account_enabled) and the total is positive AND the parent
+ * supplies an onChargeToAccount handler, the modal renders a synthetic "On
+ * Account" tile after the payment-method tiles. Tapping it REPLACES the tender
+ * working area with AccountChargeConfirmation (no payment is collected — a
+ * charge-to-account is mutually exclusive with tenders). The dialog shell keeps
+ * its fixed dimensions; only the inner content is swapped. Cancelling restores
+ * the normal split-tender mode, and closing/reopening resets the mode.
+ */
+describe('AdvancedPaymentsModal — Task 5: On Account mode', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVoucherTenders = [];
+    mockSelectedCustomer = null;
+  });
+
+  it('shows the On Account tile only when an eligible customer is attached and total > 0', () => {
+    mockSelectedCustomer = eligibleCustomer;
+    render(
+      <AdvancedPaymentsModal
+        isOpen
+        onClose={vi.fn()}
+        total={119}
+        paymentMethods={[cashMethod, storeVoucherMethod]}
+        paymentRepositories={[cashRepo, virtualRepo]}
+        onComplete={vi.fn().mockResolvedValue(undefined)}
+        isProcessing={false}
+        error={null}
+        onChargeToAccount={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(
+      screen.getByRole('button', { name: /account_charge.tile/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('hides the On Account tile when no eligible customer is attached', () => {
+    mockSelectedCustomer = null;
+    render(
+      <AdvancedPaymentsModal
+        isOpen
+        onClose={vi.fn()}
+        total={119}
+        paymentMethods={[cashMethod, storeVoucherMethod]}
+        paymentRepositories={[cashRepo, virtualRepo]}
+        onComplete={vi.fn().mockResolvedValue(undefined)}
+        isProcessing={false}
+        error={null}
+        onChargeToAccount={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(
+      screen.queryByRole('button', { name: /account_charge.tile/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('hides the On Account tile when the customer is not charge-account-enabled', () => {
+    mockSelectedCustomer = { charge_account_enabled: false } as unknown;
+    render(
+      <AdvancedPaymentsModal
+        isOpen
+        onClose={vi.fn()}
+        total={119}
+        paymentMethods={[cashMethod, storeVoucherMethod]}
+        paymentRepositories={[cashRepo, virtualRepo]}
+        onComplete={vi.fn().mockResolvedValue(undefined)}
+        isProcessing={false}
+        error={null}
+        onChargeToAccount={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(
+      screen.queryByRole('button', { name: /account_charge.tile/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('hides the On Account tile when total is not positive', () => {
+    mockSelectedCustomer = eligibleCustomer;
+    render(
+      <AdvancedPaymentsModal
+        isOpen
+        onClose={vi.fn()}
+        total={0}
+        paymentMethods={[cashMethod, storeVoucherMethod]}
+        paymentRepositories={[cashRepo, virtualRepo]}
+        onComplete={vi.fn().mockResolvedValue(undefined)}
+        isProcessing={false}
+        error={null}
+        onChargeToAccount={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(
+      screen.queryByRole('button', { name: /account_charge.tile/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('hides the On Account tile when no onChargeToAccount handler is supplied', () => {
+    mockSelectedCustomer = eligibleCustomer;
+    render(
+      <AdvancedPaymentsModal
+        isOpen
+        onClose={vi.fn()}
+        total={119}
+        paymentMethods={[cashMethod, storeVoucherMethod]}
+        paymentRepositories={[cashRepo, virtualRepo]}
+        onComplete={vi.fn().mockResolvedValue(undefined)}
+        isProcessing={false}
+        error={null}
+      />,
+    );
+    expect(
+      screen.queryByRole('button', { name: /account_charge.tile/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('switches to charge confirmation when On Account is tapped, hiding the tender working area', () => {
+    mockSelectedCustomer = eligibleCustomer;
+    render(
+      <AdvancedPaymentsModal
+        isOpen
+        onClose={vi.fn()}
+        total={119}
+        paymentMethods={[cashMethod, storeVoucherMethod]}
+        paymentRepositories={[cashRepo, virtualRepo]}
+        onComplete={vi.fn().mockResolvedValue(undefined)}
+        isProcessing={false}
+        error={null}
+        onChargeToAccount={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /account_charge.tile/i }));
+
+    expect(
+      screen.getByTestId('account-charge-confirmation-stub'),
+    ).toBeInTheDocument();
+    // The split-tender working area (the Complete button) is replaced.
+    expect(
+      screen.queryByText('advancedPayments.completeTransaction'),
+    ).not.toBeInTheDocument();
+    // The dialog shell is still mounted with its fixed-size container.
+    expect(screen.getByTestId('advanced-payments-dialog')).toBeInTheDocument();
+  });
+
+  it('forwards total (as string), currency, cashier id, and processing flag to the confirmation', () => {
+    mockSelectedCustomer = eligibleCustomer;
+    render(
+      <AdvancedPaymentsModal
+        isOpen
+        onClose={vi.fn()}
+        total={119}
+        paymentMethods={[cashMethod, storeVoucherMethod]}
+        paymentRepositories={[cashRepo, virtualRepo]}
+        onComplete={vi.fn().mockResolvedValue(undefined)}
+        isProcessing={false}
+        error={null}
+        onChargeToAccount={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /account_charge.tile/i }));
+
+    // The modal formats the numeric total to the currency scale (EUR, 2dp)
+    // before handing it to AccountChargeConfirmation, so the strict
+    // credit-decision parser sees a canonical `^\d+\.\d{2}$` amount.
+    expect(screen.getByTestId('acc-total').textContent).toBe('119.00');
+    expect(screen.getByTestId('acc-currency').textContent).toBe('EUR');
+    expect(screen.getByTestId('acc-cashier').textContent).toBe('cashier-1');
+  });
+
+  it('confirming invokes onChargeToAccount', async () => {
+    mockSelectedCustomer = eligibleCustomer;
+    const onChargeToAccount = vi.fn().mockResolvedValue(undefined);
+    render(
+      <AdvancedPaymentsModal
+        isOpen
+        onClose={vi.fn()}
+        total={119}
+        paymentMethods={[cashMethod, storeVoucherMethod]}
+        paymentRepositories={[cashRepo, virtualRepo]}
+        onComplete={vi.fn().mockResolvedValue(undefined)}
+        isProcessing={false}
+        error={null}
+        onChargeToAccount={onChargeToAccount}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /account_charge.tile/i }));
+    fireEvent.click(screen.getByTestId('acc-confirm'));
+    await Promise.resolve();
+
+    expect(onChargeToAccount).toHaveBeenCalledWith(null);
+  });
+
+  it('cancelling restores the normal split-tender mode', () => {
+    mockSelectedCustomer = eligibleCustomer;
+    render(
+      <AdvancedPaymentsModal
+        isOpen
+        onClose={vi.fn()}
+        total={119}
+        paymentMethods={[cashMethod, storeVoucherMethod]}
+        paymentRepositories={[cashRepo, virtualRepo]}
+        onComplete={vi.fn().mockResolvedValue(undefined)}
+        isProcessing={false}
+        error={null}
+        onChargeToAccount={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /account_charge.tile/i }));
+    expect(
+      screen.getByTestId('account-charge-confirmation-stub'),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('acc-cancel'));
+
+    // Back to split-tender mode: confirmation gone, Complete button back.
+    expect(
+      screen.queryByTestId('account-charge-confirmation-stub'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText('advancedPayments.completeTransaction'),
+    ).toBeInTheDocument();
+  });
+
+  it('resets account-charge mode when the modal is closed and reopened', () => {
+    mockSelectedCustomer = eligibleCustomer;
+    function Harness() {
+      const [isOpen, setIsOpen] = useState(true);
+      return (
+        <>
+          <button data-testid="reopen" onClick={() => setIsOpen(true)}>
+            reopen
+          </button>
+          <AdvancedPaymentsModal
+            isOpen={isOpen}
+            onClose={() => setIsOpen(false)}
+            total={119}
+            paymentMethods={[cashMethod, storeVoucherMethod]}
+            paymentRepositories={[cashRepo, virtualRepo]}
+            onComplete={vi.fn().mockResolvedValue(undefined)}
+            isProcessing={false}
+            error={null}
+            onChargeToAccount={vi.fn().mockResolvedValue(undefined)}
+          />
+        </>
+      );
+    }
+
+    render(<Harness />);
+
+    fireEvent.click(screen.getByRole('button', { name: /account_charge.tile/i }));
+    expect(
+      screen.getByTestId('account-charge-confirmation-stub'),
+    ).toBeInTheDocument();
+
+    // Close via the header back button, then reopen.
+    fireEvent.click(screen.getByRole('button', { name: 'advancedPayments.back' }));
+    expect(screen.queryByTestId('advanced-payments-dialog')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('reopen'));
+
+    // Reopened in normal split-tender mode, not stuck in account-charge mode.
+    expect(
+      screen.queryByTestId('account-charge-confirmation-stub'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText('advancedPayments.completeTransaction'),
+    ).toBeInTheDocument();
   });
 });
 

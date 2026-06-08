@@ -13,7 +13,10 @@
       "addAriaLabel": "Add additional description",
       "editAriaLabel": "Additional description",
       "placeholder": "e.g. 2.5h × 60/hr by mechanic John"
-    }
+    },
+    "variant": "Variant",
+    "variantLoading": "Loading variants...",
+    "variantPlaceholder": "Select a variant"
   },
   "taxMention": {
     "label": "Tax Mention",

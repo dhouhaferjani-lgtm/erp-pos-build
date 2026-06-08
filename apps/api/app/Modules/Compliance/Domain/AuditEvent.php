@@ -125,6 +125,77 @@ class AuditEvent extends Model
     }
 
     /**
+     * Build an AuditEvent from a client-supplied envelope, PRESERVING the
+     * client `event_id` (as the primary key) and the client `occurred_at`
+     * (as the business timestamp), and computing `event_hash` over that
+     * preserved timestamp.
+     *
+     * This deliberately bypasses the company-supplied custom-constructor
+     * branch (which stamps `occurred_at = now()`): `new self()` with no
+     * positional args is inert because the constructor's stamping logic is
+     * gated on `$companyId !== null`. HasUuids skips UUID generation on the
+     * `creating` event when the key is already non-empty, so the pre-set
+     * `id` is preserved verbatim.
+     *
+     * @param  array<string, mixed>  $env
+     */
+    public static function fromClientEnvelope(array $env): self
+    {
+        $event = new self;
+
+        /** @var string $eventId */
+        $eventId = $env['event_id'];
+        // HasUuids only generates a UUID when the key is empty; setting it
+        // here preserves the client-supplied id.
+        $event->id = $eventId;
+
+        /** @var array<string, mixed> $payload */
+        $payload = $env['payload'] ?? [];
+        /** @var array<string, mixed> $metadata */
+        $metadata = $env['metadata'] ?? [];
+
+        /** @var string $occurredAtRaw */
+        $occurredAtRaw = $env['occurred_at'];
+        $occurredAt = Carbon::parse($occurredAtRaw);
+
+        // Mirror the virtual properties the existing hash scheme reads from,
+        // so the recomputed hash is deterministic over the CLIENT timestamp.
+        $event->companyId = (string) ($env['company_id'] ?? '');
+        $event->userId = isset($env['operator_id']) ? (string) $env['operator_id'] : null;
+        $event->eventType = (string) $env['event_type'];
+        $event->aggregateType = (string) $env['aggregate_type'];
+        $event->aggregateId = (string) $env['aggregate_id'];
+        $event->occurredAt = $occurredAt;
+
+        $event->forceFill([
+            'tenant_id' => $env['tenant_id'],
+            'company_id' => $env['company_id'] ?? null,
+            'user_id' => $env['operator_id'] ?? null,
+            'event_type' => $env['event_type'],
+            'aggregate_type' => $env['aggregate_type'],
+            'aggregate_id' => $env['aggregate_id'],
+            'payload' => $payload,
+            'metadata' => $metadata,
+            'occurred_at' => $occurredAt,
+        ]);
+
+        // Compute the hash LAST, over the now-set client occurred_at.
+        $event->recomputeHash();
+
+        return $event;
+    }
+
+    /**
+     * Recompute and assign `event_hash` over the currently-set field values
+     * (notably the preserved client `occurred_at`).
+     */
+    public function recomputeHash(): void
+    {
+        $this->eventHash = $this->calculateHash($this->payload);
+        $this->attributes['event_hash'] = $this->eventHash;
+    }
+
+    /**
      * @return BelongsTo<Company, $this>
      */
     public function company(): BelongsTo

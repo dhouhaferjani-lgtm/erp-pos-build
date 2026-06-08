@@ -34,6 +34,11 @@ final class ProcessEnrichmentWebhookJob implements ShouldQueue
             $this->payload->enrichmentQuality,
             $this->payload->hasBarcodeAssigned,
             $this->payload->vertical,
+            // Null-coalesce (isset semantics) so a job enqueued before the
+            // `locale` property existed — whose deserialized payload leaves
+            // `$locale` uninitialized — degrades to null instead of throwing
+            // "must not be accessed before initialization" on rolling deploy.
+            $this->payload->locale ?? null,
         );
     }
 }

@@ -60,6 +60,10 @@ class CreateProductRequest extends FormRequest
             // StoreCompositeItemRequest) closed via the same annotation.
             'default_tax_configuration_id' => ['nullable', 'uuid', 'exists:tax_configurations,id'],
             'unit' => ['nullable', 'string', 'max:50'],
+            // Unit of measure FK — drives quantity precision (decimals/step).
+            // Without this the API could not set it, so new products defaulted
+            // to 4-decimal quantities regardless of their unit.
+            'unit_id' => ['nullable', 'exists:units,id'],
             'barcode' => ['nullable', 'string', 'max:100'],
             'is_active' => ['sometimes', 'boolean'],
             'oem_numbers' => ['nullable', 'array'],

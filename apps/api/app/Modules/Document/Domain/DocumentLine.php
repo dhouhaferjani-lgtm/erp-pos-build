@@ -18,6 +18,7 @@ use Illuminate\Support\Carbon;
  * @property string $document_id
  * @property string|null $location_id
  * @property string|null $product_id
+ * @property string|null $variant_id
  * @property int|null $batch_id
  * @property string|null $product_code
  * @property string|null $service_id
@@ -66,6 +67,7 @@ class DocumentLine extends Model
         'document_id',
         'location_id',
         'product_id',
+        'variant_id',
         'batch_id',
         'product_code',
         'service_id',

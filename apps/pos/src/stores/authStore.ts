@@ -11,6 +11,7 @@ import {
 import { getDeviceId } from '@/lib/device';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { clearScanCache } from '@/lib/scan/scanResolutionCache';
+import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
 
 export interface User {
   id: string;
@@ -42,6 +43,44 @@ export interface Company {
   timezone: string;
 }
 
+export interface Organization {
+  tenant_id: string;
+  name: string;
+  slug: string;
+}
+
+interface LoginSuccessResponse {
+  user: User;
+  token: string;
+  tokenType: string;
+  deviceId: string | null;
+}
+
+interface OrgSelectionResponse {
+  requires_org_selection: true;
+  organizations: Organization[];
+}
+
+type LoginApiResponse = LoginSuccessResponse | OrgSelectionResponse;
+
+export type LoginOutcome =
+  | { status: 'authenticated' }
+  | { status: 'requires_org_selection'; organizations: Organization[] };
+
+/** Thrown when the backend returns an org-picker shape for a call that
+ *  already supplied an explicit tenant_id (contract violation). Prevents
+ *  any re-POST loop. */
+export class UnexpectedLoginResponseError extends Error {
+  constructor() {
+    super('Unexpected login response: org selection returned for an explicit tenant.');
+    this.name = 'UnexpectedLoginResponseError';
+  }
+}
+
+function isOrgSelection(r: LoginApiResponse): r is OrgSelectionResponse {
+  return 'requires_org_selection' in r;
+}
+
 interface AuthState {
   user: User | null;
   token: string | null;
@@ -57,9 +96,10 @@ interface AuthActions {
   login: (
     email: string,
     password: string,
-    opts?: { signal?: AbortSignal },
-  ) => Promise<void>;
+    opts?: { signal?: AbortSignal; tenantId?: string },
+  ) => Promise<LoginOutcome>;
   logout: () => void;
+  unbindDevice: () => Promise<void>;
   checkSession: (opts?: { signal?: AbortSignal }) => Promise<void>;
   setCompany: (companyId: string) => void;
   initialize: (opts?: { signal?: AbortSignal }) => Promise<void>;
@@ -145,51 +185,46 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   login: async (
     email: string,
     password: string,
-    opts?: { signal?: AbortSignal },
-  ) => {
+    opts?: { signal?: AbortSignal; tenantId?: string },
+  ): Promise<LoginOutcome> => {
+    if (get().isLoading) {
+      throw new Error('A login is already in progress.');
+    }
+
     const serverUrl = getServerUrl();
     set({ isLoading: true, serverUrl });
 
-    try {
-      console.log('[auth] Attempting login to', serverUrl);
+    // FIX 1: tiny abort-check helper — throws AbortError when the signal
+    // has already fired. Called at every await boundary before committing
+    // state or returning a result. Matches the pattern used in
+    // checkSession / fetchCompanies.
+    const abortIfCancelled = (signal?: AbortSignal): void => {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    };
 
-      const response = await apiPost<{
-        user: User;
-        token: string;
-        tokenType: string;
-        deviceId: string | null;
-      }>('/auth/login', {
-        email,
-        password,
-        device_id: getDeviceId(),
-        device_name: 'IziPOS Desktop',
-        platform: getTauriPlatform(),
-      }, { signal: opts?.signal });
+    // FIX 3: hoist the duplicated request-body builder. The first POST
+    // includes tenant_id ONLY when opts.tenantId was supplied (preserving
+    // existing semantics). The auto-select re-POST passes storedTenantId.
+    const buildLoginBody = (tenantId?: string): Record<string, unknown> => ({
+      email,
+      password,
+      device_id: getDeviceId(),
+      device_name: 'IziPOS Desktop',
+      platform: getTauriPlatform(),
+      ...(tenantId ? { tenant_id: tenantId } : {}),
+    });
 
-      console.log('[auth] Login successful, got token');
+    // Local helper: given an authenticated login response, run the existing
+    // transactional companies-fetch + persist, then best-effort persist the
+    // device tenant hint. Reused by the auto-select re-POST (Task 3).
+    const completeAuthentication = async (
+      res: LoginSuccessResponse,
+      loginContext: { multiTenant: boolean; viaPicker: boolean },
+    ): Promise<void> => {
+      const { user, token } = res;
 
-      const { user, token } = response;
-
-      // T1.1 Step 1.1: transactional persist. The previous flow persisted
-      // TOKEN+USER and flipped isAuthenticated=true BEFORE fetching
-      // /user/companies. A network drop in the small window between the
-      // login POST returning and companies resolving left a half-finished
-      // session: TOKEN+USER persisted in Tauri Store, isAuthenticated:true
-      // in memory, companies:[]. On the next boot, AppRouter routed to
-      // TerminalSetupPage which immediately threw because companyId was
-      // null. We now hold all in-memory and on-disk state changes until
-      // BOTH /auth/login AND /user/companies have resolved successfully —
-      // a failure in either leaves the prior auth state untouched.
-      console.log('[auth] Fetching companies...');
-
-      // Use a short-lived auth header for this single fetch — apiGet reads
-      // the in-store token via getHeaders(), but we haven't committed it
-      // yet. Codex round-1 finding (c): snapshot the FULL prior auth
-      // state before the temp write so a failure restores exactly what
-      // was there. Otherwise re-attempting login() over an already-valid
-      // session corrupts the in-memory snapshot when /user/companies
-      // fails (token gets nulled while user/companies/isAuthenticated
-      // still describe the previous session).
+      // T1.1: snapshot prior auth, write a temp token for the companies
+      // fetch, restore verbatim on failure. (Unchanged behavior.)
       const priorAuth = {
         token: get().token,
         user: get().user,
@@ -205,33 +240,118 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
           signal: opts?.signal,
         });
       } catch (error) {
-        // Restore the prior in-memory auth verbatim; we never persisted
-        // anything new and we must not corrupt a previously-valid
-        // session. Disk persistence is untouched.
         set(priorAuth);
         throw error;
       }
 
-      console.log('[auth] Got companies:', companies.length);
+      // FIX 1 (abort gate 1): a cancel that fires after /user/companies
+      // resolves but before we commit storage/state must still roll back
+      // and propagate the abort — never commit half-auth state.
+      if (opts?.signal?.aborted) {
+        set(priorAuth);
+        throw new DOMException('Aborted', 'AbortError');
+      }
 
-      // Persist auth data only after BOTH calls succeeded.
       await setStoredValue(StorageKeys.TOKEN, token);
       await setStoredValue(StorageKeys.USER, user);
       await setStoredValue(StorageKeys.COMPANIES, companies);
 
-      set({
-        user,
-        token,
-        companies,
-        isAuthenticated: true,
-      });
+      set({ user, token, companies, isAuthenticated: true });
 
-      // Auto-select if single company
+      // Resolved company for the audit emit: auto-selected when exactly one
+      // company is returned, else null (selection still pending). Captured
+      // explicitly so the emit stamps the just-resolved context, not stale
+      // store state.
+      let resolvedCompanyId: string | null = null;
       if (companies.length === 1 && companies[0]) {
-        const companyId = companies[0].id;
-        await setStoredValue(StorageKeys.COMPANY_ID, companyId);
-        set({ companyId });
+        resolvedCompanyId = companies[0].id;
+        await setStoredValue(StorageKeys.COMPANY_ID, resolvedCompanyId);
+        set({ companyId: resolvedCompanyId });
       }
+
+      // Best-effort, non-authoritative device tenant hint (MAJOR 4):
+      // a failure here must NEVER throw or corrupt the committed auth state.
+      try {
+        await setStoredValue(StorageKeys.LOGIN_TENANT_ID, user.tenantId);
+      } catch (e) {
+        console.warn('[auth] failed to persist LOGIN_TENANT_ID (non-fatal):', e);
+      }
+
+      // Task 7 (audit): pos.login. Fire-and-forget OUTSIDE any set(). Pass the
+      // just-resolved tenant/operator/company EXPLICITLY — store state may lag
+      // the commit above, and recordAuditEvent uses these to target the right
+      // tenant DB. multi_tenant = the user belongs to an org that required a
+      // picker (more than one organization); via_picker = the login resolved
+      // through an explicit tenant_id (auto-select re-POST or caller-supplied).
+      void recordAuditEvent({
+        type: 'pos.login',
+        aggregateType: 'PosSession',
+        aggregateId: getDeviceId(),
+        tenantId: user.tenantId,
+        companyId: resolvedCompanyId,
+        operatorId: user.id,
+        payload: {
+          multi_tenant: loginContext.multiTenant,
+          via_picker: loginContext.viaPicker,
+        },
+      }).catch(() => {});
+    };
+
+    try {
+      const response = await apiPost<LoginApiResponse>(
+        '/auth/login',
+        buildLoginBody(opts?.tenantId),
+        { signal: opts?.signal },
+      );
+
+      if (isOrgSelection(response)) {
+        // Contract: an explicit-tenant call can never get a picker shape.
+        if (opts?.tenantId) throw new UnexpectedLoginResponseError();
+
+        // FIX 2: wrap LOGIN_TENANT_ID read as best-effort. A read failure
+        // degrades to "no stored tenant" → show picker; must NOT crash login.
+        let storedTenantId: string | null = null;
+        try {
+          storedTenantId = await getStoredValue<string>(StorageKeys.LOGIN_TENANT_ID);
+        } catch (e) {
+          console.warn('[auth] failed to read LOGIN_TENANT_ID (non-fatal, showing picker):', e);
+          storedTenantId = null;
+        }
+
+        // FIX 1 (abort gate 2): check after the getStoredValue read and
+        // before we either re-POST or return the picker.
+        abortIfCancelled(opts?.signal);
+
+        const match =
+          storedTenantId != null &&
+          response.organizations.some((o) => o.tenant_id === storedTenantId);
+
+        if (match) {
+          // Auto-select: exactly one extra POST (no recursion / no loop).
+          const second = await apiPost<LoginApiResponse>(
+            '/auth/login',
+            buildLoginBody(storedTenantId ?? undefined),
+            { signal: opts?.signal },
+          );
+
+          if (isOrgSelection(second)) throw new UnexpectedLoginResponseError();
+          // Auto-select re-POST: the account is multi-tenant (backend offered a
+          // picker) and this login resolved through an explicit tenant_id.
+          await completeAuthentication(second, { multiTenant: true, viaPicker: true });
+          return { status: 'authenticated' };
+        }
+
+        // Stale or no stored tenant → let the UI show the picker.
+        return { status: 'requires_org_selection', organizations: response.organizations };
+      }
+
+      // Direct single-tenant login: no picker was shown. via_picker is true
+      // only when the caller supplied an explicit tenant_id up front.
+      await completeAuthentication(response, {
+        multiTenant: false,
+        viaPicker: opts?.tenantId != null,
+      });
+      return { status: 'authenticated' };
     } catch (error) {
       console.error('[auth] Login failed:', error);
       throw error;
@@ -339,5 +459,45 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     void import('@/stores/bootstrapStore').then(({ useBootstrapStore }) => {
       useBootstrapStore.getState().reset();
     });
+  },
+
+  // Sub-Spec B: deliberate, manager-initiated full device sign-out. Unlike
+  // logout() (used by automatic 401s / setup / bootstrap, which keep the
+  // device's tenant binding), this ALSO clears LOGIN_TENANT_ID so the next
+  // login re-resolves the tenant email-first. Auth-owned only — feature-store
+  // cleanup is done by teardownPosSessionStores() at the UI layer to avoid an
+  // operatorStore<->authStore import cycle.
+  //
+  // FIX 1 (MAJOR): clear LOGIN_TENANT_ID FIRST (awaited) so the key is gone
+  // before logout() flips isAuthenticated→false and routes to login. A
+  // fire-and-forget delete after logout() can race against the next login
+  // attempt, letting the old binding survive an unbind.
+  unbindDevice: async () => {
+    // Task 7 (audit): capture tenant/operator/company BEFORE the teardown —
+    // logout() clears auth state, so recordAuditEvent would otherwise have no
+    // tenant to route the event to. Snapshot first, emit (fire-and-forget)
+    // AFTER the teardown so the unbind itself is never blocked.
+    const { user, companyId } = get();
+    const tenantId = user?.tenantId;
+    const operatorId = user?.id ?? null;
+
+    try {
+      await removeStoredValue(StorageKeys.LOGIN_TENANT_ID);
+    } catch (e) {
+      console.warn('[auth] failed to clear LOGIN_TENANT_ID during unbind:', e);
+    }
+    get().logout();
+
+    if (tenantId) {
+      void recordAuditEvent({
+        type: 'pos.device_unbind',
+        aggregateType: 'PosSession',
+        aggregateId: getDeviceId(),
+        tenantId,
+        companyId,
+        operatorId,
+        payload: {},
+      }).catch(() => {});
+    }
   },
 }));

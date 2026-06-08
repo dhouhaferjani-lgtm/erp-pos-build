@@ -87,6 +87,7 @@ class Product extends Model implements SellableContract
         'tax_rate',
         'default_tax_configuration_id',
         'unit',
+        'unit_id',
         'barcode',
         'is_active',
         'is_active_for_ecommerce',

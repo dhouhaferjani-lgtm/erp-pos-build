@@ -244,4 +244,53 @@ describe('receiptService — fiscal-event engine wiring', () => {
       ],
     }));
   });
+
+  it('persists the variant identity on the stored line without altering fiscal SKU bytes', async () => {
+    const db = makeMockDb();
+
+    await createOfflineReceipt(db, {
+      tenantId: '11111111-1111-4111-8111-111111111111',
+      companyId: '22222222-2222-4222-8222-222222222222',
+      terminalId: terminalState.terminal_id,
+      operatorId: '33333333-3333-4333-8333-333333333333',
+      operatorName: 'Cashier',
+      shiftId: '55555555-5555-4555-8555-555555555555',
+      cartItems: [
+        makeCartItem({
+          tax_rate: '0.00',
+          product: {
+            id: 'prod-1',
+            name: 'Shoe',
+            // The fiscal payload reads `product.sku` — it stays the PRODUCT
+            // sku even for a variant line so fiscal bytes are untouched.
+            sku: 'SKU-PRODUCT',
+            price: '10.00',
+            variant_id: 'var-1',
+            variant_name: 'Shoe — 39 / Black',
+          },
+        }),
+      ],
+      currency: 'EUR',
+      seller,
+      paymentMethodId: 'pm-1',
+      paymentRepositoryId: 'repo-1',
+      tenderedAmount: 10,
+      idempotencyKey: '66666666-6666-4666-8666-666666666666',
+      payments: [{ methodCode: 'CASH', amount: '10.00' }],
+    });
+
+    // The stored offline line carries the variant identity.
+    const inserted = vi.mocked(insertOfflineReceipt).mock.calls[0]![1];
+    const lines = JSON.parse(inserted.lines) as Array<{ variant_id?: string; sku: string }>;
+    expect(lines[0]!.variant_id).toBe('var-1');
+    expect(lines[0]!.sku).toBe('SKU-PRODUCT');
+
+    // The fiscal payload's line SKU is the PRODUCT sku — variant selection
+    // never reaches the fiscal canonical bytes.
+    const engine = await vi.mocked(getFiscalEventEngine).mock.results[0]!.value;
+    const payload = vi.mocked(engine.append).mock.calls[0]![1].payload as {
+      line_items: Array<{ sku: string }>;
+    };
+    expect(payload.line_items[0]!.sku).toBe('SKU-PRODUCT');
+  });
 });

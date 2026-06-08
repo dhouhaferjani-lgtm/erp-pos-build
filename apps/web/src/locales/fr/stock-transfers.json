@@ -44,7 +44,20 @@
       "quantity": "Quantité",
       "selectProduct": "Sélectionner un produit",
       "addLine": "Ajouter une ligne",
-      "removeLine": "Retirer la ligne"
+      "removeLine": "Retirer la ligne",
+      "availableAtSource": "Disponible @ source"
+    },
+    "batch": {
+      "column": "Lots",
+      "action": "Lots et péremption",
+      "allocated": "{{count}} lot",
+      "allocated_other": "{{count}} lots",
+      "title": "Affectation lots et péremption",
+      "fefoHint": "FEFO propose d'abord la date de péremption la plus proche.",
+      "quantityFor": "Quantité depuis {{batch}}",
+      "statusLabel": "Statut",
+      "availableLabel": "Disponible",
+      "required": "Sélectionnez les lots pour chaque produit suivi par lot."
     },
     "distribution": {
       "pro_rata_value": "Pro-rata sur la valeur",
@@ -59,7 +72,13 @@
       "quantityPositive": "La quantité doit être supérieure à zéro."
     },
     "success": "Transfert créé et stock placé en transit.",
-    "error": "Impossible de créer le transfert."
+    "error": "Impossible de créer le transfert.",
+    "availability": {
+      "selectSource": "Sélectionner la source",
+      "loading": "Vérification...",
+      "error": "Indisponible",
+      "exceeds": "Dépasse le disponible source"
+    }
   },
   "detail": {
     "back": "Retour aux transferts",

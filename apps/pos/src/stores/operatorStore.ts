@@ -12,6 +12,8 @@ import {
 import { enqueuePinUpdate } from '@/lib/db/repositories/queuedPinUpdateRepository';
 import { useAuthStore } from '@/stores/authStore';
 import { useTerminalStore } from '@/stores/terminalStore';
+import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
+import { getDeviceId } from '@/lib/device';
 import type { DiscountPermissionStatus } from '@/lib/discountPermissions';
 
 export interface Operator {
@@ -59,6 +61,21 @@ async function getDb(): Promise<import('@tauri-apps/plugin-sql').default> {
   const { companyId } = useAuthStore.getState();
   return getDatabase(companyId ?? '');
 }
+
+/**
+ * Consecutive wrong-PIN counter for the `pos.manager_pin_failed` audit signal
+ * (brute-force / guessing detection). Module-scoped (one terminal session);
+ * increments on every bcrypt/API mismatch, resets to 0 on any successful
+ * PIN verification. NEVER carries the PIN or hash — only the count.
+ */
+let consecutivePinFailures = 0;
+
+/**
+ * Wall-clock timestamp (ms) when the current operator lock was engaged. Set in
+ * `lock()`, read in `verifyPin` to compute `locked_duration_ms` for the
+ * `pos.operator_unlocked` audit event. Null when not locked.
+ */
+let lockedAt: number | null = null;
 
 function getApiErrorStatus(error: unknown): number | null {
   if (typeof error === 'object' && error !== null && 'status' in error) {
@@ -146,6 +163,10 @@ export const useOperatorStore = create<OperatorStore>()((set, get) => ({
   ...initialState,
 
   verifyPin: async (pin: string) => {
+    // Snapshot the lock state BEFORE any mutation: used to distinguish an
+    // unlock (was locked → verify succeeds) from a fresh sign-in.
+    const wasLocked = get().isLocked;
+
     // Offline-first: check cached bcrypt hashes in SQLite BEFORE the API.
     // The POS is offline-first, so authentication should be offline-first too.
     // If the local cache matches, accept immediately and fire the API call in
@@ -191,6 +212,30 @@ export const useOperatorStore = create<OperatorStore>()((set, get) => ({
         isLocked: false,
         lastActivity: Date.now(),
       });
+      // Task 7 (audit): pos.operator_signin on the offline success path.
+      // Reset the brute-force counter on any successful verification.
+      consecutivePinFailures = 0;
+      void recordAuditEvent({
+        type: 'pos.operator_signin',
+        aggregateType: 'Operator',
+        aggregateId: offlineMatch.id,
+        operatorId: offlineMatch.id,
+        payload: { method: 'pin' },
+      }).catch(() => {});
+      // pos.operator_unlocked: emitted only when this verify is UNLOCKING a
+      // locked screen (not a fresh sign-in). locked_duration_ms derived from
+      // the module-scoped lockedAt timestamp set in lock().
+      if (wasLocked) {
+        const lockedDurationMs = lockedAt !== null ? Date.now() - lockedAt : null;
+        lockedAt = null;
+        void recordAuditEvent({
+          type: 'pos.operator_unlocked',
+          aggregateType: 'Operator',
+          aggregateId: offlineMatch.id,
+          operatorId: offlineMatch.id,
+          payload: { locked_duration_ms: lockedDurationMs },
+        }).catch(() => {});
+      }
       // Fire-and-forget telemetry: tell the server we verified a PIN.
       // Any failure here is swallowed — it must not affect UX.
       void apiPost<Operator>('/pos/auth/verify-pin', { pin }).catch((err: unknown) => {
@@ -229,7 +274,43 @@ export const useOperatorStore = create<OperatorStore>()((set, get) => ({
         isLocked: false,
         lastActivity: Date.now(),
       });
+      // Task 7 (audit): pos.operator_signin on the online success path.
+      consecutivePinFailures = 0;
+      void recordAuditEvent({
+        type: 'pos.operator_signin',
+        aggregateType: 'Operator',
+        aggregateId: operator.id,
+        operatorId: operator.id,
+        payload: { method: 'pin' },
+      }).catch(() => {});
+      // pos.operator_unlocked: emitted only when this verify is UNLOCKING a
+      // locked screen (not a fresh sign-in).
+      if (wasLocked) {
+        const lockedDurationMs = lockedAt !== null ? Date.now() - lockedAt : null;
+        lockedAt = null;
+        void recordAuditEvent({
+          type: 'pos.operator_unlocked',
+          aggregateType: 'Operator',
+          aggregateId: operator.id,
+          operatorId: operator.id,
+          payload: { locked_duration_ms: lockedDurationMs },
+        }).catch(() => {});
+      }
     } catch {
+      // Task 11 (audit): wrong PIN — offline bcrypt missed AND the API rejected.
+      // pos.manager_pin_failed carries ONLY context + attempt count; never the
+      // PIN or any hash. The acting operator is unknown (no match), so the
+      // aggregate is anchored on the attempted context.
+      consecutivePinFailures += 1;
+      void recordAuditEvent({
+        type: 'pos.manager_pin_failed',
+        aggregateType: 'Operator',
+        aggregateId: 'unknown',
+        payload: {
+          context: 'operator_pin',
+          attempt_count: consecutivePinFailures,
+        },
+      }).catch(() => {});
       throw new Error('Invalid PIN');
     }
   },
@@ -346,11 +427,43 @@ export const useOperatorStore = create<OperatorStore>()((set, get) => ({
   },
 
   lock: () => {
+    // Snapshot BEFORE the set() for the audit emit. The taxonomy collapses
+    // operator_locked into this single pos.screen_lock event carrying
+    // { reason, idle_ms }. Reason defaults to 'manual'; idle_ms is derived
+    // from the last recorded activity when available.
+    const { operator, lastActivity } = get();
+    const idleMs = Math.max(0, Date.now() - lastActivity);
+
+    lockedAt = Date.now();
     set({ isLocked: true });
+
+    void recordAuditEvent({
+      type: 'pos.screen_lock',
+      aggregateType: 'PosSession',
+      aggregateId: getDeviceId(),
+      operatorId: operator?.id ?? null,
+      payload: {
+        reason: 'manual',
+        idle_ms: idleMs,
+      },
+    }).catch(() => {});
   },
 
   clearOperator: () => {
+    // Capture the operator BEFORE clearing — the signoff emit needs the id.
+    const { operator } = get();
+
     set({ operator: null, isLocked: false });
+
+    if (operator) {
+      void recordAuditEvent({
+        type: 'pos.operator_signoff',
+        aggregateType: 'Operator',
+        aggregateId: operator.id,
+        operatorId: operator.id,
+        payload: {},
+      }).catch(() => {});
+    }
   },
 
   resetActivityTimer: () => {

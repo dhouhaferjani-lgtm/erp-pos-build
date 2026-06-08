@@ -1,5 +1,35 @@
 import type { ModifierGroup } from './modifier';
 
+/**
+ * T2 product variant as surfaced to the POS catalog. Mirrors the backend
+ * `App.Modules.Catalog.Application.DTOs.ProductVariantData` wire shape
+ * (`/products/{productId}/variants`) with the POS-only `stock_quantity`
+ * projection so the cashier can see the variant's on-hand stock when picking.
+ *
+ * `cost_override` is intentionally omitted: it is advisory per spec §6.7 and
+ * the POS never displays or transmits it. Inventory WAC stays product-grain.
+ */
+export interface POSProductVariant {
+  id: string;
+  product_id: string;
+  variant_code: string;
+  sku: string;
+  barcode?: string | null;
+  /** Suffix appended to the product name, e.g. " — 39 / Noir". */
+  name_suffix: string;
+  is_default: boolean;
+  is_active: boolean;
+  display_order: number;
+  /** Absolute price override for this variant; falls back to the product `sale_price` when null. */
+  price_override?: string | null;
+  image_url?: string | null;
+  /**
+   * Variant-grain on-hand stock. Defaults to 0 when the backend has not
+   * projected per-variant stock onto the row.
+   */
+  stock_quantity: number;
+}
+
 export interface POSProduct {
   id: string;
   name: string;
@@ -12,6 +42,13 @@ export interface POSProduct {
   tax_rate?: string;
   sellableType?: 'product' | 'composite_item';
   modifier_groups?: ModifierGroup[];
+  /**
+   * T2 — when true the product carries sellable variants and the cashier must
+   * pick a specific variant before it can be added to the cart. Optional and
+   * defaults to falsy so every non-variant product flows through the existing
+   * add-to-cart path with zero behavioural change.
+   */
+  has_variants?: boolean;
   position?: number;
   /**
    * C2 — Menu-tenant composite primary key. Populated by

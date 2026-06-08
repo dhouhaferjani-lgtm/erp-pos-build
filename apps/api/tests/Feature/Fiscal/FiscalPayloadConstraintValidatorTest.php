@@ -1789,7 +1789,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
                 'quantity' => '1.000',
                 'sku' => 'SKU-DEFAULT',
                 'tax_category_code' => '',
-                'unit_price' => '100.000',
+                'unit_price' => '119.000',
                 'vat_rate' => '19.00',
             ]],
             'local_balance_snapshot' => [

@@ -403,24 +403,6 @@ parameters:
 			path: app/Modules/Document/Domain/Services/DocumentPostingService.php
 
 		-
-			message: '#^Casting decimal property App\\Modules\\Document\\Domain\\DocumentLine\:\:\$line_total \(cast ''decimal\:3''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 4
-			path: app/Modules/Document/Domain/Services/DraftPersistenceService.php
-
-		-
-			message: '#^Casting decimal property App\\Modules\\Document\\Domain\\DocumentLine\:\:\$quantity \(cast ''decimal\:4''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 6
-			path: app/Modules/Document/Domain/Services/DraftPersistenceService.php
-
-		-
-			message: '#^Casting decimal property App\\Modules\\Document\\Domain\\DocumentLine\:\:\$unit_price \(cast ''decimal\:3''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 5
-			path: app/Modules/Document/Domain/Services/DraftPersistenceService.php
-
-		-
 			message: '#^Casting decimal property App\\Modules\\Document\\Domain\\DocumentLine\:\:\$landed_unit_cost \(cast ''decimal\:6''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
 			identifier: precision.floatCastOnDecimalProperty
 			count: 1

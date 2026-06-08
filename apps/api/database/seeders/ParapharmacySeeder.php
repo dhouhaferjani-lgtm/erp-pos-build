@@ -26,14 +26,18 @@ use App\Modules\Product\Domain\Ingredient;
 use App\Modules\Product\Domain\KeyComponent;
 use App\Modules\Product\Domain\ParapharmacyProductMetadata;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Tenant\Application\Services\IdentityIndexService;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
+use Stancl\Tenancy\Jobs\CreateDatabase;
+use Stancl\Tenancy\Jobs\MigrateDatabase;
 
 /**
  * ParapharmacySeeder - Comprehensive seeder for parapharmacy company with EasyPos.
@@ -80,6 +84,17 @@ class ParapharmacySeeder extends Seeder
     protected Location $location;
 
     /**
+     * Single writer of the central identity index (`central_identities`).
+     *
+     * Resolved lazily via {@see identityIndex()} (seeders may use the
+     * container; Agent rule 13 — constructor injection only — applies to
+     * non-seeder classes). The service is pinned to the central connection,
+     * so its writes land in the CENTRAL database in db-per-tenant mode even
+     * while the default connection is swapped to the tenant database.
+     */
+    private ?IdentityIndexService $identityIndexService = null;
+
+    /**
      * Resolve the catalog scale at run time. Reads the
      * `PARAPHARMACY_SEEDER_SCALE` env var; falls back to DEFAULT_SCALE
      * when the value is missing, non-numeric, or less than 1. The
@@ -112,6 +127,44 @@ class ParapharmacySeeder extends Seeder
     }
 
     /**
+     * Lazily resolve the central identity-index writer.
+     *
+     * Seeders are allowed to use the container (Agent rule 13 scopes the
+     * "constructor injection only" rule to non-seeder classes); the seeder
+     * base class has no constructor we can inject into.
+     */
+    protected function identityIndex(): IdentityIndexService
+    {
+        return $this->identityIndexService ??= app(IdentityIndexService::class);
+    }
+
+    /**
+     * Register a created tenant user in the central identity index so
+     * email-first (T6) login resolves the tenant for that email with no
+     * manual backfill. A null/blank email is a no-op (PIN-only cashiers).
+     *
+     * `CentralIdentity` is pinned to the central connection, so this write
+     * always lands in the CENTRAL database — even in db-per-tenant mode when
+     * the default connection has been swapped to the tenant database.
+     */
+    protected function recordIdentity(User $user, Tenant $tenant): void
+    {
+        $this->identityIndex()->record($user->email, $tenant->id, $user->id);
+    }
+
+    /**
+     * Whether database-per-tenant mode is active (the Stancl flip flag). When
+     * true the seeder must provision + migrate a physical per-tenant database
+     * and run the tenant-scoped writes inside `tenancy()->initialize()`; the
+     * central-pinned rows (tenant, subscription, identity index) still land in
+     * the central database.
+     */
+    protected function databasePerTenantEnabled(): bool
+    {
+        return (bool) config('tenancy_resolver.db_per_tenant', false);
+    }
+
+    /**
      * Run the database seeds.
      */
     public function run(): void
@@ -120,7 +173,17 @@ class ParapharmacySeeder extends Seeder
         $this->command->info('🏥 Seeding PharmaBio France - Parapharmacy Company with EasyPos');
         $this->command->newLine();
 
-        // 1. Ensure reference data exists
+        // 1. Create tenant FIRST. In db-per-tenant mode this provisions +
+        //    migrates the physical tenant database and swaps the default
+        //    connection into it, so every tenant-scoped seed below (reference
+        //    data, products, users) lands in the tenant database rather than
+        //    the central one. In single-DB mode it is just a Tenant::create().
+        $this->command->info('🏢 Creating tenant...');
+        $this->tenant = $this->createParapharmacyTenant();
+        $this->command->info("✓ Tenant: {$this->tenant->name} (parapharmacy vertical)");
+
+        // 2. Ensure reference data exists (now inside tenant context when
+        //    db-per-tenant is on — these tables are tenant-scoped).
         $this->command->info('📚 Checking reference data...');
 
         // Seed roles and permissions first (required for user role assignment)
@@ -144,11 +207,6 @@ class ParapharmacySeeder extends Seeder
         }
 
         $this->command->info('✓ Reference data ready');
-
-        // 2. Create tenant
-        $this->command->info('🏢 Creating tenant...');
-        $this->tenant = $this->createParapharmacyTenant();
-        $this->command->info("✓ Tenant: {$this->tenant->name} (parapharmacy vertical)");
 
         // 3. Create company with location
         $this->command->info('🏪 Creating company...');
@@ -185,6 +243,9 @@ class ParapharmacySeeder extends Seeder
         $this->command->info('   Manager: manager@pharmabio.fr / password');
         $this->command->info('   Cashier: cashier@pharmabio.fr / password');
         $this->command->newLine();
+
+        // Revert the default connection back to central (no-op in single-DB).
+        $this->endTenancy();
     }
 
     /**
@@ -196,6 +257,18 @@ class ParapharmacySeeder extends Seeder
         $existingTenant = Tenant::where('slug', 'pharmabio-france')->first();
         if ($existingTenant) {
             $this->command->warn('⚠ Tenant pharmabio-france already exists. Deleting and recreating...');
+
+            // In db-per-tenant mode the central row delete does NOT drop the
+            // physical tenant database (no TenantDeleted -> DeleteDatabase event
+            // is wired), so drop it explicitly first to keep re-runs clean.
+            if ($this->databasePerTenantEnabled()) {
+                try {
+                    DB::purge('tenant');
+                    $existingTenant->database()->manager()->deleteDatabase($existingTenant);
+                } catch (\Throwable) {
+                    // best-effort: the database may not have been provisioned.
+                }
+            }
 
             // Delete existing tenant and all related data (cascading)
             $existingTenant->delete();
@@ -242,7 +315,47 @@ class ParapharmacySeeder extends Seeder
             ]);
         }
 
+        // db-per-tenant: provision + migrate the physical tenant database and
+        // swap the default connection into it so every subsequent tenant-scoped
+        // seed (reference data, company, products, users) lands in the tenant
+        // database. Central-pinned rows above (tenant, subscription) and the
+        // identity index below stay in the central database. Mirrors the
+        // canonical registration path in TenantProvisioningService.
+        $this->provisionTenantDatabase($tenant);
+
         return $tenant;
+    }
+
+    /**
+     * Provision + migrate the per-tenant database and enter tenant context.
+     *
+     * No-op in single-DB mode: the default connection already serves every
+     * table, so there is nothing to create or swap.
+     */
+    protected function provisionTenantDatabase(Tenant $tenant): void
+    {
+        if (! $this->databasePerTenantEnabled()) {
+            return;
+        }
+
+        Bus::dispatchSync(new CreateDatabase($tenant));
+        Bus::dispatchSync(new MigrateDatabase($tenant));
+
+        // Swap the default connection to the freshly migrated tenant database.
+        tenancy()->initialize($tenant);
+
+        $this->command->info("✓ Provisioned tenant database: {$tenant->database()->getName()}");
+    }
+
+    /**
+     * Revert the default connection to central. No-op in single-DB mode (and
+     * when tenancy was never initialized).
+     */
+    protected function endTenancy(): void
+    {
+        if (tenancy()->initialized) {
+            tenancy()->end();
+        }
     }
 
     /**
@@ -755,6 +868,10 @@ class ParapharmacySeeder extends Seeder
             'preferences' => [],
         ]);
 
+        // Register in the central identity index so email-first login resolves
+        // this tenant for owner@pharmabio.fr with no manual backfill.
+        $this->recordIdentity($owner, $tenant);
+
         UserCompanyMembership::create([
             'user_id' => $owner->id,
             'company_id' => $company->id,
@@ -785,6 +902,8 @@ class ParapharmacySeeder extends Seeder
             'preferences' => [],
         ]);
 
+        $this->recordIdentity($manager, $tenant);
+
         UserCompanyMembership::create([
             'user_id' => $manager->id,
             'company_id' => $company->id,
@@ -814,6 +933,8 @@ class ParapharmacySeeder extends Seeder
             'email_verified_at' => now(),
             'preferences' => [],
         ]);
+
+        $this->recordIdentity($cashier, $tenant);
 
         UserCompanyMembership::create([
             'user_id' => $cashier->id,
