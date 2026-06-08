@@ -82,6 +82,13 @@ export function ProductDetailPage() {
     enabled: !!id,
   })
 
+  // Resolve the tax configuration display name. MUST be called unconditionally
+  // here (before the early returns below) — calling it after a `return` makes
+  // the hook count change between the loading and loaded renders, which throws
+  // "Rendered more hooks than during the previous render". The hook null-guards
+  // its argument internally, so `data?.…` is safe before the product loads.
+  const taxConfigName = useTaxConfigName(data?.default_tax_configuration_id)
+
   const deleteMutation = useMutation({
     mutationFn: () => {
       if (!id) throw new Error('Product ID is required')
@@ -146,8 +153,6 @@ export function ProductDetailPage() {
   }
 
   const product = data
-
-  const taxConfigName = useTaxConfigName(product?.default_tax_configuration_id)
 
   return (
     <div className="space-y-6">
@@ -269,13 +274,15 @@ export function ProductDetailPage() {
                         {formatAmount(
                           String(parseFloat(product.sale_price) - parseFloat(product.cost_price))
                         )}
-                        <span className="ml-2 text-sm font-normal text-gray-600">
-                          ({(
-                            ((parseFloat(product.sale_price) - parseFloat(product.cost_price)) /
-                              parseFloat(product.cost_price)) *
-                            100
-                          ).toFixed(1)}%)
-                        </span>
+                        {parseFloat(product.cost_price) > 0 && (
+                          <span className="ml-2 text-sm font-normal text-gray-600">
+                            ({(
+                              ((parseFloat(product.sale_price) - parseFloat(product.cost_price)) /
+                                parseFloat(product.cost_price)) *
+                              100
+                            ).toFixed(1)}%)
+                          </span>
+                        )}
                       </div>
                     </div>
                   )}
