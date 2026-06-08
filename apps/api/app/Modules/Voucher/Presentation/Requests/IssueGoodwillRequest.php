@@ -24,7 +24,7 @@ class IssueGoodwillRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'amount' => ['required', 'string', 'regex:/^\d+(\.\d+)?$/'],
+            'amount' => ['required', 'string', 'regex:/^\d+(\.\d{1,5})?$/'],
             'currency' => ['required', 'string', 'size:3'],
             'partner_id' => ['nullable', 'uuid'],
             'redemption_mode' => ['required', Rule::enum(RedemptionMode::class)],
@@ -32,6 +32,14 @@ class IssueGoodwillRequest extends FormRequest
             'notes' => ['nullable', 'string', 'max:500'],
             'terminal_id' => ['nullable', 'uuid'],
             'second_admin_user_id' => ['nullable', 'uuid'],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public function messages(): array
+    {
+        return [
+            'amount.regex' => 'Amount must not exceed 5 decimal places.',
         ];
     }
 }

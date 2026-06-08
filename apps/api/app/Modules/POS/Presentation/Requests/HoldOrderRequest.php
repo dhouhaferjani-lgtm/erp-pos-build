@@ -34,10 +34,15 @@ final class HoldOrderRequest extends FormRequest
             'cart_snapshot.lines' => ['required', 'array', 'min:1'],
             'cart_snapshot.lines.*.product_id' => ['required', 'string'],
             'cart_snapshot.lines.*.product_name' => ['required', 'string'],
-            'cart_snapshot.lines.*.quantity' => ['required', 'numeric', 'min:0.001'],
-            'cart_snapshot.lines.*.unit_price' => ['required', 'numeric'],
-            'cart_snapshot.lines.*.tax_rate' => ['required', 'numeric'],
-            'cart_snapshot.lines.*.discount_amount' => ['nullable', 'numeric'],
+            // Scale ceilings are non-breaking: `numeric` still permits well-formed
+            // numeric-strings; the anchored regex caps decimal precision so an
+            // over-precise device value is rejected (422) instead of being
+            // silently rounded. quantity 4dp, money (unit_price/discount) 3dp,
+            // tax_rate 2dp.
+            'cart_snapshot.lines.*.quantity' => ['required', 'numeric', 'min:0.001', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'cart_snapshot.lines.*.unit_price' => ['required', 'numeric', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'cart_snapshot.lines.*.tax_rate' => ['required', 'numeric', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'cart_snapshot.lines.*.discount_amount' => ['nullable', 'numeric', 'regex:/^\d+(\.\d{1,3})?$/'],
             'cart_snapshot.lines.*.modifiers' => ['nullable', 'array'],
             'cart_snapshot.lines.*.special_instructions' => ['nullable', 'string'],
             'cart_snapshot.customer' => ['nullable', 'array'],
@@ -67,8 +72,12 @@ final class HoldOrderRequest extends FormRequest
             'cart_snapshot.lines.*.product_name.required' => 'Each line must have a product name.',
             'cart_snapshot.lines.*.quantity.required' => 'Each line must have a quantity.',
             'cart_snapshot.lines.*.quantity.min' => 'Quantity must be greater than zero.',
+            'cart_snapshot.lines.*.quantity.regex' => 'Quantity must have at most 4 decimal places.',
             'cart_snapshot.lines.*.unit_price.required' => 'Each line must have a unit price.',
+            'cart_snapshot.lines.*.unit_price.regex' => 'Unit price must have at most 3 decimal places.',
             'cart_snapshot.lines.*.tax_rate.required' => 'Each line must have a tax rate.',
+            'cart_snapshot.lines.*.tax_rate.regex' => 'Tax rate must have at most 2 decimal places.',
+            'cart_snapshot.lines.*.discount_amount.regex' => 'Discount amount must have at most 3 decimal places.',
             'expires_in_minutes.min' => 'Expiry time must be at least 1 minute.',
             'expires_in_minutes.max' => 'Expiry time cannot exceed 1440 minutes (24 hours).',
         ];

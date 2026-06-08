@@ -1,6 +1,6 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Plus, AlertCircle } from 'lucide-react'
@@ -15,6 +15,7 @@ import type { TransactionType } from '../withholding/types'
 import { useCurrency } from '../../hooks/useCurrency'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { MoneyInput } from '../../components/atoms/MoneyInput'
 
 interface PaymentMethod {
   id: string
@@ -118,6 +119,7 @@ export function PaymentForm() {
     reset,
     setValue,
     watch,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<PaymentFormData>({
     defaultValues: {
@@ -322,10 +324,10 @@ export function PaymentForm() {
 
       return apiPost<Payment>('/payments', {
         ...data,
-        amount: parseFloat(data.amount),
+        amount: data.amount,
         allocations: allocations.length > 0 ? allocations : undefined,
         withholding_enabled: withholdingEnabled,
-        withholding_rate: withholdingEnabled && withholdingRate ? parseFloat(withholdingRate) : undefined,
+        withholding_rate: withholdingEnabled && withholdingRate ? withholdingRate : undefined,
         withholding_transaction_type: withholdingEnabled && withholdingTransactionType ? withholdingTransactionType : undefined,
         withholding_override_reason: data.withholding_override_reason,
       })
@@ -414,18 +416,29 @@ export function PaymentForm() {
                 {t('treasury:payments.form.amount')} *
               </label>
               <div className="relative mt-1">
-                <span className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-500">
+                <span className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-500 z-10">
                   {symbol}
                 </span>
-                <input
-                  type="number"
-                  step="0.01"
-                  id="amount"
-                  {...register('amount', {
+                <Controller
+                  name="amount"
+                  control={control}
+                  rules={{
                     required: t('treasury:payments.form.amountRequired'),
-                    min: { value: 0.01, message: t('treasury:payments.form.amountPositive') },
-                  })}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 ps-10 pe-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    validate: (v) => parseFloat(v) > 0 || t('treasury:payments.form.amountPositive'),
+                  }}
+                  render={({ field }) => (
+                    <MoneyInput
+                      id="amount"
+                      currency={currency}
+                      min="0.01"
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                      error={!!errors.amount}
+                      className="mt-1 block w-full rounded-lg border border-gray-300 ps-10 pe-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  )}
                 />
               </div>
               {errors.amount && (

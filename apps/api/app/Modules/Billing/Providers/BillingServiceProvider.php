@@ -6,6 +6,7 @@ namespace App\Modules\Billing\Providers;
 
 use App\Modules\Billing\Application\Services\InvoiceService;
 use App\Modules\Billing\Application\Services\PaymentProviderManager;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\ServiceProvider;
 
 final class BillingServiceProvider extends ServiceProvider
@@ -19,7 +20,9 @@ final class BillingServiceProvider extends ServiceProvider
 
         // Register InvoiceService
         $this->app->singleton(InvoiceService::class, function () {
-            return new InvoiceService;
+            return new InvoiceService(
+                $this->app->make(CurrencyScaleResolverInterface::class),
+            );
         });
 
         // Merge config

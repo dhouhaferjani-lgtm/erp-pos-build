@@ -73,8 +73,8 @@ class PaymentMethodController extends Controller
             'has_deducted_fees' => ['nullable', 'boolean'],
             'is_restricted' => ['nullable', 'boolean'],
             'fee_type' => ['nullable', 'string', Rule::in(['none', 'fixed', 'percentage', 'mixed'])],
-            'fee_fixed' => ['nullable', 'numeric', 'min:0'],
-            'fee_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'fee_fixed' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'fee_percent' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'restriction_type' => ['nullable', 'string', 'max:50'],
             // default_journal_id: legacy storage-only field — no `journals` table exists
             // in the current schema (no migration, no model, no read path). The bare
@@ -93,6 +93,9 @@ class PaymentMethodController extends Controller
                 ScopedExists::tenantAndCompany('accounts', $tenantId, $companyId),
             ],
             'position' => ['nullable', 'integer', 'min:0'],
+        ], [
+            'fee_fixed.regex' => 'Fixed fee must have at most 3 decimal places.',
+            'fee_percent.regex' => 'Fee percent must have at most 2 decimal places.',
         ]);
 
         $method = PaymentMethod::create([
@@ -151,8 +154,8 @@ class PaymentMethodController extends Controller
             'has_deducted_fees' => ['sometimes', 'boolean'],
             'is_restricted' => ['sometimes', 'boolean'],
             'fee_type' => ['nullable', 'string', Rule::in(['none', 'fixed', 'percentage', 'mixed'])],
-            'fee_fixed' => ['nullable', 'numeric', 'min:0'],
-            'fee_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'fee_fixed' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'fee_percent' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'restriction_type' => ['nullable', 'string', 'max:50'],
             // default_journal_id: legacy storage-only field — no `journals` table exists
             // in the current schema (no migration, no model, no read path). The bare
@@ -172,6 +175,9 @@ class PaymentMethodController extends Controller
             ],
             'is_active' => ['sometimes', 'boolean'],
             'position' => ['nullable', 'integer', 'min:0'],
+        ], [
+            'fee_fixed.regex' => 'Fixed fee must have at most 3 decimal places.',
+            'fee_percent.regex' => 'Fee percent must have at most 2 decimal places.',
         ]);
 
         $method->update($validated);

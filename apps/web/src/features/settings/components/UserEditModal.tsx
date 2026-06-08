@@ -30,7 +30,7 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
   const [role, setRole] = useState(user.roles[0] ?? 'operator')
   const [canDiscount, setCanDiscount] = useState(user.canDiscount ?? false)
   const [maxDiscountPercent, setMaxDiscountPercent] = useState<string>(
-    user.maxDiscountPercent != null ? String(user.maxDiscountPercent) : ''
+    user.maxDiscountPercent ?? ''
   )
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -40,9 +40,7 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
     setPhone(user.phone ?? '')
     setRole(user.roles[0] ?? 'operator')
     setCanDiscount(user.canDiscount ?? false)
-    setMaxDiscountPercent(
-      user.maxDiscountPercent != null ? String(user.maxDiscountPercent) : ''
-    )
+    setMaxDiscountPercent(user.maxDiscountPercent ?? '')
   }, [user])
 
   const mutation = useMutation({

@@ -2,7 +2,37 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { Input, Button, FormField, Select } from '@/components/atoms'
+import { Input, Button, FormField, Select, QuantityInput } from '@/components/atoms'
+
+/** Controlled QuantityInput that only fires onCommit on blur — prevents per-keystroke API calls in table rows. */
+function BlurQuantityInput({
+  initialValue,
+  decimalPlaces,
+  onCommit,
+  className,
+  min,
+  max,
+}: {
+  initialValue: string
+  decimalPlaces: number
+  onCommit: (value: string) => void
+  className?: string
+  min?: string
+  max?: string
+}) {
+  const [draft, setDraft] = useState(initialValue)
+  return (
+    <QuantityInput
+      decimalPlaces={decimalPlaces}
+      value={draft}
+      onChange={setDraft}
+      onBlur={() => { if (draft !== initialValue) onCommit(draft) }}
+      className={className}
+      {...(min !== undefined ? { min } : {})}
+      {...(max !== undefined ? { max } : {})}
+    />
+  )
+}
 import { Textarea } from '@/components/atoms/Textarea/Textarea'
 import { Badge } from '@/components/atoms/Badge/Badge'
 import { ProductSearchSelect } from '@/components/ui/ProductSearchSelect'
@@ -63,8 +93,8 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
         data: {
           component_type: newLine.component_type,
           component_id: newLine.component_id,
-          quantity: Number(newLine.quantity),
-          wastage_percent: Number(newLine.wastage_percent),
+          quantity: newLine.quantity,
+          wastage_percent: newLine.wastage_percent,
           is_optional: newLine.is_optional,
         },
       },
@@ -88,7 +118,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
     updateLineMutation.mutate({
       recipeId: recipe.id,
       lineId,
-      data: { [field]: typeof value === 'string' ? Number(value) : value },
+      data: { [field]: value },
     })
   }
 
@@ -226,22 +256,20 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                   {line.component_sku && <span className="text-gray-500 ml-1 text-xs">({line.component_sku})</span>}
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                  <Input
-                    type="number"
-                    defaultValue={line.quantity}
-                    onBlur={(e) => { handleUpdateLine(line.id, 'quantity', e.target.value); }}
+                  <BlurQuantityInput
+                    initialValue={line.quantity}
+                    decimalPlaces={4}
+                    onCommit={(v) => { handleUpdateLine(line.id, 'quantity', v) }}
                     className="!mt-0 w-20"
-                    step="0.01"
                   />
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{line.unit_name ?? '-'}</td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                  <Input
-                    type="number"
-                    defaultValue={line.wastage_percent}
-                    onBlur={(e) => { handleUpdateLine(line.id, 'wastage_percent', e.target.value); }}
+                  <BlurQuantityInput
+                    initialValue={line.wastage_percent}
+                    decimalPlaces={1}
+                    onCommit={(v) => { handleUpdateLine(line.id, 'wastage_percent', v) }}
                     className="!mt-0 w-16"
-                    step="0.1"
                     min="0"
                     max="100"
                   />
@@ -299,23 +327,21 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                 </div>
               </td>
               <td className="px-3 py-4">
-                <Input
-                  type="number"
+                <QuantityInput
+                  decimalPlaces={4}
                   placeholder={t('catalog:quantity')}
                   value={newLine.quantity}
-                  onChange={(e) => { setNewLine({ ...newLine, quantity: e.target.value }); }}
+                  onChange={(v) => { setNewLine({ ...newLine, quantity: v }); }}
                   className="!mt-0 w-20"
-                  step="0.01"
                 />
               </td>
               <td className="px-3 py-4">-</td>
               <td className="px-3 py-4">
-                <Input
-                  type="number"
+                <QuantityInput
+                  decimalPlaces={1}
                   value={newLine.wastage_percent}
-                  onChange={(e) => { setNewLine({ ...newLine, wastage_percent: e.target.value }); }}
+                  onChange={(v) => { setNewLine({ ...newLine, wastage_percent: v }); }}
                   className="!mt-0 w-16"
-                  step="0.1"
                 />
               </td>
               <td className="px-3 py-4">

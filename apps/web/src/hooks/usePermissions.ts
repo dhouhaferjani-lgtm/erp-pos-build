@@ -22,6 +22,12 @@ export const PERMISSIONS = {
   'inventory.create': ['admin', 'inventory', 'manager'],
   'inventory.edit': ['admin', 'inventory', 'manager'],
 
+  // Inventory - Stock Transfers (document-based, lifecycle-tracked)
+  'inventory.transfers.view': ['admin', 'inventory', 'manager'],
+  'inventory.transfers.create': ['admin', 'inventory', 'manager'],
+  'inventory.transfers.complete': ['admin', 'inventory', 'manager'],
+  'inventory.transfers.cancel': ['admin', 'inventory', 'manager'],
+
   // Treasury
   'treasury.view': ['admin', 'treasury', 'accountant', 'manager'],
   'treasury.create': ['admin', 'treasury', 'accountant', 'manager'],
@@ -103,6 +109,16 @@ export const PERMISSIONS = {
   'composite-items.manage-recipes': ['admin', 'manager'],
   'modifier-groups.view': ['admin', 'manager'],
   'modifier-groups.manage': ['admin', 'manager'],
+
+  // Catalog (Product Attributes & Variants — T2)
+  'catalog.attributes.view': ['admin', 'manager'],
+  'catalog.attributes.create': ['admin', 'manager'],
+  'catalog.attributes.update': ['admin', 'manager'],
+  'catalog.attributes.delete': ['admin'],
+  'catalog.variants.view': ['admin', 'manager'],
+  'catalog.variants.create': ['admin', 'manager'],
+  'catalog.variants.update': ['admin', 'manager'],
+  'catalog.variants.delete': ['admin'],
 
   // Workshop Service Bundles
   'workshop-bundles.view': ['admin', 'manager', 'technician'],

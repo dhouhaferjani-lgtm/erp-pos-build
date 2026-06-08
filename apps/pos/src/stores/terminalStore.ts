@@ -47,6 +47,9 @@ export interface Terminal {
     id: string;
     name: string;
     code: string;
+    tax_id: string | null;
+    vat_number: string | null;
+    legal_identifiers: Record<string, unknown> | null;
   };
 }
 
@@ -300,6 +303,33 @@ export async function seedOfflineHashChain(terminalId: string): Promise<void> {
     } catch (err) {
       console.error(
         '[POS][terminalStore][recover] strandedSyncingCashDrawer failed',
+        serializeErrorForLog(err),
+      );
+    }
+
+    // Sub-Spec C — audit-outbox boot maintenance. Same crash-stranding
+    // pattern as the receipt/cash-drawer recoveries above: a SIGKILL between
+    // markAuditEventsSyncing(... 'syncing') and the response handler strands
+    // the row at 'syncing', invisible to getPendingAuditEvents's
+    // `status IN ('pending','failed')` filter — demote it back to 'pending'.
+    // Then prune 'synced' rows past the 14-day retention window so the outbox
+    // stays bounded. Best-effort: an audit-maintenance blip must never block
+    // scheduler start (audit is the lowest-priority sync surface).
+    try {
+      const {
+        recoverStrandedSyncingAuditEvents,
+        pruneSyncedAuditEvents,
+      } = await import('@/lib/db/repositories/queuedAuditEventRepository');
+      const recovered = await recoverStrandedSyncingAuditEvents(db);
+      if (recovered > 0) {
+        console.info(
+          `[POS][terminalStore][recover] demoted ${String(recovered)} stranded 'syncing' audit event(s) on boot`,
+        );
+      }
+      await pruneSyncedAuditEvents(db, 14);
+    } catch (err) {
+      console.error(
+        '[POS][terminalStore][recover] audit-outbox maintenance failed',
         serializeErrorForLog(err),
       );
     }

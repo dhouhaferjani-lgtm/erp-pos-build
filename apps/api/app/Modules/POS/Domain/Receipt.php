@@ -240,6 +240,8 @@ class Receipt extends Model
             'fiscal_status' => FiscalStatus::class,
             'consumption_mode' => ConsumptionMode::class,
             'is_voided' => 'boolean',
+            // Snapshot of cashier max_discount_percent at transaction time — decimal(5,2)
+            'discount_authorized_by' => 'decimal:2',
             'is_training' => 'boolean',
             'training_flag' => 'boolean',
             'voided_at' => 'datetime',

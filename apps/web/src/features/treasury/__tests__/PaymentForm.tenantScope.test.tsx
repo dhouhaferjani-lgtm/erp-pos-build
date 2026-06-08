@@ -57,14 +57,18 @@ vi.mock('@/features/withholding', () => ({
   useWithholdingPreview: () => ({ data: undefined, mutate: mockWithholdingPreviewMutate }),
 }))
 
-vi.mock('@/hooks/useCurrency', () => ({
-  useCurrency: () => ({
-    currency: 'TND',
-    decimals: 2,
-    format: (value: number) => value.toFixed(2),
-    symbol: 'TND',
-  }),
-}))
+vi.mock('@/hooks/useCurrency', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/useCurrency')>()
+  return {
+    ...actual,
+    useCurrency: () => ({
+      currency: 'TND',
+      decimals: 2,
+      format: (value: number) => value.toFixed(2),
+      symbol: 'TND',
+    }),
+  }
+})
 
 function setTenant(tenantId: string, companyId: string) {
   useAuthStore.setState({

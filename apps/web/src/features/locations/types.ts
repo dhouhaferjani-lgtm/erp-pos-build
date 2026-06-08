@@ -17,6 +17,9 @@ export interface Location {
   addressCity: string | null
   addressPostalCode: string | null
   addressCountry: string | null
+  taxId: string | null
+  vatNumber: string | null
+  legalIdentifiers: Record<string, unknown> | null
   isDefault: boolean
   isActive: boolean
   posEnabled: boolean

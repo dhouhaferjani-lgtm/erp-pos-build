@@ -50,7 +50,7 @@ class ReceiptLineBatchAllocation extends Model
     {
         return [
             'batch_id' => 'integer',
-            'quantity' => 'decimal:3',
+            'quantity' => 'decimal:4',
             'expiry_date' => 'date',
         ];
     }

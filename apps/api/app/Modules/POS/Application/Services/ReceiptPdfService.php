@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Application\Services;
 
+use App\Modules\Company\Application\Services\TaxIdentityResolver;
 use App\Modules\Company\Domain\Company;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Receipt;
@@ -30,6 +31,7 @@ final class ReceiptPdfService
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly ReceiptQrTokenIssuanceService $qrTokenIssuanceService,
+        private readonly TaxIdentityResolver $taxIdentityResolver,
     ) {}
 
     private function scale(): int
@@ -45,24 +47,7 @@ final class ReceiptPdfService
      */
     public function generate(Receipt $receipt, bool $stream = false, int $copyNumber = 1): DomPdf
     {
-        $relations = [
-            'company',
-            'location',
-            'terminal',
-            'cashier',
-            'lines.product',
-            'vatDetails',
-            'payments.paymentMethod',
-        ];
-
-        if ($receipt->receipt_type === ReceiptType::Return) {
-            $relations[] = 'originalReceipt';
-        }
-
-        $receipt->load($relations);
-
-        $company = $receipt->company;
-        $data = $this->prepareData($receipt, $company, $copyNumber);
+        $data = $this->viewDataFor($receipt, $copyNumber);
 
         $pdf = Pdf::loadView('pos.receipt', $data);
 
@@ -97,6 +82,32 @@ final class ReceiptPdfService
     }
 
     /**
+     * Prepare receipt view data without invoking DomPDF.
+     *
+     * @return array<string, mixed>
+     */
+    public function viewDataFor(Receipt $receipt, int $copyNumber = 1): array
+    {
+        $relations = [
+            'company',
+            'location',
+            'terminal',
+            'cashier',
+            'lines.product',
+            'vatDetails',
+            'payments.paymentMethod',
+        ];
+
+        if ($receipt->receipt_type === ReceiptType::Return) {
+            $relations[] = 'originalReceipt';
+        }
+
+        $receipt->load($relations);
+
+        return $this->prepareData($receipt, $receipt->company, $copyNumber);
+    }
+
+    /**
      * Prepare data for the PDF template.
      *
      * @return array<string, mixed>
@@ -105,6 +116,7 @@ final class ReceiptPdfService
     {
         $locale = $company->locale ?? 'en';
         $currency = $receipt->currency ?? $company->currency;
+        $taxIdentity = $this->taxIdentityResolver->resolve($receipt->location);
 
         // Calculate change given. Prefer the persisted column (new rows);
         // fall back to totalPaid - total for legacy rows written before the
@@ -141,6 +153,7 @@ final class ReceiptPdfService
             'receipt' => $receipt,
             'company' => $company,
             'location' => $receipt->location,
+            'sellerTaxId' => $taxIdentity->taxId ?? $company->tax_id,
             'terminal' => $receipt->terminal,
             'cashier' => $receipt->cashier,
             'lines' => $receipt->lines,

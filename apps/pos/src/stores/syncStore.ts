@@ -1,6 +1,17 @@
 import { create } from 'zustand';
 import type { SyncResult } from '@/lib/sync/syncService';
 import type { SyncScheduler } from '@/lib/sync/syncScheduler';
+import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
+import { useTerminalStore } from '@/stores/terminalStore';
+
+/**
+ * Resolve the active terminal id for the FiscalChain aggregate on
+ * `pos.fiscal_chain_break`. Falls back to `'unknown'` so the event still
+ * records when the terminal store is not yet hydrated.
+ */
+function resolveTerminalId(): string {
+  return useTerminalStore.getState().terminal?.id ?? 'unknown';
+}
 
 interface SyncState {
   isSyncing: boolean;
@@ -70,6 +81,23 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
       isSyncing: false,
       lastError: error,
     });
+
+    // Sub-Spec C Task 12 — `pos.sync_failed_orphaned`. `failSync` is an
+    // AGGREGATE failure signal (one error message per tick); it carries no
+    // per-receipt detail, so we emit ONCE with `receipt_id: null` and the
+    // available summary rather than inventing per-receipt state. Fire-and-
+    // forget OUTSIDE the `set()`; never throws into the action.
+    void recordAuditEvent({
+      type: 'pos.sync_failed_orphaned',
+      aggregateType: 'OfflineReceipt',
+      aggregateId: resolveTerminalId(),
+      payload: {
+        receipt_id: null,
+        idempotency_key: null,
+        retry_count: null,
+        error,
+      },
+    }).catch(() => {});
   },
 
   setPendingCount: (count: number) => {
@@ -106,11 +134,45 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
     set(initialState);
   },
 
-  setChainBreak: (broken, receiptNumber) => set({
-    chainBreak: broken,
-    chainBreakReceiptNumber: receiptNumber,
-    chainBreakAcknowledgedAt: broken ? null : new Date().toISOString(),
-  }),
+  setChainBreak: (broken, receiptNumber) => {
+    set({
+      chainBreak: broken,
+      chainBreakReceiptNumber: receiptNumber,
+      chainBreakAcknowledgedAt: broken ? null : new Date().toISOString(),
+    });
 
-  acknowledgeChainBreak: () => set({ chainBreakAcknowledgedAt: new Date().toISOString() }),
+    // Sub-Spec C Task 12 — `pos.fiscal_chain_break`. Only emit when a break is
+    // being SET (broken === true); clearing it (broken === false, the resolution
+    // path) is not a fraud signal. Aggregate FiscalChain / terminal id. Fire-and-
+    // forget OUTSIDE the `set()`; never throws into the action.
+    if (broken) {
+      void recordAuditEvent({
+        type: 'pos.fiscal_chain_break',
+        aggregateType: 'FiscalChain',
+        aggregateId: resolveTerminalId(),
+        payload: {
+          receipt_number: receiptNumber,
+          acknowledged: false,
+        },
+      }).catch(() => {});
+    }
+  },
+
+  acknowledgeChainBreak: () => {
+    set({ chainBreakAcknowledgedAt: new Date().toISOString() });
+
+    // Sub-Spec C Task 12 — operator acknowledged an active chain break. Emit the
+    // same `pos.fiscal_chain_break` type with `acknowledged: true` so the
+    // detection center can correlate the break with its acknowledgement.
+    const receiptNumber = get().chainBreakReceiptNumber;
+    void recordAuditEvent({
+      type: 'pos.fiscal_chain_break',
+      aggregateType: 'FiscalChain',
+      aggregateId: resolveTerminalId(),
+      payload: {
+        receipt_number: receiptNumber,
+        acknowledged: true,
+      },
+    }).catch(() => {});
+  },
 }));

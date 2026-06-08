@@ -396,22 +396,22 @@ class OpeningBalanceBatchController extends Controller
         $typeRules = match ($batch->type) {
             OpeningBatchType::Accounting => [
                 'rows.*.account_code' => ['required', 'string'],
-                'rows.*.debit' => ['nullable', 'numeric', 'min:0'],
-                'rows.*.credit' => ['nullable', 'numeric', 'min:0'],
+                'rows.*.debit' => ['nullable', 'numeric', 'min:0', 'regex:/^-?\d+(\.\d{1,3})?$/'],
+                'rows.*.credit' => ['nullable', 'numeric', 'min:0', 'regex:/^-?\d+(\.\d{1,3})?$/'],
                 'rows.*.description' => ['nullable', 'string', 'max:255'],
             ],
             OpeningBatchType::Inventory => [
                 'rows.*.product_code' => ['required', 'string'],
                 'rows.*.location_code' => ['required', 'string'],
-                'rows.*.quantity' => ['required', 'numeric', 'gt:0'],
-                'rows.*.unit_cost' => ['required', 'numeric', 'min:0'],
+                'rows.*.quantity' => ['required', 'numeric', 'gt:0', 'regex:/^-?\d+(\.\d{1,4})?$/'],
+                'rows.*.unit_cost' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             ],
             OpeningBatchType::ArOpenItems, OpeningBatchType::ApOpenItems => [
                 'rows.*.partner_code' => ['required', 'string'],
                 'rows.*.document_date' => ['required', 'date'],
                 'rows.*.due_date' => ['required', 'date'],
-                'rows.*.total' => ['required', 'numeric', 'gt:0'],
-                'rows.*.open_amount' => ['required', 'numeric', 'min:0'],
+                'rows.*.total' => ['required', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+                'rows.*.open_amount' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
                 'rows.*.external_invoice_number' => ['nullable', 'string', 'max:100'],
                 'rows.*.document_type' => ['nullable', 'string', 'in:invoice,credit_note,inv,cn'],
                 'rows.*.currency' => ['nullable', 'string', 'size:3'],
@@ -419,7 +419,14 @@ class OpeningBalanceBatchController extends Controller
             ],
         };
 
-        $validated = $request->validate(array_merge($baseRules, $typeRules));
+        $validated = $request->validate(array_merge($baseRules, $typeRules), [
+            'rows.*.debit.regex' => 'Debit amount must have at most 3 decimal places.',
+            'rows.*.credit.regex' => 'Credit amount must have at most 3 decimal places.',
+            'rows.*.quantity.regex' => 'Quantity must have at most 4 decimal places.',
+            'rows.*.unit_cost.regex' => 'Unit cost must have at most 3 decimal places.',
+            'rows.*.total.regex' => 'Total must have at most 3 decimal places.',
+            'rows.*.open_amount.regex' => 'Open amount must have at most 3 decimal places.',
+        ]);
 
         try {
             $this->batchService->addImportRows($batch, $validated['rows']);

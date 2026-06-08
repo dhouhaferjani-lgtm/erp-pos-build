@@ -107,13 +107,17 @@ vi.mock('@/components/ErrorBoundary', () => ({
 }));
 
 // Mock the connectivity store so we can spy on startMonitoring.
+// MainApp also arms the Sub-Spec C connectivity-audit subscriber, which reads
+// `getState().isOnline` and calls `subscribe(...)` — provide both so the mount
+// effect doesn't throw.
 const startMonitoringSpy = vi.fn(() => () => {});
 vi.mock('@/stores/connectivityStore', () => ({
   useConnectivityStore: Object.assign(
     (selector: (s: { isOnline: boolean }) => unknown) =>
       selector({ isOnline: true }),
     {
-      getState: () => ({ startMonitoring: startMonitoringSpy }),
+      getState: () => ({ startMonitoring: startMonitoringSpy, isOnline: true }),
+      subscribe: vi.fn(() => () => {}),
     },
   ),
 }));

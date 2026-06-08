@@ -51,10 +51,41 @@ app/Modules/{ModuleName}/
 
 **FORBIDDEN:** Importing models/entities directly across modules.
 
-## Multi-Tenancy (Schema-Based)
+## Multi-Tenancy (Database-Per-Tenant)
 
-Each tenant gets a PostgreSQL schema (`tenant_acme`, `tenant_garage42`).
-`public` schema holds shared lookup data and tenant registry.
+> Flipped from row-level to database-per-tenant on 2026-05-28 (T6 Phase 0b,
+> PRs #141–#146 + #148). Anywhere you see "schema-based" or "row-level
+> multi-tenancy" in older docs, treat it as stale.
+
+**Two named Laravel connections, one PostgreSQL cluster:**
+
+| Connection | Database | Holds | Swapped per request? |
+|---|---|---|---|
+| `central` | `synerivia_central` | tenants, domains, plans, tenant_subscriptions, super_admins, central_identities, personal_access_tokens, tenant_backups | Never |
+| `tenant` (default in prod) | `tenant_<tenant-uuid>` | every tenant-scoped table (users, products, documents, stock_*, fiscal events, etc.) | Yes — Stancl `DatabaseTenancyBootstrapper` swaps the default connection mid-request to the resolved tenant's DB |
+
+**Migration topology:**
+
+- `apps/api/database/migrations/` — CENTRAL migrations (run by `php artisan migrate`).
+- `apps/api/database/migrations/tenant/` — TENANT migrations (run by `tenants:migrate` per tenant DB, and by `tenant:migrate-rolling` to walk every tenant). Stancl `MigrateDatabase` job runs these on signup.
+
+**Pinned-connection models:** `CentralPersonalAccessToken`, `Tenant`, `CentralIdentity`, and friends declare `protected $connection = 'central'` so `auth:sanctum` lookups, identity-index reads, and tenant directory queries always reach central even after the per-request swap.
+
+**Lifecycle:**
+
+- Signup → `CreateDatabase` → `MigrateDatabase` → reference-data seed → tenant verification email (under re-entered tenant context).
+- Deprovision → `TenantDeprovisioningService::deprovision()` drops the physical DB + removes central directory rows. `suspend()` only flips status (DB survives, reversible).
+- Rolling migrations → `tenant:migrate-rolling` applies pending tenant migrations one DB at a time.
+- Backup / restore → `tenant:backup [slug|--all]` (pg_dump custom format → local disk, metadata in central `tenant_backups`); `tenant:restore <slug> <file>` is the drop+recreate counterpart with sha256 verification.
+- Monitoring → `tenant:status` CLI + `GET /api/v1/admin/monitoring/tenants` JSON.
+
+**Connection pooling (production):**
+
+PgBouncer in `POOL_MODE=transaction` (the only mode compatible with per-request DB switching — session-mode would pin a request to one backend DB). Set `DB_PGBOUNCER=true` to enable PDO emulate-prepares, which is required in transaction-pool mode. CREATE / DROP DATABASE (signup, deprovision, restore) MUST bypass PgBouncer — see `docs/operations/POST-FLIP-OPS.md`.
+
+**Resolver mode flag:** `TENANCY_DB_PER_TENANT=true` makes the pre-auth resolver fail closed (503) when a tenant's database is unreachable. Defaults to true in any environment running real per-tenant DBs.
+
+**Greenfield migration:** there was no production tenant data at flip time (owner confirmed 2026-05-25), so no data partitioning, no row→DB carve-out, no legacy fiscal-chain re-verification.
 
 ## CQRS Light
 

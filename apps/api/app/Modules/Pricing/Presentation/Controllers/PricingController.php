@@ -179,9 +179,13 @@ class PricingController extends Controller
                 'required',
                 ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id),
             ],
-            'price' => 'required|numeric|min:0',
-            'min_quantity' => 'required|numeric|min:0',
-            'max_quantity' => 'nullable|numeric|gt:min_quantity',
+            'price' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'min_quantity' => ['required', 'numeric', 'min:0', 'regex:/^-?\d+(\.\d{1,4})?$/'],
+            'max_quantity' => ['nullable', 'numeric', 'gt:min_quantity', 'regex:/^-?\d+(\.\d{1,4})?$/'],
+        ], [
+            'price.regex' => 'Price must have at most 3 decimal places.',
+            'min_quantity.regex' => 'Minimum quantity must have at most 4 decimal places.',
+            'max_quantity.regex' => 'Maximum quantity must have at most 4 decimal places.',
         ]);
 
         // Hostile-grep blind spot: tenant-scope PriceList route lookup.
@@ -210,9 +214,13 @@ class PricingController extends Controller
     public function updateItem(Request $request, string $priceListId, string $itemId): JsonResponse
     {
         $request->validate([
-            'price' => 'sometimes|numeric|min:0',
-            'min_quantity' => 'sometimes|numeric|min:0',
-            'max_quantity' => 'nullable|numeric',
+            'price' => ['sometimes', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'min_quantity' => ['sometimes', 'numeric', 'min:0', 'regex:/^-?\d+(\.\d{1,4})?$/'],
+            'max_quantity' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,4})?$/'],
+        ], [
+            'price.regex' => 'Price must have at most 3 decimal places.',
+            'min_quantity.regex' => 'Minimum quantity must have at most 4 decimal places.',
+            'max_quantity.regex' => 'Maximum quantity must have at most 4 decimal places.',
         ]);
 
         // Hostile-grep blind spot: pre-load tenant-scoped PriceList; the
@@ -343,9 +351,11 @@ class PricingController extends Controller
                 'nullable',
                 ScopedExists::tenantAndCompany('partners', $company->tenant_id, $company->id),
             ],
-            'quantity' => 'required|numeric|min:0.01',
+            'quantity' => ['required', 'numeric', 'min:0.01', 'regex:/^-?\d+(\.\d{1,4})?$/'],
             'currency' => 'required|string|size:3',
             'date' => 'nullable|date',
+        ], [
+            'quantity.regex' => 'Quantity must have at most 4 decimal places.',
         ]);
 
         try {
@@ -404,10 +414,15 @@ class PricingController extends Controller
     public function calculateLineTotal(Request $request): JsonResponse
     {
         $request->validate([
-            'unit_price' => 'required|numeric|min:0',
-            'quantity' => 'required|numeric|min:0.01',
-            'discount_percent' => 'nullable|numeric|min:0|max:100',
-            'discount_amount' => 'nullable|numeric|min:0',
+            'unit_price' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'quantity' => ['required', 'numeric', 'min:0.01', 'regex:/^-?\d+(\.\d{1,4})?$/'],
+            'discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'discount_amount' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+        ], [
+            'unit_price.regex' => 'Unit price must have at most 3 decimal places.',
+            'quantity.regex' => 'Quantity must have at most 4 decimal places.',
+            'discount_percent.regex' => 'Discount percent must have at most 2 decimal places.',
+            'discount_amount.regex' => 'Discount amount must have at most 3 decimal places.',
         ]);
 
         $result = $this->pricingService->calculateLineTotal(
@@ -476,7 +491,9 @@ class PricingController extends Controller
                 'uuid',
                 ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id),
             ],
-            'sell_price' => 'required|numeric|min:0',
+            'sell_price' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+        ], [
+            'sell_price.regex' => 'Sell price must have at most 3 decimal places.',
         ]);
 
         // api.pricing.002: tenant-scope Product findOrFail (defense-in-depth
@@ -486,7 +503,10 @@ class PricingController extends Controller
         $product = Product::where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->findOrFail($validated['product_id']);
-        $sellPrice = (float) $validated['sell_price'];
+        // Precision: pass the exact decimal string to MarginService so the
+        // discount-permission threshold is evaluated via bcmath, not IEEE-754
+        // floats. The validator above guarantees a well-formed numeric string.
+        $sellPrice = (string) $validated['sell_price'];
 
         /** @var User $user */
         $user = $request->user();

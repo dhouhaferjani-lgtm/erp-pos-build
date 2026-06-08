@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Plus, Edit, Trash2 } from 'lucide-react'
 import { useCategories, useDeleteUnit } from '../hooks/useUnits'
 import { AddUnitModal } from '../components/AddUnitModal'
+import { UnitDecimalSettings } from '@/features/settings/components/UnitDecimalSettings'
 import { Button } from '@/components/atoms/Button/Button'
 import { Badge } from '@/components/atoms/Badge/Badge'
 import { Spinner } from '@/components/atoms/Spinner/Spinner'
@@ -203,6 +204,9 @@ export function UnitsSettingsPage() {
           </div>
         ))}
       </div>
+
+      {/* Per-unit decimal precision settings */}
+      <UnitDecimalSettings />
 
       {/* Add/Edit Modal */}
       <AddUnitModal

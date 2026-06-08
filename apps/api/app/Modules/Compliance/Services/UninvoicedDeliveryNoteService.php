@@ -13,6 +13,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
@@ -31,7 +32,24 @@ class UninvoicedDeliveryNoteService
 {
     public function __construct(
         private readonly ChartOfAccountsService $accountsService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    /**
+     * Resolve the monetary scale from a company's own currency.
+     *
+     * This service is invoked from year-end reporting/adjustment paths that may
+     * run outside an HTTP request (console commands / scheduled jobs), where no
+     * CompanyContext is bound. Passing the company currency explicitly is both
+     * context-safe AND fiscally correct (EUR→2, TND→3).
+     */
+    private function scaleFor(string $companyId): int
+    {
+        /** @var Company $company */
+        $company = Company::findOrFail($companyId);
+
+        return $this->scaleResolver->getScale($company->currency);
+    }
 
     /**
      * Get all uninvoiced delivery notes for a company.
@@ -98,6 +116,8 @@ class UninvoicedDeliveryNoteService
     ): array {
         $dns = $this->getUninvoicedDeliveryNotes($companyId, $fromDate, $toDate);
 
+        $scale = $this->scaleFor($companyId);
+
         /** @var numeric-string $subtotal */
         $subtotal = '0.00';
         /** @var numeric-string $taxAmount */
@@ -106,9 +126,9 @@ class UninvoicedDeliveryNoteService
         $total = '0.00';
 
         foreach ($dns as $dn) {
-            $subtotal = bcadd($subtotal, $dn['subtotal'], 2); // @phpstan-ignore argument.type
-            $taxAmount = bcadd($taxAmount, $dn['tax_amount'], 2); // @phpstan-ignore argument.type
-            $total = bcadd($total, $dn['total'], 2); // @phpstan-ignore argument.type
+            $subtotal = bcadd($subtotal, $dn['subtotal'], $scale); // @phpstan-ignore argument.type
+            $taxAmount = bcadd($taxAmount, $dn['tax_amount'], $scale); // @phpstan-ignore argument.type
+            $total = bcadd($total, $dn['total'], $scale); // @phpstan-ignore argument.type
         }
 
         return [
@@ -138,6 +158,8 @@ class UninvoicedDeliveryNoteService
         $dns = $this->getUninvoicedDeliveryNotes($companyId, $fromDate, $toDate);
         $totals = $this->calculateUninvoicedTotals($companyId, $fromDate, $toDate);
 
+        $scale = $this->scaleFor($companyId);
+
         // Group by partner
         /** @var array<string, array{partner_id: string, partner_name: string, subtotal: string, tax_amount: string, total: string, count: int, delivery_notes: list<mixed>}> $byPartner */
         $byPartner = [];
@@ -162,9 +184,9 @@ class UninvoicedDeliveryNoteService
             /** @var numeric-string $currentTotal */
             $currentTotal = $byPartner[$partnerId]['total'];
 
-            $byPartner[$partnerId]['subtotal'] = bcadd($currentSubtotal, $dn['subtotal'], 2); // @phpstan-ignore argument.type
-            $byPartner[$partnerId]['tax_amount'] = bcadd($currentTaxAmount, $dn['tax_amount'], 2); // @phpstan-ignore argument.type
-            $byPartner[$partnerId]['total'] = bcadd($currentTotal, $dn['total'], 2); // @phpstan-ignore argument.type
+            $byPartner[$partnerId]['subtotal'] = bcadd($currentSubtotal, $dn['subtotal'], $scale); // @phpstan-ignore argument.type
+            $byPartner[$partnerId]['tax_amount'] = bcadd($currentTaxAmount, $dn['tax_amount'], $scale); // @phpstan-ignore argument.type
+            $byPartner[$partnerId]['total'] = bcadd($currentTotal, $dn['total'], $scale); // @phpstan-ignore argument.type
             $byPartner[$partnerId]['count']++;
             $byPartner[$partnerId]['delivery_notes'][] = $dn;
         }
@@ -201,7 +223,7 @@ class UninvoicedDeliveryNoteService
         $zeroAmount = '0.00';
 
         // No adjustment needed if no uninvoiced DNs
-        if (bccomp($totals['total'], $zeroAmount, 2) === 0) { // @phpstan-ignore argument.type
+        if (bccomp($totals['total'], $zeroAmount, $this->scaleFor($companyId)) === 0) { // @phpstan-ignore argument.type
             return null;
         }
 

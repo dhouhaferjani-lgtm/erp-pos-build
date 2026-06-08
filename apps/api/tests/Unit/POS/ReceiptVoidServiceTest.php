@@ -139,7 +139,7 @@ class ReceiptVoidServiceTest extends TestCase
             ->where('location_id', $this->location->id)
             ->first();
 
-        $this->assertEquals('10.00', $stockLevel->quantity);
+        $this->assertEquals('10.0000', $stockLevel->quantity);
 
         // Verify stock movement was created
         $movement = StockMovement::where('reference_type', 'pos_receipt_void')
@@ -147,7 +147,7 @@ class ReceiptVoidServiceTest extends TestCase
             ->first();
 
         $this->assertNotNull($movement);
-        $this->assertEquals('2.00', $movement->quantity);
+        $this->assertEquals('2.0000', $movement->quantity);
         $this->assertEquals('receipt', $movement->movement_type->value);
         $this->assertEquals('customer_return', $movement->reason->value);
     }

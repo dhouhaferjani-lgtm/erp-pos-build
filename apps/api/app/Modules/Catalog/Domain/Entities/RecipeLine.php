@@ -17,6 +17,7 @@ use Illuminate\Support\Carbon;
  * @property string $recipe_id
  * @property ComponentType $component_type
  * @property string $component_id
+ * @property string|null $component_variant_id
  * @property string $quantity
  * @property string|null $unit_id
  * @property bool $is_optional
@@ -31,6 +32,7 @@ use Illuminate\Support\Carbon;
  * @property-read Product|null $product
  * @property-read CompositeItem|null $compositeItemComponent
  * @property-read Product|CompositeItem|null $component
+ * @property-read ProductVariant|null $componentVariant
  * @property-read Unit|null $unit
  */
 class RecipeLine extends Model
@@ -52,6 +54,7 @@ class RecipeLine extends Model
         'recipe_id',
         'component_type',
         'component_id',
+        'component_variant_id',
         'quantity',
         'unit_id',
         'is_optional',
@@ -111,6 +114,14 @@ class RecipeLine extends Model
         }
 
         return $this->product;
+    }
+
+    /**
+     * @return BelongsTo<ProductVariant, $this>
+     */
+    public function componentVariant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'component_variant_id');
     }
 
     /**

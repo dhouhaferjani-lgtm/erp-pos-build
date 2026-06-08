@@ -93,7 +93,7 @@ class PaymentInstrumentController extends Controller
                 ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
             ],
             'drawer_name' => ['nullable', 'string', 'max:150'],
-            'amount' => ['required', 'numeric', 'min:0.01'],
+            'amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
             'currency' => ['nullable', 'string', 'size:3'],
             'received_date' => ['required', 'date'],
             'maturity_date' => ['nullable', 'date'],
@@ -106,6 +106,8 @@ class PaymentInstrumentController extends Controller
             'bank_name' => ['nullable', 'string', 'max:100'],
             'bank_branch' => ['nullable', 'string', 'max:100'],
             'bank_account' => ['nullable', 'string', 'max:50'],
+        ], [
+            'amount.regex' => 'Amount must have at most 3 decimal places.',
         ]);
 
         $instrument = PaymentInstrument::create([

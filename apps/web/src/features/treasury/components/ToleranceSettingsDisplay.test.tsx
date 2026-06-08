@@ -95,7 +95,7 @@ describe('ToleranceSettingsDisplay', () => {
 
     expect(screen.getByText('Payment Tolerance')).toBeInTheDocument()
     expect(screen.getByText('Tolerance enabled')).toBeInTheDocument()
-    expect(screen.getByText('Threshold: 0.50% / 0.50 max')).toBeInTheDocument()
+    expect(screen.getByText('Threshold: 0.5000% / 0.50 max')).toBeInTheDocument()
     expect(screen.getByText('System default')).toBeInTheDocument()
   })
 
@@ -136,7 +136,7 @@ describe('ToleranceSettingsDisplay', () => {
 
     render(<ToleranceSettingsDisplay />, { wrapper })
 
-    expect(screen.getByText('Threshold: 1.00% / 10.00 max')).toBeInTheDocument()
+    expect(screen.getByText('Threshold: 1.0000% / 10.00 max')).toBeInTheDocument()
     expect(screen.getByText('Country default')).toBeInTheDocument()
   })
 

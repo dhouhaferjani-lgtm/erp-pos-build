@@ -31,15 +31,15 @@ class UpdateTierRequest extends FormRequest
             'icon' => ['nullable', 'string', 'max:100'],
             'color' => ['nullable', 'string', 'max:50'],
             'qualification_type' => ['sometimes', Rule::enum(QualificationType::class)],
-            'qualification_threshold' => ['sometimes', 'numeric', 'min:0'],
+            'qualification_threshold' => ['sometimes', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
             'qualification_period_months' => ['nullable', 'integer', 'min:1'],
-            'earning_multiplier' => ['sometimes', 'numeric', 'min:1'],
+            'earning_multiplier' => ['sometimes', 'numeric', 'min:1', 'regex:/^\d+(\.\d{1,2})?$/'],
             'benefits' => ['nullable', 'array'],
             'benefits.exclusive_rewards' => ['sometimes', 'array'],
             'benefits.exclusive_rewards.*' => ['uuid'],
             'benefits.free_shipping' => ['sometimes', 'boolean'],
             'benefits.priority_support' => ['sometimes', 'boolean'],
-            'benefits.birthday_bonus_multiplier' => ['sometimes', 'numeric', 'min:1'],
+            'benefits.birthday_bonus_multiplier' => ['sometimes', 'numeric', 'min:1', 'regex:/^\d+(\.\d{1,2})?$/'],
         ];
     }
 
@@ -53,6 +53,9 @@ class UpdateTierRequest extends FormRequest
         return [
             'level.min' => 'Tier level must be at least 1',
             'earning_multiplier.min' => 'Earning multiplier must be at least 1',
+            'earning_multiplier.regex' => 'Earning multiplier must not exceed 2 decimal places.',
+            'qualification_threshold.regex' => 'Qualification threshold must not exceed 2 decimal places.',
+            'benefits.birthday_bonus_multiplier.regex' => 'Birthday bonus multiplier must not exceed 2 decimal places.',
         ];
     }
 }

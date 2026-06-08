@@ -36,6 +36,7 @@ vi.mock('@/lib/api', () => ({
 
 vi.mock('@/lib/currency', () => ({
   getCurrencyDecimals: vi.fn().mockReturnValue(2),
+  getActiveCurrencyDecimals: vi.fn().mockReturnValue(2),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -73,10 +74,10 @@ vi.mock('@/stores/operatorStore', () => ({
   },
 }));
 
-import { depositCash } from '@/api/cashDrawerApi';
-import { apiPost } from '@/lib/api';
+import { depositCash, fetchDrawerBalance } from '@/api/cashDrawerApi';
+import { apiGet, apiPost } from '@/lib/api';
 import { authorZCashDrawerMovement } from '@/lib/fiscal/zSessionAuthoring';
-import { insertCashDrawerOp } from '@/lib/db/repositories/cashDrawerRepository';
+import { getCashDrawerOpsForShift, insertCashDrawerOp } from '@/lib/db/repositories/cashDrawerRepository';
 import { ensureApprovalFiscalEventsSynced } from '@/lib/operatorApproval/approvalFiscalSync';
 
 const approvalEvidence = {
@@ -107,6 +108,23 @@ describe('cashDrawerApi cutover ownership', () => {
     expect(authorZCashDrawerMovement).toHaveBeenCalledOnce();
     expect(apiPost).not.toHaveBeenCalled();
     expect(insertCashDrawerOp).not.toHaveBeenCalled();
+  });
+
+  it('computes the offline drawer balance at the EUR currency scale (2, not 3)', async () => {
+    // Server balance fetch fails → offline fallback sums local ops. The prior
+    // implementation hardcoded toFixed(3); for an EUR drawer the balance must
+    // canonicalize at scale 2 to match the server's CurrencyScale.
+    vi.mocked(apiGet).mockRejectedValueOnce(new Error('offline'));
+    vi.mocked(getCashDrawerOpsForShift).mockResolvedValueOnce([
+      { type: 'deposit', amount: '10.10' },
+      { type: 'deposit', amount: '0.20' },
+      { type: 'payout', amount: '0.05' },
+    ] as never);
+
+    const result = await fetchDrawerBalance('shift-1');
+
+    // 10.10 + 0.20 − 0.05 = 10.25 → scale 2, no float drift, no trailing 0.
+    expect(result.balance).toBe('10.25');
   });
 
   it('uses the legacy API path without Z-session authoring for pre-cutover terminals', async () => {

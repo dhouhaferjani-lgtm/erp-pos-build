@@ -216,7 +216,7 @@ function seedCommonStores() {
   });
 
   useCartStore.setState({
-    items: [makeCartItem({ line_total: '50.00', tax_amount: '0.00' })],
+    items: [makeCartItem({ unit_price: '50.00', line_total: '50.00', tax_amount: '0.00' })],
   });
 
   usePaymentStore.setState({
@@ -426,7 +426,14 @@ describe('offline-first POS lifecycle (integration)', () => {
         fiscal_schema_version: 2,
         is_training_mode: false,
         hardware_identifier: null,
-        location: { id: 'loc1', name: 'Main', code: 'MAIN' },
+        location: {
+          id: 'loc1',
+          name: 'Main',
+          code: 'MAIN',
+          tax_id: null,
+          vat_number: null,
+          legal_identifiers: null,
+        },
       },
       hashChainReady: false,
       pendingTerminalId: null,

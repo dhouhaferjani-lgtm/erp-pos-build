@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Uom\Presentation\Requests;
 
+use App\Modules\Uom\Domain\Enums\RoundingMethod;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class CreateUnitRequest extends FormRequest
 {
@@ -25,7 +27,7 @@ class CreateUnitRequest extends FormRequest
             'symbol' => 'required|string|max:10',
             'conversion_factor' => 'required|numeric|min:0.0000000001',
             'decimal_places' => 'sometimes|integer|min:0|max:10',
-            'rounding_method' => 'sometimes|string|in:half_up,floor,ceil',
+            'rounding_method' => ['sometimes', 'string', Rule::enum(RoundingMethod::class)],
         ];
     }
 }

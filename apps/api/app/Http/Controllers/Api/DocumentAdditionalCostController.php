@@ -46,7 +46,7 @@ class DocumentAdditionalCostController extends Controller
         $validated = $request->validate([
             'cost_type' => 'required|string|in:transport,shipping,insurance,customs,handling,other',
             'description' => 'nullable|string|max:255',
-            'amount' => 'required|numeric|min:0',
+            'amount' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'expense_document_id' => [
                 'nullable',
                 'uuid',
@@ -56,6 +56,8 @@ class DocumentAdditionalCostController extends Controller
                         ->where('company_id', $documentModel->company_id)
                     ),
             ],
+        ], [
+            'amount.regex' => 'The amount must have at most 3 decimal places.',
         ]);
 
         $cost = DocumentAdditionalCost::create([
@@ -80,7 +82,7 @@ class DocumentAdditionalCostController extends Controller
         $validated = $request->validate([
             'cost_type' => 'sometimes|required|string|in:transport,shipping,insurance,customs,handling,other',
             'description' => 'nullable|string|max:255',
-            'amount' => 'sometimes|required|numeric|min:0',
+            'amount' => ['sometimes', 'required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'expense_document_id' => [
                 'nullable',
                 'uuid',
@@ -90,6 +92,8 @@ class DocumentAdditionalCostController extends Controller
                         ->where('company_id', $documentModel->company_id)
                     ),
             ],
+        ], [
+            'amount.regex' => 'The amount must have at most 3 decimal places.',
         ]);
 
         $costModel->update($validated);

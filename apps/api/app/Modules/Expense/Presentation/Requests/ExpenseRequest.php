@@ -65,7 +65,7 @@ class ExpenseRequest extends FormRequest
             ],
             'payment_date' => ['nullable', 'date'],
             'receipt_number' => ['nullable', 'string', 'max:255'],
-            'total' => ['required', 'numeric', 'min:0.01'],
+            'total' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'internal_notes' => ['nullable', 'string', 'max:2000'],
             'is_paid' => ['boolean'],
@@ -74,6 +74,18 @@ class ExpenseRequest extends FormRequest
         ];
 
         return $rules;
+    }
+
+    /**
+     * Get custom validation messages.
+     *
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'total.regex' => 'The amount must have at most 3 decimal places.',
+        ];
     }
 
     /**

@@ -1,5 +1,6 @@
 import { ApiRequestError, apiGet, apiPost } from '@/lib/api';
-import { getCurrencyDecimals } from '@/lib/currency';
+import { getActiveCurrencyDecimals, getCurrencyDecimals } from '@/lib/currency';
+import { bcadd, bcsub } from '@/lib/decimal';
 import { getDatabase } from '@/lib/db';
 import { authorZCashDrawerMovement } from '@/lib/fiscal/zSessionAuthoring';
 import { useAuthStore } from '@/stores/authStore';
@@ -82,18 +83,21 @@ export async function fetchDrawerBalance(shiftId: string): Promise<{ balance: st
   try {
     return await apiGet<{ balance: string }>(`/pos/cash-drawer/${shiftId}/balance`);
   } catch {
-    // Offline fallback: compute from local ops
+    // Offline fallback: compute from local ops at the active currency scale.
+    // Prior code summed with JS Number arithmetic and hardcoded toFixed(3),
+    // which (a) drifted on EUR (scale 2) drawers and (b) accumulated float
+    // error across many ops. bcadd/bcsub are Big.js-based and exact.
     const db = await getDb();
     const ops = await getCashDrawerOpsForShift(db, shiftId);
-    let balance = 0;
+    const decimals = getActiveCurrencyDecimals();
+    let balance = (0).toFixed(decimals);
     for (const op of ops) {
-      if (op.type === 'deposit') {
-        balance += parseFloat(op.amount);
-      } else {
-        balance -= parseFloat(op.amount);
-      }
+      balance =
+        op.type === 'deposit'
+          ? bcadd(balance, op.amount, decimals)
+          : bcsub(balance, op.amount, decimals);
     }
-    return { balance: balance.toFixed(3) };
+    return { balance };
   }
 }
 

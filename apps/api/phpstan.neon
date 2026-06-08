@@ -21,6 +21,10 @@ parameters:
     # Laravel specific
     checkModelProperties: true
 
+    # Parse the casts() method (not just the legacy $casts property) so the
+    # decimal-cast precision rule can see decimal:* casts declared in casts().
+    parseModelCastsMethod: true
+
     # Parallel processing - reduces per-worker memory by splitting work
     parallel:
         maximumNumberOfProcesses: 4
@@ -28,3 +32,10 @@ parameters:
 
 rules:
     - App\PHPStan\Rules\WorkOrderStatusWriteOnlyViaTransitionService
+    - App\PHPStan\Rules\ForbidHardcodedBcmathScale
+
+services:
+    -
+        class: App\PHPStan\Rules\ForbidFloatCastOnDecimalProperty
+        tags:
+            - phpstan.rules.rule

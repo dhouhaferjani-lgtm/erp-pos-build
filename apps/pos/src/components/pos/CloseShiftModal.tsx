@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle } from 'lucide-react';
 import { getErrorMessage } from '@/lib/api';
+import { useCurrency } from '@/lib/currency';
+import { MoneyInput } from '@/components/atoms/MoneyInput';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useCartStore } from '@/stores/cartStore';
 import { useRefundFlowStore } from '@/stores/refundFlowStore';
@@ -20,6 +22,7 @@ interface CloseShiftModalProps {
 
 export function CloseShiftModal({ isOpen, onClose, shift }: CloseShiftModalProps) {
   const { t } = useTranslation(['pos', 'common']);
+  const { currency } = useCurrency();
   const closeShift = useTerminalStore((s) => s.closeShift);
   const pendingReceiptCount = useSyncStore((s) => s.pendingReceiptCount);
 
@@ -32,7 +35,7 @@ export function CloseShiftModal({ isOpen, onClose, shift }: CloseShiftModalProps
     setClosing(true);
     try {
       await closeShift(actualCash);
-      useCartStore.getState().clearCart();
+      useCartStore.getState().clearCart('shift_close');
       useRefundFlowStore.getState().clearAll();
       useRefundDraftStore.getState().clearDraftState();
       usePaymentStore.getState().clearVoucherTenders();
@@ -75,13 +78,12 @@ export function CloseShiftModal({ isOpen, onClose, shift }: CloseShiftModalProps
           <label htmlFor="actualCash" className="block text-sm font-medium text-gray-700">
             {t('pos:header.actualCash')}
           </label>
-          <input
+          <MoneyInput
             id="actualCash"
-            type="number"
-            step="0.01"
+            currency={currency}
             min="0"
             value={actualCash}
-            onChange={(e) => setActualCash(e.target.value)}
+            onChange={setActualCash}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 focus:outline-none"
             autoFocus
           />

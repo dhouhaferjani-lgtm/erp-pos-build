@@ -1,18 +1,20 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, GripVertical, Search, X } from 'lucide-react'
+import { Plus, Trash2, Search, X } from 'lucide-react'
 import { api } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
-import { AddQuickProductModal } from '../../../components/organisms'
-import { TaxConfigurationSelect } from '../../../components/atoms/TaxConfigurationSelect'
+import { AddQuickProductModal } from '../../../components/organisms/AddQuickProductModal/AddQuickProductModal'
+import { TaxConfigurationSelect } from '../../../components/atoms/TaxConfigurationSelect/TaxConfigurationSelect'
+import { MoneyInput } from '../../../components/atoms/MoneyInput/MoneyInput'
+import { LineItemsTable, QuantityCell, type LineItemsTableColumn } from '../../../components/molecules/line-items/LineItemsTable'
 import { DesignationCell } from './DesignationCell'
 import { NotesCell } from './NotesCell'
 import { useLineDesignationFeature } from '../hooks/useLineDesignationFeature'
-import { textColors } from '../../../lib/designTokens'
+import { borderColors, colors, textColors, tokens } from '../../../lib/designTokens'
 
 // Map frontend document type strings to backend applicable_document_types format
 const DOCUMENT_TYPE_MAP: Record<string, string> = {
@@ -103,11 +105,12 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   const [searchTab, setSearchTab] = useState<SearchTab>('product')
   const [showProductSearch, setShowProductSearch] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const linesRef = useRef(lines)
+  linesRef.current = lines
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
-  const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
+  const companyLocale = currentCompany?.locale.replace('_', '-') ?? 'en-US'
 
   // Fetch products for search
   const { data: productsData, isLoading: isLoadingProducts } = useQuery({
@@ -241,7 +244,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   const handleUpdateLine = useCallback(
     (lineId: string, updates: Partial<DocumentLine>) => {
       onChange(
-        lines.map((line) => {
+        linesRef.current.map((line) => {
           if (line.id !== lineId) return line
           const updatedLine = { ...line, ...updates }
           // Recalculate line total if quantity, price, or tax changed
@@ -256,40 +259,30 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         })
       )
     },
-    [lines, onChange]
+    [onChange]
   )
 
   // Remove line
   const handleRemoveLine = useCallback(
     (lineId: string) => {
-      onChange(lines.filter((line) => line.id !== lineId))
+      onChange(linesRef.current.filter((line) => line.id !== lineId))
     },
-    [lines, onChange]
+    [onChange]
   )
 
-  // Drag and drop handlers
-  const handleDragStart = (index: number) => {
-    setDraggedIndex(index)
-  }
-
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault()
-    if (draggedIndex === null || draggedIndex === index) return
-
-    const newLines = [...lines]
-    const draggedLine = newLines[draggedIndex]
-    newLines.splice(draggedIndex, 1)
-    newLines.splice(index, 0, draggedLine)
-    onChange(newLines)
-    setDraggedIndex(index)
-  }
-
-  const handleDragEnd = () => {
-    setDraggedIndex(null)
-  }
+  const handleReorderLines = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      if (fromIndex === toIndex) return
+      const newLines = [...linesRef.current]
+      const [draggedLine] = newLines.splice(fromIndex, 1)
+      newLines.splice(toIndex, 0, draggedLine)
+      onChange(newLines)
+    },
+    [onChange]
+  )
 
   // Format currency using company settings
-  const formatAmount = (amount: string | number) => {
+  const formatAmount = useCallback((amount: string | number) => {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount
     if (isNaN(num)) {
       return formatCurrency(0, { currency: companyCurrency, locale: companyLocale })
@@ -298,220 +291,200 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
       currency: companyCurrency,
       locale: companyLocale,
     })
-  }
+  }, [companyCurrency, companyLocale])
+
+  const lineColumns = useMemo<LineItemsTableColumn<DocumentLine>[]>(() => [
+    {
+      id: 'article',
+      header: t('sales:lineItems.article'),
+      headerClassName: 'w-32',
+      Cell: ({ line }) => (
+        <div className="flex items-center gap-1.5">
+          <span className={`font-mono text-sm ${textColors.tertiary}`}>
+            {line.product_code === undefined || line.product_code === '' ? '-' : line.product_code}
+          </span>
+          {line.is_service && (
+            <span className={`inline-flex rounded-full ${colors.neutral[100]} px-1.5 py-0.5 text-[10px] font-medium ${textColors.secondary}`}>
+              {t('sales:lineItems.serviceBadge')}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: 'description',
+      header: t('sales:lineItems.description'),
+      Cell: ({ line }) => (
+        <>
+          {designationFeatureEnabled ? (
+            <DesignationCell
+              value={line.description || line.product_name}
+              originalSnapshot={line.designation_default_snapshot ?? null}
+              readOnly={readonly}
+              onCommit={(next) => {
+                handleUpdateLine(line.id, { description: next })
+              }}
+            />
+          ) : (
+            <span className={`text-sm ${textColors.primary}`}>{line.description || line.product_name}</span>
+          )}
+          {designationFeatureEnabled && (
+            <NotesCell
+              value={line.notes ?? null}
+              readOnly={readonly}
+              onCommit={(next) => {
+                handleUpdateLine(line.id, { notes: next })
+              }}
+            />
+          )}
+        </>
+      ),
+    },
+    {
+      id: 'quantity',
+      header: t('sales:lineItems.quantity'),
+      headerClassName: 'w-24 text-end',
+      cellClassName: 'text-end',
+      Cell: ({ line }) => (
+        <QuantityCell
+          decimalPlaces={4}
+          min="0"
+          readonly={readonly}
+          value={line.quantity}
+          onChange={(value) => {
+            handleUpdateLine(line.id, { quantity: parseFloat(value) || 0 })
+          }}
+          ariaLabel={t('sales:lineItems.quantity')}
+        />
+      ),
+    },
+    {
+      id: 'unit-price',
+      header: t('sales:lineItems.unitPrice'),
+      headerClassName: 'w-32 text-end',
+      cellClassName: 'text-end',
+      Cell: ({ line }) => (
+        readonly ? (
+          <span className={`text-sm ${textColors.primary}`}>{formatAmount(line.unit_price)}</span>
+        ) : (
+          <MoneyInput
+            currency={companyCurrency}
+            min="0"
+            value={String(line.unit_price)}
+            onChange={(value) => {
+              handleUpdateLine(line.id, { unit_price: parseFloat(value) || 0 })
+            }}
+            className={`${tokens.input.base} w-28 text-end text-sm`}
+          />
+        )
+      ),
+    },
+    {
+      id: 'tax',
+      header: t('sales:lineItems.taxPercent'),
+      headerClassName: 'w-20 text-end',
+      cellClassName: 'text-end',
+      Cell: ({ line }) => (
+        readonly ? (
+          <span className={`text-sm ${textColors.disabled}`}>{line.tax_rate}%</span>
+        ) : (
+          <TaxConfigurationSelect
+            value={line.tax_configuration_id ?? null}
+            onChange={(configId, taxRate) => {
+              handleUpdateLine(line.id, {
+                tax_configuration_id: configId,
+                tax_rate: parseFloat(taxRate) || 0,
+              })
+            }}
+            {...(documentType ? { documentType: DOCUMENT_TYPE_MAP[documentType] ?? documentType } : {})}
+            size="sm"
+          />
+        )
+      ),
+    },
+    {
+      id: 'total',
+      header: t('sales:lineItems.total'),
+      headerClassName: 'w-32 text-end',
+      cellClassName: `whitespace-nowrap text-end text-sm font-medium ${textColors.primary}`,
+      Cell: ({ line }) => <>{formatAmount(line.line_total)}</>,
+    },
+    ...(!readonly
+      ? [
+          {
+            id: 'actions',
+            header: <span className="sr-only">{t('common:table.actionsColumn')}</span>,
+            headerClassName: 'w-12',
+            cellClassName: 'text-center',
+            Cell: ({ line }) => (
+              <button
+                type="button"
+                onClick={() => {
+                  handleRemoveLine(line.id)
+                }}
+                className={`${textColors.disabled} ${textColors.hoverError}`}
+                aria-label={t('sales:lineItems.actions.removeLine')}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            ),
+          } satisfies LineItemsTableColumn<DocumentLine>,
+        ]
+      : []),
+  ], [
+    companyCurrency,
+    designationFeatureEnabled,
+    documentType,
+    formatAmount,
+    handleRemoveLine,
+    handleUpdateLine,
+    readonly,
+    t,
+  ])
+
+  const totalsFooter = (
+    <div className="flex justify-end">
+      <dl className="w-64 space-y-2">
+        <div className="flex justify-between text-sm">
+          <dt className={textColors.disabled}>{t('sales:lineItems.subtotal')}</dt>
+          <dd className={`font-medium ${textColors.primary}`}>{formatAmount(totals.subtotal)}</dd>
+        </div>
+        <div className="flex justify-between text-sm">
+          <dt className={textColors.disabled}>{t('sales:lineItems.tax')}</dt>
+          <dd className={`font-medium ${textColors.primary}`}>{formatAmount(totals.tax)}</dd>
+        </div>
+        <div className={`flex justify-between border-t ${borderColors.light} pt-2 text-base`}>
+          <dt className={`font-semibold ${textColors.primary}`}>{t('sales:lineItems.total')}</dt>
+          <dd className={`font-semibold ${textColors.primary}`}>{formatAmount(totals.total)}</dd>
+        </div>
+      </dl>
+    </div>
+  )
 
   return (
     <div className="space-y-4">
-      {/* Lines Table */}
-      <div className="rounded-lg border border-gray-200 bg-white">
-        <div className="border-b border-gray-200 px-6 py-4">
-          <h3 className="text-lg font-semibold text-gray-900">{t('sales:lineItems.title')}</h3>
-        </div>
-
-        {lines.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
-            <p>{t('sales:lineItems.empty.title')}</p>
-            {!readonly && (
-              <p className="mt-2 text-sm">{t('sales:lineItems.empty.description')}</p>
-            )}
-          </div>
-        ) : (
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                {!readonly && (
-                  <th className="w-10 px-3 py-3">
-                    <span className="sr-only">{t('sales:lineItems.actions.dragToReorder')}</span>
-                  </th>
-                )}
-                <th className="w-32 px-4 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('sales:lineItems.article')}
-                </th>
-                <th className="px-4 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('sales:lineItems.description')}
-                </th>
-                <th className="w-24 px-4 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('sales:lineItems.quantity')}
-                </th>
-                <th className="w-32 px-4 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('sales:lineItems.unitPrice')}
-                </th>
-                <th className="w-20 px-4 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('sales:lineItems.taxPercent')}
-                </th>
-                <th className="w-32 px-4 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('sales:lineItems.total')}
-                </th>
-                {!readonly && (
-                  <th className="w-12 px-3 py-3">
-                    <span className="sr-only">{t('common:table.actionsColumn')}</span>
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {lines.map((line, index) => (
-                <tr
-                  key={line.id}
-                  draggable={!readonly}
-                  onDragStart={() => {
-                    handleDragStart(index)
-                  }}
-                  onDragOver={(e) => {
-                    handleDragOver(e, index)
-                  }}
-                  onDragEnd={handleDragEnd}
-                  className={draggedIndex === index ? 'bg-blue-50' : 'hover:bg-gray-50'}
-                >
-                  {!readonly && (
-                    <td className="px-3 py-3 text-center">
-                      <button
-                        type="button"
-                        className="cursor-grab text-gray-400 hover:text-gray-600"
-                        aria-label={t('sales:lineItems.actions.dragToReorder')}
-                      >
-                        <GripVertical className="h-4 w-4" />
-                      </button>
-                    </td>
-                  )}
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-mono text-gray-600">
-                        {line.product_code || '-'}
-                      </span>
-                      {line.is_service && (
-                        <span className="inline-flex rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
-                          {t('sales:lineItems.serviceBadge')}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    {designationFeatureEnabled ? (
-                      <DesignationCell
-                        value={line.description || line.product_name}
-                        originalSnapshot={line.designation_default_snapshot ?? null}
-                        readOnly={readonly}
-                        onCommit={(next) => {
-                          handleUpdateLine(line.id, { description: next })
-                        }}
-                      />
-                    ) : (
-                      <span className={`text-sm ${textColors.primary}`}>{line.description || line.product_name}</span>
-                    )}
-                    {designationFeatureEnabled && (
-                      <NotesCell
-                        value={line.notes ?? null}
-                        readOnly={readonly}
-                        onCommit={(next) => {
-                          handleUpdateLine(line.id, { notes: next })
-                        }}
-                      />
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-end">
-                    {readonly ? (
-                      <span className="text-sm text-gray-900">{line.quantity}</span>
-                    ) : (
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={line.quantity}
-                        onChange={(e) => {
-                          handleUpdateLine(line.id, { quantity: parseFloat(e.target.value) || 0 })
-                        }}
-                        className="w-20 rounded border border-gray-300 px-2 py-1 text-end text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-end">
-                    {readonly ? (
-                      <span className="text-sm text-gray-900">{formatAmount(line.unit_price)}</span>
-                    ) : (
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={line.unit_price}
-                        onChange={(e) => {
-                          handleUpdateLine(line.id, { unit_price: parseFloat(e.target.value) || 0 })
-                        }}
-                        className="w-28 rounded border border-gray-300 px-2 py-1 text-end text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-end">
-                    {readonly ? (
-                      <span className="text-sm text-gray-500">{line.tax_rate}%</span>
-                    ) : (
-                      <TaxConfigurationSelect
-                        value={line.tax_configuration_id ?? null}
-                        onChange={(configId, taxRate) => {
-                          handleUpdateLine(line.id, {
-                            tax_configuration_id: configId,
-                            tax_rate: parseFloat(taxRate) || 0,
-                          })
-                        }}
-                        {...(documentType ? { documentType: DOCUMENT_TYPE_MAP[documentType] ?? documentType } : {})}
-                        size="sm"
-                      />
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-end text-sm font-medium text-gray-900">
-                    {formatAmount(line.line_total)}
-                  </td>
-                  {!readonly && (
-                    <td className="px-3 py-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleRemoveLine(line.id)
-                        }}
-                        className="text-gray-400 hover:text-red-600"
-                        aria-label={t('sales:lineItems.actions.removeLine')}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-
-        {/* Totals */}
-        <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
-          <div className="flex justify-end">
-            <dl className="w-64 space-y-2">
-              <div className="flex justify-between text-sm">
-                <dt className="text-gray-500">{t('sales:lineItems.subtotal')}</dt>
-                <dd className="font-medium text-gray-900">{formatAmount(totals.subtotal)}</dd>
-              </div>
-              <div className="flex justify-between text-sm">
-                <dt className="text-gray-500">{t('sales:lineItems.tax')}</dt>
-                <dd className="font-medium text-gray-900">{formatAmount(totals.tax)}</dd>
-              </div>
-              <div className="flex justify-between border-t border-gray-200 pt-2 text-base">
-                <dt className="font-semibold text-gray-900">{t('sales:lineItems.total')}</dt>
-                <dd className="font-semibold text-gray-900">{formatAmount(totals.total)}</dd>
-              </div>
-            </dl>
-          </div>
-        </div>
-      </div>
-
-      {/* Add Item Buttons */}
-      {!readonly && (
-        <div className="flex gap-2">
+      <LineItemsTable
+        title={t('sales:lineItems.title')}
+        lines={lines}
+        columns={lineColumns}
+        getLineKey={(line) => line.id}
+        emptyTitle={t('sales:lineItems.empty.title')}
+        emptyDescription={!readonly ? t('sales:lineItems.empty.description') : undefined}
+        readonly={readonly}
+        footer={totalsFooter}
+        dragAndDrop={{
+          dragAriaLabel: t('sales:lineItems.actions.dragToReorder'),
+          onReorder: handleReorderLines,
+        }}
+        addControls={(
+          <div className="flex gap-2">
           <div className="relative">
             <button
               type="button"
               onClick={() => {
                 setShowProductSearch(!showProductSearch)
               }}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              className={`inline-flex items-center gap-2 rounded-lg border ${borderColors.default} ${colors.white} px-4 py-2 text-sm font-medium ${textColors.secondary} ${colors.hover.gray50} transition-colors`}
             >
               <Search className="h-4 w-4" />
               {t('sales:lineItems.actions.searchProducts')}
@@ -519,20 +492,20 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
 
             {/* Product/Service Search Dropdown */}
             {showProductSearch && (
-              <div className="absolute left-0 top-full z-10 mt-1 w-80 rounded-lg border border-gray-200 bg-white shadow-lg">
+              <div className={`absolute left-0 top-full z-10 mt-1 w-80 rounded-lg border ${borderColors.light} ${colors.white} shadow-lg`}>
                 {/* Tab Toggle */}
-                <div className="flex border-b border-gray-200">
+                <div className={`flex border-b ${borderColors.light}`}>
                   <button
                     type="button"
                     onClick={() => { setSearchTab('product'); setSearchQuery('') }}
-                    className={`flex-1 px-4 py-2 text-sm font-medium ${searchTab === 'product' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`flex-1 px-4 py-2 text-sm font-medium ${searchTab === 'product' ? `border-b-2 ${borderColors.primary} ${textColors.brand}` : `${textColors.disabled} ${textColors.hoverSecondary}`}`}
                   >
                     {t('sales:lineItems.tabs.product')}
                   </button>
                   <button
                     type="button"
                     onClick={() => { setSearchTab('service'); setSearchQuery('') }}
-                    className={`flex-1 px-4 py-2 text-sm font-medium ${searchTab === 'service' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`flex-1 px-4 py-2 text-sm font-medium ${searchTab === 'service' ? `border-b-2 ${borderColors.primary} ${textColors.brand}` : `${textColors.disabled} ${textColors.hoverSecondary}`}`}
                   >
                     {t('sales:lineItems.tabs.service')}
                   </button>
@@ -546,7 +519,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                         setSearchQuery(e.target.value)
                       }}
                       placeholder={searchTab === 'product' ? t('sales:lineItems.actions.searchProductsPlaceholder') : t('sales:lineItems.actions.searchServicesPlaceholder')}
-                      className="w-full rounded-lg border border-gray-300 py-2 pe-10 ps-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className={`${tokens.input.base} pe-10 ps-3 text-sm`}
                       autoFocus
                     />
                     {searchQuery && (
@@ -555,28 +528,28 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                         onClick={() => {
                           setSearchQuery('')
                         }}
-                        className="absolute inset-y-0 end-0 flex items-center pe-3 text-gray-400 hover:text-gray-600"
+                        className={`absolute inset-y-0 end-0 flex items-center pe-3 ${textColors.disabled} ${textColors.hoverSecondary}`}
                       >
                         <X className="h-4 w-4" />
                       </button>
                     )}
                   </div>
                 </div>
-                <div className="max-h-60 overflow-y-auto border-t border-gray-200">
+                <div className={`max-h-60 overflow-y-auto border-t ${borderColors.light}`}>
                   {searchTab === 'product' ? (
                     <>
                       {isLoadingProducts ? (
-                        <div className="p-4 text-center text-sm text-gray-500">
+                        <div className={`p-4 text-center text-sm ${textColors.disabled}`}>
                           {t('sales:lineItems.loading')}
                         </div>
                       ) : products.length === 0 ? (
                         <div className="p-4 text-center text-sm">
-                          <p className="text-gray-500">
+                          <p className={textColors.disabled}>
                             {searchQuery ? t('sales:lineItems.noProductsFound') : t('sales:lineItems.noProductsAvailable')}
                           </p>
                         </div>
                       ) : (
-                        <ul className="divide-y divide-gray-100">
+                        <ul className={`divide-y ${borderColors.divideLight}`}>
                           {products.map((product) => (
                             <li key={product.id}>
                               <button
@@ -584,15 +557,15 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                                 onClick={() => {
                                   handleAddProduct(product)
                                 }}
-                                className="flex w-full items-center justify-between px-4 py-3 text-start hover:bg-gray-50"
+                                className={`flex w-full items-center justify-between px-4 py-3 text-start ${colors.hover.gray50}`}
                               >
                                 <div>
-                                  <div className="text-sm font-medium text-gray-900">
+                                  <div className={`text-sm font-medium ${textColors.primary}`}>
                                     {product.name}
                                   </div>
-                                  <div className="text-xs text-gray-500">{product.sku}</div>
+                                  <div className={`text-xs ${textColors.disabled}`}>{product.sku}</div>
                                 </div>
-                                <div className="text-sm font-medium text-gray-900">
+                                <div className={`text-sm font-medium ${textColors.primary}`}>
                                   {formatAmount(product.sale_price)}
                                 </div>
                               </button>
@@ -604,17 +577,17 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                   ) : (
                     <>
                       {isLoadingServices ? (
-                        <div className="p-4 text-center text-sm text-gray-500">
+                        <div className={`p-4 text-center text-sm ${textColors.disabled}`}>
                           {t('sales:lineItems.loading')}
                         </div>
                       ) : services.length === 0 ? (
                         <div className="p-4 text-center text-sm">
-                          <p className="text-gray-500">
+                          <p className={textColors.disabled}>
                             {searchQuery ? t('sales:lineItems.noServicesFound') : t('sales:lineItems.noServicesAvailable')}
                           </p>
                         </div>
                       ) : (
-                        <ul className="divide-y divide-gray-100">
+                        <ul className={`divide-y ${borderColors.divideLight}`}>
                           {services.map((service) => (
                             <li key={service.id}>
                               <button
@@ -622,20 +595,20 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                                 onClick={() => {
                                   handleAddService(service)
                                 }}
-                                className="flex w-full items-center justify-between px-4 py-3 text-start hover:bg-gray-50"
+                                className={`flex w-full items-center justify-between px-4 py-3 text-start ${colors.hover.gray50}`}
                               >
                                 <div>
                                   <div className="flex items-center gap-2">
-                                    <span className="text-sm font-medium text-gray-900">
+                                    <span className={`text-sm font-medium ${textColors.primary}`}>
                                       {service.name}
                                     </span>
-                                    <span className="inline-flex rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
+                                    <span className={`inline-flex rounded-full ${colors.neutral[100]} px-1.5 py-0.5 text-[10px] font-medium ${textColors.secondary}`}>
                                       {t('sales:lineItems.serviceBadge')}
                                     </span>
                                   </div>
-                                  <div className="text-xs text-gray-500">{service.code}</div>
+                                  <div className={`text-xs ${textColors.disabled}`}>{service.code}</div>
                                 </div>
-                                <div className="text-sm font-medium text-gray-900">
+                                <div className={`text-sm font-medium ${textColors.primary}`}>
                                   {formatAmount(service.base_price)}
                                 </div>
                               </button>
@@ -646,7 +619,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                     </>
                   )}
                 </div>
-                <div className="border-t border-gray-200 p-2 space-y-1">
+                <div className={`space-y-1 border-t ${borderColors.light} p-2`}>
                   {searchTab === 'product' && (
                     <button
                       type="button"
@@ -654,7 +627,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                         setShowProductSearch(false)
                         setShowProductModal(true)
                       }}
-                      className="w-full flex items-center justify-center gap-2 rounded px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+                      className={`flex w-full items-center justify-center gap-2 rounded px-3 py-2 text-sm font-medium ${textColors.brand} ${colors.primary[50]} transition-colors`}
                     >
                       <Plus className="h-4 w-4" />
                       {t('sales:lineItems.actions.createNewProduct')}
@@ -665,7 +638,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                     onClick={() => {
                       setShowProductSearch(false)
                     }}
-                    className="w-full rounded px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
+                    className={`w-full rounded px-3 py-1.5 text-sm ${textColors.tertiary} ${colors.hover.gray100}`}
                   >
                     {t('sales:lineItems.actions.close')}
                   </button>
@@ -677,13 +650,14 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
           <button
             type="button"
             onClick={handleAddBlankLine}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            className={`inline-flex items-center gap-2 rounded-lg border ${borderColors.default} ${colors.white} px-4 py-2 text-sm font-medium ${textColors.secondary} ${colors.hover.gray50} transition-colors`}
           >
             <Plus className="h-4 w-4" />
             {t('sales:lineItems.actions.addBlankLine')}
           </button>
         </div>
-      )}
+        )}
+      />
 
       {/* Add Product Modal */}
       <AddQuickProductModal

@@ -27,7 +27,7 @@ final class ServiceBundleComponentData extends Data
         public ?string $notes,
     ) {}
 
-    public static function fromModel(ServiceBundleComponent $component, int $scale = 3): self
+    public static function fromModel(ServiceBundleComponent $component, int $scale = 4): self
     {
         $componentId = match ($component->component_type) {
             BundleComponentType::Part => $component->product_id,

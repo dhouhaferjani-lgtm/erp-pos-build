@@ -6,6 +6,7 @@ namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\ReceiptPdfService;
 use App\Modules\POS\Domain\Enums\ReceiptType;
@@ -106,6 +107,7 @@ final class ReceiptPdfChangeDueTest extends TestCase
     {
         $tenant = Tenant::factory()->create();
         $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+        $this->app->make(CompanyContext::class)->setCompanyId($company->id);
         $user = User::factory()->create(['tenant_id' => $tenant->id]);
         $location = Location::factory()->create(['company_id' => $company->id]);
         $terminal = Terminal::factory()->create([

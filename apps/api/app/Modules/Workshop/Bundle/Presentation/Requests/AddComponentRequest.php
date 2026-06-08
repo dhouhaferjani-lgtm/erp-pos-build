@@ -23,12 +23,23 @@ class AddComponentRequest extends FormRequest
         return [
             'component_type' => ['required', new Enum(BundleComponentType::class)],
             'component_id' => ['required', 'uuid'],
-            'quantity' => ['required', 'numeric', 'gt:0'],
+            'quantity' => ['required', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,4})?$/'],
             'unit_id' => ['required', 'uuid'],
-            'override_unit_price' => ['nullable', 'numeric', 'min:0'],
+            'override_unit_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'is_optional' => ['sometimes', 'boolean'],
             'display_order' => ['sometimes', 'integer', 'min:0'],
             'notes' => ['nullable', 'string', 'max:500'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'quantity.regex' => 'Quantity must have at most 4 decimal places.',
+            'override_unit_price.regex' => 'Override unit price must have at most 3 decimal places.',
         ];
     }
 }

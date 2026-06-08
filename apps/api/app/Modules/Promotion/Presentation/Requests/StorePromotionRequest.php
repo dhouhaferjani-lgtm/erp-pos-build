@@ -47,13 +47,23 @@ class StorePromotionRequest extends FormRequest
             'conditions.reward_qty' => ['sometimes', 'integer', 'min:1'],
             'conditions.trigger_qty' => ['sometimes', 'integer', 'min:1'],
             'conditions.min_qty' => ['sometimes', 'integer', 'min:1'],
-            'conditions.min_amount' => ['sometimes', 'numeric', 'gte:0'],
+            'conditions.min_amount' => ['sometimes', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'discount_type' => ['required', new Enum(DiscountType::class)],
-            'discount_value' => ['required', 'numeric', 'gt:0'],
-            'max_discount_amount' => ['nullable', 'numeric', 'gt:0'],
+            'discount_value' => ['required', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'max_discount_amount' => ['nullable', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'applies_to' => ['required', new Enum(DiscountAppliesTo::class)],
             'usage_limit' => ['nullable', 'integer', 'min:1'],
             'metadata' => ['nullable', 'array'],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public function messages(): array
+    {
+        return [
+            'conditions.min_amount.regex' => 'Min amount must not exceed 3 decimal places.',
+            'discount_value.regex' => 'Discount value must not exceed 4 decimal places.',
+            'max_discount_amount.regex' => 'Max discount amount must not exceed 3 decimal places.',
         ];
     }
 }

@@ -425,7 +425,7 @@ final class ExchangeServiceTest extends TestCase
         ]);
 
         $movementCountBefore = StockMovement::count();
-        $stockBefore = '10.00';
+        $stockBefore = '10.0000';
 
         // Return the same SKU qty 1, then sell the same SKU qty 1
         $result = $this->callProcessExchangeWithProduct(
@@ -581,6 +581,8 @@ final class ExchangeServiceTest extends TestCase
             'tenant_id' => $this->tenant->id,
         ]);
 
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
+
         UserCompanyMembership::create([
             'user_id' => $this->cashier->id,
             'company_id' => $this->company->id,
@@ -682,13 +684,7 @@ final class ExchangeServiceTest extends TestCase
 
     private function bindCompanyContext(): void
     {
-        $company = $this->company;
-        $this->app->bind(CompanyContext::class, function () use ($company) {
-            $context = $this->createMock(CompanyContext::class);
-            $context->method('requireCompanyId')->willReturn($company->id);
-
-            return $context;
-        });
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     /**

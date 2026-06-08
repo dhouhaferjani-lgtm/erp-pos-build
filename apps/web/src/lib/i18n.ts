@@ -46,6 +46,7 @@ import enRefundPolicies from '../locales/en/refund-policies.json'
 import enCustomerHistoryAudit from '../locales/en/customer-history-audit.json'
 import enChannels from '../locales/en/channels.json'
 import enReports from '../locales/en/reports.json'
+import enStockTransfers from '../locales/en/stock-transfers.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -90,6 +91,7 @@ import frRefundPolicies from '../locales/fr/refund-policies.json'
 import frCustomerHistoryAudit from '../locales/fr/customer-history-audit.json'
 import frChannels from '../locales/fr/channels.json'
 import frReports from '../locales/fr/reports.json'
+import frStockTransfers from '../locales/fr/stock-transfers.json'
 
 // Arabic: fully translated AutoSpecs + shared foundations (🟠-4 Tunisia Go-Live).
 // Other namespaces still fall back to the EN bundle below.
@@ -162,6 +164,7 @@ const resources = {
     'customer-history-audit': enCustomerHistoryAudit,
     channels: enChannels,
     reports: enReports,
+    'stock-transfers': enStockTransfers,
   },
   fr: {
     common: frCommon,
@@ -207,6 +210,7 @@ const resources = {
     'customer-history-audit': frCustomerHistoryAudit,
     channels: frChannels,
     reports: frReports,
+    'stock-transfers': frStockTransfers,
   },
   ar: {
     // 🟠-4 Tunisia Go-Live: AutoSpecs namespaces + shared foundations are now
@@ -255,6 +259,7 @@ const resources = {
     'customer-history-audit': enCustomerHistoryAudit,
     channels: arChannels,
     reports: arReports,
+    'stock-transfers': enStockTransfers,
   },
 }
 
@@ -265,7 +270,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'customer-history-audit', 'channels', 'reports'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'customer-history-audit', 'channels', 'reports', 'stock-transfers'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

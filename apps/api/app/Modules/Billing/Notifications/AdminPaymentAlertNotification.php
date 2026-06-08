@@ -37,8 +37,8 @@ final class AdminPaymentAlertNotification extends Notification implements Should
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $amount = CurrencyScale::bcformat($this->payment->amount, 2);
         $currency = strtoupper($this->payment->currency);
+        $amount = CurrencyScale::bcformat($this->payment->amount, CurrencyScale::for($currency));
 
         $subject = match ($this->alertType) {
             'payment_succeeded' => "[Admin] Payment Received: {$currency} {$amount} from {$this->tenantName}",

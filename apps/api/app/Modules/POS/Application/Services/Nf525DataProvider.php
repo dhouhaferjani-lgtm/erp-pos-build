@@ -523,38 +523,19 @@ final class Nf525DataProvider implements Nf525DataProviderContract
 
     private function buildCompanyHeader(Company $company): Nf525CompanyHeaderData
     {
-        // The Eloquent Company model in this codebase does not currently expose
-        // dedicated `siret` / `address` columns; the original Compliance code
-        // read them via `??` so missing values fell through. We preserve that
-        // behaviour exactly: read the magic property and coerce to nullable
-        // string, with no synthesis or fallback.
-        /** @var string|null $siret */
-        $siret = $this->readNullableString($company, 'siret');
-        /** @var string|null $address */
-        $address = $this->readNullableString($company, 'address');
+        $siret = $company->legal_identifiers['siret'] ?? $company->tax_id;
+        $address = trim(implode(' ', array_filter([
+            $company->address_street,
+            $company->address_postal_code,
+            $company->address_city,
+        ])));
 
         return new Nf525CompanyHeaderData(
             id: (string) $company->id,
             name: $company->name,
-            siret: $siret,
-            address: $address,
+            siret: is_string($siret) ? $siret : null,
+            address: $address !== '' ? $address : null,
         );
-    }
-
-    private function readNullableString(Company $company, string $key): ?string
-    {
-        $value = $company->getAttribute($key);
-        if ($value === null) {
-            return null;
-        }
-        if (is_string($value)) {
-            return $value;
-        }
-        if (is_int($value) || is_float($value) || is_bool($value)) {
-            return (string) $value;
-        }
-
-        return null;
     }
 
     /**

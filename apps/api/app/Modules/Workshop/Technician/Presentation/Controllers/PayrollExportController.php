@@ -65,17 +65,23 @@ final class PayrollExportController extends Controller
                 ->where('started_at', '<=', $end)
                 ->sum('duration_minutes');
 
-            $hours = $minutes / 60;
+            $minutesStr = (string) $minutes;
             $costRate = $profile->hourly_cost_rate ?? '0';
+
+            // Multiply-first pattern: avoids float division entirely.
+            // gross = costRate × minutes ÷ 60  (all in bcmath, scale 6)
             $gross = CurrencyScale::bcformat(
-                bcmul($costRate, (string) $hours, 6),
+                bcdiv(bcmul($costRate, $minutesStr, 6), '60', 6),
                 3
             );
+
+            // hours_worked for the CSV: bcmath division truncated to 2dp.
+            $hoursWorked = bcdiv($minutesStr, '60', 2);
 
             $lines[] = [
                 'employee_code' => (string) ($profile->employee_code ?? ''),
                 'technician_id' => $profile->id,
-                'hours_worked' => number_format($hours, 2, '.', ''),
+                'hours_worked' => $hoursWorked,
                 'gross_pay' => $gross,
                 'currency' => $profile->currency,
             ];

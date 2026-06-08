@@ -133,7 +133,7 @@ final class OrderManagementTest extends TestCase
         $response = $this->postJson("/api/v1/pos/orders/{$order->id}/lines", [
             'product_id' => $this->product->id,
             'quantity' => 2,
-            'unit_price' => '10.0000',
+            'unit_price' => '10.000',
             'tax_rate' => '19.00',
         ]);
 
@@ -147,11 +147,11 @@ final class OrderManagementTest extends TestCase
 
         $lineData = $response->json('data.line');
         $this->assertEquals($this->product->id, $lineData['product_id']);
-        $this->assertEquals('2.000', $lineData['quantity']);
+        $this->assertEquals('2.0000', $lineData['quantity']);
 
         // Order totals should be updated
         $orderData = $response->json('data.order');
-        $this->assertNotEquals('0.0000', $orderData['total']);
+        $this->assertNotEquals('0.000', $orderData['total']);
     }
 
     public function test_add_line_fails_on_closed_order(): void
@@ -162,7 +162,7 @@ final class OrderManagementTest extends TestCase
         $response = $this->postJson("/api/v1/pos/orders/{$order->id}/lines", [
             'product_id' => $this->product->id,
             'quantity' => 1,
-            'unit_price' => '10.0000',
+            'unit_price' => '10.000',
             'tax_rate' => '19.00',
         ]);
 
@@ -182,7 +182,7 @@ final class OrderManagementTest extends TestCase
         );
 
         $response->assertStatus(200);
-        $this->assertEquals('5.000', $response->json('data.line.quantity'));
+        $this->assertEquals('5.0000', $response->json('data.line.quantity'));
     }
 
     public function test_remove_line_from_order(): void
@@ -197,7 +197,7 @@ final class OrderManagementTest extends TestCase
 
         $response->assertStatus(200);
         $this->assertEmpty($response->json('data.lines'));
-        $this->assertEquals('0.0000', $response->json('data.total'));
+        $this->assertEquals('0.000', $response->json('data.total'));
     }
 
     public function test_send_order_to_kitchen(): void
@@ -324,10 +324,10 @@ final class OrderManagementTest extends TestCase
             'status' => OrderStatus::Open,
             'cashier_id' => $this->user->id,
             'cashier_name' => $this->user->name ?? 'Test Cashier',
-            'subtotal' => '0.0000',
-            'tax_amount' => '0.0000',
-            'discount_amount' => '0.0000',
-            'total' => '0.0000',
+            'subtotal' => '0.000',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'total' => '0.000',
             'currency' => 'TND',
             'opened_at' => now(),
         ]);
@@ -343,7 +343,7 @@ final class OrderManagementTest extends TestCase
         $this->postJson("/api/v1/pos/orders/{$order->id}/lines", [
             'product_id' => $this->product->id,
             'quantity' => 1,
-            'unit_price' => '10.0000',
+            'unit_price' => '10.000',
             'tax_rate' => '19.00',
         ])->assertStatus(201);
     }

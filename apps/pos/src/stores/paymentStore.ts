@@ -4,11 +4,21 @@ import { fetchPaymentMethods, fetchPaymentRepositories } from '@/api/paymentApi'
 import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useTerminalStore } from '@/stores/terminalStore';
-import { getCurrencyDecimals } from '@/lib/currency';
+import { getActiveCurrency, getCurrencyDecimals } from '@/lib/currency';
+import { bcsum, bcmul, bcdiv, bcsub, bccomp, bcformat } from '@/lib/decimal';
 import { getDatabase } from '@/lib/db';
 import { getAllPaymentMethods, getAllPaymentRepositories } from '@/lib/db/repositories/paymentRepository';
 import { createOfflineReceipt, type OfflineReceiptResult } from '@/lib/offline/receiptService';
 import { createAccountPayment, type AccountPaymentResult } from '@/lib/offline/accountPaymentService';
+import { authorAccountCharge } from '@/lib/accountCharge/accountChargeService';
+import type {
+  AccountChargeOverrideApprovalInput,
+  AccountChargeResult,
+} from '@/lib/accountCharge/accountChargeService';
+import { buildAccountChargeCart } from '@/lib/accountCharge/accountChargeCartMapper';
+import { buildEscPosAccountChargeReceiptData } from '@/lib/buildReceiptData';
+import { isBalanceStale } from '@/lib/db/repositories/customerRepository';
+import { useCartStore } from '@/stores/cartStore';
 import { lockTerminal } from '@/lib/offline/terminalMutex';
 import { ConcurrentChainAdvanceError } from '@/lib/fiscal/FiscalEventEngine';
 import { useSyncStore } from '@/stores/syncStore';
@@ -24,6 +34,24 @@ import {
   authorPosOverride,
   type PosOverrideEvidence,
 } from '@/lib/operatorApproval/posOverrideAuthoring';
+import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
+
+/**
+ * Epoch-ms when the currently-attached checkout customer was attached, used to
+ * derive `attached_duration_ms` for the `pos.customer_detached` audit emit.
+ * Module-local (not part of PaymentState) so it stays out of the sealed fiscal
+ * snapshot / reset surface. Set on attachCustomer, cleared on detach.
+ */
+let customerAttachedAt: number | null = null;
+
+/** Aggregate id for customer attach/detach: the cart session id, else null. */
+function checkoutAggregateId(): string | null {
+  try {
+    return useCartStore.getState().getCartSessionId();
+  } catch {
+    return null;
+  }
+}
 
 export class ActiveTerminalRequiredError extends Error {
   constructor() {
@@ -210,7 +238,12 @@ interface PaymentState {
 
 export interface AdvancedPaymentLine {
   payment_method_id: string;
-  amount: number;
+  /**
+   * Canonical decimal amount string at the currency's scale (e.g. "12.50",
+   * TND "12.500"). String — never a JS number — so the value that enters the
+   * fiscal-event canonical hash carries no IEEE-754 jitter (F-FRONTEND-VOUCHER).
+   */
+  amount: string;
   repository_id: string;
   card_last_four?: string;
   transaction_reference?: string;
@@ -263,6 +296,10 @@ interface PaymentActions {
       customerSnapshotStale?: boolean;
     },
   ) => Promise<AccountPaymentResult | null>;
+  processAccountCharge: (
+    terminalId: string,
+    options?: { overrideApproval?: AccountChargeOverrideApprovalInput | null },
+  ) => Promise<AccountChargeResult | null>;
   reset: () => void;
   clearLastReceipt: () => void;
   /**
@@ -387,22 +424,26 @@ function assertAttachedCustomerScope(customer: AttachedCheckoutCustomer): void {
 function estimateCartTotal(
   cartItems: CartItem[],
   transactionDiscount?: CartTransactionDiscount,
+  currency: string = 'EUR',
 ): number {
-  const subtotal = cartItems.reduce((sum, item) => sum + parseFloat(item.line_total), 0);
+  const decimals = getCurrencyDecimals(currency);
+  const subtotal = bcsum(cartItems.map((item) => item.line_total), decimals);
   if (transactionDiscount === undefined) {
-    return subtotal;
+    return Number(subtotal);
   }
 
   const discountValue = parseFloat(transactionDiscount.value);
   if (!Number.isFinite(discountValue) || discountValue <= 0) {
-    return subtotal;
+    return Number(subtotal);
   }
 
-  const discountAmount = transactionDiscount.type === 'percentage'
-    ? subtotal * (discountValue / 100)
-    : discountValue;
-
-  return Math.max(0, subtotal - Math.min(discountAmount, subtotal));
+  const rawDiscount = transactionDiscount.type === 'percentage'
+    ? bcdiv(bcmul(subtotal, transactionDiscount.value, decimals), '100', decimals)
+    : transactionDiscount.value;
+  // Clamp discount to the subtotal so the total can never go negative.
+  const discount = bccomp(rawDiscount, subtotal) > 0 ? subtotal : rawDiscount;
+  const total = bcsub(subtotal, discount, decimals);
+  return bccomp(total, '0') < 0 ? 0 : Number(total);
 }
 
 
@@ -431,6 +472,15 @@ function companyField(company: unknown, camel: string, snake: string): string | 
   const record = company as Record<string, unknown>;
   const value = record[camel] ?? record[snake];
   return typeof value === 'string' && value.trim() !== '' ? value : null;
+}
+
+function branchTaxNumberFromTerminal(
+  terminal: { location?: { tax_id?: string | null } | null },
+): string | null {
+  // A terminal may have no location/branch-tax configured — fall back to the
+  // company tax id downstream (per-branch tax IDs are optional, company is the
+  // baseline). Guard the optional chain so the account-payment path can't crash.
+  return terminal.location?.tax_id ?? null;
 }
 
 async function createOfflineReceiptWithChainRetry(
@@ -518,6 +568,7 @@ async function createReceiptLocalFirst(
     throw new ActiveTerminalRequiredError();
   }
   const isTraining = terminal?.is_training_mode === true;
+  const branchTaxNumber = branchTaxNumberFromTerminal(terminal);
 
   const result = await lockTerminal(tenantId, terminalId, () =>
     createOfflineReceiptWithChainRetry(terminalId, () =>
@@ -532,7 +583,7 @@ async function createReceiptLocalFirst(
         currency,
         seller: {
           name: companyField(company, 'legalName', 'legal_name') ?? company?.name ?? null,
-          taxNumber: companyField(company, 'taxId', 'tax_id'),
+          taxNumber: branchTaxNumber ?? companyField(company, 'taxId', 'tax_id'),
           countryCode: companyField(company, 'countryCode', 'country_code'),
           street: companyField(company, 'addressStreet', 'address_street'),
           city: companyField(company, 'addressCity', 'address_city'),
@@ -628,11 +679,102 @@ async function createAccountPaymentLocalFirst(
   if (!terminal || terminal.id !== terminalId || !shift) {
     throw new ActiveTerminalRequiredError();
   }
+  const branchTaxNumber = branchTaxNumberFromTerminal(terminal);
 
   const db = await getDatabase(companyId);
 
   return lockTerminal(tenantId, terminalId, () =>
     createAccountPayment(db, {
+      tenantId,
+      companyId,
+      terminalId,
+      terminalName: terminal.name,
+      operatorId,
+      operatorName,
+      shiftId: shift.id,
+      currency,
+      seller: {
+        name: companyField(company, 'legalName', 'legal_name') ?? company?.name ?? null,
+        taxNumber: branchTaxNumber ?? companyField(company, 'taxId', 'tax_id'),
+        countryCode: companyField(company, 'countryCode', 'country_code'),
+        street: companyField(company, 'addressStreet', 'address_street'),
+        city: companyField(company, 'addressCity', 'address_city'),
+        postalCode: companyField(company, 'addressPostalCode', 'address_postal_code'),
+      },
+      customer: selectedCustomer,
+      payment: {
+        amount,
+        methodCode: cashMethod.code,
+        repositoryId: cashRegister.id,
+      },
+      isTraining: terminal.is_training_mode === true,
+      balanceSnapshotStale: options?.balanceSnapshotStale,
+      customerSnapshotStale: options?.customerSnapshotStale,
+    }),
+  );
+}
+
+async function createAccountChargeLocalFirst(
+  terminalId: string,
+  selectedCustomer: AttachedCheckoutCustomer,
+  options?: { overrideApproval?: AccountChargeOverrideApprovalInput | null },
+): Promise<AccountChargeResult> {
+  const authState = useAuthStore.getState();
+  const operatorState = useOperatorStore.getState();
+
+  const companyId = authState.companyId;
+  if (!companyId) {
+    throw new Error(i18n.t('errors.noCompanySelected', { ns: 'pos' }));
+  }
+  const company = authState.companies.find((c) => c.id === companyId);
+  const currency = company?.currency ?? 'EUR';
+  const tenantId = authState.user?.tenantId;
+  if (!tenantId) {
+    throw new Error(i18n.t('errors.noOperatorIdentified', { ns: 'pos' }));
+  }
+  if (selectedCustomer.tenant_id !== tenantId || selectedCustomer.company_id !== companyId) {
+    throw new Error('Customer belongs to a different tenant or company.');
+  }
+
+  const operator = operatorState.operator;
+  const operatorId = operator?.id ?? authState.user?.id;
+  const operatorName = operator?.name ?? authState.user?.name;
+  if (!operatorId || !operatorName) {
+    throw new Error(i18n.t('errors.noOperatorIdentified', { ns: 'pos' }));
+  }
+
+  const terminalState = useTerminalStore.getState();
+  const terminal = terminalState.terminal;
+  const shift = terminalState.shift;
+  if (!terminal || terminal.id !== terminalId || !shift) {
+    throw new ActiveTerminalRequiredError();
+  }
+
+  const cartState = useCartStore.getState();
+  const cart = buildAccountChargeCart({
+    cartItems: cartState.items,
+    currency,
+    transactionDiscount: cartState.transactionDiscount ?? null,
+  });
+
+  // Mirror CustomerAttachPanel's isBalanceStale call: project the attached
+  // snapshot onto a CustomerMirrorRow shape (the panel uses a configurable
+  // threshold; the checkout path uses the 30-minute default).
+  const balanceSnapshotStale = isBalanceStale(
+    {
+      ...selectedCustomer,
+      is_active: 1,
+      sync_version: null,
+      updated_at: null,
+      synced_at: selectedCustomer.balance_updated_at ?? new Date().toISOString(),
+    },
+    new Date(),
+    30,
+  );
+
+  const db = await getDatabase(companyId);
+  return lockTerminal(tenantId, terminalId, () =>
+    authorAccountCharge(db, {
       tenantId,
       companyId,
       terminalId,
@@ -650,14 +792,16 @@ async function createAccountPaymentLocalFirst(
         postalCode: companyField(company, 'addressPostalCode', 'address_postal_code'),
       },
       customer: selectedCustomer,
-      payment: {
-        amount,
-        methodCode: cashMethod.code,
-        repositoryId: cashRegister.id,
-      },
+      lines: cart.lines,
+      vatBreakdown: cart.vatBreakdown,
+      subtotal: cart.subtotal,
+      vatTotal: cart.vatTotal,
+      total: cart.total,
+      transactionDiscountAmount: cart.transactionDiscountAmount,
+      transactionDiscountReason: cart.transactionDiscountReason,
       isTraining: terminal.is_training_mode === true,
-      balanceSnapshotStale: options?.balanceSnapshotStale,
-      customerSnapshotStale: options?.customerSnapshotStale,
+      balanceSnapshotStale,
+      overrideApproval: options?.overrideApproval ?? null,
     }),
   );
 }
@@ -747,7 +891,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       throw new Error(msg);
     }
 
-    const totalEstimate = estimateCartTotal(cartItems, transactionDiscount);
+    const totalEstimate = estimateCartTotal(cartItems, transactionDiscount, getActiveCurrency());
     if (tenderedAmount + 0.000001 < totalEstimate) {
       const msg = 'Cash tender tolerance requires a manager-authored tender tolerance override and is not available from quick cash checkout.';
       set({ error: msg });
@@ -898,7 +1042,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       const company = authState.companies.find((c) => c.id === companyId);
       const currency = company?.currency ?? 'EUR';
       const decimals = getCurrencyDecimals(currency);
-      const totalEstimate = cartItems.reduce((sum, i) => sum + parseFloat(i.line_total), 0);
+      const totalEstimate = bcsum(cartItems.map((i) => i.line_total), decimals);
 
       await createReceiptLocalFirst(
         set,
@@ -906,7 +1050,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         cartItems,
         [{
           methodCode: cardMethod.code,
-          amount: totalEstimate.toFixed(decimals),
+          amount: totalEstimate,
           paymentMethodId: cardMethod.id,
           repositoryId: cardRepo.id,
           cardLastFour: cardData?.lastFour,
@@ -978,7 +1122,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         }
         return {
           methodCode: method.code,
-          amount: p.amount.toFixed(decimals),
+          amount: bcformat(p.amount, decimals),
           paymentMethodId: p.payment_method_id,
           repositoryId: p.repository_id,
           cardLastFour: p.card_last_four,
@@ -990,8 +1134,12 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         };
       });
 
-      const tenderedAmount = payments.reduce((sum, p) => sum + p.amount, 0);
-      const totalEstimate = estimateCartTotal(cartItems, transactionDiscount);
+      // Sum the per-tender amounts exactly (Big.js) from the same
+      // currency-scale strings that get persisted/hashed, so the tendered
+      // total and the per-line `amount` strings cannot disagree.
+      const tenderedAmountStr = bcsum(enriched.map((e) => e.amount), decimals);
+      const tenderedAmount = Number(tenderedAmountStr);
+      const totalEstimate = estimateCartTotal(cartItems, transactionDiscount, currency);
       let tenderToleranceEvidence: PosOverrideEvidence | undefined;
 
       if (tenderedAmount + 0.000001 < totalEstimate) {
@@ -1011,15 +1159,18 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         }
 
         const businessDate = new Date().toISOString().slice(0, 10);
-        const shortfall = Math.max(0, totalEstimate - tenderedAmount).toFixed(decimals);
+        const totalEstimateStr = bcformat(String(totalEstimate), decimals);
+        // Exact shortfall = total − tendered, clamped at 0 (Big.js).
+        const rawShortfall = bcsub(totalEstimateStr, tenderedAmountStr, decimals);
+        const shortfall = bccomp(rawShortfall, '0') < 0 ? (0).toFixed(decimals) : rawShortfall;
         const target = {
           tenant_id: authState.user.tenantId,
           company_id: companyId,
           terminal_id: terminalId,
           target_event_type: 'SALE_RECEIPT',
           target_reference_id: idempotencyKey,
-          total_amount: totalEstimate.toFixed(decimals),
-          tendered_amount: tenderedAmount.toFixed(decimals),
+          total_amount: totalEstimateStr,
+          tendered_amount: tenderedAmountStr,
           shortfall_amount: shortfall,
           currency,
         };
@@ -1055,7 +1206,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
           target,
           policyVersion: 'pos-phase-4-v1',
           reasonCode: 'tender_tolerance_shortfall',
-          reasonText: `Tendered ${tenderedAmount.toFixed(decimals)} against ${totalEstimate.toFixed(decimals)}`,
+          reasonText: `Tendered ${tenderedAmountStr} against ${totalEstimateStr}`,
         });
       }
 
@@ -1171,6 +1322,88 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     }
   },
 
+  processAccountCharge: async (terminalId, options) => {
+    const { selectedCustomer } = get();
+    if (!selectedCustomer) {
+      const msg = i18n.t('account_charge.errors.customer_required', {
+        ns: 'pos',
+        defaultValue: 'Customer is required for account charge.',
+      });
+      set({ error: msg });
+      throw new Error(msg);
+    }
+    const enabled =
+      selectedCustomer.charge_account_enabled === true ||
+      selectedCustomer.charge_account_enabled === 1;
+    if (!enabled) {
+      const msg = i18n.t('account_charge.errors.not_enabled', {
+        ns: 'pos',
+        defaultValue: 'This customer is not enabled for account charge.',
+      });
+      set({ error: msg });
+      throw new Error(msg);
+    }
+
+    let alreadyInFlight = false;
+    set((state) => {
+      if (state.isProcessing) {
+        alreadyInFlight = true;
+        return state;
+      }
+      return { isProcessing: true, error: null };
+    });
+    if (alreadyInFlight) return null;
+
+    try {
+      const result = await createAccountChargeLocalFirst(terminalId, selectedCustomer, options);
+      const snapshot = result.payload.local_balance_snapshot;
+      set({
+        isProcessing: false,
+        changeDue: 0,
+        lastReceipt: {
+          id: result.fiscalEventId,
+          receipt_number: result.accountChargeUuid,
+          total: result.total,
+          subtotal: '0',
+          tax_amount: '0',
+          discount_amount: '0',
+          currency: result.currency,
+        } satisfies CreateReceiptResponse,
+        lastReceiptIdempotencyKey: null,
+        lastReceiptServerId: null,
+        lastReceiptPrintData: buildEscPosAccountChargeReceiptData({
+          payload: result.printable,
+          currencyCode: result.currency,
+        }),
+        selectedCustomer: {
+          ...selectedCustomer,
+          receivable_balance: snapshot.projected_receivable_balance_after,
+          credit_balance: snapshot.projected_credit_balance_after,
+          balance_updated_at: result.payload.event_time_device,
+        },
+      });
+      // authorAccountCharge already increments the pending count and triggers a
+      // sync internally — do NOT re-trigger here.
+      useCartStore.getState().clearCart();
+      // On Account is mutually exclusive with tenders: any voucher tenders the
+      // cashier entered before switching to charge mode must not survive into
+      // the next sale. Mirror the canonical voucher-clear used elsewhere.
+      get().clearVoucherTenders();
+      return result;
+    } catch (error) {
+      console.error('[POS][account-charge] failed', {
+        ...serializeErrorForLog(error),
+        terminalId,
+        customerId: selectedCustomer.id,
+      });
+      set({
+        isProcessing: false,
+        error: formatCheckoutError(error),
+      });
+      throw error;
+    }
+  },
+
   clearLastReceipt: () => {
     // T0.2: also clear pendingIdempotencyKey so the next sale gets a fresh
     // key. This is the canonical post-success / new-sale lifecycle hook
@@ -1248,6 +1481,19 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
   addVoucherPayment: (code: string, amount: string) => {
     const { appliedVoucherCodes } = get();
     if (appliedVoucherCodes.has(code)) {
+      // Best-effort audit emit OUTSIDE any set() — the idempotent guard caught
+      // a re-add of an already-applied voucher (double-spend attempt). The
+      // voucher code is the aggregate id; it is NOT a secret. Never log PAN /
+      // card data here.
+      void recordAuditEvent({
+        type: 'pos.voucher_double_spend_attempt',
+        aggregateType: 'Voucher',
+        aggregateId: code,
+        payload: {
+          attempted_amount: amount,
+          caught_by: 'idempotent_check',
+        },
+      }).catch(() => {});
       throw new Error(
         i18n.t('voucherTender.alreadyApplied', { ns: 'pos', defaultValue: 'This voucher has already been applied to this sale.' }),
       );
@@ -1277,11 +1523,40 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
 
   attachCustomer: (customer: AttachedCheckoutCustomer) => {
     assertAttachedCustomerScope(customer);
+    // Snapshot the checkout aggregate id BEFORE the set() for the audit emit.
+    const aggregateId = checkoutAggregateId() ?? customer.id;
+    customerAttachedAt = Date.now();
     set({ selectedCustomer: customer });
+
+    void recordAuditEvent({
+      type: 'pos.customer_attached',
+      aggregateType: 'Checkout',
+      aggregateId,
+      payload: { customer_id: customer.id },
+    }).catch(() => {});
   },
 
   detachCustomer: () => {
+    // Snapshot the detaching customer + attach time BEFORE the set().
+    const detaching = get().selectedCustomer;
+    const attachedAt = customerAttachedAt;
+    const aggregateId = checkoutAggregateId() ?? detaching?.id ?? null;
+    customerAttachedAt = null;
     set({ selectedCustomer: null });
+
+    if (detaching) {
+      void recordAuditEvent({
+        type: 'pos.customer_detached',
+        aggregateType: 'Checkout',
+        aggregateId: aggregateId ?? detaching.id,
+        payload: {
+          customer_id: detaching.id,
+          // null when attach time is unknown (e.g. customer hydrated into
+          // state without going through attachCustomer this session).
+          attached_duration_ms: attachedAt !== null ? Date.now() - attachedAt : null,
+        },
+      }).catch(() => {});
+    }
   },
 
   reset: () => {

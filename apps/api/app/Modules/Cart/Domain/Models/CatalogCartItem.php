@@ -67,7 +67,7 @@ class CatalogCartItem extends Model
     {
         return [
             'source' => CartItemSource::class,
-            'quantity' => 'decimal:2',
+            'quantity' => 'decimal:4',
             'unit_price' => 'decimal:3',
             'sort_order' => 'integer',
             'reservation_expires_at' => 'datetime',

@@ -92,7 +92,7 @@ final class DocumentAccountChargeFactureBridgeTest extends TestCase
         $this->assertSame(1, $line->line_number);
         $this->assertSame('Default item', $line->description);
         $this->assertSame('1.0000', $line->quantity);
-        $this->assertSame('100.000', $line->unit_price);
+        $this->assertSame('119.000', $line->unit_price);
         $this->assertSame('0.000', $line->discount_amount);
         $this->assertSame('19.00', $line->tax_rate);
         $this->assertSame('119.000', $line->line_total);
@@ -393,7 +393,7 @@ final class DocumentAccountChargeFactureBridgeTest extends TestCase
                 'quantity' => '1.000',
                 'sku' => 'SKU-DEFAULT',
                 'tax_category_code' => '',
-                'unit_price' => '100.000',
+                'unit_price' => '119.000',
                 'vat_rate' => '19.00',
             ]],
             'local_balance_snapshot' => [

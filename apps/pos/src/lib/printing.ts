@@ -179,7 +179,7 @@ export interface ReceiptData {
    * REMBOURSEMENT/REFUND header and the original-ticket reference block.
    * Defaults to `'sale'` semantics when omitted (backward-compatible).
    */
-  receipt_kind?: 'sale' | 'refund' | 'account_payment';
+  receipt_kind?: 'sale' | 'refund' | 'account_payment' | 'account_charge';
   /** On refund receipts: the original sale receipt's number (e.g. R-T1-2026-00000123). */
   original_receipt_number?: string | null;
   /** On refund receipts: the original sale receipt's QR token, re-printed for further partial refunds. */

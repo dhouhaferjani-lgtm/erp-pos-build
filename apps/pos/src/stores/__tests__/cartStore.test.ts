@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useCartStore, computeTaxAmount } from '../cartStore';
-import type { POSProduct } from '@/types/product';
+import type { POSProduct, POSProductVariant } from '@/types/product';
 
 function makeProduct(overrides: Partial<POSProduct> = {}): POSProduct {
   return {
@@ -241,6 +241,37 @@ describe('cartStore', () => {
     expect(parseFloat(updated.tax_amount)).toBeCloseTo(7.27);
     // Total = subtotal (80), no tax added on top
     expect(useCartStore.getState().total()).toBeCloseTo(80);
+  });
+
+  it('sums fractional quantity × price without float drift (Big.js)', () => {
+    // 0.1 + 0.2 = 0.30000000000000004 with Number arithmetic. Three €0.10
+    // lines must subtotal to exactly 0.30, and the subtotalString accessor
+    // must return the exact currency-scale string with no drift.
+    useCartStore.getState().addItem(makeProduct({ id: 'p1', sale_price: '0.10' }));
+    useCartStore.getState().addItem(makeProduct({ id: 'p2', sale_price: '0.20' }));
+
+    expect(useCartStore.getState().subtotalString()).toBe('0.30');
+    expect(useCartStore.getState().subtotal()).toBe(0.3);
+  });
+
+  it('multiplies a fractional quantity by unit price exactly', () => {
+    // 1.5 kg × €2.99 = €4.485 → €4.49 at EUR scale 2 (round-half-up).
+    useCartStore.getState().addItem(makeProduct({ id: 'kg', sale_price: '2.99' }));
+    const itemId = useCartStore.getState().items[0]!.id;
+    useCartStore.getState().updateQuantity(itemId, 1.5);
+
+    const item = useCartStore.getState().items[0]!;
+    expect(item.quantity).toBe(1.5);
+    expect(item.line_total).toBe('4.49');
+  });
+
+  it('aggregates many fractional lines without accumulating drift', () => {
+    // Ten €0.10 lines → €1.00 exactly. Number reduce drifts to 0.9999999999.
+    for (let i = 0; i < 10; i++) {
+      useCartStore.getState().addItem(makeProduct({ id: `f${String(i)}`, sale_price: '0.10' }));
+    }
+    expect(useCartStore.getState().subtotalString()).toBe('1.00');
+    expect(useCartStore.getState().total()).toBe(1);
   });
 
   it('calculates total correctly with tax-inclusive pricing', () => {
@@ -624,6 +655,80 @@ describe('cartStore — refund/return sections (Task 52)', () => {
       useCartStore.getState().addReturnItems([makeReturnItem('r1', '-5.00')]);
 
       expect(useCartStore.getState().netTotal()).toBeCloseTo(10);
+    });
+  });
+
+  describe('T2 variant identity', () => {
+    function makeVariant(overrides: Partial<POSProductVariant> = {}): POSProductVariant {
+      return {
+        id: 'var-1',
+        product_id: 'prod-1',
+        variant_code: 'SHOE-39-BLK',
+        sku: 'SHOE-39-BLK',
+        barcode: '111',
+        name_suffix: ' — 39 / Black',
+        is_default: false,
+        is_active: true,
+        display_order: 0,
+        price_override: null,
+        image_url: null,
+        stock_quantity: 7,
+        ...overrides,
+      };
+    }
+
+    it('stamps variant identity on the cart line when a variant is supplied', () => {
+      const product = makeProduct({ id: 'prod-1', name: 'Shoe', has_variants: true });
+      useCartStore.getState().addItem(product, undefined, makeVariant());
+
+      const item = useCartStore.getState().items[0]!;
+      expect(item.product.variant_id).toBe('var-1');
+      expect(item.product.variant_name).toBe('Shoe — 39 / Black');
+    });
+
+    it('uses the variant price_override for unit price when present', () => {
+      const product = makeProduct({ id: 'prod-1', sale_price: '10.00', has_variants: true });
+      useCartStore
+        .getState()
+        .addItem(product, undefined, makeVariant({ price_override: '14.50' }));
+
+      const item = useCartStore.getState().items[0]!;
+      expect(item.unit_price).toBe('14.50');
+      expect(item.line_total).toBe('14.50');
+    });
+
+    it('falls back to the product sale_price when variant price_override is null', () => {
+      const product = makeProduct({ id: 'prod-1', sale_price: '10.00', has_variants: true });
+      useCartStore
+        .getState()
+        .addItem(product, undefined, makeVariant({ price_override: null }));
+
+      expect(useCartStore.getState().items[0]!.unit_price).toBe('10.00');
+    });
+
+    it('merges and increments the same variant of the same product', () => {
+      const product = makeProduct({ id: 'prod-1', has_variants: true });
+      useCartStore.getState().addItem(product, undefined, makeVariant({ id: 'var-1' }));
+      useCartStore.getState().addItem(product, undefined, makeVariant({ id: 'var-1' }));
+
+      const items = useCartStore.getState().items;
+      expect(items).toHaveLength(1);
+      expect(items[0]!.quantity).toBe(2);
+    });
+
+    it('keeps different variants of the same product as separate lines', () => {
+      const product = makeProduct({ id: 'prod-1', has_variants: true });
+      useCartStore
+        .getState()
+        .addItem(product, undefined, makeVariant({ id: 'var-1', name_suffix: ' — 39' }));
+      useCartStore
+        .getState()
+        .addItem(product, undefined, makeVariant({ id: 'var-2', name_suffix: ' — 40' }));
+
+      const items = useCartStore.getState().items;
+      expect(items).toHaveLength(2);
+      expect(items[0]!.product.variant_id).toBe('var-1');
+      expect(items[1]!.product.variant_id).toBe('var-2');
     });
   });
 });

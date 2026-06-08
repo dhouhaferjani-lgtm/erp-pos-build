@@ -7,6 +7,7 @@ namespace Tests\Feature\Document;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\DocumentVehicleContext;
@@ -66,6 +67,8 @@ class DocumentConversionScenarioTest extends TestCase
         ]);
 
         $this->converterRegistry = app(DocumentConverterRegistry::class);
+
+        app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     #[Test]

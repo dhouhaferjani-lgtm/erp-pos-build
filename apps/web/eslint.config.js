@@ -3,6 +3,22 @@ import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
+import noHardcodedStep from './eslint-rules/no-hardcoded-step.js'
+import noParseFloatOnMoney from './eslint-rules/no-parsefloat-on-money.js'
+
+// Local Phase-11 precision-guard plugin. Two custom rules discourage the
+// float-precision anti-patterns the precision-drift remediation eliminates:
+// hardcoded fractional `step` literals on number inputs (use MoneyInput /
+// QuantityInput) and parseFloat()/Number() coercion of money/quantity-named
+// values (keep the canonical decimal string). Both are WARN level so the
+// lint-warning ratchet counts the pre-existing legacy debt instead of
+// hard-failing CI.
+const precisionPlugin = {
+  rules: {
+    'no-hardcoded-step': noHardcodedStep,
+    'no-parsefloat-on-money': noParseFloatOnMoney,
+  },
+}
 
 export default tseslint.config(
   {
@@ -41,9 +57,13 @@ export default tseslint.config(
     plugins: {
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
+      precision: precisionPlugin,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      // Phase-11 precision-guard rules — WARN level (ratcheted, not hard-fail).
+      'precision/no-hardcoded-step': 'warn',
+      'precision/no-parsefloat-on-money': 'warn',
       // Downgrade pre-existing react-hooks violations to warn so CI gates on
       // regressions only. New feature directories re-enable these as errors
       // in the strict override block below.

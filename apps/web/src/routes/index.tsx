@@ -98,6 +98,11 @@ const CountingDetailPage = lazy(() => import('../features/inventory-counting/pag
 const CountingReviewPage = lazy(() => import('../features/inventory-counting/pages/CountingReviewPage').then((m) => ({ default: m.CountingReviewPage })))
 const DiscrepancyReportPage = lazy(() => import('../features/inventory-counting/pages/DiscrepancyReportPage').then((m) => ({ default: m.DiscrepancyReportPage })))
 
+// Stock Transfers
+const StockTransferListPage = lazy(() => import('../features/stock-transfers/pages/StockTransferListPage').then((m) => ({ default: m.StockTransferListPage })))
+const CreateStockTransferPage = lazy(() => import('../features/stock-transfers/pages/CreateStockTransferPage').then((m) => ({ default: m.CreateStockTransferPage })))
+const StockTransferDetailPage = lazy(() => import('../features/stock-transfers/pages/StockTransferDetailPage').then((m) => ({ default: m.StockTransferDetailPage })))
+
 // Enrichment module
 const EnrichmentQueuePage = lazy(() => import('../features/enrichment/pages/EnrichmentQueuePage').then((m) => ({ default: m.EnrichmentQueuePage })))
 
@@ -189,6 +194,7 @@ const CompositeItemListPage = lazy(() => import('../features/catalog').then((m) 
 const CompositeItemFormPage = lazy(() => import('../features/catalog').then((m) => ({ default: m.CompositeItemFormPage })))
 const ModifierGroupListPage = lazy(() => import('../features/catalog').then((m) => ({ default: m.ModifierGroupListPage })))
 const ModifierGroupFormPage = lazy(() => import('../features/catalog').then((m) => ({ default: m.ModifierGroupFormPage })))
+const AttributeListPage = lazy(() => import('../features/catalog').then((m) => ({ default: m.AttributeListPage })))
 
 // Menu module
 const MenuListPage = lazy(() => import('../features/menu').then((m) => ({ default: m.MenuListPage })))
@@ -1077,6 +1083,38 @@ export function AppRoutes() {
               <RequirePermission moduleKey="inventory">
                 <SuspenseWrapper>
                   <EnrichmentQueuePage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          {/* Stock Transfers (multi-location, lifecycle-tracked, WAC-aware) */}
+          <Route
+            path="stock-transfers"
+            element={
+              <RequirePermission permission="inventory.transfers.view">
+                <SuspenseWrapper>
+                  <StockTransferListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="stock-transfers/new"
+            element={
+              <RequirePermission permission="inventory.transfers.create">
+                <SuspenseWrapper>
+                  <CreateStockTransferPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="stock-transfers/:id"
+            element={
+              <RequirePermission permission="inventory.transfers.view">
+                <SuspenseWrapper>
+                  <StockTransferDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -2074,6 +2112,16 @@ export function AppRoutes() {
               <RequirePermission permission="composite-items.view">
                 <SuspenseWrapper>
                   <MenuFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="attributes"
+            element={
+              <RequirePermission permission="catalog.attributes.view">
+                <SuspenseWrapper>
+                  <AttributeListPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

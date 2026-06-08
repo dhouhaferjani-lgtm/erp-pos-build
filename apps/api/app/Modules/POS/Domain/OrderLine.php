@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property string $order_id
  * @property int $line_number
  * @property string $product_id
+ * @property string|null $variant_id
  * @property string $product_name
  * @property string|null $variant_name
  * @property string|null $barcode
@@ -56,6 +57,7 @@ class OrderLine extends Model
         'order_id',
         'line_number',
         'product_id',
+        'variant_id',
         'product_name',
         'variant_name',
         'barcode',
@@ -79,12 +81,12 @@ class OrderLine extends Model
     {
         return [
             'line_number' => 'integer',
-            'quantity' => 'decimal:3',
-            'unit_price' => 'decimal:4',
-            'discount_amount' => 'decimal:4',
+            'quantity' => 'decimal:4',
+            'unit_price' => 'decimal:3',
+            'discount_amount' => 'decimal:3',
             'tax_rate' => 'decimal:2',
-            'tax_amount' => 'decimal:4',
-            'line_total' => 'decimal:4',
+            'tax_amount' => 'decimal:3',
+            'line_total' => 'decimal:3',
             'modifiers' => 'array',
             'status' => OrderLineStatus::class,
             'sent_at' => 'datetime',

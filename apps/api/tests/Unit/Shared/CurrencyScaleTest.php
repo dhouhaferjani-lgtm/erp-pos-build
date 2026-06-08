@@ -232,4 +232,71 @@ final class CurrencyScaleTest extends TestCase
             'TND: unit_price * qty (4.990 * 3)' => ['4.990', '3', 'mul', 3, '14.970'],
         ];
     }
+
+    // -- bcround (HALF-UP, posting/display boundary) tests --
+
+    #[Test]
+    #[DataProvider('bcroundProvider')]
+    public function bcround_rounds_half_up_to_scale(string $input, int $scale, string $expected): void
+    {
+        $this->assertSame($expected, CurrencyScale::bcround($input, $scale));
+    }
+
+    /**
+     * @return array<string, array{string, int, string}>
+     */
+    public static function bcroundProvider(): array
+    {
+        return [
+            // Half rounds AWAY from zero (unlike bcformat which truncates).
+            'TND 0.4635 → 0.464 (half up)' => ['0.4635', 3, '0.464'],
+            'TND 0.4634 → 0.463 (below half)' => ['0.4634', 3, '0.463'],
+            'TND 0.463636 → 0.464 (non-terminating, >half)' => ['0.463636', 3, '0.464'],
+            'TND 0.463000 → 0.463 (exact)' => ['0.463000', 3, '0.463'],
+            // The key contrast with bcformat (which would truncate 0.4636 → 0.463).
+            'TND 0.4636 → 0.464' => ['0.4636', 3, '0.464'],
+            // EUR scale 2.
+            'EUR 1.005 → 1.01' => ['1.005', 2, '1.01'],
+            'EUR 1.004 → 1.00' => ['1.004', 2, '1.00'],
+            // Scale 0 (JPY).
+            'JPY 0.5 → 1' => ['0.5', 0, '1'],
+            'JPY 0.4 → 0' => ['0.4', 0, '0'],
+            'JPY 2.5 → 3' => ['2.5', 0, '3'],
+            // Negatives round away from zero, symmetric with positives.
+            'neg -0.4635 → -0.464' => ['-0.4635', 3, '-0.464'],
+            'neg -0.4634 → -0.463' => ['-0.4634', 3, '-0.463'],
+            'neg -0.5 → -1 (scale 0)' => ['-0.5', 0, '-1'],
+            // High-precision 6-dp WAC × qty rounded to TND scale 3.
+            'WAC 6dp 12.345678 → 12.346' => ['12.345678', 3, '12.346'],
+            'WAC 6dp 12.345499 → 12.345' => ['12.345499', 3, '12.345'],
+            // Zero.
+            'zero → 0.000' => ['0', 3, '0.000'],
+        ];
+    }
+
+    #[Test]
+    public function bcround_result_is_valid_numeric_string(): void
+    {
+        foreach (['0.4635', '-0.4635', '0', '999999.999999', '12.345678'] as $value) {
+            $result = CurrencyScale::bcround($value, 3);
+            $sum = bcadd($result, '0', 3);
+            $this->assertSame($result, $sum, "bcround result for {$value} must be a valid numeric-string");
+        }
+    }
+
+    #[Test]
+    public function bcround_rejects_non_numeric_input(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        CurrencyScale::bcround('not-a-number', 3);
+    }
+
+    #[Test]
+    public function bcround_does_not_introduce_float_drift_on_classic_cases(): void
+    {
+        // (float) round(0.1 + 0.2, ...) is the classic IEEE-754 trap; bcround stays exact.
+        $this->assertSame('0.300', CurrencyScale::bcround('0.3', 3));
+        // A value that float round() would mishandle near the half boundary.
+        $this->assertSame('2.68', CurrencyScale::bcround('2.675', 2));
+    }
 }

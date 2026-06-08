@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Document\Domain\Document;
@@ -57,6 +58,8 @@ class FiscalHardeningE2ETest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
         ]);
+
+        app(CompanyContext::class)->setCompanyId($this->company->id);
 
         $this->postingService = app(DocumentPostingService::class);
         $this->hashService = app(FiscalHashService::class);

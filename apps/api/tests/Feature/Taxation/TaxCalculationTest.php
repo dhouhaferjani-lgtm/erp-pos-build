@@ -6,6 +6,7 @@ namespace Tests\Feature\Taxation;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -132,6 +133,7 @@ class TaxCalculationTest extends TestCase
             'fiscal_category' => FiscalCategory::TaxInvoice,
             'document_date' => now(),
             'document_number' => 'INV-FR-001',
+            'currency' => 'EUR',
             'subtotal' => '100.00',
             'tax_amount' => '20.00',
             'total' => '120.00',
@@ -154,18 +156,21 @@ class TaxCalculationTest extends TestCase
         // Refresh to load relationships
         $invoice->refresh();
 
-        // Act: Calculate taxes
+        // Act: Calculate taxes. Bind the French company so the currency-scale
+        // resolver resolves EUR → scale 2 (Phase 3.7 made the service
+        // currency-aware instead of hard-coding scale 3).
+        app(CompanyContext::class)->setCompanyId($this->frenchCompany->id);
         $service = app(TaxCalculationService::class);
         $result = $service->calculateDocumentTaxes($invoice);
 
         // Assert: VAT calculated correctly, no stamp duty for France.
-        // TaxCalculationService accumulates monetary fields with bcadd at
-        // 3-decimal precision, so the result strings carry three fractional
-        // digits.
-        $this->assertEquals('20.000', $result->lineTaxAmount, 'Line tax (VAT 20%) should be 20.000');
+        // EUR boundary scale = 2, so the result strings carry two fractional
+        // digits (Phase 3.7: was hard-coded scale 3 → 20.000 / 120.000, which
+        // over-retained a non-EUR third decimal).
+        $this->assertEquals('20.00', $result->lineTaxAmount, 'Line tax (VAT 20%) should be 20.00');
         $this->assertEquals('0', $result->stampDutyAmount, 'France should have no stamp duty');
-        $this->assertEquals('20.000', $result->totalTaxAmount, 'Total tax should be 20.000 (VAT only)');
-        $this->assertEquals('120.000', $result->total, 'Total should be 120.000 (100 + 20 VAT)');
+        $this->assertEquals('20.00', $result->totalTaxAmount, 'Total tax should be 20.00 (VAT only)');
+        $this->assertEquals('120.00', $result->total, 'Total should be 120.00 (100 + 20 VAT)');
         $this->assertCount(1, $result->taxDetails, 'Should have only 1 tax detail (VAT)');
         $this->assertFalse($result->taxDetails[0]->isStampDuty, 'First detail should be VAT, not stamp duty');
     }
@@ -183,6 +188,12 @@ class TaxCalculationTest extends TestCase
             'fiscal_category' => FiscalCategory::TaxInvoice,
             'document_date' => now(),
             'document_number' => 'INV-TN-001',
+            // A Tunisian invoice is denominated in TND. The documents table
+            // defaults currency to 'EUR'; a real TND invoice carries 'TND',
+            // which is what drives the fiscally-correct scale (3). The tax
+            // service resolves scale from the document's own currency, so this
+            // must be set explicitly rather than relying on the EUR default.
+            'currency' => 'TND',
             'subtotal' => '100.00',
             'tax_amount' => '19.00',
             'total' => '120.000', // 100 + 19 VAT + 1 stamp duty
@@ -205,18 +216,81 @@ class TaxCalculationTest extends TestCase
         // Refresh to load relationships
         $invoice->refresh();
 
-        // Act: Calculate taxes
+        // Act: Calculate taxes. Bind the Tunisian company so the currency-scale
+        // resolver resolves TND → scale 3.
+        app(CompanyContext::class)->setCompanyId($this->tunisianCompany->id);
         $service = app(TaxCalculationService::class);
         $result = $service->calculateDocumentTaxes($invoice);
 
-        // Assert: VAT + Stamp Duty calculated. 3-decimal precision matches
-        // the bcadd scale used by TaxCalculationService.
+        // Assert: VAT + Stamp Duty calculated. TND boundary scale = 3, so the
+        // result strings carry three fractional digits (unchanged from before).
         $this->assertEquals('19.000', $result->lineTaxAmount, 'Line tax (VAT 19%) should be 19.000');
         $this->assertEquals('1.000', $result->stampDutyAmount, 'Tunisia should have 1.000 TND stamp duty');
         $this->assertEquals('20.000', $result->totalTaxAmount, 'Total tax should be 20.000 (19 VAT + 1 stamp)');
         $this->assertEquals('120.000', $result->total, 'Total should be 120.000 (100 + 19 + 1)');
         $this->assertCount(2, $result->taxDetails, 'Should have 2 tax details (VAT + stamp duty)');
         $this->assertTrue($result->taxDetails[1]->isStampDuty, 'Second detail should be stamp duty');
+    }
+
+    /**
+     * Regression (Phase 3 precision): the WorkOrder→Invoice generation path
+     * invokes TaxCalculationService OUTSIDE a bound CompanyContext (no HTTP
+     * request, no CompanyContextMiddleware). The service previously resolved
+     * scale via a no-arg getScale(), which threw UnboundCompanyContextException
+     * there. It must now derive the scale from the document's own currency and
+     * succeed with the fiscally-correct per-currency scale (TND → 3).
+     */
+    public function test_it_calculates_taxes_without_a_bound_company_context(): void
+    {
+        $invoice = Document::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->tunisianCompany->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Invoice,
+            'status' => DocumentStatus::Posted,
+            'fiscal_category' => FiscalCategory::TaxInvoice,
+            'document_date' => now(),
+            'document_number' => 'INV-TN-NOCTX-001',
+            'currency' => 'TND',
+            'subtotal' => '100.00',
+            'tax_amount' => '19.00',
+            'total' => '120.000',
+        ]);
+
+        DocumentLine::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->tunisianCompany->id,
+            'document_id' => $invoice->id,
+            'description' => 'Product C',
+            'quantity' => '1',
+            'unit_price' => '100.00',
+            'tax_rate' => '19.00',
+            'line_total' => '100.00',
+            'line_number' => 1,
+        ]);
+
+        $invoice->refresh();
+
+        // Explicitly clear any bound context to simulate the WorkOrder→Invoice
+        // generation path (event listener / domain transition, no request).
+        app(CompanyContext::class)->clear();
+        $this->assertFalse(
+            app(CompanyContext::class)->hasCompany(),
+            'Precondition: no CompanyContext should be bound for this regression test',
+        );
+
+        $service = app(TaxCalculationService::class);
+
+        // Must NOT throw UnboundCompanyContextException, and must use the
+        // document currency (TND) → scale 3.
+        $result = $service->calculateDocumentTaxes($invoice);
+
+        $this->assertEquals('19.000', $result->lineTaxAmount, 'Line tax (VAT 19%) should be 19.000 (TND scale 3)');
+        $this->assertEquals('1.000', $result->stampDutyAmount, 'Tunisia stamp duty should be 1.000 TND');
+        $this->assertEquals('20.000', $result->totalTaxAmount, 'Total tax should be 20.000');
+        $this->assertEquals('120.000', $result->total, 'Total should be 120.000');
     }
 
     /**

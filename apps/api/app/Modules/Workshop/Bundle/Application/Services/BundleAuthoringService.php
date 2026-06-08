@@ -159,7 +159,7 @@ final readonly class BundleAuthoringService
         $component->nested_bundle_id = $command->component_type === BundleComponentType::NestedBundle
             ? $command->component_id : null;
 
-        $component->quantity = CurrencyScale::bcformat($command->quantity, 3);
+        $component->quantity = CurrencyScale::bcformat($command->quantity, 4);
         $component->unit_id = $command->unit_id;
         $component->override_unit_price = $command->override_unit_price !== null
             ? CurrencyScale::bcformat($command->override_unit_price, $scale)
@@ -217,7 +217,7 @@ final readonly class BundleAuthoringService
 
         if ($command->quantity !== null) {
             $this->assertQuantityPositive($command->quantity);
-            $component->quantity = CurrencyScale::bcformat($command->quantity, 3);
+            $component->quantity = CurrencyScale::bcformat($command->quantity, 4);
         }
 
         if ($command->unit_id !== null) {

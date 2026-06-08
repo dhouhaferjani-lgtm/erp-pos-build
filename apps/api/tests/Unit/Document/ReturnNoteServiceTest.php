@@ -7,6 +7,7 @@ namespace Tests\Unit\Document;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
@@ -18,6 +19,7 @@ use App\Modules\Document\Domain\Services\ReturnNoteService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
@@ -48,15 +50,19 @@ class ReturnNoteServiceTest extends TestCase
     {
         parent::setUp();
 
+        // Create test data first so CompanyContext can be bound before service resolution
+        $this->tenant = Tenant::factory()->create();
+        $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+
+        // Bind CompanyContext so CurrencyScaleResolver has context
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
+
         // Create dependencies
         $wacService = $this->app->make(WeightedAverageCostService::class);
         $hashService = $this->app->make(FiscalHashService::class);
         $taxCalculationService = $this->app->make(TaxCalculationService::class);
-        $this->service = new ReturnNoteService($wacService, $hashService, $taxCalculationService);
-
-        // Create test data
-        $this->tenant = Tenant::factory()->create();
-        $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+        $costLock = $this->app->make(ProductCostLock::class);
+        $this->service = new ReturnNoteService($wacService, $hashService, $taxCalculationService, $costLock);
 
         // Create location manually (no factory exists)
         $this->location = Location::create([
@@ -120,7 +126,7 @@ class ReturnNoteServiceTest extends TestCase
         $this->assertNotNull($movement);
         $this->assertEquals(MovementType::Receipt, $movement->movement_type);
         $this->assertEquals($this->product->id, $movement->product_id);
-        $this->assertEquals('10.00', $movement->quantity); // Returned quantity
+        $this->assertEquals('10.0000', $movement->quantity); // Returned quantity
     }
 
     public function test_uses_fiscal_hash_chain(): void

@@ -77,7 +77,7 @@ final class BundleComponentPatchTest extends TestCase
         /** @var array{data: array{id: string, quantity: string, notes: string, is_optional: bool}} $body */
         $body = $response->json();
         $this->assertSame($component->id, $body['data']['id']);
-        $this->assertSame('2.500', $body['data']['quantity']);
+        $this->assertSame('2.5000', $body['data']['quantity']);
         $this->assertSame('original', $body['data']['notes']);
         $this->assertFalse($body['data']['is_optional']);
     }

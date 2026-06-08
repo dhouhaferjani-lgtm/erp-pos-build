@@ -52,5 +52,26 @@
   "swapUnits": "Swap units",
   "result": "Result",
   "convert": "Convert",
-  "conversionFactorDisplay": "Conversion factor"
+  "conversionFactorDisplay": "Conversion factor",
+
+  "precisionSettings": {
+    "title": "Unit Precision Settings",
+    "description": "Configure the number of decimal places and rounding method for each unit of measure.",
+    "columns": {
+      "code": "Code",
+      "name": "Name",
+      "decimalPlaces": "Decimal Places",
+      "roundingMethod": "Rounding Method"
+    },
+    "roundingOptions": {
+      "HalfUp": "Half Up",
+      "Floor": "Floor",
+      "Ceil": "Ceiling"
+    },
+    "save": "Save",
+    "saving": "Saving...",
+    "saved": "Precision settings saved.",
+    "saveError": "Failed to save precision settings.",
+    "narrowingWarning": "Changing this may render existing quantity values inexact. Review the impact report after save."
+  }
 }

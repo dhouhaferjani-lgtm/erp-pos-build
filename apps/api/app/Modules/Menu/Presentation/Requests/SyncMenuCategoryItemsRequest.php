@@ -25,9 +25,19 @@ class SyncMenuCategoryItemsRequest extends FormRequest
             'items' => ['required', 'array', 'min:1'],
             'items.*.sellable_type' => ['required', 'string', Rule::in(['product', 'composite_item'])],
             'items.*.sellable_id' => ['required', 'uuid'],
-            'items.*.override_price' => ['nullable', 'numeric', 'min:0'],
+            'items.*.override_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
             'items.*.display_order' => ['sometimes', 'integer', 'min:0'],
             'items.*.is_available' => ['sometimes', 'boolean'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'items.*.override_price.regex' => 'Override price must have at most 4 decimal places.',
         ];
     }
 

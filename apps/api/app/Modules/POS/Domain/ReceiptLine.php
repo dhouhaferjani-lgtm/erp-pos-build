@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property string $receipt_id
  * @property int $line_number
  * @property string|null $product_id
+ * @property string|null $variant_id
  * @property string|null $composite_item_id
  * @property string|null $menu_category_id
  * @property string $product_code Product code at time of sale (immutable)
@@ -66,6 +67,7 @@ class ReceiptLine extends Model
         'original_line_id',
         'line_number',
         'product_id',
+        'variant_id',
         'composite_item_id',
         // C2 Day 3 — menu_category_id surviving the wire roundtrip so the
         // refund flow can reconstruct the composite the cashier sold
@@ -100,7 +102,7 @@ class ReceiptLine extends Model
     {
         return [
             'line_number' => 'integer',
-            'quantity' => 'decimal:3',
+            'quantity' => 'decimal:4',
             'unit_price' => 'decimal:3',
             'unit_cost' => 'decimal:4',
             'line_total' => 'decimal:3',

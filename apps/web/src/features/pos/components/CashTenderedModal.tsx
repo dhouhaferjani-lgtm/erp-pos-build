@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Modal } from '@/components/organisms/Modal'
 import { POSButton } from '../atoms/POSButton'
+import { MoneyInput } from '@/components/atoms/MoneyInput'
 import { useCurrency } from '@/hooks/useCurrency'
 import { Banknote } from 'lucide-react'
 
@@ -79,12 +80,11 @@ export function CashTenderedModal({
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-lg font-medium">
               {currency}
             </span>
-            <input
-              type="number"
-              step="0.01"
-              min={0}
+            <MoneyInput
+              currency={currency}
+              min="0"
               value={tenderedStr}
-              onChange={(e) => { setTenderedStr(e.target.value); }}
+              onChange={setTenderedStr}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && isValid && !isProcessing) {
                   handleConfirm()

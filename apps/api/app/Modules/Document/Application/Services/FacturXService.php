@@ -4,17 +4,24 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Application\Services;
 
+use App\Modules\Company\Application\Services\TaxIdentityResolver;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FacturXProfile;
 use App\Modules\Partner\Domain\Partner;
+use App\Shared\Contracts\Company\TaxIdentityData;
 use horstoeko\zugferd\ZugferdDocumentBuilder;
 use horstoeko\zugferd\ZugferdProfiles;
 
 final class FacturXService
 {
+    public function __construct(
+        private readonly TaxIdentityResolver $taxIdentityResolver,
+    ) {}
+
     /**
      * Check if a document is eligible for Factur-X generation.
      *
@@ -68,7 +75,7 @@ final class FacturXService
      */
     public function generateXml(Document $document): string
     {
-        $document->loadMissing(['company', 'partner', 'lines']);
+        $document->loadMissing(['company', 'partner', 'lines', 'location']);
 
         /** @var Company $company */
         $company = $document->company;
@@ -79,7 +86,7 @@ final class FacturXService
         $builder = ZugferdDocumentBuilder::createNew(ZugferdProfiles::PROFILE_BASICWL);
 
         $this->setDocumentHeader($builder, $document);
-        $this->setSellerInformation($builder, $company);
+        $this->setSellerInformation($builder, $company, $document->location);
         $this->setBuyerInformation($builder, $partner);
         $this->setTaxInformation($builder, $document);
         $this->setDocumentTotals($builder, $document);
@@ -107,8 +114,12 @@ final class FacturXService
     /**
      * Set seller (company) information.
      */
-    private function setSellerInformation(ZugferdDocumentBuilder $builder, Company $company): void
+    private function setSellerInformation(ZugferdDocumentBuilder $builder, Company $company, ?Location $location): void
     {
+        $identity = $location !== null
+            ? $this->taxIdentityResolver->resolve($location)
+            : $this->companyTaxIdentity($company);
+
         $builder->setDocumentSeller($company->legal_name ?? $company->name);
 
         $builder->setDocumentSellerAddress(
@@ -120,15 +131,15 @@ final class FacturXService
             $company->country_code,
         );
 
-        if ($company->vat_number !== null) {
-            $builder->addDocumentSellerTaxRegistration('VA', $company->vat_number);
+        if ($identity->vatNumber !== null) {
+            $builder->addDocumentSellerTaxRegistration('VA', $identity->vatNumber);
         }
 
-        if ($company->tax_id !== null) {
-            $builder->addDocumentSellerTaxRegistration('FC', $company->tax_id);
+        if ($identity->taxId !== null) {
+            $builder->addDocumentSellerTaxRegistration('FC', $identity->taxId);
         }
 
-        $siret = $company->legal_identifiers['siret'] ?? null;
+        $siret = $identity->legalIdentifiers['siret'] ?? null;
         if (is_string($siret)) {
             $builder->setDocumentSellerLegalOrganisation($siret, '0002', $company->legal_name ?? $company->name);
         }
@@ -142,6 +153,25 @@ final class FacturXService
                 $company->email,
             );
         }
+    }
+
+    private function companyTaxIdentity(Company $company): TaxIdentityData
+    {
+        return new TaxIdentityData(
+            taxId: $company->tax_id,
+            vatNumber: $company->vat_number,
+            legalIdentifiers: $this->legalIdentifiers($company->legal_identifiers),
+            countryCode: $company->country_code,
+        );
+    }
+
+    /**
+     * @param  array<string, string|int|float|bool|null>|null  $identifiers
+     * @return array<string, string|int|float|bool|null>
+     */
+    private function legalIdentifiers(?array $identifiers): array
+    {
+        return $identifiers ?? [];
     }
 
     /**

@@ -30,6 +30,9 @@ final class TerminalResource extends JsonResource
                     'id' => $this->location->id,
                     'name' => $this->location->name,
                     'code' => $this->location->code,
+                    'tax_id' => $this->location->tax_id,
+                    'vat_number' => $this->location->vat_number,
+                    'legal_identifiers' => $this->location->legal_identifiers,
                 ];
             }),
             'hardware_identifier' => $this->hardware_identifier,
@@ -49,7 +52,10 @@ final class TerminalResource extends JsonResource
             // computeFiscalHash, v3 → canonical-payload SHA-256 builder).
             'fiscal_schema_version' => (int) $this->fiscal_schema_version,
             'is_training_mode' => (bool) $this->is_training_mode,
-            'max_discount_percent' => (float) $this->max_discount_percent,
+            // Precision: rely on the model `decimal:2` cast so trailing zeros are
+            // preserved (e.g. '15.00' not 15.0). A (float) cast would launder the
+            // string back into a lossy float and drop the scale.
+            'max_discount_percent' => $this->max_discount_percent,
             'allow_line_discounts' => (bool) $this->allow_line_discounts,
             'allow_transaction_discounts' => (bool) $this->allow_transaction_discounts,
             'created_at' => $this->created_at->toISOString(),

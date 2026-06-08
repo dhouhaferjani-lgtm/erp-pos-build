@@ -11,6 +11,7 @@ use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -25,9 +26,11 @@ class ReceiptFactory extends Factory
      */
     public function definition(): array
     {
-        $subtotal = $this->faker->randomFloat(2, 10, 500);
-        $taxAmount = round($subtotal * 0.19, 2);
-        $total = round($subtotal + $taxAmount, 2);
+        // Monetary totals are canonical 3dp numeric strings (Receipt money
+        // columns are cast decimal:3). bcmath only — no float arithmetic.
+        $subtotal = CurrencyScale::bcformat($this->faker->randomFloat(2, 10, 500), 3);
+        $taxAmount = bcmul($subtotal, '0.19', 3);
+        $total = bcadd($subtotal, $taxAmount, 3);
 
         return [
             'tenant_id' => Tenant::factory(),
@@ -44,12 +47,27 @@ class ReceiptFactory extends Factory
             'posted_at' => now(),
             'cashier_id' => User::factory(),
             'cashier_name' => $this->faker->name(),
-            'subtotal' => number_format($subtotal, 3, '.', ''),
-            'tax_amount' => number_format($taxAmount, 3, '.', ''),
-            'total' => number_format($total, 3, '.', ''),
+            'subtotal' => $subtotal,
+            'tax_amount' => $taxAmount,
+            'total' => $total,
             'currency' => 'EUR',
             'is_voided' => false,
         ];
+    }
+
+    /**
+     * Set the currency and keep the totals canonical at the Receipt money
+     * scale (decimal:3). The currency code is recorded on the receipt while
+     * the chained-fiscal columns remain 3dp strings.
+     */
+    public function currency(string $currencyCode): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'currency' => $currencyCode,
+            'subtotal' => CurrencyScale::bcformat($attributes['subtotal'] ?? '0', 3),
+            'tax_amount' => CurrencyScale::bcformat($attributes['tax_amount'] ?? '0', 3),
+            'total' => CurrencyScale::bcformat($attributes['total'] ?? '0', 3),
+        ]);
     }
 
     /**

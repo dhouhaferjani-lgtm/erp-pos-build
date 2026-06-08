@@ -130,7 +130,7 @@ class CatalogCartTest extends TestCase
         $response->assertStatus(201)
             ->assertJsonPath('data.article_name', 'Brake Pads')
             ->assertJsonPath('data.source', 'catalog')
-            ->assertJsonPath('data.quantity', '2.00');
+            ->assertJsonPath('data.quantity', '2.0000');
     }
 
     /** @test */

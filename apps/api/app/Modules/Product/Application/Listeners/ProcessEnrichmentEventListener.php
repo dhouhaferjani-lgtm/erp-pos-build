@@ -52,21 +52,19 @@ final class ProcessEnrichmentEventListener
         $enrichmentStatus = EnrichmentStatus::fromPlatformStatus($event->status);
         $product->update(['enrichment_status' => $enrichmentStatus]);
 
-        // For terminal statuses, fetch and store full enrichment result
-        $terminalStatuses = [
-            EnrichmentStatus::Completed,
-            EnrichmentStatus::Failed,
-            EnrichmentStatus::NotEnrichable,
-        ];
-
-        if (in_array($enrichmentStatus, $terminalStatuses, true)) {
+        // Only a successful enrichment has reviewable data to fetch and store.
+        // Other terminal states (Failed, NotEnrichable) — and Rejected — are
+        // resolved by the product's enrichment_status alone: they carry no
+        // enriched payload, so creating an enrichment_results row would surface
+        // a phantom pending_review item in the operator queue.
+        if ($enrichmentStatus === EnrichmentStatus::Completed) {
             $enrichmentResult = $this->enrichmentReviewService->fetchAndStore(
                 $event->trackingId,
                 $product,
+                $event->locale,
             );
 
-            // For completed enrichments, dispatch event for notification delivery
-            if ($enrichmentStatus === EnrichmentStatus::Completed && $enrichmentResult !== null) {
+            if ($enrichmentResult !== null) {
                 EnrichmentResultReadyEvent::dispatch(
                     $enrichmentResult->id,
                     $product->company_id,

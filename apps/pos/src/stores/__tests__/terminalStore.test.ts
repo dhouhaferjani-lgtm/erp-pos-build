@@ -104,7 +104,14 @@ const mockTerminal: Terminal = {
   fiscal_schema_version: 2,
   is_training_mode: false,
   hardware_identifier: 'device-abc',
-  location: { id: 'loc-1', name: 'Main Store', code: 'LOC-001' },
+  location: {
+    id: 'loc-1',
+    name: 'Main Store',
+    code: 'LOC-001',
+    tax_id: null,
+    vat_number: null,
+    legal_identifiers: null,
+  },
 };
 
 const mockShift: Shift = {

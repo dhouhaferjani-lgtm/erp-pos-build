@@ -15,6 +15,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -101,6 +102,89 @@ class ListProductsTest extends TestCase
                 ],
                 'meta' => ['current_page', 'per_page', 'total'],
             ]);
+    }
+
+    public function test_list_includes_quantity_decimals_from_product_unit(): void
+    {
+        $unit = Unit::factory()
+            ->tenant($this->tenant->id)
+            ->create([
+                'code' => 'EA',
+                'name' => 'Each',
+                'symbol' => 'ea',
+                'decimal_places' => 0,
+            ]);
+
+        $product = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Piece Product',
+            'sku' => 'PCS-001',
+            'unit' => 'EA',
+        ]);
+        $product->forceFill(['unit_id' => $unit->id])->save();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/products');
+
+        $response->assertOk()
+            ->assertJsonPath('data.0.id', $product->id)
+            ->assertJsonPath('data.0.quantity_decimals', 0);
+    }
+
+    public function test_update_includes_quantity_decimals_from_product_unit(): void
+    {
+        $unit = Unit::factory()
+            ->tenant($this->tenant->id)
+            ->create([
+                'code' => 'EA-UPD',
+                'name' => 'Each Updated',
+                'symbol' => 'ea',
+                'decimal_places' => 0,
+            ]);
+
+        $product = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Piece Product',
+            'sku' => 'PCS-UPD-001',
+            'unit' => 'EA',
+        ]);
+        $product->forceFill(['unit_id' => $unit->id])->save();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/products/{$product->id}", [
+                'name' => 'Renamed Piece Product',
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.id', $product->id)
+            ->assertJsonPath('data.quantity_decimals', 0);
+    }
+
+    public function test_create_resolves_unit_id_from_unit_string(): void
+    {
+        // A product created via the API with only the free-text unit (no
+        // unit_id) should still resolve its unit-of-measure so quantity
+        // precision applies — not silently fall back to 4 decimals.
+        Unit::factory()
+            ->tenant($this->tenant->id)
+            ->create([
+                'code' => 'BX',
+                'name' => 'Box',
+                'symbol' => 'bx',
+                'decimal_places' => 0,
+            ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'Boxed Product',
+                'sku' => 'BOX-RESOLVE-001',
+                'unit' => 'BX',
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.quantity_decimals', 0);
     }
 
     public function test_list_is_paginated(): void

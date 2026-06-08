@@ -469,6 +469,8 @@ final class ReceiptReturnRefactorTest extends TestCase
             'tenant_id' => $this->tenant->id,
         ]);
 
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
+
         UserCompanyMembership::create([
             'user_id' => $this->cashier->id,
             'company_id' => $this->company->id,
@@ -570,13 +572,8 @@ final class ReceiptReturnRefactorTest extends TestCase
         ?string $overrideReason = null,
         ?RefundDestination $destination = null,
     ): Receipt {
-        // Bind companyContext to return this company's id
-        $this->app->bind(CompanyContext::class, function () {
-            $context = $this->createMock(CompanyContext::class);
-            $context->method('requireCompanyId')->willReturn($this->company->id);
-
-            return $context;
-        });
+        // Bind the real CompanyContext singleton with the test company id.
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
 
         /** @var ReceiptReturnService $service */
         $service = $this->app->make(ReceiptReturnService::class);

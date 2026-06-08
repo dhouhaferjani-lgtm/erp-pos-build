@@ -13,7 +13,10 @@
       "addAriaLabel": "Ajouter une description supplémentaire",
       "editAriaLabel": "Description supplémentaire",
       "placeholder": "ex. 2.5h × 60/h par le mécanicien Jean"
-    }
+    },
+    "variant": "Variante",
+    "variantLoading": "Chargement des variantes...",
+    "variantPlaceholder": "Sélectionner une variante"
   },
   "taxMention": {
     "label": "Mention fiscale",

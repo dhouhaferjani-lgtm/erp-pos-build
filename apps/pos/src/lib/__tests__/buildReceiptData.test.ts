@@ -15,8 +15,10 @@ vi.mock('@/stores/authStore', () => ({
 
 import {
   buildEscPosAccountPaymentReceiptData,
+  buildEscPosAccountChargeReceiptData,
   buildEscPosReceiptData,
 } from '../buildReceiptData';
+import type { AccountChargePrintable } from '@/lib/accountCharge/accountChargePrintable';
 import type { FullReceiptResponse } from '@/types/receipt';
 import type { CheckoutResult } from '@/lib/offline/offlineCheckoutService';
 import { goldenAccountPaymentPayload } from '@/lib/fiscal/payloads/AccountPaymentPayload';
@@ -562,5 +564,169 @@ describe('buildEscPosReceiptData — currency-aware display scale', () => {
     expect(result.customer_phone).toBe('+21611111111');
     expect(result.account_balance_before).toBe('300.000');
     expect(result.account_balance_after).toBe('200.000');
+  });
+});
+
+// ── Task 2: buildEscPosAccountChargeReceiptData ───────────────────────────────
+
+function makeAccountChargePrintable(
+  overrides: Partial<AccountChargePrintable> = {},
+): AccountChargePrintable {
+  return {
+    title: 'ACCOUNT CHARGE RECEIPT',
+    accountChargeUuid: '66666666-6666-4666-8666-666666666666',
+    fiscalEventId: 'fe-1',
+    fiscalHash: 'hash-1',
+    terminalName: 'Till 1',
+    terminalId: 't',
+    shiftId: 's',
+    cashierName: 'Sam',
+    businessDate: '2026-06-04',
+    eventTimeDevice: '2026-06-04T10:15:30.000Z',
+    sellerName: 'Default Seller',
+    sellerTaxNumber: '1234567AM000',
+    sellerAddress: '1 rue, Tunis',
+    customerName: 'Mariam',
+    customerPhone: '+21611111111',
+    customerCategory: 'individual',
+    accountIdentifier: 'CUST-0001',
+    amountChargedToAccount: '119.000',
+    chargeAmount: '119.000',
+    subtotal: '100.000',
+    vatTotal: '19.000',
+    balanceBefore: '300.000',
+    balanceAfter: '419.000',
+    creditLimit: '500.000',
+    creditAvailableBefore: '200.000',
+    creditAvailableAfter: '81.000',
+    dueDate: '2026-07-04',
+    termsLabel: 'Net 30',
+    customerSnapshotStale: false,
+    balanceSnapshotStale: false,
+    stalenessReason: null,
+    trainingFlag: false,
+    lines: [
+      {
+        name: 'Widget',
+        quantity: '1.000',
+        unitPrice: '119.000',
+        lineSubtotal: '100.000',
+        lineVat: '19.000',
+        lineTotal: '119.000',
+      },
+    ],
+    vatBreakdown: [
+      {
+        rate: '19.00',
+        taxCategoryCode: '',
+        netAmount: '100.000',
+        vatAmount: '19.000',
+        grossAmount: '119.000',
+      },
+    ],
+    ...overrides,
+  };
+}
+
+describe('buildEscPosAccountChargeReceiptData', () => {
+  it('renders charge totals with no payment lines', () => {
+    const data = buildEscPosAccountChargeReceiptData({
+      payload: makeAccountChargePrintable(),
+      currencyCode: 'TND',
+    });
+    expect(data.receipt_number).toBe('66666666-6666-4666-8666-666666666666');
+    expect(data.total).toBe('119.000');
+    expect(data.payments).toEqual([]);
+    expect(data.lines).toHaveLength(1);
+    expect(data.company.name).toBe('Default Seller');
+  });
+
+  it('maps subtotal and tax_amount from printable', () => {
+    const data = buildEscPosAccountChargeReceiptData({
+      payload: makeAccountChargePrintable(),
+      currencyCode: 'TND',
+    });
+    expect(data.subtotal).toBe('100.000');
+    expect(data.tax_amount).toBe('19.000');
+    expect(data.discount_amount).toBe('0.000');
+  });
+
+  it('maps line fields to ReceiptLine shape', () => {
+    const data = buildEscPosAccountChargeReceiptData({
+      payload: makeAccountChargePrintable(),
+      currencyCode: 'TND',
+    });
+    const line = data.lines[0];
+    expect(line).toBeDefined();
+    expect(line!.name).toBe('Widget');
+    expect(line!.quantity).toBe('1.000');
+    expect(line!.unit_price).toBe('119.000');
+    expect(line!.line_total).toBe('119.000');
+  });
+
+  it('maps vat_breakdown to VatBreakdownLine shape (rate / taxable / tax)', () => {
+    const data = buildEscPosAccountChargeReceiptData({
+      payload: makeAccountChargePrintable(),
+      currencyCode: 'TND',
+    });
+    const vat = data.vat_breakdown[0];
+    expect(vat).toBeDefined();
+    expect(vat!.rate).toBe('19.00');
+    expect(vat!.taxable).toBe('100.000');
+    expect(vat!.tax).toBe('19.000');
+  });
+
+  it('sets receipt_kind to account_charge', () => {
+    const data = buildEscPosAccountChargeReceiptData({
+      payload: makeAccountChargePrintable(),
+      currencyCode: 'TND',
+    });
+    expect(data.receipt_kind).toBe('account_charge');
+  });
+
+  it('carries account balance and staleness fields', () => {
+    const data = buildEscPosAccountChargeReceiptData({
+      payload: makeAccountChargePrintable(),
+      currencyCode: 'TND',
+    });
+    expect(data.account_balance_before).toBe('300.000');
+    expect(data.account_balance_after).toBe('419.000');
+    expect(data.account_snapshot_stale).toBe(false);
+  });
+
+  it('formats EUR amounts to 2 decimal places', () => {
+    const data = buildEscPosAccountChargeReceiptData({
+      payload: makeAccountChargePrintable({
+        amountChargedToAccount: '119.000',
+        subtotal: '100.000',
+        vatTotal: '19.000',
+        balanceBefore: '300.000',
+        balanceAfter: '419.000',
+      }),
+      currencyCode: 'EUR',
+    });
+    expect(data.total).toBe('119.00');
+    expect(data.subtotal).toBe('100.00');
+    expect(data.tax_amount).toBe('19.00');
+    expect(data.account_balance_before).toBe('300.00');
+    expect(data.account_balance_after).toBe('419.00');
+  });
+
+  it('forwards accountIdentifier as customer_account_id', () => {
+    // The human-readable account code (e.g. 'CUST-0001') must appear in the
+    // receipt data so the Rust formatter can print it in the customer section.
+    const data = buildEscPosAccountChargeReceiptData({
+      payload: makeAccountChargePrintable({ accountIdentifier: 'CUST-0001' }),
+      currencyCode: 'TND',
+    });
+    expect(data.customer_account_id).toBe('CUST-0001');
+  });
+
+  it('sets customer_account_id to null when accountIdentifier is null', () => {
+    const data = buildEscPosAccountChargeReceiptData({
+      payload: makeAccountChargePrintable({ accountIdentifier: null }),
+      currencyCode: 'TND',
+    });
+    expect(data.customer_account_id).toBeNull();
   });
 });

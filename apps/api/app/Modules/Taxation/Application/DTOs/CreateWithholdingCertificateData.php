@@ -16,7 +16,7 @@ readonly class CreateWithholdingCertificateData
 {
     /**
      * @param  numeric-string  $grossAmount
-     * @param  float|null  $manualRatePercentage  Manual rate override (as percentage, e.g., 5.0 for 5%)
+     * @param  string|null  $manualRatePercentage  Manual rate override (as percentage string, e.g., "5.0" for 5%; validated to ≤2 dp by ingress)
      */
     public function __construct(
         public string $companyId,
@@ -27,7 +27,7 @@ readonly class CreateWithholdingCertificateData
         public string $currency,
         public string $grossAmount,
         public ?TransactionType $transactionType,
-        public ?float $manualRatePercentage,
+        public ?string $manualRatePercentage,
         public ?string $overrideReason,
     ) {}
 
@@ -49,7 +49,9 @@ readonly class CreateWithholdingCertificateData
             transactionType: isset($data['transaction_type'])
                 ? TransactionType::from($data['transaction_type'])
                 : null,
-            manualRatePercentage: $data['manual_rate_percentage'] ?? null,
+            manualRatePercentage: isset($data['manual_rate_percentage'])
+                ? (string) $data['manual_rate_percentage']
+                : null,
             overrideReason: $data['override_reason'] ?? null,
         );
     }
