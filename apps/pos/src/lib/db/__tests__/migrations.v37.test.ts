@@ -503,7 +503,9 @@ d('Migration v37 — create_fiscal_events_and_chain_head', () => {
 
   // Actually exercise the ALTER TABLE backfill on a row that pre-dates v37:
   // run migrations up to v36, insert a terminal_state row, THEN run v37, and
-  // verify the pre-existing row's new columns took on the DEFAULTs.
+  // verify the pre-existing row's legacy genesis_seed is carried forward into
+  // the new fiscal_event_genesis_seed chain-head column, while last_hash and
+  // sequence start fresh at their chain-head defaults.
   // Uses its own adapter so the suite-level beforeEach (which already ran to
   // v37) does not interfere.
   it('backfills the chain-head columns onto rows that pre-date v37', async () => {
@@ -528,7 +530,9 @@ d('Migration v37 — create_fiscal_events_and_chain_head', () => {
       >(`SELECT fiscal_event_genesis_seed, fiscal_event_last_hash, fiscal_event_sequence
           FROM terminal_state WHERE terminal_id = 't-pre-v37'`);
 
-      expect(rows[0]?.fiscal_event_genesis_seed).toBe('');
+      // v37 backfills the legacy genesis_seed into the new chain-head column
+      // (UPDATE ... WHERE genesis_seed <> ''); last_hash + sequence start fresh.
+      expect(rows[0]?.fiscal_event_genesis_seed).toBe('seed');
       expect(rows[0]?.fiscal_event_last_hash).toBe('');
       expect(rows[0]?.fiscal_event_sequence).toBe(0);
     } finally {
@@ -576,10 +580,13 @@ d('Migration v37 — create_fiscal_events_and_chain_head', () => {
   // Index introspection (sanity)
   // ------------------------------------------------------------------
 
-  it('creates the canonical chain index on (tenant_id, terminal_id, sequence_number)', async () => {
+  it('creates the canonical chain index on (tenant_id, company_id, terminal_id, chain_context, sequence_number)', async () => {
     const indexes = await adapter.select<IndexInfo[]>(`PRAGMA index_list(fiscal_events)`);
 
-    // Find the unique index covering the chain triple.
+    // Find the unique index covering the chain key. The chain invariant is
+    // scoped by company_id + chain_context (Phase 4.2 fiscal chain context
+    // foundation) so one terminal can run independent operational / Z-session
+    // / training streams; sequence slots are unique within that scope.
     let found = false;
     for (const idx of indexes) {
       if (!idx.unique) continue;
@@ -587,11 +594,14 @@ d('Migration v37 — create_fiscal_events_and_chain_head', () => {
         `PRAGMA index_info(${idx.name})`,
       );
       const colNames = idxCols.map((c) => c.name).join(',');
-      if (colNames === 'tenant_id,terminal_id,sequence_number') {
+      if (colNames === 'tenant_id,company_id,terminal_id,chain_context,sequence_number') {
         found = true;
         break;
       }
     }
-    expect(found, 'chain UNIQUE (tenant_id,terminal_id,sequence_number) missing').toBe(true);
+    expect(
+      found,
+      'chain UNIQUE (tenant_id,company_id,terminal_id,chain_context,sequence_number) missing',
+    ).toBe(true);
   });
 });
