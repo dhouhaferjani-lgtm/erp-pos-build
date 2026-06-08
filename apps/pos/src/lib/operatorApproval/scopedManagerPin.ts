@@ -3,6 +3,8 @@ import { ApiRequestError, apiPost } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
 import { getAllOperators } from '@/lib/db/repositories/operatorPinRepository';
 import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
+import { FetchTimeoutError } from '@/lib/fetchWithTimeout';
+import { useConnectivityStore } from '@/stores/connectivityStore';
 import { verifyOfflineApprovalPin, type ApprovalScope } from './approvalVerifier';
 import type { PosOverrideContext } from './posOverrideAuthoring';
 
@@ -41,6 +43,19 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+/**
+ * Positive evidence that the override failed because the terminal is GENUINELY
+ * offline (server unreachable) — the only condition under which the local-PIN
+ * fallback is allowed. A typed read-timeout, or the POS's authoritative offline
+ * signal (the same source offlineCheckoutService uses). Anything else is an
+ * unexpected error and must FAIL CLOSED (no PIN downgrade).
+ */
+function isGenuineOfflineFailure(error: unknown): boolean {
+  if (error instanceof FetchTimeoutError) return true;
+  if (!useConnectivityStore.getState().isOnline) return true;
+  return false;
 }
 
 /**
@@ -219,14 +234,42 @@ export async function verifyScopedManagerPin(
         throw error;
       }
 
-      // Case 5: genuine transport failure (non-ApiRequestError: network down /
-      // timeout / unreachable). The server is GENUINELY unreachable → fall back
-      // offline-first to the already-validated LOCAL manager PIN (NO retry).
-      // This bypassed the server's checks (caps, revocation), so it must be
-      // VISIBLE to fraud — emit pos.manager_override_offline_approved (NOT a
-      // denial). NO pin/hash.
+      // Case 5: non-ApiRequestError — classify before deciding to fall back.
+      // ONLY positive evidence of genuine offline (FetchTimeoutError or the
+      // POS's authoritative isOnline === false signal) permits the local-PIN
+      // fallback. Everything else is an unexpected error and must FAIL CLOSED —
+      // a parser error, a wrapped module error, or a broken instanceof check
+      // must NEVER silently downgrade to PIN-only approval. NO pin/hash.
+      if (isGenuineOfflineFailure(error)) {
+        // Genuine offline-first local fallback (server unreachable). Audit the
+        // bypass — this bypassed the server's caps/revocation checks and must
+        // be VISIBLE to fraud. Emit pos.manager_override_offline_approved (NOT
+        // a denial). NO pin/hash.
+        void recordAuditEvent({
+          type: 'pos.manager_override_offline_approved',
+          aggregateType: 'Override',
+          aggregateId: input.context.terminalId,
+          tenantId: input.context.tenantId,
+          companyId: input.context.companyId,
+          operatorId: matched.id,
+          payload: {
+            scope: toTaxonomyScope(input.approvalScope),
+            reason: input.reason,
+          },
+        }).catch(() => {});
+        return {
+          id: matched.id,
+          name: matched.name,
+          roles: matched.roles,
+        };
+      }
+
+      // Unexpected error while NOT known-offline → do NOT downgrade. Fail
+      // closed. The server may be reachable; an unknown failure must never
+      // open the PIN-downgrade hole. Emit a denial (service_unavailable) to
+      // ensure the bypass attempt is visible to fraud, then surface a 503.
       void recordAuditEvent({
-        type: 'pos.manager_override_offline_approved',
+        type: 'pos.manager_override_denied',
         aggregateType: 'Override',
         aggregateId: input.context.terminalId,
         tenantId: input.context.tenantId,
@@ -234,14 +277,17 @@ export async function verifyScopedManagerPin(
         operatorId: matched.id,
         payload: {
           scope: toTaxonomyScope(input.approvalScope),
+          requested_amount: null,
+          cart_total: null,
           reason: input.reason,
+          denied_kind: 'service_unavailable',
         },
       }).catch(() => {});
-      return {
-        id: matched.id,
-        name: matched.name,
-        roles: matched.roles,
-      };
+      throw new ApiRequestError(
+        503,
+        'manager_override_service_unavailable',
+        'MANAGER_OVERRIDE_SERVICE_UNAVAILABLE',
+      );
     }
   }
 }

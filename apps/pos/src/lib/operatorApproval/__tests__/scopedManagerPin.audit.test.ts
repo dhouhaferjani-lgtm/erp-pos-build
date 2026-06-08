@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiRequestError, apiPost } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
 import { getAllOperators, type CachedOperator } from '@/lib/db/repositories/operatorPinRepository';
+import { FetchTimeoutError } from '@/lib/fetchWithTimeout';
 import { verifyScopedManagerPin } from '../scopedManagerPin';
 
 vi.mock('bcryptjs', () => ({
@@ -28,6 +29,17 @@ vi.mock('@/lib/api', () => {
   }
   return { ApiRequestError: MockApiRequestError, apiPost: vi.fn() };
 });
+
+// Default: terminal is online. Individual tests can override via
+// mockConnectivityOnline(false) to simulate a genuinely-offline terminal.
+const mockGetState = vi.fn(() => ({ isOnline: true }));
+vi.mock('@/stores/connectivityStore', () => ({
+  useConnectivityStore: { getState: () => mockGetState() },
+}));
+
+function mockConnectivityOnline(isOnline: boolean): void {
+  mockGetState.mockReturnValue({ isOnline });
+}
 
 const recordAuditEvent = vi.fn().mockResolvedValue(undefined);
 vi.mock('@/lib/audit/recordAuditEvent', () => ({
@@ -91,6 +103,7 @@ describe('verifyScopedManagerPin — Task 11 pos.manager_override_denied', () =>
     vi.mocked(apiPost).mockReset();
     recordAuditEvent.mockReset();
     recordAuditEvent.mockResolvedValue(undefined);
+    mockConnectivityOnline(true);
   });
 
   it('emits on the scope-mismatch (no matching manager) branch with no_local_match kind + no secret', async () => {
@@ -175,10 +188,11 @@ describe('verifyScopedManagerPin — Task 11 pos.manager_override_denied', () =>
     );
   });
 
-  it('emits offline_approved on a genuine transport failure — payload { scope, reason }, no degraded_kind, no denial', async () => {
-    // A non-ApiRequestError = network/transport down → offline-first local
-    // approval. NOT a denial; recorded as offline_approved (genuine offline).
+  it('emits offline_approved (not denied) when connectivity is offline and apiPost throws', async () => {
+    // Positive offline evidence: connectivity store says offline.
+    // NOT a denial; recorded as offline_approved (genuine offline).
     vi.mocked(getAllOperators).mockResolvedValue([operator()]);
+    mockConnectivityOnline(false);
     vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
 
     await expect(verifyScopedManagerPin(input)).resolves.toMatchObject({ id: 'supervisor-1' });
@@ -191,6 +205,55 @@ describe('verifyScopedManagerPin — Task 11 pos.manager_override_denied', () =>
     expect(payload.scope).toBe('discount_limit');
     expect(payload.reason).toBe('High discount');
     expect(payload).not.toHaveProperty('degraded_kind');
+    expect(JSON.stringify(payload)).not.toContain('1234');
+  });
+
+  it('emits offline_approved on a read timeout (FetchTimeoutError) — payload { scope, reason }, no denial', async () => {
+    // FetchTimeoutError is positive evidence of an unreachable server.
+    vi.mocked(getAllOperators).mockResolvedValue([operator()]);
+    vi.mocked(apiPost).mockRejectedValue(
+      new FetchTimeoutError('/pos/verify-manager-pin', 10_000, 'POST'),
+    );
+
+    await expect(verifyScopedManagerPin(input)).resolves.toMatchObject({ id: 'supervisor-1' });
+
+    expect(lastDenied()).toBeUndefined();
+    const call = lastOfType('pos.manager_override_offline_approved');
+    expect(call).toBeDefined();
+    expect(call!.operatorId).toBe('supervisor-1');
+    const payload = call!.payload as Record<string, unknown>;
+    expect(payload.scope).toBe('discount_limit');
+    expect(payload.reason).toBe('High discount');
+    expect(payload).not.toHaveProperty('degraded_kind');
+    expect(JSON.stringify(payload)).not.toContain('1234');
+  });
+
+  it('emits denied{service_unavailable} (not offline_approved) on unexpected error while online — FAIL CLOSED', async () => {
+    // Regression test for the MAJOR security finding. When connectivity is
+    // online and apiPost throws a generic (non-ApiRequestError, non-timeout)
+    // error, the code must FAIL CLOSED: emit a denial, NOT an offline_approved,
+    // and throw a 503. A parser error or unexpected exception must NEVER
+    // silently downgrade to local-PIN approval.
+    vi.mocked(getAllOperators).mockResolvedValue([operator()]);
+    vi.mocked(apiPost).mockRejectedValue(new Error('boom'));
+
+    await expect(verifyScopedManagerPin(input)).rejects.toMatchObject({
+      status: 503,
+      code: 'MANAGER_OVERRIDE_SERVICE_UNAVAILABLE',
+    });
+
+    // Must NOT emit offline_approved (that would mean a downgrade succeeded).
+    expect(lastOfType('pos.manager_override_offline_approved')).toBeUndefined();
+
+    // Must emit denied with service_unavailable.
+    const call = lastDenied();
+    expect(call).toBeDefined();
+    expect(call!.operatorId).toBe('supervisor-1');
+    const payload = call!.payload as Record<string, unknown>;
+    expect(payload.scope).toBe('discount_limit');
+    expect(payload.denied_kind).toBe('service_unavailable');
+    expect(payload).toHaveProperty('requested_amount', null);
+    expect(payload).toHaveProperty('cart_total', null);
     expect(JSON.stringify(payload)).not.toContain('1234');
   });
 

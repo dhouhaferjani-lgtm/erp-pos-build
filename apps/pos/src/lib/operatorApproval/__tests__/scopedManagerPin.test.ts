@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiRequestError, apiPost } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
 import { getAllOperators, type CachedOperator } from '@/lib/db/repositories/operatorPinRepository';
+import { FetchTimeoutError } from '@/lib/fetchWithTimeout';
 import { verifyScopedManagerPin } from '../scopedManagerPin';
 
 vi.mock('bcryptjs', () => ({
@@ -36,6 +37,17 @@ vi.mock('@/lib/api', () => {
     apiPost: vi.fn(),
   };
 });
+
+// Default: terminal is online. Individual tests can override via
+// mockConnectivityOnline(false) to simulate a genuinely-offline terminal.
+const mockGetState = vi.fn(() => ({ isOnline: true }));
+vi.mock('@/stores/connectivityStore', () => ({
+  useConnectivityStore: { getState: () => mockGetState() },
+}));
+
+function mockConnectivityOnline(isOnline: boolean): void {
+  mockGetState.mockReturnValue({ isOnline });
+}
 
 function operator(overrides: Partial<CachedOperator> = {}): CachedOperator {
   return {
@@ -81,6 +93,7 @@ describe('verifyScopedManagerPin', () => {
     vi.mocked(getDatabase).mockResolvedValue({} as Awaited<ReturnType<typeof getDatabase>>);
     vi.mocked(getAllOperators).mockResolvedValue([operator()]);
     vi.mocked(apiPost).mockReset();
+    mockConnectivityOnline(true);
   });
 
   it('returns the server-confirmed approval when online verification succeeds', async () => {
@@ -109,7 +122,9 @@ describe('verifyScopedManagerPin', () => {
     expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1);
   });
 
-  it('allows offline fallback only when the online verification transport fails (no retry)', async () => {
+  it('falls back to local approval when genuinely offline (connectivity isOnline=false)', async () => {
+    // Positive offline evidence: the POS connectivity store says offline.
+    mockConnectivityOnline(false);
     vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
 
     await expect(verifyScopedManagerPin(input)).resolves.toEqual({
@@ -117,7 +132,36 @@ describe('verifyScopedManagerPin', () => {
       name: 'Supervisor',
       roles: ['manager'],
     });
-    // Genuine transport failure → straight to offline fallback, NO retry.
+    // Genuine offline → straight to local fallback, NO retry.
+    expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to local approval on a read timeout (FetchTimeoutError)', async () => {
+    // Positive offline evidence: a typed read-timeout is an unreachable server.
+    // Connectivity may still report online (race between probe and this request).
+    vi.mocked(apiPost).mockRejectedValue(
+      new FetchTimeoutError('/pos/verify-manager-pin', 10_000, 'POST'),
+    );
+
+    await expect(verifyScopedManagerPin(input)).resolves.toEqual({
+      id: 'supervisor-1',
+      name: 'Supervisor',
+      roles: ['manager'],
+    });
+    expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1);
+  });
+
+  it('FAILS CLOSED on an unexpected error while online (regression for MAJOR security finding)', async () => {
+    // Connectivity is online (default), and apiPost throws a generic error
+    // (not FetchTimeoutError, not ApiRequestError). This is the MAJOR:
+    // previously this path fell back to a local-PIN approval (fail-open).
+    // After the fix it must FAIL CLOSED with a 503 and never return an approval.
+    vi.mocked(apiPost).mockRejectedValue(new Error('boom'));
+
+    await expect(verifyScopedManagerPin(input)).rejects.toMatchObject({
+      status: 503,
+      code: 'MANAGER_OVERRIDE_SERVICE_UNAVAILABLE',
+    });
     expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1);
   });
 
