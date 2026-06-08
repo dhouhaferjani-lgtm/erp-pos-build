@@ -31,8 +31,8 @@ class CreateEarningRuleRequest extends FormRequest
             'priority' => ['required', 'integer', 'min:1'],
             'is_active' => ['sometimes', 'boolean'],
             'conditions' => ['required', 'array'],
-            'conditions.min_purchase_amount' => ['sometimes', 'numeric', 'min:0'],
-            'conditions.max_purchase_amount' => ['sometimes', 'numeric', 'min:0'],
+            'conditions.min_purchase_amount' => ['sometimes', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'conditions.max_purchase_amount' => ['sometimes', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'conditions.product_ids' => ['sometimes', 'array'],
             'conditions.product_ids.*' => ['uuid'],
             'conditions.category_ids' => ['sometimes', 'array'],
@@ -47,12 +47,12 @@ class CreateEarningRuleRequest extends FormRequest
             'conditions.max_quantity' => ['sometimes', 'integer', 'min:1'],
             'conditions.tier_ids' => ['sometimes', 'array'],
             'conditions.tier_ids.*' => ['uuid'],
-            'reward_value' => ['required', 'numeric', 'min:0'],
+            'reward_value' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
             'reward_type' => ['required', 'string', 'in:fixed,multiplier,percentage'],
             'start_date' => ['nullable', 'date'],
             'end_date' => ['nullable', 'date', 'after:start_date'],
-            'max_earn_per_transaction' => ['nullable', 'numeric', 'min:0'],
-            'max_earn_per_day' => ['nullable', 'numeric', 'min:0'],
+            'max_earn_per_transaction' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'max_earn_per_day' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
         ];
     }
 
@@ -71,8 +71,13 @@ class CreateEarningRuleRequest extends FormRequest
             'conditions.required' => 'Conditions are required',
             'reward_value.required' => 'Reward value is required',
             'reward_value.min' => 'Reward value must be positive',
+            'reward_value.regex' => 'Reward value must not exceed 4 decimal places.',
             'reward_type.required' => 'Reward type is required',
             'end_date.after' => 'End date must be after start date',
+            'conditions.min_purchase_amount.regex' => 'Min purchase amount must not exceed 3 decimal places.',
+            'conditions.max_purchase_amount.regex' => 'Max purchase amount must not exceed 3 decimal places.',
+            'max_earn_per_transaction.regex' => 'Max earn per transaction must not exceed 2 decimal places.',
+            'max_earn_per_day.regex' => 'Max earn per day must not exceed 2 decimal places.',
         ];
     }
 }

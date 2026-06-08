@@ -81,6 +81,33 @@ export function formatNumber(
 }
 
 /**
+ * Format a stock quantity for display.
+ *
+ * Inventory quantities are stored and returned at up to 4 decimal places
+ * (decimal(15,4)). Quantities must NOT be formatted with currency precision
+ * (formatCurrency / per-currency decimals) — that truncates 4-decimal
+ * quantities for display. This shows up to `scale` decimal places and trims
+ * insignificant trailing zeros (e.g. "10.0000" → "10", "7.1200" → "7.12",
+ * "7.1234" → "7.1234").
+ */
+export function formatQuantity(
+  value: string | number,
+  scale: number = 4,
+  locale: string = 'en-US'
+): string {
+  const num = typeof value === 'string' ? parseFloat(value) : value
+
+  if (isNaN(num)) {
+    return '0'
+  }
+
+  return new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: scale,
+  }).format(num)
+}
+
+/**
  * Format date based on country format
  * Tunisia & France: DD/MM/YYYY
  * US: MM/DD/YYYY

@@ -23,7 +23,7 @@ class BatchResource extends JsonResource
             'id' => $this->id,
             'uuid' => $this->uuid,
             'product_id' => $this->product_id,
-            'product_variant_id' => $this->getAttribute('product_variant_id'),
+            'variant_id' => $this->variant_id,
             'batch_number' => $this->batch_number,
             'manufacturing_date' => $this->manufacturing_date?->toDateString(),
             'expiry_date' => $this->expiry_date->toDateString(),

@@ -435,6 +435,100 @@ class StockMovementGLIntegrationTest extends TestCase
         $this->assertEquals('300.000', $totalDebits);
     }
 
+    /**
+     * A 6-dp perpetual WAC (e.g. 0.463636 TND) must be rounded HALF-UP to the
+     * currency scale (3) at the GL posting boundary — not truncated — and the
+     * COGS debit must equal the inventory credit to the millième.
+     *
+     * 7 units × 0.463636 = 3.245452 → HALF-UP @ scale 3 = 3.245.
+     * (Truncation would also give 3.245 here, so we add a second case whose 4th
+     * digit forces a round-up to make the HALF-UP behaviour load-bearing.)
+     */
+    public function test_cogs_rounds_6dp_wac_half_up_to_currency_scale_and_balances(): void
+    {
+        $product = $this->createPhysicalProduct('0.463636');
+
+        $lineItems = [
+            [
+                'product_id' => $product->id,
+                'quantity' => '7',
+                // 6-dp WAC carried at rest (no boundary truncation upstream).
+                'unit_cost' => '0.463636',
+            ],
+        ];
+
+        $entry = $this->glService->createCOGSEntry(
+            $this->company->id,
+            Str::uuid()->toString(),
+            'INV-COGS-HALFUP-1',
+            $lineItems,
+            new \DateTimeImmutable
+        );
+
+        $this->assertNotNull($entry);
+
+        // 7 × 0.463636 = 3.245452 → scale 3 HALF-UP = 3.245.
+        $debit = null;
+        $credit = null;
+        $totalDebits = '0.000';
+        $totalCredits = '0.000';
+        foreach ($entry->lines as $line) {
+            $totalDebits = bcadd($totalDebits, (string) $line->debit, 3);
+            $totalCredits = bcadd($totalCredits, (string) $line->credit, 3);
+            if (bccomp((string) $line->debit, '0', 3) > 0) {
+                $debit = (string) $line->debit;
+            }
+            if (bccomp((string) $line->credit, '0', 3) > 0) {
+                $credit = (string) $line->credit;
+            }
+        }
+
+        $this->assertSame(0, bccomp('3.245', (string) $debit, 3), "COGS debit was {$debit}");
+        // Debit == credit at the posting scale (single rounded total on both legs).
+        $this->assertSame(0, bccomp($totalDebits, $totalCredits, 3), 'COGS entry must balance');
+        $this->assertSame(0, bccomp('3.245', $totalDebits, 3));
+        $this->assertSame($debit, $credit, 'Both legs must carry the same rounded amount');
+    }
+
+    /**
+     * HALF-UP must round the 4th millième digit UP, where plain bcmath truncation
+     * would round down — proving the posting boundary uses CurrencyScale::bcround.
+     *
+     * 1 unit × 0.463900 = 0.463900 → scale 3 HALF-UP = 0.464 (truncation → 0.463).
+     */
+    public function test_cogs_half_up_rounds_up_where_truncation_would_round_down(): void
+    {
+        $product = $this->createPhysicalProduct('0.463900');
+
+        $lineItems = [
+            [
+                'product_id' => $product->id,
+                'quantity' => '1',
+                'unit_cost' => '0.463900',
+            ],
+        ];
+
+        $entry = $this->glService->createCOGSEntry(
+            $this->company->id,
+            Str::uuid()->toString(),
+            'INV-COGS-HALFUP-2',
+            $lineItems,
+            new \DateTimeImmutable
+        );
+
+        $this->assertNotNull($entry);
+
+        $debit = null;
+        foreach ($entry->lines as $line) {
+            if (bccomp((string) $line->debit, '0', 3) > 0) {
+                $debit = (string) $line->debit;
+            }
+        }
+
+        // HALF-UP: 0.4639 → 0.464 (NOT 0.463).
+        $this->assertSame(0, bccomp('0.464', (string) $debit, 3), "Expected HALF-UP 0.464, got {$debit}");
+    }
+
     public function test_cogs_entry_links_to_source_invoice(): void
     {
         $product = $this->createPhysicalProduct('45.00');

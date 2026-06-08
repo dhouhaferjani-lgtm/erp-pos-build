@@ -88,7 +88,7 @@ final readonly class WorkOrderBundleService
                     'display_name' => $expansionLine->display_name,
                     'sku_or_code' => null,
                     'description' => null,
-                    'quantity' => CurrencyScale::bcformat($expansionLine->quantity, 3),
+                    'quantity' => CurrencyScale::bcformat($expansionLine->quantity, 4),
                     'unit' => $expansionLine->unit,
                     'unit_price' => CurrencyScale::bcformat($expansionLine->unit_price, $scale),
                     'tax_rate' => '0.000',

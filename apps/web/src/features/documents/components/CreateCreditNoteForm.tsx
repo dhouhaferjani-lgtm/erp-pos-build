@@ -5,7 +5,7 @@
  */
 
 import { useState, useMemo } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useTranslation } from 'react-i18next'
@@ -13,6 +13,7 @@ import { AlertCircle, Check } from 'lucide-react'
 import { useCurrency } from '@/hooks/useCurrency'
 import { useCreateCreditNote } from '../hooks/useCreditNotes'
 import type { InvoiceForCreditNote } from '@/types/creditNote'
+import { MoneyInput } from '@/components/atoms/MoneyInput'
 
 // Credit mode enum
 type CreditMode = 'amount' | 'line'
@@ -73,7 +74,7 @@ export function CreateCreditNoteForm({
 }: CreateCreditNoteFormProps) {
   const { t } = useTranslation(['sales', 'common'])
   const createCreditNote = useCreateCreditNote()
-  const { decimals } = useCurrency()
+  const { currency, toFixed } = useCurrency()
 
   // Credit mode state
   const [creditMode, setCreditMode] = useState<CreditMode>('amount')
@@ -86,6 +87,7 @@ export function CreateCreditNoteForm({
     handleSubmit,
     setValue,
     watch,
+    control,
     formState: { errors },
   } = useForm<CreditNoteFormData>({
     resolver: zodResolver(amountBasedSchema),
@@ -182,7 +184,7 @@ export function CreateCreditNoteForm({
       createCreditNote.mutate(
         {
           source_invoice_id: invoice.id,
-          amount: parseFloat(data.amount).toFixed(4),
+          amount: data.amount,
           reason: data.reason as any,
           ...(data.notes ? { notes: data.notes } : {}),
         },
@@ -222,7 +224,7 @@ export function CreateCreditNoteForm({
 
   // Handle full refund button
   const handleFullRefund = () => {
-    setValue('amount', remainingCreditable.toFixed(decimals))
+    setValue('amount', toFixed(remainingCreditable))
   }
 
   const isSubmitting = createCreditNote.isPending
@@ -240,11 +242,11 @@ export function CreateCreditNoteForm({
           </p>
           <p>
             <span className="font-medium">{t('sales:documents.total')}:</span>{' '}
-            {invoiceTotal.toFixed(decimals)}
+            {toFixed(invoiceTotal)}
           </p>
           <p className="text-blue-700">
             {t('sales:creditNotes.form.remainingCreditable', {
-              amount: remainingCreditable.toFixed(decimals),
+              amount: toFixed(remainingCreditable),
             })}
           </p>
         </div>
@@ -298,18 +300,26 @@ export function CreateCreditNoteForm({
             {t('sales:creditNotes.amount')}
           </label>
           <div className="mt-1 flex gap-2">
-            <input
-              {...register('amount')}
-              type="number"
-              step="0.01"
-              id="amount"
-              className={`flex-1 rounded-md border ${
-                errors.amount || customAmountError
-                  ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                  : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-              } px-3 py-2 text-sm`}
-              disabled={isSubmitting}
-              placeholder="0.00"
+            <Controller
+              name="amount"
+              control={control}
+              render={({ field }) => (
+                <MoneyInput
+                  id="amount"
+                  currency={currency}
+                  value={field.value ?? ''}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  ref={field.ref}
+                  error={errors.amount != null || customAmountError != null}
+                  disabled={isSubmitting}
+                  className={`flex-1 rounded-md border ${
+                    errors.amount || customAmountError
+                      ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
+                      : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
+                  } px-3 py-2 text-sm`}
+                />
+              )}
             />
             <button
               type="button"
@@ -326,7 +336,7 @@ export function CreateCreditNoteForm({
             </p>
           )}
           <p className="mt-1 text-xs text-gray-500">
-            {t('sales:creditNotes.form.maxAmount', { amount: remainingCreditable.toFixed(decimals) })}
+            {t('sales:creditNotes.form.maxAmount', { amount: toFixed(remainingCreditable) })}
           </p>
         </div>
       )}
@@ -408,10 +418,10 @@ export function CreateCreditNoteForm({
                         )}
                       </td>
                       <td className="px-3 py-2 text-end text-sm text-gray-900">
-                        {unitPrice.toFixed(decimals)}
+                        {toFixed(unitPrice)}
                       </td>
                       <td className="px-3 py-2 text-end text-sm font-medium text-gray-900">
-                        {isSelected ? total.toFixed(decimals) : '-'}
+                        {isSelected ? toFixed(total) : '-'}
                       </td>
                     </tr>
                   )
@@ -423,7 +433,7 @@ export function CreateCreditNoteForm({
                     {t('sales:documents.total')}
                   </td>
                   <td className="px-3 py-2 text-end text-sm font-bold text-gray-900">
-                    {lineBasedTotal.toFixed(decimals)}
+                    {toFixed(lineBasedTotal)}
                   </td>
                 </tr>
               </tfoot>

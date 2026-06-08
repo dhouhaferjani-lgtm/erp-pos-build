@@ -16,6 +16,7 @@ use App\Modules\Loyalty\Domain\Repositories\EarningRuleRepositoryInterface;
 use App\Modules\Loyalty\Domain\Repositories\EnrollmentRepositoryInterface;
 use App\Modules\Loyalty\Domain\Repositories\TransactionRepositoryInterface;
 use App\Modules\Loyalty\Domain\Services\PointEarningService;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -47,8 +48,22 @@ final class EarningProcessingServiceTest extends TestCase
         $this->earningRuleRepository = $this->createMock(EarningRuleRepositoryInterface::class);
         $this->transactionRepository = $this->createMock(TransactionRepositoryInterface::class);
 
+        // Stub resolver returning EUR scale=2 for unit tests (no DB required).
+        $resolver = new class implements CurrencyScaleResolverInterface
+        {
+            public function getScale(?string $currencyCode = null): int
+            {
+                return 2;
+            }
+
+            public function getScaleSafe(?string $currencyCode = null, int $fallback = 3): int
+            {
+                return 2;
+            }
+        };
+
         // Create real PointEarningService (already tested, final class)
-        $pointEarningService = new PointEarningService($this->transactionRepository);
+        $pointEarningService = new PointEarningService($resolver);
 
         // Create service with mocked repositories and real domain service
         $this->service = new EarningProcessingService(
@@ -56,6 +71,7 @@ final class EarningProcessingServiceTest extends TestCase
             $this->earningRuleRepository,
             $this->transactionRepository,
             $pointEarningService,
+            $resolver,
         );
 
         // Mock database transactions
@@ -290,9 +306,18 @@ final class EarningProcessingServiceTest extends TestCase
         $this->enrollmentRepository->expects($this->once())
             ->method('save')
             ->willReturnCallback(function ($savedEnrollment) use ($initialBalance, $initialLifetimeEarned, $points) {
-                // Verify balances were updated correctly
-                $this->assertEquals($initialBalance + $points, $savedEnrollment->current_balance);
-                $this->assertEquals($initialLifetimeEarned + $points, $savedEnrollment->lifetime_earned);
+                // Balances are bcmath strings; Enrollment's decimal:3 cast means
+                // reading back the property gives 3 decimal places regardless of
+                // the scale used for the addition. Compare numerically at scale 3.
+                $assertionScale = 3;
+                $this->assertSame(
+                    bcadd((string) $initialBalance, (string) $points, $assertionScale),
+                    $savedEnrollment->current_balance,
+                );
+                $this->assertSame(
+                    bcadd((string) $initialLifetimeEarned, (string) $points, $assertionScale),
+                    $savedEnrollment->lifetime_earned,
+                );
                 $this->assertNotNull($savedEnrollment->last_transaction_at);
 
                 return $savedEnrollment;
@@ -308,10 +333,11 @@ final class EarningProcessingServiceTest extends TestCase
         // Arrange
         $enrollmentId = 'enrollment-123';
         $transactionData = ['amount' => 100];
-        $expectedPoints = 10.0; // 10% of 100 with SPEND rule
+        // 10% of 100 = 10 points; stub resolver uses scale=2, so canonical is '10.00'
+        $expectedPoints = '10.00';
 
         $enrollment = $this->createMockEnrollment($enrollmentId);
-        $rule = $this->createMockEarningRule($enrollment->program_id, $expectedPoints);
+        $rule = $this->createMockEarningRule($enrollment->program_id, 10.0);
         $rules = new Collection([$rule]);
 
         $this->enrollmentRepository->expects($this->once())
@@ -337,8 +363,8 @@ final class EarningProcessingServiceTest extends TestCase
         // Act
         $result = $this->service->previewEarning($enrollmentId, $transactionData);
 
-        // Assert
-        $this->assertEquals($expectedPoints, $result);
+        // Assert — previewEarning now returns a canonical numeric string
+        $this->assertSame($expectedPoints, $result);
     }
 
     /** @test */
@@ -363,8 +389,8 @@ final class EarningProcessingServiceTest extends TestCase
         // Act
         $result = $this->service->previewEarning($enrollmentId, $transactionData);
 
-        // Assert
-        $this->assertEquals(0.0, $result);
+        // Assert — previewEarning now returns a canonical numeric string, not float
+        $this->assertSame('0', $result);
     }
 
     /** @test */

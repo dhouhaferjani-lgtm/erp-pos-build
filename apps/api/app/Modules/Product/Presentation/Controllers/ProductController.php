@@ -21,6 +21,7 @@ use App\Modules\Product\Domain\Events\ProductUpdated;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Presentation\Requests\CreateProductRequest;
 use App\Modules\Product\Presentation\Requests\UpdateProductRequest;
+use App\Modules\Uom\Domain\Entities\Unit;
 use App\Support\Traits\FiltersAndSorts;
 use App\Support\Traits\PaginatesResults;
 use Carbon\Carbon;
@@ -63,7 +64,7 @@ class ProductController extends Controller
         $perPage = min((int) $request->input('per_page', 25), 2000);
 
         // Build query with conditional vertical-specific metadata loading
-        $with = ['category', 'primaryImage'];
+        $with = ['category', 'primaryImage', 'unitOfMeasure'];
         if ($company->tenant->vertical === Vertical::Parapharmacy) {
             $with[] = 'parapharmacyMetadata.ingredients';
             $with[] = 'parapharmacyMetadata.keyComponents';
@@ -229,7 +230,7 @@ class ProductController extends Controller
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->where('id', $product)
-            ->with('primaryImage')
+            ->with(['primaryImage', 'unitOfMeasure'])
             ->first();
 
         if (! $productModel) {
@@ -283,6 +284,7 @@ class ProductController extends Controller
 
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
+        $validated = $this->resolveUnitId($validated, $tenantId);
 
         // Extract parapharmacy metadata if provided
         $parapharmacyMetadata = null;
@@ -367,7 +369,7 @@ class ProductController extends Controller
             ]);
         }
 
-        $product->load('primaryImage');
+        $product->load(['primaryImage', 'unitOfMeasure']);
 
         return response()->json([
             'data' => ProductData::fromModel($product),
@@ -409,6 +411,7 @@ class ProductController extends Controller
 
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
+        $validated = $this->resolveUnitId($validated, $company->tenant_id);
 
         // Extract parapharmacy metadata if provided
         $parapharmacyMetadata = null;
@@ -507,7 +510,7 @@ class ProductController extends Controller
             ]);
         }
 
-        $freshProduct->load('primaryImage');
+        $freshProduct->load(['primaryImage', 'unitOfMeasure']);
 
         return response()->json([
             'data' => ProductData::fromModel($freshProduct),
@@ -648,5 +651,50 @@ class ProductController extends Controller
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],
         ]);
+    }
+
+    /**
+     * Resolve the unit-of-measure FK from the free-text `unit` when the caller
+     * did not pass a `unit_id`, so quantity precision (decimals/step) applies to
+     * products created or edited via the API — not just backfilled/seeded ones.
+     * Matches code/symbol/name case-insensitively across the tenant's units and
+     * shared system units; only a unique match is applied.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function resolveUnitId(array $validated, ?string $tenantId): array
+    {
+        if (! empty($validated['unit_id'])) {
+            return $validated;
+        }
+
+        $unit = $validated['unit'] ?? null;
+        if (! is_string($unit) || trim($unit) === '') {
+            return $validated;
+        }
+
+        $needle = mb_strtolower(trim($unit));
+
+        $matches = Unit::query()
+            ->where(function ($query) use ($tenantId): void {
+                $query->whereNull('tenant_id');
+                if ($tenantId !== null) {
+                    $query->orWhere('tenant_id', $tenantId);
+                }
+            })
+            ->get()
+            ->filter(fn (Unit $candidate): bool => in_array($needle, [
+                mb_strtolower((string) $candidate->code),
+                mb_strtolower((string) $candidate->symbol),
+                mb_strtolower((string) $candidate->name),
+            ], true));
+
+        $match = $matches->count() === 1 ? $matches->first() : null;
+        if ($match instanceof Unit) {
+            $validated['unit_id'] = $match->id;
+        }
+
+        return $validated;
     }
 }

@@ -24,6 +24,48 @@ const { mutationState, mockMutate } = vi.hoisted(() => ({
   mockMutate: vi.fn(),
 }))
 
+vi.mock('@/components/atoms/MoneyInput', () => ({
+  MoneyInput: ({
+    id,
+    value,
+    onChange,
+    disabled,
+    className,
+    error: _error,
+    currency: _currency,
+    ...rest
+  }: {
+    id?: string
+    value: string
+    onChange: (v: string) => void
+    disabled?: boolean
+    className?: string
+    error?: boolean
+    currency?: string
+    [k: string]: unknown
+  }) => (
+    <input
+      id={id}
+      type="number"
+      value={value}
+      onChange={(e) => { onChange(e.target.value) }}
+      disabled={disabled}
+      className={className}
+      {...rest}
+    />
+  ),
+}))
+
+vi.mock('@/hooks/useCurrency', () => ({
+  useCurrency: () => ({
+    currency: 'TND',
+    decimals: 3,
+    toFixed: (v: number) => v.toFixed(3),
+    format: (v: number) => v.toFixed(3),
+    symbol: 'TND',
+  }),
+}))
+
 vi.mock('../hooks/useCreditNotes', () => ({
   useCreateCreditNote: () => ({
     mutate: mockMutate,
@@ -129,7 +171,8 @@ describe('CreateCreditNoteForm', () => {
     renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
 
     expect(screen.getByText('INV-00001')).toBeInTheDocument()
-    expect(screen.getByText('Remaining creditable: 1190.00')).toBeInTheDocument()
+    // TND currency → 3-decimal display (currency-aware toFixed).
+    expect(screen.getByText('Remaining creditable: 1190.000')).toBeInTheDocument()
   })
 
   // The Save button is disabled until a reason is selected (post-Phase-4
@@ -286,6 +329,7 @@ describe('CreateCreditNoteForm', () => {
     await user.click(fullRefundButton)
 
     const amountInput = screen.getByLabelText('Amount') as HTMLInputElement
-    expect(amountInput.value).toBe('1190.00')
+    // TND currency → 3-decimal canonical value.
+    expect(amountInput.value).toBe('1190.000')
   })
 })

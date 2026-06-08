@@ -14,6 +14,7 @@ import {
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import { formatAmount } from '@/hooks/useCurrency'
 import { fetchPriceList, deletePriceList, removePriceListItem, removePriceListFromPartner } from './api'
 import { priceListsInvalidationPredicate } from './_invalidation'
 import type { PriceListItem, PriceListPartner } from './types'
@@ -69,13 +70,8 @@ export function PriceListDetailPage() {
     })
   }
 
-  const formatCurrency = (amount: string | number) => {
-    const num = typeof amount === 'string' ? parseFloat(amount) : amount
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: priceList?.currency ?? 'TND',
-    }).format(num)
-  }
+  const formatCurrency = (amount: string | number) =>
+    formatAmount(amount, priceList?.currency ?? 'TND', { locale: 'en-US' })
 
   const handleDelete = () => {
     if (window.confirm(t('common:confirmation.delete'))) {

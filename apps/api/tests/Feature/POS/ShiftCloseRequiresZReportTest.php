@@ -7,6 +7,7 @@ namespace Tests\Feature\POS;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\ReportGenerationService;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
@@ -100,6 +101,7 @@ final class ShiftCloseRequiresZReportTest extends TestCase
     {
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
 
         $this->user = User::factory()->create(['tenant_id' => $this->tenant->id]);
 

@@ -74,8 +74,8 @@ class TaxConfigurationController extends Controller
             'tax_type' => ['required', 'string', 'in:PERCENTAGE,FIXED_AMOUNT'],
             'name' => ['required', 'string', 'max:100'],
             'code' => ['nullable', 'string', 'max:50'],
-            'percentage_rate' => ['nullable', 'required_if:tax_type,PERCENTAGE', 'numeric', 'min:0', 'max:100'],
-            'fixed_amount' => ['nullable', 'required_if:tax_type,FIXED_AMOUNT', 'numeric', 'min:0'],
+            'percentage_rate' => ['nullable', 'required_if:tax_type,PERCENTAGE', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'fixed_amount' => ['nullable', 'required_if:tax_type,FIXED_AMOUNT', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'applies_to' => ['required', 'string', 'in:LINE_ITEMS,DOCUMENT_TOTAL'],
             'sequence_order' => ['nullable', 'integer', 'min:1'],
             'stacks_on' => ['nullable', 'string', 'in:SUBTOTAL,TOTAL_INCLUDING_PREVIOUS'],
@@ -84,6 +84,9 @@ class TaxConfigurationController extends Controller
             'is_active' => ['boolean'],
             'is_recoverable' => ['boolean'],
             'metadata' => ['nullable', 'array'],
+        ], [
+            'percentage_rate.regex' => 'The percentage rate must have at most 2 decimal places.',
+            'fixed_amount.regex' => 'The fixed amount must have at most 3 decimal places.',
         ]);
 
         // Auto-generate code if not provided
@@ -126,8 +129,8 @@ class TaxConfigurationController extends Controller
         $validated = $request->validate([
             'name' => ['sometimes', 'string', 'max:100'],
             'code' => ['nullable', 'string', 'max:50'],
-            'percentage_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'fixed_amount' => ['nullable', 'numeric', 'min:0'],
+            'percentage_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'fixed_amount' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'sequence_order' => ['nullable', 'integer', 'min:1'],
             'stacks_on' => ['nullable', 'string', 'in:SUBTOTAL,TOTAL_INCLUDING_PREVIOUS'],
             'applicable_document_types' => ['nullable', 'array'],
@@ -135,6 +138,9 @@ class TaxConfigurationController extends Controller
             'is_active' => ['boolean'],
             'is_recoverable' => ['boolean'],
             'metadata' => ['nullable', 'array'],
+        ], [
+            'percentage_rate.regex' => 'The percentage rate must have at most 2 decimal places.',
+            'fixed_amount.regex' => 'The fixed amount must have at most 3 decimal places.',
         ]);
 
         $configuration->update($validated);

@@ -904,7 +904,8 @@ export const migrations: Migration[] = [
     // the assembler / fiscal-event seal end-to-end.
     //
     // Column shape mirrors Phase 1 spec v7 §3.1 (device); chain
-    // invariants — UNIQUE(tenant_id, terminal_id, sequence_number),
+    // invariants — UNIQUE(tenant_id, company_id, terminal_id, chain_context,
+    // sequence_number) (chain-context scoped; Phase 4.2 foundation),
     // 64-char lowercase hex hashes — mirror the server-side §3.2.
     version: 37,
     name: 'create_fiscal_events_and_chain_head',
@@ -1437,5 +1438,46 @@ export const migrations: Migration[] = [
         END;
       `);
     },
+  },
+  {
+    // Sub-Spec C — POS audit / fraud-detection pipeline outbox.
+    //
+    // `queued_audit_events` is the client-side outbox for the offline-first
+    // event-sourced audit pipeline. `recordAuditEvent` enqueues a `pending`
+    // row from any POS action; the sync drain (`pushQueuedAuditEvents`) posts
+    // batches to `POST /pos/audit-events/sync`. `event_id` is the client-
+    // generated UUID that becomes the server-side `audit_events` PK — the
+    // UNIQUE constraint protects against a local double-enqueue and the
+    // server's per-event idempotent insert dedups any re-delivery.
+    //
+    // Retry / recover / prune mirror the fiscal-event + cash-drawer outboxes:
+    // pending+failed rows under the retry cap are drained; `syncing` rows
+    // stranded by a crash are demoted on boot; `synced` rows are pruned after
+    // a retention window. Indexed on `status` for the hot getPending path.
+    version: 46,
+    name: 'create_queued_audit_events',
+    sql: `
+      CREATE TABLE IF NOT EXISTS queued_audit_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id TEXT NOT NULL UNIQUE,
+        event_type TEXT NOT NULL,
+        aggregate_type TEXT NOT NULL,
+        aggregate_id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        company_id TEXT,
+        operator_id TEXT,
+        payload TEXT NOT NULL,
+        metadata TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'syncing', 'synced', 'failed')),
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        sync_error TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        synced_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_queued_audit_events_status
+        ON queued_audit_events(status);
+    `,
   },
 ];

@@ -96,7 +96,7 @@ class TaxSnapshotSalesOrderTest extends TestCase
 
         // Verify stock reservation occurred
         $stockLevel = StockLevel::where('product_id', $this->product->id)->first();
-        $this->assertEquals('10.00', $stockLevel->reserved);
+        $this->assertEquals('10.0000', $stockLevel->reserved);
         $this->assertEquals('90.00', $stockLevel->available);
     }
 

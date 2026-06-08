@@ -222,7 +222,7 @@ export function SalesWithholdingTrackingPage() {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-end">
                       <div className="text-sm font-mono text-gray-600">
-                        {(parseFloat(record.withholdingRate) * 100).toFixed(2)}%
+                        {(parseFloat(record.withholdingRate) * 100).toFixed(4)}%
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-end">

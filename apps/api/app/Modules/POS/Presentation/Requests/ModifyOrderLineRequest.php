@@ -29,8 +29,8 @@ final class ModifyOrderLineRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'quantity' => ['sometimes', 'nullable', 'numeric', 'gt:0'],
-            'discount_amount' => ['sometimes', 'nullable', 'numeric', 'gte:0'],
+            'quantity' => ['sometimes', 'nullable', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'discount_amount' => ['sometimes', 'nullable', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'modifiers' => ['sometimes', 'nullable', 'array'],
             'special_instructions' => ['sometimes', 'nullable', 'string', 'max:500'],
         ];
@@ -45,6 +45,8 @@ final class ModifyOrderLineRequest extends FormRequest
     {
         return [
             'quantity.gt' => 'Quantity must be greater than zero',
+            'quantity.regex' => 'Quantity must have at most 4 decimal places',
+            'discount_amount.regex' => 'Discount amount must have at most 3 decimal places',
         ];
     }
 }

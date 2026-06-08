@@ -153,8 +153,8 @@ class ProductEntityTest extends TestCase
         $this->assertEquals('Full Product', $product->name);
         $this->assertEquals('FUL-001', $product->sku);
         $this->assertEquals('A complete product description', $product->description);
-        $this->assertEquals('99.99', $product->sale_price);
-        $this->assertEquals('50.00', $product->purchase_price);
+        $this->assertEquals('99.990', $product->sale_price);
+        $this->assertEquals('50.000', $product->purchase_price);
         $this->assertEquals('20.00', $product->tax_rate);
         $this->assertEquals('piece', $product->unit);
         $this->assertEquals('1234567890123', $product->barcode);
@@ -286,7 +286,7 @@ class ProductEntityTest extends TestCase
         $this->assertEquals($product->id, $product->getSellableId());
         $this->assertEquals('product', $product->getSellableType());
         $this->assertEquals('Sellable Product', $product->getSellableName());
-        $this->assertEquals('29.99', $product->getSellableBasePrice());
+        $this->assertEquals('29.990', $product->getSellableBasePrice());
         $this->assertEquals('piece', $product->getSellableUnit());
         $this->assertTrue($product->isAvailable());
     }

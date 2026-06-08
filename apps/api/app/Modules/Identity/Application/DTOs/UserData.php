@@ -28,7 +28,7 @@ final readonly class UserData
         public string $createdAt,
         public string $updatedAt,
         public ?bool $canDiscount,
-        public ?float $maxDiscountPercent,
+        public ?string $maxDiscountPercent,
     ) {}
 
     public static function fromUser(User $user): self

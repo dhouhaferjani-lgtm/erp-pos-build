@@ -90,6 +90,9 @@ function locationFixture() {
     address_city: 'Tunis',
     address_postal_code: null,
     address_country: 'TN',
+    tax_id: null,
+    vat_number: null,
+    legal_identifiers: null,
     is_default: false,
     is_active: true,
     pos_enabled: true,
@@ -117,6 +120,36 @@ beforeEach(() => {
 
 afterEach(() => {
   resetTenant()
+})
+
+describe('LocationsPage branch tax identity form', () => {
+  it('renders tax fields, marks shop tax ID as required for configured countries, and submits them', async () => {
+    render(<LocationsPage />, { wrapper: wrapper(createClient()) })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'locations.addLocation' }))
+    await userEvent.type(await screen.findByLabelText(/locations\.form\.name/), 'Paris Shop')
+    await userEvent.type(screen.getByLabelText(/locations\.form\.country/), 'FR')
+
+    const taxIdInput = screen.getByLabelText(/locations\.form\.taxId/)
+    expect(taxIdInput).toHaveAttribute('aria-required', 'true')
+    expect(screen.getByText('locations.form.taxIdRequiredHint')).toBeInTheDocument()
+
+    await userEvent.type(taxIdInput, '73282932000074')
+    await userEvent.type(screen.getByLabelText(/locations\.form\.vatNumber/), 'FR40303265045')
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'save' }))
+    })
+
+    await waitFor(() => {
+      expect(mockCreateLocation).toHaveBeenCalledWith(expect.objectContaining({
+        addressCountry: 'FR',
+        name: 'Paris Shop',
+        taxId: '73282932000074',
+        vatNumber: 'FR40303265045',
+      }))
+    })
+  })
 })
 
 describe('LocationsPage tenant scope', () => {

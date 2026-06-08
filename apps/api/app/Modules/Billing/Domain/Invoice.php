@@ -148,7 +148,7 @@ final class Invoice extends Model
      */
     public function getTotalMoney(): Money
     {
-        return new Money((float) $this->total, $this->currency);
+        return new Money((string) $this->total, $this->currency);
     }
 
     /**
@@ -156,7 +156,7 @@ final class Invoice extends Model
      */
     public function getAmountDueMoney(): Money
     {
-        return new Money((float) $this->amount_due, $this->currency);
+        return new Money((string) $this->amount_due, $this->currency);
     }
 
     /**

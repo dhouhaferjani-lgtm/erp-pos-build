@@ -81,7 +81,7 @@ class ServiceBundleComponent extends Model
     {
         return [
             'component_type' => BundleComponentType::class,
-            'quantity' => 'decimal:3',
+            'quantity' => 'decimal:4',
             'override_unit_price' => 'decimal:3',
             'is_optional' => 'boolean',
             'display_order' => 'integer',

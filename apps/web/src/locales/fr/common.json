@@ -157,6 +157,7 @@
     "compositeItems": "Articles composés",
     "modifierGroups": "Groupes de modificateurs",
     "menus": "Menus",
+    "productAttributes": "Attributs de produit",
     "pointOfSale": "Point de vente",
     "openPos": "Ouvrir la caisse",
     "posOrders": "Commandes",
@@ -289,6 +290,9 @@
       "city": "Ville",
       "postalCode": "Code postal",
       "country": "Pays",
+      "taxId": "Identifiant fiscal",
+      "taxIdRequiredHint": "Obligatoire pour les magasins en France, Tunisie et Maroc.",
+      "vatNumber": "Numéro de TVA",
       "posEnabled": "Activer le point de vente"
     },
     "empty": {
@@ -340,6 +344,8 @@
   "cancel": "Annuler",
   "retry": "Réessayer",
   "save": "Enregistrer",
+  "saved": "Enregistré",
+  "deleted": "Supprimé",
   "saving": "Enregistrement...",
   "creating": "Création...",
   "processing": "Traitement...",

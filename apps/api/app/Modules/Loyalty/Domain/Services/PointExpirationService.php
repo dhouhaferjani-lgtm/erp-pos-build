@@ -6,6 +6,7 @@ namespace App\Modules\Loyalty\Domain\Services;
 
 use App\Modules\Loyalty\Domain\Entities\Transaction;
 use App\Modules\Loyalty\Domain\ValueObjects\PointsAmount;
+use App\Shared\Domain\CurrencyScale;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -63,11 +64,17 @@ final readonly class PointExpirationService
     public function calculateExpiringAmount(
         Collection $expiringTransactions
     ): PointsAmount {
-        $total = $expiringTransactions->sum(function (Transaction $transaction) {
-            return (float) $transaction->amount;
-        });
+        // bcmath accumulator at the canonical points scale — no float drift.
+        $total = '0';
+        foreach ($expiringTransactions as $transaction) {
+            $total = bcadd(
+                $total,
+                CurrencyScale::bcformat((string) $transaction->amount, PointsAmount::SCALE),
+                PointsAmount::SCALE,
+            );
+        }
 
-        return new PointsAmount($total);
+        return PointsAmount::fromNumericString($total);
     }
 
     /**

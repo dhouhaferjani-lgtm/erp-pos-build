@@ -29,8 +29,8 @@ class UpdateRewardRequest extends FormRequest
             'name' => ['sometimes', 'string', 'max:100'],
             'description' => ['nullable', 'string', 'max:500'],
             'reward_type' => ['sometimes', Rule::enum(RewardType::class)],
-            'points_cost' => ['sometimes', 'numeric', 'min:0'],
-            'reward_value' => ['nullable', 'numeric', 'min:0'],
+            'points_cost' => ['sometimes', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'reward_value' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
             'qualifying_items' => ['nullable', 'array'],
             'qualifying_items.item_types' => ['sometimes', 'array'],
             'qualifying_items.item_types.*' => ['string'],
@@ -38,8 +38,8 @@ class UpdateRewardRequest extends FormRequest
             'qualifying_items.item_ids.*' => ['uuid'],
             'qualifying_items.category_ids' => ['sometimes', 'array'],
             'qualifying_items.category_ids.*' => ['uuid'],
-            'max_discount' => ['nullable', 'numeric', 'min:0'],
-            'min_order_value' => ['nullable', 'numeric', 'min:0'],
+            'max_discount' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'min_order_value' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
             'tier_ids' => ['nullable', 'array'],
             'tier_ids.*' => ['uuid'],
             'is_active' => ['sometimes', 'boolean'],
@@ -59,6 +59,10 @@ class UpdateRewardRequest extends FormRequest
     {
         return [
             'points_cost.min' => 'Points cost must be positive',
+            'points_cost.regex' => 'Points cost must not exceed 2 decimal places.',
+            'reward_value.regex' => 'Reward value must not exceed 2 decimal places.',
+            'max_discount.regex' => 'Max discount must not exceed 2 decimal places.',
+            'min_order_value.regex' => 'Min order value must not exceed 2 decimal places.',
             'end_date.after' => 'End date must be after start date',
         ];
     }

@@ -138,11 +138,11 @@ export interface CreateCompositeItemData {
   name: string
   category_id?: string | null
   vertical_type?: VerticalType
-  base_price: number
-  manual_cost?: number | null
+  base_price: string
+  manual_cost?: string | null
   production_type?: ProductionType
   pricing_mode?: PricingMode
-  tax_rate?: number | null
+  tax_rate?: string | null
   stock_unit_id?: string | null
   is_active?: boolean
   is_available?: boolean
@@ -154,7 +154,7 @@ export interface UpdateCompositeItemData extends Partial<CreateCompositeItemData
 
 export interface CreateRecipeData {
   version_name?: string | null
-  yield_quantity?: number
+  yield_quantity?: string
   yield_unit_id?: string | null
   prep_time_minutes?: number | null
   cook_time_minutes?: number | null
@@ -165,11 +165,11 @@ export interface CreateRecipeLineData {
   component_type?: ComponentType
   component_id: string
   composite_item_id?: string
-  quantity: number
+  quantity: string
   unit_id?: string | null
   is_optional?: boolean
   is_scalable?: boolean
-  wastage_percent?: number
+  wastage_percent?: string
   display_order?: number
 }
 
@@ -177,8 +177,8 @@ export interface CreateVariantData {
   code: string
   name: string
   price_adjustment_type?: PriceAdjustmentType
-  price_adjustment?: number
-  recipe_multiplier?: number
+  price_adjustment?: string
+  recipe_multiplier?: string
   is_default?: boolean
   is_active?: boolean
   display_order?: number
@@ -198,10 +198,10 @@ export interface CreateModifierGroupData {
 export interface CreateModifierData {
   code: string
   name: string
-  price_adjustment?: number
+  price_adjustment?: string
   component_type?: string | null
   component_id?: string | null
-  component_quantity?: number | null
+  component_quantity?: string | null
   component_unit_id?: string | null
   is_default?: boolean
   is_active?: boolean

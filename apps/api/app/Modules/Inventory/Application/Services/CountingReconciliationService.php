@@ -78,7 +78,9 @@ class CountingReconciliationService
         float $count1,
         float $theoretical
     ): void {
-        $item->final_qty = (string) $count1;
+        // final_qty column write uses the same scale-4 bcadd normalization as
+        // the event payload (below) so the column and the JSONB event agree.
+        $item->final_qty = bcadd((string) $count1, '0', 4);
         $item->resolved_at = now();
 
         if ($this->floatsEqual($count1, $theoretical)) {
@@ -95,7 +97,7 @@ class CountingReconciliationService
         InventoryCountingEvent::recordAutoResolution(
             $item,
             $item->resolution_method->value,
-            $count1
+            bcadd((string) $count1, '0', 4)
         );
     }
 
@@ -111,27 +113,27 @@ class CountingReconciliationService
     ): void {
         // Case 1: Both counts match theoretical
         if ($this->floatsEqual($count1, $theoretical) && $this->floatsEqual($count2, $theoretical)) {
-            $item->final_qty = (string) $theoretical;
+            $item->final_qty = bcadd((string) $theoretical, '0', 4);
             $item->resolution_method = ItemResolutionMethod::AutoAllMatch;
             $item->is_flagged = false;
             $item->resolved_at = now();
             $item->save();
 
-            InventoryCountingEvent::recordAutoResolution($item, 'auto_all_match', $theoretical);
+            InventoryCountingEvent::recordAutoResolution($item, 'auto_all_match', bcadd((string) $theoretical, '0', 4));
 
             return;
         }
 
         // Case 2: Counters agree but differ from theoretical
         if ($this->floatsEqual($count1, $count2)) {
-            $item->final_qty = (string) $count1;
+            $item->final_qty = bcadd((string) $count1, '0', 4);
             $item->resolution_method = ItemResolutionMethod::AutoCountersAgree;
             $item->is_flagged = true;
             $item->flag_reason = 'variance_from_theoretical';
             $item->resolved_at = now();
             $item->save();
 
-            InventoryCountingEvent::recordAutoResolution($item, 'auto_counters_agree', $count1);
+            InventoryCountingEvent::recordAutoResolution($item, 'auto_counters_agree', bcadd((string) $count1, '0', 4));
 
             return;
         }
@@ -163,7 +165,7 @@ class CountingReconciliationService
         $majority = $this->findMajority($counts);
 
         if ($majority !== null) {
-            $item->final_qty = (string) $majority;
+            $item->final_qty = bcadd((string) $majority, '0', 4);
             $item->resolution_method = ItemResolutionMethod::ThirdCountDecisive;
             $item->resolved_at = now();
 
@@ -177,7 +179,7 @@ class CountingReconciliationService
 
             $item->save();
 
-            InventoryCountingEvent::recordAutoResolution($item, 'third_count_decisive', $majority);
+            InventoryCountingEvent::recordAutoResolution($item, 'third_count_decisive', bcadd((string) $majority, '0', 4));
 
             return;
         }

@@ -45,7 +45,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $deactivation_reason
  * @property string|null $hardware_identifier MAC address, serial number, etc.
  * @property string|null $pos_software_version Tauri app version
- * @property float $max_discount_percent Maximum allowed discount percentage (0-100)
+ * @property string $max_discount_percent Maximum allowed discount percentage (0-100)
  * @property bool $allow_line_discounts Whether line-level discounts are allowed
  * @property bool $allow_transaction_discounts Whether transaction-level discounts are allowed
  * @property Carbon $created_at
@@ -126,7 +126,7 @@ class Terminal extends Model
             'is_training_mode' => 'boolean',
             'activated_at' => 'datetime',
             'deactivated_at' => 'datetime',
-            'max_discount_percent' => 'float',
+            'max_discount_percent' => 'decimal:2',
             'allow_line_discounts' => 'boolean',
             'allow_transaction_discounts' => 'boolean',
         ];

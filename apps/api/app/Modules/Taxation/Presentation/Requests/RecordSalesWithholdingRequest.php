@@ -45,10 +45,10 @@ class RecordSalesWithholdingRequest extends FormRequest
                 'uuid',
                 ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
             ],
-            'invoice_amount' => ['required', 'numeric', 'min:0'],
-            'withholding_rate' => ['required', 'numeric', 'min:0', 'max:1'],
-            'withholding_amount' => ['required', 'numeric', 'min:0'],
-            'expected_receivable' => ['required', 'numeric', 'min:0'],
+            'invoice_amount' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'withholding_rate' => ['required', 'numeric', 'min:0', 'max:1', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'withholding_amount' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'expected_receivable' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'payment_id' => [
                 'nullable',
                 'uuid',
@@ -73,8 +73,12 @@ class RecordSalesWithholdingRequest extends FormRequest
             'withholding_rate.required' => 'Withholding rate is required',
             'withholding_rate.min' => 'Withholding rate cannot be negative',
             'withholding_rate.max' => 'Withholding rate cannot exceed 100%',
+            'withholding_rate.regex' => 'Withholding rate must not exceed 4 decimal places.',
             'withholding_amount.required' => 'Withholding amount is required',
+            'withholding_amount.regex' => 'Withholding amount must not exceed 3 decimal places.',
             'expected_receivable.required' => 'Expected receivable amount is required',
+            'expected_receivable.regex' => 'Expected receivable must not exceed 3 decimal places.',
+            'invoice_amount.regex' => 'Invoice amount must not exceed 3 decimal places.',
         ];
     }
 }

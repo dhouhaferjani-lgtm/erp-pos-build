@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\POS\Presentation\Controllers\AnalyticsController;
+use App\Modules\POS\Presentation\Controllers\AuditEventSyncController;
 use App\Modules\POS\Presentation\Controllers\AuthorizedManagersController;
 use App\Modules\POS\Presentation\Controllers\CashDrawerController;
 use App\Modules\POS\Presentation\Controllers\CustomerHistorySearchAuditController;
@@ -36,6 +37,9 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/pos/auth/has-pins', [PosAuthController::class, 'hasPins']);
     Route::get('/pos/auth/pin-data', [PosAuthController::class, 'pinData']);
     Route::post('/pos/auth/sync-pins', [PosAuthController::class, 'syncPins']);
+
+    // POS audit-event ingest (offline-first fraud/audit pipeline — Sub-Spec C)
+    Route::post('/pos/audit-events/sync', [AuditEventSyncController::class, 'sync']);
 
     // Terminal Management
     Route::get('/pos/terminals', [TerminalController::class, 'index']);

@@ -11,6 +11,7 @@ import type { CheckoutResult } from '@/lib/offline/offlineCheckoutService';
 import { bcadd, bcsub, bccomp, bcformat } from '@/lib/decimal';
 import { getCurrencyDecimals } from '@/lib/currency';
 import type { AccountPaymentPayload } from '@/lib/fiscal/payloads/AccountPaymentPayload';
+import type { AccountChargePrintable } from '@/lib/accountCharge/accountChargePrintable';
 
 function formatReceiptDateTime(date: Date, locale: string): string {
   try {
@@ -196,18 +197,21 @@ export function buildEscPosFromOfflineReceipt(
   const currencySymbol = getCurrencySymbol(result.currency);
   const decimals = getCurrencyDecimals(result.currency);
 
-  // Build VAT breakdown from cart items
-  const vatByRate = new Map<string, { taxable: number; tax: number }>();
+  // Build VAT breakdown from cart items. Accumulate as currency-scale decimal
+  // strings (Big.js) — summing many lines with parseFloat drifted the printed
+  // taxable/tax totals.
+  const vatByRate = new Map<string, { taxable: string; tax: string }>();
   for (const item of cartItems) {
     const rate = item.tax_rate;
-    const tax = parseFloat(item.tax_amount);
-    if (tax === 0) continue;
-    const lineTotal = parseFloat(item.line_total);
-    const taxable = lineTotal - tax;
-    const existing = vatByRate.get(rate) ?? { taxable: 0, tax: 0 };
+    if (bccomp(item.tax_amount, '0') === 0) continue;
+    const taxable = bcsub(item.line_total, item.tax_amount, decimals);
+    const existing = vatByRate.get(rate) ?? {
+      taxable: (0).toFixed(decimals),
+      tax: (0).toFixed(decimals),
+    };
     vatByRate.set(rate, {
-      taxable: existing.taxable + taxable,
-      tax: existing.tax + tax,
+      taxable: bcadd(existing.taxable, taxable, decimals),
+      tax: bcadd(existing.tax, item.tax_amount, decimals),
     });
   }
 
@@ -339,6 +343,88 @@ export function buildEscPosAccountPaymentReceiptData(
     training_flag: payload.training_flag,
     customer_account_id: payload.customer.customer_id,
     customer_phone: payload.customer.phone,
+  };
+}
+
+export interface BuildAccountChargeReceiptDataInput {
+  payload: AccountChargePrintable;
+  currencyCode: string;
+}
+
+export function buildEscPosAccountChargeReceiptData(
+  input: BuildAccountChargeReceiptDataInput,
+): ReceiptData {
+  const p = input.payload;
+  const currencySymbol = getCurrencySymbol(input.currencyCode);
+  const scale = getCurrencyDecimals(input.currencyCode);
+
+  return {
+    // AccountChargePrintable carries the seller address as a single
+    // pre-formatted string (sellerAddress). It is placed in address_line1 and
+    // the structured city/postal_code/country are intentionally left empty —
+    // the full address still prints via address_line1.
+    company: {
+      name: p.sellerName,
+      address_line1: p.sellerAddress,
+      address_line2: null,
+      city: '',
+      postal_code: '',
+      country: '',
+      tax_id: p.sellerTaxNumber,
+      phone: null,
+    },
+    receipt_number: p.accountChargeUuid,
+    date_time: p.eventTimeDevice,
+    terminal_name: p.terminalName,
+    operator_name: p.cashierName,
+    lines: p.lines.map((l) => ({
+      name: l.name,
+      quantity: l.quantity,
+      // unit_price is the GROSS / tax-inclusive price, verbatim from the cart.
+      // This matches the SALE_RECEIPT printed-receipt convention (tax-inclusive
+      // markets) used by buildEscPosReceiptData for sale lines.
+      unit_price: bcformat(l.unitPrice, scale),
+      line_total: bcformat(l.lineTotal, scale),
+      modifiers: null,
+      discount: null,
+    })),
+    subtotal: bcformat(p.subtotal, scale),
+    discount_amount: bcformat('0', scale),
+    tax_amount: bcformat(p.vatTotal, scale),
+    total: bcformat(p.amountChargedToAccount, scale),
+    currency_symbol: currencySymbol,
+    vat_breakdown: p.vatBreakdown.map((v) => ({
+      rate: v.rate,
+      taxable: bcformat(v.netAmount, scale),
+      tax: bcformat(v.vatAmount, scale),
+    })),
+    payments: [],
+    change_due: bcformat('0', scale),
+    tolerance_writeoff: null,
+    has_tolerance: false,
+    fiscal_hash: p.fiscalHash,
+    fiscal_signature: p.fiscalEventId,
+    customer_name: p.customerName,
+    notes: null,
+    labels: buildReceiptLabels(),
+    show_vat_breakdown: true,
+    show_fiscal_info: true,
+    show_payment_details: false,
+    show_customer: true,
+    receipt_kind: 'account_charge',
+    original_receipt_number: null,
+    original_receipt_qr_token: null,
+    account_balance_before: bcformat(p.balanceBefore, scale),
+    account_balance_after: bcformat(p.balanceAfter, scale),
+    account_snapshot_stale: p.customerSnapshotStale || p.balanceSnapshotStale,
+    business_date: p.businessDate,
+    terminal_id: p.terminalId,
+    shift_id: p.shiftId,
+    training_flag: p.trainingFlag,
+    // accountIdentifier is the human-readable account code (e.g. 'CUST-0001').
+    // It may be null for accounts created before the identifier was introduced.
+    customer_account_id: p.accountIdentifier,
+    customer_phone: p.customerPhone,
   };
 }
 

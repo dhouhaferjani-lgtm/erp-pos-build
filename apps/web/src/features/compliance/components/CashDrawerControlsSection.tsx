@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { tokens, textColors } from '@/lib/designTokens'
 import { bccomp } from '@/lib/decimal'
-import { getDecimals } from '@/hooks/useCurrency'
+import { MoneyInput } from '@/components/atoms/MoneyInput'
 
 export interface CashDrawerControlsValue {
   cash_variance_over_soft: string
@@ -158,12 +158,10 @@ export function CashDrawerControlsSection({
     onChange(buildNext({ emailSeverity: severity }))
   }
 
-  const inputBase = `${tokens.input.base} text-right`
-
-  // Currency-aware step: TND → 0.001, EUR/USD → 0.01, etc.
-  // Avoids hardcoding step="0.01" which prevents managers from entering sub-cent
-  // thresholds for 3-decimal currencies like TND.
-  const currencyStep = String(1 / Math.pow(10, getDecimals(currencyCode)))
+  // MoneyInput derives the currency-aware step (TND → 0.001, EUR/USD → 0.01)
+  // and emits canonical string values, so no manual step/parseFloat handling
+  // is needed here. `text-right` keeps the numeric alignment of the originals.
+  const inputClassName = 'text-right'
 
   return (
     <section
@@ -196,30 +194,26 @@ export function CashDrawerControlsSection({
             <label htmlFor="cash-over-soft" className={tokens.label.base}>
               {t('fraudSettings.cashControls.softLabel')} ({currencyCode})
             </label>
-            <input
+            <MoneyInput
               id="cash-over-soft"
-              type="number"
-              min="0"
-              step={currencyStep}
+              currency={currencyCode}
               value={overSoft}
               disabled={!canEdit}
-              onChange={(e) => { handleOverSoftChange(e.target.value) }}
-              className={inputBase}
+              onChange={handleOverSoftChange}
+              className={inputClassName}
             />
           </div>
           <div>
             <label htmlFor="cash-over-hard" className={tokens.label.base}>
               {t('fraudSettings.cashControls.hardLabel')} ({currencyCode})
             </label>
-            <input
+            <MoneyInput
               id="cash-over-hard"
-              type="number"
-              min="0"
-              step={currencyStep}
+              currency={currencyCode}
               value={overHard}
               disabled={!canEdit}
-              onChange={(e) => { handleOverHardChange(e.target.value) }}
-              className={inputBase}
+              onChange={handleOverHardChange}
+              className={inputClassName}
             />
           </div>
         </div>
@@ -229,60 +223,52 @@ export function CashDrawerControlsSection({
             <label htmlFor="cash-over-soft" className={tokens.label.base}>
               {t('fraudSettings.cashControls.overSoftLabel')} ({currencyCode})
             </label>
-            <input
+            <MoneyInput
               id="cash-over-soft"
-              type="number"
-              min="0"
-              step={currencyStep}
+              currency={currencyCode}
               value={overSoft}
               disabled={!canEdit}
-              onChange={(e) => { handleOverSoftChange(e.target.value) }}
-              className={inputBase}
+              onChange={handleOverSoftChange}
+              className={inputClassName}
             />
           </div>
           <div>
             <label htmlFor="cash-over-hard" className={tokens.label.base}>
               {t('fraudSettings.cashControls.overHardLabel')} ({currencyCode})
             </label>
-            <input
+            <MoneyInput
               id="cash-over-hard"
-              type="number"
-              min="0"
-              step={currencyStep}
+              currency={currencyCode}
               value={overHard}
               disabled={!canEdit}
-              onChange={(e) => { handleOverHardChange(e.target.value) }}
-              className={inputBase}
+              onChange={handleOverHardChange}
+              className={inputClassName}
             />
           </div>
           <div>
             <label htmlFor="cash-under-soft" className={tokens.label.base}>
               {t('fraudSettings.cashControls.underSoftLabel')} ({currencyCode})
             </label>
-            <input
+            <MoneyInput
               id="cash-under-soft"
-              type="number"
-              min="0"
-              step={currencyStep}
+              currency={currencyCode}
               value={underSoft}
               disabled={!canEdit}
-              onChange={(e) => { handleUnderSoftChange(e.target.value) }}
-              className={inputBase}
+              onChange={handleUnderSoftChange}
+              className={inputClassName}
             />
           </div>
           <div>
             <label htmlFor="cash-under-hard" className={tokens.label.base}>
               {t('fraudSettings.cashControls.underHardLabel')} ({currencyCode})
             </label>
-            <input
+            <MoneyInput
               id="cash-under-hard"
-              type="number"
-              min="0"
-              step={currencyStep}
+              currency={currencyCode}
               value={underHard}
               disabled={!canEdit}
-              onChange={(e) => { handleUnderHardChange(e.target.value) }}
-              className={inputBase}
+              onChange={handleUnderHardChange}
+              className={inputClassName}
             />
           </div>
         </div>

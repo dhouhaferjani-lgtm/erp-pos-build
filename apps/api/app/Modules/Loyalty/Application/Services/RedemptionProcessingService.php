@@ -12,6 +12,7 @@ use App\Modules\Loyalty\Domain\Repositories\EnrollmentRepositoryInterface;
 use App\Modules\Loyalty\Domain\Repositories\RewardRepositoryInterface;
 use App\Modules\Loyalty\Domain\Repositories\TransactionRepositoryInterface;
 use App\Modules\Loyalty\Domain\Services\RewardRedemptionService;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -67,7 +68,7 @@ final readonly class RedemptionProcessingService
             // Check if member is eligible (this includes sufficient points check)
             if (! $this->rewardRedemptionService->isEligible($enrollment, $reward, 0)) {
                 // More specific error message if insufficient points
-                if ($enrollment->current_balance < $pointsRequired) {
+                if (bccomp((string) $enrollment->current_balance, $pointsRequired, 3) < 0) {
                     throw new InvalidArgumentException(
                         "Insufficient points. Required: {$pointsRequired}, Available: {$enrollment->current_balance}"
                     );
@@ -81,9 +82,9 @@ final readonly class RedemptionProcessingService
             $transaction = new Transaction([
                 'enrollment_id' => $enrollment->id,
                 'transaction_type' => TransactionType::Redeem,
-                'amount' => -$pointsRequired, // Negative for redemption
+                'amount' => bcmul($pointsRequired, '-1', 3), // Negative for redemption
                 'balance_before' => $enrollment->current_balance,
-                'balance_after' => $enrollment->current_balance - $pointsRequired,
+                'balance_after' => bcsub((string) $enrollment->current_balance, $pointsRequired, 3),
                 'reward_id' => $reward->id,
                 'description' => $description ?? "Redeemed reward: {$reward->name}",
                 'metadata' => [
@@ -111,7 +112,7 @@ final readonly class RedemptionProcessingService
                     memberId: $enrollment->member_id,
                     programId: $enrollment->program_id,
                     rewardId: $reward->id,
-                    pointsCost: $pointsRequired,
+                    pointsCost: (float) $pointsRequired, // float at event-display boundary; canonical string used for all fiscal/balance math above
                     redeemedAt: $transaction->created_at->toIso8601String(),
                 ));
             });
@@ -125,7 +126,7 @@ final readonly class RedemptionProcessingService
      *
      * @param  string  $enrollmentId  Enrollment to check for
      * @param  string  $rewardId  Reward to check
-     * @return array{can_redeem: bool, points_required: float, reason: string|null}
+     * @return array{can_redeem: bool, points_required: numeric-string, reason: string|null}
      */
     public function canRedeem(string $enrollmentId, string $rewardId): array
     {
@@ -133,7 +134,7 @@ final readonly class RedemptionProcessingService
         if ($enrollment === null) {
             return [
                 'can_redeem' => false,
-                'points_required' => 0.0,
+                'points_required' => CurrencyScale::bcformatStrict('0', 3),
                 'reason' => 'Enrollment not found',
             ];
         }
@@ -142,7 +143,7 @@ final readonly class RedemptionProcessingService
         if ($reward === null) {
             return [
                 'can_redeem' => false,
-                'points_required' => 0.0,
+                'points_required' => CurrencyScale::bcformatStrict('0', 3),
                 'reason' => 'Reward not found',
             ];
         }
@@ -150,7 +151,7 @@ final readonly class RedemptionProcessingService
         if (! $reward->is_active) {
             return [
                 'can_redeem' => false,
-                'points_required' => (float) $reward->points_cost,
+                'points_required' => CurrencyScale::bcformat((string) $reward->points_cost, 3),
                 'reason' => 'Reward is not active',
             ];
         }
@@ -163,7 +164,7 @@ final readonly class RedemptionProcessingService
 
         if (! $isEligible) {
             // Provide more specific reason if possible
-            if ($enrollment->current_balance < $pointsRequired) {
+            if (bccomp((string) $enrollment->current_balance, $pointsRequired, 3) < 0) {
                 return [
                     'can_redeem' => false,
                     'points_required' => $pointsRequired,

@@ -20,6 +20,7 @@ use Illuminate\Support\Carbon;
  * @property string $tenant_id
  * @property string $company_id
  * @property string $product_id
+ * @property string|null $variant_id
  * @property string $location_id
  * @property numeric-string $quantity
  * @property numeric-string $reserved
@@ -42,6 +43,7 @@ class StockLevel extends Model
         'tenant_id',
         'company_id',
         'product_id',
+        'variant_id',
         'location_id',
         'quantity',
         'reserved',
@@ -55,10 +57,10 @@ class StockLevel extends Model
     protected function casts(): array
     {
         return [
-            'quantity' => 'decimal:2',
-            'reserved' => 'decimal:2',
-            'min_quantity' => 'decimal:2',
-            'max_quantity' => 'decimal:2',
+            'quantity' => 'decimal:4',
+            'reserved' => 'decimal:4',
+            'min_quantity' => 'decimal:4',
+            'max_quantity' => 'decimal:4',
         ];
     }
 
@@ -111,7 +113,7 @@ class StockLevel extends Model
             return false;
         }
 
-        return bccomp($this->quantity, $this->min_quantity, 2) < 0;
+        return bccomp($this->quantity, $this->min_quantity, 4) < 0;
     }
 
     /**

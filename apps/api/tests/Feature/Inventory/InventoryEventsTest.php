@@ -6,6 +6,7 @@ namespace Tests\Feature\Inventory;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\InventoryCountingService;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
@@ -65,6 +66,9 @@ final class InventoryEventsTest extends TestCase
 
         $this->stockService = app(WeightedAverageCostService::class);
         $this->countingService = app(InventoryCountingService::class);
+
+        // Pin CompanyContext so CurrencyScaleResolver can resolve scale without HTTP middleware.
+        app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     /**
@@ -88,7 +92,7 @@ final class InventoryEventsTest extends TestCase
             return $event->productId === $this->product->id
                 && $event->locationId === $this->location->id
                 && $event->movementType === 'purchase'
-                && $event->quantity === '10.00'
+                && $event->quantity === '10.0000'
                 && $event->reference === 'PO-TEST-001';
         });
     }
@@ -121,7 +125,7 @@ final class InventoryEventsTest extends TestCase
             return $event->productId === $this->product->id
                 && $event->locationId === $this->location->id
                 && $event->movementType === 'sale'
-                && $event->quantity === '-5.00'
+                && $event->quantity === '-5.0000'
                 && $event->reference === 'DN-TEST-001';
         });
     }
@@ -147,7 +151,7 @@ final class InventoryEventsTest extends TestCase
             return $event->productId === $this->product->id
                 && $event->locationId === $this->location->id
                 && $event->movementType === 'return'
-                && $event->quantity === '3.00';
+                && $event->quantity === '3.0000';
         });
     }
 

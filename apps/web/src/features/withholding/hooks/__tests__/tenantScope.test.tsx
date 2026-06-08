@@ -192,7 +192,7 @@ function ruleFixture(id: string): WithholdingRule {
     partner_tax_status_label: null,
     min_amount: null,
     rate: '0.100',
-    rate_percentage: 10,
+    rate_percentage: '10.00',
     effective_from: '2026-01-01',
     effective_to: null,
     is_active: true,

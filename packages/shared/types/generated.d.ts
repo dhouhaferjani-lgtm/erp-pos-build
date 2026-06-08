@@ -330,6 +330,42 @@ modifiers: Array<App.Modules.Catalog.Application.DTOs.ModifierData> | null;
 created_at: string;
 updated_at: string | null;
 };
+export type ProductAttributeData = {
+id: string;
+tenant_id: string;
+code: string;
+name: string;
+data_type: App.Modules.Catalog.Domain.Enums.AttributeDataType;
+is_variant_axis: boolean;
+display_order: number;
+is_active: boolean;
+};
+export type ProductAttributeValueData = {
+id: string;
+tenant_id: string;
+attribute_id: string;
+code: string;
+label: string;
+hex_color: string | null;
+image_url: string | null;
+display_order: number;
+};
+export type ProductVariantData = {
+id: string;
+tenant_id: string;
+company_id: string;
+product_id: string;
+variant_code: string;
+sku: string;
+barcode: string | null;
+name_suffix: string;
+is_default: boolean;
+is_active: boolean;
+display_order: number;
+price_override: string | null;
+cost_override: string | null;
+image_url: string | null;
+};
 export type RecipeCostData = {
 total_cost: string;
 lines: Array<any>;
@@ -370,6 +406,7 @@ display_order: number;
 };
 }
 declare namespace App.Modules.Catalog.Domain.Enums {
+export type AttributeDataType = 'text' | 'numeric' | 'boolean' | 'date' | 'selection' | 'color' | 'image';
 export type ComponentType = 'product' | 'composite_item';
 export type PriceAdjustmentType = 'absolute' | 'percentage' | 'override';
 export type PricingMode = 'standard' | 'fixed_bundle';
@@ -622,7 +659,7 @@ lastLoginIp: string | null;
 createdAt: string;
 updatedAt: string;
 canDiscount: boolean | null;
-maxDiscountPercent: number | null;
+maxDiscountPercent: string | null;
 };
 }
 declare namespace App.Modules.Identity.Domain.Enums {
@@ -659,6 +696,9 @@ export type MovementReason = 'goods_receipt' | 'customer_return' | 'adjustment_p
 export type MovementType = 'receipt' | 'issue' | 'transfer_in' | 'transfer_out' | 'adjustment' | 'opening';
 export type ReleaseReason = 'delivered' | 'cancelled' | 'expired' | 'manual_release' | 'converted' | 'order_modified' | 'insufficient_stock';
 export type ReservationSource = 'sales_order' | 'ecommerce_cart' | 'marketplace_order' | 'manual_hold' | 'customer_return_pending' | 'quality_check' | 'transfer_pending' | 'work_order';
+export type TransferCostDistribution = 'pro_rata_value' | 'pro_rata_quantity' | 'equal_per_line';
+export type TransferStatus = 'draft' | 'in_transit' | 'completed' | 'cancelled';
+export type TransferType = 'intracompany' | 'intercompany';
 }
 declare namespace App.Modules.Loyalty.Application.DTOs {
 export type EarningConditionsData = {
@@ -1020,6 +1060,7 @@ id: string;
 order_id: string;
 line_number: number;
 product_id: string;
+variantId: string | null;
 product_name: string;
 variant_name: string | null;
 barcode: string | null;
@@ -1272,6 +1313,7 @@ field_confidence: Array<any> | null;
 enrichment_sources: Array<any> | null;
 assigned_barcode: string | null;
 assigned_barcode_type: string | null;
+locale: string | null;
 };
 export type EnrichmentResultData = {
 id: string;
@@ -1366,9 +1408,11 @@ cost_price: string | null;
 tax_rate: string | null;
 default_tax_configuration_id: string | null;
 unit: string | null;
+quantity_decimals: number;
 barcode: string | null;
 is_active: boolean;
 is_physical: boolean;
+requires_batch_tracking: boolean;
 oem_numbers: Array<any> | null;
 cross_references: Array<any> | null;
 target_margin_override: string | null;

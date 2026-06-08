@@ -11,6 +11,7 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { servicesInvalidationPredicate } from './_invalidation'
 import type { Service, CreateServiceData, CategoriesResponse } from './types'
 import { TaxConfigurationField } from '../../components/molecules/TaxConfigurationField'
+import { MoneyInput, QuantityInput } from '@/components/atoms'
 
 interface ServiceResponse {
   data: Service
@@ -57,6 +58,10 @@ export function ServiceForm() {
   })
 
   const pricingType = watch('pricing_type')
+  // watch() types as T | undefined even when defaultValues guarantee a value;
+  // non-null assertion is safe: currency always has defaultValue 'TND'.
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const watchedCurrency = watch('currency')!
 
   // Fetch categories for dropdown
   const { data: categoriesData } = useQuery({
@@ -330,15 +335,13 @@ export function ServiceForm() {
                 <label htmlFor="base_price" className="block text-sm font-medium text-gray-700">
                   {t('services.fields.basePrice', 'Base Price')} *
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                <MoneyInput
                   id="base_price"
-                  {...register('base_price', {
-                    required: pricingType === 'flat_rate' ? t('validation.required', 'This field is required') : false,
-                  })}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  currency={watchedCurrency}
+                  min="0"
+                  value={watch('base_price') ?? ''}
+                  onChange={(v) => { setValue('base_price', v, { shouldValidate: true }) }}
+                  required={pricingType === 'flat_rate'}
                   placeholder="0.00"
                 />
                 {errors.base_price && (
@@ -354,15 +357,13 @@ export function ServiceForm() {
                   <label htmlFor="hourly_rate" className="block text-sm font-medium text-gray-700">
                     {t('services.fields.hourlyRate', 'Hourly Rate')} *
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
+                  <MoneyInput
                     id="hourly_rate"
-                    {...register('hourly_rate', {
-                      required: pricingType === 'hourly' ? t('validation.required', 'This field is required') : false,
-                    })}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    currency={watchedCurrency}
+                    min="0"
+                    value={watch('hourly_rate') ?? ''}
+                    onChange={(v) => { setValue('hourly_rate', v, { shouldValidate: true }) }}
+                    required={pricingType === 'hourly'}
                     placeholder="0.00"
                   />
                   {errors.hourly_rate && (
@@ -393,17 +394,16 @@ export function ServiceForm() {
                   {t('services.fields.percentage', 'Percentage')} *
                 </label>
                 <div className="relative mt-1">
-                  <input
-                    type="number"
-                    step="0.01"
+                  <QuantityInput
+                    id="base_price"
+                    decimalPlaces={2}
                     min="0"
                     max="100"
-                    id="base_price"
-                    {...register('base_price', {
-                      required: pricingType === 'percentage' ? t('validation.required', 'This field is required') : false,
-                    })}
-                    className="block w-full rounded-lg border border-gray-300 px-3 py-2 pe-8 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    value={watch('base_price') ?? ''}
+                    onChange={(v) => { setValue('base_price', v, { shouldValidate: true }) }}
+                    required={pricingType === 'percentage'}
                     placeholder="10"
+                    className="block w-full pe-8"
                   />
                   <span className="absolute inset-y-0 end-3 flex items-center text-gray-500">%</span>
                 </div>

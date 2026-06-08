@@ -261,5 +261,10 @@ class UomSeeder extends Seeder
             'decimal_places' => 2,
             'is_system' => true,
         ]);
+
+        // Apply canonical per-unit quantity-precision defaults. Idempotent and
+        // update-only — corrects decimal_places/rounding_method for the units
+        // created above without touching operator-customised values.
+        (new UnitSeeder)->run();
     }
 }

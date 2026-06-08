@@ -126,7 +126,7 @@ function makeAccountChargeInput(overrides: Partial<AuthorAccountChargeInput> = {
         sku: 'SKU-DEFAULT',
         name: 'Default item',
         quantity: '1.000',
-        unitPrice: '100.000',
+        unitPrice: '119.000',
         lineSubtotal: '100.000',
         lineVat: '19.000',
         lineDiscountAmount: '0.000',

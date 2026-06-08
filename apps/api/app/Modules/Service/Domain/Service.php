@@ -84,7 +84,7 @@ class Service extends Model
     protected $attributes = [
         'is_active' => true,
         'pricing_type' => 'flat_rate',
-        'base_price' => '0.00',
+        'base_price' => '0.000',
         'currency' => 'TND',
     ];
 
@@ -97,6 +97,9 @@ class Service extends Model
             'pricing_type' => PricingType::class,
             'is_active' => 'boolean',
             'default_duration_minutes' => 'integer',
+            'base_price' => 'decimal:3',
+            'hourly_rate' => 'decimal:3',
+            'tax_rate' => 'decimal:3',
         ];
     }
 

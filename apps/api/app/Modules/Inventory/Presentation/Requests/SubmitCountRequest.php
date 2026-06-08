@@ -28,4 +28,18 @@ class SubmitCountRequest extends FormRequest
             'notes' => ['nullable', 'string', 'max:500'],
         ];
     }
+
+    /**
+     * Return the validated quantity as a canonical numeric string at quantity scale (4 d.p.).
+     * The 'numeric' validation rule guarantees the value is a valid numeric string.
+     *
+     * @return numeric-string
+     */
+    public function quantity(): string
+    {
+        /** @var numeric-string $raw */
+        $raw = (string) $this->input('quantity');
+
+        return bcadd($raw, '0', 4);
+    }
 }

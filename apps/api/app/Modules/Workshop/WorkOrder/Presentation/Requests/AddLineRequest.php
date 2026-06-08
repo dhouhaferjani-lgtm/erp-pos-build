@@ -27,14 +27,28 @@ final class AddLineRequest extends FormRequest
             'display_name' => ['required', 'string', 'max:300'],
             'sku_or_code' => ['nullable', 'string', 'max:64'],
             'description' => ['nullable', 'string'],
-            'quantity' => ['required', 'numeric', 'min:0'],
+            'quantity' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
             'unit' => ['required', 'string', 'max:16'],
-            'unit_price' => ['required', 'numeric', 'min:0'],
-            'tax_rate' => ['required', 'numeric', 'min:0', 'max:100'],
-            'discount_percent' => ['required', 'numeric', 'min:0', 'max:100'],
-            'labor_hours_estimated' => ['nullable', 'numeric', 'min:0'],
+            'unit_price' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'tax_rate' => ['required', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'discount_percent' => ['required', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'labor_hours_estimated' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
             'assigned_technician_profile_id' => ['nullable', 'uuid'],
             'is_customer_supplied' => ['sometimes', 'boolean'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'quantity.regex' => 'Quantity must have at most 4 decimal places.',
+            'unit_price.regex' => 'Unit price must have at most 3 decimal places.',
+            'tax_rate.regex' => 'Tax rate must have at most 3 decimal places.',
+            'discount_percent.regex' => 'Discount percent must have at most 2 decimal places.',
+            'labor_hours_estimated.regex' => 'Labor hours must have at most 2 decimal places.',
         ];
     }
 }

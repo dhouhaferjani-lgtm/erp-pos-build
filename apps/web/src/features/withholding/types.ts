@@ -133,7 +133,9 @@ export interface WithholdingRule {
 
   // Rate
   rate: string;
-  rate_percentage: number;
+  // Emitted as a numeric-string by WithholdingRuleResource (precision contract:
+  // getRateAsPercentage() returns a bcmath string, no (float) launder).
+  rate_percentage: string;
 
   // Validity
   effective_from: string;

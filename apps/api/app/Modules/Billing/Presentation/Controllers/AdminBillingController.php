@@ -313,7 +313,7 @@ final class AdminBillingController extends Controller
             $provider = $this->providerManager->provider($payment->provider);
             $result = $provider->refund(
                 $payment->provider_payment_id ?? '',
-                new Money($amount, $payment->currency)
+                new Money((string) $amount, $payment->currency)
             );
 
             if (! $result->success) {

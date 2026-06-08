@@ -57,6 +57,16 @@ class RolesAndPermissionsSeeder extends Seeder
             'modifier-groups.view',
             'modifier-groups.manage',
 
+            // Product variants & attributes (T2)
+            'catalog.attributes.view',
+            'catalog.attributes.create',
+            'catalog.attributes.update',
+            'catalog.attributes.delete',
+            'catalog.variants.view',
+            'catalog.variants.create',
+            'catalog.variants.update',
+            'catalog.variants.delete',
+
             // Workshop Service Bundles (automotive menu pricing)
             'workshop-bundles.view',
             'workshop-bundles.manage',
@@ -121,6 +131,12 @@ class RolesAndPermissionsSeeder extends Seeder
             'inventory.adjust',
             'inventory.transfer',
             'inventory.receive',
+
+            // Stock Transfer (document-based, lifecycle-tracked)
+            'inventory.transfers.view',
+            'inventory.transfers.create',
+            'inventory.transfers.complete',
+            'inventory.transfers.cancel',
 
             'deliveries.view',
             'deliveries.create',
@@ -222,6 +238,7 @@ class RolesAndPermissionsSeeder extends Seeder
             // POS
             'pos.manage_terminals',
             'pos.operate_terminal',
+            'pos.audit_sync',
             'pos.manage_shifts',
             'pos.manage_tables',
             'pos.view_reports',
@@ -385,6 +402,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'invoices.view', 'invoices.create', 'invoices.update', 'invoices.post', 'invoices.print',
             'credit-notes.view', 'credit-notes.create', 'credit-notes.post',
             'inventory.view', 'inventory.adjust', 'inventory.transfer', 'inventory.receive',
+            'inventory.transfers.view', 'inventory.transfers.create', 'inventory.transfers.complete', 'inventory.transfers.cancel',
             'deliveries.view', 'deliveries.create', 'deliveries.edit', 'deliveries.delete', 'deliveries.confirm',
             'expenses.view', 'expenses.create', 'expenses.update', 'expenses.post',
             'expense-categories.view', 'expense-categories.create', 'expense-categories.update', 'expense-categories.delete',
@@ -410,7 +428,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'scheduling.appointments.update', 'scheduling.appointments.cancel',
             'scheduling.appointments.convert',
             'users.view',
-            'pos.manage_terminals', 'pos.operate_terminal', 'pos.manage_shifts', 'pos.manage_tables',
+            'pos.manage_terminals', 'pos.operate_terminal', 'pos.audit_sync', 'pos.manage_shifts', 'pos.manage_tables',
             'pos.view_reports', 'pos.generate_z_report', 'pos.void_receipts', 'pos.view_receipts', 'pos.process_returns',
             'pos.close_shift_with_variance',
             'pos.approve_credit_limit_override', 'pos.approve_account_status_override',
@@ -425,6 +443,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'settings.view', 'settings.manage',
             'composite-items.view', 'composite-items.create', 'composite-items.update', 'composite-items.delete', 'composite-items.manage-recipes',
             'modifier-groups.view', 'modifier-groups.manage',
+            'catalog.attributes.view', 'catalog.attributes.create', 'catalog.attributes.update', 'catalog.attributes.delete',
+            'catalog.variants.view', 'catalog.variants.create', 'catalog.variants.update', 'catalog.variants.delete',
             'workshop-bundles.view', 'workshop-bundles.manage',
             'menus.view', 'menus.manage',
             'promotions.view', 'promotions.manage',
@@ -469,7 +489,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'payments.view', 'payments.create',
             'instruments.view', 'instruments.create',
             'work-orders.view',
-            'pos.operate_terminal', 'pos.manage_shifts', 'pos.generate_z_report', 'pos.view_receipts',
+            'pos.operate_terminal', 'pos.audit_sync', 'pos.manage_shifts', 'pos.generate_z_report', 'pos.view_receipts',
             'pos.tolerance.apply',
             'pos_orders.view', 'pos_orders.create', 'pos_orders.update',
             'pos_held_orders.view', 'pos_held_orders.create', 'pos_held_orders.delete',

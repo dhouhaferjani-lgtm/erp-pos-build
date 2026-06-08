@@ -52,7 +52,7 @@ final class AddLineTest extends TestCase
         ));
 
         $this->assertSame(WorkOrderLineType::Part, $line->line_type);
-        $this->assertSame('2.000', $line->quantity);
+        $this->assertSame('2.0000', $line->quantity);
         $this->assertSame('100.000', $line->line_total_excl_tax);
         $this->assertSame('19.000', $line->line_total_tax);
         $this->assertSame('119.000', $line->line_total_incl_tax);

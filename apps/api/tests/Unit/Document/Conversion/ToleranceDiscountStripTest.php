@@ -8,6 +8,7 @@ use App\Enums\Vertical;
 use App\Models\Country;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
@@ -87,6 +88,9 @@ final class ToleranceDiscountStripTest extends TestCase
             'currency' => 'EUR',
             'status' => CompanyStatus::Active,
         ]);
+
+        // Bind CompanyContext so CurrencyScaleResolver has context during conversion
+        $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
 
         $this->customer = Partner::create([
             'tenant_id' => $this->tenant->id,

@@ -33,7 +33,7 @@ export function TerminalForm({
           name: terminal.name,
           location_id: terminal.location_id,
           description: terminal.description || undefined,
-          max_discount_percent: terminal.max_discount_percent ?? 100,
+          max_discount_percent: terminal.max_discount_percent != null ? Number(terminal.max_discount_percent) : 100,
           allow_line_discounts: terminal.allow_line_discounts ?? true,
           allow_transaction_discounts: terminal.allow_transaction_discounts ?? true,
         }

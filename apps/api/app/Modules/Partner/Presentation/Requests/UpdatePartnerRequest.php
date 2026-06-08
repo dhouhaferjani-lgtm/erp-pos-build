@@ -81,8 +81,8 @@ class UpdatePartnerRequest extends FormRequest
                 'min:1',
                 'max:365',
             ],
-            'credit_limit' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:99999999999.9999'],
-            'discount_percentage' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
+            'credit_limit' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:99999999999.9999', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'discount_percentage' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'invoice_consolidation' => ['sometimes', 'boolean'],
             'consolidation_frequency' => [
                 'sometimes',
@@ -97,6 +97,17 @@ class UpdatePartnerRequest extends FormRequest
             'state' => ['sometimes', 'nullable', 'string', 'max:100'],
             'postal_code' => ['sometimes', 'nullable', 'string', 'max:20'],
             'country' => ['sometimes', 'nullable', 'string', 'size:2'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'credit_limit.regex' => 'Credit limit must have at most 4 decimal places.',
+            'discount_percentage.regex' => 'Discount percentage must have at most 2 decimal places.',
         ];
     }
 

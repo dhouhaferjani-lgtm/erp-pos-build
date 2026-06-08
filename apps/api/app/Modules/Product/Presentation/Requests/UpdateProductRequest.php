@@ -49,9 +49,9 @@ class UpdateProductRequest extends FormRequest
             'type' => ['sometimes', 'nullable', new Enum(ProductType::class)],
             'is_physical' => ['sometimes', 'boolean'],
             'description' => ['sometimes', 'nullable', 'string', 'max:5000'],
-            'sale_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
-            'purchase_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
-            'tax_rate' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
+            'sale_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'purchase_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'tax_rate' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             // api.unmapped.011 (api.catalog): tax_configurations is a
             // country-scoped global reference table (no tenant_id /
             // company_id columns; partitioned by country_code). Cross-tenant
@@ -62,6 +62,8 @@ class UpdateProductRequest extends FormRequest
             // StoreCompositeItemRequest) closed via the same annotation.
             'default_tax_configuration_id' => ['sometimes', 'nullable', 'uuid', 'exists:tax_configurations,id'],
             'unit' => ['sometimes', 'nullable', 'string', 'max:50'],
+            // Unit of measure FK — drives quantity precision (decimals/step).
+            'unit_id' => ['sometimes', 'nullable', 'exists:units,id'],
             'barcode' => ['sometimes', 'nullable', 'string', 'max:100'],
             'is_active' => ['sometimes', 'boolean'],
             'oem_numbers' => ['sometimes', 'nullable', 'array'],
@@ -134,6 +136,18 @@ class UpdateProductRequest extends FormRequest
             'automotive_metadata.criteria.*.value' => ['required', 'string', 'max:500'],
             'automotive_metadata.criteria.*.unit' => ['nullable', 'string', 'max:20'],
             'automotive_metadata.criteria.*.sort_order' => ['nullable', 'integer', 'min:0'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'sale_price.regex' => 'Sale price must have at most 2 decimal places.',
+            'purchase_price.regex' => 'Purchase price must have at most 2 decimal places.',
+            'tax_rate.regex' => 'Tax rate must have at most 2 decimal places.',
         ];
     }
 }

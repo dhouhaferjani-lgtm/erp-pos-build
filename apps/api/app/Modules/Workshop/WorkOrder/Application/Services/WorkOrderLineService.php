@@ -64,7 +64,7 @@ final readonly class WorkOrderLineService
                 'display_name' => $command->display_name,
                 'sku_or_code' => $command->sku_or_code,
                 'description' => $command->description,
-                'quantity' => CurrencyScale::bcformat($command->quantity, 3),
+                'quantity' => CurrencyScale::bcformat($command->quantity, 4),
                 'unit' => $command->unit,
                 'unit_price' => CurrencyScale::bcformat($command->unit_price, $scale),
                 'tax_rate' => CurrencyScale::bcformat($command->tax_rate, 3),
@@ -118,7 +118,7 @@ final readonly class WorkOrderLineService
                 $line->description = $command->description;
             }
             if ($command->quantity !== null) {
-                $line->quantity = CurrencyScale::bcformat($command->quantity, 3);
+                $line->quantity = CurrencyScale::bcformat($command->quantity, 4);
             }
             if ($command->unit_price !== null) {
                 $line->unit_price = CurrencyScale::bcformat($command->unit_price, $scale);
@@ -251,7 +251,7 @@ final readonly class WorkOrderLineService
     private function recomputeLineMoney(WorkOrderLine $line, int $scale): void
     {
         /** @var numeric-string $qty */
-        $qty = CurrencyScale::bcformat($line->quantity, 3);
+        $qty = CurrencyScale::bcformat($line->quantity, 4);
         /** @var numeric-string $unit */
         $unit = CurrencyScale::bcformat($line->unit_price, $scale);
         /** @var numeric-string $discount */

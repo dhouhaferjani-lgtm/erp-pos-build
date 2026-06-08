@@ -104,7 +104,7 @@ final class DiscountController extends Controller
 
         $isAdmin = $discountUser->hasRole(['super_admin', 'admin']);
         $canUserDiscount = $isAdmin || $discountUser->can_discount;
-        $userMaxDiscountPercent = $isAdmin ? 100.0 : $discountUser->max_discount_percent;
+        $userMaxDiscountPercent = $isAdmin ? 100.0 : ($discountUser->max_discount_percent !== null ? (float) $discountUser->max_discount_percent : null);
 
         // Calculate effective limit (most restrictive)
         $effectiveLimit = $this->calculateEffectiveLimit($terminal, $discountUser, $isAdmin);
@@ -143,14 +143,14 @@ final class DiscountController extends Controller
             'items.*.product_id' => ['required', 'string'],
             'items.*.category_id' => ['nullable', 'string'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
-            'items.*.unit_price' => ['required', 'numeric', 'gte:0'],
-            'items.*.line_total' => ['required', 'numeric', 'gte:0'],
-            'subtotal' => ['required', 'numeric', 'gt:0'],
-            'manual_discount_amount' => ['nullable', 'numeric', 'gte:0'],
+            'items.*.unit_price' => ['required', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'items.*.line_total' => ['required', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'subtotal' => ['required', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'manual_discount_amount' => ['nullable', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'manual_discount_reason' => ['nullable', 'string', 'max:255'],
             'coupon_code' => ['nullable', 'string'],
             'customer_id' => ['nullable', 'string'],
-            'loyalty_discount_amount' => ['nullable', 'numeric', 'gte:0'],
+            'loyalty_discount_amount' => ['nullable', 'numeric', 'gte:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'loyalty_reward_id' => ['nullable', 'string'],
         ]);
 
@@ -212,11 +212,11 @@ final class DiscountController extends Controller
      */
     private function calculateEffectiveLimit(Terminal $terminal, User $user, bool $isAdmin): float
     {
-        // Terminal limit
-        $terminalLimit = $terminal->max_discount_percent;
+        // Terminal limit — decimal:2 cast returns string; convert for numeric comparison
+        $terminalLimit = (float) $terminal->max_discount_percent;
 
         // User limit (null means no individual limit, use terminal limit)
-        $userLimit = $isAdmin ? 100.0 : ($user->max_discount_percent ?? $terminalLimit);
+        $userLimit = $isAdmin ? 100.0 : ($user->max_discount_percent !== null ? (float) $user->max_discount_percent : $terminalLimit);
 
         // Return the most restrictive (minimum of the two)
         return min($terminalLimit, $userLimit);

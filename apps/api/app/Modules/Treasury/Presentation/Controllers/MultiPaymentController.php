@@ -36,7 +36,7 @@ class MultiPaymentController extends Controller
                 'required',
                 ScopedExists::tenantAndCompany('payment_methods', $tenantId, $companyId),
             ],
-            'splits.*.amount' => ['required', 'numeric', 'min:0.01'],
+            'splits.*.amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
             'splits.*.repository_id' => [
                 'nullable',
                 ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
@@ -46,6 +46,8 @@ class MultiPaymentController extends Controller
                 ScopedExists::tenantAndCompany('payment_instruments', $tenantId, $companyId),
             ],
             'splits.*.reference' => ['nullable', 'string', 'max:255'],
+        ], [
+            'splits.*.amount.regex' => 'Split amount must have at most 3 decimal places.',
         ]);
 
         /** @var Document $document */
@@ -94,7 +96,7 @@ class MultiPaymentController extends Controller
                 'required',
                 ScopedExists::tenantAndCompany('payment_methods', $tenantId, $companyId),
             ],
-            'amount' => ['required', 'numeric', 'min:0.01'],
+            'amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
             'currency' => ['required', 'string', 'size:3'],
             'repository_id' => [
                 'nullable',
@@ -106,6 +108,8 @@ class MultiPaymentController extends Controller
             ],
             'reference' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:500'],
+        ], [
+            'amount.regex' => 'Amount must have at most 3 decimal places.',
         ]);
 
         try {
@@ -149,7 +153,9 @@ class MultiPaymentController extends Controller
                 'required',
                 ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
             ],
-            'amount' => ['required', 'numeric', 'min:0.01'],
+            'amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
+        ], [
+            'amount.regex' => 'Amount must have at most 3 decimal places.',
         ]);
 
         /** @var Payment $payment */
@@ -247,10 +253,12 @@ class MultiPaymentController extends Controller
                 'required',
                 ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
             ],
-            'amount' => ['required', 'numeric', 'min:0.01'],
+            'amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
             'currency' => ['required', 'string', 'size:3'],
             'reference' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:500'],
+        ], [
+            'amount.regex' => 'Amount must have at most 3 decimal places.',
         ]);
 
         try {
@@ -333,8 +341,11 @@ class MultiPaymentController extends Controller
     {
         $request->validate([
             'splits' => 'required|array|min:2',
-            'splits.*.amount' => 'required|numeric|min:0.01',
-            'total_required' => 'required|numeric|min:0.01',
+            'splits.*.amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'total_required' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
+        ], [
+            'splits.*.amount.regex' => 'Split amount must have at most 3 decimal places.',
+            'total_required.regex' => 'Total required must have at most 3 decimal places.',
         ]);
 
         try {

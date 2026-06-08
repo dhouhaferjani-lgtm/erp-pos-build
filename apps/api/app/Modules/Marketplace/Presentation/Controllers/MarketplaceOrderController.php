@@ -28,7 +28,7 @@ class MarketplaceOrderController extends Controller
         $validated = $request->validate([
             'items' => ['required', 'array', 'min:1'],
             'items.*.listing_id' => ['required', 'string', 'uuid'],
-            'items.*.quantity' => ['required', 'numeric', 'min:0.01'],
+            'items.*.quantity' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,4})?$/'],
         ]);
 
         $company = $this->companyContext->requireCompany();

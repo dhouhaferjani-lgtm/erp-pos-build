@@ -46,7 +46,7 @@ export function WithholdingRuleFormModal({
         transaction_type: rule.transaction_type || undefined,
         partner_tax_status: rule.partner_tax_status || undefined,
         min_amount: rule.min_amount || '',
-        rate: rule.rate_percentage,
+        rate: Number(rule.rate_percentage),
         effective_from: rule.effective_from.split('T')[0],
         effective_to: rule.effective_to?.split('T')[0] || '',
         is_active: rule.is_active,

@@ -86,7 +86,7 @@ final class Refund extends Model
      */
     public function getAmountMoney(): Money
     {
-        return new Money((float) $this->amount, $this->currency);
+        return new Money((string) $this->amount, $this->currency);
     }
 
     /**

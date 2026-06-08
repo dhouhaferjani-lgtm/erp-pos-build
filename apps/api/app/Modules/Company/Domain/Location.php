@@ -30,6 +30,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $address_city City
  * @property string|null $address_postal_code Postal/ZIP code
  * @property string|null $address_country ISO 3166-1 alpha-2 country code
+ * @property string|null $tax_id Per-branch tax number override (null means inherit company)
+ * @property string|null $vat_number Per-branch VAT registration override (null means inherit company)
+ * @property array<string, mixed>|null $legal_identifiers Per-branch legal identifiers; null means inherit company
  * @property float|null $latitude Latitude coordinate
  * @property float|null $longitude Longitude coordinate
  * @property bool $is_default Whether this is the default location
@@ -78,6 +81,9 @@ class Location extends Model
         'address_city',
         'address_postal_code',
         'address_country',
+        'tax_id',
+        'vat_number',
+        'legal_identifiers',
         'latitude',
         'longitude',
         'is_default',
@@ -101,6 +107,7 @@ class Location extends Model
             'is_default' => 'boolean',
             'is_active' => 'boolean',
             'pos_enabled' => 'boolean',
+            'legal_identifiers' => 'array',
         ];
     }
 

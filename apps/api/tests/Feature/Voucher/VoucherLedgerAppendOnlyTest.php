@@ -8,6 +8,7 @@ use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
@@ -104,6 +105,9 @@ final class VoucherLedgerAppendOnlyTest extends TestCase
             'is_active' => true,
             'fiscal_schema_version' => 2,
         ]);
+
+        // Bind CompanyContext so CurrencyScaleResolver::getScale() resolves without throwing.
+        app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     /**

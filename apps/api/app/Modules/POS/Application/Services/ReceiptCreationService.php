@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Application\Services;
 
-use App\Modules\BatchExpiry\Application\Services\BatchStockService;
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
 use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\Modifier;
@@ -22,6 +23,7 @@ use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\POS\Application\Concerns\RoundsVat;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
@@ -64,11 +66,12 @@ use Illuminate\Support\Str;
  */
 final class ReceiptCreationService
 {
+    use RoundsVat;
+
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly ReceiptHashService $receiptHashService,
         private readonly FEFOInventoryService $fefoService,
-        private readonly BatchStockService $batchStockService,
         private readonly DiscountCalculationService $discountCalculationService,
         private readonly DiscountOrchestratorService $discountOrchestrator,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
@@ -83,7 +86,7 @@ final class ReceiptCreationService
      * Create a new POS receipt.
      *
      * @param  string  $terminalId  Terminal UUID or code
-     * @param  array<int, array{product_id?: string, composite_item_id?: string, quantity: string, unit_price: string, modifiers?: array<int, array{modifier_id: string, modifier_group_id: string, price_adjustment: string}>, discount_amount?: string, discount_type?: string, discount_percent?: string, discount_reason?: string, discount_authorized_by?: string}>  $lines
+     * @param  array<int, array{product_id?: string, variant_id?: string, composite_item_id?: string, quantity: string, unit_price: string, modifiers?: array<int, array{modifier_id: string, modifier_group_id: string, price_adjustment: string}>, discount_amount?: string, discount_type?: string, discount_percent?: string, discount_reason?: string, discount_authorized_by?: string}>  $lines
      * @param  string|null  $customerId  Optional partner ID
      * @param  string|null  $contactId  Optional contact ID
      * @param  string|null  $notes  Optional notes
@@ -320,6 +323,7 @@ final class ReceiptCreationService
                 $receiptLines[] = [
                     'line_number' => $index + 1,
                     'product_id' => $compositeItem !== null ? null : ($lineData['product_id'] ?? null),
+                    'variant_id' => $compositeItem !== null ? null : ($lineData['variant_id'] ?? null),
                     'composite_item_id' => $compositeItem !== null ? ($lineData['composite_item_id'] ?? null) : null,
                     'product_code' => $sellableCode,
                     'product_name' => $sellableName,
@@ -640,6 +644,10 @@ final class ReceiptCreationService
 
                 if ($lineData['product_id'] !== null) {
                     // Direct product line — decrement stock
+                    $lineVariantId = isset($lineData['variant_id']) && $lineData['variant_id'] !== ''
+                        ? (string) $lineData['variant_id']
+                        : null;
+
                     $movement = $this->decrementStock(
                         tenantId: $terminal->tenant_id,
                         companyId: $companyId,
@@ -648,9 +656,12 @@ final class ReceiptCreationService
                         quantity: $lineData['quantity'],
                         receiptId: $receipt->id,
                         cashierId: $shift->cashier_id,
+                        variantId: $lineVariantId,
                     );
 
-                    // Allocate batches using FEFO for batch-tracked products
+                    // Allocate batches using FEFO for batch-tracked products.
+                    // Thread variantId so variant-bearing batch sales consume only
+                    // variant-scoped batches (Task 18 — closes the null gap from Task 16b).
                     if ($movement !== null && $receiptLineModel !== null && $this->fefoService->productRequiresBatchTracking($lineData['product_id'])) {
                         $this->allocateBatches(
                             tenantId: $terminal->tenant_id,
@@ -660,6 +671,7 @@ final class ReceiptCreationService
                             receiptId: $receipt->id,
                             receiptLineId: $receiptLineModel->id,
                             movementId: $movement->id,
+                            variantId: $lineVariantId,
                         );
                     }
                 } elseif ($lineData['composite_item_id'] !== null) {
@@ -837,7 +849,17 @@ final class ReceiptCreationService
     }
 
     /**
-     * Decrement stock for a product at a location, with pessimistic lock.
+     * Decrement stock for a product (optionally a specific variant) at a location,
+     * with pessimistic lock.
+     *
+     * When `$variantId` is set the query scopes to the variant-scoped
+     * `stock_levels` row (`product_id + variant_id + location_id`).
+     * When null the query scopes to the product-level row
+     * (`product_id + variant_id IS NULL + location_id`) — matching the
+     * pre-variant behaviour exactly.
+     *
+     * The `variant_id` is threaded onto the `stock_movements` row so that
+     * downstream reporting can dimension by variant.
      *
      * Creates a StockMovement audit record.
      *
@@ -851,13 +873,20 @@ final class ReceiptCreationService
         string $quantity,
         string $receiptId,
         string $cashierId,
+        ?string $variantId = null,
     ): ?StockMovement {
-        /** @var StockLevel|null $stockLevel */
-        $stockLevel = StockLevel::where('product_id', $productId)
+        $stockLevelQuery = StockLevel::where('product_id', $productId)
             ->where('location_id', $locationId)
-            ->where('company_id', $companyId)
-            ->lockForUpdate()
-            ->first();
+            ->where('company_id', $companyId);
+
+        if ($variantId !== null) {
+            $stockLevelQuery->where('variant_id', $variantId);
+        } else {
+            $stockLevelQuery->whereNull('variant_id');
+        }
+
+        /** @var StockLevel|null $stockLevel */
+        $stockLevel = $stockLevelQuery->lockForUpdate()->first();
 
         if ($stockLevel === null) {
             // No stock record — skip stock decrement for products without inventory tracking
@@ -885,18 +914,24 @@ final class ReceiptCreationService
         $quantityBefore = $stockLevel->quantity;
         /** @var numeric-string $stockQty */
         $stockQty = $stockLevel->quantity;
-        $quantityAfter = bcsub($stockQty, $quantity, 2);
+        // stock_levels.quantity and pos_receipt_lines.quantity are stored at
+        // scale 4 (canonical quantity storage scale). Subtract at scale 4 so
+        // sub-centi quantities are not truncated to zero.
+        $quantityAfter = bcsub($stockQty, $quantity, 4); // 4 = canonical quantity storage scale
 
         // Update stock level
         $stockLevel->quantity = $quantityAfter;
         $stockLevel->save();
 
-        // Create stock movement audit record
+        // Create stock movement audit record.
+        // `variant_id` is written when set so downstream reporting can
+        // dimension by variant (Task 18). Column exists from Task 6.
         return StockMovement::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
             'product_id' => $productId,
+            'variant_id' => $variantId,
             'location_id' => $locationId,
             'movement_type' => MovementType::Issue,
             'reason' => MovementReason::POSSale,
@@ -910,22 +945,6 @@ final class ReceiptCreationService
             'user_id' => $cashierId,
             'is_historical' => false,
         ]);
-    }
-
-    /**
-     * Round VAT amount to match PostgreSQL: round((net_amount * tax_rate / 100)::numeric, 2).
-     *
-     * Uses PHP round() which matches PostgreSQL round() (half away from zero).
-     */
-    private function roundVat(string $netAmount, string $taxRate): string
-    {
-        // Use bcmath for intermediate precision, then PHP round() for half-away-from-zero (matching PostgreSQL)
-        $extraPrecision = $this->scale() + 4;
-        /** @var numeric-string $netAmount */
-        /** @var numeric-string $taxRate */
-        $raw = bcdiv(bcmul($netAmount, $taxRate, $extraPrecision), '100', $extraPrecision);
-
-        return CurrencyScale::bcformat((string) round((float) $raw, $this->scale()), $this->scale());
     }
 
     /**
@@ -1290,9 +1309,26 @@ final class ReceiptCreationService
     /**
      * Allocate batches using FEFO for a POS receipt line.
      *
-     * Creates ReceiptLineBatchAllocation records and deducts batch-level stock.
-     * If FEFO cannot fully fulfill, logs a warning but does not block the sale
-     * (aggregate stock check already passed).
+     * Atomically consumes batch-level stock (FEFO, row-locked via
+     * {@see FEFOInventoryService::consumeBatchesAtomically()}) and snapshots each
+     * consumed batch into a ReceiptLineBatchAllocation row for traceability.
+     *
+     * STRICT FULFILLMENT (§10.3): if batch stock cannot fully cover the line,
+     * InsufficientBatchStockException bubbles out of this method and aborts the
+     * surrounding receipt transaction BEFORE commit — the sale is rejected
+     * rather than committed with a silent batch shortfall. This replaces the old
+     * "log a warning and proceed" path, which let a batch-tracked sale commit
+     * even though no batch could be drawn down (a real concurrency hole when two
+     * cashiers received identical read-only FEFO suggestions).
+     *
+     * `$variantId` is threaded into `consumeBatchesAtomically` so that
+     * variant-bearing batch sales consume only variant-scoped batches
+     * (Task 18 — closes the null gap Task 16b left). When null, only
+     * product-level batches (variant_id IS NULL) are consumed.
+     *
+     * @param  numeric-string  $quantity  Line quantity to consume (decimal string)
+     *
+     * @throws InsufficientBatchStockException
      */
     private function allocateBatches(
         string $tenantId,
@@ -1302,46 +1338,30 @@ final class ReceiptCreationService
         string $receiptId,
         string $receiptLineId,
         string $movementId,
+        ?string $variantId = null,
     ): void {
-        $result = $this->fefoService->suggestBatchesForSale(
-            $productId,
-            $locationId,
-            (float) $quantity,
+        $result = $this->fefoService->consumeBatchesAtomically(
+            tenantId: $tenantId,
+            productId: $productId,
+            locationId: $locationId,
+            quantity: $quantity,
+            movementId: $movementId,
+            strictFulfillment: true,
+            variantId: $variantId,
         );
 
-        if ($result->hasShortfall()) {
-            Log::warning('POS batch allocation shortfall - global stock passed but batch stock insufficient', [
-                'product_id' => $productId,
-                'location_id' => $locationId,
-                'requested' => $quantity,
-                'fulfilled' => $result->getSuggestedQuantity(),
-                'shortfall' => $result->shortfall,
-                'receipt_id' => $receiptId,
-            ]);
-        }
+        foreach ($result->consumed as $consumedBatch) {
+            $batch = Batch::find($consumedBatch->batchId);
 
-        foreach ($result->suggestions as $suggestion) {
-            /** @var numeric-string $batchQty */
-            $batchQty = (string) $suggestion->quantity;
-
-            // Create allocation record (snapshot batch info for traceability)
+            // Create allocation record (snapshot batch info for traceability).
             ReceiptLineBatchAllocation::create([
                 'receipt_id' => $receiptId,
                 'receipt_line_id' => $receiptLineId,
-                'batch_id' => $suggestion->batch->id,
-                'quantity' => $batchQty,
-                'batch_number' => $suggestion->batch->batch_number,
-                'expiry_date' => $suggestion->batch->expiry_date,
+                'batch_id' => $consumedBatch->batchId,
+                'quantity' => $consumedBatch->quantityConsumed,
+                'batch_number' => $batch?->batch_number,
+                'expiry_date' => $consumedBatch->expiryDate,
             ]);
-
-            // Deduct batch-level stock
-            $this->batchStockService->issueBatchStock(
-                tenantId: $tenantId,
-                batchId: (int) $suggestion->batch->id,
-                locationId: $locationId,
-                quantity: $batchQty,
-                movementId: $movementId,
-            );
         }
     }
 }
