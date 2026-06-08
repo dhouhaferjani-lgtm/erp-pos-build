@@ -46,6 +46,18 @@
       "addLine": "Ajouter une ligne",
       "removeLine": "Retirer la ligne"
     },
+    "batch": {
+      "column": "Lots",
+      "action": "Lots et péremption",
+      "allocated": "{{count}} lot",
+      "allocated_other": "{{count}} lots",
+      "title": "Affectation lots et péremption",
+      "fefoHint": "FEFO propose d'abord la date de péremption la plus proche.",
+      "quantityFor": "Quantité depuis {{batch}}",
+      "statusLabel": "Statut",
+      "availableLabel": "Disponible",
+      "required": "Sélectionnez les lots pour chaque produit suivi par lot."
+    },
     "distribution": {
       "pro_rata_value": "Pro-rata sur la valeur",
       "pro_rata_quantity": "Pro-rata sur la quantité",

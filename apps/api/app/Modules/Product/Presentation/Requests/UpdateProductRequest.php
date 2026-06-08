@@ -62,6 +62,8 @@ class UpdateProductRequest extends FormRequest
             // StoreCompositeItemRequest) closed via the same annotation.
             'default_tax_configuration_id' => ['sometimes', 'nullable', 'uuid', 'exists:tax_configurations,id'],
             'unit' => ['sometimes', 'nullable', 'string', 'max:50'],
+            // Unit of measure FK — drives quantity precision (decimals/step).
+            'unit_id' => ['sometimes', 'nullable', 'exists:units,id'],
             'barcode' => ['sometimes', 'nullable', 'string', 'max:100'],
             'is_active' => ['sometimes', 'boolean'],
             'oem_numbers' => ['sometimes', 'nullable', 'array'],

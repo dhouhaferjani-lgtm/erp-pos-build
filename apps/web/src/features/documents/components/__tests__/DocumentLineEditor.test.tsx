@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { DocumentLineEditor, type DocumentLine } from '../DocumentLineEditor'
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
@@ -16,10 +16,11 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
       const originalName = params?.['originalName']
+      const originalNameText = typeof originalName === 'string' ? originalName : ''
       const map: Record<string, string> = {
         // DesignationCell keys
         'documents:lines.designation.editAriaLabel': 'Edit designation',
-        'documents:lines.designation.overriddenTooltip': `Designation overridden — original: ${String(originalName ?? '')}`,
+        'documents:lines.designation.overriddenTooltip': `Designation overridden — original: ${originalNameText}`,
         'documents:lines.designation.resetLink': 'Reset to product name',
         'documents:lines.designation.resetAriaLabel': 'Reset designation to product name',
         'documents:lines.designation.resetDisabledTooltip': 'Product no longer exists',
@@ -209,5 +210,73 @@ describe('DocumentLineEditor — designation cells', () => {
       wrapper: createWrapper(),
     })
     expect(screen.getByRole('status')).toBeInTheDocument()
+  })
+
+  it('keeps subtotal, tax, and total calculations stable', () => {
+    render(
+      <DocumentLineEditor
+        lines={[
+          makeLine({
+            id: 'line-a',
+            quantity: 2,
+            unit_price: 10,
+            tax_rate: 20,
+            line_total: 24,
+          }),
+          makeLine({
+            id: 'line-b',
+            quantity: 3,
+            unit_price: 5,
+            tax_rate: 10,
+            line_total: 16.5,
+          }),
+        ]}
+        onChange={onChange}
+      />,
+      { wrapper: createWrapper() },
+    )
+
+    expect(screen.getByText('€35.00')).toBeInTheDocument()
+    expect(screen.getByText('€5.50')).toBeInTheDocument()
+    expect(screen.getByText('€40.50')).toBeInTheDocument()
+  })
+
+  it('recalculates a line total when quantity changes', async () => {
+    const user = userEvent.setup()
+    const line = makeLine({
+      quantity: 2,
+      unit_price: 10,
+      tax_rate: 20,
+      line_total: 24,
+    })
+
+    function ControlledEditor() {
+      const [currentLines, setCurrentLines] = useState<DocumentLine[]>([line])
+      return (
+        <DocumentLineEditor
+          lines={currentLines}
+          onChange={(nextLines) => {
+            onChange(nextLines)
+            setCurrentLines(nextLines)
+          }}
+        />
+      )
+    }
+
+    render(<ControlledEditor />, {
+      wrapper: createWrapper(),
+    })
+
+    const quantityInput = screen.getAllByRole('spinbutton')[0]
+    await user.clear(quantityInput)
+    const rerenderedQuantityInput = screen.getAllByRole('spinbutton')[0]
+    await user.type(rerenderedQuantityInput, '3')
+
+    expect(onChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        quantity: 3,
+        line_total: 36,
+      }),
+    ])
   })
 })

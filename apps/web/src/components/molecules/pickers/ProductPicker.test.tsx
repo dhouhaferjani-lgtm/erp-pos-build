@@ -1,7 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { ProductPicker, type ProductPickerValue } from './ProductPicker'
 
 const mockApiGet = vi.hoisted(() => vi.fn<(url: string) => unknown>())
@@ -34,6 +36,7 @@ const oilFilter: ProductPickerValue = {
   name: 'Filtre à huile standard',
   sale_price: '25.000',
   currency: 'TND',
+  requires_batch_tracking: true,
 }
 const brakePad: ProductPickerValue = {
   id: '22222222-2222-4222-8222-222222222222',
@@ -42,10 +45,47 @@ const brakePad: ProductPickerValue = {
   sale_price: '95.000',
   currency: 'TND',
 }
+const pieceProduct: ProductPickerValue = {
+  id: '33333333-3333-4333-8333-333333333333',
+  sku: 'PCS-001',
+  name: 'Piece product',
+  sale_price: null,
+  currency: null,
+  quantity_decimals: 0,
+}
+
+function setTenant(tenantId: string, companyId: string) {
+  useAuthStore.setState({
+    user: {
+      id: 'user-1',
+      name: 'Test User',
+      email: 'user@example.test',
+      tenant_id: tenantId,
+      roles: [],
+      email_verified_at: null,
+    },
+    token: 'token',
+    isAuthenticated: true,
+    isLoading: false,
+  })
+  useCompanyStore.setState({ currentCompanyId: companyId, companies: [], isLoading: false })
+}
+
+function resetTenant() {
+  useAuthStore.setState({ user: null, token: null, isAuthenticated: false, isLoading: false })
+  useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
+}
 
 describe('ProductPicker', () => {
   beforeEach(() => {
     mockApiGet.mockReset()
+    setTenant('tenant-1', 'company-1')
+  })
+
+  afterEach(() => {
+    act(() => {
+      resetTenant()
+    })
   })
 
   it('renders a combobox when no value is set', () => {
@@ -139,10 +179,34 @@ describe('ProductPicker', () => {
     await waitFor(() => {
       expect(screen.getAllByRole('option').length).toBeGreaterThan(0)
     })
-    ;(combo as HTMLInputElement).focus()
+    if (!(combo instanceof HTMLInputElement)) {
+      throw new Error('Expected ProductPicker combobox to render an input element')
+    }
+    combo.focus()
     await user.keyboard('{ArrowDown}{Enter}')
 
     expect(onChange).toHaveBeenCalledWith(oilFilter)
+  })
+
+  it('preserves the batch-tracking flag from product list results', async () => {
+    mockApiGet.mockResolvedValue(response([oilFilter]))
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    renderWithProviders(<ProductPicker value={null} onChange={onChange} />)
+
+    const combo = screen.getByRole('combobox')
+    await user.click(combo)
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('option').length).toBeGreaterThan(0)
+    })
+    ;(combo as HTMLInputElement).focus()
+    await user.keyboard('{ArrowDown}{Enter}')
+
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      id: oilFilter.id,
+      requires_batch_tracking: true,
+    }))
   })
 
   it('renders the selected value chip and clears it via the X button', async () => {
@@ -153,5 +217,42 @@ describe('ProductPicker', () => {
     expect(screen.getByText(/Filtre à huile standard/i)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /clear selection/i }))
     expect(onChange).toHaveBeenCalledWith(null)
+  })
+
+  it('preserves product quantity decimals when selecting an option', async () => {
+    mockApiGet.mockResolvedValue(response([pieceProduct]))
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    renderWithProviders(<ProductPicker value={null} onChange={onChange} />)
+
+    await user.click(screen.getByRole('combobox'))
+    await user.click(await screen.findByRole('option', { name: /PCS-001.*Piece product/ }))
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: pieceProduct.id,
+        quantity_decimals: 0,
+      }),
+    )
+  })
+
+  it('refetches open results when the active company changes', async () => {
+    mockApiGet.mockResolvedValue(response([pieceProduct]))
+    const user = userEvent.setup()
+    renderWithProviders(<ProductPicker value={null} onChange={() => undefined} />)
+
+    await user.click(screen.getByRole('combobox'))
+
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledTimes(1)
+    })
+
+    act(() => {
+      setTenant('tenant-1', 'company-2')
+    })
+
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledTimes(2)
+    })
   })
 })
