@@ -725,8 +725,11 @@ jobs:
     runs-on: ubuntu-latest
     # Gate 1 (TS fixture-integrity) and Gate 2 (cross-language fixture sync)
     # live in apps/pos. This job is the merge gate that runs them.
-    # Heavy job: only on PR→main, push→main, or manual workflow_dispatch.
-    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    # Runs on EVERY pull request (not just PR→main): POS regressions reached
+    # dev unverified (e.g. PR #177's CustomerAttachPanel break) because this was
+    # previously main-only. POS Vitest is cheap (~2 min) and also catches POS
+    # breakage caused by shared-package changes outside apps/pos.
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     defaults:
       run:
         working-directory: apps/pos
