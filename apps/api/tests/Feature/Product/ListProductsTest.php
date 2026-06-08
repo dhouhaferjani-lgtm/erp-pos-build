@@ -162,6 +162,31 @@ class ListProductsTest extends TestCase
             ->assertJsonPath('data.quantity_decimals', 0);
     }
 
+    public function test_create_resolves_unit_id_from_unit_string(): void
+    {
+        // A product created via the API with only the free-text unit (no
+        // unit_id) should still resolve its unit-of-measure so quantity
+        // precision applies — not silently fall back to 4 decimals.
+        Unit::factory()
+            ->tenant($this->tenant->id)
+            ->create([
+                'code' => 'BX',
+                'name' => 'Box',
+                'symbol' => 'bx',
+                'decimal_places' => 0,
+            ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'Boxed Product',
+                'sku' => 'BOX-RESOLVE-001',
+                'unit' => 'BX',
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.quantity_decimals', 0);
+    }
+
     public function test_list_is_paginated(): void
     {
         for ($i = 1; $i <= 25; $i++) {
