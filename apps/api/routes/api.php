@@ -12,6 +12,7 @@ use App\Modules\Billing\Presentation\Controllers\AdminBillingController;
 use App\Modules\Billing\Presentation\Controllers\StripeWebhookController;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+use App\Modules\Tenant\Presentation\Controllers\TenantHealthController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -81,6 +82,7 @@ Route::prefix('v1')->group(function (): void {
                 Route::get('/queues', [MonitoringController::class, 'queues']);
                 Route::get('/dashboard', [MonitoringController::class, 'dashboard']);
                 Route::post('/test-sentry', [MonitoringController::class, 'testSentry']);
+                Route::get('/tenants', [TenantHealthController::class, 'index']);
 
                 // Queue management
                 Route::post('/failed-jobs/{id}/retry', [MonitoringController::class, 'retryFailedJob']);
