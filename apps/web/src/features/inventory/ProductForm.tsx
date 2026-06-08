@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Plus, X, Image, Layers } from 'lucide-react'
+import { ArrowLeft, Plus, X, Layers } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost, apiPatch } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
@@ -329,7 +329,7 @@ export function ProductForm() {
           {t('actions.back')}
         </Link>
         <h1 className="text-2xl font-bold text-gray-900">
-          {isEditing ? t('actions.edit') : t('actions.add')} Product
+          {isEditing ? t('inventory:products.edit') : t('inventory:products.new')}
         </h1>
       </div>
 
@@ -347,17 +347,17 @@ export function ProductForm() {
 
         {/* Basic Information */}
         <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Basic Information</h2>
+          <h2 className="mb-4 text-lg font-semibold text-gray-900">{t('inventory:products.sections.basicInfo')}</h2>
           <div className="grid gap-6 sm:grid-cols-2">
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                Name *
+                {t('inventory:products.name')} *
               </label>
               <input
                 type="text"
                 id="name"
                 {...register('name', {
-                  required: 'Name is required',
+                  required: t('inventory:products.nameRequired'),
                   onChange: () => {
                     setPrefilledFields((prev) => {
                       if (!prev.has('name')) return prev
@@ -376,12 +376,12 @@ export function ProductForm() {
 
             <div>
               <label htmlFor="sku" className="block text-sm font-medium text-gray-700">
-                SKU *
+                {t('inventory:products.sku')} *
               </label>
               <input
                 type="text"
                 id="sku"
-                {...register('sku', { required: 'SKU is required' })}
+                {...register('sku', { required: t('inventory:products.skuRequired') })}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
               {errors.sku && (
@@ -419,13 +419,13 @@ export function ProductForm() {
 
             <div>
               <label htmlFor="unit" className="block text-sm font-medium text-gray-700">
-                Unit
+                {t('inventory:products.unit')}
               </label>
               <input
                 type="text"
                 id="unit"
                 {...register('unit')}
-                placeholder="pcs, kg, hours..."
+                placeholder={t('inventory:products.unitPlaceholder')}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
@@ -465,13 +465,13 @@ export function ProductForm() {
                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <label htmlFor="is_active" className="text-sm font-medium text-gray-700">
-                Active
+                {t('active')}
               </label>
             </div>
 
             <div className="sm:col-span-2">
               <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                Description
+                {t('inventory:products.description')}
               </label>
               <textarea
                 id="description"
@@ -494,11 +494,11 @@ export function ProductForm() {
 
         {/* Pricing */}
         <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Pricing</h2>
+          <h2 className="mb-4 text-lg font-semibold text-gray-900">{t('inventory:products.sections.pricing')}</h2>
           <div className="grid gap-6 sm:grid-cols-3">
             <div>
               <label htmlFor="sale_price" className="block text-sm font-medium text-gray-700">
-                Sale Price
+                {t('inventory:products.salePrice')}
               </label>
               <div className="relative mt-1">
                 <span className="absolute inset-y-0 start-0 flex items-center ps-3 text-gray-500">
@@ -518,7 +518,7 @@ export function ProductForm() {
             {isEditing && product && (
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Cost (WAC)
+                  {t('inventory:products.costWac')}
                 </label>
                 <div className="relative mt-1">
                   <span className="absolute inset-y-0 start-0 flex items-center ps-3 text-gray-500">
@@ -532,7 +532,7 @@ export function ProductForm() {
                   />
                 </div>
                 <p className="mt-1 text-xs text-gray-500">
-                  Automatically calculated from purchase operations
+                  {t('inventory:products.costWacHelper')}
                 </p>
               </div>
             )}
@@ -551,12 +551,12 @@ export function ProductForm() {
         {/* Automotive Information - Otospex only */}
         {isOtospex && (
           <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="mb-4 text-lg font-semibold text-gray-900">Automotive Information</h2>
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">{t('inventory:products.sections.automotiveInfo')}</h2>
 
             {/* OEM Numbers */}
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                OEM Numbers
+                {t('inventory:products.oemNumbers')}
               </label>
               <div className="flex gap-2">
                 <input
@@ -564,7 +564,7 @@ export function ProductForm() {
                   value={oemInput}
                   onChange={(e) => { setOemInput(e.target.value) }}
                   onKeyDown={handleOemKeyDown}
-                  placeholder="Enter OEM number"
+                  placeholder={t('inventory:products.oemPlaceholder')}
                   className="flex-1 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
                 <button
@@ -573,7 +573,7 @@ export function ProductForm() {
                   className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                   <Plus className="h-4 w-4" />
-                  Add
+                  {t('actions.add')}
                 </button>
               </div>
               {oemNumbers.length > 0 && (
@@ -600,7 +600,7 @@ export function ProductForm() {
             {/* Cross References */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Cross References
+                {t('inventory:products.crossReferences')}
               </label>
               <div className="space-y-2">
                 {crossRefFields.map((field, index) => (
@@ -609,14 +609,14 @@ export function ProductForm() {
                       type="text"
                       // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
                       {...register(`cross_references.${index}.brand` as const)}
-                      placeholder="Brand"
+                      placeholder={t('inventory:products.brand')}
                       className="flex-1 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                     <input
                       type="text"
                       // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
                       {...register(`cross_references.${index}.reference` as const)}
-                      placeholder="Reference"
+                      placeholder={t('inventory:products.reference')}
                       className="flex-1 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                     <button
@@ -635,7 +635,7 @@ export function ProductForm() {
                 className="mt-2 inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
               >
                 <Plus className="h-4 w-4" />
-                Add Cross Reference
+                {t('inventory:products.addCrossReference')}
               </button>
             </div>
           </div>
@@ -650,13 +650,10 @@ export function ProductForm() {
           />
         )}
 
-        {/* Product Images Section - Only when editing */}
+        {/* Product Images Section - Only when editing. ProductImageSection
+            renders its own (translated) section header. */}
         {isEditing && id && (
           <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <div className="mb-4 flex items-center gap-2">
-              <Image className="h-5 w-5 text-gray-400" />
-              <h2 className="text-lg font-semibold text-gray-900">Product Images</h2>
-            </div>
             <ProductImageSection productId={id} />
           </div>
         )}
