@@ -4,6 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useDebouncedValue } from '@/lib/hooks'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
 
 /**
@@ -18,6 +21,8 @@ export interface ProductPickerValue {
   name: string
   sale_price?: string | null
   currency?: string | null
+  quantity_decimals?: number | null
+  requires_batch_tracking?: boolean
 }
 
 interface ProductPickerProps {
@@ -42,6 +47,8 @@ interface ProductListItem {
   name: string
   sale_price?: string | null
   currency?: string | null
+  quantity_decimals?: number | null
+  requires_batch_tracking?: boolean
 }
 
 interface ProductListResponse {
@@ -60,6 +67,12 @@ function toValue(item: ProductListItem): ProductPickerValue {
   if (item.currency !== undefined && item.currency !== null) {
     value.currency = item.currency
   }
+  if (item.quantity_decimals !== undefined && item.quantity_decimals !== null) {
+    value.quantity_decimals = item.quantity_decimals
+  }
+  if (item.requires_batch_tracking !== undefined) {
+    value.requires_batch_tracking = item.requires_batch_tracking
+  }
   return value
 }
 
@@ -77,21 +90,29 @@ export function ProductPicker({
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const listboxId = useId()
+  const inputId = useId()
 
   const [query, setQuery] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
   const debouncedQuery = useDebouncedValue(query, 250)
 
-  const searchEnabled = isOpen && debouncedQuery.trim().length >= 2
-  const queryKey = ['pickers', 'product', productType, debouncedQuery] as const
+  // Fetch whenever the dropdown is open so the user sees products immediately,
+  // before typing — matching the document line editor / product search select.
+  const listEnabled = isOpen && !disabled
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const trimmedQuery = debouncedQuery.trim()
+  const queryKey = tenantScopedKey(['pickers', 'product', productType, debouncedQuery])
 
   const { data, isLoading, isError } = useQuery({
     queryKey,
-    enabled: searchEnabled && !disabled,
+    enabled: listEnabled && tenantId !== null && companyId !== null,
     queryFn: async () => {
       const params = new URLSearchParams({ per_page: '20', is_active: 'true' })
-      params.set('search', debouncedQuery.trim())
+      if (trimmedQuery.length > 0) {
+        params.set('search', trimmedQuery)
+      }
       if (productType !== 'all') {
         params.set('type', productType)
       }
@@ -101,12 +122,13 @@ export function ProductPicker({
   })
 
   useEffect(() => {
-    setActiveIndex(-1)
-  }, [data])
-
-  useEffect(() => {
     function onClick(e: MouseEvent) {
-      if (containerRef.current !== null && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target
+      if (
+        target instanceof Node &&
+        containerRef.current !== null &&
+        !containerRef.current.contains(target)
+      ) {
         setIsOpen(false)
       }
     }
@@ -133,7 +155,7 @@ export function ProductPicker({
       setActiveIndex((i) => Math.max(i - 1, 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      const choice = results[activeIndex]
+      const choice = results.find((_product, idx) => idx === activeIndex)
       if (choice !== undefined) {
         onChange(choice)
         setQuery('')
@@ -149,59 +171,73 @@ export function ProductPicker({
   const effectiveLabel = label ?? t('product.label')
   const testIdAttr = testId ?? 'product-picker'
 
+  // Rendered identically in both selected and unselected states so the control
+  // keeps the same vertical footprint and stays aligned with sibling fields
+  // (e.g. the quantity column on the stock-transfer line).
+  const labelNode =
+    effectiveLabel !== '' ? (
+      <label htmlFor={inputId} className={tokens.label.base}>
+        {effectiveLabel}
+        {required ? <span className={tokens.label.required}> *</span> : null}
+      </label>
+    ) : null
+
   if (value !== null) {
     return (
-      <div
-        ref={containerRef}
-        className={`flex items-center gap-2 rounded-md border ${borderColors.default} bg-white px-3 py-2`}
-        data-testid={testIdAttr}
-      >
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className={`${tokens.table.cellMonoBadge}`}>{value.sku}</span>
-            <span className={`truncate text-sm font-medium ${textColors.primary}`}>{value.name}</span>
-          </div>
-        </div>
-        <button
-          type="button"
-          className={`${textColors.tertiary} ${textColors.hoverPrimary}`}
-          aria-label={t('common.clear')}
-          disabled={disabled}
-          onClick={() => {
-            onChange(null)
-            setQuery('')
-          }}
+      <div ref={containerRef} className="relative" data-testid={testIdAttr}>
+        {labelNode}
+        <div
+          className={`flex items-center gap-2 rounded-md border ${borderColors.default} bg-white px-3 py-2`}
         >
-          <X className="h-4 w-4" aria-hidden />
-        </button>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className={`${tokens.table.cellMonoBadge} max-w-24 truncate whitespace-nowrap`}>
+                {value.sku}
+              </span>
+              <span className={`truncate text-sm font-medium ${textColors.primary}`}>{value.name}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className={`${textColors.tertiary} ${textColors.hoverPrimary}`}
+            aria-label={t('common.clear')}
+            disabled={disabled}
+            onClick={() => {
+              onChange(null)
+              setQuery('')
+              setActiveIndex(-1)
+            }}
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
       </div>
     )
   }
 
   return (
     <div ref={containerRef} className="relative" data-testid={testIdAttr}>
-      {effectiveLabel !== '' ? (
-        <label className={tokens.label.base}>
-          {effectiveLabel}
-          {required ? <span className={tokens.label.required}> *</span> : null}
-        </label>
-      ) : null}
+      {labelNode}
       <input
         ref={inputRef}
+        id={inputId}
         type="text"
         role="combobox"
         aria-expanded={isOpen}
         aria-controls={listboxId}
         aria-autocomplete="list"
+        aria-label={effectiveLabel !== '' ? effectiveLabel : effectivePlaceholder}
         className={tokens.input.base}
         placeholder={effectivePlaceholder}
         value={query}
         disabled={disabled}
         onChange={(e) => {
           setQuery(e.target.value)
+          setActiveIndex(-1)
           setIsOpen(true)
         }}
         onFocus={() => {
+          setActiveIndex(-1)
           setIsOpen(true)
         }}
         onKeyDown={handleKeyDown}
@@ -212,11 +248,7 @@ export function ProductPicker({
           role="listbox"
           className={`absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border ${borderColors.light} bg-white py-1 shadow-lg`}
         >
-          {!searchEnabled ? (
-            <div className={`px-3 py-2 text-xs ${textColors.tertiary}`}>
-              {t('common.minCharacters')}
-            </div>
-          ) : isLoading ? (
+          {isLoading ? (
             <div className={`px-3 py-2 text-sm ${textColors.tertiary}`}>{t('common.loading')}</div>
           ) : isError ? (
             <div className={`px-3 py-2 text-sm ${textColors.error}`}>{t('common.error')}</div>
@@ -240,10 +272,13 @@ export function ProductPicker({
                   onClick={() => {
                     onChange(product)
                     setQuery('')
+                    setActiveIndex(-1)
                     setIsOpen(false)
                   }}
                 >
-                  <span className={tokens.table.cellMonoBadge}>{product.sku}</span>
+                  <span className={`${tokens.table.cellMonoBadge} max-w-24 truncate whitespace-nowrap`}>
+                    {product.sku}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <div className={`truncate text-sm font-medium ${textColors.primary}`}>
                       {product.name}

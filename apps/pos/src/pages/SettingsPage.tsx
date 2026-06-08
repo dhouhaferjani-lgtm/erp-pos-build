@@ -11,6 +11,7 @@ import { useOperatorStore } from '@/stores/operatorStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { Modal } from '@/components/pos/Modal';
 import { teardownPosSessionStores } from '@/lib/session/teardownPosSession';
+import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
 import { isManagerRole } from '@/lib/auth/roles';
 import {
   discoverPrinters,
@@ -612,7 +613,20 @@ export function SettingsPage() {
                     type="button"
                     onClick={() => {
                       if (window.confirm(t('terminal.changeTerminalConfirm'))) {
+                        // Task 7 (audit): pos.terminal_change. Capture the
+                        // previous terminal id BEFORE reset() clears it; emit
+                        // fire-and-forget so the change is never blocked.
+                        const previousTerminalId =
+                          useTerminalStore.getState().terminal?.id ?? null;
                         useTerminalStore.getState().reset();
+                        if (previousTerminalId) {
+                          void recordAuditEvent({
+                            type: 'pos.terminal_change',
+                            aggregateType: 'Terminal',
+                            aggregateId: previousTerminalId,
+                            payload: { previous_terminal_id: previousTerminalId },
+                          }).catch(() => {});
+                        }
                         navigate('/');
                       }
                     }}

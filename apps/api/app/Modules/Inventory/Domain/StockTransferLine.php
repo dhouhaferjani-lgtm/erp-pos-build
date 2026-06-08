@@ -7,9 +7,11 @@ namespace App\Modules\Inventory\Domain;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -27,6 +29,7 @@ use Illuminate\Support\Carbon;
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read Product $product
+ * @property-read Collection<int, StockTransferLineBatchAllocation> $batchAllocations
  */
 class StockTransferLine extends Model
 {
@@ -86,5 +89,13 @@ class StockTransferLine extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    /**
+     * @return HasMany<StockTransferLineBatchAllocation, $this>
+     */
+    public function batchAllocations(): HasMany
+    {
+        return $this->hasMany(StockTransferLineBatchAllocation::class, 'stock_transfer_line_id');
     }
 }

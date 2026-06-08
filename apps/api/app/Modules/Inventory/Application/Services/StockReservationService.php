@@ -11,8 +11,11 @@ use App\Modules\Inventory\Application\Contracts\InventoryReservationServiceInter
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Inventory\Domain\Events\ReservationCreated;
+use App\Modules\Inventory\Domain\Events\ReservationCreatedV2;
 use App\Modules\Inventory\Domain\Events\ReservationExpired;
+use App\Modules\Inventory\Domain\Events\ReservationExpiredV2;
 use App\Modules\Inventory\Domain\Events\ReservationReleased;
+use App\Modules\Inventory\Domain\Events\ReservationReleasedV2;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockReservation;
 use App\Modules\Product\Domain\Product;
@@ -161,6 +164,24 @@ class StockReservationService implements InventoryReservationServiceInterface
                     createdBy: (string) $reservation->created_by,
                     createdAt: $reservation->created_at?->toIso8601String() ?? now()->toIso8601String(),
                 ));
+
+                // V2 dual-dispatch (variant-aware). variant_id is read from the
+                // reservation row (null until reserve() is wired to set it).
+                event(new ReservationCreatedV2(
+                    reservationId: (string) $reservation->id,
+                    companyId: $company->id,
+                    productId: $reservation->product_id,
+                    locationId: $reservation->location_id,
+                    quantity: (string) $reservation->quantity,
+                    sourceType: $reservation->source_type->value,
+                    sourceId: $reservation->source_id,
+                    sourceLineId: $reservation->source_line_id,
+                    expiresAt: $reservation->expires_at?->toIso8601String(),
+                    priority: $reservation->priority,
+                    createdBy: (string) $reservation->created_by,
+                    createdAt: $reservation->created_at?->toIso8601String() ?? now()->toIso8601String(),
+                    variantId: $reservation->variant_id,
+                ));
             });
 
             return $reservation;
@@ -224,6 +245,21 @@ class StockReservationService implements InventoryReservationServiceInterface
                     releaseReason: $reason->value,
                     releasedBy: $releasedBy ?? (string) auth()->id(),
                     releasedAt: $reservation->released_at?->toIso8601String() ?? now()->toIso8601String(),
+                ));
+
+                // V2 dual-dispatch (variant-aware).
+                event(new ReservationReleasedV2(
+                    reservationId: (string) $reservation->id,
+                    companyId: $reservation->company_id,
+                    productId: $reservation->product_id,
+                    locationId: $reservation->location_id,
+                    quantity: (string) $reservation->quantity,
+                    sourceType: $reservation->source_type->value,
+                    sourceId: $reservation->source_id,
+                    releaseReason: $reason->value,
+                    releasedBy: $releasedBy ?? (string) auth()->id(),
+                    releasedAt: $reservation->released_at?->toIso8601String() ?? now()->toIso8601String(),
+                    variantId: $reservation->variant_id,
                 ));
             });
         });
@@ -329,6 +365,20 @@ class StockReservationService implements InventoryReservationServiceInterface
                         sourceId: $reservation->source_id,
                         originalExpiresAt: $reservation->expires_at?->toIso8601String() ?? '',
                         expiredAt: $reservation->expired_at?->toIso8601String() ?? now()->toIso8601String(),
+                    ));
+
+                    // V2 dual-dispatch (variant-aware).
+                    event(new ReservationExpiredV2(
+                        reservationId: (string) $reservation->id,
+                        companyId: $reservation->company_id,
+                        productId: $reservation->product_id,
+                        locationId: $reservation->location_id,
+                        quantity: (string) $reservation->quantity,
+                        sourceType: $reservation->source_type->value,
+                        sourceId: $reservation->source_id,
+                        originalExpiresAt: $reservation->expires_at?->toIso8601String() ?? '',
+                        expiredAt: $reservation->expired_at?->toIso8601String() ?? now()->toIso8601String(),
+                        variantId: $reservation->variant_id,
                     ));
                 });
             });

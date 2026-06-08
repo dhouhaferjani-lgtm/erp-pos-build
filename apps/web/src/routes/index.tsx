@@ -194,6 +194,7 @@ const CompositeItemListPage = lazy(() => import('../features/catalog').then((m) 
 const CompositeItemFormPage = lazy(() => import('../features/catalog').then((m) => ({ default: m.CompositeItemFormPage })))
 const ModifierGroupListPage = lazy(() => import('../features/catalog').then((m) => ({ default: m.ModifierGroupListPage })))
 const ModifierGroupFormPage = lazy(() => import('../features/catalog').then((m) => ({ default: m.ModifierGroupFormPage })))
+const AttributeListPage = lazy(() => import('../features/catalog').then((m) => ({ default: m.AttributeListPage })))
 
 // Menu module
 const MenuListPage = lazy(() => import('../features/menu').then((m) => ({ default: m.MenuListPage })))
@@ -2111,6 +2112,16 @@ export function AppRoutes() {
               <RequirePermission permission="composite-items.view">
                 <SuspenseWrapper>
                   <MenuFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="attributes"
+            element={
+              <RequirePermission permission="catalog.attributes.view">
+                <SuspenseWrapper>
+                  <AttributeListPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

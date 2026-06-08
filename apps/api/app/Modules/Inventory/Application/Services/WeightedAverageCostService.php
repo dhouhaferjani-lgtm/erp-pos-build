@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Enums\TransferStatus;
 use App\Modules\Inventory\Domain\Events\StockMovementRecorded;
+use App\Modules\Inventory\Domain\Events\StockMovementRecordedV2;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
@@ -134,6 +135,7 @@ class WeightedAverageCostService
      * @param  string|null  $reference  Human-readable reference (e.g., "PO-2025-001")
      * @param  string|null  $referenceType  Type of source document (e.g., "Document")
      * @param  string|null  $referenceId  UUID of source document for audit trail
+     * @param  string|null  $variantId  Variant UUID when the line is for a specific variant; null = product-level stock
      */
     public function recordPurchase(
         Product $product,
@@ -142,18 +144,27 @@ class WeightedAverageCostService
         float $landedUnitCost,
         ?string $reference = null,
         ?string $referenceType = null,
-        ?string $referenceId = null
+        ?string $referenceId = null,
+        ?string $variantId = null,
     ): StockMovement {
-        return DB::transaction(function () use ($product, $location, $quantity, $landedUnitCost, $reference, $referenceType, $referenceId): StockMovement {
-            return $this->costLock->acquire($product->tenant_id, $product->company_id, [$product->id], function () use ($product, $location, $quantity, $landedUnitCost, $reference, $referenceType, $referenceId): StockMovement {
-                // Lock stock level first to prevent concurrent modifications.
-                // company_id added to the tuple (api.inventory.032) so the lock
-                // cannot be satisfied by a StockLevel row from another company
-                // even if product_id + location_id happen to collide cross-company.
+        return DB::transaction(function () use ($product, $location, $quantity, $landedUnitCost, $reference, $referenceType, $referenceId, $variantId): StockMovement {
+            return $this->costLock->acquire($product->tenant_id, $product->company_id, [$product->id], function () use ($product, $location, $quantity, $landedUnitCost, $reference, $referenceType, $referenceId, $variantId): StockMovement {
+                // Lock the variant-scoped physical stock_level row first to prevent
+                // concurrent modifications. company_id is in the tuple
+                // (api.inventory.032) so the lock cannot be satisfied by a row from
+                // another company even if product_id + location_id collide
+                // cross-company. variant_id (Task 20) scopes the lock to the
+                // correct row: a variant line must not land on the product-level
+                // row (variant_id IS NULL).
                 $stockLevel = StockLevel::where('product_id', $product->id)
                     ->where('location_id', $location->id)
                     ->where('tenant_id', $product->tenant_id)
                     ->where('company_id', $product->company_id)
+                    ->when(
+                        $variantId !== null,
+                        fn ($q) => $q->where('variant_id', $variantId),
+                        fn ($q) => $q->whereNull('variant_id'),
+                    )
                     ->lockForUpdate()
                     ->first();
 
@@ -161,6 +172,7 @@ class WeightedAverageCostService
                     $stockLevel = StockLevel::create([
                         'id' => Str::uuid()->toString(),
                         'product_id' => $product->id,
+                        'variant_id' => $variantId,
                         'location_id' => $location->id,
                         'tenant_id' => $product->tenant_id,
                         'company_id' => $location->company_id,
@@ -171,17 +183,21 @@ class WeightedAverageCostService
 
                 $working = $this->workingScale();
 
-                // Company-OWNED quantity is the WAC blend basis: cost is
-                // company-wide per product (one company-level accounting cost),
-                // so the purchase blend must run against every owned unit, not
-                // just the receiving location's quantity — otherwise the running
-                // cost would depend on which location got the goods, and would
-                // diverge from recordCostAdjustment during an in-transit window.
-                // "Owned" = on-hand (every stock_level row) + in-transit (units
-                // that left a source but aren't yet received, in no stock_level
-                // row). The shared helper row-locks the stock_level rows
-                // (canonical order: advisory held -> stock_level rows FOR UPDATE
-                // -> product row LAST) BEFORE the product row is locked below.
+                // WAC is product-grain (LOCKED spec §6.7 Option C): variants share
+                // one company-wide product cost, so the blend denominator must NOT
+                // be scoped by variant_id (that would shard the average per variant
+                // — the Task 20 regression). The canonical denominator is dev's
+                // shared companyOwnedQuantity() helper: it row-locks EVERY
+                // stock_level row for the product (across all variant rows AND all
+                // locations) and sums them, then adds in-transit (units that left a
+                // source but aren't yet received, in no stock_level row). Using the
+                // single shared helper — instead of an inline location-scoped sum —
+                // keeps recordPurchase/recordReturn/recordCostAdjustment agreeing on
+                // ONE denominator even during an in-transit window, and the FOR
+                // UPDATE row-locks (vs an unlocked ->sum()) stop a concurrent
+                // lock-free sale on a sibling variant/location row making the
+                // denominator stale. Canonical order holds: advisory (already held)
+                // -> stock_level rows (inside the helper) -> product row (below).
                 $companyQty = CurrencyScale::bcformat(
                     $this->companyOwnedQuantity($product->id, $product->tenant_id, $product->company_id),
                     4
@@ -202,15 +218,14 @@ class WeightedAverageCostService
                 // working precision. No native float math touches WAC.
                 $quantityStr = CurrencyScale::bcformat($quantity, 4);
                 $landedUnitCostStr = CurrencyScale::bcformat($landedUnitCost, $working);
-                // Receiving location qty (drives the stock_level row update only).
-                $currentQty = CurrencyScale::bcformat($stockLevel->quantity, 4);
                 $currentCostPrice = CurrencyScale::bcformat($product->cost_price ?? '0', $working);
-                // WAC blend basis is the COMPANY-WIDE on-hand value, not the
-                // single receiving location's value.
+                // WAC blend basis is the COMPANY-WIDE owned value (on-hand across
+                // every variant row + all locations + in-transit), not the single
+                // receiving variant row's value. The receiving variant row's own
+                // quantity is tracked separately below as $stockLevelQtyBefore for
+                // the physical row update + movement before/after.
                 $currentValue = bcmul($companyQty, $currentCostPrice, $working);
 
-                // Receiving location's new qty (only this row's quantity changes).
-                $newQty = bcadd($currentQty, $quantityStr, 4);
                 // Company-wide qty/value AFTER the incoming quantity — the blend
                 // denominator and numerator.
                 // precision-ok: quantities carry the canonical 4-dp quantity scale.
@@ -228,18 +243,27 @@ class WeightedAverageCostService
                     ? CurrencyScale::bcformat(bcdiv($newValue, $newCompanyQty, $working), $costScale)
                     : CurrencyScale::bcformat('0', $costScale);
 
-                // Record movement (cost ledger stored at the internal COST_SCALE).
-                // quantity_before/after track the RECEIVING location's row.
+                // The variant row's OWN running quantity drives the physical stock
+                // update below and the movement before/after; only the WAC formula
+                // uses the product-grain company-owned total above.
+                $stockLevelQtyBefore = CurrencyScale::bcformat($stockLevel->quantity, 4);
+                $stockLevelQtyAfter = bcadd($stockLevelQtyBefore, $quantityStr, 4); // precision-ok: quantity is decimal(15,4), canonical scale 4
+
+                // Record movement (cost ledger stored at the internal COST_SCALE;
+                // variant_id threaded from the receipt line — Task 20).
                 $movement = StockMovement::create([
                     'id' => Str::uuid()->toString(),
                     'tenant_id' => $product->tenant_id,
                     'product_id' => $product->id,
+                    'variant_id' => $variantId,
                     'location_id' => $location->id,
                     'company_id' => $location->company_id,
                     'movement_type' => MovementType::Receipt,
                     'quantity' => $quantityStr,
-                    'quantity_before' => $currentQty,
-                    'quantity_after' => $newQty,
+                    // before/after reflect the variant-scoped physical row, not the
+                    // product-grain WAC aggregate.
+                    'quantity_before' => $stockLevelQtyBefore,
+                    'quantity_after' => $stockLevelQtyAfter,
                     'unit_cost' => CurrencyScale::bcformat($landedUnitCostStr, $costScale),
                     'total_cost' => CurrencyScale::bcformat(bcmul($quantityStr, $landedUnitCostStr, $working), $costScale),
                     'avg_cost_before' => CurrencyScale::bcformat($currentCostPrice, $costScale),
@@ -249,8 +273,8 @@ class WeightedAverageCostService
                     'reference_id' => $referenceId,
                 ]);
 
-                // Update stock level
-                $stockLevel->quantity = $newQty;
+                // Update the variant-scoped physical stock_level row.
+                $stockLevel->quantity = $stockLevelQtyAfter;
                 $stockLevel->save();
 
                 // Update product cost at the internal COST_SCALE (no boundary truncation).
@@ -832,6 +856,27 @@ class WeightedAverageCostService
             unitCost: (string) $movement->unit_cost,
             totalCost: (string) $movement->total_cost,
             newStockLevel: $newStockLevel,
+            reference: $movement->reference,
+            referenceType: $movement->reference_type,
+            referenceId: $movement->reference_id,
+            occurredAt: now()->toIso8601String(),
+        ));
+
+        // V2 dual-dispatch (variant-aware). The variant is read from the
+        // persisted movement row (variant_id is written by Task 15/Task 20); it
+        // may be null for product-level movements, which is expected.
+        event(new StockMovementRecordedV2(
+            movementId: $movement->id,
+            tenantId: $product->tenant_id,
+            companyId: $product->company_id,
+            productId: $product->id,
+            locationId: $location->id,
+            movementType: $movementType,
+            quantity: (string) $movement->quantity,
+            unitCost: (string) $movement->unit_cost,
+            totalCost: (string) $movement->total_cost,
+            newStockLevel: $newStockLevel,
+            variantId: $movement->variant_id,
             reference: $movement->reference,
             referenceType: $movement->reference_type,
             referenceId: $movement->reference_id,

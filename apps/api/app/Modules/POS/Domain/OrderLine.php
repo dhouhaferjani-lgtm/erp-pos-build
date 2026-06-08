@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property string $order_id
  * @property int $line_number
  * @property string $product_id
+ * @property string|null $variant_id
  * @property string $product_name
  * @property string|null $variant_name
  * @property string|null $barcode
@@ -56,6 +57,7 @@ class OrderLine extends Model
         'order_id',
         'line_number',
         'product_id',
+        'variant_id',
         'product_name',
         'variant_name',
         'barcode',

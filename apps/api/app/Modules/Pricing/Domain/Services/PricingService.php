@@ -9,6 +9,7 @@ use App\Modules\Pricing\Domain\PriceList;
 use App\Modules\Pricing\Domain\PriceListItem;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\ProductVariantLookup;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -17,6 +18,7 @@ class PricingService
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly CompanyContext $companyContext,
+        private readonly ProductVariantLookup $variantLookup,
     ) {}
 
     private function scale(): int
@@ -25,7 +27,18 @@ class PricingService
     }
 
     /**
-     * Get price for a product based on partner, quantity, and date.
+     * Get price for a product based on partner, quantity, date, and optional variant.
+     *
+     * Resolution order (spec §5.3 / §9.2 — LOCKED — DO NOT REORDER):
+     *   1. Variant price_override      (when $variantId given and override is set)
+     *   2. Partner price list, variant-specific
+     *   3. Partner price list, variant-agnostic
+     *   4. Default price list, variant-specific
+     *   5. Default price list, variant-agnostic
+     *   6. Product sale_price fallback
+     *
+     * Backward compat: callers that do not pass $variantId (null) behave exactly
+     * as before — step 1 is skipped, price-list lookups use variant-agnostic rows.
      *
      * @return array{price: string, source: string, price_list_id: string|null}
      */
@@ -34,13 +47,28 @@ class PricingService
         ?string $partnerId = null,
         string $quantity = '1.00',
         string $currency = 'USD',
-        ?\DateTimeInterface $date = null
+        ?\DateTimeInterface $date = null,
+        ?string $variantId = null,
     ): array {
         $date = $date ?? now();
 
-        // 1. Try partner-specific price list
+        // Step 1 — Variant price_override (spec §5.3 step 1).
+        // Only attempted when a variantId is provided AND the variant exists
+        // with a non-null priceOverride. Uses bcmath: no float comparisons.
+        if ($variantId !== null) {
+            $variant = $this->variantLookup->findById($variantId);
+            if ($variant !== null && $variant->priceOverride !== null) {
+                return [
+                    'price' => $variant->priceOverride,
+                    'source' => 'variant_override',
+                    'price_list_id' => null,
+                ];
+            }
+        }
+
+        // Steps 2–3 — Partner price list (variant-specific, then variant-agnostic).
         if ($partnerId !== null) {
-            $partnerPrice = $this->getPartnerPrice($partnerId, $productId, $quantity, $currency, $date);
+            $partnerPrice = $this->getPartnerPrice($partnerId, $productId, $quantity, $currency, $date, $variantId);
             if ($partnerPrice !== null) {
                 return [
                     'price' => $partnerPrice['price'],
@@ -50,8 +78,8 @@ class PricingService
             }
         }
 
-        // 2. Try default price list for currency
-        $defaultPrice = $this->getDefaultPriceListPrice($productId, $quantity, $currency, $date);
+        // Steps 4–5 — Default price list (variant-specific, then variant-agnostic).
+        $defaultPrice = $this->getDefaultPriceListPrice($productId, $quantity, $currency, $date, $variantId);
         if ($defaultPrice !== null) {
             return [
                 'price' => $defaultPrice['price'],
@@ -60,7 +88,7 @@ class PricingService
             ];
         }
 
-        // 3. Fall back to product base price
+        // Step 6 — Product sale_price fallback.
         // api.pricing.001: tenant-scope Product fallback. The controller-tier
         // validator now also rejects cross-tenant product_id with ScopedExists,
         // but service-direct callers (queue jobs, cross-module orchestrators)
@@ -80,6 +108,10 @@ class PricingService
     /**
      * Get partner-specific price.
      *
+     * Iterates partner price lists in priority order. For each list, tries a
+     * variant-specific row first (when $variantId is given), then falls back
+     * to a variant-agnostic row — per spec §5.3 / §9.2.
+     *
      * @return array{price: string, price_list_id: string}|null
      */
     private function getPartnerPrice(
@@ -87,7 +119,8 @@ class PricingService
         string $productId,
         string $quantity,
         string $currency,
-        \DateTimeInterface $date
+        \DateTimeInterface $date,
+        ?string $variantId = null,
     ): ?array {
         // api.pricing round-2 (Opus Finding 3): partner_price_lists has no
         // tenant_id column; the transitive scope on partner_id is enforced
@@ -107,19 +140,19 @@ class PricingService
             ->where('price_lists.currency', $currency)
             ->where('price_lists.tenant_id', $company->tenant_id)
             ->where('price_lists.company_id', $company->id)
-            ->where(function ($query) use ($date) {
+            ->where(function ($query) use ($date): void {
                 $query->whereNull('partner_price_lists.valid_from')
                     ->orWhere('partner_price_lists.valid_from', '<=', $date);
             })
-            ->where(function ($query) use ($date) {
+            ->where(function ($query) use ($date): void {
                 $query->whereNull('partner_price_lists.valid_until')
                     ->orWhere('partner_price_lists.valid_until', '>=', $date);
             })
-            ->where(function ($query) use ($date) {
+            ->where(function ($query) use ($date): void {
                 $query->whereNull('price_lists.valid_from')
                     ->orWhere('price_lists.valid_from', '<=', $date);
             })
-            ->where(function ($query) use ($date) {
+            ->where(function ($query) use ($date): void {
                 $query->whereNull('price_lists.valid_until')
                     ->orWhere('price_lists.valid_until', '>=', $date);
             })
@@ -127,9 +160,10 @@ class PricingService
             ->select('price_lists.id')
             ->pluck('id');
 
-        // Try each price list in priority order
+        // Try each price list in priority order.
+        // Within each list: variant-specific row first, then variant-agnostic.
         foreach ($partnerPriceLists as $priceListId) {
-            $price = $this->getPriceFromList((string) $priceListId, $productId, $quantity);
+            $price = $this->getPriceFromList((string) $priceListId, $productId, $quantity, $variantId);
             if ($price !== null) {
                 return [
                     'price' => $price,
@@ -144,13 +178,16 @@ class PricingService
     /**
      * Get price from default price list.
      *
+     * Prefers variant-specific row over variant-agnostic row — per spec §5.3 / §9.2.
+     *
      * @return array{price: string, price_list_id: string}|null
      */
     private function getDefaultPriceListPrice(
         string $productId,
         string $quantity,
         string $currency,
-        \DateTimeInterface $date
+        \DateTimeInterface $date,
+        ?string $variantId = null,
     ): ?array {
         // api.pricing round-2 (Opus Finding 2): pre-fix this picked an
         // arbitrary same-currency default price list ACROSS ALL TENANTS
@@ -166,11 +203,11 @@ class PricingService
             ->where('currency', $currency)
             ->where('is_default', true)
             ->where('is_active', true)
-            ->where(function ($query) use ($date) {
+            ->where(function ($query) use ($date): void {
                 $query->whereNull('valid_from')
                     ->orWhere('valid_from', '<=', $date);
             })
-            ->where(function ($query) use ($date) {
+            ->where(function ($query) use ($date): void {
                 $query->whereNull('valid_until')
                     ->orWhere('valid_until', '>=', $date);
             })
@@ -182,7 +219,7 @@ class PricingService
 
         /** @var string $priceListId */
         $priceListId = $priceList->id;
-        $price = $this->getPriceFromList($priceListId, $productId, $quantity);
+        $price = $this->getPriceFromList($priceListId, $productId, $quantity, $variantId);
 
         if ($price === null) {
             return null;
@@ -195,21 +232,51 @@ class PricingService
     }
 
     /**
-     * Get price from specific price list with quantity breaks
+     * Get price from a specific price list with quantity breaks.
+     *
+     * When $variantId is provided, tries the variant-specific row first
+     * (price_list_items.variant_id = $variantId). Falls back to the
+     * variant-agnostic row (variant_id IS NULL) at the same min_quantity tier.
+     * When $variantId is null, only the variant-agnostic row is searched
+     * (backward-compatible behaviour for existing callers).
      */
-    private function getPriceFromList(string $priceListId, string $productId, string $quantity): ?string
-    {
-        $items = PriceListItem::where('price_list_id', $priceListId)
+    private function getPriceFromList(
+        string $priceListId,
+        string $productId,
+        string $quantity,
+        ?string $variantId = null,
+    ): ?string {
+        // Step A: variant-specific lookup (only when variantId given).
+        if ($variantId !== null) {
+            $variantItem = PriceListItem::where('price_list_id', $priceListId)
+                ->where('product_id', $productId)
+                ->where('variant_id', $variantId)
+                ->where('min_quantity', '<=', $quantity)
+                ->where(function ($query) use ($quantity): void {
+                    $query->whereNull('max_quantity')
+                        ->orWhere('max_quantity', '>=', $quantity);
+                })
+                ->orderBy('min_quantity', 'desc')
+                ->first();
+
+            if ($variantItem !== null) {
+                return $variantItem->price;
+            }
+        }
+
+        // Step B: variant-agnostic fallback (always tried; is the only path when variantId is null).
+        $agnosticItem = PriceListItem::where('price_list_id', $priceListId)
             ->where('product_id', $productId)
+            ->whereNull('variant_id')
             ->where('min_quantity', '<=', $quantity)
-            ->where(function ($query) use ($quantity) {
+            ->where(function ($query) use ($quantity): void {
                 $query->whereNull('max_quantity')
                     ->orWhere('max_quantity', '>=', $quantity);
             })
             ->orderBy('min_quantity', 'desc')
             ->first();
 
-        return $items?->price;
+        return $agnosticItem?->price;
     }
 
     /**

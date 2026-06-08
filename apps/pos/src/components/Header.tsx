@@ -361,7 +361,7 @@ export function Header() {
   };
 
   function handleSwitchOperator() {
-    useCartStore.getState().clearCart();
+    useCartStore.getState().clearCart('operator_switch');
     useRefundFlowStore.getState().clearAll();
     useRefundDraftStore.getState().clearDraftState();
     usePaymentStore.getState().clearVoucherTenders();

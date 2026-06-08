@@ -44,7 +44,20 @@
       "quantity": "Quantity",
       "selectProduct": "Select a product",
       "addLine": "Add line",
-      "removeLine": "Remove line"
+      "removeLine": "Remove line",
+      "availableAtSource": "Available @ source"
+    },
+    "batch": {
+      "column": "Lots",
+      "action": "Lots and expiry",
+      "allocated": "{{count}} lot",
+      "allocated_other": "{{count}} lots",
+      "title": "Lot and expiry allocation",
+      "fefoHint": "FEFO defaults to earliest expiry first.",
+      "quantityFor": "Quantity from {{batch}}",
+      "statusLabel": "Status",
+      "availableLabel": "Available",
+      "required": "Select lots for every batch-tracked product."
     },
     "distribution": {
       "pro_rata_value": "Pro-rata by value",
@@ -59,7 +72,13 @@
       "quantityPositive": "Quantity must be greater than zero."
     },
     "success": "Transfer created and stock moved into in-transit.",
-    "error": "Could not create the transfer."
+    "error": "Could not create the transfer.",
+    "availability": {
+      "selectSource": "Select source",
+      "loading": "Checking...",
+      "error": "Unavailable",
+      "exceeds": "Exceeds source availability"
+    }
   },
   "detail": {
     "back": "Back to transfers",

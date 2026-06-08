@@ -34,6 +34,7 @@ export type PosAuditEventType =
   | 'pos.line_discount_applied'
   | 'pos.transaction_discount_applied'
   | 'pos.manager_override_denied'
+  | 'pos.manager_override_offline_approved'
   | 'pos.manager_pin_failed'
   // ── P1 — connectivity / fiscal integrity ──────────────────────────────
   | 'pos.went_offline'

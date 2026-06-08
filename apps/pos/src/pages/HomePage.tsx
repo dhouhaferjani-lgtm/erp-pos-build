@@ -4,7 +4,7 @@ import { useTerminalStore } from '@/stores/terminalStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useProductStore } from '@/stores/productStore';
-import { useCartStore, computeTaxAmount } from '@/stores/cartStore';
+import { useCartStore } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
 import type { AccountChargeOverrideApprovalInput } from '@/lib/accountCharge/accountChargeService';
 import { useHoldStore } from '@/stores/holdStore';
@@ -45,6 +45,7 @@ import { HeldTransactionsModal } from '@/components/organisms/HeldTransactionsMo
 import { DiscountModal } from '@/components/organisms/DiscountModal';
 import { LineDiscountModal } from '@/components/organisms/LineDiscountModal';
 import { ModifierSelectionModal } from '@/components/organisms/ModifierSelectionModal';
+import { VariantPickerModal } from '@/components/pos/VariantPickerModal';
 import { VoidReturnModal } from '@/components/organisms/VoidReturnModal';
 import { QuantityNumpad } from '@/components/organisms/QuantityNumpad';
 import { useSmartPromptsStore } from '@/stores/smartPromptsStore';
@@ -53,7 +54,7 @@ import { apiGet } from '@/lib/api';
 import { serializeErrorForLog } from '@/lib/errorLogging';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { ConsumptionMode } from '@/components/atoms/ConsumptionModeToggle';
-import type { POSProduct } from '@/types/product';
+import type { POSProduct, POSProductVariant } from '@/types/product';
 import type { SelectedModifier } from '@/types/cart';
 import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
 
@@ -82,7 +83,7 @@ async function lookupQrToken(receiptNumber: string, companyId: string | null): P
 
 export function HomePage() {
   const { t } = useTranslation();
-  const { decimals: currencyDecimals, currency } = useCurrency();
+  const { currency } = useCurrency();
   const { shift, terminal, openShift, isLoading: terminalLoading } = useTerminalStore();
   const hashChainReady = useTerminalStore((s) => s.hashChainReady);
   const operator = useOperatorStore((s) => s.operator);
@@ -210,6 +211,10 @@ export function HomePage() {
   // Modifier selection state
   const [modifierProduct, setModifierProduct] = useState<POSProduct | null>(null);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
+
+  // T2 — variant picker state: the product whose variants the cashier is
+  // currently choosing from (null when the picker is closed).
+  const [variantPickerProduct, setVariantPickerProduct] = useState<POSProduct | null>(null);
 
   // Consumption mode + table selection (F&B only)
   const [consumptionMode, setConsumptionMode] = useState<ConsumptionMode>('SUR_PLACE');
@@ -743,6 +748,12 @@ export function HomePage() {
 
   const handleAddToCart = useCallback(
     (product: POSProduct) => {
+      // T2 — variant-bearing products require the cashier to pick a specific
+      // variant before the line is added. Open the picker instead of adding.
+      if (product.has_variants) {
+        setVariantPickerProduct(product);
+        return;
+      }
       // Products with modifiers: quick-add with default selections
       if (product.modifier_groups && product.modifier_groups.length > 0) {
         addItemWithDefaults(product);
@@ -751,6 +762,15 @@ export function HomePage() {
       }
     },
     [addItem, addItemWithDefaults],
+  );
+
+  const handleVariantConfirm = useCallback(
+    (variant: POSProductVariant) => {
+      if (!variantPickerProduct) return;
+      addItem(variantPickerProduct, undefined, variant);
+      setVariantPickerProduct(null);
+    },
+    [variantPickerProduct, addItem],
   );
 
   const handleAddRecommendation = useCallback(
@@ -943,55 +963,23 @@ export function HomePage() {
   }, []);
 
   const handleRemoveLineDiscount = useCallback((itemId: string) => {
-    useCartStore.setState((state) => ({
-      items: state.items.map((item) => {
-        if (item.id !== itemId) return item;
-        const grossTotal = parseFloat(item.unit_price) * item.quantity;
-        return {
-          ...item,
-          discount_type: undefined,
-          discount_percent: undefined,
-	          discount_amount: undefined,
-	          discount_reason: undefined,
-	          discount_approval_evidence: undefined,
-	          line_total: grossTotal.toFixed(currencyDecimals),
-	          tax_amount: computeTaxAmount(grossTotal, item.tax_rate),
-	        };
-      }),
-    }));
-  }, [currencyDecimals]);
+    useCartStore.getState().removeLineDiscount(itemId);
+  }, []);
 
   const handleApplyLineDiscount = useCallback(
     (data: { type: 'percentage' | 'fixed'; value: string; reason: string; approvalEvidence?: PosOverrideEvidence }) => {
       if (!discountItemId) return;
 
-      useCartStore.setState((state) => ({
-        items: state.items.map((item) => {
-          if (item.id !== discountItemId) return item;
-          const grossTotal = parseFloat(item.unit_price) * item.quantity;
-          let discountAmount = 0;
-          if (data.type === 'percentage') {
-            discountAmount = (grossTotal * parseFloat(data.value)) / 100;
-          } else {
-            discountAmount = parseFloat(data.value);
-          }
-          const lineTotal = Math.max(0, grossTotal - discountAmount);
-          return {
-            ...item,
-            discount_type: data.type,
-            discount_percent: data.type === 'percentage' ? data.value : undefined,
-	            discount_amount: discountAmount.toFixed(currencyDecimals),
-	            discount_reason: data.reason || undefined,
-	            discount_approval_evidence: data.approvalEvidence,
-	            line_total: lineTotal.toFixed(currencyDecimals),
-            tax_amount: computeTaxAmount(lineTotal, item.tax_rate),
-          };
-        }),
-      }));
+      useCartStore.getState().applyLineDiscount(discountItemId, {
+        type: data.type,
+        value: data.value,
+        reason: data.reason,
+        approvalEvidence: data.approvalEvidence,
+      });
 
       setDiscountItemId(null);
     },
-    [discountItemId, currencyDecimals],
+    [discountItemId],
   );
 
   const handleQuantityTap = useCallback((itemId: string) => {
@@ -1018,7 +1006,8 @@ export function HomePage() {
 
   const handleNewSale = useCallback(() => {
     setShowSuccessModal(false);
-    clearCart();
+    // Checkout-success teardown — NOT a discard (no fraud signal).
+    clearCart('checkout');
     clearLastReceipt();
     setSelectedTableId(null);
 
@@ -1275,6 +1264,16 @@ export function HomePage() {
         onClose={() => { setModifierProduct(null); setEditingLineId(null); }}
         product={modifierProduct}
         onConfirm={handleModifierConfirm}
+      />
+
+      {/* T2 — variant picker: cashier taps a variant-bearing product, picks the
+          specific variant, and the confirmed variant is stamped onto the cart
+          line at the variant's price + identity. */}
+      <VariantPickerModal
+        isOpen={variantPickerProduct !== null}
+        onClose={() => setVariantPickerProduct(null)}
+        product={variantPickerProduct}
+        onConfirm={handleVariantConfirm}
       />
 
       {/* Void/Return modal */}

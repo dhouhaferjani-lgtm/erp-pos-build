@@ -41,6 +41,13 @@ class StoreStockTransferRequest extends FormRequest
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_id' => ['required', 'string', 'uuid', ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id)],
             'lines.*.quantity' => ['required', 'numeric', 'min:0.0001'],
+            'lines.*.batch_allocations' => ['nullable', 'array'],
+            'lines.*.batch_allocations.*.batch_id' => [
+                'required',
+                'integer',
+                Rule::exists('product_batches', 'id')->where('tenant_id', $company->tenant_id)->where('company_id', $company->id),
+            ],
+            'lines.*.batch_allocations.*.quantity' => ['required', 'numeric', 'min:0.0001'],
         ];
     }
 }

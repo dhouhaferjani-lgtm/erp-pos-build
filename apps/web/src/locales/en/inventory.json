@@ -111,6 +111,16 @@
     "isPhysical": "Physical Product",
     "isPhysicalHelper": "Uncheck for non-physical items (e.g., digital goods). Services should be created in the Services module.",
     "quickCreateNote": "This creates a basic product. Edit the product later to add more details.",
+    "nameRequired": "Name is required",
+    "skuRequired": "SKU is required",
+    "unitPlaceholder": "pcs, kg, hours...",
+    "costWac": "Cost (WAC)",
+    "costWacHelper": "Automatically calculated from purchase operations",
+    "oemPlaceholder": "Enter OEM number",
+    "addCrossReference": "Add Cross Reference",
+    "fields": {
+      "taxRate": "Tax Rate"
+    },
     "types": {
       "part": "Part",
       "service": "Service",

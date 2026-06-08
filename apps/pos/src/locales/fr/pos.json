@@ -298,6 +298,16 @@
     "customize": "Personnaliser",
     "selected": "Sélectionnés"
   },
+  "variants": {
+    "chooseVariant": "Choisir une variante",
+    "selectVariant": "Sélectionner une variante",
+    "addToCart": "Ajouter au panier",
+    "loading": "Chargement des variantes...",
+    "empty": "Aucune variante disponible",
+    "loadError": "Impossible de charger les variantes",
+    "inStock": "{{count}} en stock",
+    "outOfStock": "Rupture de stock"
+  },
   "reports": {
     "title": "Rapports",
     "xReport": "Rapport X",

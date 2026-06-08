@@ -35,7 +35,7 @@ export function CloseShiftModal({ isOpen, onClose, shift }: CloseShiftModalProps
     setClosing(true);
     try {
       await closeShift(actualCash);
-      useCartStore.getState().clearCart();
+      useCartStore.getState().clearCart('shift_close');
       useRefundFlowStore.getState().clearAll();
       useRefundDraftStore.getState().clearDraftState();
       usePaymentStore.getState().clearVoucherTenders();
