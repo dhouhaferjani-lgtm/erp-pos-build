@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiRequestError, apiPost } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
 import { getAllOperators, type CachedOperator } from '@/lib/db/repositories/operatorPinRepository';
@@ -93,7 +93,7 @@ describe('verifyScopedManagerPin — Task 11 pos.manager_override_denied', () =>
     recordAuditEvent.mockResolvedValue(undefined);
   });
 
-  it('emits on the scope-mismatch (no matching manager) branch with no secret', async () => {
+  it('emits on the scope-mismatch (no matching manager) branch with no_local_match kind + no secret', async () => {
     // Operator lacks the requested scope → verifyOfflineApprovalPin returns
     // scope_mismatch for everyone → matched === null.
     vi.mocked(getAllOperators).mockResolvedValue([
@@ -111,6 +111,7 @@ describe('verifyScopedManagerPin — Task 11 pos.manager_override_denied', () =>
     const payload = call!.payload as Record<string, unknown>;
     expect(payload.scope).toBe('discount_limit'); // mapped from discount_limit_override
     expect(payload.reason).toBe('High discount');
+    expect(payload.denied_kind).toBe('no_local_match');
     expect(payload).toHaveProperty('requested_amount', null);
     expect(payload).toHaveProperty('cart_total', null);
     // NO pin / NO hash.
@@ -121,7 +122,7 @@ describe('verifyScopedManagerPin — Task 11 pos.manager_override_denied', () =>
     expect(payload).not.toHaveProperty('hash');
   });
 
-  it('emits on the online 4xx rejection branch', async () => {
+  it('emits denied with server_rejected kind on the online 4xx (422) rejection branch', async () => {
     vi.mocked(getAllOperators).mockResolvedValue([operator()]);
     vi.mocked(apiPost).mockRejectedValue(
       new ApiRequestError(422, 'Invalid approval context', 'VALIDATION_ERROR'),
@@ -134,17 +135,51 @@ describe('verifyScopedManagerPin — Task 11 pos.manager_override_denied', () =>
     expect(call!.operatorId).toBe('supervisor-1');
     const payload = call!.payload as Record<string, unknown>;
     expect(payload.scope).toBe('discount_limit');
+    expect(payload.denied_kind).toBe('server_rejected');
     expect(JSON.stringify(payload)).not.toContain('1234');
   });
 
-  it('emits offline_approved (NOT denied) on a 5xx — offline-first fallback, server_error kind', async () => {
-    // Offline-is-really-first: a 5xx falls back to the local manager-PIN
-    // approval (terminal keeps working). The server-unconfirmed approval is
-    // recorded as pos.manager_override_offline_approved, never as a denial.
-    vi.mocked(getAllOperators).mockResolvedValue([operator()]);
-    vi.mocked(apiPost).mockRejectedValue(
-      new ApiRequestError(503, 'Service Unavailable', 'SERVICE_UNAVAILABLE'),
+  describe('reachable-but-erroring server (fake timers for retry backoff)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it.each([503, 408, 429])(
+      'emits denied with service_unavailable kind (NOT offline_approved) on a reachable-but-erroring %i, then rejects',
+      async (status) => {
+        // Anti-downgrade: a reachable server that keeps erroring FAILS CLOSED.
+        // It is recorded as a DENIAL (service_unavailable), never as an
+        // offline_approved fallback.
+        vi.mocked(getAllOperators).mockResolvedValue([operator()]);
+        vi.mocked(apiPost).mockRejectedValue(
+          new ApiRequestError(status, 'busy/erroring', 'ERR'),
+        );
+
+        const promise = verifyScopedManagerPin(input);
+        const assertion = expect(promise).rejects.toBeInstanceOf(ApiRequestError);
+        await vi.runAllTimersAsync();
+        await assertion;
+
+        expect(lastOfType('pos.manager_override_offline_approved')).toBeUndefined();
+        const call = lastDenied();
+        expect(call).toBeDefined();
+        expect(call!.operatorId).toBe('supervisor-1');
+        const payload = call!.payload as Record<string, unknown>;
+        expect(payload.scope).toBe('discount_limit');
+        expect(payload.denied_kind).toBe('service_unavailable');
+        expect(JSON.stringify(payload)).not.toContain('1234');
+      },
     );
+  });
+
+  it('emits offline_approved on a genuine transport failure — payload { scope, reason }, no degraded_kind, no denial', async () => {
+    // A non-ApiRequestError = network/transport down → offline-first local
+    // approval. NOT a denial; recorded as offline_approved (genuine offline).
+    vi.mocked(getAllOperators).mockResolvedValue([operator()]);
+    vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
 
     await expect(verifyScopedManagerPin(input)).resolves.toMatchObject({ id: 'supervisor-1' });
 
@@ -154,23 +189,8 @@ describe('verifyScopedManagerPin — Task 11 pos.manager_override_denied', () =>
     expect(call!.operatorId).toBe('supervisor-1');
     const payload = call!.payload as Record<string, unknown>;
     expect(payload.scope).toBe('discount_limit');
-    expect(payload.degraded_kind).toBe('server_error');
-    expect(JSON.stringify(payload)).not.toContain('1234');
-  });
-
-  it('emits offline_approved on a genuine transport failure — transport kind, no denial', async () => {
-    // A non-ApiRequestError = network/transport down → offline-first local
-    // approval. NOT a denial; recorded as offline_approved with transport kind.
-    vi.mocked(getAllOperators).mockResolvedValue([operator()]);
-    vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
-
-    await expect(verifyScopedManagerPin(input)).resolves.toMatchObject({ id: 'supervisor-1' });
-
-    expect(lastDenied()).toBeUndefined();
-    const call = lastOfType('pos.manager_override_offline_approved');
-    expect(call).toBeDefined();
-    const payload = call!.payload as Record<string, unknown>;
-    expect(payload.degraded_kind).toBe('transport');
+    expect(payload.reason).toBe('High discount');
+    expect(payload).not.toHaveProperty('degraded_kind');
     expect(JSON.stringify(payload)).not.toContain('1234');
   });
 
@@ -180,8 +200,6 @@ describe('verifyScopedManagerPin — Task 11 pos.manager_override_denied', () =>
 
     await verifyScopedManagerPin(input);
 
-    // Server-confirmed approval: neither a denial nor a server-unconfirmed
-    // (offline) approval should be emitted.
     expect(lastDenied()).toBeUndefined();
     expect(lastOfType('pos.manager_override_offline_approved')).toBeUndefined();
   });

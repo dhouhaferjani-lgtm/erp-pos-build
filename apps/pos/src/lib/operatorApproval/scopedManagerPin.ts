@@ -26,6 +26,35 @@ function toTaxonomyScope(scope: ApprovalScope): string {
   }
 }
 
+/**
+ * Anti-downgrade retry policy for the online manager-PIN verification.
+ *
+ * A reachable-but-erroring server (5xx / 408 / 429) is RETRYABLE up to a cap,
+ * then FAILS CLOSED — it must never silently downgrade to the local manager
+ * PIN (a forgeable weak factor). Only a GENUINELY-unreachable server (transport
+ * failure) may fall back offline.
+ */
+const MAX_ONLINE_RETRIES = 2; // 1 initial attempt + 2 retries = 3 attempts total.
+const RETRY_BACKOFF_MS = 400;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/**
+ * A reachable server that could not authorize: a 5xx, or a 408 (Request
+ * Timeout) / 429 (Too Many Requests). These are RETRYABLE — the server is up
+ * but transiently unable to decide. NOT an authorization rejection.
+ */
+function isRetryableServerError(error: unknown): error is ApiRequestError {
+  return (
+    error instanceof ApiRequestError &&
+    (error.status >= 500 || error.status === 408 || error.status === 429)
+  );
+}
+
 export interface ScopedManagerPinApprovalInput {
   pin: string;
   context: PosOverrideContext;
@@ -86,48 +115,118 @@ export async function verifyScopedManagerPin(
         requested_amount: null,
         cart_total: null,
         reason: input.reason,
+        denied_kind: 'no_local_match',
       },
     }).catch(() => {});
     throw new Error('manager_pin_scope_mismatch');
   }
 
-  try {
-    const online = await apiPost<VerifyManagerPinResponse>('/pos/verify-manager-pin', {
-      user_id: matched.id,
-      pin: input.pin,
-      company_id: input.context.companyId,
-      terminal_id: input.context.terminalId,
-      approval_scope: input.approvalScope,
-      target_event_type: input.targetEventType,
-      target_reference_id: input.targetReferenceId,
-      reason: input.reason,
-    });
+  // The local manager PIN matched. Now confirm with the server. The local match
+  // is offline-capable, but a manager PIN is a forgeable weak factor, so a
+  // REACHABLE server's decision is authoritative and must NOT be silently
+  // downgraded to PIN-only. Branching (anti-downgrade):
+  //
+  //   1. valid:true & user matches → server-confirmed approval. Emit nothing.
+  //   2. valid:false / user mismatch → throw 403 → explicit denial (case 3).
+  //   3. Explicit authorization denial (ApiRequestError, status < 500 and NOT
+  //      408/429, e.g. 403/422) → emit denied{server_rejected} + rethrow.
+  //      NO retry, NO local fallback.
+  //   4. Reachable-but-erroring (status >= 500 OR 408/429) → RETRYABLE up to a
+  //      cap. Exhausted → FAIL CLOSED: emit denied{service_unavailable} + throw
+  //      503. NO local fallback.
+  //   5. Genuine transport failure (non-ApiRequestError) → offline-first local
+  //      fallback (NO retry): emit offline_approved + return local approval.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const online = await apiPost<VerifyManagerPinResponse>('/pos/verify-manager-pin', {
+        user_id: matched.id,
+        pin: input.pin,
+        company_id: input.context.companyId,
+        terminal_id: input.context.terminalId,
+        approval_scope: input.approvalScope,
+        target_event_type: input.targetEventType,
+        target_reference_id: input.targetReferenceId,
+        reason: input.reason,
+      });
 
-    if (!online.valid || online.user_id !== matched.id) {
-      throw new ApiRequestError(
-        403,
-        online.failure_code ?? 'manager_pin_rejected',
-        online.failure_code ?? 'MANAGER_PIN_REJECTED',
-      );
-    }
+      if (!online.valid || online.user_id !== matched.id) {
+        // Case 2 → throw an explicit denial; caught and handled as case 3 below.
+        throw new ApiRequestError(
+          403,
+          online.failure_code ?? 'manager_pin_rejected',
+          online.failure_code ?? 'MANAGER_PIN_REJECTED',
+        );
+      }
 
-    return {
-      id: online.user_id,
-      name: online.user_name ?? matched.name,
-      roles: matched.roles,
-    };
-  } catch (error) {
-    // 4xx codes that mean "server busy / couldn't decide" (NOT an authorization
-    // rejection) → treat like a 5xx and fall back to the local approval.
-    const isServerBusy4xx =
-      error instanceof ApiRequestError && (error.status === 408 || error.status === 429);
+      // Case 1: server-confirmed approval.
+      return {
+        id: online.user_id,
+        name: online.user_name ?? matched.name,
+        roles: matched.roles,
+      };
+    } catch (error) {
+      // Case 4: reachable-but-erroring server → retry up to the cap.
+      if (isRetryableServerError(error)) {
+        if (attempt < MAX_ONLINE_RETRIES) {
+          await delay(RETRY_BACKOFF_MS);
+          continue;
+        }
+        // Retries exhausted → FAIL CLOSED. The server is reachable (it kept
+        // erroring) so we do NOT downgrade to the local PIN. Emit a denial
+        // (service_unavailable = possible downgrade-attempt / outage signal)
+        // and surface a service-unavailable error. NO pin/hash.
+        void recordAuditEvent({
+          type: 'pos.manager_override_denied',
+          aggregateType: 'Override',
+          aggregateId: input.context.terminalId,
+          tenantId: input.context.tenantId,
+          companyId: input.context.companyId,
+          operatorId: matched.id,
+          payload: {
+            scope: toTaxonomyScope(input.approvalScope),
+            requested_amount: null,
+            cart_total: null,
+            reason: input.reason,
+            denied_kind: 'service_unavailable',
+          },
+        }).catch(() => {});
+        throw new ApiRequestError(
+          503,
+          'manager_override_service_unavailable',
+          'MANAGER_OVERRIDE_SERVICE_UNAVAILABLE',
+        );
+      }
 
-    if (error instanceof ApiRequestError && error.status < 500 && !isServerBusy4xx) {
-      // The server gave an EXPLICIT non-approval (4xx: valid:false → 403, bad
-      // request 422, forbidden, …). The server is up and said no → DENY.
-      // Denied override → emit before rethrowing. NO pin/hash.
+      // Case 3: explicit authorization denial (ApiRequestError, status < 500
+      // and not the retryable 408/429). The server is up and said no → DENY.
+      // Emit before rethrowing. NO retry, NO local fallback. NO pin/hash.
+      if (error instanceof ApiRequestError) {
+        void recordAuditEvent({
+          type: 'pos.manager_override_denied',
+          aggregateType: 'Override',
+          aggregateId: input.context.terminalId,
+          tenantId: input.context.tenantId,
+          companyId: input.context.companyId,
+          operatorId: matched.id,
+          payload: {
+            scope: toTaxonomyScope(input.approvalScope),
+            requested_amount: null,
+            cart_total: null,
+            reason: input.reason,
+            denied_kind: 'server_rejected',
+          },
+        }).catch(() => {});
+        throw error;
+      }
+
+      // Case 5: genuine transport failure (non-ApiRequestError: network down /
+      // timeout / unreachable). The server is GENUINELY unreachable → fall back
+      // offline-first to the already-validated LOCAL manager PIN (NO retry).
+      // This bypassed the server's checks (caps, revocation), so it must be
+      // VISIBLE to fraud — emit pos.manager_override_offline_approved (NOT a
+      // denial). NO pin/hash.
       void recordAuditEvent({
-        type: 'pos.manager_override_denied',
+        type: 'pos.manager_override_offline_approved',
         aggregateType: 'Override',
         aggregateId: input.context.terminalId,
         tenantId: input.context.tenantId,
@@ -135,42 +234,14 @@ export async function verifyScopedManagerPin(
         operatorId: matched.id,
         payload: {
           scope: toTaxonomyScope(input.approvalScope),
-          requested_amount: null,
-          cart_total: null,
           reason: input.reason,
         },
       }).catch(() => {});
-      throw error;
+      return {
+        id: matched.id,
+        name: matched.name,
+        roles: matched.roles,
+      };
     }
-
-    // OFFLINE-IS-REALLY-FIRST: the server could NOT give an authorization
-    // decision — either a 5xx (reachable but erroring, ApiRequestError >= 500)
-    // or a genuine transport failure (non-ApiRequestError: network down /
-    // timeout). Keep the terminal working: fall back to the already-validated
-    // LOCAL manager PIN. But this approval bypassed the server's checks (caps,
-    // revocation), so it must be VISIBLE to fraud — emit
-    // pos.manager_override_offline_approved (NOT a denial). `degraded_kind`
-    // distinguishes a server error from true offline. NO pin/hash.
-    const degradedKind = error instanceof ApiRequestError ? 'server_error' : 'transport';
-    void recordAuditEvent({
-      type: 'pos.manager_override_offline_approved',
-      aggregateType: 'Override',
-      aggregateId: input.context.terminalId,
-      tenantId: input.context.tenantId,
-      companyId: input.context.companyId,
-      operatorId: matched.id,
-      payload: {
-        scope: toTaxonomyScope(input.approvalScope),
-        reason: input.reason,
-        degraded_kind: degradedKind,
-      },
-    }).catch(() => {});
-    // fall through to the local-bcrypt approval below
   }
-
-  return {
-    id: matched.id,
-    name: matched.name,
-    roles: matched.roles,
-  };
 }

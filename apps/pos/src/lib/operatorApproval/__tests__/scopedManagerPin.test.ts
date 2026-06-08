@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiRequestError, apiPost } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
 import { getAllOperators, type CachedOperator } from '@/lib/db/repositories/operatorPinRepository';
@@ -83,6 +83,21 @@ describe('verifyScopedManagerPin', () => {
     vi.mocked(apiPost).mockReset();
   });
 
+  it('returns the server-confirmed approval when online verification succeeds', async () => {
+    vi.mocked(apiPost).mockResolvedValue({
+      valid: true,
+      user_id: 'supervisor-1',
+      user_name: 'Supervisor',
+    });
+
+    await expect(verifyScopedManagerPin(input)).resolves.toEqual({
+      id: 'supervisor-1',
+      name: 'Supervisor',
+      roles: ['manager'],
+    });
+    expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1);
+  });
+
   it('fails closed when online manager verification explicitly rejects a cached PIN', async () => {
     vi.mocked(apiPost).mockResolvedValue({
       valid: false,
@@ -90,9 +105,11 @@ describe('verifyScopedManagerPin', () => {
     });
 
     await expect(verifyScopedManagerPin(input)).rejects.toBeInstanceOf(ApiRequestError);
+    // valid:false → 403 explicit denial. No retry.
+    expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1);
   });
 
-  it('allows offline fallback only when the online verification transport fails', async () => {
+  it('allows offline fallback only when the online verification transport fails (no retry)', async () => {
     vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
 
     await expect(verifyScopedManagerPin(input)).resolves.toEqual({
@@ -100,44 +117,62 @@ describe('verifyScopedManagerPin', () => {
       name: 'Supervisor',
       roles: ['manager'],
     });
+    // Genuine transport failure → straight to offline fallback, NO retry.
+    expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1);
   });
 
-  it('does not fall back for client-side API denials', async () => {
-    vi.mocked(apiPost).mockRejectedValue(new ApiRequestError(422, 'Invalid approval context', 'VALIDATION_ERROR'));
-
-    await expect(verifyScopedManagerPin(input)).rejects.toBeInstanceOf(ApiRequestError);
-  });
-
-  it.each([408, 429])(
-    'falls back to the local approval on a "server busy" %i (not an explicit denial)',
-    async (status) => {
-      // 408 (Request Timeout) / 429 (Too Many Requests) mean the server was
-      // busy/couldn't decide — NOT "the PIN is wrong". Offline-is-really-first:
-      // keep working off the local manager PIN, same as a 5xx.
-      vi.mocked(apiPost).mockRejectedValue(new ApiRequestError(status, 'busy', 'BUSY'));
-
-      await expect(verifyScopedManagerPin(input)).resolves.toEqual({
-        id: 'supervisor-1',
-        name: 'Supervisor',
-        roles: ['manager'],
-      });
-    },
-  );
-
-  it('falls back to the local manager-PIN approval on a server 5xx (offline-first)', async () => {
-    // Offline-is-really-first: a 5xx means the server could not authorize, so
-    // keep working off the valid LOCAL manager PIN — exactly like a genuine
-    // transport failure. The server-unconfirmed approval is made visible to
-    // fraud via pos.manager_override_offline_approved (see the audit test).
-    // Only an EXPLICIT server denial (valid:false / 4xx) blocks the override.
+  it('does not fall back for client-side API denials (4xx 422), no retry', async () => {
     vi.mocked(apiPost).mockRejectedValue(
-      new ApiRequestError(503, 'Service Unavailable', 'SERVICE_UNAVAILABLE'),
+      new ApiRequestError(422, 'Invalid approval context', 'VALIDATION_ERROR'),
     );
 
-    await expect(verifyScopedManagerPin(input)).resolves.toEqual({
-      id: 'supervisor-1',
-      name: 'Supervisor',
-      roles: ['manager'],
+    await expect(verifyScopedManagerPin(input)).rejects.toBeInstanceOf(ApiRequestError);
+    // Explicit authorization denial → no retry, no fallback.
+    expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1);
+  });
+
+  describe('anti-downgrade: reachable-but-erroring server fails closed after retries', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it.each([408, 429, 503])(
+      'rejects (fails closed) after 3 attempts on a reachable-but-erroring %i',
+      async (status) => {
+        // 408 / 429 / 5xx mean the server is REACHABLE but could not authorize.
+        // Anti-downgrade: retry up to a cap, then FAIL CLOSED — never silently
+        // downgrade to the local manager PIN. A forgeable PIN must not bypass a
+        // reachable server's caps/revocation checks.
+        vi.mocked(apiPost).mockRejectedValue(
+          new ApiRequestError(status, 'busy/erroring', 'ERR'),
+        );
+
+        const promise = verifyScopedManagerPin(input);
+        const assertion = expect(promise).rejects.toBeInstanceOf(ApiRequestError);
+        await vi.runAllTimersAsync();
+        await assertion;
+
+        // 1 initial + 2 retries = 3 attempts total.
+        expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(3);
+      },
+    );
+
+    it('rejects with a 503 service-unavailable error after exhausting retries on a 5xx', async () => {
+      vi.mocked(apiPost).mockRejectedValue(
+        new ApiRequestError(503, 'Service Unavailable', 'SERVICE_UNAVAILABLE'),
+      );
+
+      const promise = verifyScopedManagerPin(input);
+      const assertion = expect(promise).rejects.toMatchObject({
+        status: 503,
+        code: 'MANAGER_OVERRIDE_SERVICE_UNAVAILABLE',
+      });
+      await vi.runAllTimersAsync();
+      await assertion;
     });
   });
 });
