@@ -634,6 +634,91 @@ class StockTransferService
         if (bccomp($allocatedQuantity, (string) $line->quantity, self::QTY_SCALE) !== 0) {
             throw new InvalidArgumentException('Batch allocation quantity must equal the transfer line quantity.');
         }
+
+        // Server is the FEFO guarantee: the submitted split must match the
+        // canonical earliest-expiry-first allocation. Client FEFO is only a
+        // convenience; an API caller cannot ship a later-expiry lot while an
+        // earlier-expiry sellable lot still has stock at the source.
+        $this->assertAllocationsFollowFefo($line, $product, $transfer);
+    }
+
+    /**
+     * Enforce FEFO ordering: the line's batch allocations must equal the
+     * canonical earliest-expiry-first split of the line quantity across the
+     * sellable batches available at the source location.
+     */
+    private function assertAllocationsFollowFefo(
+        StockTransferLine $line,
+        Product $product,
+        StockTransfer $transfer,
+    ): void {
+        $batches = Batch::query()
+            ->where('tenant_id', $transfer->tenant_id)
+            ->where('company_id', $transfer->company_id)
+            ->where('product_id', $product->id)
+            ->orderBy('expiry_date')
+            ->orderBy('id')
+            ->get();
+
+        /** @var array<int, numeric-string> $available earliest-expiry first */
+        $available = [];
+        foreach ($batches as $batch) {
+            if (! $batch->canBeSold()) {
+                continue;
+            }
+
+            $batchStock = BatchStock::query()
+                ->where('tenant_id', $transfer->tenant_id)
+                ->where('batch_id', $batch->id)
+                ->where('location_id', $transfer->source_location_id)
+                ->lockForUpdate()
+                ->first();
+
+            $qty = $batchStock === null
+                ? '0.0000'
+                : bcsub((string) $batchStock->quantity, (string) $batchStock->reserved_quantity, self::QTY_SCALE);
+
+            if (bccomp($qty, '0', self::QTY_SCALE) > 0) {
+                $available[(int) $batch->id] = $qty;
+            }
+        }
+
+        /** @var numeric-string $remaining */
+        $remaining = (string) $line->quantity;
+        /** @var array<int, numeric-string> $expected */
+        $expected = [];
+        foreach ($available as $batchId => $qty) {
+            if (bccomp($remaining, '0', self::QTY_SCALE) <= 0) {
+                break;
+            }
+            $take = bccomp($qty, $remaining, self::QTY_SCALE) < 0 ? $qty : $remaining;
+            $expected[$batchId] = $take;
+            $remaining = bcsub($remaining, $take, self::QTY_SCALE);
+        }
+
+        if (bccomp($remaining, '0', self::QTY_SCALE) > 0) {
+            throw new InvalidArgumentException('Insufficient sellable batch stock at the source to fulfil the transfer line under FEFO.');
+        }
+
+        /** @var array<int, numeric-string> $submitted */
+        $submitted = [];
+        foreach ($line->batchAllocations as $allocation) {
+            $submitted[(int) $allocation->batch_id] = (string) $allocation->quantity;
+        }
+
+        $matches = count($submitted) === count($expected);
+        if ($matches) {
+            foreach ($expected as $batchId => $qty) {
+                if (! isset($submitted[$batchId]) || bccomp($submitted[$batchId], $qty, self::QTY_SCALE) !== 0) {
+                    $matches = false;
+                    break;
+                }
+            }
+        }
+
+        if (! $matches) {
+            throw new InvalidArgumentException('Batch allocations must follow FEFO (earliest expiry first).');
+        }
     }
 
     private function assertBatchCanIssue(

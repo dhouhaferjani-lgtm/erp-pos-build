@@ -524,6 +524,62 @@ class InventoryTransferServiceTest extends TestCase
         ));
     }
 
+    public function test_batch_transfer_rejects_over_allocation_beyond_batch_stock(): void
+    {
+        $this->productA->update(['requires_batch_tracking' => true]);
+        $early = $this->createBatch($this->productA, 'LOT-OVER-EARLY', now()->addMonths(2)->toDateString());
+        $late = $this->createBatch($this->productA, 'LOT-OVER-LATE', now()->addMonths(9)->toDateString());
+        $this->seedBatchStock($this->productA, $early, $this->warehouse, '2.0000');
+        $this->seedBatchStock($this->productA, $late, $this->warehouse, '10.0000');
+
+        // Allocating 4 from the early batch (which only holds 2) over-allocates
+        // it, even though total source stock (12) covers the line.
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Insufficient batch stock for transfer');
+
+        $this->service()->initiate($this->initiateData(
+            $this->warehouse->id,
+            $this->shop->id,
+            [
+                new InitiateTransferLineData(
+                    productId: $this->productA->id,
+                    quantity: '4.0000',
+                    batchAllocations: [
+                        new InitiateTransferBatchAllocationData((int) $early->id, '4.0000'),
+                    ],
+                ),
+            ],
+        ));
+    }
+
+    public function test_batch_transfer_enforces_fefo_order_server_side(): void
+    {
+        $this->productA->update(['requires_batch_tracking' => true]);
+        $early = $this->createBatch($this->productA, 'LOT-FEFO-EARLY', now()->addMonths(2)->toDateString());
+        $late = $this->createBatch($this->productA, 'LOT-FEFO-LATE', now()->addMonths(9)->toDateString());
+        $this->seedBatchStock($this->productA, $early, $this->warehouse, '10.0000');
+        $this->seedBatchStock($this->productA, $late, $this->warehouse, '10.0000');
+
+        // Allocating from the later-expiry batch while the earlier-expiry batch
+        // still has stock violates FEFO and must be rejected server-side.
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Batch allocations must follow FEFO');
+
+        $this->service()->initiate($this->initiateData(
+            $this->warehouse->id,
+            $this->shop->id,
+            [
+                new InitiateTransferLineData(
+                    productId: $this->productA->id,
+                    quantity: '4.0000',
+                    batchAllocations: [
+                        new InitiateTransferBatchAllocationData((int) $late->id, '4.0000'),
+                    ],
+                ),
+            ],
+        ));
+    }
+
     public function test_cancelling_batch_transfer_returns_batch_stock_to_source(): void
     {
         $this->productA->update(['requires_batch_tracking' => true]);
