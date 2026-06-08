@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
+use App\Modules\Catalog\Presentation\Controllers\AttributeController;
 use App\Modules\Catalog\Presentation\Controllers\CompositeItemController;
 use App\Modules\Catalog\Presentation\Controllers\CompositeItemVariantController;
 use App\Modules\Catalog\Presentation\Controllers\ModifierController;
 use App\Modules\Catalog\Presentation\Controllers\ModifierGroupController;
+use App\Modules\Catalog\Presentation\Controllers\ProductVariantController;
 use App\Modules\Catalog\Presentation\Controllers\RecipeController;
 use App\Modules\Catalog\Presentation\Controllers\RecipeLineController;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
@@ -22,6 +24,32 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::delete('composite-items/{id}', [CompositeItemController::class, 'destroy'])->middleware('can:composite-items.delete');
     Route::post('composite-items/{id}/duplicate', [CompositeItemController::class, 'duplicate'])->middleware('can:composite-items.create');
     Route::get('composite-items/{id}/availability', [CompositeItemController::class, 'checkAvailability'])->middleware('can:composite-items.view');
+});
+
+// Group 1b: Product attributes + product variants (T2) — ungated catalog configuration.
+// Variant matrix definition is a catalog concern; it does not require the Inventory
+// module to be enabled. cost_override on variants is advisory only (spec §6.7) — these
+// endpoints never feed the inventory WAC pipeline.
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {
+    // Product Attributes
+    Route::get('product-attributes', [AttributeController::class, 'index'])->middleware('can:catalog.attributes.view');
+    Route::post('product-attributes', [AttributeController::class, 'store'])->middleware('can:catalog.attributes.create');
+    Route::delete('product-attributes/{attributeId}', [AttributeController::class, 'destroy'])->middleware('can:catalog.attributes.delete');
+
+    // Attribute Values (nested under attributes)
+    Route::get('product-attributes/{attributeId}/values', [AttributeController::class, 'indexValues'])->middleware('can:catalog.attributes.view');
+    Route::post('product-attributes/{attributeId}/values', [AttributeController::class, 'storeValue'])->middleware('can:catalog.attributes.update');
+
+    // Product Variants (nested under products for listing/creation/matrix generation)
+    Route::get('products/{productId}/variants', [ProductVariantController::class, 'index'])->middleware('can:catalog.variants.view');
+    Route::post('products/{productId}/variants', [ProductVariantController::class, 'store'])->middleware('can:catalog.variants.create');
+    Route::post('products/{productId}/variants/generate-matrix', [ProductVariantController::class, 'generateMatrix'])->middleware('can:catalog.variants.create');
+
+    // Product Variants (standalone update/delete by variant id).
+    // NOTE: distinct `product-variants/` prefix to avoid colliding with the
+    // CompositeItemVariantController `variants/{id}` routes in Group 2.
+    Route::patch('product-variants/{id}', [ProductVariantController::class, 'update'])->middleware('can:catalog.variants.update');
+    Route::delete('product-variants/{id}', [ProductVariantController::class, 'destroy'])->middleware('can:catalog.variants.delete');
 });
 
 // Group 2: Recipes, recipe lines, variants, modifier groups — gated behind Inventory module

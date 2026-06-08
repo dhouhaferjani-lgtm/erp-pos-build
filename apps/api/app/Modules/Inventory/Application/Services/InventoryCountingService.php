@@ -90,10 +90,13 @@ class InventoryCountingService
         );
 
         foreach ($stockLevels as $stock) {
+            // variant_id is propagated from the StockLevel row (Task 20).
+            // For product-level stock rows (variant_id IS NULL) this remains
+            // null — preserving backward compat with non-variant products.
             InventoryCountingItem::create([
                 'counting_id' => $counting->id,
                 'product_id' => $stock->product_id,
-                'variant_id' => null,
+                'variant_id' => $stock->variant_id,
                 'location_id' => $stock->location_id,
                 'theoretical_qty' => $stock->quantity,
             ]);

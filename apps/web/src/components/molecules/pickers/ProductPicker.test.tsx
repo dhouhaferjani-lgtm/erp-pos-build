@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { ProductPicker, type ProductPickerValue } from './ProductPicker'
 
-const mockApiGet = vi.hoisted(() => vi.fn())
+const mockApiGet = vi.hoisted(() => vi.fn<(url: string) => unknown>())
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
@@ -102,11 +102,11 @@ describe('ProductPicker', () => {
     await user.type(combo, 'filt')
 
     await waitFor(() => {
-      const urls = mockApiGet.mock.calls.map((c) => c[0] as string)
+      const urls = mockApiGet.mock.calls.map((c) => c[0])
       expect(urls.some((u) => u.includes('search=filt'))).toBe(true)
     })
     const searchUrl = mockApiGet.mock.calls
-      .map((c) => c[0] as string)
+      .map((c) => c[0])
       .find((u) => u.includes('search=filt'))
     expect(searchUrl).toContain('/products')
     expect(searchUrl).toContain('type=part')

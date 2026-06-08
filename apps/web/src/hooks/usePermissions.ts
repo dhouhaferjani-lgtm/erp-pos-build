@@ -110,6 +110,16 @@ export const PERMISSIONS = {
   'modifier-groups.view': ['admin', 'manager'],
   'modifier-groups.manage': ['admin', 'manager'],
 
+  // Catalog (Product Attributes & Variants — T2)
+  'catalog.attributes.view': ['admin', 'manager'],
+  'catalog.attributes.create': ['admin', 'manager'],
+  'catalog.attributes.update': ['admin', 'manager'],
+  'catalog.attributes.delete': ['admin'],
+  'catalog.variants.view': ['admin', 'manager'],
+  'catalog.variants.create': ['admin', 'manager'],
+  'catalog.variants.update': ['admin', 'manager'],
+  'catalog.variants.delete': ['admin'],
+
   // Workshop Service Bundles
   'workshop-bundles.view': ['admin', 'manager', 'technician'],
   'workshop-bundles.manage': ['admin', 'manager'],

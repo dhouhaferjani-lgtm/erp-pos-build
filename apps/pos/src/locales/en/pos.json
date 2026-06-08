@@ -298,6 +298,16 @@
     "customize": "Customize",
     "selected": "Selected"
   },
+  "variants": {
+    "chooseVariant": "Choose a variant",
+    "selectVariant": "Select a variant",
+    "addToCart": "Add to Cart",
+    "loading": "Loading variants...",
+    "empty": "No variants available",
+    "loadError": "Could not load variants",
+    "inStock": "{{count}} in stock",
+    "outOfStock": "Out of stock"
+  },
   "reports": {
     "title": "Reports",
     "xReport": "X-Report",
