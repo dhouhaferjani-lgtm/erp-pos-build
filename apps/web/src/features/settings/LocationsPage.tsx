@@ -5,6 +5,7 @@ import { Plus, MapPin, Edit, Trash2, Star, Building2, Warehouse, Briefcase, Truc
 import { fetchLocations, createLocation, updateLocation, deleteLocation, setDefaultLocation } from '../location/api'
 import type { LocationApiResponse, CreateLocationInput, UpdateLocationInput } from '../location/api'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { tokens } from '../../lib/designTokens'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
@@ -25,6 +26,8 @@ const typeColors: Record<LocationType, string> = {
   mobile: 'bg-orange-100 text-orange-800',
 }
 
+const BRANCH_TAX_REQUIRED_COUNTRIES = new Set(['FR', 'TN', 'MA'])
+
 interface LocationFormData {
   name: string
   type: LocationType
@@ -35,6 +38,8 @@ interface LocationFormData {
   addressCity: string
   addressPostalCode: string
   addressCountry: string
+  taxId: string
+  vatNumber: string
   posEnabled: boolean
 }
 
@@ -48,6 +53,8 @@ const emptyForm: LocationFormData = {
   addressCity: '',
   addressPostalCode: '',
   addressCountry: '',
+  taxId: '',
+  vatNumber: '',
   posEnabled: false,
 }
 
@@ -141,6 +148,8 @@ export function LocationsPage() {
       addressCity: location.address_city ?? '',
       addressPostalCode: location.address_postal_code ?? '',
       addressCountry: location.address_country ?? '',
+      taxId: location.tax_id ?? '',
+      vatNumber: location.vat_number ?? '',
       posEnabled: location.pos_enabled,
     })
     setIsModalOpen(true)
@@ -168,6 +177,11 @@ export function LocationsPage() {
       if (formData.addressCity) updateData.addressCity = formData.addressCity
       if (formData.addressPostalCode) updateData.addressPostalCode = formData.addressPostalCode
       if (formData.addressCountry) updateData.addressCountry = formData.addressCountry
+      // Always send tax fields on update so an emptied field clears the branch
+      // override back to inheriting the company value (null = inherit). The API
+      // blocks clearing for a sellable shop in a country that requires it.
+      updateData.taxId = formData.taxId.trim() === '' ? null : formData.taxId
+      updateData.vatNumber = formData.vatNumber.trim() === '' ? null : formData.vatNumber
 
       updateMutation.mutate({
         id: editingLocation.id,
@@ -186,12 +200,17 @@ export function LocationsPage() {
       if (formData.addressCity) createData.addressCity = formData.addressCity
       if (formData.addressPostalCode) createData.addressPostalCode = formData.addressPostalCode
       if (formData.addressCountry) createData.addressCountry = formData.addressCountry
+      if (formData.taxId) createData.taxId = formData.taxId
+      if (formData.vatNumber) createData.vatNumber = formData.vatNumber
 
       createMutation.mutate(createData)
     }
   }
 
   const isMutating = createMutation.isPending || updateMutation.isPending
+  const isTaxIdRequiredHint = formData.type === 'shop' && BRANCH_TAX_REQUIRED_COUNTRIES.has(
+    formData.addressCountry.trim().toUpperCase(),
+  )
 
   if (isLoading) {
     return (
@@ -453,6 +472,42 @@ export function LocationsPage() {
                     value={formData.addressCountry}
                     onChange={(e) => { setFormData({ ...formData, addressCountry: e.target.value }) }}
                     className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Tax Identity */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="taxId" className={tokens.label.base}>
+                    {t('locations.form.taxId')}
+                    {isTaxIdRequiredHint && ' *'}
+                  </label>
+                  <input
+                    type="text"
+                    id="taxId"
+                    value={formData.taxId}
+                    onChange={(e) => { setFormData({ ...formData, taxId: e.target.value }) }}
+                    aria-required={isTaxIdRequiredHint}
+                    aria-describedby={isTaxIdRequiredHint ? 'taxId-required-hint' : undefined}
+                    className={tokens.input.base}
+                  />
+                  {isTaxIdRequiredHint && (
+                    <p id="taxId-required-hint" className={tokens.helperText.base}>
+                      {t('locations.form.taxIdRequiredHint')}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="vatNumber" className={tokens.label.base}>
+                    {t('locations.form.vatNumber')}
+                  </label>
+                  <input
+                    type="text"
+                    id="vatNumber"
+                    value={formData.vatNumber}
+                    onChange={(e) => { setFormData({ ...formData, vatNumber: e.target.value }) }}
+                    className={tokens.input.base}
                   />
                 </div>
               </div>

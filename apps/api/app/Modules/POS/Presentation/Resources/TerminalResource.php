@@ -30,6 +30,9 @@ final class TerminalResource extends JsonResource
                     'id' => $this->location->id,
                     'name' => $this->location->name,
                     'code' => $this->location->code,
+                    'tax_id' => $this->location->tax_id,
+                    'vat_number' => $this->location->vat_number,
+                    'legal_identifiers' => $this->location->legal_identifiers,
                 ];
             }),
             'hardware_identifier' => $this->hardware_identifier,

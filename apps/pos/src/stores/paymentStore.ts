@@ -35,7 +35,6 @@ import {
   type PosOverrideEvidence,
 } from '@/lib/operatorApproval/posOverrideAuthoring';
 import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
-import { useCartStore } from '@/stores/cartStore';
 
 /**
  * Epoch-ms when the currently-attached checkout customer was attached, used to
@@ -475,6 +474,12 @@ function companyField(company: unknown, camel: string, snake: string): string | 
   return typeof value === 'string' && value.trim() !== '' ? value : null;
 }
 
+function branchTaxNumberFromTerminal(
+  terminal: { location: { tax_id: string | null } },
+): string | null {
+  return terminal.location.tax_id;
+}
+
 async function createOfflineReceiptWithChainRetry(
   terminalId: string,
   operation: () => Promise<OfflineReceiptResult>,
@@ -560,6 +565,7 @@ async function createReceiptLocalFirst(
     throw new ActiveTerminalRequiredError();
   }
   const isTraining = terminal?.is_training_mode === true;
+  const branchTaxNumber = branchTaxNumberFromTerminal(terminal);
 
   const result = await lockTerminal(tenantId, terminalId, () =>
     createOfflineReceiptWithChainRetry(terminalId, () =>
@@ -574,7 +580,7 @@ async function createReceiptLocalFirst(
         currency,
         seller: {
           name: companyField(company, 'legalName', 'legal_name') ?? company?.name ?? null,
-          taxNumber: companyField(company, 'taxId', 'tax_id'),
+          taxNumber: branchTaxNumber ?? companyField(company, 'taxId', 'tax_id'),
           countryCode: companyField(company, 'countryCode', 'country_code'),
           street: companyField(company, 'addressStreet', 'address_street'),
           city: companyField(company, 'addressCity', 'address_city'),
@@ -670,6 +676,7 @@ async function createAccountPaymentLocalFirst(
   if (!terminal || terminal.id !== terminalId || !shift) {
     throw new ActiveTerminalRequiredError();
   }
+  const branchTaxNumber = branchTaxNumberFromTerminal(terminal);
 
   const db = await getDatabase(companyId);
 
@@ -685,7 +692,7 @@ async function createAccountPaymentLocalFirst(
       currency,
       seller: {
         name: companyField(company, 'legalName', 'legal_name') ?? company?.name ?? null,
-        taxNumber: companyField(company, 'taxId', 'tax_id'),
+        taxNumber: branchTaxNumber ?? companyField(company, 'taxId', 'tax_id'),
         countryCode: companyField(company, 'countryCode', 'country_code'),
         street: companyField(company, 'addressStreet', 'address_street'),
         city: companyField(company, 'addressCity', 'address_city'),

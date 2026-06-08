@@ -290,6 +290,9 @@
       "city": "Ville",
       "postalCode": "Code postal",
       "country": "Pays",
+      "taxId": "Identifiant fiscal",
+      "taxIdRequiredHint": "Obligatoire pour les magasins en France, Tunisie et Maroc.",
+      "vatNumber": "Numéro de TVA",
       "posEnabled": "Activer le point de vente"
     },
     "empty": {
