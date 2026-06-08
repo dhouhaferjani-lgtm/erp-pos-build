@@ -28,7 +28,12 @@ return new class extends Migration
     {
         Schema::create('stock_transfers', function (Blueprint $table): void {
             $table->uuid('id')->primary();
-            $table->foreignUuid('tenant_id')->constrained('tenants')->cascadeOnDelete();
+            // tenant_id is a plain indexed uuid (NOT an FK): the `tenants` table
+            // lives in the CENTRAL database, so under db-per-tenant a cross-DB FK
+            // is impossible. Matches every sibling tenant table (companies,
+            // products, stock_levels, ...). Covered by the tenant_id-leading
+            // composite indexes below.
+            $table->uuid('tenant_id');
             $table->foreignUuid('company_id')->constrained('companies')->cascadeOnDelete();
 
             $table->string('transfer_number', 64);
@@ -69,7 +74,12 @@ return new class extends Migration
         Schema::create('stock_transfer_lines', function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->foreignUuid('transfer_id')->constrained('stock_transfers')->cascadeOnDelete();
-            $table->foreignUuid('tenant_id')->constrained('tenants')->cascadeOnDelete();
+            // tenant_id is a plain indexed uuid (NOT an FK): the `tenants` table
+            // lives in the CENTRAL database, so under db-per-tenant a cross-DB FK
+            // is impossible. Matches every sibling tenant table (companies,
+            // products, stock_levels, ...). Covered by the tenant_id-leading
+            // composite indexes below.
+            $table->uuid('tenant_id');
             $table->foreignUuid('company_id')->constrained('companies')->cascadeOnDelete();
             $table->foreignUuid('product_id')->constrained('products')->restrictOnDelete();
 
