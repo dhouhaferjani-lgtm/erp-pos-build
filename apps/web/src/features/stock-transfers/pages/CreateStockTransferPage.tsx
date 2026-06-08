@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, PackageSearch, Plus, Trash2 } from 'lucide-react'
@@ -8,6 +8,7 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { fetchLocations, type LocationApiResponse } from '@/features/location/api'
 import { Button } from '@/components/atoms/Button/Button'
 import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
+import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
 import { ProductPicker, type ProductPickerValue } from '@/components/molecules/pickers/ProductPicker'
 import { LineItemsTable, QuantityCell, type LineItemsTableColumn } from '@/components/molecules/line-items/LineItemsTable'
 import { textColors, borderColors, tokens, colors } from '@/lib/designTokens'
@@ -193,11 +194,11 @@ function BatchToggleCell({ line, sourceLocationId, expanded, onToggle, onAllocat
   const batchesQuery = useProductBatches(product?.id ?? '')
   const batches = useMemo(() => batchesQuery.data ?? [], [batchesQuery.data])
 
-  if (product === null || !product.requires_batch_tracking) {
+  if (!product?.requires_batch_tracking) {
     return <span className={`text-sm ${textColors.tertiary}`}>—</span>
   }
 
-  const isLoading = batchesQuery.isLoading === true || batchesQuery.isFetching === true
+  const isLoading = batchesQuery.isLoading || batchesQuery.isFetching
 
   const handleToggle = (): void => {
     if (!expanded && line.batchAllocations.length === 0 && sourceLocationId !== '' && batches.length > 0) {
@@ -267,17 +268,23 @@ export function CreateStockTransferPage() {
 
   const createMutation = useCreateStockTransfer()
 
-  const addLine = () => {
+  // Stable handler identities so the memoized line columns below don't change
+  // every render — otherwise each cell remounts and the inputs lose focus.
+  const addLine = useCallback(() => {
     setLines((prev) => [...prev, { uid: generateUid(), product: null, quantity: '1', batchAllocations: [] }])
-  }
+  }, [])
 
-  const removeLine = (uid: string) => {
+  const removeLine = useCallback((uid: string) => {
     setLines((prev) => (prev.length <= 1 ? prev : prev.filter((l) => l.uid !== uid)))
-  }
+  }, [])
 
-  const updateLine = (uid: string, patch: Partial<DraftLine>) => {
+  const updateLine = useCallback((uid: string, patch: Partial<DraftLine>) => {
     setLines((prev) => prev.map((l) => (l.uid === uid ? { ...l, ...patch } : l)))
-  }
+  }, [])
+
+  const toggleBatchLine = useCallback((uid: string) => {
+    setExpandedBatchLineUid((current) => (current === uid ? null : uid))
+  }, [])
 
   const submitTransfer = async (): Promise<void> => {
     if (!sourceLocationId || !destinationLocationId) {
@@ -352,11 +359,7 @@ export function CreateStockTransferPage() {
     }
   }
 
-  const toggleBatchLine = (uid: string): void => {
-    setExpandedBatchLineUid((current) => (current === uid ? null : uid))
-  }
-
-  const lineColumns: LineItemsTableColumn<DraftLine>[] = [
+  const lineColumns = useMemo<LineItemsTableColumn<DraftLine>[]>(() => [
     {
       id: 'product',
       header: t('create.field.product'),
@@ -425,7 +428,7 @@ export function CreateStockTransferPage() {
         />
       ),
     },
-  ]
+  ], [t, sourceLocationId, expandedBatchLineUid, lines.length, updateLine, removeLine, toggleBatchLine])
 
   return (
     <div className="space-y-6">
