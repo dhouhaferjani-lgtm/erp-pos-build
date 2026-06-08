@@ -87,13 +87,16 @@ cd apps/pos && pnpm tauri dev   # native desktop app
 
 ## Flows
 
-### Flow 1 — Login & branch context (web admin) — ✅ Verified
+### Flow 1 — Login & branch context (web admin) — ✅ Verified in-browser (Playwright)
+
+Walked through during verification: owner login → dashboard renders (181 partners = 150+20+10+1, **Owner Dashboard "Sales, stock, payments, and cash controls across locations"** present = T5 cross-branch reporting), and **Inventory → Stock Levels** renders (warehouse 922 products, location selector, per-row "Transfer Stock", "View Movements").
 
 | # | Action | Expected | ✓ |
 |---|---|---|---|
-| 1.1 | Open `/login`, sign in as `owner@pharmabio.fr` / `password` | Lands on dashboard; no 500/503. (Login + authed `/auth/me` confirmed working under DB-per-tenant.) | ☐ |
-| 1.2 | Open **Inventory → Stock** and the location selector | All 3 locations selectable (Warehouse, Paris, Lyon) | ☐ |
-| 1.3 | Sign out; sign in as `paris.cashier@pharmabio.fr` / `password` | Sees Paris only; cannot view Lyon stock (location scope enforced) | ☐ |
+| 1.1 | Open `/login`, sign in as `owner@pharmabio.fr` / `password` | Lands on dashboard; no 500/503; partner count 181; owner cross-location dashboard visible | ☐ |
+| 1.2 | Open **Inventory → Stock Levels**, use the location selector | All 3 locations selectable (Warehouse, Paris, Lyon); counts differ per branch | ☐ |
+| 1.3 | Open a product (e.g. search `PB-ORT-SHOE`) → product detail | Detail renders (was crashing for ALL products pre-fix — see Stabilization #4) | ☐ |
+| 1.4 | Sign out; sign in as `paris.cashier@pharmabio.fr` / `password` | Sees Paris only; cannot view Lyon stock (location scope enforced) | ☐ |
 
 ### Flow 2 — Sale at Branch A (Paris) incl. a variant SKU → receipt — ⚠️ Manual (Tauri POS)
 
@@ -169,6 +172,7 @@ Placeholder for the deposit top-up flow being built in parallel (A8). **Not part
 | **G2** | Stock **transfers are not variant-aware** (no `variant_id` on `stock_transfer_lines`). | Sized goods can't be transferred between branches at variant grain. | `tickets/2026-06-09-stock-transfer-not-variant-aware.md` |
 | **G3** | POS (sale/return/PIN/Z/charge-to-account/sync) is **Tauri-only**; cannot be browser-driven. | All POS flows must be done manually on the desktop app. | _constraint, not a bug — documented here_ |
 | **G4** | Customer-account **deposit top-up** flow. | Deferred to A8 (parallel session). | Flow N placeholder |
+| **G5** | Minor i18n: a few raw keys render — browser tab title `stockLevels.title`, Stock Levels table header `actions.actions`, and the **error-boundary** shows `errors.unexpectedError` / `…Details` instead of a friendly message. | Cosmetic; error-boundary copy worth fixing for graceful degradation. | _logged here; not yet ticketed_ |
 
 ---
 
@@ -179,3 +183,5 @@ These were found and fixed during verification (gates green; see PR):
 1. **T1 stock-transfer migrations made DB-per-tenant-correct.** `create_stock_transfers_table` + `create_stock_transfer_line_batch_allocations_table` were in the **central** migrations dir (FK to `companies`, a tenant table) → central migrate failed under the flip AND the tables never reached tenant DBs. Moved both to `database/migrations/tenant/` and changed `tenant_id` from a cross-DB FK (`->constrained('tenants')`) to a plain indexed uuid, matching every sibling tenant table. **T1 transfers now work under DB-per-tenant** (Flow 5 verified).
 2. **`stock_levels` variant-uniqueness parity on SQLite.** The variant migration only swapped the legacy `(tenant,product,location)` unique for variant-aware partial indexes on pgsql; on SQLite the legacy unique survived, making multi-variant-per-location stock impossible (untestable on the CI driver). Mirrored the partial-index semantics on SQLite.
 3. **Extended `ParapharmacyMultiBranchSeeder`** with per-branch tax IDs, sized-goods variant products, and an explicit house-account customer (+ 3 new tests; full class 9/9 green).
+4. **Product detail page crashed for EVERY product** (`ProductDetailPage.tsx`): the `useTaxConfigName` hook was called after the loading/error early returns → "Rendered more hooks than during the previous render" → whole view fell to the error boundary. Moved the hook above the guards. Verified in-browser: the page renders. Also guarded the margin `(Infinity%)` shown when cost is 0.
+5. **Hardened `react-hooks/rules-of-hooks` to `error`** (web + pos). It had caught #4 but only as a *warning*, so the ratchet let a guaranteed crash ship. Repo is clean (0 violations), so CI now blocks the class with no blast radius.
