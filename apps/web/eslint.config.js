@@ -68,7 +68,13 @@ export default tseslint.config(
       // regressions only. New feature directories re-enable these as errors
       // in the strict override block below.
       'react-hooks/exhaustive-deps': 'warn',
-      'react-hooks/rules-of-hooks': 'warn',
+      // EXCEPTION: rules-of-hooks is a hard error everywhere. Unlike the
+      // heuristic rules below, a conditional / after-early-return hook call is
+      // ALWAYS a guaranteed runtime crash ("Rendered more hooks than during the
+      // previous render"). The repo is clean (0 violations), so this gates CI
+      // with no blast radius and permanently blocks the class. See the
+      // ProductDetailPage regression (2026-06-09 parapharmacy e2e).
+      'react-hooks/rules-of-hooks': 'error',
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/set-state-in-render': 'warn',
       'react-hooks/refs': 'warn',
