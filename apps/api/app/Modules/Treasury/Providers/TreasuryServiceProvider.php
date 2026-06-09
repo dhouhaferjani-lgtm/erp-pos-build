@@ -7,6 +7,7 @@ namespace App\Modules\Treasury\Providers;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Treasury\Application\Projections\TreasuryAccountChargeBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryAccountPaymentBridge;
+use App\Modules\Treasury\Application\Projections\TreasuryDepositBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Infrastructure\EloquentPaymentMethodResolver;
@@ -54,6 +55,7 @@ class TreasuryServiceProvider extends ServiceProvider
                 TreasuryReceiptBridge::class,
                 TreasuryAccountPaymentBridge::class,
                 TreasuryAccountChargeBridge::class,
+                TreasuryDepositBridge::class,
             ],
             FiscalEventProjector::class,
         );

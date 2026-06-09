@@ -23,6 +23,9 @@ namespace App\Modules\Treasury\Domain\Enums;
  *  - `mobile`         — authored by a mobile client
  *  - `api`            — authored by a programmatic external API caller
  *  - `unknown_legacy` — pre-migration row whose origin cannot be inferred
+ *  - `back_office`    — authored by a server-side back-office flow (e.g. the
+ *                       DEPOSIT_RECEIPT treasury bridge: a payment toward a
+ *                       customer account recorded without a POS terminal)
  *
  * The string values are stable — they are persisted in the `payments.origin`
  * column. Adding a new origin in a future phase MUST append to this list,
@@ -35,4 +38,6 @@ enum PaymentOrigin: string
     case Mobile = 'mobile';
     case Api = 'api';
     case UnknownLegacy = 'unknown_legacy';
+    // Appended (never reorder existing cases) — see grammar note above.
+    case BackOffice = 'back_office';
 }
