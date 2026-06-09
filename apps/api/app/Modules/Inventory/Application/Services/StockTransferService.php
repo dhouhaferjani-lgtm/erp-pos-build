@@ -232,6 +232,7 @@ class StockTransferService
                         userId: $userId,
                         batchId: $allocation->batch_id,
                         expectedCompanyId: $transfer->company_id,
+                        variantId: $line->variant_id,
                     );
 
                     $this->markMovementAsTransfer($movement, MovementType::TransferIn, $transfer->id);
@@ -244,6 +245,7 @@ class StockTransferService
                     reference: $reference,
                     userId: $userId,
                     expectedCompanyId: $transfer->company_id,
+                    variantId: $line->variant_id,
                 );
 
                 $this->markMovementAsTransfer($movement, MovementType::TransferIn, $transfer->id);
@@ -326,6 +328,7 @@ class StockTransferService
                                     userId: $userId,
                                     batchId: $allocation->batch_id,
                                     expectedCompanyId: $transfer->company_id,
+                                    variantId: $line->variant_id,
                                 );
 
                                 $this->markMovementAsTransfer($movement, MovementType::TransferIn, $transfer->id);
@@ -338,6 +341,7 @@ class StockTransferService
                                 reference: $cancelReference,
                                 userId: $userId,
                                 expectedCompanyId: $transfer->company_id,
+                                variantId: $line->variant_id,
                             );
 
                             $this->markMovementAsTransfer($movement, MovementType::TransferIn, $transfer->id);

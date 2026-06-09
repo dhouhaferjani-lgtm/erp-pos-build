@@ -286,4 +286,61 @@ class StockTransferVariantTest extends TestCase
         $this->assertSame('3.0000', $this->variantStockQty($this->variantA, $this->warehouse));
         $this->assertSame('2.0000', $this->variantStockQty($this->variantB, $this->warehouse));
     }
+
+    public function test_complete_increments_destination_variant_and_capitalizes_product_wac(): void
+    {
+        // Company-wide on-hand at cost 5: 10 of A + 10 of B = 20 units, avg 5.
+        $this->seedVariantStock($this->variantA, $this->warehouse, '10');
+        $this->seedVariantStock($this->variantB, $this->warehouse, '10');
+
+        $transfer = $this->service->initiate(new InitiateTransferData(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            sourceLocationId: $this->warehouse->id,
+            destinationLocationId: $this->shop->id,
+            initiatedByUserId: $this->user->id,
+            lines: [
+                new InitiateTransferLineData(productId: $this->product->id, quantity: '4', variantId: $this->variantA->id),
+            ],
+            transferCost: '40',
+        ));
+
+        $completed = $this->service->complete($transfer->id, $this->user->id);
+
+        $this->assertSame(TransferStatus::Completed, $completed->status);
+        // Destination variant-A row got the 4 units; variant B never appears at the shop.
+        $this->assertSame('4.0000', $this->variantStockQty($this->variantA, $this->shop));
+        $this->assertSame('0.0000', $this->variantStockQty($this->variantB, $this->shop));
+
+        // WAC is PRODUCT-grain: freight 40 / company on-hand 20 = +2.00 -> 5 + 2 = 7.
+        // If complete erroneously scoped the denominator to variant A's 10 units
+        // you would see 9.000000 instead. cost_price stringifies at scale 6.
+        $this->product->refresh();
+        $this->assertSame('7.000000', (string) $this->product->cost_price);
+    }
+
+    public function test_cancel_in_transit_restocks_the_source_variant(): void
+    {
+        $this->seedVariantStock($this->variantA, $this->warehouse, '10');
+
+        $transfer = $this->service->initiate(new InitiateTransferData(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            sourceLocationId: $this->warehouse->id,
+            destinationLocationId: $this->shop->id,
+            initiatedByUserId: $this->user->id,
+            lines: [
+                new InitiateTransferLineData(productId: $this->product->id, quantity: '4', variantId: $this->variantA->id),
+            ],
+        ));
+        $this->assertSame('6.0000', $this->variantStockQty($this->variantA, $this->warehouse));
+
+        $cancelled = $this->service->cancel($transfer->id, $this->user->id, 'changed mind');
+
+        $this->assertSame(TransferStatus::Cancelled, $cancelled->status);
+        // The 4 in-flight units returned to the source variant row.
+        $this->assertSame('10.0000', $this->variantStockQty($this->variantA, $this->warehouse));
+        // Nothing leaked to the destination.
+        $this->assertSame('0.0000', $this->variantStockQty($this->variantA, $this->shop));
+    }
 }
