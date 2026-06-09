@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Domain;
 
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
@@ -99,5 +100,17 @@ class StockTransferLine extends Model
     public function batchAllocations(): HasMany
     {
         return $this->hasMany(StockTransferLineBatchAllocation::class, 'stock_transfer_line_id');
+    }
+
+    /**
+     * Read-side projection of the targeted variant (presentation eager-load
+     * only — no domain logic crosses the module boundary; mirrors the existing
+     * product()/company() relations on this model).
+     *
+     * @return BelongsTo<ProductVariant, $this>
+     */
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 }

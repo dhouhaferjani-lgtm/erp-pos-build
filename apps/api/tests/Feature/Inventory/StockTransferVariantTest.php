@@ -89,6 +89,12 @@ class StockTransferVariantTest extends TestCase
             'password' => bcrypt('password'),
             'status' => UserStatus::Active,
         ]);
+        $this->user->givePermissionTo([
+            'inventory.transfers.view',
+            'inventory.transfers.create',
+            'inventory.transfers.complete',
+            'inventory.transfers.cancel',
+        ]);
 
         UserCompanyMembership::create([
             'user_id' => $this->user->id,
@@ -428,5 +434,38 @@ class StockTransferVariantTest extends TestCase
         $this->assertSame(TransferStatus::InTransit, $transfer->status);
         $allocation = $transfer->lines->first()->batchAllocations->first();
         $this->assertSame((int) $batchA->id, (int) $allocation->batch_id);
+    }
+
+    public function test_store_endpoint_accepts_variant_line_and_returns_variant_fields(): void
+    {
+        $this->seedVariantStock($this->variantA, $this->warehouse, '10');
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/stock-transfers', [
+            'source_location_id' => $this->warehouse->id,
+            'destination_location_id' => $this->shop->id,
+            'lines' => [
+                ['product_id' => $this->product->id, 'variant_id' => $this->variantA->id, 'quantity' => '4'],
+            ],
+        ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('data.lines.0.variant_id', $this->variantA->id);
+        $response->assertJsonPath('data.lines.0.variant_sku', $this->variantA->sku);
+    }
+
+    public function test_store_endpoint_rejects_missing_variant_on_variant_product_with_422(): void
+    {
+        $this->seedVariantStock($this->variantA, $this->warehouse, '10');
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/stock-transfers', [
+            'source_location_id' => $this->warehouse->id,
+            'destination_location_id' => $this->shop->id,
+            'lines' => [
+                ['product_id' => $this->product->id, 'quantity' => '4'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'INVALID_TRANSFER');
     }
 }

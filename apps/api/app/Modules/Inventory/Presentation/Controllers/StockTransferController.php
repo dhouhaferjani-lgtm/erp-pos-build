@@ -36,7 +36,7 @@ class StockTransferController extends Controller
         $query = StockTransfer::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
-            ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'lines.product', 'lines.batchAllocations.batch']);
+            ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'lines.product', 'lines.variant', 'lines.batchAllocations.batch']);
 
         if ($request->filled('status')) {
             $status = TransferStatus::tryFrom((string) $request->input('status'));
@@ -87,7 +87,7 @@ class StockTransferController extends Controller
         $model = StockTransfer::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
-            ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'completedBy', 'cancelledBy', 'lines.product', 'lines.batchAllocations.batch'])
+            ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'completedBy', 'cancelledBy', 'lines.product', 'lines.variant', 'lines.batchAllocations.batch'])
             ->findOrFail($transfer);
 
         return response()->json([
@@ -101,7 +101,7 @@ class StockTransferController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        /** @var array<int, array{product_id: string, quantity: string|int|float, batch_allocations?: array<int, array{batch_id: int|string, quantity: string|int|float}>}> $rawLines */
+        /** @var array<int, array{product_id: string, variant_id?: string|null, quantity: string|int|float, batch_allocations?: array<int, array{batch_id: int|string, quantity: string|int|float}>}> $rawLines */
         $rawLines = $request->input('lines', []);
 
         $lines = [];
@@ -117,9 +117,12 @@ class StockTransferController extends Controller
                     quantity: $allocationQty,
                 );
             }
+            // isset() is false for a null value, so a present key is non-null here.
+            $variantId = isset($line['variant_id']) ? (string) $line['variant_id'] : null;
             $lines[] = new InitiateTransferLineData(
                 productId: (string) $line['product_id'],
                 quantity: $qty,
+                variantId: $variantId,
                 batchAllocations: $batchAllocations,
             );
         }
@@ -157,7 +160,7 @@ class StockTransferController extends Controller
             ], 422);
         }
 
-        $transfer->load(['sourceLocation', 'destinationLocation', 'initiatedBy', 'lines.product', 'lines.batchAllocations.batch']);
+        $transfer->load(['sourceLocation', 'destinationLocation', 'initiatedBy', 'lines.product', 'lines.variant', 'lines.batchAllocations.batch']);
 
         return response()->json([
             'data' => $this->formatTransfer($transfer, includeLines: true),
@@ -185,7 +188,7 @@ class StockTransferController extends Controller
             return $this->stateExceptionResponse($e);
         }
 
-        $completed->load(['sourceLocation', 'destinationLocation', 'completedBy', 'lines.product', 'lines.batchAllocations.batch']);
+        $completed->load(['sourceLocation', 'destinationLocation', 'completedBy', 'lines.product', 'lines.variant', 'lines.batchAllocations.batch']);
 
         return response()->json([
             'data' => $this->formatTransfer($completed, includeLines: true),
@@ -221,7 +224,7 @@ class StockTransferController extends Controller
             return $this->stateExceptionResponse($e);
         }
 
-        $cancelled->load(['sourceLocation', 'destinationLocation', 'cancelledBy', 'lines.product', 'lines.batchAllocations.batch']);
+        $cancelled->load(['sourceLocation', 'destinationLocation', 'cancelledBy', 'lines.product', 'lines.variant', 'lines.batchAllocations.batch']);
 
         return response()->json([
             'data' => $this->formatTransfer($cancelled, includeLines: true),
@@ -266,6 +269,9 @@ class StockTransferController extends Controller
                 'product_id' => $line->product_id,
                 'product_name' => $line->product->name ?? null,
                 'product_sku' => $line->product->sku ?? null,
+                'variant_id' => $line->variant_id,
+                'variant_sku' => $line->variant->sku ?? null,
+                'variant_name' => $line->variant->name_suffix ?? null,
                 'quantity' => $line->quantity,
                 'unit_cost_snapshot' => $line->unit_cost_snapshot,
                 'allocated_transfer_cost' => $line->allocated_transfer_cost,
