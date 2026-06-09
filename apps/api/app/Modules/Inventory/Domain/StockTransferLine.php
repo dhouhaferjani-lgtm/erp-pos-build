@@ -20,6 +20,7 @@ use Illuminate\Support\Carbon;
  * @property string $tenant_id
  * @property string $company_id
  * @property string $product_id
+ * @property string|null $variant_id
  * @property numeric-string $quantity
  * @property numeric-string|null $unit_cost_snapshot
  * @property numeric-string $allocated_transfer_cost
@@ -42,6 +43,7 @@ class StockTransferLine extends Model
         'tenant_id',
         'company_id',
         'product_id',
+        'variant_id',
         'quantity',
         'unit_cost_snapshot',
         'allocated_transfer_cost',
