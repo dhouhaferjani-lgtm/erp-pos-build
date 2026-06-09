@@ -16,6 +16,7 @@ final class InitiateTransferLineData
     public function __construct(
         public readonly string $productId,
         public readonly string $quantity,
+        public readonly ?string $variantId = null,
         public readonly array $batchAllocations = [],
     ) {}
 }

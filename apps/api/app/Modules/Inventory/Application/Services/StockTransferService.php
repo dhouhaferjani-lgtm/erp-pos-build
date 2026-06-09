@@ -26,6 +26,7 @@ use App\Modules\Inventory\Domain\StockTransfer;
 use App\Modules\Inventory\Domain\StockTransferLine;
 use App\Modules\Inventory\Domain\StockTransferLineBatchAllocation;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\ProductVariantLookup;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -69,6 +70,7 @@ class StockTransferService
         private readonly StockAdjustmentService $stockAdjustmentService,
         private readonly WeightedAverageCostService $wacService,
         private readonly ProductCostLock $costLock,
+        private readonly ProductVariantLookup $variantLookup,
     ) {}
 
     /**
@@ -146,12 +148,15 @@ class StockTransferService
                     throw new InvalidArgumentException('Each transfer line must have quantity greater than zero.');
                 }
 
+                $this->assertVariantValidForProduct($line->productId, $line->variantId);
+
                 $transferLine = StockTransferLine::create([
                     'id' => Str::uuid()->toString(),
                     'transfer_id' => $transfer->id,
                     'tenant_id' => $data->tenantId,
                     'company_id' => $data->companyId,
                     'product_id' => $line->productId,
+                    'variant_id' => $line->variantId,
                     'quantity' => $line->quantity,
                 ]);
 
@@ -227,6 +232,7 @@ class StockTransferService
                         userId: $userId,
                         batchId: $allocation->batch_id,
                         expectedCompanyId: $transfer->company_id,
+                        variantId: $line->variant_id,
                     );
 
                     $this->markMovementAsTransfer($movement, MovementType::TransferIn, $transfer->id);
@@ -239,6 +245,7 @@ class StockTransferService
                     reference: $reference,
                     userId: $userId,
                     expectedCompanyId: $transfer->company_id,
+                    variantId: $line->variant_id,
                 );
 
                 $this->markMovementAsTransfer($movement, MovementType::TransferIn, $transfer->id);
@@ -321,6 +328,7 @@ class StockTransferService
                                     userId: $userId,
                                     batchId: $allocation->batch_id,
                                     expectedCompanyId: $transfer->company_id,
+                                    variantId: $line->variant_id,
                                 );
 
                                 $this->markMovementAsTransfer($movement, MovementType::TransferIn, $transfer->id);
@@ -333,6 +341,7 @@ class StockTransferService
                                 reference: $cancelReference,
                                 userId: $userId,
                                 expectedCompanyId: $transfer->company_id,
+                                variantId: $line->variant_id,
                             );
 
                             $this->markMovementAsTransfer($movement, MovementType::TransferIn, $transfer->id);
@@ -396,6 +405,11 @@ class StockTransferService
                 ->where('product_id', $product->id)
                 ->where('location_id', $transfer->source_location_id)
                 ->where('company_id', $transfer->company_id)
+                ->when(
+                    $line->variant_id !== null,
+                    fn ($q) => $q->where('variant_id', $line->variant_id),
+                    fn ($q) => $q->whereNull('variant_id'),
+                )
                 ->lockForUpdate()
                 ->first();
 
@@ -431,6 +445,7 @@ class StockTransferService
                         userId: $userId,
                         batchId: $allocation->batch_id,
                         expectedCompanyId: $transfer->company_id,
+                        variantId: $line->variant_id,
                     );
 
                     $this->markMovementAsTransfer($movement, MovementType::TransferOut, $transfer->id);
@@ -443,6 +458,7 @@ class StockTransferService
                     reference: $reference,
                     userId: $userId,
                     expectedCompanyId: $transfer->company_id,
+                    variantId: $line->variant_id,
                 );
 
                 $this->markMovementAsTransfer($movement, MovementType::TransferOut, $transfer->id);
@@ -628,7 +644,7 @@ class StockTransferService
             $seenBatchIds[$allocation->batch_id] = true;
 
             $allocatedQuantity = bcadd($allocatedQuantity, (string) $allocation->quantity, self::QTY_SCALE);
-            $this->assertBatchCanIssue($allocation, $product, $transfer);
+            $this->assertBatchCanIssue($allocation, $product, $transfer, $line->variant_id);
         }
 
         if (bccomp($allocatedQuantity, (string) $line->quantity, self::QTY_SCALE) !== 0) {
@@ -656,6 +672,11 @@ class StockTransferService
             ->where('tenant_id', $transfer->tenant_id)
             ->where('company_id', $transfer->company_id)
             ->where('product_id', $product->id)
+            ->when(
+                $line->variant_id !== null,
+                fn ($q) => $q->where('variant_id', $line->variant_id),
+                fn ($q) => $q->whereNull('variant_id'),
+            )
             ->orderBy('expiry_date')
             ->orderBy('id')
             ->get();
@@ -725,11 +746,17 @@ class StockTransferService
         StockTransferLineBatchAllocation $allocation,
         Product $product,
         StockTransfer $transfer,
+        ?string $variantId,
     ): void {
         $batch = Batch::query()
             ->where('tenant_id', $transfer->tenant_id)
             ->where('company_id', $transfer->company_id)
             ->where('product_id', $product->id)
+            ->when(
+                $variantId !== null,
+                fn ($q) => $q->where('variant_id', $variantId),
+                fn ($q) => $q->whereNull('variant_id'),
+            )
             ->find($allocation->batch_id);
 
         if ($batch === null) {
@@ -795,14 +822,21 @@ class StockTransferService
     private function collectProductIds(array $lines): array
     {
         $seen = [];
+        $productIds = [];
         foreach ($lines as $line) {
-            if (isset($seen[$line->productId])) {
-                throw new InvalidArgumentException('Duplicate product on transfer lines: '.$line->productId);
+            // A product may appear on multiple lines under DIFFERENT variants;
+            // only a duplicate (product, variant) pair is rejected. The DB
+            // partial-unique on (transfer_id, product_id, variant_id) enforces
+            // the same invariant at the storage layer.
+            $key = $line->productId.'|'.($line->variantId ?? '');
+            if (isset($seen[$key])) {
+                throw new InvalidArgumentException('Duplicate product/variant on transfer lines: '.$line->productId);
             }
-            $seen[$line->productId] = true;
+            $seen[$key] = true;
+            $productIds[$line->productId] = true;
         }
 
-        return array_keys($seen);
+        return array_keys($productIds);
     }
 
     /**
@@ -821,6 +855,35 @@ class StockTransferService
         if (count($missing) > 0) {
             throw new InvalidArgumentException(
                 'Products do not belong to the current company: '.implode(', ', $missing)
+            );
+        }
+    }
+
+    /**
+     * Validate the line's variant addressing:
+     *  - if a variantId is supplied, it must exist, be active, and belong to
+     *    the product;
+     *  - if it is null but the product has active variants, reject (mirrors
+     *    StockAdjustmentService::assertVariantConsistency, but surfaced as an
+     *    InvalidArgumentException so the controller maps it to 422 instead of
+     *    letting the seam's uncaught VariantRequiredException 500).
+     */
+    private function assertVariantValidForProduct(string $productId, ?string $variantId): void
+    {
+        if ($variantId === null) {
+            if ($this->variantLookup->listForProduct($productId, true)->isNotEmpty()) {
+                throw new InvalidArgumentException(
+                    "Product {$productId} has active variants; a variant_id is required for the transfer line."
+                );
+            }
+
+            return;
+        }
+
+        $summary = $this->variantLookup->findById($variantId);
+        if ($summary === null || ! $summary->isActive || $summary->productId !== $productId) {
+            throw new InvalidArgumentException(
+                "Variant {$variantId} is invalid for product {$productId}."
             );
         }
     }

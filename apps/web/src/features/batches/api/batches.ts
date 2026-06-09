@@ -123,6 +123,12 @@ export async function getFEFOSuggestions(
 /**
  * Get all batches for a product with stock information
  */
-export async function getProductBatches(productId: string): Promise<Batch[]> {
-  return apiGet<Batch[]>(`/products/${productId}/batch-stock`)
+export async function getProductBatches(
+  productId: string,
+  variantId?: string | null,
+): Promise<Batch[]> {
+  return apiGet<Batch[]>(
+    `/products/${productId}/batch-stock`,
+    variantId != null ? { variant_id: variantId } : undefined,
+  )
 }

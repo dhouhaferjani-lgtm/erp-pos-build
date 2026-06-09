@@ -28,6 +28,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Str;
 
 class ProductController extends Controller
 {
@@ -591,11 +592,20 @@ class ProductController extends Controller
             ], 404);
         }
 
+        // Variant-aware callers (e.g. the stock-transfer availability cell) pass
+        // ?variant_id=... so the per-location availability reflects the CHOSEN
+        // variant — without it a variant product returns one row per variant per
+        // location and the client's location lookup would surface an arbitrary
+        // variant's quantity. Omitted = product-wide (legacy) behaviour.
+        $variantId = $request->query('variant_id');
+        $variantFilter = is_string($variantId) && Str::isUuid($variantId) ? $variantId : null;
+
         // stock_levels carries tenant_id + company_id; lead with both.
         $stockLevels = StockLevel::query()
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->where('product_id', $productModel->id)
+            ->when($variantFilter !== null, fn ($q) => $q->where('variant_id', $variantFilter))
             ->with('location')
             ->get();
 

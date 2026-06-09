@@ -273,7 +273,7 @@ class BatchController extends Controller
     /**
      * Get batch stock for a specific product.
      */
-    public function productBatchStock(string $productId): JsonResponse
+    public function productBatchStock(Request $request, string $productId): JsonResponse
     {
         // api.inventory round-2 (Codex Finding 1): scope by current
         // tenant + company so a foreign-tenant productId returns an
@@ -285,6 +285,18 @@ class BatchController extends Controller
             $productId,
             activeOnly: true,
         );
+
+        // Variant-aware callers (e.g. the stock-transfer batch picker) pass
+        // ?variant_id=... so the picker only offers batches of the chosen
+        // variant — without it a batch-tracked variant product would show
+        // every variant's lots and the user could pick a foreign-variant lot
+        // that the server then rejects (422) at submit time.
+        $variantId = $request->query('variant_id');
+        if (is_string($variantId) && Str::isUuid($variantId)) {
+            $batches = $batches
+                ->filter(fn (Batch $batch): bool => $batch->variant_id === $variantId)
+                ->values();
+        }
 
         return response()->json([
             'data' => BatchResource::collection($batches),
