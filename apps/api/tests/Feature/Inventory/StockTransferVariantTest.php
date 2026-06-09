@@ -468,4 +468,28 @@ class StockTransferVariantTest extends TestCase
         $response->assertStatus(422);
         $response->assertJsonPath('error.code', 'INVALID_TRANSFER');
     }
+
+    public function test_product_batch_stock_endpoint_filters_by_variant(): void
+    {
+        $product = $this->makeBatchProduct();
+        $vA = $this->makeVariantFor($product, 'A');
+        $vB = $this->makeVariantFor($product, 'B');
+
+        $batchA = $this->seedVariantBatch($product, $vA, $this->warehouse, 'LOT-A', now()->addMonths(6)->toDateString(), '5');
+        $batchB = $this->seedVariantBatch($product, $vB, $this->warehouse, 'LOT-B', now()->addMonths(6)->toDateString(), '5');
+
+        // Without a variant filter the picker sees every variant's lots.
+        $all = $this->actingAs($this->user)
+            ->getJson("/api/v1/products/{$product->id}/batch-stock");
+        $all->assertStatus(200);
+        $this->assertCount(2, $all->json('data'));
+
+        // With ?variant_id only that variant's lots are returned.
+        $scoped = $this->actingAs($this->user)
+            ->getJson("/api/v1/products/{$product->id}/batch-stock?variant_id={$vA->id}");
+        $scoped->assertStatus(200);
+        $this->assertCount(1, $scoped->json('data'));
+        $this->assertSame((int) $batchA->id, (int) $scoped->json('data.0.id'));
+        $this->assertNotSame((int) $batchB->id, (int) $scoped->json('data.0.id'));
+    }
 }

@@ -117,8 +117,12 @@ class StockTransferController extends Controller
                     quantity: $allocationQty,
                 );
             }
-            // isset() is false for a null value, so a present key is non-null here.
-            $variantId = isset($line['variant_id']) ? (string) $line['variant_id'] : null;
+            // An explicitly-sent null and a missing key both mean "product-level
+            // line" (variant_id stays null); a present non-null value is the
+            // chosen variant.
+            $variantId = array_key_exists('variant_id', $line) && $line['variant_id'] !== null
+                ? (string) $line['variant_id']
+                : null;
             $lines[] = new InitiateTransferLineData(
                 productId: (string) $line['product_id'],
                 quantity: $qty,

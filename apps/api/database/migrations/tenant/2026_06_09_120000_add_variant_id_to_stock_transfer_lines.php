@@ -54,7 +54,7 @@ return new class extends Migration
             DB::statement('DROP INDEX CONCURRENTLY IF EXISTS stock_transfer_lines_with_variant');
             DB::statement('DROP INDEX CONCURRENTLY IF EXISTS stock_transfer_lines_non_variant');
             DB::statement('ALTER TABLE stock_transfer_lines DROP CONSTRAINT IF EXISTS stock_transfer_lines_variant_id_foreign');
-            DB::statement('CREATE UNIQUE INDEX stock_transfer_lines_transfer_product_unique
+            DB::statement('CREATE UNIQUE INDEX CONCURRENTLY stock_transfer_lines_transfer_product_unique
                 ON stock_transfer_lines (transfer_id, product_id)');
         } else {
             DB::statement('DROP INDEX IF EXISTS stock_transfer_lines_with_variant');

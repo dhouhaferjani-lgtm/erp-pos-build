@@ -202,7 +202,7 @@ interface BatchToggleCellProps {
 function BatchToggleCell({ line, sourceLocationId, expanded, onToggle, onAllocationsChange }: BatchToggleCellProps) {
   const { t } = useTranslation('stock-transfers')
   const product = line.product
-  const batchesQuery = useProductBatches(product?.id ?? '')
+  const batchesQuery = useProductBatches(product?.id ?? '', line.variantId)
   const batches = useMemo(() => batchesQuery.data ?? [], [batchesQuery.data])
 
   if (!product?.requires_batch_tracking) {
@@ -243,7 +243,7 @@ interface BatchDetailRowProps {
 
 /** Full-width expandable batch panel rendered beneath a batch-tracked line. */
 function BatchDetailRow({ line, sourceLocationId, onChange }: BatchDetailRowProps) {
-  const batchesQuery = useProductBatches(line.product.id)
+  const batchesQuery = useProductBatches(line.product.id, line.variantId)
   const batches = useMemo(() => batchesQuery.data ?? [], [batchesQuery.data])
   return (
     <BatchAllocationPanel
@@ -518,7 +518,9 @@ export function CreateStockTransferPage() {
         <VariantSelectCell
           line={line}
           onSelect={(variantId) => {
-            updateLine(line.uid, { variantId })
+            // Variant change invalidates batch allocations (different variant =
+            // different lots).
+            updateLine(line.uid, { variantId, batchAllocations: [] })
           }}
           onVariantsLoaded={handleVariantsLoaded}
         />

@@ -41,7 +41,8 @@ export const batchKeys = {
   stock: (uuid: string) => [...batchKeys.all, 'stock', uuid] as const,
   fefo: (productId: string, locationId: number, quantity: number) =>
     [...batchKeys.all, 'fefo', productId, locationId, quantity] as const,
-  productBatches: (productId: string) => [...batchKeys.all, 'product', productId] as const,
+  productBatches: (productId: string, variantId: string | null = null) =>
+    [...batchKeys.all, 'product', productId, variantId] as const,
 }
 
 function scopedBatchCollectionsPredicate(
@@ -141,13 +142,16 @@ export function useFEFOSuggestions(
 /**
  * Hook to fetch all batches for a product
  */
-export function useProductBatches(productId: string): UseQueryResult<Batch[]> {
+export function useProductBatches(
+  productId: string,
+  variantId: string | null = null,
+): UseQueryResult<Batch[]> {
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useQuery({
-    queryKey: tenantScopedKey(batchKeys.productBatches(productId)),
-    queryFn: () => getProductBatches(productId),
+    queryKey: tenantScopedKey(batchKeys.productBatches(productId, variantId)),
+    queryFn: () => getProductBatches(productId, variantId),
     enabled: Boolean(productId) && tenantId !== null && companyId !== null,
   })
 }
