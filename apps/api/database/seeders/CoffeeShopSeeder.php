@@ -37,6 +37,8 @@ use App\Modules\Menu\Domain\Entities\MenuCategory;
 use App\Modules\Menu\Domain\Entities\MenuCategoryItem;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\POS\Domain\Enums\TerminalType;
+use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Promotion\Domain\Entities\Promotion;
 use App\Modules\Promotion\Domain\Enums\DiscountAppliesTo;
@@ -112,7 +114,13 @@ class CoffeeShopSeeder extends Seeder
         if (DB::table('countries')->count() === 0) {
             $this->call(CountriesSeeder::class);
         }
-        $this->call(UomSeeder::class);
+        // UomSeeder uses UnitCategory::create (not idempotent) and seeds GLOBAL
+        // reference data not cleared by the tenant-recreate teardown above —
+        // guard it like CountriesSeeder so a re-run on a non-fresh DB does not
+        // collide on unit_categories.code (keeps this seeder re-runnable).
+        if (DB::table('unit_categories')->count() === 0) {
+            $this->call(UomSeeder::class);
+        }
         $this->command->info('Reference data ready');
 
         // 3. Company + Location
@@ -177,6 +185,10 @@ class CoffeeShopSeeder extends Seeder
         // 12. Test users
         $this->command->info('Creating test users...');
         $this->createTestUsers();
+
+        // 13. POS terminal (claimable from the device)
+        $this->command->info('Creating POS terminal...');
+        $this->seedTerminal();
 
         $this->command->newLine();
         $this->command->info('Coffee shop seeded successfully!');
@@ -1183,6 +1195,44 @@ class CoffeeShopSeeder extends Seeder
         }
 
         $this->command->info('Created 4 partners with GL entries and non-zero balances');
+    }
+
+    /**
+     * Seed one CLAIMABLE physical POS terminal.
+     *
+     * Shift-open (ShiftController::open) validates that the posted
+     * `terminal_code` exists, so a fresh coffee-shop tenant cannot open a shift
+     * until a terminal row exists. The supported device flow is TerminalSetupPage
+     * → "Claim existing terminal", which lists active physical terminals with a
+     * null `hardware_identifier` (TerminalController::available) and claims one.
+     *
+     * This mirrors TerminalController::store() exactly (same genesis_seed /
+     * sequence / year shape) so the seeded terminal is fiscally identical to one
+     * an admin would create in the UI — active and unclaimed, ready to claim.
+     */
+    private function seedTerminal(): void
+    {
+        Terminal::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->location->id,
+            'type' => TerminalType::Physical,
+            'code' => 'POS01',
+            'name' => 'Front Counter',
+            'genesis_seed' => bin2hex(random_bytes(32)),
+            'current_sequence' => 1,
+            'current_year' => (int) now()->format('Y'),
+            'is_active' => true,
+            'activated_at' => now(),
+            // Leave hardware_identifier null → claimable from the device.
+            'allow_line_discounts' => true,
+            'allow_transaction_discounts' => true,
+            // Terminal cap above the cashiers' 25% so the user's max_discount_percent
+            // is the binding limit that drives the manager-PIN override path.
+            'max_discount_percent' => '100.00',
+        ]);
+
+        $this->command->info('POS terminal: POS01 - Front Counter (active, unclaimed)');
     }
 
     private function createTestUsers(): void
