@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, PackageSearch, Plus, Trash2 } from 'lucide-react'
@@ -18,6 +18,8 @@ import { bccomp, bcsub } from '@/lib/decimal'
 import { getQuantityDecimals } from '@/lib/quantityScale'
 import { useProductBatches } from '@/features/batches/hooks/useBatches'
 import type { Batch } from '@/features/batches/types'
+import { useProductVariants } from '@/features/catalog/hooks/useProductVariants'
+import type { ProductVariant } from '@/features/catalog/api/variantApi'
 import { useCreateStockTransfer } from '../api/queries'
 import type { CreateStockTransferInput, TransferCostDistribution } from '../types'
 
@@ -29,8 +31,16 @@ interface DraftBatchAllocation {
 interface DraftLine {
   uid: string
   product: ProductPickerValue | null
+  variantId: string | null
   quantity: string
   batchAllocations: DraftBatchAllocation[]
+}
+
+/** Active variants of the line's product, cached for submit-time validation. */
+type VariantsByProduct = Map<string, ProductVariant[]>
+
+function activeVariants(variants: ProductVariant[] | undefined): ProductVariant[] {
+  return Array.isArray(variants) ? variants.filter((variant) => variant.is_active) : []
 }
 
 const DISTRIBUTION_OPTIONS: readonly TransferCostDistribution[] = [
@@ -296,6 +306,61 @@ function AvailabilityCell({ line, sourceLocationId }: AvailabilityCellProps) {
   )
 }
 
+interface VariantSelectCellProps {
+  line: DraftLine
+  onSelect: (variantId: string | null) => void
+  onVariantsLoaded: (productId: string, variants: ProductVariant[]) => void
+}
+
+/**
+ * Renders a variant <select> when the line's product has active variants.
+ * Reports the loaded variants up to the page so submit-time validation can
+ * require a choice. Products without variants render a muted dash.
+ */
+function VariantSelectCell({ line, onSelect, onVariantsLoaded }: VariantSelectCellProps) {
+  const { t } = useTranslation('stock-transfers')
+  const product = line.product
+  const productId = product?.id ?? ''
+  const variantsQuery = useProductVariants(productId)
+  const variants = useMemo(() => activeVariants(variantsQuery.data), [variantsQuery.data])
+  const isLoading = variantsQuery.isLoading
+
+  // Surface the loaded set to the page (keyed by product) for the required-check.
+  useEffect(() => {
+    if (productId !== '' && !isLoading) {
+      onVariantsLoaded(productId, variants)
+    }
+  }, [productId, isLoading, variants, onVariantsLoaded])
+
+  if (product === null) {
+    return <span className={`text-sm ${textColors.disabled}`}>—</span>
+  }
+  if (variantsQuery.isLoading) {
+    return <span className={`text-xs ${textColors.tertiary}`}>{t('create.availability.loading')}</span>
+  }
+  if (variants.length === 0) {
+    return <span className={`text-sm ${textColors.tertiary}`}>—</span>
+  }
+
+  return (
+    <select
+      value={line.variantId ?? ''}
+      onChange={(e) => {
+        onSelect(e.target.value === '' ? null : e.target.value)
+      }}
+      aria-label={t('create.field.variant')}
+      className={tokens.select.base}
+    >
+      <option value="">{t('create.field.selectVariant')}</option>
+      {variants.map((variant) => (
+        <option key={variant.id} value={variant.id}>
+          {variant.name_suffix} ({variant.sku})
+        </option>
+      ))}
+    </select>
+  )
+}
+
 export function CreateStockTransferPage() {
   const { t } = useTranslation('stock-transfers')
   const navigate = useNavigate()
@@ -314,16 +379,20 @@ export function CreateStockTransferPage() {
   const [transferCostLabel, setTransferCostLabel] = useState('')
   const [distribution, setDistribution] = useState<TransferCostDistribution>('pro_rata_value')
   const [lines, setLines] = useState<DraftLine[]>([
-    { uid: generateUid(), product: null, quantity: '1', batchAllocations: [] },
+    { uid: generateUid(), product: null, variantId: null, quantity: '1', batchAllocations: [] },
   ])
   const [expandedBatchLineUid, setExpandedBatchLineUid] = useState<string | null>(null)
+  // Active variants per product, populated by VariantSelectCell as products
+  // are picked. Read at submit to require a variant on variant-bearing products
+  // (the backend enforces the same rule and returns 422 if bypassed).
+  const variantsByProduct = useRef<VariantsByProduct>(new Map())
 
   const createMutation = useCreateStockTransfer()
 
   // Stable handler identities so the memoized line columns below don't change
   // every render — otherwise each cell remounts and the inputs lose focus.
   const addLine = useCallback(() => {
-    setLines((prev) => [...prev, { uid: generateUid(), product: null, quantity: '1', batchAllocations: [] }])
+    setLines((prev) => [...prev, { uid: generateUid(), product: null, variantId: null, quantity: '1', batchAllocations: [] }])
   }, [])
 
   const removeLine = useCallback((uid: string) => {
@@ -336,6 +405,10 @@ export function CreateStockTransferPage() {
 
   const toggleBatchLine = useCallback((uid: string) => {
     setExpandedBatchLineUid((current) => (current === uid ? null : uid))
+  }, [])
+
+  const handleVariantsLoaded = useCallback((productId: string, variants: ProductVariant[]) => {
+    variantsByProduct.current.set(productId, variants)
   }, [])
 
   const submitTransfer = async (): Promise<void> => {
@@ -367,6 +440,13 @@ export function CreateStockTransferPage() {
         toast.error(t('create.batch.required'))
         return
       }
+      // A product with active variants must have a variant chosen. The backend
+      // enforces the same rule (422 INVALID_TRANSFER) if this is bypassed.
+      const productVariants = variantsByProduct.current.get(line.product.id) ?? []
+      if (productVariants.length > 0 && line.variantId === null) {
+        toast.error(t('create.validation.variantRequired'))
+        return
+      }
     }
 
     const payload: CreateStockTransferInput = {
@@ -378,6 +458,7 @@ export function CreateStockTransferPage() {
       transfer_cost_distribution: distribution,
       lines: cleanLines.map((l) => ({
         product_id: l.product.id,
+        ...(l.variantId !== null ? { variant_id: l.variantId } : {}),
         quantity: l.quantity,
         ...(l.batchAllocations.length > 0
           ? {
@@ -419,12 +500,27 @@ export function CreateStockTransferPage() {
         <ProductPicker
           value={line.product}
           onChange={(product) => {
-            // Product change invalidates any batch allocation picked for the old product.
-            updateLine(line.uid, { product, batchAllocations: [] })
+            // Product change invalidates the batch allocation AND the variant
+            // picked for the old product.
+            updateLine(line.uid, { product, variantId: null, batchAllocations: [] })
           }}
           label=""
           placeholder={t('create.field.selectProduct')}
           productType="all"
+        />
+      ),
+    },
+    {
+      id: 'variant',
+      header: t('create.field.variant'),
+      headerClassName: 'w-48',
+      Cell: ({ line }) => (
+        <VariantSelectCell
+          line={line}
+          onSelect={(variantId) => {
+            updateLine(line.uid, { variantId })
+          }}
+          onVariantsLoaded={handleVariantsLoaded}
         />
       ),
     },
@@ -487,7 +583,7 @@ export function CreateStockTransferPage() {
         />
       ),
     },
-  ], [t, sourceLocationId, expandedBatchLineUid, lines.length, updateLine, removeLine, toggleBatchLine])
+  ], [t, sourceLocationId, expandedBatchLineUid, lines.length, updateLine, removeLine, toggleBatchLine, handleVariantsLoaded])
 
   return (
     <div className="space-y-6">

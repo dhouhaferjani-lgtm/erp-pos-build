@@ -45,7 +45,9 @@
       "selectProduct": "Sélectionner un produit",
       "addLine": "Ajouter une ligne",
       "removeLine": "Retirer la ligne",
-      "availableAtSource": "Disponible @ source"
+      "availableAtSource": "Disponible @ source",
+      "variant": "Variante",
+      "selectVariant": "Sélectionner une variante"
     },
     "batch": {
       "column": "Lots",
@@ -69,7 +71,8 @@
     "validation": {
       "linesRequired": "Ajoutez au moins une ligne.",
       "differentLocations": "La source et la destination doivent être différentes.",
-      "quantityPositive": "La quantité doit être supérieure à zéro."
+      "quantityPositive": "La quantité doit être supérieure à zéro.",
+      "variantRequired": "Sélectionnez une variante pour ce produit."
     },
     "success": "Transfert créé et stock placé en transit.",
     "error": "Impossible de créer le transfert.",
