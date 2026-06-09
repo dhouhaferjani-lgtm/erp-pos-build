@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Inventory;
 
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
@@ -12,6 +13,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\DTOs\InitiateTransferBatchAllocationData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
 use App\Modules\Inventory\Application\Services\StockTransferService;
@@ -342,5 +344,89 @@ class StockTransferVariantTest extends TestCase
         $this->assertSame('10.0000', $this->variantStockQty($this->variantA, $this->warehouse));
         // Nothing leaked to the destination.
         $this->assertSame('0.0000', $this->variantStockQty($this->variantA, $this->shop));
+    }
+
+    private function makeBatchProduct(): Product
+    {
+        return Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'CREAM',
+            'name' => 'Face Cream',
+            'type' => ProductType::Part,
+            'is_active' => true,
+            'cost_price' => '3.0000',
+            'sale_price' => '6.0000',
+            'requires_batch_tracking' => true,
+        ]);
+    }
+
+    /** Seed a variant-scoped batch with on-hand stock at a location. Returns the Batch. */
+    private function seedVariantBatch(Product $product, ProductVariant $variant, Location $loc, string $number, string $expiry, string $qty): Batch
+    {
+        /** @var Batch $batch */
+        $batch = Batch::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'variant_id' => $variant->id,
+            'batch_number' => $number,
+            'manufacturing_date' => now()->subMonth()->toDateString(),
+            'expiry_date' => $expiry,
+            'is_active' => true,
+            'is_expired' => false,
+            'is_recalled' => false,
+        ]);
+
+        // receive() with a batchId writes both the variant-scoped stock_level
+        // and the batch_stock row, mirroring the source availability the
+        // transfer pre-check + FEFO assertions read.
+        $this->stockService->receive(
+            productId: $product->id,
+            locationId: $loc->id,
+            quantity: $qty,
+            reference: 'SEED-BATCH',
+            userId: $this->user->id,
+            batchId: (int) $batch->id,
+            expectedCompanyId: $this->company->id,
+            variantId: $variant->id,
+        );
+
+        return $batch;
+    }
+
+    public function test_batch_tracked_variant_transfer_uses_variant_scoped_batches(): void
+    {
+        $product = $this->makeBatchProduct();
+        $vA = $this->makeVariantFor($product, 'A');
+        $vB = $this->makeVariantFor($product, 'B');
+
+        // Variant A has a LATER-expiry batch; variant B an EARLIER one. If the
+        // FEFO check is not variant-scoped it will expect B's earlier-expiry
+        // batch and reject A's allocation.
+        $batchA = $this->seedVariantBatch($product, $vA, $this->warehouse, 'LOT-A', now()->addMonths(9)->toDateString(), '5');
+        $this->seedVariantBatch($product, $vB, $this->warehouse, 'LOT-B', now()->addMonths(2)->toDateString(), '5');
+
+        $transfer = $this->service->initiate(new InitiateTransferData(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            sourceLocationId: $this->warehouse->id,
+            destinationLocationId: $this->shop->id,
+            initiatedByUserId: $this->user->id,
+            lines: [
+                new InitiateTransferLineData(
+                    productId: $product->id,
+                    quantity: '3',
+                    variantId: $vA->id,
+                    batchAllocations: [
+                        new InitiateTransferBatchAllocationData(batchId: (int) $batchA->id, quantity: '3'),
+                    ],
+                ),
+            ],
+        ));
+
+        $this->assertSame(TransferStatus::InTransit, $transfer->status);
+        $allocation = $transfer->lines->first()->batchAllocations->first();
+        $this->assertSame((int) $batchA->id, (int) $allocation->batch_id);
     }
 }

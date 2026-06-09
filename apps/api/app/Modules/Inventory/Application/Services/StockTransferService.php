@@ -644,7 +644,7 @@ class StockTransferService
             $seenBatchIds[$allocation->batch_id] = true;
 
             $allocatedQuantity = bcadd($allocatedQuantity, (string) $allocation->quantity, self::QTY_SCALE);
-            $this->assertBatchCanIssue($allocation, $product, $transfer);
+            $this->assertBatchCanIssue($allocation, $product, $transfer, $line->variant_id);
         }
 
         if (bccomp($allocatedQuantity, (string) $line->quantity, self::QTY_SCALE) !== 0) {
@@ -672,6 +672,11 @@ class StockTransferService
             ->where('tenant_id', $transfer->tenant_id)
             ->where('company_id', $transfer->company_id)
             ->where('product_id', $product->id)
+            ->when(
+                $line->variant_id !== null,
+                fn ($q) => $q->where('variant_id', $line->variant_id),
+                fn ($q) => $q->whereNull('variant_id'),
+            )
             ->orderBy('expiry_date')
             ->orderBy('id')
             ->get();
@@ -741,11 +746,17 @@ class StockTransferService
         StockTransferLineBatchAllocation $allocation,
         Product $product,
         StockTransfer $transfer,
+        ?string $variantId,
     ): void {
         $batch = Batch::query()
             ->where('tenant_id', $transfer->tenant_id)
             ->where('company_id', $transfer->company_id)
             ->where('product_id', $product->id)
+            ->when(
+                $variantId !== null,
+                fn ($q) => $q->where('variant_id', $variantId),
+                fn ($q) => $q->whereNull('variant_id'),
+            )
             ->find($allocation->batch_id);
 
         if ($batch === null) {
