@@ -41,7 +41,12 @@ return new class extends Migration
         DB::statement('ALTER TABLE stock_transfer_lines ADD CONSTRAINT stock_transfer_lines_variant_id_foreign
             FOREIGN KEY (variant_id) REFERENCES product_variants (id) ON DELETE RESTRICT NOT VALID');
 
-        DB::statement('DROP INDEX IF EXISTS stock_transfer_lines_transfer_product_unique');
+        // The legacy (transfer_id, product_id) uniqueness is a UNIQUE CONSTRAINT
+        // (Blueprint->unique() creates a constraint on PG, not a bare index), so
+        // it must be dropped with DROP CONSTRAINT — DROP INDEX fails with a
+        // dependency error because the constraint owns the backing index.
+        // (On SQLite ->unique() is a plain index, handled in the branch above.)
+        DB::statement('ALTER TABLE stock_transfer_lines DROP CONSTRAINT IF EXISTS stock_transfer_lines_transfer_product_unique');
         DB::statement('CREATE UNIQUE INDEX CONCURRENTLY stock_transfer_lines_non_variant
             ON stock_transfer_lines (transfer_id, product_id) WHERE variant_id IS NULL');
         DB::statement('CREATE UNIQUE INDEX CONCURRENTLY stock_transfer_lines_with_variant
@@ -54,8 +59,8 @@ return new class extends Migration
             DB::statement('DROP INDEX CONCURRENTLY IF EXISTS stock_transfer_lines_with_variant');
             DB::statement('DROP INDEX CONCURRENTLY IF EXISTS stock_transfer_lines_non_variant');
             DB::statement('ALTER TABLE stock_transfer_lines DROP CONSTRAINT IF EXISTS stock_transfer_lines_variant_id_foreign');
-            DB::statement('CREATE UNIQUE INDEX CONCURRENTLY stock_transfer_lines_transfer_product_unique
-                ON stock_transfer_lines (transfer_id, product_id)');
+            // Restore the original UNIQUE CONSTRAINT (matches Blueprint->unique()).
+            DB::statement('ALTER TABLE stock_transfer_lines ADD CONSTRAINT stock_transfer_lines_transfer_product_unique UNIQUE (transfer_id, product_id)');
         } else {
             DB::statement('DROP INDEX IF EXISTS stock_transfer_lines_with_variant');
             DB::statement('DROP INDEX IF EXISTS stock_transfer_lines_non_variant');

@@ -94,6 +94,7 @@ class StockTransferVariantTest extends TestCase
             'inventory.transfers.create',
             'inventory.transfers.complete',
             'inventory.transfers.cancel',
+            'products.view',
         ]);
 
         UserCompanyMembership::create([
@@ -491,5 +492,26 @@ class StockTransferVariantTest extends TestCase
         $this->assertCount(1, $scoped->json('data'));
         $this->assertSame((int) $batchA->id, (int) $scoped->json('data.0.id'));
         $this->assertNotSame((int) $batchB->id, (int) $scoped->json('data.0.id'));
+    }
+
+    public function test_product_stock_levels_endpoint_filters_by_variant(): void
+    {
+        $this->seedVariantStock($this->variantA, $this->warehouse, '10');
+        $this->seedVariantStock($this->variantB, $this->warehouse, '4');
+
+        // Unfiltered: both variant rows at the location are returned (the legacy
+        // shape, where the transfer availability cell would pick an arbitrary one).
+        $all = $this->actingAs($this->user)
+            ->getJson("/api/v1/products/{$this->product->id}/stock-levels");
+        $all->assertStatus(200);
+        $this->assertCount(2, $all->json('data.locations'));
+
+        // Filtered to variant A: only its row, so the availability reflects the
+        // chosen variant (10), not variant B.
+        $scoped = $this->actingAs($this->user)
+            ->getJson("/api/v1/products/{$this->product->id}/stock-levels?variant_id={$this->variantA->id}");
+        $scoped->assertStatus(200);
+        $this->assertCount(1, $scoped->json('data.locations'));
+        $this->assertSame('10.0000', $scoped->json('data.locations.0.available'));
     }
 }

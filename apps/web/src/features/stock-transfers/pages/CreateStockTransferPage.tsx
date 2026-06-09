@@ -274,9 +274,13 @@ function AvailabilityCell({ line, sourceLocationId }: AvailabilityCellProps) {
   const { t } = useTranslation('stock-transfers')
   const product = line.product
   const productId = product?.id ?? ''
+  const variantId = line.variantId
   const stockQuery = useQuery({
-    queryKey: tenantScopedKey(['stock-levels', productId]),
-    queryFn: () => apiGet<ProductStockLevelsResponse>(`/products/${productId}/stock-levels`),
+    queryKey: tenantScopedKey(['stock-levels', productId, variantId]),
+    queryFn: () => apiGet<ProductStockLevelsResponse>(
+      `/products/${productId}/stock-levels`,
+      variantId !== null ? { variant_id: variantId } : undefined,
+    ),
     enabled: productId !== '' && sourceLocationId !== '',
   })
 
