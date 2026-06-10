@@ -18,9 +18,12 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Vehicle\Domain\Vehicle;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
+use Stancl\Tenancy\Jobs\CreateDatabase;
+use Stancl\Tenancy\Jobs\MigrateDatabase;
 
 class DatabaseSeeder extends Seeder
 {
@@ -29,17 +32,32 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $this->command->info('Seeding countries...');
-        $this->call(CountriesSeeder::class);
-
-        $this->command->info('Seeding country tax rates...');
-        $this->call(CountryTaxRatesSeeder::class);
-
+        // CENTRAL reference data (plans live in the central database; the super
+        // admin is a platform-level account in central). Seed BEFORE creating
+        // the tenant so the plan exists when the tenant database is provisioned.
         $this->command->info('Seeding subscription plans...');
         $this->call(PlansSeeder::class);
 
         $this->command->info('Creating super admin...');
         $this->call(SuperAdminSeeder::class);
+
+        // ============================================
+        // MULTI-COUNTRY TENANT (France + Tunisia)
+        // ============================================
+        // In db-per-tenant mode createTenant() provisions + migrates the physical
+        // tenant database and swaps the default connection into it, so every
+        // tenant-scoped seed below lands in the tenant database, not central.
+        $this->command->info('Creating multi-country demo tenant...');
+        $tenant = $this->createTenant('FR', 'Demo Multi-Country Garage', 'demo-garage', 'EUR');
+
+        // TENANT-scoped reference data (these tables live in the tenant database
+        // under db-per-tenant — countries, country_tax_rates, the Spatie
+        // roles/permissions, and the parapharmacy reference catalogs).
+        $this->command->info('Seeding countries...');
+        $this->call(CountriesSeeder::class);
+
+        $this->command->info('Seeding country tax rates...');
+        $this->call(CountryTaxRatesSeeder::class);
 
         $this->command->info('Creating roles and permissions...');
         $this->call(RolesAndPermissionsSeeder::class);
@@ -49,12 +67,6 @@ class DatabaseSeeder extends Seeder
         $this->call(CertificationsSeeder::class);
         $this->call(HealthClaimsSeeder::class);
         $this->call(KeyComponentsSeeder::class);
-
-        // ============================================
-        // MULTI-COUNTRY TENANT (France + Tunisia)
-        // ============================================
-        $this->command->info('Creating multi-country demo tenant...');
-        $tenant = $this->createTenant('FR', 'Demo Multi-Country Garage', 'demo-garage', 'EUR');
 
         // ============================================
         // FRENCH COMPANY
@@ -133,11 +145,14 @@ class DatabaseSeeder extends Seeder
         $this->call(BatchTrackingDefaultsSeeder::class);
 
         $this->command->info('Database seeding completed with 2 companies (France + Tunisia) in one tenant!');
+
+        // Revert the default connection back to central (no-op in single-DB).
+        $this->endTenancy();
     }
 
     private function createTenant(string $countryCode, string $name, string $slug, string $currency): Tenant
     {
-        return Tenant::create([
+        $tenant = Tenant::create([
             'name' => $name,
             'slug' => $slug,
             'status' => TenantStatus::Active,
@@ -155,6 +170,54 @@ class DatabaseSeeder extends Seeder
             'trial_ends_at' => null,
             'subscription_ends_at' => now()->addYear(),
         ]);
+
+        // db-per-tenant: provision + migrate the physical tenant database and
+        // swap the default connection into it so every tenant-scoped seed lands
+        // in the tenant database. No-op in single-DB mode. Mirrors
+        // ParapharmacySeeder / TenantProvisioningService.
+        $this->provisionTenantDatabase($tenant);
+
+        return $tenant;
+    }
+
+    /**
+     * Whether database-per-tenant mode is active.
+     */
+    private function databasePerTenantEnabled(): bool
+    {
+        return (bool) config('tenancy_resolver.db_per_tenant', false);
+    }
+
+    /**
+     * Provision + migrate the per-tenant database and enter tenant context.
+     * No-op in single-DB mode.
+     *
+     * NOTE: duplicated from ParapharmacySeeder / CoffeeShopSeeder — a future
+     * refactor should hoist this provisioning trio into a shared seeder trait.
+     */
+    private function provisionTenantDatabase(Tenant $tenant): void
+    {
+        if (! $this->databasePerTenantEnabled()) {
+            return;
+        }
+
+        Bus::dispatchSync(new CreateDatabase($tenant));
+        Bus::dispatchSync(new MigrateDatabase($tenant));
+
+        tenancy()->initialize($tenant);
+
+        $this->command->info("Provisioned tenant database: {$tenant->database()->getName()}");
+    }
+
+    /**
+     * Revert the default connection to central. No-op in single-DB mode (and
+     * when tenancy was never initialized).
+     */
+    private function endTenancy(): void
+    {
+        if (tenancy()->initialized) {
+            tenancy()->end();
+        }
     }
 
     private function createCompany(Tenant $tenant, string $countryCode, string $name, string $currency): Company
