@@ -44,7 +44,8 @@
     "newInvoice": "Nouvelle facture",
     "addVehicle": "Ajouter un véhicule",
     "import": "Importer",
-    "export": "Exporter"
+    "export": "Exporter",
+    "actions": "Actions"
   },
   "common": {
     "create": "Créer",
@@ -108,7 +109,9 @@
   "errors": {
     "realtimeConnectionFailed": "Les mises à jour en temps réel sont indisponibles. Les changements peuvent ne pas apparaître automatiquement.",
     "locationsFetchFailed": "Échec du chargement des emplacements.",
-    "operationFailed": "L'opération a échoué. Veuillez réessayer."
+    "operationFailed": "L'opération a échoué. Veuillez réessayer.",
+    "unexpectedError": "Une erreur est survenue",
+    "unexpectedErrorDetails": "Une erreur inattendue s'est produite. Veuillez réessayer ou actualiser la page."
   },
   "dashboard": {
     "title": "Tableau de bord",
