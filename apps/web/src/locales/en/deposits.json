@@ -1,0 +1,24 @@
+{
+  "recordTitle": "Record payment",
+  "recordButton": "Record payment",
+  "tabLabel": "Deposits",
+  "recordedToast": "Deposit recorded — {{settled}} settled, {{credited}} credited",
+  "form": {
+    "amount": "Amount",
+    "paymentMethod": "Payment method",
+    "selectPaymentMethod": "Select a payment method",
+    "repository": "Treasury repository",
+    "selectRepository": "Select a repository",
+    "note": "Note",
+    "submit": "Record payment"
+  },
+  "history": {
+    "title": "Deposit history",
+    "empty": "No deposits recorded yet.",
+    "date": "Date",
+    "amount": "Amount",
+    "method": "Method",
+    "note": "Note",
+    "actor": "Recorded by"
+  }
+}
