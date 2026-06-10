@@ -63,6 +63,7 @@ import {
   authorRefundReturnApproval,
   syncRefundApprovalEvents,
 } from '@/lib/refundFlow/refundApproval';
+import { recordRefundSettlementForZ } from '@/lib/refundFlow/refundZAccounting';
 import type { PosOverrideContext } from '@/lib/operatorApproval/posOverrideAuthoring';
 import { useCartStore } from '@/stores/cartStore';
 
@@ -172,6 +173,14 @@ interface RefundCheckoutState {
   /** Last settled response (Phase-3 print seam reads this until the next begin). */
   settledResponse: ReturnSettlementResponse | null;
   /**
+   * Phase 4 (fiscal audit B2) — whether the settled refund was mirrored into
+   * `local_refund_records` for the device Z aggregation. `false` means the
+   * settle succeeded server-side but the local Z-accounting write failed:
+   * the UI surfaces a translated warning that the Z totals need server
+   * reconciliation. `null` while no settlement is recorded.
+   */
+  settledZAccountingRecorded: boolean | null;
+  /**
    * Teardown counter (epoch guard). Bumped by reset/cancel/begin; async
    * continuations captured under an older epoch bail instead of mutating
    * state that no longer belongs to them.
@@ -220,6 +229,7 @@ const initialState: RefundCheckoutState = {
   approval: null,
   approvalSynced: false,
   settledResponse: null,
+  settledZAccountingRecorded: null,
   epoch: 0,
 };
 
@@ -377,7 +387,24 @@ export const useRefundCheckoutStore = create<RefundCheckoutStore>()((set, get) =
       ...(reasonText !== '' ? { notes: reasonText, overrideReason: reasonText } : {}),
       ...(input.retry !== undefined ? { retry: input.retry } : {}),
     });
-    if (get().epoch !== epoch) return; // Torn down mid-submit — no side effects.
+    // Record-at-settle (fiscal audit B2): the refund SETTLED server-side, so
+    // the local Z-accounting mirror MUST be attempted even when the UI flow
+    // was torn down mid-submit — the epoch guard runs AFTER this write. The
+    // recorder never throws and is idempotent on the server return receipt
+    // id; a `false` outcome means the device Z will undercount this refund
+    // until server reconciliation (surfaced as a warning, never un-settled).
+    let zAccountingRecorded = false;
+    if (result.ok) {
+      zAccountingRecorded = await recordRefundSettlementForZ({
+        companyId: input.approvalContext.companyId,
+        terminalId: input.terminalId,
+        destination,
+        originalReceiptNumber: receiptNumber,
+        response: result.response,
+      });
+    }
+
+    if (get().epoch !== epoch) return; // Torn down mid-submit — no UI side effects.
 
     if (!result.ok) {
       // The service already did bounded retries — NO auto-retry here. The
@@ -389,7 +416,12 @@ export const useRefundCheckoutStore = create<RefundCheckoutStore>()((set, get) =
     // Success — the refund cart is done: clear the return lines, record the
     // response, and hand it to the Phase-3 print seam.
     useCartStore.getState().clearReturnItems();
-    set({ step: 'settled', error: null, settledResponse: result.response });
+    set({
+      step: 'settled',
+      error: null,
+      settledResponse: result.response,
+      settledZAccountingRecorded: zAccountingRecorded,
+    });
     input.onSettled?.(result.response);
   },
 

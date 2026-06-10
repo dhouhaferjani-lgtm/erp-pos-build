@@ -143,7 +143,8 @@
       "errorInternal": "Une erreur s'est produite lors de ce remboursement. Veuillez recommencer.",
       "preparing": "Vérification du ticket d'origine…",
       "success": "Remboursement effectué — ticket {{number}}",
-      "printFailed": "Remboursement effectué — ticket {{number}}, mais l'impression a échoué. Vérifiez l'imprimante."
+      "printFailed": "Remboursement effectué — ticket {{number}}, mais l'impression a échoué. Vérifiez l'imprimante.",
+      "zAccountingWarning": "Remboursement effectué — ticket {{number}}, mais il n'a pas pu être enregistré localement. Les totaux du rapport Z devront être rapprochés avec le serveur."
     },
     "approval": {
       "title": "Autorisation responsable",

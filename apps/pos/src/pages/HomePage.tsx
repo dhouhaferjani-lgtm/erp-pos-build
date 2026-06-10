@@ -936,11 +936,23 @@ export function HomePage() {
       })();
     }
 
-    setScanMessage({
-      text: t('pos:refundFlow.checkout.success', { number: response.receipt_number }),
-      type: 'success',
-    });
-    setTimeout(() => setScanMessage(null), 4000);
+    // Phase 4 (fiscal audit B2): when the settled refund could not be
+    // mirrored into local_refund_records, the device Z will undercount it —
+    // warn the operator that the Z totals need server reconciliation. The
+    // refund itself settled fine either way.
+    if (useRefundCheckoutStore.getState().settledZAccountingRecorded === false) {
+      setScanMessage({
+        text: t('pos:refundFlow.checkout.zAccountingWarning', { number: response.receipt_number }),
+        type: 'error',
+      });
+      setTimeout(() => setScanMessage(null), 6000);
+    } else {
+      setScanMessage({
+        text: t('pos:refundFlow.checkout.success', { number: response.receipt_number }),
+        type: 'success',
+      });
+      setTimeout(() => setScanMessage(null), 4000);
+    }
     useRefundCheckoutStore.getState().acknowledgeSettled();
 
     // Phase 3: print the AVOIR + voucher ticket. Kicked off AFTER the

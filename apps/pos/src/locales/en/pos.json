@@ -143,7 +143,8 @@
       "errorInternal": "Something went wrong with this refund. Please start again.",
       "preparing": "Checking the original receipt…",
       "success": "Refund completed — ticket {{number}}",
-      "printFailed": "Refund completed — ticket {{number}}, but printing failed. Check the printer."
+      "printFailed": "Refund completed — ticket {{number}}, but printing failed. Check the printer.",
+      "zAccountingWarning": "Refund completed — ticket {{number}}, but it could not be recorded locally. The Z report totals will need server reconciliation."
     },
     "approval": {
       "title": "Manager authorization",

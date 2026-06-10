@@ -44,6 +44,12 @@ vi.mock('@/lib/refundFlow/refundApproval', () => ({
   syncRefundApprovalEvents: vi.fn(),
 }));
 
+vi.mock('@/lib/refundFlow/refundZAccounting', () => ({
+  recordRefundSettlementForZ: vi.fn(),
+}));
+
+import { recordRefundSettlementForZ } from '@/lib/refundFlow/refundZAccounting';
+
 const fakeDb = {} as Database;
 const NO_RETRY = { maxRetries: 0, backoffMs: 0 };
 
@@ -180,6 +186,7 @@ beforeEach(() => {
   vi.mocked(apiPost).mockResolvedValue(settlementResponse());
   vi.mocked(authorRefundReturnApproval).mockResolvedValue(approvalEvidence);
   vi.mocked(syncRefundApprovalEvents).mockResolvedValue(undefined);
+  vi.mocked(recordRefundSettlementForZ).mockResolvedValue(true);
 });
 
 describe('refundCheckoutStore — prepare failures', () => {
@@ -521,6 +528,67 @@ describe('refundCheckoutStore — abort & failure paths', () => {
 
     const secondId = (vi.mocked(apiPost).mock.calls[1]![1] as Record<string, unknown>)['refund_request_id'];
     expect(secondId).not.toBe(firstId);
+  });
+
+  it('Z accounting (B2): a settled refund records the settlement for the device Z', async () => {
+    await walkToApproval(); // destination = 'cash'
+
+    await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+    expect(useRefundCheckoutStore.getState().step).toBe('settled');
+    expect(recordRefundSettlementForZ).toHaveBeenCalledTimes(1);
+    expect(recordRefundSettlementForZ).toHaveBeenCalledWith({
+      companyId: 'company-1',
+      terminalId: 'terminal-1',
+      destination: 'cash',
+      originalReceiptNumber: RECEIPT_NUMBER,
+      response: settlementResponse(),
+    });
+    expect(useRefundCheckoutStore.getState().settledZAccountingRecorded).toBe(true);
+  });
+
+  it('Z accounting (B2): a failed local record does NOT un-settle — the flow settles with the warning flag', async () => {
+    vi.mocked(recordRefundSettlementForZ).mockResolvedValue(false);
+    const onSettled = vi.fn();
+    await walkToApproval();
+
+    await useRefundCheckoutStore.getState().approveAndSubmit(submitInput({ onSettled }));
+
+    const state = useRefundCheckoutStore.getState();
+    expect(state.step).toBe('settled');
+    expect(state.settledZAccountingRecorded).toBe(false);
+    expect(onSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it('Z accounting (B2): a teardown mid-submit still records the settlement (the server settle DID happen)', async () => {
+    await walkToApproval();
+
+    let resolvePost: (value: unknown) => void = () => {};
+    vi.mocked(apiPost).mockImplementation(
+      () => new Promise((resolve) => { resolvePost = resolve; }),
+    );
+
+    const inFlight = useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+    await vi.waitFor(() => { expect(apiPost).toHaveBeenCalled(); });
+
+    useRefundCheckoutStore.getState().reset();
+    resolvePost(settlementResponse());
+    await inFlight;
+
+    // The dead continuation mutates no UI state …
+    expect(useRefundCheckoutStore.getState().step).toBe('idle');
+    // … but the Z accounting record was still written.
+    expect(recordRefundSettlementForZ).toHaveBeenCalledTimes(1);
+  });
+
+  it('Z accounting (B2): a failed submit records nothing', async () => {
+    await walkToApproval();
+    vi.mocked(apiPost).mockRejectedValue(new ApiRequestError(503, 'unavailable', 'SERVICE_UNAVAILABLE'));
+
+    await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+    expect(useRefundCheckoutStore.getState().step).toBe('approval');
+    expect(recordRefundSettlementForZ).not.toHaveBeenCalled();
   });
 
   it('a corrupted approval state aborts to idle with a translated internal error and logs the diagnosis', async () => {
