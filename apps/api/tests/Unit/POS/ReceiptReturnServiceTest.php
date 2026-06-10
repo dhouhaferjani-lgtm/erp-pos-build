@@ -4,17 +4,22 @@ declare(strict_types=1);
 
 namespace Tests\Unit\POS;
 
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Application\Services\ReceiptFinalizationService;
 use App\Modules\POS\Application\Services\ReceiptReturnService;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
+use App\Modules\POS\Domain\ReceiptLineBatchAllocation;
 use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Services\RefundDestinationResolver;
@@ -26,7 +31,9 @@ use App\Modules\Treasury\Domain\Services\PaymentRefundService;
 use App\Modules\Voucher\Application\Services\VoucherIssuanceService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -277,6 +284,399 @@ class ReceiptReturnServiceTest extends TestCase
 
         // Assert: Log::warning was NOT called for stock restore
         Log::shouldNotHaveReceived('warning');
+    }
+
+    // =========================================================================
+    // Variant-aware restock (F1 / F2 — variant retrofit audit 2026-06-10)
+    // =========================================================================
+
+    public function test_return_restores_variant_scoped_stock_row(): void
+    {
+        // Arrange: one product with two variants, three stock rows at the
+        // same location (variant A, variant B, product-level NULL row).
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $variantA = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+        ]);
+        $variantB = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+        ]);
+
+        $stockA = $this->createStockLevel($product->id, $variantA->id, '8.0000');
+        $stockB = $this->createStockLevel($product->id, $variantB->id, '5.0000');
+        $stockNull = $this->createStockLevel($product->id, null, '50.0000');
+
+        // Draft-path sale receipt: line carries variant A.
+        $saleReceipt = $this->createReceipt();
+        $line = $this->createProductLine($saleReceipt, $product, [
+            'variant_id' => $variantA->id,
+            'quantity' => '2.000',
+        ]);
+
+        // Act: return the variant-A line in full.
+        $returnReceipt = $this->service->processReturn(
+            originalReceiptId: $saleReceipt->id,
+            returnLines: [
+                ['line_id' => $line->id, 'quantity' => '2.000'],
+            ],
+            returnReason: ReturnReason::Defective,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        // Assert: ONLY variant A's stock row was restored.
+        $this->assertSame('10.0000', (string) $stockA->refresh()->quantity);
+        $this->assertSame('5.0000', (string) $stockB->refresh()->quantity);
+        $this->assertSame('50.0000', (string) $stockNull->refresh()->quantity);
+
+        // Assert: the StockMovement row carries the variant.
+        $movement = StockMovement::where('reference_type', 'pos_receipt_return')
+            ->where('reference_id', $returnReceipt->id)
+            ->firstOrFail();
+        $this->assertSame($variantA->id, $movement->variant_id);
+    }
+
+    public function test_return_restores_null_row_for_projection_path_lines(): void
+    {
+        // Projection-path receipts carry variant_id = NULL on their lines and
+        // were decremented on the variant_id IS NULL stock row. The restore
+        // must reverse that exact row even when variant rows exist — never
+        // re-derive the variant.
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $variant = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+        ]);
+
+        $stockVariant = $this->createStockLevel($product->id, $variant->id, '8.0000');
+        $stockNull = $this->createStockLevel($product->id, null, '40.0000');
+
+        $saleReceipt = $this->createReceipt();
+        $line = $this->createProductLine($saleReceipt, $product, [
+            'variant_id' => null,
+            'quantity' => '3.000',
+        ]);
+
+        $returnReceipt = $this->service->processReturn(
+            originalReceiptId: $saleReceipt->id,
+            returnLines: [
+                ['line_id' => $line->id, 'quantity' => '3.000'],
+            ],
+            returnReason: ReturnReason::CustomerChangedMind,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        $this->assertSame('43.0000', (string) $stockNull->refresh()->quantity);
+        $this->assertSame('8.0000', (string) $stockVariant->refresh()->quantity);
+
+        $movement = StockMovement::where('reference_type', 'pos_receipt_return')
+            ->where('reference_id', $returnReceipt->id)
+            ->firstOrFail();
+        $this->assertNull($movement->variant_id);
+    }
+
+    public function test_return_receipt_lines_persist_variant_id(): void
+    {
+        // F2 — return receipt lines must copy variant_id from the original line.
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $variant = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+        ]);
+        $this->createStockLevel($product->id, $variant->id, '8.0000');
+
+        $saleReceipt = $this->createReceipt();
+        $line = $this->createProductLine($saleReceipt, $product, [
+            'variant_id' => $variant->id,
+            'quantity' => '2.000',
+        ]);
+
+        $returnReceipt = $this->service->processReturn(
+            originalReceiptId: $saleReceipt->id,
+            returnLines: [
+                ['line_id' => $line->id, 'quantity' => '1.000'],
+            ],
+            returnReason: ReturnReason::Defective,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        $returnLine = $returnReceipt->lines->firstOrFail();
+        $this->assertSame($variant->id, $returnLine->variant_id);
+        $this->assertSame($line->id, $returnLine->original_line_id);
+    }
+
+    public function test_return_targets_variant_row_under_pg_partial_indexes(): void
+    {
+        // PG-gated: under PostgreSQL the post-T2 partial unique indexes
+        // (stock_levels_non_variant / stock_levels_with_variant) are real,
+        // so multiple rows per (product, location) actually coexist under
+        // index enforcement. Same acceptance shape as the SQLite test above.
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('partial unique indexes are pgsql-only');
+        }
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $variant = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+        ]);
+
+        $stockVariant = $this->createStockLevel($product->id, $variant->id, '8.0000');
+        $stockNull = $this->createStockLevel($product->id, null, '50.0000');
+
+        $saleReceipt = $this->createReceipt();
+        $line = $this->createProductLine($saleReceipt, $product, [
+            'variant_id' => $variant->id,
+            'quantity' => '2.000',
+        ]);
+
+        $this->service->processReturn(
+            originalReceiptId: $saleReceipt->id,
+            returnLines: [
+                ['line_id' => $line->id, 'quantity' => '2.000'],
+            ],
+            returnReason: ReturnReason::Defective,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        $this->assertSame('10.0000', (string) $stockVariant->refresh()->quantity);
+        $this->assertSame('50.0000', (string) $stockNull->refresh()->quantity);
+    }
+
+    // =========================================================================
+    // Batch restitution on returns (F4 — variant retrofit audit 2026-06-10)
+    // =========================================================================
+
+    public function test_partial_return_restores_batch_stock_proportionally(): void
+    {
+        // Sale consumed 5 units across two batches (3 from batch1, 2 from
+        // batch2). A partial return of 2 units restores proportionally:
+        // batch1 += trunc4(3 * 2/5) = 1.2, batch2 += trunc4(2 * 2/5) = 0.8.
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $stockLevel = $this->createStockLevel($product->id, null, '10.0000');
+
+        $saleReceipt = $this->createReceipt();
+        $line = $this->createProductLine($saleReceipt, $product, [
+            'quantity' => '5.000',
+        ]);
+
+        [$batch1, $batchStock1] = $this->createBatchWithStock($product, 'B1', '0.0000');
+        [$batch2, $batchStock2] = $this->createBatchWithStock($product, 'B2', '3.0000');
+
+        $this->createAllocation($saleReceipt, $line, $batch1, '3.0000');
+        $this->createAllocation($saleReceipt, $line, $batch2, '2.0000');
+
+        $this->service->processReturn(
+            originalReceiptId: $saleReceipt->id,
+            returnLines: [
+                ['line_id' => $line->id, 'quantity' => '2.000'],
+            ],
+            returnReason: ReturnReason::Defective,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        $this->assertSame('1.2000', (string) $batchStock1->refresh()->quantity);
+        $this->assertSame('3.8000', (string) $batchStock2->refresh()->quantity);
+
+        // Aggregate stock_levels restore matches the batch restitution sum
+        // (1.2 + 0.8 = 2.0 = returned quantity).
+        $this->assertSame('12.0000', (string) $stockLevel->refresh()->quantity);
+    }
+
+    public function test_full_return_after_partial_caps_cumulative_batch_restitution(): void
+    {
+        // Cumulative restitution invariant: after returning everything,
+        // each batch is restored by EXACTLY its original allocation —
+        // never more — across repeated partial returns.
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $this->createStockLevel($product->id, null, '10.0000');
+
+        $saleReceipt = $this->createReceipt();
+        $line = $this->createProductLine($saleReceipt, $product, [
+            'quantity' => '5.000',
+        ]);
+
+        [$batch1, $batchStock1] = $this->createBatchWithStock($product, 'B1', '0.0000');
+        [$batch2, $batchStock2] = $this->createBatchWithStock($product, 'B2', '3.0000');
+
+        $this->createAllocation($saleReceipt, $line, $batch1, '3.0000');
+        $this->createAllocation($saleReceipt, $line, $batch2, '2.0000');
+
+        // First partial return: 2 of 5.
+        $this->service->processReturn(
+            originalReceiptId: $saleReceipt->id,
+            returnLines: [
+                ['line_id' => $line->id, 'quantity' => '2.000'],
+            ],
+            returnReason: ReturnReason::Defective,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        // Second return: the remaining 3 of 5.
+        $this->service->processReturn(
+            originalReceiptId: $saleReceipt->id,
+            returnLines: [
+                ['line_id' => $line->id, 'quantity' => '3.000'],
+            ],
+            returnReason: ReturnReason::Defective,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        // Cumulative restitution == original allocation, exactly.
+        // batch1: 0.0 + 3.0 = 3.0; batch2: 3.0 + 2.0 = 5.0.
+        $this->assertSame('3.0000', (string) $batchStock1->refresh()->quantity);
+        $this->assertSame('5.0000', (string) $batchStock2->refresh()->quantity);
+    }
+
+    public function test_return_of_non_batch_product_leaves_batch_stock_untouched(): void
+    {
+        // A returned line with no batch allocations must not touch any
+        // inventory_batch_stock row (including other products' batches).
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $this->createStockLevel($product->id, null, '10.0000');
+
+        $otherProduct = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        [, $otherBatchStock] = $this->createBatchWithStock($otherProduct, 'OTHER', '7.0000');
+
+        $saleReceipt = $this->createReceipt();
+        $line = $this->createProductLine($saleReceipt, $product, [
+            'quantity' => '2.000',
+        ]);
+
+        $this->service->processReturn(
+            originalReceiptId: $saleReceipt->id,
+            returnLines: [
+                ['line_id' => $line->id, 'quantity' => '2.000'],
+            ],
+            returnReason: ReturnReason::Defective,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        $this->assertSame('7.0000', (string) $otherBatchStock->refresh()->quantity);
+    }
+
+    // =========================================================================
+    // Helpers (variant / batch fixtures)
+    // =========================================================================
+
+    private function createStockLevel(string $productId, ?string $variantId, string $quantity): StockLevel
+    {
+        return StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $productId,
+            'variant_id' => $variantId,
+            'location_id' => $this->location->id,
+            'quantity' => $quantity,
+            'reserved' => '0.00',
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    private function createProductLine(Receipt $receipt, Product $product, array $overrides = []): ReceiptLine
+    {
+        $defaults = [
+            'receipt_id' => $receipt->id,
+            'line_number' => 1,
+            'product_id' => $product->id,
+            'product_code' => $product->sku,
+            'product_name' => $product->name,
+            'quantity' => '2.000',
+            'unit' => 'pcs',
+            'unit_price' => '25.000',
+            'line_total' => '50.000',
+            'tax_rate' => '19.00',
+            'tax_amount' => '7.983',
+            'discount_amount' => '0.000',
+        ];
+
+        return ReceiptLine::create(array_merge($defaults, $overrides));
+    }
+
+    /**
+     * Create a batch + its inventory_batch_stock row at the test location.
+     *
+     * @return array{0: Batch, 1: BatchStock}
+     */
+    private function createBatchWithStock(Product $product, string $batchNumber, string $quantity): array
+    {
+        $batch = Batch::create([
+            'uuid' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'batch_number' => $batchNumber,
+            'expiry_date' => now()->addYear(),
+            'is_active' => true,
+            'is_expired' => false,
+            'is_recalled' => false,
+        ]);
+
+        $batchStock = BatchStock::create([
+            'tenant_id' => $this->tenant->id,
+            'batch_id' => $batch->id,
+            'location_id' => $this->location->id,
+            'quantity' => $quantity,
+            'reserved_quantity' => '0',
+        ]);
+
+        return [$batch, $batchStock];
+    }
+
+    private function createAllocation(
+        Receipt $receipt,
+        ReceiptLine $line,
+        Batch $batch,
+        string $quantity,
+    ): ReceiptLineBatchAllocation {
+        return ReceiptLineBatchAllocation::create([
+            'receipt_id' => $receipt->id,
+            'receipt_line_id' => $line->id,
+            'batch_id' => $batch->id,
+            'quantity' => $quantity,
+            'batch_number' => $batch->batch_number,
+            'expiry_date' => $batch->expiry_date,
+        ]);
     }
 
     private function createTerminal(): Terminal

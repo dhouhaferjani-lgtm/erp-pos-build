@@ -22,6 +22,7 @@ use App\Modules\POS\Domain\Exceptions\DailyRefundCapExceededException;
 use App\Modules\POS\Domain\Exceptions\ManagerOverrideRequiredException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
+use App\Modules\POS\Domain\ReceiptLineBatchAllocation;
 use App\Modules\POS\Domain\ReceiptVatDetail;
 use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
@@ -402,7 +403,14 @@ final class ReceiptReturnService
 
                 /** @var numeric-string $qty */
                 $qty = $returnLine['quantity'];
+                /** @var numeric-string $alreadyReturnedQty */
+                $alreadyReturnedQty = $returnLine['already_returned'];
 
+                // Variant symmetry rule: the restore must target the exact
+                // stock row the sale decremented. Draft-path lines carry
+                // variant_id (variant-scoped decrement); projection-path
+                // lines carry NULL (variant_id IS NULL decrement). Never
+                // re-derive the variant for NULL lines.
                 $this->restoreStock(
                     tenantId: $terminal->tenant_id,
                     companyId: $companyId,
@@ -411,6 +419,14 @@ final class ReceiptReturnService
                     quantity: $qty,
                     returnReceiptId: $draft->id,
                     cashierId: $cashier->id,
+                    variantId: $originalLine->variant_id,
+                );
+
+                $this->restoreBatchAllocations(
+                    originalLine: $originalLine,
+                    returnQuantity: $qty,
+                    alreadyReturnedQuantity: $alreadyReturnedQty,
+                    locationId: $originalReceipt->location_id,
                 );
             }
 
@@ -904,6 +920,7 @@ final class ReceiptReturnService
                 'line_number' => $index + 1,
                 'original_line_id' => $originalLine->id,
                 'product_id' => $originalLine->product_id,
+                'variant_id' => $originalLine->variant_id,
                 'composite_item_id' => $originalLine->composite_item_id,
                 'product_code' => $originalLine->product_code,
                 'product_name' => $originalLine->product_name,
@@ -995,7 +1012,7 @@ final class ReceiptReturnService
      *
      * @param  Receipt  $originalReceipt  The original receipt with lines and returnReceipts loaded
      * @param  array<int, array{line_id: string, quantity: string}>  $returnLines
-     * @return array<int, array{original_line: ReceiptLine, quantity: string}>
+     * @return array<int, array{original_line: ReceiptLine, quantity: string, already_returned: string}>
      *
      * @throws \InvalidArgumentException If quantities are invalid
      */
@@ -1037,6 +1054,7 @@ final class ReceiptReturnService
             $validated[] = [
                 'original_line' => $originalLine,
                 'quantity' => $requestedQuantity,
+                'already_returned' => $alreadyReturnedQty,
             ];
         }
 
@@ -1094,6 +1112,13 @@ final class ReceiptReturnService
     /**
      * Restore stock for a returned product.
      *
+     * Variant-scoped (F1, variant retrofit audit 2026-06-10): the restore
+     * targets the exact stock_levels row the sale decremented. When the
+     * original line carries a variant_id (draft path) the variant row is
+     * restored; when it is NULL (projection path) the variant_id IS NULL
+     * row is restored — symmetric with ReceiptCreationService::decrementStock
+     * and PosCoreReceiptProjection::decrementStock respectively.
+     *
      * @param  numeric-string  $quantity
      */
     private function restoreStock(
@@ -1104,17 +1129,24 @@ final class ReceiptReturnService
         string $quantity,
         string $returnReceiptId,
         string $cashierId,
+        ?string $variantId = null,
     ): void {
         /** @var StockLevel|null $stockLevel */
         $stockLevel = StockLevel::where('product_id', $productId)
             ->where('location_id', $locationId)
             ->where('company_id', $companyId)
+            ->when(
+                $variantId !== null,
+                fn ($query) => $query->where('variant_id', $variantId),
+                fn ($query) => $query->whereNull('variant_id'),
+            )
             ->lockForUpdate()
             ->first();
 
         if ($stockLevel === null) {
             Log::warning('No stock level found for product during return stock restore', [
                 'product_id' => $productId,
+                'variant_id' => $variantId,
                 'location_id' => $locationId,
             ]);
 
@@ -1135,6 +1167,7 @@ final class ReceiptReturnService
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
             'product_id' => $productId,
+            'variant_id' => $variantId,
             'location_id' => $locationId,
             'movement_type' => MovementType::Receipt,
             'reason' => MovementReason::POSReturn,
@@ -1148,6 +1181,123 @@ final class ReceiptReturnService
             'user_id' => $cashierId,
             'is_historical' => false,
         ]);
+    }
+
+    /**
+     * Restore batch-level stock (inventory_batch_stock) for a returned line (F4).
+     *
+     * The sale path consumes batch stock via FEFO and snapshots each consumed
+     * batch into a ReceiptLineBatchAllocation row keyed by receipt_line_id.
+     * Restitution is proportional to the returned fraction of the line —
+     * FEFO order is irrelevant when putting stock back.
+     *
+     * Cumulative-restitution invariant: after a cumulative total of R units
+     * (out of an original line quantity Q) has been returned, each allocation
+     * `a` must have been restored by exactly
+     *
+     *     cumulative(R) = min(a, trunc4(a × R ÷ Q))
+     *
+     * where trunc4 is bcmath truncation at scale 4 (canonical quantity scale).
+     * Each return restores the DELTA cumulative(R_new) − cumulative(R_prev),
+     * derived from the persisted already-returned quantities rather than
+     * trusting per-return proportional math — so repeated partial returns can
+     * never restore more than the original allocation, and a full return
+     * restores each allocation exactly (trunc4(a × Q ÷ Q) = a).
+     *
+     * @param  numeric-string  $returnQuantity  Quantity returned in THIS return
+     * @param  numeric-string  $alreadyReturnedQuantity  Quantity returned by prior (non-voided) returns
+     */
+    private function restoreBatchAllocations(
+        ReceiptLine $originalLine,
+        string $returnQuantity,
+        string $alreadyReturnedQuantity,
+        string $locationId,
+    ): void {
+        $allocations = ReceiptLineBatchAllocation::where('receipt_line_id', $originalLine->id)->get();
+
+        if ($allocations->isEmpty()) {
+            return;
+        }
+
+        /** @var numeric-string $originalQty */
+        $originalQty = (string) $originalLine->quantity;
+
+        if (bccomp($originalQty, '0', 4) <= 0) { // precision-ok: 4 = canonical quantity storage scale
+            return;
+        }
+
+        /** @var numeric-string $newReturned */
+        $newReturned = bcadd($alreadyReturnedQuantity, $returnQuantity, 4); // precision-ok: 4 = canonical quantity storage scale
+
+        foreach ($allocations as $allocation) {
+            /** @var numeric-string $allocQty */
+            $allocQty = (string) $allocation->quantity;
+
+            $previousCumulative = $this->cumulativeBatchRestitution($allocQty, $alreadyReturnedQuantity, $originalQty);
+            $newCumulative = $this->cumulativeBatchRestitution($allocQty, $newReturned, $originalQty);
+
+            /** @var numeric-string $delta */
+            $delta = bcsub($newCumulative, $previousCumulative, 4); // precision-ok: 4 = canonical quantity storage scale
+
+            if (bccomp($delta, '0', 4) <= 0) { // precision-ok: 4 = canonical quantity storage scale
+                continue;
+            }
+
+            /** @var object{id: int|string, quantity: int|float|string}|null $batchStock */
+            $batchStock = DB::table('inventory_batch_stock')
+                ->where('batch_id', $allocation->batch_id)
+                ->where('location_id', $locationId)
+                ->lockForUpdate()
+                ->first();
+
+            if ($batchStock === null) {
+                Log::warning('No batch stock row found during return batch restitution', [
+                    'batch_id' => $allocation->batch_id,
+                    'receipt_line_id' => $originalLine->id,
+                    'location_id' => $locationId,
+                ]);
+
+                continue;
+            }
+
+            // SQLite returns numeric columns as int/float; normalize to a
+            // numeric-string before bcmath.
+            /** @var numeric-string $batchQuantity */
+            $batchQuantity = (string) $batchStock->quantity;
+
+            DB::table('inventory_batch_stock')
+                ->where('id', $batchStock->id)
+                ->update([
+                    'quantity' => bcadd($batchQuantity, $delta, 4), // precision-ok: 4 = canonical quantity storage scale
+                    'updated_at' => now(),
+                ]);
+        }
+    }
+
+    /**
+     * Cumulative batch restitution owed after $returnedQty of $originalQty
+     * has been returned: min(allocation, trunc4(allocation × returned ÷ original)).
+     *
+     * @param  numeric-string  $allocQty
+     * @param  numeric-string  $returnedQty
+     * @param  numeric-string  $originalQty
+     * @return numeric-string
+     */
+    private function cumulativeBatchRestitution(
+        string $allocQty,
+        string $returnedQty,
+        string $originalQty,
+    ): string {
+        // bcdiv truncates toward zero — conservative: batch restitution may
+        // momentarily lag the aggregate by < 0.0001 per allocation, but never
+        // leads it, and converges exactly at full return.
+        $cumulative = bcdiv(bcmul($allocQty, $returnedQty, 8), $originalQty, 4); // precision-ok: 8 = intermediate headroom, 4 = canonical quantity storage scale
+
+        if (bccomp($cumulative, $allocQty, 4) > 0) { // precision-ok: 4 = canonical quantity storage scale
+            return $allocQty;
+        }
+
+        return $cumulative;
     }
 
     // =========================================================================

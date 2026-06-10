@@ -86,6 +86,9 @@ final class ReceiptVoidService
                     continue;
                 }
 
+                // Variant symmetry: restore the exact stock row the sale
+                // decremented — variant row for variant-bearing lines,
+                // variant_id IS NULL row for NULL lines (projection path).
                 $this->reverseStockMovement(
                     $receipt->tenant_id,
                     $receipt->company_id,
@@ -94,6 +97,7 @@ final class ReceiptVoidService
                     $line->quantity,
                     $receipt->id,
                     $voidedBy->id,
+                    $line->variant_id,
                 );
             }
 
@@ -139,11 +143,17 @@ final class ReceiptVoidService
         string $quantity,
         string $receiptId,
         string $userId,
+        ?string $variantId = null,
     ): void {
         /** @var StockLevel|null $stockLevel */
         $stockLevel = StockLevel::where('product_id', $productId)
             ->where('location_id', $locationId)
             ->where('company_id', $companyId)
+            ->when(
+                $variantId !== null,
+                fn ($query) => $query->where('variant_id', $variantId),
+                fn ($query) => $query->whereNull('variant_id'),
+            )
             ->lockForUpdate()
             ->first();
 
@@ -152,7 +162,10 @@ final class ReceiptVoidService
         }
 
         $quantityBefore = (string) $stockLevel->quantity;
-        $quantityAfter = bcadd((string) $stockLevel->quantity, (string) $quantity, 2);
+        // stock_levels.quantity and pos_receipt_lines.quantity are stored at
+        // scale 4 (canonical quantity storage scale). Add at scale 4 so
+        // sub-centi voided quantities are not truncated.
+        $quantityAfter = bcadd((string) $stockLevel->quantity, (string) $quantity, 4);
 
         $stockLevel->quantity = $quantityAfter;
         $stockLevel->save();
@@ -162,6 +175,7 @@ final class ReceiptVoidService
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
             'product_id' => $productId,
+            'variant_id' => $variantId,
             'location_id' => $locationId,
             'movement_type' => MovementType::Receipt,
             'reason' => MovementReason::CustomerReturn,
