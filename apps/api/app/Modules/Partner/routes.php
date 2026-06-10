@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Partner\Presentation\Controllers\PartnerController;
+use App\Modules\Partner\Presentation\Controllers\PartnerDepositController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -25,6 +26,17 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('partners/{partner}', [PartnerController::class, 'show'])
         ->middleware('can:partners.view')
         ->name('partners.show')
+        ->whereUuid('partner');
+
+    // Back-office customer-account deposits (settle FIFO, overflow to credit).
+    Route::post('partners/{partner}/deposits', [PartnerDepositController::class, 'store'])
+        ->middleware('can:payments.create')
+        ->name('partners.deposits.store')
+        ->whereUuid('partner');
+
+    Route::get('partners/{partner}/deposits', [PartnerDepositController::class, 'index'])
+        ->middleware('can:payments.view')
+        ->name('partners.deposits.index')
         ->whereUuid('partner');
 
     Route::post('partners', [PartnerController::class, 'store'])

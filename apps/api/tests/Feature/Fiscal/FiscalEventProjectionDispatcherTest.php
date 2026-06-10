@@ -182,6 +182,47 @@ final class FiscalEventProjectionDispatcherTest extends TestCase
         );
     }
 
+    public function test_run_seeded_projections_sync_applies_rows_in_process(): void
+    {
+        $this->bindRegistry([new FakeDepositReceiptProjector]);
+        $event = $this->storeDepositReceiptEvent();
+        $dispatcher = app(FiscalEventProjectionDispatcher::class);
+
+        $dispatcher->seedProjections($event);
+        $dispatcher->runSeededProjectionsSync($event);
+
+        $row = DB::table('fiscal_event_projections')->where('fiscal_event_id', $event->id)->sole();
+        $this->assertSame('applied', $row->projection_status);
+        // Ran in-process — nothing was handed to the async queue.
+        Queue::assertNothingPushed();
+    }
+
+    public function test_run_seeded_projections_sync_leaves_a_failed_row_retryable_not_dead_lettered(): void
+    {
+        // A projector that throws must NOT dead-letter its row on the first
+        // synchronous (HTTP) attempt — it stays `pending` (retryable) and is
+        // handed to the async queue for healing.
+        $this->bindRegistry([new FakeThrowingProjector]);
+        $event = $this->storeDepositReceiptEvent();
+        $dispatcher = app(FiscalEventProjectionDispatcher::class);
+
+        $dispatcher->seedProjections($event);
+
+        try {
+            $dispatcher->runSeededProjectionsSync($event);
+            $this->fail('expected the synchronous projection run to surface the failure');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('Synchronous projection run failed', $e->getMessage());
+        }
+
+        $row = DB::table('fiscal_event_projections')->where('fiscal_event_id', $event->id)->sole();
+        $this->assertSame('pending', $row->projection_status, 'failed row must remain retryable, not dead_lettered');
+        $this->assertSame(1, (int) $row->attempts);
+
+        // The failed row was re-queued for async retry.
+        Queue::assertPushed(ApplyFiscalEventProjectionJob::class, 1);
+    }
+
     public function test_dispatch_rejects_a_non_server_authored_event(): void
     {
         // A device-authored event type (SALE_RECEIPT) must never be driven
@@ -331,6 +372,35 @@ final class FakeTreasuryDepositProjector implements FiscalEventProjector
     public function priority(): int
     {
         return 150;
+    }
+}
+
+final class FakeThrowingProjector implements FiscalEventProjector
+{
+    public function name(): string
+    {
+        return 'fake_throwing_deposit';
+    }
+
+    public function handlesEventType(FiscalEventType $type): bool
+    {
+        return $type === FiscalEventType::DEPOSIT_RECEIPT;
+    }
+
+    public function requiresModule(): ?string
+    {
+        return null;
+    }
+
+    public function apply(FiscalEvent $event): void
+    {
+        unset($event);
+        throw new RuntimeException('projector boom');
+    }
+
+    public function priority(): int
+    {
+        return 50;
     }
 }
 

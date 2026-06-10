@@ -15,6 +15,8 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use RuntimeException;
+use Throwable;
 
 /**
  * Public projection dispatcher for **server-authored** fiscal events — Phase 5
@@ -76,6 +78,37 @@ final class FiscalEventProjectionDispatcher
      */
     public function dispatch(FiscalEvent $event): void
     {
+        $pendingRowIds = $this->seedProjections($event);
+
+        if ($pendingRowIds === []) {
+            return;
+        }
+
+        // After-commit hook: enqueue one ApplyFiscalEventProjectionJob per
+        // pending row. The closure is `static` (no `$this` capture). Rows are
+        // priority-sorted by the registry, so dispatch order mirrors lifecycle
+        // dependency (POS-core projection @ 50, Treasury bridge @ 150).
+        DB::afterCommit(static function () use ($pendingRowIds): void {
+            foreach ($pendingRowIds as $rowId) {
+                ApplyFiscalEventProjectionJob::dispatch($rowId);
+            }
+        });
+    }
+
+    /**
+     * Seed (idempotently) one pending `fiscal_event_projections` row per active
+     * projector for a persisted server-authored event, WITHOUT enqueuing any async
+     * job. Returns every still-`pending` row id for the event.
+     *
+     * Split out from {@see dispatch()} so a request-time caller can seed the rows
+     * inside the authoring transaction and then drive them synchronously
+     * ({@see runSeededProjectionsSync()}) with no racing async worker — the async
+     * path ({@see dispatch()}) layers the `afterCommit` enqueue on top.
+     *
+     * @return list<string> still-pending projection row ids for the event
+     */
+    public function seedProjections(FiscalEvent $event): array
+    {
         $this->assertServerAuthoredVerified($event);
 
         $activeProjectors = $this->registry->activeProjectorsFor($event);
@@ -94,21 +127,19 @@ final class FiscalEventProjectionDispatcher
             ];
         }
 
-        // Idempotent insert — a replay/recovery dispatch of the same event must
-        // not raise a duplicate-key violation on the
-        // (fiscal_event_id, projector_name) UNIQUE. No-op when there are no
-        // active projectors (the re-read below still drives any prior rows).
+        // Idempotent insert — a replay/recovery of the same event must not raise a
+        // duplicate-key violation on the (fiscal_event_id, projector_name) UNIQUE.
+        // No-op when there are no active projectors (the re-read below still
+        // returns any prior rows to drive).
         $this->insertOnConflictDoNothing($pendingRows);
 
         // Re-read ALL still-`pending` rows for the event — deliberately NOT
-        // filtered to the currently-active projector set, and run even when no
-        // projector is active right now. Projection rows are activation-gated at
-        // CREATION; once a row exists, a module disabled before its job runs must
-        // still have its row driven to completion (durable-row semantics — see
-        // FiscalEventProjectionRegistry::byName() and
-        // EnqueueResolvedEventProjectionsCommand::dispatchPendingRows()). Filtering
-        // by the current active set here would strand such a row on replay. Row
-        // ids differ from the freshly-generated ones when a prior dispatch already
+        // filtered to the currently-active projector set. Projection rows are
+        // activation-gated at CREATION; once a row exists, a module disabled before
+        // its job runs must still have its row driven to completion (durable-row
+        // semantics — see FiscalEventProjectionRegistry::byName() and
+        // EnqueueResolvedEventProjectionsCommand::dispatchPendingRows()). Row ids
+        // differ from the freshly-generated ones when a prior dispatch already
         // created them, so re-reading is what makes both "create missing rows" and
         // "re-drive pending rows" replay-safe.
         /** @var list<string> $pendingRowIds */
@@ -119,19 +150,73 @@ final class FiscalEventProjectionDispatcher
             ->map(static fn (mixed $id): string => (string) $id)
             ->all();
 
-        if ($pendingRowIds === []) {
+        return $pendingRowIds;
+    }
+
+    /**
+     * Drive every still-`pending` projection row for an event SYNCHRONOUSLY,
+     * in-process, for a request-time caller that must return the projection outcome
+     * (printable receipt + Treasury allocation) in the same response.
+     *
+     * Each row's `ApplyFiscalEventProjectionJob::handle()` is invoked DIRECTLY
+     * (not through `Bus::dispatchSync()`), so the job's own
+     * `pending → running → applied` lifecycle and attempt-accounting run, but the
+     * sync-queue `failed()` hook does NOT — a projector that throws leaves its row
+     * `pending` (retryable), never `dead_lettered`. Because nothing was enqueued
+     * up-front there is no async worker to race with. Any row that still fails here
+     * is handed to the async queue as a retry safety net (so Horizon eventually
+     * completes it) and the failure is re-thrown so the caller can surface it.
+     *
+     * Call AFTER the authoring + {@see seedProjections()} transaction has committed
+     * (so the projectors read committed state and run in their own transactions).
+     *
+     * @throws RuntimeException if any projection row failed (after queuing its retry)
+     */
+    public function runSeededProjectionsSync(FiscalEvent $event): void
+    {
+        /** @var list<string> $pendingRowIds */
+        $pendingRowIds = $this->db->table('fiscal_event_projections')
+            ->where('fiscal_event_id', $event->id)
+            ->where('projection_status', ProjectionStatus::Pending->value)
+            ->pluck('id')
+            ->map(static fn (mixed $id): string => (string) $id)
+            ->all();
+
+        $failedRowIds = [];
+        $lastError = null;
+        foreach ($pendingRowIds as $rowId) {
+            try {
+                // Direct handle() — NOT Bus::dispatchSync(): the sync queue would
+                // call the job's failed() hook on exception and mark the row
+                // dead_lettered (terminal). Direct invocation runs the lifecycle +
+                // advanceFailureAccounting (which resets the row to `pending`) and
+                // lets the exception propagate without dead-lettering.
+                (new ApplyFiscalEventProjectionJob($rowId))->handle($this->db, $this->registry);
+            } catch (Throwable $e) {
+                $failedRowIds[] = $rowId;
+                $lastError = $e;
+            }
+        }
+
+        if ($failedRowIds === []) {
             return;
         }
 
-        // After-commit hook: enqueue one ApplyFiscalEventProjectionJob per
-        // pending row. The closure is `static` (no `$this` capture). Rows are
-        // priority-sorted by the registry, so dispatch order mirrors lifecycle
-        // dependency (POS-core projection @ 50, Treasury bridge @ 150).
-        DB::afterCommit(static function () use ($pendingRowIds): void {
-            foreach ($pendingRowIds as $rowId) {
-                ApplyFiscalEventProjectionJob::dispatch($rowId);
-            }
-        });
+        // Hand the still-pending failed rows to the async queue so they retry and
+        // eventually complete out of band, then surface the failure.
+        foreach ($failedRowIds as $rowId) {
+            ApplyFiscalEventProjectionJob::dispatch($rowId);
+        }
+
+        throw new RuntimeException(
+            sprintf(
+                'Synchronous projection run failed for fiscal_event_id=%s rows=[%s]; rows re-queued for async retry.',
+                $event->id,
+                implode(',', $failedRowIds),
+            ),
+            0,
+            $lastError,
+        );
     }
 
     /**
