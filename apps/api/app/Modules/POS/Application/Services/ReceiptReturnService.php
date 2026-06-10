@@ -1040,11 +1040,11 @@ final class ReceiptReturnService
             }
 
             /** @var numeric-string $alreadyReturnedQty */
-            $alreadyReturnedQty = $alreadyReturned[$lineId] ?? '0.000';
+            $alreadyReturnedQty = $alreadyReturned[$lineId] ?? '0.0000';
             /** @var numeric-string $remainingReturnable */
-            $remainingReturnable = bcsub((string) $originalLine->quantity, $alreadyReturnedQty, 3);
+            $remainingReturnable = bcsub((string) $originalLine->quantity, $alreadyReturnedQty, 4); // precision-ok: 4 = canonical quantity storage scale
 
-            if (bccomp($requestedQuantity, $remainingReturnable, 3) > 0) {
+            if (bccomp($requestedQuantity, $remainingReturnable, 4) > 0) { // precision-ok: 4 = canonical quantity storage scale
                 throw new \InvalidArgumentException(
                     "Cannot return {$requestedQuantity} of '{$originalLine->product_name}'. "
                     ."Maximum returnable: {$remainingReturnable} (original: {$originalLine->quantity}, already returned: {$alreadyReturnedQty})"
@@ -1076,11 +1076,14 @@ final class ReceiptReturnService
             }
 
             foreach ($returnReceipt->lines as $returnLine) {
-                $absQuantity = bcmul((string) $returnLine->quantity, '-1', 3);
+                // Canonical quantity scale is 4 END-TO-END here (Codex r1 B1):
+                // truncating at 3 let a 4-decimal request (e.g. 1.0009 against
+                // an original 1.0000) slip past the remaining-returnable cap.
+                $absQuantity = bcmul((string) $returnLine->quantity, '-1', 4); // precision-ok: 4 = canonical quantity storage scale
 
                 if ($returnLine->original_line_id !== null) {
                     $key = $returnLine->original_line_id;
-                    $returned[$key] = bcadd($returned[$key] ?? '0.000', $absQuantity, 3);
+                    $returned[$key] = bcadd($returned[$key] ?? '0.0000', $absQuantity, 4); // precision-ok: 4 = canonical quantity storage scale
 
                     continue;
                 }
@@ -1095,7 +1098,7 @@ final class ReceiptReturnService
 
                     if ($sameProduct) {
                         $key = $originalLine->id;
-                        $returned[$key] = bcadd($returned[$key] ?? '0.000', $absQuantity, 3);
+                        $returned[$key] = bcadd($returned[$key] ?? '0.0000', $absQuantity, 4); // precision-ok: 4 = canonical quantity storage scale
                         break;
                     }
                 }

@@ -50,7 +50,10 @@ final class StoreReturnRequest extends FormRequest
             'return_reason' => ['required', 'string', Rule::in(array_column(ReturnReason::cases(), 'value'))],
             'lines' => 'required|array|min:1',
             'lines.*.line_id' => 'required|uuid',
-            'lines.*.quantity' => ['required', 'numeric', 'min:0.001', 'regex:/^\d+(\.\d{1,4})?$/'],
+            // min matches the canonical quantity scale (4): the regex already
+            // allows 4-decimal quantities, so the floor must be 0.0001 — a
+            // 0.001 floor silently rejected the smallest legal partial return.
+            'lines.*.quantity' => ['required', 'numeric', 'min:0.0001', 'regex:/^\d+(\.\d{1,4})?$/'],
             'notes' => 'nullable|string|max:1000',
             // Client-supplied idempotency key — one per settlement attempt,
             // reused across retries so a replayed POST cannot double-refund.

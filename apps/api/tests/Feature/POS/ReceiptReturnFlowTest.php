@@ -772,6 +772,115 @@ final class ReceiptReturnFlowTest extends TestCase
         $this->assertEquals(3, $returnCount);
     }
 
+    public function test_process_return_rejects_four_decimal_over_return(): void
+    {
+        // Codex r1 B1 — the return-quantity cap must compare at the canonical
+        // quantity scale (4), not 3. At scale 3 both '1.0009' and '1.0000'
+        // truncate to '1.000', so the cap passed and computeReturnTotals /
+        // restoreStock then used the full 1.0009 → over-refund + over-restock.
+        $saleReceipt = $this->createSaleReceipt();
+        $line = ReceiptLine::create([
+            'receipt_id' => $saleReceipt->id,
+            'line_number' => 1,
+            'product_id' => null,
+            'product_code' => 'PROD-001',
+            'product_name' => 'Widget A',
+            'quantity' => '1.0000',
+            'unit' => 'pcs',
+            'unit_price' => '10.000',
+            'line_total' => '10.000',
+            'tax_rate' => '19.00',
+            'tax_amount' => '1.900',
+            'discount_amount' => '0.000',
+        ]);
+
+        $requestData = [
+            'terminal_id' => $this->terminal->id,
+            'return_reason' => ReturnReason::CustomerChangedMind->value,
+            'lines' => [
+                [
+                    'line_id' => $line->id,
+                    'quantity' => '1.0009', // 4-decimal over-return of the 1.0000 original
+                ],
+            ],
+        ];
+
+        $response = $this->postJson(
+            "/api/v1/pos/receipts/{$saleReceipt->id}/return",
+            $this->withVoidReturnApproval($saleReceipt, $requestData),
+        );
+
+        $response->assertStatus(400);
+        $this->assertEquals('INVALID_RETURN_DATA', $response->json('error.code'));
+        $this->assertStringContainsString('Maximum returnable', $response->json('error.message'));
+
+        // No return receipt may exist — the over-return must be rejected whole.
+        $this->assertSame(
+            0,
+            Receipt::where('original_receipt_id', $saleReceipt->id)
+                ->where('receipt_type', ReceiptType::Return)
+                ->count(),
+        );
+    }
+
+    public function test_process_return_four_decimal_partials_sum_exactly_to_original(): void
+    {
+        // Codex r1 B1 — repeated 4-decimal partial returns must accumulate at
+        // scale 4: 0.3333 × 3 + 0.0001 = 1.0000 exactly; the next 0.0001 must
+        // be rejected (nothing remains).
+        $saleReceipt = $this->createSaleReceipt();
+        $line = ReceiptLine::create([
+            'receipt_id' => $saleReceipt->id,
+            'line_number' => 1,
+            'product_id' => null,
+            'product_code' => 'PROD-001',
+            'product_name' => 'Widget A',
+            'quantity' => '1.0000',
+            'unit' => 'pcs',
+            'unit_price' => '10.000',
+            'line_total' => '10.000',
+            'tax_rate' => '19.00',
+            'tax_amount' => '1.900',
+            'discount_amount' => '0.000',
+        ]);
+
+        $returnPayload = fn (string $qty): array => [
+            'terminal_id' => $this->terminal->id,
+            'return_reason' => ReturnReason::CustomerChangedMind->value,
+            'lines' => [
+                [
+                    'line_id' => $line->id,
+                    'quantity' => $qty,
+                ],
+            ],
+        ];
+
+        foreach (['0.3333', '0.3333', '0.3333', '0.0001'] as $qty) {
+            $response = $this->postJson(
+                "/api/v1/pos/receipts/{$saleReceipt->id}/return",
+                $this->withVoidReturnApproval($saleReceipt, $returnPayload($qty)),
+            );
+            $response->assertStatus(201);
+        }
+
+        // 1.0000 is fully returned — one more 0.0001 must be rejected.
+        $response = $this->postJson(
+            "/api/v1/pos/receipts/{$saleReceipt->id}/return",
+            $this->withVoidReturnApproval($saleReceipt, $returnPayload('0.0001')),
+        );
+        $response->assertStatus(400);
+        $this->assertEquals('INVALID_RETURN_DATA', $response->json('error.code'));
+        $this->assertStringContainsString('Maximum returnable', $response->json('error.message'));
+
+        $this->assertSame(
+            4,
+            Receipt::where('original_receipt_id', $saleReceipt->id)
+                ->where('receipt_type', ReceiptType::Return)
+                ->where('is_voided', false)
+                ->count(),
+        );
+    }
+
     public function test_process_return_restores_stock(): void
     {
         // Arrange: Create a product with stock
