@@ -129,6 +129,22 @@
       "store_voucher": "Bon d'achat",
       "proration_title": "Détail du remboursement",
       "confirm": "Confirmer la destination"
+    },
+    "checkout": {
+      "completeReturnFirst": "Terminez d'abord le retour — réglez ou retirez les articles retournés avant de vendre de nouveaux articles.",
+      "errorNotSynced": "Ce ticket n'est pas encore synchronisé. Traitez le remboursement sur le terminal d'origine ou synchronisez d'abord.",
+      "errorLineMapping": "Les articles retournés n'ont pas pu être rapprochés du ticket d'origine. Vérifiez les quantités déjà remboursées.",
+      "errorOffline": "Les remboursements nécessitent une connexion. Reconnectez-vous et réessayez.",
+      "errorServer": "Erreur serveur — veuillez réessayer.",
+      "errorValidation": "Le remboursement a été refusé : {{message}}",
+      "errorApproval": "L'autorisation du responsable a échoué. Vérifiez le code PIN et réessayez.",
+      "success": "Remboursement effectué — ticket {{number}}"
+    },
+    "approval": {
+      "title": "Autorisation responsable",
+      "subtitle": "Un responsable doit autoriser ce remboursement.",
+      "confirm": "Autoriser le remboursement",
+      "submitting": "Traitement…"
     }
   },
   "receiptLocator": {

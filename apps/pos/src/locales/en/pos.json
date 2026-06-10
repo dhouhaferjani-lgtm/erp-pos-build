@@ -129,6 +129,22 @@
       "store_voucher": "Store Voucher",
       "proration_title": "Refund breakdown",
       "confirm": "Confirm destination"
+    },
+    "checkout": {
+      "completeReturnFirst": "Complete the return first — settle or remove the returned items before selling new ones.",
+      "errorNotSynced": "This receipt has not synced yet. Process the refund at the original terminal or sync first.",
+      "errorLineMapping": "The returned items could not be matched to the original receipt. Check the quantities already refunded.",
+      "errorOffline": "Refunds require a connection. Reconnect and try again.",
+      "errorServer": "Server error — please try again.",
+      "errorValidation": "The refund was rejected: {{message}}",
+      "errorApproval": "Manager authorization failed. Check the PIN and try again.",
+      "success": "Refund completed — ticket {{number}}"
+    },
+    "approval": {
+      "title": "Manager authorization",
+      "subtitle": "A manager must authorize this refund.",
+      "confirm": "Authorize refund",
+      "submitting": "Processing…"
     }
   },
   "receiptLocator": {

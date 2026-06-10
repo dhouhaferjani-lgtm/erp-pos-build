@@ -195,7 +195,7 @@ describe('refundCheckoutStore — prepare failures', () => {
   });
 
   it('OFFLINE (positive offline evidence) → idle with the offline message key', async () => {
-    vi.mocked(apiGet).mockRejectedValue(new FetchTimeoutError('timed out'));
+    vi.mocked(apiGet).mockRejectedValue(new FetchTimeoutError('url', 10_000, 'GET'));
 
     await useRefundCheckoutStore.getState().begin(beginInput());
 
@@ -379,7 +379,7 @@ describe('refundCheckoutStore — abort & failure paths', () => {
 
   it('a submit OFFLINE failure surfaces the offline error key (no auto-retry in the store)', async () => {
     await walkToApproval();
-    vi.mocked(apiPost).mockRejectedValue(new FetchTimeoutError('timed out'));
+    vi.mocked(apiPost).mockRejectedValue(new FetchTimeoutError('url', 10_000, 'GET'));
 
     await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
 

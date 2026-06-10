@@ -55,6 +55,12 @@ export interface RefundConfirmModalProps {
   /** Formatted refund amount string, e.g. "12.50 EUR". */
   refundAmount: string;
 
+  /**
+   * Already-translated label of the chosen refund destination (Task 2b wiring).
+   * Rendered under the amount summary when provided.
+   */
+  destinationLabel?: string;
+
   /** Current logged-in cashier user ID — excluded from manager selector. */
   cashierUserId: string;
 
@@ -90,6 +96,7 @@ export function RefundConfirmModal({
   isOpen,
   onClose,
   refundAmount,
+  destinationLabel,
   cashierUserId,
   authorizedManagers,
   onSubmitRefund,
@@ -186,7 +193,6 @@ export function RefundConfirmModal({
   // The managerName arg is not used here (display is handled inside ManagerPinPanel),
   // but we must accept it to stay aligned with the real component interface (I4).
   const handleManagerPinSuccess = useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     (managerUserId: string, _managerName: string) => {
       setAuthorizedManagerId(managerUserId);
       setUiAction(null);
@@ -234,6 +240,13 @@ export function RefundConfirmModal({
           <p className="text-2xl font-bold text-gray-900" data-testid="refund-amount-value">
             {refundAmount}
           </p>
+          {destinationLabel !== undefined && (
+            <p className="mt-1 text-sm text-gray-600" data-testid="refund-destination-summary">
+              {t('refundFlow.destination.label', { defaultValue: 'Refund destination' })}
+              {': '}
+              {destinationLabel}
+            </p>
+          )}
         </div>
 
         {/* Manager PIN panel — shown when override is required */}

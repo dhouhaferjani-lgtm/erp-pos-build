@@ -18,7 +18,12 @@ import { setCachedScan } from '@/lib/scan/scanResolutionCache';
 import { BarcodeChooserModal } from '@/components/molecules/BarcodeChooserModal/BarcodeChooserModal';
 import { getDatabase } from '@/lib/db';
 import { getOfflineReceiptById } from '@/lib/db/repositories/offlineReceiptRepository';
+import { deleteRefundDraft } from '@/lib/db/repositories/refundDraftRepository';
 import { hydrateFromReceipt } from '@/lib/refundFlow/hydrateFromReceipt';
+import { classifyCartForCheckout } from '@/lib/refundFlow/cartClassification';
+import { useRefundCheckoutStore } from '@/stores/refundCheckoutStore';
+import { RefundCheckoutFlow } from '@/components/pos/RefundCheckoutFlow';
+import type { ReturnSettlementResponse } from '@/lib/refundFlow/refundSettlementService';
 import { ReceiptScanConfirmationSheet } from '@/components/pos/ReceiptScanConfirmationSheet';
 import { ReceiptLocatorScreen } from '@/components/pos/ReceiptLocatorScreen';
 import { ResumeRefundDraftBanner } from '@/components/pos/ResumeRefundDraftBanner';
@@ -273,6 +278,10 @@ export function HomePage() {
   // Active refund context: which receipt is being refunded (Task 52).
   const [activeRefundReceiptUuid, setActiveRefundReceiptUuid] = useState<string | null>(null);
   const [activeRefundReceiptNumber, setActiveRefundReceiptNumber] = useState<string | null>(null);
+  // Task 2b: signed QR token of the receipt being refunded (when the session
+  // started from a scan). Improves the settlement's local→server resolution;
+  // null for resumed drafts — the receipt number is the fallback identity.
+  const [activeRefundReceiptToken, setActiveRefundReceiptToken] = useState<string | null>(null);
   const [activeRefundDraftId, setActiveRefundDraftId] = useState<string | null>(null);
   const [exchangeRequestId, setExchangeRequestId] = useState<string | null>(null);
   const [detailsNotLocalWarning, setDetailsNotLocalWarning] = useState(false);
@@ -462,10 +471,12 @@ export function HomePage() {
     if (shift !== null) return; // only fire on close/absence
     setActiveRefundReceiptUuid(null);
     setActiveRefundReceiptNumber(null);
+    setActiveRefundReceiptToken(null);
     setActiveRefundDraftId(null);
     setExchangeRequestId(null);
     setPendingScanResult(null);
     setDetailsNotLocalWarning(false);
+    useRefundCheckoutStore.getState().reset();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shift]);
 
@@ -475,10 +486,12 @@ export function HomePage() {
     if (operator !== null) return; // only fire on operator clear
     setActiveRefundReceiptUuid(null);
     setActiveRefundReceiptNumber(null);
+    setActiveRefundReceiptToken(null);
     setActiveRefundDraftId(null);
     setExchangeRequestId(null);
     setPendingScanResult(null);
     setDetailsNotLocalWarning(false);
+    useRefundCheckoutStore.getState().reset();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [operator?.id]);
 
@@ -520,6 +533,7 @@ export function HomePage() {
         useCartStore.getState().replaceReturnItems(returnItems);
         setActiveRefundReceiptUuid(event.receiptUuid);
         setActiveRefundReceiptNumber(event.receiptNumber);
+        setActiveRefundReceiptToken(event.receiptToken);
         setDetailsNotLocalWarning(false);
 
         // Persist draft immediately so a crash/close can restore.
@@ -715,6 +729,9 @@ export function HomePage() {
     }
     setActiveRefundReceiptUuid(existingDraft.receiptUuid);
     setActiveRefundReceiptNumber(existingDraft.receiptNumber);
+    // Drafts do not persist the scanned QR token — the settlement falls back
+    // to the receipt-number identity in the local qr-index.
+    setActiveRefundReceiptToken(null);
     setActiveRefundDraftId(existingDraft.id);
     setExchangeRequestId(existingDraft.exchangeRequestId);
     clearDraftState();
@@ -825,10 +842,101 @@ export function HomePage() {
     [modifierProduct, editingLineId, addItem, updateLineModifiers],
   );
 
+  // ── Task 2b: refund checkout interception ──────────────────────────────────
+  // An all-return cart must NEVER reach the sale checkout path (negative
+  // lines fail the fiscal money invariant inside buildSaleReceiptPayload),
+  // so BOTH Pay entry points classify the cart before opening any modal.
+
+  /** Mixed return + sale cart → Pay is blocked with a translated toast. */
+  const blockMixedCheckout = useCallback(() => {
+    setScanMessage({ text: t('pos:refundFlow.checkout.completeReturnFirst'), type: 'error' });
+    setTimeout(() => setScanMessage(null), 4000);
+  }, [t]);
+
+  /** Start the refund settlement flow (prepare → destination → confirm → PIN → submit). */
+  const startRefundCheckout = useCallback(async () => {
+    const companyId = useAuthStore.getState().companyId;
+    const receiptNumber = activeRefundReceiptNumber;
+    if (!companyId || !receiptNumber) {
+      // Return lines without an active refund session — the original receipt
+      // identity is unknown so the settlement cannot be resolved. Should not
+      // happen (return lines only enter via scan-hydration or draft resume).
+      console.error('[refundFlow] Pay pressed on a refund cart without an active refund session');
+      setScanMessage({ text: t('pos:refundFlow.confirm.errorGeneric'), type: 'error' });
+      setTimeout(() => setScanMessage(null), 3000);
+      return;
+    }
+    try {
+      const db = await getDatabase(companyId);
+      await useRefundCheckoutStore.getState().begin({
+        db,
+        receiptToken: activeRefundReceiptToken,
+        receiptNumber,
+        // The cart's edited return quantities pass through AS-IS — partial
+        // refunds are mapped onto the server lines by the settlement service.
+        refundItems: useCartStore.getState().returnItems(),
+      });
+    } catch (beginError) {
+      console.error('[refundFlow] failed to start refund checkout', serializeErrorForLog(beginError));
+      setScanMessage({ text: t('pos:refundFlow.confirm.errorGeneric'), type: 'error' });
+      setTimeout(() => setScanMessage(null), 3000);
+    }
+  }, [activeRefundReceiptNumber, activeRefundReceiptToken, t]);
+
+  /**
+   * Settled seam (Phase 3 wires AVOIR printing here — the full /return
+   * response, incl. qr_token + issued_voucher, also stays readable in
+   * refundCheckoutStore.settledResponse). The checkout store already cleared
+   * the cart's return lines; this handler tears down the refund session,
+   * removes the crash-safety draft, and shows the success feedback.
+   */
+  const handleRefundSettled = useCallback((response: ReturnSettlementResponse) => {
+    const companyId = useAuthStore.getState().companyId;
+    const draftId = activeRefundDraftId;
+
+    setActiveRefundReceiptUuid(null);
+    setActiveRefundReceiptNumber(null);
+    setActiveRefundReceiptToken(null);
+    setActiveRefundDraftId(null);
+    setExchangeRequestId(null);
+    setDetailsNotLocalWarning(false);
+    clearDraftState();
+
+    // Delete the SQLite draft row DIRECTLY — discardDraft would emit the
+    // pos.refund_draft_discarded fraud signal, which is wrong for a refund
+    // that actually SETTLED.
+    if (companyId && draftId) {
+      void (async () => {
+        try {
+          const db = await getDatabase(companyId);
+          await deleteRefundDraft(db, draftId);
+        } catch (cleanupError) {
+          console.error('[refundFlow] settled-draft cleanup failed:', serializeErrorForLog(cleanupError));
+        }
+      })();
+    }
+
+    setScanMessage({
+      text: t('pos:refundFlow.checkout.success', { number: response.receipt_number }),
+      type: 'success',
+    });
+    setTimeout(() => setScanMessage(null), 4000);
+    useRefundCheckoutStore.getState().acknowledgeSettled();
+  }, [activeRefundDraftId, clearDraftState, t]);
+
   const handlePayCash = useCallback(() => {
     if (cartItems.length === 0) return;
+    const classification = classifyCartForCheckout(cartItems);
+    if (classification === 'mixed') {
+      blockMixedCheckout();
+      return;
+    }
+    if (classification === 'refund') {
+      void startRefundCheckout();
+      return;
+    }
     setShowCashModal(true);
-  }, [cartItems.length]);
+  }, [cartItems, blockMixedCheckout, startRefundCheckout]);
 
   const handleCashConfirm = useCallback(
     async (tenderedAmount: number) => {
@@ -860,8 +968,17 @@ export function HomePage() {
 
   const handleAdvancedPayments = useCallback(() => {
     if (cartItems.length === 0) return;
+    const classification = classifyCartForCheckout(cartItems);
+    if (classification === 'mixed') {
+      blockMixedCheckout();
+      return;
+    }
+    if (classification === 'refund') {
+      void startRefundCheckout();
+      return;
+    }
     setShowAdvancedModal(true);
-  }, [cartItems.length]);
+  }, [cartItems, blockMixedCheckout, startRefundCheckout]);
 
   const handleAdvancedComplete = useCallback(
     async (
@@ -1341,6 +1458,17 @@ export function HomePage() {
       <ReceiptLocatorScreen
         isOpen={showReceiptLocator}
         onClose={() => setShowReceiptLocator(false)}
+      />
+
+      {/* Task 2b (Task 53 wiring): refund settlement flow — destination picker,
+          confirm modal, manager-PIN approval, /return submit. Driven by
+          refundCheckoutStore; entered from handlePayCash/handleAdvancedPayments
+          when the cart is all-return. */}
+      <RefundCheckoutFlow
+        approvalContext={approvalContext}
+        terminalId={terminal?.id ?? null}
+        cashierUserId={operator?.id ?? activeUserId ?? ''}
+        onRefundSettled={handleRefundSettled}
       />
       </div>
     </div>
