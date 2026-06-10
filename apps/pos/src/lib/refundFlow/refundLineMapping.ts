@@ -30,6 +30,12 @@ export interface ServerReceiptLine {
   id: string;
   product_id: string | null;
   composite_item_id?: string | null;
+  /**
+   * T2 variant identity. NULL/absent on non-variant lines AND on
+   * projection-path receipts written before variants existed. Required for
+   * disambiguation because product_code on variant lines is the PARENT SKU.
+   */
+  variant_id?: string | null;
   product_code: string | null;
   product_name: string;
   quantity: string;
@@ -55,12 +61,15 @@ export type LineMappingResult =
 /**
  * Strongest-identity match between a refund cart item and a server line:
  * product identity (product_id, or composite_item_id for composite items,
- * or "both identity-less") AND product_code AND unit_price (numeric compare,
- * not byte compare — '10.00' === '10.0000').
+ * or "both identity-less") AND variant_id (NULL/absent must match NULL/absent
+ * — variant lines carry the PARENT SKU as product_code, so two same-price
+ * variants are otherwise indistinguishable) AND product_code AND unit_price
+ * (numeric compare, not byte compare — '10.00' === '10.0000').
  */
 function identityMatches(item: CartItem, line: ServerReceiptLine): boolean {
   if (line.product_code !== item.product.sku) return false;
   if (bccomp(line.unit_price, item.unit_price) !== 0) return false;
+  if ((line.variant_id ?? null) !== (item.product.variant_id ?? null)) return false;
 
   if (item.product.sellableType === 'composite_item') {
     return (line.composite_item_id ?? null) === item.product.id;

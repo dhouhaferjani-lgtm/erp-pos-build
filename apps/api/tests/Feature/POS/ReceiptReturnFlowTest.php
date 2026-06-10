@@ -907,6 +907,87 @@ final class ReceiptReturnFlowTest extends TestCase
             ->count());
     }
 
+    public function test_process_return_replays_when_concurrent_request_lands_after_unlocked_idempotency_check(): void
+    {
+        // Race shape: two requests carry the same refund_request_id. Both pass
+        // the cheap UNLOCKED idempotency check; the loser then blocks on the
+        // original-receipt lockForUpdate while the winner commits. The
+        // AUTHORITATIVE post-lock re-check must catch the winner's committed
+        // return receipt and replay it — never insert a duplicate (which would
+        // hit the unique partial index → uncaught QueryException → 500 and,
+        // on SQLite where that index does not exist, a SECOND payout).
+        $saleReceipt = $this->createSaleReceipt();
+        $line = $this->createReceiptLine($saleReceipt);
+
+        // The "winning" concurrent request, committed normally under its own key.
+        $response1 = $this->postJson(
+            "/api/v1/pos/receipts/{$saleReceipt->id}/return",
+            $this->withVoidReturnApproval($saleReceipt, [
+                'terminal_id' => $this->terminal->id,
+                'return_reason' => ReturnReason::Defective->value,
+                'lines' => [
+                    ['line_id' => $line->id, 'quantity' => '2'],
+                ],
+            ]),
+        );
+        $response1->assertStatus(201);
+        /** @var string $winnerReturnId */
+        $winnerReturnId = $response1->json('data.id');
+
+        $replayKey = Str::uuid()->toString();
+
+        // Build the loser's payload BEFORE registering the race hook so the
+        // approval-evidence seeding cannot trip it.
+        $loserPayload = $this->withVoidReturnApproval($saleReceipt, [
+            'terminal_id' => $this->terminal->id,
+            'return_reason' => ReturnReason::Defective->value,
+            'lines' => [
+                ['line_id' => $line->id, 'quantity' => '2'],
+            ],
+            'refund_request_id' => $replayKey,
+        ]);
+
+        // Deterministic race injection: flip the winner's refund_request_id to
+        // the loser's key at the exact moment the loser retrieves the original
+        // receipt INSIDE the service transaction (DB::transactionLevel above
+        // the test's base level distinguishes the service's locked load from
+        // the controller's unlocked pre-load). This makes the conflicting row
+        // visible only AFTER the Step-1 unlocked check has already missed it.
+        $baseLevel = DB::transactionLevel();
+        $injected = false;
+        Receipt::retrieved(
+            function (Receipt $receipt) use (&$injected, $saleReceipt, $winnerReturnId, $replayKey, $baseLevel): void {
+                if ($injected || $receipt->id !== $saleReceipt->id) {
+                    return;
+                }
+                if (DB::transactionLevel() <= $baseLevel) {
+                    return;
+                }
+                $injected = true;
+                DB::table('pos_receipts')
+                    ->where('id', $winnerReturnId)
+                    ->update(['refund_request_id' => $replayKey]);
+            },
+        );
+
+        $response2 = $this->postJson("/api/v1/pos/receipts/{$saleReceipt->id}/return", $loserPayload);
+
+        $this->assertTrue($injected, 'Race hook must have fired inside the service transaction');
+        $response2->assertStatus(201);
+
+        // The loser replays the winner's receipt — same id, no duplicate row.
+        $this->assertSame($winnerReturnId, $response2->json('data.id'));
+        $this->assertSame(1, Receipt::where('original_receipt_id', $saleReceipt->id)
+            ->where('receipt_type', ReceiptType::Return)
+            ->count());
+        $this->assertSame(1, Receipt::where('refund_request_id', $replayKey)->count());
+
+        // Exactly ONE cash payout — the race must never pay out twice.
+        $this->assertSame(1, (int) DB::table('pos_cash_drawer_operations')
+            ->where('operation_type', 'REFUND')
+            ->count());
+    }
+
     public function test_process_return_cashier_selected_store_voucher_issues_voucher(): void
     {
         // Seed GL accounts required for VoucherIssuanceService.

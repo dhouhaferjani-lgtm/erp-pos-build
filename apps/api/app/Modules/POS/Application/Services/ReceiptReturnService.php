@@ -35,6 +35,7 @@ use App\Modules\Voucher\Application\DTOs\VoucherIssuanceRequest;
 use App\Modules\Voucher\Application\Services\VoucherIssuanceService;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -44,7 +45,10 @@ use Illuminate\Support\Str;
  * Orchestrates partial/full POS returns (Phase E refactor).
  *
  * Pipeline (all inside a single DB transaction):
- *  1. DB-level idempotency — return existing receipt if refund_request_id seen before.
+ *  1. DB-level idempotency — return existing receipt if refund_request_id seen
+ *     before (cheap unlocked check; re-checked authoritatively in step 2 after
+ *     the original-receipt lock, with a unique-index catch backstop around the
+ *     whole transaction for anything that still slips through).
  *  2. Load + validate original receipt.
  *  3. Validate return quantities.
  *  4. Compute totals.
@@ -121,6 +125,61 @@ final class ReceiptReturnService
 
         $companyId = $this->companyContext->requireCompanyId();
 
+        try {
+            return $this->runReturnTransaction(
+                $originalReceiptId,
+                $returnLines,
+                $returnReason,
+                $cashier,
+                $terminalId,
+                $notes,
+                $destination,
+                $refundRequestId,
+                $authorizedByUserId,
+                $overrideReason,
+                $companyId,
+                $exchangeGroupId,
+            );
+        } catch (QueryException $exception) {
+            // Last-resort idempotency backstop (PostgreSQL): if a concurrent
+            // request slipped past both idempotency checks and our INSERT hit
+            // the unique partial index on (company_id, refund_request_id),
+            // replay its committed return receipt instead of bubbling a 500.
+            // The transaction above has already rolled back at this point.
+            if (
+                $refundRequestId !== null
+                && $this->isRefundRequestIdUniqueViolation($exception)
+            ) {
+                $existing = $this->findReturnByRefundRequestId($refundRequestId, $companyId);
+
+                if ($existing !== null) {
+                    return $existing;
+                }
+            }
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * The single-transaction return pipeline (see processReturn for the contract).
+     *
+     * @param  array<int, array{line_id: string, quantity: string}>  $returnLines
+     */
+    private function runReturnTransaction(
+        string $originalReceiptId,
+        array $returnLines,
+        ReturnReason $returnReason,
+        User $cashier,
+        string $terminalId,
+        ?string $notes,
+        ?RefundDestination $destination,
+        ?string $refundRequestId,
+        ?string $authorizedByUserId,
+        ?string $overrideReason,
+        string $companyId,
+        ?string $exchangeGroupId,
+    ): Receipt {
         return DB::transaction(function () use (
             $originalReceiptId,
             $returnLines,
@@ -136,22 +195,16 @@ final class ReceiptReturnService
             $exchangeGroupId,
         ): Receipt {
             // ─────────────────────────────────────────────────────────────────
-            // Step 1: DB-level idempotency — return existing receipt unchanged
+            // Step 1: DB-level idempotency — return existing receipt unchanged.
+            // CHEAP UNLOCKED check only: a concurrent request holding the
+            // original-receipt lock may commit the same refund_request_id
+            // after this read. Step 2 re-checks AFTER acquiring the lock.
             // ─────────────────────────────────────────────────────────────────
             if ($refundRequestId !== null) {
-                $existing = Receipt::where('refund_request_id', $refundRequestId)
-                    ->where('company_id', $companyId)
-                    ->first();
+                $existing = $this->findReturnByRefundRequestId($refundRequestId, $companyId);
 
                 if ($existing !== null) {
-                    /** @var Receipt */
-                    return $existing->fresh([
-                        'lines',
-                        'vatDetails',
-                        'terminal',
-                        'cashier',
-                        'originalReceipt',
-                    ]);
+                    return $existing;
                 }
             }
 
@@ -163,6 +216,20 @@ final class ReceiptReturnService
                 ->where('company_id', $companyId)
                 ->lockForUpdate()
                 ->findOrFail($originalReceiptId);
+
+            // AUTHORITATIVE idempotency re-check, now that the original
+            // receipt row is locked. Concurrent requests with the same
+            // refund_request_id target the same original receipt, so the lock
+            // serializes us behind any winner: this re-read sees its committed
+            // return receipt and replays it instead of inserting a duplicate
+            // (which would violate the unique partial index → 500).
+            if ($refundRequestId !== null) {
+                $existing = $this->findReturnByRefundRequestId($refundRequestId, $companyId);
+
+                if ($existing !== null) {
+                    return $existing;
+                }
+            }
 
             $this->validateOriginalReceipt($originalReceipt);
 
@@ -361,6 +428,53 @@ final class ReceiptReturnService
                 'originalReceipt',
             ]);
         });
+    }
+
+    // =========================================================================
+    // Idempotency (refund_request_id)
+    // =========================================================================
+
+    /**
+     * Look up an already-committed return receipt for an idempotency key,
+     * with the same relationship set processReturn returns.
+     */
+    private function findReturnByRefundRequestId(string $refundRequestId, string $companyId): ?Receipt
+    {
+        /** @var Receipt|null $existing */
+        $existing = Receipt::where('refund_request_id', $refundRequestId)
+            ->where('company_id', $companyId)
+            ->first();
+
+        if ($existing === null) {
+            return null;
+        }
+
+        /** @var Receipt */
+        return $existing->fresh([
+            'lines',
+            'vatDetails',
+            'terminal',
+            'cashier',
+            'originalReceipt',
+        ]);
+    }
+
+    /**
+     * Whether a QueryException is a unique-key violation on the
+     * (company_id, refund_request_id) partial index — i.e. a concurrent
+     * request committed the same idempotency key first.
+     */
+    private function isRefundRequestIdUniqueViolation(QueryException $exception): bool
+    {
+        // SQLSTATE 23505 = PostgreSQL unique_violation; 23000 covers the
+        // SQLite/ANSI integrity-constraint class used in the test suite.
+        $sqlState = $exception->errorInfo[0] ?? null;
+
+        if ($sqlState !== '23505' && $sqlState !== '23000') {
+            return false;
+        }
+
+        return str_contains($exception->getMessage(), 'refund_request_id');
     }
 
     // =========================================================================

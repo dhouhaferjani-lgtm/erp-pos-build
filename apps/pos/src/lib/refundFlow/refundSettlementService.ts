@@ -27,7 +27,10 @@
  * attempt (`generateRefundRequestId`) and REUSED across retries — internal
  * retries reuse the same payload object, and callers retrying a failed
  * submit must pass the SAME id again so the server replays the original
- * return receipt instead of paying out twice.
+ * return receipt instead of paying out twice. Callers must also SERIALIZE
+ * submits: never run two concurrent `submitRefundReturn` calls for the same
+ * settlement — the UI must disable the action while a submit is in flight.
+ * Server-side idempotency is the backstop, not the primary guard.
  *
  * NO user-facing strings here — errors are typed codes the UI translates.
  */
@@ -267,7 +270,21 @@ export async function resolveServerReceiptId(
     if (byToken !== null) return byToken.receipt_uuid;
   }
   const byNumber = await findReceiptByNumber(db, identity.receiptNumber);
-  return byNumber?.receipt_uuid ?? null;
+  if (byNumber === null) return null;
+
+  // Cross-check the fallback: if a token WAS scanned but the number-matched
+  // entry carries a DIFFERENT (non-null) token, the receipt number collided
+  // with another receipt — binding it would settle the refund against the
+  // wrong receipt. Treat as not-synced rather than guessing.
+  if (
+    identity.receiptToken !== null &&
+    byNumber.qr_token !== null &&
+    byNumber.qr_token !== identity.receiptToken
+  ) {
+    return null;
+  }
+
+  return byNumber.receipt_uuid;
 }
 
 // ─── Server receipt fetch (unknown + type guards at the API boundary) ────────
@@ -281,6 +298,11 @@ function isServerReceiptLine(value: unknown): value is ServerReceiptLine {
   return (
     typeof value['id'] === 'string' &&
     (typeof value['product_id'] === 'string' || value['product_id'] === null) &&
+    // variant_id: string on variant lines, null on non-variant lines, absent
+    // on pre-variant serializations — all map to the same `?? null` identity.
+    (typeof value['variant_id'] === 'string' ||
+      value['variant_id'] === null ||
+      value['variant_id'] === undefined) &&
     (typeof value['product_code'] === 'string' || value['product_code'] === null) &&
     typeof value['quantity'] === 'string' &&
     typeof value['unit_price'] === 'string' &&

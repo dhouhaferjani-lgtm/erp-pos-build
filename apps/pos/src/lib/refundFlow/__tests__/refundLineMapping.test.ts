@@ -236,4 +236,91 @@ describe('mapRefundItemsToServerLines', () => {
 
     expect(result).toEqual({ ok: true, lines: [] });
   });
+
+  // ── Variant identity ───────────────────────────────────────────────────────
+  // product_code on variant lines is the PARENT SKU (ReceiptCreationService),
+  // so two same-price variants of one product are only distinguishable via
+  // variant_id.
+
+  it('maps two same-price variants of one product to their correct lines', () => {
+    const items = [
+      refundItem({
+        id: 'item-red',
+        quantity: -1,
+        product: {
+          id: 'prod-1',
+          name: 'Tee',
+          sku: 'PROD-001',
+          price: '10.0000',
+          variant_id: 'var-red',
+          variant_name: 'Tee — Red',
+        },
+      }),
+      refundItem({
+        id: 'item-blue',
+        quantity: -2,
+        product: {
+          id: 'prod-1',
+          name: 'Tee',
+          sku: 'PROD-001',
+          price: '10.0000',
+          variant_id: 'var-blue',
+          variant_name: 'Tee — Blue',
+        },
+      }),
+    ];
+
+    // Server order puts the BLUE line first: product_id, product_code and
+    // unit_price are identical across both lines — only variant_id can
+    // disambiguate. A variant-blind matcher would greedily bind item-red to
+    // line-blue.
+    const result = mapRefundItemsToServerLines(items, [
+      serverLine({ id: 'line-blue', variant_id: 'var-blue', quantity: '3.0000' }),
+      serverLine({ id: 'line-red', variant_id: 'var-red', quantity: '3.0000' }),
+    ]);
+
+    expect(result).toEqual({
+      ok: true,
+      lines: [
+        { line_id: 'line-blue', quantity: '2.0000' },
+        { line_id: 'line-red', quantity: '1.0000' },
+      ],
+    });
+  });
+
+  it('matches NULL server variant_id against cart items without variant_id (projection-path receipts)', () => {
+    const result = mapRefundItemsToServerLines(
+      [refundItem({ quantity: -1 })],
+      [serverLine({ variant_id: null })],
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      lines: [{ line_id: 'line-1', quantity: '1.0000' }],
+    });
+  });
+
+  it('does not bind a variant cart item to a variant-less server line', () => {
+    const result = mapRefundItemsToServerLines(
+      [
+        refundItem({
+          quantity: -1,
+          product: {
+            id: 'prod-1',
+            name: 'Tee',
+            sku: 'PROD-001',
+            price: '10.0000',
+            variant_id: 'var-red',
+          },
+        }),
+      ],
+      [serverLine({ variant_id: null })],
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'NO_MATCHING_LINE',
+      itemId: 'return-item-1',
+    });
+  });
 });

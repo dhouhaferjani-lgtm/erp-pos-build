@@ -19,20 +19,13 @@ import {
 
 // ─── Mocks (HTTP mocked at the api-client boundary only) ────────────────────
 
-vi.mock('@/lib/api', () => {
-  class MockApiRequestError extends Error {
-    constructor(
-      public readonly status: number,
-      public readonly apiMessage: string,
-      public readonly code: string,
-      public readonly details?: Record<string, unknown>,
-    ) {
-      super(apiMessage);
-      this.name = 'ApiRequestError';
-    }
-  }
+vi.mock('@/lib/api', async () => {
+  // Re-export the REAL ApiRequestError (mocking only the request functions)
+  // so instanceof checks in the service exercise the production class — a
+  // hand-cloned mock class drifts silently when the real one changes.
+  const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api');
   return {
-    ApiRequestError: MockApiRequestError,
+    ...actual,
     apiGet: vi.fn(),
     apiPost: vi.fn(),
   };
@@ -169,6 +162,46 @@ describe('prepareRefundSettlement', () => {
 
     expect(result).toEqual({ ok: false, error: { code: 'NOT_SYNCED' } });
     expect(apiGet).not.toHaveBeenCalled();
+  });
+
+  it('treats a number-lookup hit with a MISMATCHING qr_token as NOT_SYNCED', async () => {
+    // The scanned token resolved nothing, and the receipt-number entry that
+    // DID resolve carries a different token — the number collided with a
+    // different receipt. Binding it would refund against the wrong receipt.
+    vi.mocked(findReceiptByQrToken).mockResolvedValue(null);
+    vi.mocked(findReceiptByNumber).mockResolvedValue(qrIndexEntry());
+
+    const result = await prepareRefundSettlement({
+      db: fakeDb,
+      receiptToken: 'v:kid:99999999-9999-4999-8999-999999999999:othermac',
+      receiptNumber: 'L01-T01-00042',
+      refundItems: [refundItem()],
+      retry: NO_BACKOFF,
+    });
+
+    expect(result).toEqual({ ok: false, error: { code: 'NOT_SYNCED' } });
+    expect(apiGet).not.toHaveBeenCalled();
+  });
+
+  it('accepts a number-lookup hit whose stored qr_token is NULL (offline-issued original)', async () => {
+    // No token recorded in the index — nothing to verify against; the
+    // number match stands.
+    vi.mocked(findReceiptByQrToken).mockResolvedValue(null);
+    vi.mocked(findReceiptByNumber).mockResolvedValue({
+      ...qrIndexEntry(),
+      qr_token: null,
+    });
+    vi.mocked(apiGet).mockResolvedValue(serverReceipt());
+
+    const result = await prepareRefundSettlement({
+      db: fakeDb,
+      receiptToken: 'v:kid:7d4e2a10-1111-4222-8333-444455556666:mac',
+      receiptNumber: 'L01-T01-00042',
+      refundItems: [refundItem()],
+      retry: NO_BACKOFF,
+    });
+
+    expect(result.ok).toBe(true);
   });
 
   it('falls back to receipt-number lookup when the token is null', async () => {
