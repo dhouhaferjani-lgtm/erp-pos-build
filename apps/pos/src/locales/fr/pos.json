@@ -571,20 +571,9 @@
     "confirm": "OK"
   },
   "voidReturn": {
-    "title": "Annulation / Retour",
     "void": "Annuler",
-    "return": "Retour",
     "reason": "Raison",
-    "searchReceipt": "Rechercher par numéro de ticket...",
-    "selectLines": "Sélectionner les articles à retourner",
-    "confirmVoid": "Confirmer l'annulation",
-    "confirmReturn": "Confirmer le retour",
-    "receiptNotFound": "Ticket non trouvé",
-    "offlineNoReceipt": "Aucun ticket non synchronisé trouvé. L'annulation des tickets synchronisés nécessite une connexion Internet.",
-    "localReceipt": "Ce ticket est enregistré localement et n'a pas encore été synchronisé.",
-    "syncBeforeVoid": "Synchronisez ce ticket avant de l'annuler.",
-    "managerPin": "PIN responsable",
-    "approvalRequired": "L'approbation d'un responsable est requise pour les annulations et retours."
+    "managerPin": "PIN responsable"
   },
   "cashDrawer": {
     "title": "Tiroir-caisse",

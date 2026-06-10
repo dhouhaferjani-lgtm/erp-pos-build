@@ -55,7 +55,6 @@ import { DiscountModal } from '@/components/organisms/DiscountModal';
 import { LineDiscountModal } from '@/components/organisms/LineDiscountModal';
 import { ModifierSelectionModal } from '@/components/organisms/ModifierSelectionModal';
 import { VariantPickerModal } from '@/components/pos/VariantPickerModal';
-import { VoidReturnModal } from '@/components/organisms/VoidReturnModal';
 import { QuantityNumpad } from '@/components/organisms/QuantityNumpad';
 import { useSmartPromptsStore } from '@/stores/smartPromptsStore';
 import { ToastSmartPrompts } from '@/components/organisms/ToastSmartPrompts';
@@ -219,7 +218,6 @@ export function HomePage() {
   const [showAdvancedModal, setShowAdvancedModal] = useState(false);
   const [showHeldModal, setShowHeldModal] = useState(false);
   const [showDiscountModal, setShowDiscountModal] = useState(false);
-  const [showVoidReturnModal, setShowVoidReturnModal] = useState(false);
   // Receipt locator screen — Returns / Exchange entry point (Task 51)
   const [showReceiptLocator, setShowReceiptLocator] = useState(false);
   const [quantityEditItemId, setQuantityEditItemId] = useState<string | null>(null);
@@ -1487,13 +1485,6 @@ export function HomePage() {
         onClose={() => setVariantPickerProduct(null)}
         product={variantPickerProduct}
         onConfirm={handleVariantConfirm}
-      />
-
-      {/* Void/Return modal */}
-      <VoidReturnModal
-        isOpen={showVoidReturnModal}
-        onClose={() => setShowVoidReturnModal(false)}
-        approvalContext={approvalContext}
       />
 
       {/* T2.1 Step B — barcode collision chooser. Mounts when the scan

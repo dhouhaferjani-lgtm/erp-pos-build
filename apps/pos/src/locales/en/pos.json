@@ -571,20 +571,9 @@
     "confirm": "OK"
   },
   "voidReturn": {
-    "title": "Void / Return",
     "void": "Void",
-    "return": "Return",
     "reason": "Reason",
-    "searchReceipt": "Search by receipt number...",
-    "selectLines": "Select items to return",
-    "confirmVoid": "Confirm Void",
-    "confirmReturn": "Confirm Return",
-    "receiptNotFound": "Receipt not found",
-    "offlineNoReceipt": "No unsynced receipts found. Synced receipts require an internet connection to void.",
-    "localReceipt": "This is a locally saved receipt that has not been synced yet.",
-    "syncBeforeVoid": "Sync this receipt before voiding it.",
-    "managerPin": "Manager PIN",
-    "approvalRequired": "Manager approval is required for voids and returns."
+    "managerPin": "Manager PIN"
   },
   "cashDrawer": {
     "title": "Cash Drawer",

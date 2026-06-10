@@ -1,6 +1,6 @@
 /**
- * Tests for the shared refund-approval handshake (extracted from
- * VoidReturnModal's working manager-PIN flow). The handshake itself
+ * Tests for the shared refund-approval handshake (extracted from the
+ * now-deleted VoidReturnModal's working manager-PIN flow). The handshake itself
  * (verifyScopedManagerPin / authorPosOverride / ensureApprovalFiscalEventsSynced)
  * is mocked — these tests pin the BINDING contract: the approval target must
  * carry the SERVER receipt id/number and the mapped line_ids (sorted), because

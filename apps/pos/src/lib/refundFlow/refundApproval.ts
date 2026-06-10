@@ -1,11 +1,12 @@
 /**
  * Shared manager-PIN approval handshake for refund settlement (Task 2b).
  *
- * EXTRACTED from VoidReturnModal's working `authorizeVoidReturn` + return
- * path (the only previously-working consumer of the void/return override
- * chain) so the refund checkout flow reuses the exact same fiscal authoring
- * instead of copy-pasting it. VoidReturnModal itself is untouched (Phase 6
- * handles its cleanup).
+ * EXTRACTED from the former VoidReturnModal's working `authorizeVoidReturn`
+ * + return path (the only previously-working consumer of the void/return
+ * override chain) so the refund checkout flow reuses the exact same fiscal
+ * authoring instead of copy-pasting it. VoidReturnModal was deleted in
+ * Phase 6 — the refund flow is the only post-seal correction surface on the
+ * POS, and this helper is the canonical owner of the handshake.
  *
  * Contract pinned by the server's assertVoidReturnApproval: the approval /
  * override fiscal events' `target` must bind the SERVER receipt id + number
