@@ -10,9 +10,16 @@ interface ModalProps {
   children: ReactNode;
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  /**
+   * When false the modal cannot be dismissed: the X is visibly dimmed
+   * (disabled — kept in the layout so the header height never jumps) and
+   * backdrop / Escape are inert. Use while an irreversible action is in
+   * flight (e.g. a refund submit).
+   */
+  closable?: boolean;
 }
 
-export function Modal({ isOpen, onClose, title, children, footer, size = 'md' }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, footer, size = 'md', closable = true }: ModalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Focus trap: Tab cycles within the modal; close restores focus to
@@ -22,14 +29,14 @@ export function Modal({ isOpen, onClose, title, children, footer, size = 'md' }:
   useFocusTrap({ isActive: isOpen, containerRef });
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !closable) return;
 
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [isOpen, onClose]);
+  }, [isOpen, closable, onClose]);
 
   if (!isOpen) return null;
 
@@ -38,7 +45,7 @@ export function Modal({ isOpen, onClose, title, children, footer, size = 'md' }:
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50"
-        onClick={onClose}
+        onClick={closable ? onClose : undefined}
       />
 
       {/* Content */}
@@ -60,7 +67,9 @@ export function Modal({ isOpen, onClose, title, children, footer, size = 'md' }:
           <h2 className="text-xl font-bold text-gray-900">{title}</h2>
           <button
             onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+            disabled={!closable}
+            data-testid="modal-close-button"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-500"
           >
             <X className="h-5 w-5" />
           </button>

@@ -129,6 +129,30 @@
       "store_voucher": "Store Voucher",
       "proration_title": "Refund breakdown",
       "confirm": "Confirm destination"
+    },
+    "checkout": {
+      "completeReturnFirst": "Complete the return first — settle or remove the returned items before selling new ones.",
+      "errorNotSynced": "This receipt has not synced yet. Process the refund at the original terminal or sync first.",
+      "errorLineMapping": "The returned items could not be matched to the original receipt. Check the quantities already refunded.",
+      "errorOffline": "Refunds require a connection. Reconnect and try again.",
+      "errorServer": "Server error — please try again.",
+      "errorValidation": "The refund was rejected: {{message}}",
+      "errorApproval": "Manager authorization failed. Check the PIN and try again.",
+      "errorApprovalSync": "Connection problem while recording the authorization. Try again — the manager will not need to re-enter the PIN.",
+      "errorCartChanged": "The returned items changed after the refund was prepared. Start the refund again.",
+      "errorCartChangedAfterSettle": "Refund completed, but the returned items changed during processing. Check the cart before continuing.",
+      "errorInternal": "Something went wrong with this refund. Please start again.",
+      "preparing": "Checking the original receipt…",
+      "success": "Refund completed — ticket {{number}}",
+      "printFailed": "Refund completed — ticket {{number}}, but printing failed. Check the printer.",
+      "zAccountingWarning": "Refund completed — ticket {{number}}, but it could not be recorded locally. The Z report totals will need server reconciliation.",
+      "scanBlockedDuringCheckout": "A refund is being processed — finish or cancel it before scanning another receipt."
+    },
+    "approval": {
+      "title": "Manager authorization",
+      "subtitle": "A manager must authorize this refund.",
+      "confirm": "Authorize refund",
+      "submitting": "Processing…"
     }
   },
   "receiptLocator": {
@@ -549,20 +573,9 @@
     "confirm": "OK"
   },
   "voidReturn": {
-    "title": "Void / Return",
     "void": "Void",
-    "return": "Return",
     "reason": "Reason",
-    "searchReceipt": "Search by receipt number...",
-    "selectLines": "Select items to return",
-    "confirmVoid": "Confirm Void",
-    "confirmReturn": "Confirm Return",
-    "receiptNotFound": "Receipt not found",
-    "offlineNoReceipt": "No unsynced receipts found. Synced receipts require an internet connection to void.",
-    "localReceipt": "This is a locally saved receipt that has not been synced yet.",
-    "syncBeforeVoid": "Sync this receipt before voiding it.",
-    "managerPin": "Manager PIN",
-    "approvalRequired": "Manager approval is required for voids and returns."
+    "managerPin": "Manager PIN"
   },
   "cashDrawer": {
     "title": "Cash Drawer",

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\POS;
 
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
@@ -413,6 +414,149 @@ class ReceiptVoidServiceTest extends TestCase
 
         $this->assertTrue($result->is_voided);
         $this->assertEquals(0, CashDrawerOperation::where('operation_type', 'REFUND')->count());
+    }
+
+    // =========================================================================
+    // Variant-aware void reversal (F3 — variant retrofit audit 2026-06-10)
+    // =========================================================================
+
+    public function test_voiding_variant_line_restores_variant_stock_row(): void
+    {
+        $receipt = $this->createReceipt();
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $variantA = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+        ]);
+        $variantB = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+        ]);
+
+        ReceiptLine::create([
+            'receipt_id' => $receipt->id,
+            'line_number' => 1,
+            'product_id' => $product->id,
+            'variant_id' => $variantA->id,
+            'product_code' => $product->sku,
+            'product_name' => $product->name,
+            'quantity' => '2.00',
+            'unit_price' => '50.00',
+            'line_total' => '100.00',
+            'tax_rate' => '19.00',
+            'tax_amount' => '19.00',
+            'discount_amount' => '0.00',
+        ]);
+
+        $stockA = $this->createStockLevel($product->id, $variantA->id, '8.0000');
+        $stockB = $this->createStockLevel($product->id, $variantB->id, '5.0000');
+        $stockNull = $this->createStockLevel($product->id, null, '50.0000');
+
+        $this->service->voidReceipt($receipt, $this->cashier, 'Variant void test');
+
+        // ONLY the variant-A row is restored.
+        $this->assertEquals('10.0000', (string) $stockA->refresh()->quantity);
+        $this->assertEquals('5.0000', (string) $stockB->refresh()->quantity);
+        $this->assertEquals('50.0000', (string) $stockNull->refresh()->quantity);
+
+        // The reversal StockMovement carries the variant.
+        $movement = StockMovement::where('reference_type', 'pos_receipt_void')
+            ->where('reference_id', $receipt->id)
+            ->firstOrFail();
+        $this->assertSame($variantA->id, $movement->variant_id);
+    }
+
+    public function test_voiding_null_variant_line_restores_null_row_when_variant_rows_exist(): void
+    {
+        // Projection-path symmetry: a NULL-variant line was decremented on
+        // the variant_id IS NULL stock row — the void must restore that row.
+        $receipt = $this->createReceipt();
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $variant = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+        ]);
+
+        ReceiptLine::create([
+            'receipt_id' => $receipt->id,
+            'line_number' => 1,
+            'product_id' => $product->id,
+            'variant_id' => null,
+            'product_code' => $product->sku,
+            'product_name' => $product->name,
+            'quantity' => '2.00',
+            'unit_price' => '50.00',
+            'line_total' => '100.00',
+            'tax_rate' => '19.00',
+            'tax_amount' => '19.00',
+            'discount_amount' => '0.00',
+        ]);
+
+        $stockVariant = $this->createStockLevel($product->id, $variant->id, '8.0000');
+        $stockNull = $this->createStockLevel($product->id, null, '40.0000');
+
+        $this->service->voidReceipt($receipt, $this->cashier, 'NULL-variant void test');
+
+        $this->assertEquals('42.0000', (string) $stockNull->refresh()->quantity);
+        $this->assertEquals('8.0000', (string) $stockVariant->refresh()->quantity);
+
+        $movement = StockMovement::where('reference_type', 'pos_receipt_void')
+            ->where('reference_id', $receipt->id)
+            ->firstOrFail();
+        $this->assertNull($movement->variant_id);
+    }
+
+    public function test_void_reversal_adds_stock_at_scale_four(): void
+    {
+        // Quantities are stored at scale 4 (canonical quantity scale). A
+        // voided line of 0.3333 must restore exactly 0.3333 — not 0.33.
+        $receipt = $this->createReceipt();
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        ReceiptLine::create([
+            'receipt_id' => $receipt->id,
+            'line_number' => 1,
+            'product_id' => $product->id,
+            'product_code' => $product->sku,
+            'product_name' => $product->name,
+            'quantity' => '0.3333',
+            'unit_price' => '30.00',
+            'line_total' => '10.00',
+            'tax_rate' => '19.00',
+            'tax_amount' => '1.90',
+            'discount_amount' => '0.00',
+        ]);
+
+        $stock = $this->createStockLevel($product->id, null, '8.0000');
+
+        $this->service->voidReceipt($receipt, $this->cashier, 'Scale-4 void test');
+
+        $this->assertEquals('8.3333', (string) $stock->refresh()->quantity);
+    }
+
+    private function createStockLevel(string $productId, ?string $variantId, string $quantity): StockLevel
+    {
+        return StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $productId,
+            'variant_id' => $variantId,
+            'location_id' => $this->location->id,
+            'quantity' => $quantity,
+            'reserved' => '0.00',
+        ]);
     }
 
     private function createTerminal(): Terminal

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { LocalReceiptQrIndexEntry } from '@/lib/offline/voucherRepository';
 import type { ReceiptTokenAccepted } from '@/types/refund';
+import { isRefundCheckoutActive } from '@/stores/refundCheckoutStore';
 
 /**
  * Refund-flow Zustand slot — the typed event channel between the POS scan
@@ -69,12 +70,25 @@ export const useRefundFlowStore = create<RefundFlowStore>()((set, get) => ({
   acceptedReceiptToken: null,
 
   setPendingScanResult: (entry) => {
+    // Codex r1 M2 — while the refund checkout flow is active (non-idle), a
+    // NEW receipt scan must not mount the confirmation sheet: accepting it
+    // would replace the return lines that an in-flight settlement already
+    // prepared/approved. Clearing (entry === null) is always allowed.
+    if (entry !== null && isRefundCheckoutActive()) return;
     set({ pendingScanResult: entry });
   },
 
   acceptPendingScan: () => {
     const pending = get().pendingScanResult;
     if (pending === null) return;
+    // Codex r1 M2 — the sheet may have opened BEFORE the checkout began
+    // (scan → sheet up → cashier presses Pay). Accepting now would hydrate
+    // new return lines mid-settlement: auto-reject the scan instead (close
+    // the sheet, emit nothing). HomePage surfaces the translated toast.
+    if (isRefundCheckoutActive()) {
+      set({ pendingScanResult: null });
+      return;
+    }
     set({
       pendingScanResult: null,
       acceptedReceiptToken: toAcceptedEvent(pending),

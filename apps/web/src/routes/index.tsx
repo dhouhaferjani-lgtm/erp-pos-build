@@ -245,7 +245,6 @@ const ShiftHistoryPage = lazy(() => import('../features/pos/pages/ShiftHistoryPa
 const ZReportListPage = lazy(() => import('../features/pos/pages/ZReportListPage/ZReportListPage').then((m) => ({ default: m.ZReportListPage })))
 const AnalyticsDashboardPage = lazy(() => import('../features/pos/pages/AnalyticsDashboardPage').then((m) => ({ default: m.AnalyticsDashboardPage })))
 const ZReportDetailPage = lazy(() => import('../features/pos/pages/ZReportDetailPage/ZReportDetailPage').then((m) => ({ default: m.ZReportDetailPage })))
-const ReceiptSearchPage = lazy(() => import('../features/pos/pages/ReceiptSearchPage/ReceiptSearchPage').then((m) => ({ default: m.ReceiptSearchPage })))
 const OrdersPage = lazy(() => import('../features/pos/pages/OrdersPage').then((m) => ({ default: m.OrdersPage })))
 const KitchenDisplayPage = lazy(() => import('../features/pos/pages/KitchenDisplayPage/KitchenDisplayPage').then((m) => ({ default: m.KitchenDisplayPage })))
 const TableManagementPage = lazy(() => import('../features/pos/pages/TableManagementPage/TableManagementPage').then((m) => ({ default: m.TableManagementPage })))
@@ -2408,17 +2407,11 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
-          {/* Receipt Search */}
-          <Route
-            path="receipts"
-            element={
-              <RequirePermission permission="pos.view_receipts">
-                <SuspenseWrapper>
-                  <ReceiptSearchPage />
-                </SuspenseWrapper>
-              </RequirePermission>
-            }
-          />
+          {/* Receipt Search / web-admin returns — QUARANTINED (refund Phase 6).
+              The surface 422'd on every void/return submit (missing approval
+              fields) and the owner is removing the web POS; post-seal
+              corrections happen on the desktop POS refund flow. The backend
+              /pos/receipts/{id}/return route STAYS (desktop POS uses it). */}
           {/* Orders */}
           <Route
             path="orders"

@@ -22,6 +22,7 @@ use App\Modules\POS\Domain\Exceptions\DailyRefundCapExceededException;
 use App\Modules\POS\Domain\Exceptions\ManagerOverrideRequiredException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
+use App\Modules\POS\Domain\ReceiptLineBatchAllocation;
 use App\Modules\POS\Domain\ReceiptVatDetail;
 use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
@@ -35,6 +36,7 @@ use App\Modules\Voucher\Application\DTOs\VoucherIssuanceRequest;
 use App\Modules\Voucher\Application\Services\VoucherIssuanceService;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -44,7 +46,10 @@ use Illuminate\Support\Str;
  * Orchestrates partial/full POS returns (Phase E refactor).
  *
  * Pipeline (all inside a single DB transaction):
- *  1. DB-level idempotency — return existing receipt if refund_request_id seen before.
+ *  1. DB-level idempotency — return existing receipt if refund_request_id seen
+ *     before (cheap unlocked check; re-checked authoritatively in step 2 after
+ *     the original-receipt lock, with a unique-index catch backstop around the
+ *     whole transaction for anything that still slips through).
  *  2. Load + validate original receipt.
  *  3. Validate return quantities.
  *  4. Compute totals.
@@ -121,6 +126,61 @@ final class ReceiptReturnService
 
         $companyId = $this->companyContext->requireCompanyId();
 
+        try {
+            return $this->runReturnTransaction(
+                $originalReceiptId,
+                $returnLines,
+                $returnReason,
+                $cashier,
+                $terminalId,
+                $notes,
+                $destination,
+                $refundRequestId,
+                $authorizedByUserId,
+                $overrideReason,
+                $companyId,
+                $exchangeGroupId,
+            );
+        } catch (QueryException $exception) {
+            // Last-resort idempotency backstop (PostgreSQL): if a concurrent
+            // request slipped past both idempotency checks and our INSERT hit
+            // the unique partial index on (company_id, refund_request_id),
+            // replay its committed return receipt instead of bubbling a 500.
+            // The transaction above has already rolled back at this point.
+            if (
+                $refundRequestId !== null
+                && $this->isRefundRequestIdUniqueViolation($exception)
+            ) {
+                $existing = $this->findReturnByRefundRequestId($refundRequestId, $companyId);
+
+                if ($existing !== null) {
+                    return $existing;
+                }
+            }
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * The single-transaction return pipeline (see processReturn for the contract).
+     *
+     * @param  array<int, array{line_id: string, quantity: string}>  $returnLines
+     */
+    private function runReturnTransaction(
+        string $originalReceiptId,
+        array $returnLines,
+        ReturnReason $returnReason,
+        User $cashier,
+        string $terminalId,
+        ?string $notes,
+        ?RefundDestination $destination,
+        ?string $refundRequestId,
+        ?string $authorizedByUserId,
+        ?string $overrideReason,
+        string $companyId,
+        ?string $exchangeGroupId,
+    ): Receipt {
         return DB::transaction(function () use (
             $originalReceiptId,
             $returnLines,
@@ -136,22 +196,16 @@ final class ReceiptReturnService
             $exchangeGroupId,
         ): Receipt {
             // ─────────────────────────────────────────────────────────────────
-            // Step 1: DB-level idempotency — return existing receipt unchanged
+            // Step 1: DB-level idempotency — return existing receipt unchanged.
+            // CHEAP UNLOCKED check only: a concurrent request holding the
+            // original-receipt lock may commit the same refund_request_id
+            // after this read. Step 2 re-checks AFTER acquiring the lock.
             // ─────────────────────────────────────────────────────────────────
             if ($refundRequestId !== null) {
-                $existing = Receipt::where('refund_request_id', $refundRequestId)
-                    ->where('company_id', $companyId)
-                    ->first();
+                $existing = $this->findReturnByRefundRequestId($refundRequestId, $companyId);
 
                 if ($existing !== null) {
-                    /** @var Receipt */
-                    return $existing->fresh([
-                        'lines',
-                        'vatDetails',
-                        'terminal',
-                        'cashier',
-                        'originalReceipt',
-                    ]);
+                    return $existing;
                 }
             }
 
@@ -163,6 +217,20 @@ final class ReceiptReturnService
                 ->where('company_id', $companyId)
                 ->lockForUpdate()
                 ->findOrFail($originalReceiptId);
+
+            // AUTHORITATIVE idempotency re-check, now that the original
+            // receipt row is locked. Concurrent requests with the same
+            // refund_request_id target the same original receipt, so the lock
+            // serializes us behind any winner: this re-read sees its committed
+            // return receipt and replays it instead of inserting a duplicate
+            // (which would violate the unique partial index → 500).
+            if ($refundRequestId !== null) {
+                $existing = $this->findReturnByRefundRequestId($refundRequestId, $companyId);
+
+                if ($existing !== null) {
+                    return $existing;
+                }
+            }
 
             $this->validateOriginalReceipt($originalReceipt);
 
@@ -335,7 +403,14 @@ final class ReceiptReturnService
 
                 /** @var numeric-string $qty */
                 $qty = $returnLine['quantity'];
+                /** @var numeric-string $alreadyReturnedQty */
+                $alreadyReturnedQty = $returnLine['already_returned'];
 
+                // Variant symmetry rule: the restore must target the exact
+                // stock row the sale decremented. Draft-path lines carry
+                // variant_id (variant-scoped decrement); projection-path
+                // lines carry NULL (variant_id IS NULL decrement). Never
+                // re-derive the variant for NULL lines.
                 $this->restoreStock(
                     tenantId: $terminal->tenant_id,
                     companyId: $companyId,
@@ -344,6 +419,14 @@ final class ReceiptReturnService
                     quantity: $qty,
                     returnReceiptId: $draft->id,
                     cashierId: $cashier->id,
+                    variantId: $originalLine->variant_id,
+                );
+
+                $this->restoreBatchAllocations(
+                    originalLine: $originalLine,
+                    returnQuantity: $qty,
+                    alreadyReturnedQuantity: $alreadyReturnedQty,
+                    locationId: $originalReceipt->location_id,
                 );
             }
 
@@ -361,6 +444,53 @@ final class ReceiptReturnService
                 'originalReceipt',
             ]);
         });
+    }
+
+    // =========================================================================
+    // Idempotency (refund_request_id)
+    // =========================================================================
+
+    /**
+     * Look up an already-committed return receipt for an idempotency key,
+     * with the same relationship set processReturn returns.
+     */
+    private function findReturnByRefundRequestId(string $refundRequestId, string $companyId): ?Receipt
+    {
+        /** @var Receipt|null $existing */
+        $existing = Receipt::where('refund_request_id', $refundRequestId)
+            ->where('company_id', $companyId)
+            ->first();
+
+        if ($existing === null) {
+            return null;
+        }
+
+        /** @var Receipt */
+        return $existing->fresh([
+            'lines',
+            'vatDetails',
+            'terminal',
+            'cashier',
+            'originalReceipt',
+        ]);
+    }
+
+    /**
+     * Whether a QueryException is a unique-key violation on the
+     * (company_id, refund_request_id) partial index — i.e. a concurrent
+     * request committed the same idempotency key first.
+     */
+    private function isRefundRequestIdUniqueViolation(QueryException $exception): bool
+    {
+        // SQLSTATE 23505 = PostgreSQL unique_violation; 23000 covers the
+        // SQLite/ANSI integrity-constraint class used in the test suite.
+        $sqlState = $exception->errorInfo[0] ?? null;
+
+        if ($sqlState !== '23505' && $sqlState !== '23000') {
+            return false;
+        }
+
+        return str_contains($exception->getMessage(), 'refund_request_id');
     }
 
     // =========================================================================
@@ -790,6 +920,7 @@ final class ReceiptReturnService
                 'line_number' => $index + 1,
                 'original_line_id' => $originalLine->id,
                 'product_id' => $originalLine->product_id,
+                'variant_id' => $originalLine->variant_id,
                 'composite_item_id' => $originalLine->composite_item_id,
                 'product_code' => $originalLine->product_code,
                 'product_name' => $originalLine->product_name,
@@ -881,7 +1012,7 @@ final class ReceiptReturnService
      *
      * @param  Receipt  $originalReceipt  The original receipt with lines and returnReceipts loaded
      * @param  array<int, array{line_id: string, quantity: string}>  $returnLines
-     * @return array<int, array{original_line: ReceiptLine, quantity: string}>
+     * @return array<int, array{original_line: ReceiptLine, quantity: string, already_returned: string}>
      *
      * @throws \InvalidArgumentException If quantities are invalid
      */
@@ -909,11 +1040,11 @@ final class ReceiptReturnService
             }
 
             /** @var numeric-string $alreadyReturnedQty */
-            $alreadyReturnedQty = $alreadyReturned[$lineId] ?? '0.000';
+            $alreadyReturnedQty = $alreadyReturned[$lineId] ?? '0.0000';
             /** @var numeric-string $remainingReturnable */
-            $remainingReturnable = bcsub((string) $originalLine->quantity, $alreadyReturnedQty, 3);
+            $remainingReturnable = bcsub((string) $originalLine->quantity, $alreadyReturnedQty, 4); // precision-ok: 4 = canonical quantity storage scale
 
-            if (bccomp($requestedQuantity, $remainingReturnable, 3) > 0) {
+            if (bccomp($requestedQuantity, $remainingReturnable, 4) > 0) { // precision-ok: 4 = canonical quantity storage scale
                 throw new \InvalidArgumentException(
                     "Cannot return {$requestedQuantity} of '{$originalLine->product_name}'. "
                     ."Maximum returnable: {$remainingReturnable} (original: {$originalLine->quantity}, already returned: {$alreadyReturnedQty})"
@@ -923,6 +1054,7 @@ final class ReceiptReturnService
             $validated[] = [
                 'original_line' => $originalLine,
                 'quantity' => $requestedQuantity,
+                'already_returned' => $alreadyReturnedQty,
             ];
         }
 
@@ -944,11 +1076,14 @@ final class ReceiptReturnService
             }
 
             foreach ($returnReceipt->lines as $returnLine) {
-                $absQuantity = bcmul((string) $returnLine->quantity, '-1', 3);
+                // Canonical quantity scale is 4 END-TO-END here (Codex r1 B1):
+                // truncating at 3 let a 4-decimal request (e.g. 1.0009 against
+                // an original 1.0000) slip past the remaining-returnable cap.
+                $absQuantity = bcmul((string) $returnLine->quantity, '-1', 4); // precision-ok: 4 = canonical quantity storage scale
 
                 if ($returnLine->original_line_id !== null) {
                     $key = $returnLine->original_line_id;
-                    $returned[$key] = bcadd($returned[$key] ?? '0.000', $absQuantity, 3);
+                    $returned[$key] = bcadd($returned[$key] ?? '0.0000', $absQuantity, 4); // precision-ok: 4 = canonical quantity storage scale
 
                     continue;
                 }
@@ -963,7 +1098,7 @@ final class ReceiptReturnService
 
                     if ($sameProduct) {
                         $key = $originalLine->id;
-                        $returned[$key] = bcadd($returned[$key] ?? '0.000', $absQuantity, 3);
+                        $returned[$key] = bcadd($returned[$key] ?? '0.0000', $absQuantity, 4); // precision-ok: 4 = canonical quantity storage scale
                         break;
                     }
                 }
@@ -980,6 +1115,13 @@ final class ReceiptReturnService
     /**
      * Restore stock for a returned product.
      *
+     * Variant-scoped (F1, variant retrofit audit 2026-06-10): the restore
+     * targets the exact stock_levels row the sale decremented. When the
+     * original line carries a variant_id (draft path) the variant row is
+     * restored; when it is NULL (projection path) the variant_id IS NULL
+     * row is restored — symmetric with ReceiptCreationService::decrementStock
+     * and PosCoreReceiptProjection::decrementStock respectively.
+     *
      * @param  numeric-string  $quantity
      */
     private function restoreStock(
@@ -990,17 +1132,24 @@ final class ReceiptReturnService
         string $quantity,
         string $returnReceiptId,
         string $cashierId,
+        ?string $variantId = null,
     ): void {
         /** @var StockLevel|null $stockLevel */
         $stockLevel = StockLevel::where('product_id', $productId)
             ->where('location_id', $locationId)
             ->where('company_id', $companyId)
+            ->when(
+                $variantId !== null,
+                fn ($query) => $query->where('variant_id', $variantId),
+                fn ($query) => $query->whereNull('variant_id'),
+            )
             ->lockForUpdate()
             ->first();
 
         if ($stockLevel === null) {
             Log::warning('No stock level found for product during return stock restore', [
                 'product_id' => $productId,
+                'variant_id' => $variantId,
                 'location_id' => $locationId,
             ]);
 
@@ -1021,6 +1170,7 @@ final class ReceiptReturnService
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
             'product_id' => $productId,
+            'variant_id' => $variantId,
             'location_id' => $locationId,
             'movement_type' => MovementType::Receipt,
             'reason' => MovementReason::POSReturn,
@@ -1034,6 +1184,123 @@ final class ReceiptReturnService
             'user_id' => $cashierId,
             'is_historical' => false,
         ]);
+    }
+
+    /**
+     * Restore batch-level stock (inventory_batch_stock) for a returned line (F4).
+     *
+     * The sale path consumes batch stock via FEFO and snapshots each consumed
+     * batch into a ReceiptLineBatchAllocation row keyed by receipt_line_id.
+     * Restitution is proportional to the returned fraction of the line —
+     * FEFO order is irrelevant when putting stock back.
+     *
+     * Cumulative-restitution invariant: after a cumulative total of R units
+     * (out of an original line quantity Q) has been returned, each allocation
+     * `a` must have been restored by exactly
+     *
+     *     cumulative(R) = min(a, trunc4(a × R ÷ Q))
+     *
+     * where trunc4 is bcmath truncation at scale 4 (canonical quantity scale).
+     * Each return restores the DELTA cumulative(R_new) − cumulative(R_prev),
+     * derived from the persisted already-returned quantities rather than
+     * trusting per-return proportional math — so repeated partial returns can
+     * never restore more than the original allocation, and a full return
+     * restores each allocation exactly (trunc4(a × Q ÷ Q) = a).
+     *
+     * @param  numeric-string  $returnQuantity  Quantity returned in THIS return
+     * @param  numeric-string  $alreadyReturnedQuantity  Quantity returned by prior (non-voided) returns
+     */
+    private function restoreBatchAllocations(
+        ReceiptLine $originalLine,
+        string $returnQuantity,
+        string $alreadyReturnedQuantity,
+        string $locationId,
+    ): void {
+        $allocations = ReceiptLineBatchAllocation::where('receipt_line_id', $originalLine->id)->get();
+
+        if ($allocations->isEmpty()) {
+            return;
+        }
+
+        /** @var numeric-string $originalQty */
+        $originalQty = (string) $originalLine->quantity;
+
+        if (bccomp($originalQty, '0', 4) <= 0) { // precision-ok: 4 = canonical quantity storage scale
+            return;
+        }
+
+        /** @var numeric-string $newReturned */
+        $newReturned = bcadd($alreadyReturnedQuantity, $returnQuantity, 4); // precision-ok: 4 = canonical quantity storage scale
+
+        foreach ($allocations as $allocation) {
+            /** @var numeric-string $allocQty */
+            $allocQty = (string) $allocation->quantity;
+
+            $previousCumulative = $this->cumulativeBatchRestitution($allocQty, $alreadyReturnedQuantity, $originalQty);
+            $newCumulative = $this->cumulativeBatchRestitution($allocQty, $newReturned, $originalQty);
+
+            /** @var numeric-string $delta */
+            $delta = bcsub($newCumulative, $previousCumulative, 4); // precision-ok: 4 = canonical quantity storage scale
+
+            if (bccomp($delta, '0', 4) <= 0) { // precision-ok: 4 = canonical quantity storage scale
+                continue;
+            }
+
+            /** @var object{id: int|string, quantity: int|float|string}|null $batchStock */
+            $batchStock = DB::table('inventory_batch_stock')
+                ->where('batch_id', $allocation->batch_id)
+                ->where('location_id', $locationId)
+                ->lockForUpdate()
+                ->first();
+
+            if ($batchStock === null) {
+                Log::warning('No batch stock row found during return batch restitution', [
+                    'batch_id' => $allocation->batch_id,
+                    'receipt_line_id' => $originalLine->id,
+                    'location_id' => $locationId,
+                ]);
+
+                continue;
+            }
+
+            // SQLite returns numeric columns as int/float; normalize to a
+            // numeric-string before bcmath.
+            /** @var numeric-string $batchQuantity */
+            $batchQuantity = (string) $batchStock->quantity;
+
+            DB::table('inventory_batch_stock')
+                ->where('id', $batchStock->id)
+                ->update([
+                    'quantity' => bcadd($batchQuantity, $delta, 4), // precision-ok: 4 = canonical quantity storage scale
+                    'updated_at' => now(),
+                ]);
+        }
+    }
+
+    /**
+     * Cumulative batch restitution owed after $returnedQty of $originalQty
+     * has been returned: min(allocation, trunc4(allocation × returned ÷ original)).
+     *
+     * @param  numeric-string  $allocQty
+     * @param  numeric-string  $returnedQty
+     * @param  numeric-string  $originalQty
+     * @return numeric-string
+     */
+    private function cumulativeBatchRestitution(
+        string $allocQty,
+        string $returnedQty,
+        string $originalQty,
+    ): string {
+        // bcdiv truncates toward zero — conservative: batch restitution may
+        // momentarily lag the aggregate by < 0.0001 per allocation, but never
+        // leads it, and converges exactly at full return.
+        $cumulative = bcdiv(bcmul($allocQty, $returnedQty, 8), $originalQty, 4); // precision-ok: 8 = intermediate headroom, 4 = canonical quantity storage scale
+
+        if (bccomp($cumulative, $allocQty, 4) > 0) { // precision-ok: 4 = canonical quantity storage scale
+            return $allocQty;
+        }
+
+        return $cumulative;
     }
 
     // =========================================================================

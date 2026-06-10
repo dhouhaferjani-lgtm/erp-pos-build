@@ -13,9 +13,11 @@ import { colors, textColors } from '@/lib/designTokens'
  * and `POST /api/v1/pos/orders/{id}/close` return HTTP 410 Gone with
  * `NEW_SALE_AUTHORING_RETIRED` for all callers.
  *
- * Read-only receipt browsing, PDF download, void, and processReturn
- * remain functional and are surfaced via other pages (e.g., POS shifts
- * dashboard, receipt history). The web-POS device-authority parity is
+ * Read-only receipt browsing and PDF download remain functional via
+ * other pages (e.g., POS shifts dashboard). Refund Phase 6 quarantined
+ * the web-admin void/return surface (ReceiptSearchPage + ReturnItemsModal
+ * — it 422'd on every submit); post-seal corrections happen on the
+ * desktop POS refund flow. The web-POS device-authority parity is
  * tracked as a §18 open item.
  *
  * Once device-authority web parity lands, this page is the entry point

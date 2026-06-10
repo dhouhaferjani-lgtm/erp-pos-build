@@ -45,7 +45,8 @@ final class ReceiptFinalizationService
      *   - `ReceiptReturnService::createReturn` — disposition (c)
      *     knowingly-retained carve-out. SALE_VOID / REFUND_RECEIPT /
      *     PARTIAL_REFUND are Phase 2+ reserved event types; void +
-     *     processReturn (and the offline Tauri POS via VoidReturnModal)
+     *     processReturn (and the offline Tauri POS via the refund
+     *     checkout flow — VoidReturnModal was deleted in refund Phase 6)
      *     still depend on this path.
      *   - legacy receipt sync — retired in Task 27B Pass 2B.
      *   - `ReceiptPaymentService::processReceiptPayments` — disposition

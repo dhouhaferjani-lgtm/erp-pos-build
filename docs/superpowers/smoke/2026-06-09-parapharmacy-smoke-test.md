@@ -108,13 +108,102 @@ Walked through during verification: owner login → dashboard renders (181 partn
 | 2.4 | Checkout → Cash → tender → confirm | Sale completes; receipt prints; **seller SIRET = `12345678900015`** (Paris) | ☐ |
 | 2.5 | Verify Paris stock for the sold size decremented | Paris `stock_levels` row for the variant −1 | ☐ |
 
-### Flow 3 — Return at Branch A (Paris) — ⚠️ Manual (Tauri POS)
+### Flow 3 — Full refund flow at Branch A (Paris) — ⚠️ Manual (Tauri POS)
+
+> All sub-flows below require the Tauri desktop app. The POS offline layer (downgrade to weak factor, anti-downgrade audit) is Tauri-only and cannot be exercised in a plain browser.
+
+**Pre-requisite:** complete Flow 2 first so a synced sale receipt exists for this terminal.
+
+#### 3A — Locate the receipt and hydrate the return cart
 
 | # | Action | Expected | ✓ |
 |---|---|---|---|
-| 3.1 | On Paris POS, scan the Flow 2 receipt number to start a return | Receipt hydrates; lines selectable | ☐ |
-| 3.2 | Select a line (incl. the variant) and process the refund | Refund completes; refund receipt prints | ☐ |
-| 3.3 | Verify Paris stock incremented back | Returned variant qty restored at Paris | ☐ |
+| 3A.1 | Open **ReceiptLocatorScreen**; enter the receipt number from Flow 2.4 | Receipt found; negative return lines hydrate the cart — each line shows the product name; variant lines show the variant name (e.g. `Chaussure Orthopédique Confort — Taille 40`) | ☐ |
+| 3A.2 | Alternatively, scan the receipt QR code | Same hydration result via QR path | ☐ |
+| 3A.3 | Inspect the hydrated cart | All lines are negative qty; totals are negative (return amounts) | ☐ |
+
+#### 3B — Partial refund (edit return line qty)
+
+| # | Action | Expected | ✓ |
+|---|---|---|---|
+| 3B.1 | On a line with qty ≥ 2 (e.g. sell 2 of the same product in Flow 2), edit the return qty down to **1** | Qty field accepts `1`; line total updates in real-time; scale-4 qty preserved (e.g. `1.0000`) | ☐ |
+| 3B.2 | Press **Pay** to proceed to checkout | Checkout uses the edited qty — only the 1-unit refund is submitted, not the full 2 | ☐ |
+
+#### 3C — Refund checkout: spinner → destination picker → confirm modal → manager PIN
+
+| # | Action | Expected | ✓ |
+|---|---|---|---|
+| 3C.1 | Press **Pay** on the all-return cart | **Preparing…** overlay/spinner appears briefly while the return is staged | ☐ |
+| 3C.2 | Spinner clears → **destination picker** appears | Three options shown: **Cash**, **Store voucher**, **Original payment method** | ☐ |
+| 3C.3 | Select **Cash** | Picker dismisses; proceed to confirm modal | ☐ |
+| 3C.4 | Inspect the **confirm modal** | Totals are frozen (cannot be edited); chosen destination ("Cash") is displayed alongside the refund amount | ☐ |
+| 3C.5 | Confirm → **manager PIN** approval screen appears | Reason field + PIN pad shown; fields are editable | ☐ |
+| 3C.6 | Enter reason (e.g. "Produit retourné intact") and manager PIN `5678` | After authorization is cached, the reason + PIN inputs **freeze** (cannot be re-entered) | ☐ |
+| 3C.7 | Submit the refund | Refund completes; success toast shows ticket number; refund cart clears | ☐ |
+
+#### 3D — AVOIR print and voucher print (Tauri + receipt printer required)
+
+| # | Action | Expected | ✓ |
+|---|---|---|---|
+| 3D.1 | After refund settlement, observe the printer | **AVOIR** receipt prints automatically — header reads `REMBOURSEMENT`; original ticket reference is printed on the AVOIR | ☐ |
+| 3D.2 | Check AVOIR monetary values | Amounts shown with **3 decimal places** (TND 3-decimal format: e.g. `12.500`) — note: fixture is EUR; verify the scale matches configured currency | ☐ |
+| 3D.3 | Repeat 3C for a **Store voucher** destination | After the AVOIR prints, a **second ticket** prints automatically — the voucher ticket shows code, amount, and expiry date | ☐ |
+| 3D.4 | On a subsequent sale (new cart), add the voucher code at payment | Voucher accepted; amount deducted from the total | ☐ |
+
+> **Tauri-manual:** printing requires a connected receipt printer in the Tauri environment. If the printer is absent, the AVOIR print failure shows a toast with the ticket number — use the ticket number to retrieve a server PDF reprint (see Known Limitations below).
+
+#### 3E — Stock: correct variant row restored; batch restitution
+
+| # | Action | Expected | ✓ |
+|---|---|---|---|
+| 3E.1 | After the refund in 3C (variant `PB-ORT-SHOE-40`), check `stock_levels` for Paris | **Only the size-40 row** is incremented — size 38/39/41/42 rows are unchanged; the refunded variant A restores only variant A stock | ☐ |
+| 3E.2 | (Optional) Use a batch-tracked product in a sale + return | On return, batch quantities are proportionally restituted via FEFO; the correct batch row is updated | ☐ |
+
+#### 3F — Drawer and Z-report accounting
+
+| # | Action | Expected | ✓ |
+|---|---|---|---|
+| 3F.1 | Cash-destination refund completed (3C with **Cash**); open cash drawer summary | `expected_cash` for the shift is **reduced** by the cash refund amount | ☐ |
+| 3F.2 | Close the shift (Z-report) after a refund day | Z-report shows **non-zero `refunds_count` and `refunds_amount`**; these figures are part of the **signed Z** (sealed in the v3 hash chain) | ☐ |
+| 3F.3 | Check the X report (server-side, pre-close preview) | `endOfDayPreview` expected cash does **not** yet subtract cash refunds — this is a known gap (B1 session handover); do not fail here | ☐ |
+
+#### 3G — Fiscal chain integrity (server-side verification)
+
+| # | Action | Expected | ✓ |
+|---|---|---|---|
+| 3G.1 | After the return, run `php artisan pos:verify-chains` for this terminal | Passes; the `pos_receipts` return row is sealed in the v3 chain with no gaps | ☐ |
+| 3G.2 | Run `php artisan fiscal:verify-event-chain` for the terminal | Passes; no hash-chain errors for the return event | ☐ |
+
+#### 3H — Idempotency and anti-double-refund
+
+| # | Action | Expected | ✓ |
+|---|---|---|---|
+| 3H.1 | Submit the same refund request twice (simulate a retry / double-tap) | The **same ticket number** is returned — the refund is **not applied twice** (idempotent) | ☐ |
+| 3H.2 | Simulate a network timeout on first submit, then retry | Retry returns the already-created refund receipt; stock and cash are not doubled | ☐ |
+
+#### 3I — Online-only enforcement and error messages
+
+| # | Action | Expected | ✓ |
+|---|---|---|---|
+| 3I.1 | Disconnect the device from the network (genuine offline); attempt a refund | Error: **"refunds require a connection"** — refund is blocked; no offline downgrade to weak factor | ☐ |
+| 3I.2 | Keep network connected but simulate server 5xx (e.g. stop the API); attempt a refund | After bounded retries: **"server error, try again"** toast — does NOT show "offline" message | ☐ |
+| 3I.3 | Attempt to refund a receipt that was created on a different terminal (cross-terminal) | Error: **"process at the original terminal or sync first"** — cross-terminal refund blocked | ☐ |
+| 3I.4 | Attempt to refund a receipt that has not yet synced to the server | Same "process at the original terminal or sync first" error | ☐ |
+
+> **Tauri-manual (3I.1):** genuine offline detection relies on Tauri's network layer — cannot be triggered from a browser. Steps 3I.2–3I.4 can be tested by pointing the API base URL to a non-responding host.
+
+#### 3J — Mixed cart and charge-to-account blocking
+
+| # | Action | Expected | ✓ |
+|---|---|---|---|
+| 3J.1 | Build a cart with **both** a return line and a new sale line (mixed cart) | **Pay is blocked** — a toast appears: "complete the return first" (or equivalent); no payment screen reached | ☐ |
+| 3J.2 | Attempt to exit via **charge-to-account** on a return cart | Pay is also blocked on the charge-to-account exit path | ☐ |
+
+#### 3K — Voiding a RETURN receipt (API-level guard)
+
+| # | Action | Expected | ✓ |
+|---|---|---|---|
+| 3K.1 | Attempt `POST /api/pos/receipts/{return_receipt_uuid}/void` (via curl or web-admin API) | **HTTP 422** with error code `CANNOT_VOID_RETURN_RECEIPT` — return receipts cannot be voided | ☐ |
 
 ### Flow 4 — Sale at Branch B (Lyon): branch-scoped stock + tax ID — ⚠️ Manual (Tauri POS) / ✅ tax+scope verified
 
@@ -173,6 +262,10 @@ Placeholder for the deposit top-up flow being built in parallel (A8). **Not part
 | **G3** | POS (sale/return/PIN/Z/charge-to-account/sync) is **Tauri-only**; cannot be browser-driven. | All POS flows must be done manually on the desktop app. | _constraint, not a bug — documented here_ |
 | **G4** | Customer-account **deposit top-up** flow. | Deferred to A8 (parallel session). | Flow N placeholder |
 | **G5** | Minor i18n: a few raw keys render — browser tab title `stockLevels.title`, Stock Levels table header `actions.actions`, and the **error-boundary** shows `errors.unexpectedError` / `…Details` instead of a friendly message. | Cosmetic; error-boundary copy worth fixing for graceful degradation. | _logged here; not yet ticketed_ |
+| **G6** | `endOfDayPreview` **expected_cash does not subtract cash refunds** (X-report pre-close preview). The signed Z is correct — this is a data-display gap only (B1 session handover). | Cashier sees a discrepancy between the X preview and the actual drawer at close; the sealed Z is the authoritative figure. | _B1 handover — not yet ticketed_ |
+| **G7** | **No reprint surface** for a settled refund. If the AVOIR print fails at settlement time, a toast shows the ticket number. Reprinting requires retrieving a server-side PDF — no in-POS reprint button yet. | Operator must reprint from the server/web-admin. | _logged here; not yet ticketed_ |
+| **G8** | **Refunds at other terminals do not appear in this device's Z.** Each device Z covers only its own settled transactions; global refund reconciliation is server-owned. | Per-terminal Z figures will diverge from the server-side global figure on refund days; expected and correct. | _by design — documented here_ |
+| **G9** | **Web-admin return surface removed.** The web-admin POS return/refund UI was quarantined in Phase 6 (desktop-only refund policy). A placeholder page exists; server endpoints remain active. | Returns must be processed from the Tauri desktop POS. | _by design — documented here_ |
 
 ---
 
@@ -185,3 +278,15 @@ These were found and fixed during verification (gates green; see PR):
 3. **Extended `ParapharmacyMultiBranchSeeder`** with per-branch tax IDs, sized-goods variant products, and an explicit house-account customer (+ 3 new tests; full class 9/9 green).
 4. **Product detail page crashed for EVERY product** (`ProductDetailPage.tsx`): the `useTaxConfigName` hook was called after the loading/error early returns → "Rendered more hooks than during the previous render" → whole view fell to the error boundary. Moved the hook above the guards. Verified in-browser: the page renders. Also guarded the margin `(Infinity%)` shown when cost is 0.
 5. **Hardened `react-hooks/rules-of-hooks` to `error`** (web + pos). It had caught #4 but only as a *warning*, so the ratchet let a guaranteed crash ship. Repo is clean (0 violations), so CI now blocks the class with no blast radius.
+
+## Refund-flow fixes shipped on this branch (`feat/refund-flow-completion`)
+
+These fixes complete the refund path that was previously dead-ended at payment (Task 53 was never wired before this branch):
+
+6. **Task 53 settlement wiring.** `RefundConfirmModal` and `DestinationPicker` existed but were imported nowhere — the refund path dead-ended after the manager PIN screen. Wired the full checkout interceptor: preparing spinner → destination picker → confirm modal (frozen totals) → manager PIN (reason + PIN; inputs freeze post-authorization) → settlement.
+7. **Refund checkout store hardening.** Epoch guard prevents stale-cart submission; author/sync split ensures the settlement payload carries the correct identities; fail-closed guard rejects payment-confirm if return lines enter the cart mid-modal.
+8. **Charge-to-account + mixed-cart blocking.** A return cart blocks Pay on both the cash/card exit and the charge-to-account exit with a "complete the return first" toast. Mixed carts (return + sale lines) are blocked at the Pay intercept.
+9. **AVOIR print + voucher ticket.** Phase 3: `AVOIR` receipt prints automatically on refund settlement (`REMBOURSEMENT` header, original-ticket reference, TND 3-decimal amounts). When destination = Store voucher, a second voucher ticket prints immediately after the AVOIR (code, amount, expiry). Print failure shows a toast with the ticket number.
+10. **Z refund accounting (fiscal audit B2).** Settled refunds are recorded locally in a `local_refund_records` mirror table at settle time; the device Z folds them in — `refunds_count` and `refunds_amount` in the signed Z are no longer hardcoded zeros.
+11. **Variant-aware restock + batch restitution (Phase 5).** Returns correctly increment the specific variant's `stock_levels` row (not the parent product row). Batch-tracked products get proportional FEFO batch restitution on return.
+12. **Void-of-return guard.** The API rejects `POST /receipts/{uuid}/void` on a RETURN receipt with HTTP 422 `CANNOT_VOID_RETURN_RECEIPT`. `VoidReturnModal` was deleted from the POS (dead code post-guard). Web-admin POS return surface quarantined (placeholder page; server endpoints remain active for potential future API consumers).

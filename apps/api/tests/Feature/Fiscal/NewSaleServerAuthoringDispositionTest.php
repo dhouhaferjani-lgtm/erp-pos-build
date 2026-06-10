@@ -181,7 +181,10 @@ final class NewSaleServerAuthoringDispositionTest extends TestCase
     {
         // Round-2 (Codex T29-F1 P2): The void path is a knowingly-retained
         // §14.2 carve-out because SALE_VOID is Phase 2+ reserved AND the
-        // route is shared with the offline Tauri POS via VoidReturnModal.
+        // route survives for sale-receipt voids (VoidReturnModal was
+        // deleted in refund Phase 6; refund is the only POS correction
+        // surface, and return receipts are now rejected with 422 —
+        // see test_void_rejects_return_receipt in ReceiptReturnFlowTest).
         // Round-1's "assertNotSame(410)" only proved "not retired" — that's
         // the Task 22 deferred-bail-out test smell standing pattern. The
         // contract that matters is "the route actually voids the receipt
@@ -229,7 +232,8 @@ final class NewSaleServerAuthoringDispositionTest extends TestCase
         // "not 410", which proved nothing about the surviving online
         // return contract. Spec v7 §14.2 line 669 keeps this route live
         // because REFUND_RECEIPT / PARTIAL_REFUND are Phase 2+ reserved AND
-        // the offline Tauri POS shares the route via VoidReturnModal.
+        // the offline Tauri POS shares the route via the refund checkout
+        // flow (VoidReturnModal was deleted in refund Phase 6).
         //
         // Seed a posted sale receipt with one returnable line, request a
         // partial return, assert 201 + return receipt shape + DB row.
@@ -257,6 +261,8 @@ final class NewSaleServerAuthoringDispositionTest extends TestCase
                 'lines' => [
                     ['line_id' => $line->id, 'quantity' => '2'],
                 ],
+                // Task 2a — refund_request_id is a required idempotency key.
+                'refund_request_id' => Str::uuid()->toString(),
             ] + $this->voidReturnApprovalPayload(
                 $saleReceipt,
                 'POS_RECEIPT_RETURN',
