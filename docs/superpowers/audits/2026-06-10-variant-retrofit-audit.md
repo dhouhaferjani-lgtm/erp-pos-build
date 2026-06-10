@@ -123,3 +123,42 @@ Facts the implementation must build on:
 - **`ExchangeService` is route-less/inert**: zero controller/route references (only DTO docblocks and `RefundDestination::ExchangeDeferred` mentions). Its return half inherits F1/F2 transitively; no separate fix needed while inert.
 - **`RETURN_WITHOUT_RECEIPT`**: exists only as a reserved `FiscalEventType` enum case (apps/api `Fiscal/Domain/Enums/FiscalEventType.php`) + POS payload-registry stub — no implementation; explicitly out of scope for this session.
 - **Server new-sale authoring is retired** (routes.php §14.2 → 410 Gone); `void` and `processReturn` routes are knowingly retained and shared with the offline Tauri POS — these are the surfaces this session fixes.
+
+## Session outcomes & new tickets (appended end of session, Phase 6)
+
+### Fixed in this session
+
+- **F1–F4 fixed** in Phase 5, commit `bbc167895` ("variant-aware restock + batch restitution on returns/voids"): variant-scoped `restoreStock` (F1), `variant_id` on return receipt lines (F2), variant-scoped + scale-4 `reverseStockMovement` in the void path (F3), and proportional cumulative batch restitution on returns (`restoreBatchAllocations`, F4).
+- **F5/F6 fixed** in Phase 2: F5 (refund cart variant identity) landed with the hydrate work in `33b659b74`; F6 (local→server receipt/line mapping) in `213e4673d` with review fixes in `e4df4fdb7` (idempotency race, variant-blind mapping, receipt-number fallback).
+
+### VoidReturnModal deleted — refund is the ONLY post-seal correction surface (decision)
+
+Commit `7f81ed140` (POS), `745f9da8c` (API guard), `973834a13` (web quarantine). Rationale:
+
+- The modal was mounted in HomePage but **never opened** (`setShowVoidReturnModal(true)` had zero callsites — dead since shipping).
+- Its online lookup called `GET /pos/receipts/lookup`, which has **no route**.
+- Its working manager-PIN handshake was already extracted to `apps/pos/src/lib/refundFlow/refundApproval.ts` (Phase 2).
+- The completed refund flow (locate → hydrate → partial qty → destination → manager PIN → settle → AVOIR print) covers the post-seal correction need.
+- Tunisia/NACEF compliance is a separate workstream that will re-evaluate sealed-receipt void if the MDF rules require it.
+
+Companion server guard (TDD, `ReceiptReturnFlowTest::test_void_rejects_return_receipt`): `POST /pos/receipts/{id}/void` now rejects RETURN receipts with **422 `CANNOT_VOID_RETURN_RECEIPT`** (controller guard next to `ALREADY_VOIDED`, plus a defense-in-depth `RuntimeException` in `ReceiptVoidService::voidReceipt`). Voiding a return was incoherent post-F4: the void path never reverses the return's batch restitution, so re-returning the sale would over-restore `inventory_batch_stock`. Web-admin return surface (ReceiptSearchPage + ReturnItemsModal — 422'd on every submit, owner is removing web POS) was quarantined: route, sidebar entry, PosHub card, and dead components deleted; the backend `/return` route STAYS (desktop POS uses it).
+
+### NEW TICKET — server Z `refunds_amount` sign bug (for the Z-server correctness session, B1/B3 owner)
+
+`ReportGenerationService::calculateShiftTotals` (apps/api, ~line 922) folds return receipts in with `bcadd($refundsAmount, $receipt->total, ...)` — a RAW add — while the return pipeline persists **negative** `pos_receipts.total` on return receipts. The existing fixture masks this with a positive return total; on real data the server `refunds_amount` goes **negative**, and downstream `perpetual_grand_total` (which consumes `refunds_amount` at ~line 839) **inflates**. Fix shape: accumulate `abs(total)` (the device-side `zReportService.ts` already uses `bcabs`); add a fixture with a real negative-total return receipt.
+
+### NEW HANDOVER NOTE — device endOfDayPreview expected_cash (B1 territory, deliberately untouched)
+
+The device `endOfDayPreview` `expected_cash` does NOT subtract cash refunds. The signed Z is correct (Phase 4 folds `local_refund_records` into the signed totals); only the operator-facing preview drifts when cash refunds occurred in the shift. The B1 session (expected-cash key mismatch) must fold `local_refund_records.cash_impact` into the preview alongside its `payment_method_code` vs `method_code` fix.
+
+### NEW TICKET — `ReceiptVoidService::reverseBatchAllocations` raw SQL interpolation
+
+Uses `DB::raw("quantity + {$allocation->quantity}")` (string interpolation of a DB-sourced numeric — not attacker-controlled today, but a footgun). The return path's `restoreBatchAllocations` already uses a parameterized increment; adopt the same pattern when next touching the void service.
+
+### Precision workstream note — scale-3 R_prev feeding scale-4 restitution
+
+`calculateAlreadyReturnedQuantities` accumulates already-returned quantities at **scale 3** (`ReceiptReturnService` ~lines 1079–1098, plus the scale-3 over-return checks at ~1045–1047), and that value is passed as `alreadyReturnedQuantity` (R_prev) into the **scale-4** cumulative batch-restitution math (`restoreBatchAllocations`). Sub-milli return quantities would truncate in R_prev and skew the cumulative delta. Align the already-returned plumbing to scale 4 (canonical quantity scale) in the precision workstream.
+
+### RETURN_WITHOUT_RECEIPT
+
+Already recorded as out of scope above (see "Out of scope (recorded statuses)") — unchanged.
