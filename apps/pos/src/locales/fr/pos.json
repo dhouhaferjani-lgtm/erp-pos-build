@@ -138,6 +138,10 @@
       "errorServer": "Erreur serveur — veuillez réessayer.",
       "errorValidation": "Le remboursement a été refusé : {{message}}",
       "errorApproval": "L'autorisation du responsable a échoué. Vérifiez le code PIN et réessayez.",
+      "errorApprovalSync": "Problème de connexion lors de l'enregistrement de l'autorisation. Réessayez — le responsable n'aura pas à ressaisir le code PIN.",
+      "errorCartChanged": "Les articles retournés ont changé après la préparation du remboursement. Recommencez le remboursement.",
+      "errorInternal": "Une erreur s'est produite lors de ce remboursement. Veuillez recommencer.",
+      "preparing": "Vérification du ticket d'origine…",
       "success": "Remboursement effectué — ticket {{number}}"
     },
     "approval": {

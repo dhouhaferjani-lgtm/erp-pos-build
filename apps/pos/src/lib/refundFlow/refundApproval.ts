@@ -10,17 +10,23 @@
  * Contract pinned by the server's assertVoidReturnApproval: the approval /
  * override fiscal events' `target` must bind the SERVER receipt id + number
  * and the mapped server line_ids (sorted), plus scope / cashier / supervisor /
- * terminal — so this helper MUST run AFTER `prepareRefundSettlement` (the
- * line_ids only exist once mapping succeeded).
+ * terminal — so `authorRefundReturnApproval` MUST run AFTER
+ * `prepareRefundSettlement` (the line_ids only exist once mapping succeeded).
  *
- * Sequence (mirrors VoidReturnModal.handleReturn):
- *   1. verifyScopedManagerPin — offline-capable PIN match + authoritative
- *      online confirmation (anti-downgrade policy lives inside).
- *   2. authorPosOverride — appends OPERATOR_APPROVAL_GRANTED +
- *      OVERRIDE_VOID_OR_RETURN to the local fiscal chain in one transaction.
- *   3. ensureApprovalFiscalEventsSynced — the server verifies the evidence
- *      against the synced chain, so both events must land server-side BEFORE
- *      the /return submit.
+ * SPLIT INTO TWO PHASES (review Fix 1 — fiscal):
+ *
+ *   1. `authorRefundReturnApproval` — verifyScopedManagerPin (offline-capable
+ *      PIN match + authoritative online confirmation, anti-downgrade policy
+ *      inside) then authorPosOverride (appends OPERATOR_APPROVAL_GRANTED +
+ *      OVERRIDE_VOID_OR_RETURN to the local fiscal chain in one transaction).
+ *      Runs AT MOST ONCE per settlement attempt — the caller MUST cache the
+ *      returned evidence immediately.
+ *   2. `syncRefundApprovalEvents` — forces both authored events to land
+ *      server-side BEFORE the /return submit (the server verifies the
+ *      evidence against the synced chain). Idempotent / re-runnable: a sync
+ *      failure must NOT re-author — the caller retries THIS step only, with
+ *      the cached evidence, so the signed chain never accumulates duplicate
+ *      approval+override pairs for the same target.
  */
 import { verifyScopedManagerPin } from '@/lib/operatorApproval/scopedManagerPin';
 import {
@@ -30,7 +36,7 @@ import {
 import { ensureApprovalFiscalEventsSynced } from '@/lib/operatorApproval/approvalFiscalSync';
 import type { RefundApprovalEvidence } from './refundSettlementService';
 
-export interface AuthorizeRefundReturnInput {
+export interface AuthorRefundReturnApprovalInput {
   context: PosOverrideContext;
   managerPin: string;
   /** Cashier-entered reason; may be empty (a default reason code is used). */
@@ -43,15 +49,18 @@ export interface AuthorizeRefundReturnInput {
 }
 
 /**
- * Verify the manager PIN, author the approval + override fiscal events bound
- * to the server receipt/lines, force-sync them, and return the six-field
- * approval evidence `submitRefundReturn` expects.
+ * Phase 1 — verify the manager PIN and author the approval + override fiscal
+ * events bound to the server receipt/lines. Returns the six-field approval
+ * evidence `submitRefundReturn` expects. Does NOT sync — the caller caches
+ * the evidence first, then runs `syncRefundApprovalEvents`, so a sync failure
+ * can never discard authored evidence.
  *
- * Throws on PIN mismatch / server denial / authoring or sync failure — the
- * caller surfaces a translated approval error and stays on the PIN step.
+ * Throws on PIN mismatch / server denial / authoring failure — nothing was
+ * appended to the chain unless authorPosOverride committed, so the caller may
+ * surface a PIN error and let the cashier try again.
  */
-export async function authorizeRefundReturnApproval(
-  input: AuthorizeRefundReturnInput,
+export async function authorRefundReturnApproval(
+  input: AuthorRefundReturnApprovalInput,
 ): Promise<RefundApprovalEvidence> {
   const reasonText = input.reason.trim();
 
@@ -85,11 +94,6 @@ export async function authorizeRefundReturnApproval(
     reasonText: reasonText || null,
   });
 
-  await ensureApprovalFiscalEventsSynced(input.context.companyId, [
-    evidence.approval_event_id,
-    evidence.override_event_id,
-  ]);
-
   return {
     approval_id: evidence.approval_id,
     approval_fiscal_event_id: evidence.approval_event_id,
@@ -98,4 +102,20 @@ export async function authorizeRefundReturnApproval(
     approval_override_event_id: evidence.override_event_id,
     authorized_by_user_id: evidence.supervisor_user_id,
   };
+}
+
+/**
+ * Phase 2 — force the authored approval + override fiscal events to sync so
+ * the server can verify the evidence on the /return submit. Re-runnable: on
+ * failure the caller retries THIS function with the SAME cached evidence
+ * (no second PIN entry, no re-authoring).
+ */
+export async function syncRefundApprovalEvents(
+  companyId: string,
+  evidence: RefundApprovalEvidence,
+): Promise<void> {
+  await ensureApprovalFiscalEventsSynced(companyId, [
+    evidence.approval_fiscal_event_id,
+    evidence.approval_override_event_id,
+  ]);
 }

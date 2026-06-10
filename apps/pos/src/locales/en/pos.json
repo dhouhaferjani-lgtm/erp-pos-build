@@ -138,6 +138,10 @@
       "errorServer": "Server error — please try again.",
       "errorValidation": "The refund was rejected: {{message}}",
       "errorApproval": "Manager authorization failed. Check the PIN and try again.",
+      "errorApprovalSync": "Connection problem while recording the authorization. Try again — the manager will not need to re-enter the PIN.",
+      "errorCartChanged": "The returned items changed after the refund was prepared. Start the refund again.",
+      "errorInternal": "Something went wrong with this refund. Please start again.",
+      "preparing": "Checking the original receipt…",
       "success": "Refund completed — ticket {{number}}"
     },
     "approval": {

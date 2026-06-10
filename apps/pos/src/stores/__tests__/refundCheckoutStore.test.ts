@@ -15,7 +15,10 @@ import {
   findReceiptByQrToken,
 } from '@/lib/offline/voucherRepository';
 import { FetchTimeoutError } from '@/lib/fetchWithTimeout';
-import { authorizeRefundReturnApproval } from '@/lib/refundFlow/refundApproval';
+import {
+  authorRefundReturnApproval,
+  syncRefundApprovalEvents,
+} from '@/lib/refundFlow/refundApproval';
 import type { CartItem } from '@/types/cart';
 import { useCartStore } from '@/stores/cartStore';
 import { useRefundCheckoutStore } from '../refundCheckoutStore';
@@ -37,7 +40,8 @@ vi.mock('@/stores/connectivityStore', () => ({
 }));
 
 vi.mock('@/lib/refundFlow/refundApproval', () => ({
-  authorizeRefundReturnApproval: vi.fn(),
+  authorRefundReturnApproval: vi.fn(),
+  syncRefundApprovalEvents: vi.fn(),
 }));
 
 const fakeDb = {} as Database;
@@ -151,8 +155,13 @@ function submitInput(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** Walk the machine to the approval step (prepare → destination → confirm). */
+/**
+ * Walk the machine to the approval step (prepare → destination → confirm).
+ * The cart is loaded with the SAME items — the stale-cart fingerprint guard
+ * compares the live return lines against the begin() snapshot.
+ */
 async function walkToApproval(items: CartItem[] = [returnItem()]) {
+  useCartStore.setState({ items });
   const store = useRefundCheckoutStore.getState();
   await store.begin(beginInput(items));
   useRefundCheckoutStore.getState().selectDestination('cash');
@@ -169,7 +178,8 @@ beforeEach(() => {
   vi.mocked(findReceiptByNumber).mockResolvedValue(qrIndexEntry());
   vi.mocked(apiGet).mockResolvedValue(serverReceipt());
   vi.mocked(apiPost).mockResolvedValue(settlementResponse());
-  vi.mocked(authorizeRefundReturnApproval).mockResolvedValue(approvalEvidence);
+  vi.mocked(authorRefundReturnApproval).mockResolvedValue(approvalEvidence);
+  vi.mocked(syncRefundApprovalEvents).mockResolvedValue(undefined);
 });
 
 describe('refundCheckoutStore — prepare failures', () => {
@@ -270,7 +280,6 @@ describe('refundCheckoutStore — happy path', () => {
   it('passes an edited-down partial quantity through the REAL mapper to the submit payload', async () => {
     // Receipt line sold 3; cashier edited the refund down to 1.
     const partial = returnItem({ quantity: -1, line_total: '-10.0000' });
-    useCartStore.setState({ items: [partial] });
 
     await walkToApproval([partial]);
     await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
@@ -279,11 +288,11 @@ describe('refundCheckoutStore — happy path', () => {
     expect(payload['lines']).toEqual([{ line_id: 'line-1', quantity: '1.0000' }]);
   });
 
-  it('binds the approval to the server receipt id/number and the mapped line_ids', async () => {
+  it('binds the approval to the server receipt id/number and the mapped line_ids, then syncs the evidence', async () => {
     await walkToApproval();
     await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
 
-    expect(authorizeRefundReturnApproval).toHaveBeenCalledWith({
+    expect(authorRefundReturnApproval).toHaveBeenCalledWith({
       context: approvalContext,
       managerPin: '4321',
       reason: 'changed mind',
@@ -291,6 +300,14 @@ describe('refundCheckoutStore — happy path', () => {
       receiptNumber: RECEIPT_NUMBER,
       lineIds: ['line-1'],
     });
+    expect(syncRefundApprovalEvents).toHaveBeenCalledWith('company-1', approvalEvidence);
+  });
+
+  it('begin snapshots the return lines (display totals freeze at begin)', async () => {
+    const items = [returnItem()];
+    await useRefundCheckoutStore.getState().begin(beginInput(items));
+
+    expect(useRefundCheckoutStore.getState().refundItemsSnapshot).toEqual(items);
   });
 });
 
@@ -325,9 +342,69 @@ describe('refundCheckoutStore — serialization', () => {
   });
 });
 
+describe('refundCheckoutStore — epoch guard (reset mid-flight)', () => {
+  it('a reset during begin() kills the continuation — no destination step appears', async () => {
+    let resolveGet: (value: unknown) => void = () => {};
+    vi.mocked(apiGet).mockImplementation(
+      () => new Promise((resolve) => { resolveGet = resolve; }),
+    );
+
+    const inFlight = useRefundCheckoutStore.getState().begin(beginInput());
+    await vi.waitFor(() => { expect(apiGet).toHaveBeenCalled(); });
+
+    useRefundCheckoutStore.getState().reset();
+    resolveGet(serverReceipt());
+    await inFlight;
+
+    const state = useRefundCheckoutStore.getState();
+    expect(state.step).toBe('idle');
+    expect(state.prepared).toBeNull();
+    expect(state.error).toBeNull();
+  });
+
+  it('a reset during submit kills the continuation — no clearReturnItems, no onSettled', async () => {
+    const onSettled = vi.fn();
+    await walkToApproval();
+
+    let resolvePost: (value: unknown) => void = () => {};
+    vi.mocked(apiPost).mockImplementation(
+      () => new Promise((resolve) => { resolvePost = resolve; }),
+    );
+
+    const inFlight = useRefundCheckoutStore.getState().approveAndSubmit(submitInput({ onSettled }));
+    await vi.waitFor(() => { expect(apiPost).toHaveBeenCalled(); });
+
+    useRefundCheckoutStore.getState().reset();
+    resolvePost(settlementResponse());
+    await inFlight;
+
+    const state = useRefundCheckoutStore.getState();
+    expect(state.step).toBe('idle');
+    expect(state.settledResponse).toBeNull();
+    expect(onSettled).not.toHaveBeenCalled();
+    // The cart's return lines were NOT cleared by the dead continuation.
+    expect(useCartStore.getState().items).toHaveLength(1);
+  });
+});
+
+describe('refundCheckoutStore — stale-cart fingerprint guard', () => {
+  it('aborts to idle (fail closed) when the return lines changed after begin — no author, no POST', async () => {
+    await walkToApproval();
+    // A scan/edit mutates the return-line set while the modal sequence is up.
+    useCartStore.setState({ items: [returnItem({ quantity: -1, line_total: '-10.0000' })] });
+
+    await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+    const state = useRefundCheckoutStore.getState();
+    expect(state.step).toBe('idle');
+    expect(state.error?.key).toBe('refundFlow.checkout.errorCartChanged');
+    expect(authorRefundReturnApproval).not.toHaveBeenCalled();
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+});
+
 describe('refundCheckoutStore — abort & failure paths', () => {
   it('cancel from the approval step aborts cleanly back to the cart (no zombie state)', async () => {
-    useCartStore.setState({ items: [returnItem()] });
     await walkToApproval();
 
     useRefundCheckoutStore.getState().cancel();
@@ -339,13 +416,14 @@ describe('refundCheckoutStore — abort & failure paths', () => {
     expect(state.refundRequestId).toBeNull();
     expect(state.approval).toBeNull();
     expect(state.error).toBeNull();
+    expect(state.refundItemsSnapshot).toBeNull();
     // The cart is untouched — the cashier is back where they started.
     expect(useCartStore.getState().items).toHaveLength(1);
     expect(apiPost).not.toHaveBeenCalled();
   });
 
-  it('a manager-PIN failure returns to the approval step with the approval error key and submits nothing', async () => {
-    vi.mocked(authorizeRefundReturnApproval).mockRejectedValue(
+  it('a manager-PIN failure returns to the approval step with the PIN error key — nothing authored, nothing synced, nothing submitted', async () => {
+    vi.mocked(authorRefundReturnApproval).mockRejectedValue(
       new Error('manager_pin_scope_mismatch'),
     );
     await walkToApproval();
@@ -355,10 +433,37 @@ describe('refundCheckoutStore — abort & failure paths', () => {
     const state = useRefundCheckoutStore.getState();
     expect(state.step).toBe('approval');
     expect(state.error?.key).toBe('refundFlow.checkout.errorApproval');
+    expect(state.approval).toBeNull();
+    expect(syncRefundApprovalEvents).not.toHaveBeenCalled();
     expect(apiPost).not.toHaveBeenCalled();
   });
 
-  it('a submit SERVER_ERROR returns to approval; the retry reuses the SAME refund_request_id and does NOT re-author the approval', async () => {
+  it('a sync failure CACHES the authored evidence; the retry re-runs sync only (no second author / PIN entry)', async () => {
+    vi.mocked(syncRefundApprovalEvents).mockRejectedValueOnce(
+      new Error('Approval fiscal event is not synced yet.'),
+    );
+    await walkToApproval();
+
+    await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+    let state = useRefundCheckoutStore.getState();
+    expect(state.step).toBe('approval');
+    expect(state.error?.key).toBe('refundFlow.checkout.errorApprovalSync');
+    // The authored evidence survives the sync failure — fiscal events are
+    // appended exactly once for this settlement target.
+    expect(state.approval).toEqual(approvalEvidence);
+    expect(apiPost).not.toHaveBeenCalled();
+
+    await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+    state = useRefundCheckoutStore.getState();
+    expect(state.step).toBe('settled');
+    expect(authorRefundReturnApproval).toHaveBeenCalledTimes(1);
+    expect(syncRefundApprovalEvents).toHaveBeenCalledTimes(2);
+    expect(apiPost).toHaveBeenCalledTimes(1);
+  });
+
+  it('a submit SERVER_ERROR returns to approval; the retry reuses the SAME refund_request_id and does NOT re-author or re-sync the approval', async () => {
     await walkToApproval();
     vi.mocked(apiPost).mockRejectedValueOnce(new ApiRequestError(503, 'unavailable', 'SERVICE_UNAVAILABLE'));
 
@@ -369,7 +474,8 @@ describe('refundCheckoutStore — abort & failure paths', () => {
     await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
     expect(useRefundCheckoutStore.getState().step).toBe('settled');
 
-    expect(authorizeRefundReturnApproval).toHaveBeenCalledTimes(1);
+    expect(authorRefundReturnApproval).toHaveBeenCalledTimes(1);
+    expect(syncRefundApprovalEvents).toHaveBeenCalledTimes(1);
     const posts = vi.mocked(apiPost).mock.calls;
     expect(posts).toHaveLength(2);
     const firstPayload = posts[0]![1] as Record<string, unknown>;
@@ -415,5 +521,24 @@ describe('refundCheckoutStore — abort & failure paths', () => {
 
     const secondId = (vi.mocked(apiPost).mock.calls[1]![1] as Record<string, unknown>)['refund_request_id'];
     expect(secondId).not.toBe(firstId);
+  });
+
+  it('a corrupted approval state aborts to idle with a translated internal error and logs the diagnosis', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    useRefundCheckoutStore.setState({
+      step: 'approval',
+      prepared: null,
+      receiptNumber: RECEIPT_NUMBER,
+      destination: 'cash',
+    });
+
+    await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+    const state = useRefundCheckoutStore.getState();
+    expect(state.step).toBe('idle');
+    expect(state.error?.key).toBe('refundFlow.checkout.errorInternal');
+    expect(consoleError).toHaveBeenCalled();
+    expect(apiPost).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 });
