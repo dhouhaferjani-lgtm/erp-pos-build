@@ -140,11 +140,13 @@
       "errorApproval": "Manager authorization failed. Check the PIN and try again.",
       "errorApprovalSync": "Connection problem while recording the authorization. Try again — the manager will not need to re-enter the PIN.",
       "errorCartChanged": "The returned items changed after the refund was prepared. Start the refund again.",
+      "errorCartChangedAfterSettle": "Refund completed, but the returned items changed during processing. Check the cart before continuing.",
       "errorInternal": "Something went wrong with this refund. Please start again.",
       "preparing": "Checking the original receipt…",
       "success": "Refund completed — ticket {{number}}",
       "printFailed": "Refund completed — ticket {{number}}, but printing failed. Check the printer.",
-      "zAccountingWarning": "Refund completed — ticket {{number}}, but it could not be recorded locally. The Z report totals will need server reconciliation."
+      "zAccountingWarning": "Refund completed — ticket {{number}}, but it could not be recorded locally. The Z report totals will need server reconciliation.",
+      "scanBlockedDuringCheckout": "A refund is being processed — finish or cancel it before scanning another receipt."
     },
     "approval": {
       "title": "Manager authorization",

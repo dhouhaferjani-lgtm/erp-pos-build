@@ -408,6 +408,60 @@ describe('refundCheckoutStore — stale-cart fingerprint guard', () => {
     expect(authorRefundReturnApproval).not.toHaveBeenCalled();
     expect(apiPost).not.toHaveBeenCalled();
   });
+
+  it('M2 post-settle drift guard: cart mutated after approval began but before the POST resolved → settle recorded, NEW lines NOT cleared, drift error surfaced', async () => {
+    // Codex r1 M2 defense-in-depth: the pre-submit fingerprint check runs
+    // ONCE before the async approval/sync/submit chain. If a scan-hydration
+    // replaces the return lines while the POST is in flight, the server has
+    // settled the OLD prepared lines — clearing the cart now would eat the
+    // NEW, unrelated return lines.
+    const onSettled = vi.fn();
+    await walkToApproval();
+
+    let resolvePost: (value: unknown) => void = () => {};
+    vi.mocked(apiPost).mockImplementation(
+      () => new Promise((resolve) => { resolvePost = resolve; }),
+    );
+
+    const inFlight = useRefundCheckoutStore.getState().approveAndSubmit(submitInput({ onSettled }));
+    await vi.waitFor(() => { expect(apiPost).toHaveBeenCalled(); });
+
+    // Scan-hydration swaps the return lines mid-submit (after the one-time
+    // pre-submit fingerprint check already passed).
+    const newLines = [returnItem({ id: 'return-item-OTHER', quantity: -1, line_total: '-10.0000' })];
+    useCartStore.setState({ items: newLines });
+
+    resolvePost(settlementResponse());
+    await inFlight;
+
+    const state = useRefundCheckoutStore.getState();
+    // The server settle DID happen — the settled state is recorded …
+    expect(state.step).toBe('settled');
+    expect(state.settledResponse).toEqual(settlementResponse());
+    expect(recordRefundSettlementForZ).toHaveBeenCalledTimes(1);
+    expect(onSettled).toHaveBeenCalledTimes(1);
+    // … but the NEW (unrelated) return lines were NOT cleared …
+    expect(useCartStore.getState().items).toEqual(newLines);
+    // … and the drift is surfaced so the cashier re-checks the cart.
+    expect(state.error?.key).toBe('refundFlow.checkout.errorCartChangedAfterSettle');
+
+    // The error must survive the parent's settled-acknowledge (which the
+    // onSettled seam triggers) so the idle banner actually shows it.
+    useRefundCheckoutStore.getState().acknowledgeSettled();
+    expect(useRefundCheckoutStore.getState().step).toBe('idle');
+    expect(useRefundCheckoutStore.getState().error?.key).toBe('refundFlow.checkout.errorCartChangedAfterSettle');
+  });
+
+  it('M2 post-settle drift guard: an UNCHANGED cart still clears the return lines on settle (no false positive)', async () => {
+    await walkToApproval();
+
+    await useRefundCheckoutStore.getState().approveAndSubmit(submitInput());
+
+    const state = useRefundCheckoutStore.getState();
+    expect(state.step).toBe('settled');
+    expect(state.error).toBeNull();
+    expect(useCartStore.getState().items).toEqual([]);
+  });
 });
 
 describe('refundCheckoutStore — abort & failure paths', () => {

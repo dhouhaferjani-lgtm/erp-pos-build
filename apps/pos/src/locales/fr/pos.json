@@ -140,11 +140,13 @@
       "errorApproval": "L'autorisation du responsable a échoué. Vérifiez le code PIN et réessayez.",
       "errorApprovalSync": "Problème de connexion lors de l'enregistrement de l'autorisation. Réessayez — le responsable n'aura pas à ressaisir le code PIN.",
       "errorCartChanged": "Les articles retournés ont changé après la préparation du remboursement. Recommencez le remboursement.",
+      "errorCartChangedAfterSettle": "Remboursement effectué, mais les articles retournés ont changé pendant le traitement. Vérifiez le panier avant de continuer.",
       "errorInternal": "Une erreur s'est produite lors de ce remboursement. Veuillez recommencer.",
       "preparing": "Vérification du ticket d'origine…",
       "success": "Remboursement effectué — ticket {{number}}",
       "printFailed": "Remboursement effectué — ticket {{number}}, mais l'impression a échoué. Vérifiez l'imprimante.",
-      "zAccountingWarning": "Remboursement effectué — ticket {{number}}, mais il n'a pas pu être enregistré localement. Les totaux du rapport Z devront être rapprochés avec le serveur."
+      "zAccountingWarning": "Remboursement effectué — ticket {{number}}, mais il n'a pas pu être enregistré localement. Les totaux du rapport Z devront être rapprochés avec le serveur.",
+      "scanBlockedDuringCheckout": "Un remboursement est en cours — terminez-le ou annulez-le avant de scanner un autre ticket."
     },
     "approval": {
       "title": "Autorisation responsable",

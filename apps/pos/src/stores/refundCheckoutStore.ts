@@ -88,6 +88,7 @@ export type RefundCheckoutErrorKey =
   | 'refundFlow.checkout.errorApproval'
   | 'refundFlow.checkout.errorApprovalSync'
   | 'refundFlow.checkout.errorCartChanged'
+  | 'refundFlow.checkout.errorCartChangedAfterSettle'
   | 'refundFlow.checkout.errorInternal';
 
 export interface RefundCheckoutError {
@@ -413,12 +414,25 @@ export const useRefundCheckoutStore = create<RefundCheckoutStore>()((set, get) =
       return;
     }
 
-    // Success — the refund cart is done: clear the return lines, record the
-    // response, and hand it to the Phase-3 print seam.
-    useCartStore.getState().clearReturnItems();
+    // Success — the refund cart is done. Codex r1 M2 defense-in-depth: the
+    // pre-submit fingerprint check ran ONCE before the async approval/sync/
+    // submit chain, so re-check the live return lines NOW (after the epoch
+    // guard, before any cart mutation). If a scan-hydration swapped the
+    // return lines mid-submit, the server settled the OLD prepared lines —
+    // clearing the cart would eat the NEW, unrelated lines. The settled
+    // refund itself is correct either way: record it, hand it to the print
+    // seam, and surface the drift so the cashier re-checks the cart.
+    const liveAfterSettle = useCartStore.getState().returnItems();
+    const driftedAfterSettle =
+      returnLinesFingerprint(liveAfterSettle) !== returnLinesFingerprint(refundItemsSnapshot);
+    if (!driftedAfterSettle) {
+      useCartStore.getState().clearReturnItems();
+    }
     set({
       step: 'settled',
-      error: null,
+      error: driftedAfterSettle
+        ? { key: 'refundFlow.checkout.errorCartChangedAfterSettle', serverMessage: null }
+        : null,
       settledResponse: result.response,
       settledZAccountingRecorded: zAccountingRecorded,
     });
@@ -440,10 +454,11 @@ export const useRefundCheckoutStore = create<RefundCheckoutStore>()((set, get) =
   acknowledgeSettled: () => {
     if (get().step !== 'settled') return;
     // Keep settledResponse readable for the Phase-3 print seam until the
-    // next begin()/reset() wipes it.
+    // next begin()/reset() wipes it. The error is PRESERVED (not nulled):
+    // a post-settle drift error (M2) must survive into the idle banner —
+    // on a clean settle it is already null.
     set({
       step: 'idle',
-      error: null,
       prepared: null,
       destination: null,
       refundItemsSnapshot: null,
@@ -457,3 +472,14 @@ export const useRefundCheckoutStore = create<RefundCheckoutStore>()((set, get) =
     set({ ...initialState, epoch: get().epoch + 1 });
   },
 }));
+
+/**
+ * True while the refund checkout flow owns the cart's return lines (any
+ * non-idle step, including the settled-acknowledge window). Codex r1 M2 —
+ * the receipt-scan path (dispatcher, confirmation sheet, hydration) consults
+ * this gate so a scan cannot replace the return lines while a settlement is
+ * being prepared/approved/submitted.
+ */
+export function isRefundCheckoutActive(): boolean {
+  return useRefundCheckoutStore.getState().step !== 'idle';
+}

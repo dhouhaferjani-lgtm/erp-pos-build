@@ -426,6 +426,16 @@ export function HomePage() {
           const db = await getDatabase(companyId);
           const result = await dispatchScan({ token: barcode, db, terminalId });
           if (result.kind === 'receipt-token') {
+            // Codex r1 M2 — while the refund checkout flow is active, a NEW
+            // receipt scan must not open the confirmation sheet (accepting
+            // it would replace the return lines an in-flight settlement
+            // already prepared). The store gate also rejects it; this layer
+            // adds the cashier-facing toast.
+            if (useRefundCheckoutStore.getState().step !== 'idle') {
+              setScanMessage({ text: t('pos:refundFlow.checkout.scanBlockedDuringCheckout'), type: 'error' });
+              setTimeout(() => setScanMessage(null), 4000);
+              return;
+            }
             setPendingScanResult(result.entry);
             return;
           }
@@ -521,6 +531,15 @@ export function HomePage() {
     // Consume atomically (read + clear). A second re-render will not re-fire.
     const event = useRefundFlowStore.getState().consumeAcceptedReceiptToken();
     if (event === null) return;
+
+    // Codex r1 M2 — last line of defense: never hydrate (replace the cart's
+    // return lines) while the refund checkout flow is mid-settlement. The
+    // event is consumed and dropped; the cashier rescans after the flow ends.
+    if (useRefundCheckoutStore.getState().step !== 'idle') {
+      setScanMessage({ text: t('pos:refundFlow.checkout.scanBlockedDuringCheckout'), type: 'error' });
+      setTimeout(() => setScanMessage(null), 4000);
+      return;
+    }
 
     // Prevent re-hydrating an already-active refund session.
     if (activeRefundReceiptUuid === event.receiptUuid) return;
