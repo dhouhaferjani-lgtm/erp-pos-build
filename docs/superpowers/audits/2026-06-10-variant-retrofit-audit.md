@@ -129,7 +129,7 @@ Facts the implementation must build on:
 ### Fixed in this session
 
 - **F1–F4 fixed** in Phase 5, commit `bbc167895` ("variant-aware restock + batch restitution on returns/voids"): variant-scoped `restoreStock` (F1), `variant_id` on return receipt lines (F2), variant-scoped + scale-4 `reverseStockMovement` in the void path (F3), and proportional cumulative batch restitution on returns (`restoreBatchAllocations`, F4).
-- **F5/F6 fixed** in Phase 2: F5 (refund cart variant identity) landed with the hydrate work in `33b659b74`; F6 (local→server receipt/line mapping) in `213e4673d` with review fixes in `e4df4fdb7` (idempotency race, variant-blind mapping, receipt-number fallback).
+- **F5/F6 fixed** in Phase 2: F5 (refund cart variant identity — `variant_id`/`variant_name` threaded through `hydrateFromReceipt`, which originally shipped without them in April's `33b659b74`) landed in `213e4673d`; F6 (local→server receipt/line mapping) also in `213e4673d`, with review fixes in `e4df4fdb7` (idempotency race, variant-blind mapping, receipt-number fallback).
 
 ### VoidReturnModal deleted — refund is the ONLY post-seal correction surface (decision)
 
