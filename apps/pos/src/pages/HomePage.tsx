@@ -20,7 +20,10 @@ import { getDatabase } from '@/lib/db';
 import { getOfflineReceiptById } from '@/lib/db/repositories/offlineReceiptRepository';
 import { deleteRefundDraft } from '@/lib/db/repositories/refundDraftRepository';
 import { hydrateFromReceipt } from '@/lib/refundFlow/hydrateFromReceipt';
-import { classifyCartForCheckout } from '@/lib/refundFlow/cartClassification';
+import {
+  decidePayInterception,
+  mustBlockMidModalSettlement,
+} from '@/lib/refundFlow/cartClassification';
 import { useRefundCheckoutStore } from '@/stores/refundCheckoutStore';
 import { RefundCheckoutFlow } from '@/components/pos/RefundCheckoutFlow';
 import type { ReturnSettlementResponse } from '@/lib/refundFlow/refundSettlementService';
@@ -175,6 +178,17 @@ export function HomePage() {
       isTraining: terminal.is_training_mode === true,
     };
   }, [activeTenantId, activeCompanyId, terminal, operator?.id, activeUserId]);
+  // Fix 7e: the refund checkout flow needs a real cashier identity for the
+  // approval/audit trail. With neither an operator nor an auth user, the flow
+  // is NOT mounted (instead of being handed an empty-string id).
+  const refundCashierUserId = operator?.id ?? activeUserId ?? null;
+  useEffect(() => {
+    if (refundCashierUserId === null) {
+      console.error(
+        '[refundFlow] no cashier identity (operator or auth user) — refund checkout UI not mounted',
+      );
+    }
+  }, [refundCashierUserId]);
   const [voucherDb, setVoucherDb] = useState<import('@tauri-apps/plugin-sql').default | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -925,17 +939,18 @@ export function HomePage() {
   }, [activeRefundDraftId, clearDraftState, t]);
 
   const handlePayCash = useCallback(() => {
-    if (cartItems.length === 0) return;
-    const classification = classifyCartForCheckout(cartItems);
-    if (classification === 'mixed') {
-      blockMixedCheckout();
-      return;
+    switch (decidePayInterception(cartItems)) {
+      case 'ignore':
+        return;
+      case 'block-mixed':
+        blockMixedCheckout();
+        return;
+      case 'start-refund':
+        void startRefundCheckout();
+        return;
+      case 'proceed-sale':
+        setShowCashModal(true);
     }
-    if (classification === 'refund') {
-      void startRefundCheckout();
-      return;
-    }
-    setShowCashModal(true);
   }, [cartItems, blockMixedCheckout, startRefundCheckout]);
 
   const handleCashConfirm = useCallback(
@@ -945,7 +960,7 @@ export function HomePage() {
       // while the cash modal is already open — a non-pure-sale cart must
       // NEVER reach buildSaleReceiptPayload (negative lines fail the fiscal
       // money invariant).
-      if (classifyCartForCheckout(cartItems) !== 'sale') {
+      if (mustBlockMidModalSettlement(cartItems)) {
         setShowCashModal(false);
         blockMixedCheckout();
         return;
@@ -976,17 +991,18 @@ export function HomePage() {
   );
 
   const handleAdvancedPayments = useCallback(() => {
-    if (cartItems.length === 0) return;
-    const classification = classifyCartForCheckout(cartItems);
-    if (classification === 'mixed') {
-      blockMixedCheckout();
-      return;
+    switch (decidePayInterception(cartItems)) {
+      case 'ignore':
+        return;
+      case 'block-mixed':
+        blockMixedCheckout();
+        return;
+      case 'start-refund':
+        void startRefundCheckout();
+        return;
+      case 'proceed-sale':
+        setShowAdvancedModal(true);
     }
-    if (classification === 'refund') {
-      void startRefundCheckout();
-      return;
-    }
-    setShowAdvancedModal(true);
   }, [cartItems, blockMixedCheckout, startRefundCheckout]);
 
   const handleAdvancedComplete = useCallback(
@@ -996,7 +1012,7 @@ export function HomePage() {
     ) => {
       if (!terminal) return;
       // Defense-in-depth (Task 2b): see handleCashConfirm.
-      if (classifyCartForCheckout(cartItems) !== 'sale') {
+      if (mustBlockMidModalSettlement(cartItems)) {
         setShowAdvancedModal(false);
         blockMixedCheckout();
         return;
@@ -1030,6 +1046,15 @@ export function HomePage() {
   const handleChargeToAccount = useCallback(
     async (overrideApproval?: AccountChargeOverrideApprovalInput | null) => {
       if (!terminal) return;
+      // Defense-in-depth (Task 2b — review Fix 5): same re-classification
+      // guard as handleCashConfirm/handleAdvancedComplete. Without it, a
+      // scan-hydrated return line entering the cart while the advanced
+      // modal is open would be CHARGED to a customer account.
+      if (mustBlockMidModalSettlement(cartItems)) {
+        setShowAdvancedModal(false);
+        blockMixedCheckout();
+        return;
+      }
       try {
         const result = await processAccountCharge(terminal.id, {
           overrideApproval: overrideApproval ?? null,
@@ -1047,7 +1072,7 @@ export function HomePage() {
         });
       }
     },
-    [terminal, processAccountCharge],
+    [terminal, cartItems, blockMixedCheckout, processAccountCharge],
   );
 
   const handleHold = useCallback(async () => {
@@ -1478,13 +1503,16 @@ export function HomePage() {
       {/* Task 2b (Task 53 wiring): refund settlement flow — destination picker,
           confirm modal, manager-PIN approval, /return submit. Driven by
           refundCheckoutStore; entered from handlePayCash/handleAdvancedPayments
-          when the cart is all-return. */}
-      <RefundCheckoutFlow
-        approvalContext={approvalContext}
-        terminalId={terminal?.id ?? null}
-        cashierUserId={operator?.id ?? activeUserId ?? ''}
-        onRefundSettled={handleRefundSettled}
-      />
+          when the cart is all-return. Not mounted without a cashier identity
+          (review Fix 7e) — never hand the approval trail an empty-string id. */}
+      {refundCashierUserId !== null && (
+        <RefundCheckoutFlow
+          approvalContext={approvalContext}
+          terminalId={terminal?.id ?? null}
+          cashierUserId={refundCashierUserId}
+          onRefundSettled={handleRefundSettled}
+        />
+      )}
       </div>
     </div>
   );
