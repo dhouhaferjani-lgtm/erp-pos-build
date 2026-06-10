@@ -182,6 +182,21 @@ final class ReceiptController extends Controller
             ], 422);
         }
 
+        // Phase 6 guard — refund is the ONLY post-seal correction surface.
+        // A RETURN receipt cannot be voided: the void path never reverses
+        // the batch restitution the return performed (F4), so a later
+        // re-return of the original sale would over-restore
+        // inventory_batch_stock. A wrong return is corrected by a
+        // compensating sale, not by voiding the return.
+        if ($receipt->isReturn()) {
+            return response()->json([
+                'error' => [
+                    'code' => 'CANNOT_VOID_RETURN_RECEIPT',
+                    'message' => 'Return receipts cannot be voided.',
+                ],
+            ], 422);
+        }
+
         /** @var User $user */
         $user = Auth::user();
 

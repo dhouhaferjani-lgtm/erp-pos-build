@@ -48,7 +48,7 @@ final class ReceiptVoidService
      * @param  User  $voidedBy  The user performing the void
      * @param  string  $reason  Reason for voiding
      *
-     * @throws \RuntimeException If receipt is already voided
+     * @throws \RuntimeException If receipt is already voided or is a return receipt
      */
     public function voidReceipt(
         Receipt $receipt,
@@ -58,6 +58,14 @@ final class ReceiptVoidService
     ): Receipt {
         if ($receipt->is_voided) {
             throw new \RuntimeException('Receipt is already voided');
+        }
+
+        // Defense in depth (the controller already 422s this): voiding a
+        // return receipt is incoherent — its batch restitution is never
+        // reversed here, so a re-return would over-restore
+        // inventory_batch_stock. Refund is the only correction surface.
+        if ($receipt->isReturn()) {
+            throw new \RuntimeException('Cannot void a return receipt');
         }
 
         return DB::transaction(function () use ($receipt, $voidedBy, $reason, $authorizedByUserId): Receipt {

@@ -675,6 +675,35 @@ final class ReceiptReturnFlowTest extends TestCase
         $this->assertStringContainsString('return receipt', $response->json('error.message'));
     }
 
+    public function test_void_rejects_return_receipt(): void
+    {
+        // Phase 6 guard — refund is the ONLY post-seal correction surface.
+        // Voiding a RETURN receipt is incoherent: its batch restitution
+        // (F4, restoreBatchAllocations on return) is never reversed by the
+        // void path, so a re-return would over-restore inventory_batch_stock.
+        $saleReceipt = $this->createSaleReceipt();
+        $returnReceipt = $this->createReturnReceipt($saleReceipt);
+
+        $response = $this->postJson(
+            "/api/v1/pos/receipts/{$returnReceipt->id}/void",
+            [
+                'reason' => 'Trying to void a return',
+                'approval_id' => Str::uuid()->toString(),
+                'approval_fiscal_event_id' => Str::uuid()->toString(),
+                'approval_scope' => 'void_or_return_override',
+                'approval_supervisor_user_id' => $this->user->id,
+                'approval_override_event_id' => Str::uuid()->toString(),
+                'authorized_by_user_id' => $this->user->id,
+            ],
+        );
+
+        $response->assertStatus(422);
+        $this->assertSame('CANNOT_VOID_RETURN_RECEIPT', $response->json('error.code'));
+
+        // The return receipt must be untouched.
+        $this->assertFalse((bool) $returnReceipt->fresh()?->is_voided);
+    }
+
     public function test_process_return_cumulative_quantities(): void
     {
         // Arrange: Sale receipt with qty 5
@@ -1260,8 +1289,10 @@ final class ReceiptReturnFlowTest extends TestCase
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
         Permission::findOrCreate('pos.view_receipts', 'sanctum');
         Permission::findOrCreate('pos.process_returns', 'sanctum');
+        Permission::findOrCreate('pos.void_receipts', 'sanctum');
         $this->user->givePermissionTo('pos.view_receipts');
         $this->user->givePermissionTo('pos.process_returns');
+        $this->user->givePermissionTo('pos.void_receipts');
 
         $this->location = Location::factory()->create([
             'company_id' => $this->company->id,
