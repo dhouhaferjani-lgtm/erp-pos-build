@@ -153,20 +153,24 @@ export async function generateZReport(
     [terminalId, shiftOpenedAt]
   );
 
-  if (receipts.length === 0) {
-    throw new Error('Cannot generate Z-report for a shift with no receipts.');
-  }
-
-  // Build payment method lookup for names
-  const paymentMethodMap = await buildPaymentMethodMap(db);
-
   // 3b. Phase 4 (fiscal audit B2) — refunds settled AT THIS terminal during
   // this shift, mirrored at settle time into local_refund_records (see
   // localRefundRecordRepository). Refunds processed at OTHER terminals do not
   // affect this device's drawer or its Z — the server Z/report side owns
   // global reconciliation. A device crash between the server settle and the
   // local mirror write undercounts here (server remains source of truth).
+  // Loaded BEFORE the empty-shift guard (Codex r1 M1): a refund-only shift
+  // (open → online refund → close) has zero offline_receipts but a settled
+  // refund that MUST reach a local signed Z — only a shift with neither
+  // receipts nor settled refunds is rejected.
   const refundRecords = await getRefundRecordsForShift(db, shiftId);
+
+  if (receipts.length === 0 && refundRecords.length === 0) {
+    throw new Error('Cannot generate Z-report for a shift with no receipts.');
+  }
+
+  // Build payment method lookup for names
+  const paymentMethodMap = await buildPaymentMethodMap(db);
 
   // 4. Compute report data
   const reportData = aggregateReportData(receipts, paymentMethodMap, decimals, refundRecords);

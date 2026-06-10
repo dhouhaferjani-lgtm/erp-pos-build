@@ -699,4 +699,74 @@ describe('generateZReport', () => {
       });
     });
   });
+
+  describe('refund-only shift (Codex r1 M1)', () => {
+    it('generates a Z-report when the shift has ONLY settled refunds (no receipts)', async () => {
+      // Real flow: open shift → process only an online refund (mirrored into
+      // local_refund_records) → close shift. The empty-receipts guard must
+      // not fire before refund records are considered, otherwise a compliant
+      // refund transaction has no local signed Z closure path.
+      mockQueryAll(db, [], makeRefundRecordRows());
+
+      const report = await generateZReport(
+        db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00',
+      );
+
+      // Sales side is all-zero…
+      expect(report.report_data.sales_count).toBe(0);
+      expect(report.report_data.gross_sales).toBe('0.00');
+      expect(report.report_data.net_sales).toBe('0.00');
+      expect(report.report_data.tax_amount).toBe('0.00');
+      expect(report.report_data.vat_breakdown).toEqual([]);
+      expect(report.report_data.payment_methods).toEqual([]);
+
+      // …while the refunds fold in: 2 cash (10.00 + 5.50) + 1 voucher (7.25).
+      expect(report.report_data.refunds_count).toBe(3);
+      expect(report.report_data.refunds_amount).toBe('22.75');
+
+      // expected_cash = opening 100 − CASH refund impact 15.50 (no cash sales;
+      // the voucher refund moved no till cash).
+      expect(report.report_data.expected_cash).toBe('84.50');
+      expect(report.expected_cash).toBe('84.50');
+
+      // Cumulative/perpetual formulas stay coherent with zero sales:
+      // cumulative_sales unchanged (+0); cumulative_refunds 0 + 22.75;
+      // perpetual 500 + (0 − 22.75) = 477.250.
+      expect(report.grand_totals.cumulative_sales).toBe('500.000');
+      expect(report.grand_totals.cumulative_refunds).toBe('22.750');
+      expect(report.grand_totals.perpetual_grand_total).toBe('477.250');
+      expect(report.grand_totals.receipt_count_lifetime).toBe(10);
+      expect(updateGrandTotals).toHaveBeenCalledWith(db, 'term-1', '0.00', '0.00', '22.75', 0);
+
+      // No receipts → empty snapshot set, but the Z still persists + chains.
+      expect(report.receipt_snapshots).toEqual([]);
+      expect(insertZReport).toHaveBeenCalledOnce();
+      expect(advanceZChain).toHaveBeenCalledOnce();
+    });
+
+    it('refund-only shift supports cash counts against the refund-adjusted expected cash', async () => {
+      mockQueryAll(db, [], makeRefundRecordRows());
+
+      const report = await generateZReport(
+        db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00',
+        { cashCounts: [{ payment_method_id: 'pm-cash', currency_code: 'EUR', actual_amount: '84.50' }] },
+      );
+
+      const cashRow = (report.report_data.cash_counts ?? [])[0]!;
+      expect(cashRow.expected_amount).toBe('84.50');
+      expect(cashRow.variance_amount).toBe('0.00');
+      expect(cashRow.transaction_count).toBe(0);
+    });
+
+    it('still throws when the shift has NEITHER receipts NOR refund records', async () => {
+      mockQueryAll(db, [], []);
+
+      await expect(
+        generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00'),
+      ).rejects.toThrow(/no receipts/);
+
+      expect(insertZReport).not.toHaveBeenCalled();
+      expect(advanceZChain).not.toHaveBeenCalled();
+    });
+  });
 });
