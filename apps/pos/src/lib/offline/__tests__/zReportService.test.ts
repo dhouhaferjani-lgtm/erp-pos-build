@@ -140,9 +140,58 @@ function makeReceiptRows() {
   ];
 }
 
-/** Setup queryAll to return receipts on first call and payment_methods on second */
-function mockQueryAll(db: Database, receipts: ReturnType<typeof makeReceiptRows>) {
-  vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
+/**
+ * Refund records mirrored at settle time (Phase 4 / fiscal audit B2):
+ * two CASH refunds (drawer impact) + one STORE_VOUCHER refund (no till cash).
+ */
+function makeRefundRecordRows() {
+  return [
+    {
+      id: 'rr-1',
+      receipt_number: 'T001-0101',
+      original_receipt_number: 'T001-0001',
+      shift_id: 'shift-1',
+      terminal_id: 'term-1',
+      destination: 'cash',
+      total: '-10.00',
+      cash_impact: '10.00',
+      currency: 'EUR',
+      settled_at: '2026-04-23T11:00:00+00:00',
+    },
+    {
+      id: 'rr-2',
+      receipt_number: 'T001-0102',
+      original_receipt_number: 'T001-0001',
+      shift_id: 'shift-1',
+      terminal_id: 'term-1',
+      destination: 'cash',
+      total: '-5.50',
+      cash_impact: '5.50',
+      currency: 'EUR',
+      settled_at: '2026-04-23T11:30:00+00:00',
+    },
+    {
+      id: 'rr-3',
+      receipt_number: 'T001-0103',
+      original_receipt_number: 'T001-0001',
+      shift_id: 'shift-1',
+      terminal_id: 'term-1',
+      destination: 'store_voucher',
+      total: '-7.25',
+      cash_impact: '0',
+      currency: 'EUR',
+      settled_at: '2026-04-23T12:00:00+00:00',
+    },
+  ];
+}
+
+/** Setup queryAll to return receipts / payment_methods / refund records by SQL shape */
+function mockQueryAll(
+  db: Database,
+  receipts: ReturnType<typeof makeReceiptRows>,
+  refundRecords: ReturnType<typeof makeRefundRecordRows> = [],
+) {
+  vi.mocked(queryAll).mockImplementation(async (_db, sql, params) => {
     const s = sql as string;
     if (s.includes('FROM offline_receipts') || s.includes('offline_receipts')) {
       return receipts;
@@ -152,6 +201,12 @@ function mockQueryAll(db: Database, receipts: ReturnType<typeof makeReceiptRows>
         { id: 'pm-cash', code: 'CASH' },
         { id: 'pm-card', code: 'CARD' },
       ];
+    }
+    if (s.includes('local_refund_records')) {
+      // Honor the shift_id filter like the real repository does — a refund
+      // from a different shift must never be returned for this shift.
+      const shiftId = (params as unknown[] | undefined)?.[0];
+      return refundRecords.filter((r) => r.shift_id === shiftId);
     }
     return [];
   });
@@ -459,6 +514,113 @@ describe('generateZReport', () => {
       expect(insertZReportCounts).toHaveBeenCalledOnce();
       expect(advanceZChain).toHaveBeenCalledOnce();
       expect(updateGrandTotals).toHaveBeenCalledOnce();
+    });
+
+    it('Z accounting (B2): folds settled refunds into refunds totals and expected_cash', async () => {
+      mockQueryAll(db, makeReceiptRows(), makeRefundRecordRows());
+
+      const report = await generateZReport(
+        db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00',
+        { cashCounts: [{ payment_method_id: 'pm-cash', currency_code: 'EUR', actual_amount: '134.50' }] },
+      );
+
+      // 2 cash refunds (10.00 + 5.50) + 1 voucher refund (7.25).
+      expect(report.report_data.refunds_count).toBe(3);
+      // refunds_amount is a POSITIVE magnitude (server semantics — see
+      // ZReportV3AggregationTest / GrandtotalService netDelta formula).
+      expect(report.report_data.refunds_amount).toBe('22.75');
+      // expected_cash = opening 100 + cash sales 50 − CASH refunds 15.50.
+      // The voucher refund moved no till cash.
+      expect(report.report_data.expected_cash).toBe('134.50');
+      expect(report.expected_cash).toBe('134.50');
+      // The CASH cash-count row compares against the refund-adjusted expected.
+      const cashRow = (report.report_data.cash_counts ?? [])[0]!;
+      expect(cashRow.expected_amount).toBe('134.50');
+      expect(cashRow.variance_amount).toBe('0.00');
+
+      // Grand totals flow through the EXISTING formulas with real values:
+      // cumulative_refunds 0 + 22.75; perpetual 500 + (50 − 22.75).
+      expect(report.grand_totals.cumulative_refunds).toBe('22.750');
+      expect(report.grand_totals.perpetual_grand_total).toBe('527.250');
+      expect(updateGrandTotals).toHaveBeenCalledWith(db, 'term-1', '50.00', '8.00', '22.75', 1);
+    });
+
+    it('Z accounting (B2): a shift with no refund records keeps the zero totals (unchanged behavior)', async () => {
+      mockQueryAll(db, makeReceiptRows(), []);
+
+      const report = await generateZReport(
+        db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00',
+      );
+
+      expect(report.report_data.refunds_count).toBe(0);
+      expect(report.report_data.refunds_amount).toBe('0.00');
+      expect(report.report_data.expected_cash).toBe('150.00');
+      expect(report.grand_totals.cumulative_refunds).toBe('0.000');
+      expect(report.grand_totals.perpetual_grand_total).toBe('550.000');
+    });
+
+    it('Z accounting (B2): refunds recorded under a DIFFERENT shift_id are not counted', async () => {
+      const foreignShiftRefunds = makeRefundRecordRows().map((r) => ({
+        ...r,
+        shift_id: 'shift-OTHER',
+      }));
+      mockQueryAll(db, makeReceiptRows(), foreignShiftRefunds);
+
+      const report = await generateZReport(
+        db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00',
+      );
+
+      // The refund-records query is scoped to THIS shift.
+      const refundCall = vi.mocked(queryAll).mock.calls.find((call) =>
+        String(call[1]).includes('local_refund_records'),
+      );
+      expect(refundCall).toBeDefined();
+      expect(refundCall![2]).toEqual(['shift-1']);
+
+      expect(report.report_data.refunds_count).toBe(0);
+      expect(report.report_data.refunds_amount).toBe('0.00');
+      expect(report.report_data.expected_cash).toBe('150.00');
+    });
+
+    it('Z accounting (B2): the signed close input receives the aggregated refund totals', async () => {
+      mockQueryAll(db, makeReceiptRows(), makeRefundRecordRows());
+
+      await generateZReport(
+        db,
+        'term-1',
+        'shift-1',
+        '2026-04-23T08:00:00+00:00',
+        '100.00',
+        {
+          cashCounts: [{ payment_method_id: 'pm-cash', currency_code: 'EUR', actual_amount: '134.50' }],
+          tenantId: 'tenant-1',
+          fiscalShiftId: '33333333-3333-4333-8333-333333333333',
+          fiscalSessionId: '44444444-4444-4444-8444-444444444444',
+          terminalLabel: 'T001',
+          operatorId: '22222222-2222-4222-8222-222222222222',
+          operatorName: 'Alice',
+          isTraining: false,
+        },
+      );
+
+      expect(appendZSessionCloseAndZReport).toHaveBeenCalledOnce();
+      const [, , closeInput] = vi.mocked(appendZSessionCloseAndZReport).mock.calls[0]!;
+      expect(closeInput).toMatchObject({
+        expectedCash: '134.50',
+        reportTotals: {
+          sales_count: 1,
+          gross_sales: '50.00',
+          net_sales: '42.00',
+          tax_amount: '8.00',
+          refunds_count: 3,
+          refunds_amount: '22.75',
+          voided_count: 0,
+        },
+        grandTotalsAfter: {
+          cumulative_refunds: '22.750',
+          perpetual_grand_total: '527.250',
+        },
+      });
     });
 
     it('authors SESSION_CLOSE and Z_REPORT fiscal events when fiscal session context is supplied', async () => {
