@@ -293,6 +293,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+/** Accepts decimal strings the printer can hand to Big() without throwing. */
+const NUMERIC_STRING_RE = /^-?\d+(\.\d+)?$/;
+
+function isNumericString(value: unknown): value is string {
+  return typeof value === 'string' && NUMERIC_STRING_RE.test(value);
+}
+
 function isServerReceiptLine(value: unknown): value is ServerReceiptLine {
   if (!isRecord(value)) return false;
   return (
@@ -332,9 +339,11 @@ function isReturnSettlementLine(value: unknown): value is ReturnSettlementLine {
   if (!isRecord(value)) return false;
   return (
     typeof value['product_name'] === 'string' &&
-    typeof value['quantity'] === 'string' &&
-    typeof value['unit_price'] === 'string' &&
-    typeof value['line_total'] === 'string'
+    // quantity / unit_price / line_total are handed directly to Big() in the
+    // AVOIR builder — require numeric-string shape so the printer never throws.
+    isNumericString(value['quantity']) &&
+    isNumericString(value['unit_price']) &&
+    isNumericString(value['line_total'])
   );
 }
 
@@ -343,11 +352,13 @@ function parseReturnSettlementResponse(value: unknown): ReturnSettlementResponse
   if (
     typeof value['id'] !== 'string' ||
     typeof value['receipt_number'] !== 'string' ||
-    typeof value['total'] !== 'string' ||
-    // The AVOIR print path (Phase 3) consumes these directly — a response
-    // missing them must fail closed, not reach the printer half-shaped.
-    typeof value['subtotal'] !== 'string' ||
-    typeof value['tax_amount'] !== 'string' ||
+    // The AVOIR print path (Phase 3) hands total/subtotal/tax_amount to Big()
+    // — require numeric-string shape, not just typeof string, so a malformed
+    // monetary value is rejected HERE (SERVER_ERROR) rather than causing an
+    // unhandled throw inside the builder.
+    !isNumericString(value['total']) ||
+    !isNumericString(value['subtotal']) ||
+    !isNumericString(value['tax_amount']) ||
     typeof value['currency'] !== 'string' ||
     typeof value['posted_at'] !== 'string'
   ) {

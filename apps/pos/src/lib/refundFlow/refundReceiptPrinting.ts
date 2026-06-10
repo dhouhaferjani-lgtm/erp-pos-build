@@ -16,6 +16,13 @@
  * the tape order is deterministic (refund proof first, then the customer's
  * voucher). A failure on either ticket reports `failed` — the voucher is
  * never attempted after a failed AVOIR (no half-ordered tape).
+ *
+ * autoPrint divergence — do NOT "fix" this into the autoPrint gate:
+ * Unlike the sale path (CheckoutSuccessModal gates on usePrinterStore.autoPrint
+ * with a manual-print button fallback), the refund path prints unconditionally
+ * when Tauri+printer exist. The AVOIR is the customer's legal refund proof and
+ * the store-voucher ticket is the customer's money; there is no refund-success
+ * modal offering a manual-print fallback, so unconditional printing is correct.
  */
 import {
   getPrintSettingsFromStore,
@@ -69,20 +76,23 @@ export async function printRefundSettlementArtifacts(
   const terminalName = useTerminalStore.getState().terminal?.name ?? '';
   const operatorName = useOperatorStore.getState().operator?.name ?? '';
 
-  const receiptData = buildEscPosRefundReceiptData(
-    input.response,
-    {
-      companyName,
-      companyCountryCode,
-      terminalName,
-      operatorName,
-      originalReceiptNumber: input.originalReceiptNumber,
-      originalReceiptQrToken: input.originalReceiptQrToken,
-    },
-    input.visibilitySettings,
-  );
-
   try {
+    // Builder runs INSIDE the try: if buildEscPosRefundReceiptData throws
+    // (e.g. Big() on a malformed monetary string) the promise returns
+    // {status:'failed'} instead of leaking an unhandled rejection.
+    const receiptData = buildEscPosRefundReceiptData(
+      input.response,
+      {
+        companyName,
+        companyCountryCode,
+        terminalName,
+        operatorName,
+        originalReceiptNumber: input.originalReceiptNumber,
+        originalReceiptQrToken: input.originalReceiptQrToken,
+      },
+      input.visibilitySettings,
+    );
+
     const printSettings = getPrintSettingsFromStore();
     await printReceipt(receiptData, printerConfig, printSettings);
 
@@ -100,6 +110,7 @@ export async function printRefundSettlementArtifacts(
 
     return { status: 'printed', tickets: 1 };
   } catch (error) {
+    console.error('[refundFlow] printRefundSettlementArtifacts failed:', error);
     return { status: 'failed', error };
   }
 }

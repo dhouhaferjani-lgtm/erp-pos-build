@@ -4,6 +4,8 @@
  * Mocks at the Tauri print-command boundary (`@/lib/printing`'s printReceipt /
  * printVoucherTicket wrappers) following the printing-lib test pattern. The
  * builders run REAL so the asserted payloads are the actual mapped data.
+ * The receipt-data builder (`buildEscPosRefundReceiptData`) is mocked in the
+ * "builder throws" test only — every other test exercises it end-to-end.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -27,6 +29,21 @@ vi.mock('@/lib/printing', () => ({
   })),
   isTauriEnvironment: vi.fn(() => true),
 }));
+
+// The receipt-data builder is mocked only to simulate a throw (Fix 1). All
+// other tests use the real builder (the mock is reset in beforeEach).
+vi.mock('@/lib/buildReceiptData', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/buildReceiptData')>(
+    '@/lib/buildReceiptData',
+  );
+  return {
+    ...actual,
+    buildEscPosRefundReceiptData: vi.fn((...args) =>
+      // Default: delegate to the real implementation so other tests are unaffected.
+      (actual.buildEscPosRefundReceiptData as (...a: unknown[]) => unknown)(...args),
+    ),
+  };
+});
 
 vi.mock('@/stores/printerStore', () => ({
   usePrinterStore: {
@@ -55,6 +72,7 @@ import {
   isTauriEnvironment,
 } from '@/lib/printing';
 import type { PrinterConfig } from '@/lib/printing';
+import { buildEscPosRefundReceiptData } from '@/lib/buildReceiptData';
 import { usePrinterStore } from '@/stores/printerStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useTerminalStore } from '@/stores/terminalStore';
@@ -225,6 +243,22 @@ describe('printRefundSettlementArtifacts', () => {
     const outcome = await printRefundSettlementArtifacts(input());
 
     expect(outcome).toEqual({ status: 'skipped', reason: 'no_printer' });
+    expect(printReceipt).not.toHaveBeenCalled();
+    expect(printVoucherTicket).not.toHaveBeenCalled();
+  });
+
+  it('returns a typed failure (never throws) when the builder throws before print — unhandled rejection hole closed', async () => {
+    // Simulate Big() / monetary parse blowing up on malformed data.
+    const builderError = new RangeError('[big.js] Invalid number');
+    vi.mocked(buildEscPosRefundReceiptData).mockImplementationOnce(() => {
+      throw builderError;
+    });
+
+    const outcome = await printRefundSettlementArtifacts(input());
+
+    // Must return {status:'failed'}, NOT an unhandled rejection.
+    expect(outcome).toEqual({ status: 'failed', error: builderError });
+    // The printer must never be reached if the builder threw.
     expect(printReceipt).not.toHaveBeenCalled();
     expect(printVoucherTicket).not.toHaveBeenCalled();
   });

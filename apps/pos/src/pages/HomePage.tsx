@@ -947,6 +947,10 @@ export function HomePage() {
     // teardown completed synchronously above — the orchestration never
     // throws, so a print failure only replaces the toast (the settled
     // receipt number is repeated inside the failure message).
+    // The .catch is a defensive last-resort: printRefundSettlementArtifacts
+    // is designed never to reject (builder is now inside the try), but if any
+    // future regression re-introduces a throw the user still sees the toast
+    // instead of a silent unhandled rejection.
     void printRefundSettlementArtifacts({
       response,
       originalReceiptNumber,
@@ -961,6 +965,13 @@ export function HomePage() {
         });
         setTimeout(() => setScanMessage(null), 6000);
       }
+    }).catch((unexpectedError: unknown) => {
+      console.error('[refundFlow] AVOIR print unexpected rejection:', serializeErrorForLog(unexpectedError));
+      setScanMessage({
+        text: t('pos:refundFlow.checkout.printFailed', { number: response.receipt_number }),
+        type: 'error',
+      });
+      setTimeout(() => setScanMessage(null), 6000);
     });
   }, [
     activeRefundDraftId,

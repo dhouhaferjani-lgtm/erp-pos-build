@@ -515,4 +515,44 @@ describe('submitRefundReturn', () => {
       });
     }
   });
+
+  it('fails closed when top-level monetary fields are non-numeric strings (malformed monetary shape)', async () => {
+    // A string value that passes typeof === 'string' but is not a valid
+    // decimal number must be rejected — the printer would hand it to Big()
+    // and throw an unhandled rejection. The guard must catch this at source.
+    const cases: Array<[string, string]> = [
+      ['total', 'NaN'],
+      ['subtotal', 'abc'],
+      ['tax_amount', ''],
+      ['total', '-20.00 EUR'],
+    ];
+    for (const [field, badValue] of cases) {
+      vi.mocked(apiPost).mockResolvedValue({ ...returnResponse(), [field]: badValue });
+      const result = await submitRefundReturn(submitInput());
+      expect(result, `Expected SERVER_ERROR for ${field}=${badValue}`).toEqual(
+        { ok: false, error: { code: 'SERVER_ERROR' } },
+      );
+    }
+  });
+
+  it('fails closed when a /return line monetary field is a non-numeric string', async () => {
+    // quantity / unit_price / line_total pass through to Big() in the builder —
+    // malformed strings must be blocked at the guard layer, not the printer.
+    type BadLine = { product_name: string; quantity: string; unit_price: string; line_total: string };
+    const badLineCases: BadLine[] = [
+      { product_name: 'X', quantity: 'abc', unit_price: '10.0000', line_total: '-20.0000' },
+      { product_name: 'X', quantity: '-2.0000', unit_price: 'not-a-number', line_total: '-20.0000' },
+      { product_name: 'X', quantity: '-2.0000', unit_price: '10.0000', line_total: '' },
+    ];
+    for (const badLine of badLineCases) {
+      vi.mocked(apiPost).mockResolvedValue({
+        ...returnResponse(),
+        lines: [badLine],
+      });
+      const result = await submitRefundReturn(submitInput());
+      expect(result, `Expected SERVER_ERROR for malformed line: ${JSON.stringify(badLine)}`).toEqual(
+        { ok: false, error: { code: 'SERVER_ERROR' } },
+      );
+    }
+  });
 });
