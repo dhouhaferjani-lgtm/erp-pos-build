@@ -481,4 +481,38 @@ describe('submitRefundReturn', () => {
 
     expect(result).toEqual({ ok: false, error: { code: 'SERVER_ERROR' } });
   });
+
+  // Phase 3 (AVOIR print) consumes lines/currency/posted_at — the guard must
+  // validate them so the printer never receives an undefined lines array.
+  it('fails closed when /return lines are missing or malformed (print path depends on them)', async () => {
+    vi.mocked(apiPost).mockResolvedValue({
+      ...returnResponse(),
+      lines: undefined,
+    });
+    expect(await submitRefundReturn(submitInput())).toEqual({
+      ok: false,
+      error: { code: 'SERVER_ERROR' },
+    });
+
+    vi.mocked(apiPost).mockResolvedValue({
+      ...returnResponse(),
+      lines: [{ product_name: 'Widget A', quantity: '-2.0000' }],
+    });
+    expect(await submitRefundReturn(submitInput())).toEqual({
+      ok: false,
+      error: { code: 'SERVER_ERROR' },
+    });
+  });
+
+  it('fails closed when /return monetary/temporal print fields are missing', async () => {
+    for (const field of ['currency', 'posted_at', 'subtotal', 'tax_amount'] as const) {
+      const body: Record<string, unknown> = { ...returnResponse() };
+      delete body[field];
+      vi.mocked(apiPost).mockResolvedValue(body);
+      expect(await submitRefundReturn(submitInput())).toEqual({
+        ok: false,
+        error: { code: 'SERVER_ERROR' },
+      });
+    }
+  });
 });

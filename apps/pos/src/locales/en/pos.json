@@ -142,7 +142,8 @@
       "errorCartChanged": "The returned items changed after the refund was prepared. Start the refund again.",
       "errorInternal": "Something went wrong with this refund. Please start again.",
       "preparing": "Checking the original receipt…",
-      "success": "Refund completed — ticket {{number}}"
+      "success": "Refund completed — ticket {{number}}",
+      "printFailed": "Refund completed — ticket {{number}}, but printing failed. Check the printer."
     },
     "approval": {
       "title": "Manager authorization",

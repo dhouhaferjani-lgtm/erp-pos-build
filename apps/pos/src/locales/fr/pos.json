@@ -142,7 +142,8 @@
       "errorCartChanged": "Les articles retournés ont changé après la préparation du remboursement. Recommencez le remboursement.",
       "errorInternal": "Une erreur s'est produite lors de ce remboursement. Veuillez recommencer.",
       "preparing": "Vérification du ticket d'origine…",
-      "success": "Remboursement effectué — ticket {{number}}"
+      "success": "Remboursement effectué — ticket {{number}}",
+      "printFailed": "Remboursement effectué — ticket {{number}}, mais l'impression a échoué. Vérifiez l'imprimante."
     },
     "approval": {
       "title": "Autorisation responsable",

@@ -27,6 +27,7 @@ import {
 import { useRefundCheckoutStore } from '@/stores/refundCheckoutStore';
 import { RefundCheckoutFlow } from '@/components/pos/RefundCheckoutFlow';
 import type { ReturnSettlementResponse } from '@/lib/refundFlow/refundSettlementService';
+import { printRefundSettlementArtifacts } from '@/lib/refundFlow/refundReceiptPrinting';
 import { ReceiptScanConfirmationSheet } from '@/components/pos/ReceiptScanConfirmationSheet';
 import { ReceiptLocatorScreen } from '@/components/pos/ReceiptLocatorScreen';
 import { ResumeRefundDraftBanner } from '@/components/pos/ResumeRefundDraftBanner';
@@ -898,15 +899,20 @@ export function HomePage() {
   }, [activeRefundReceiptNumber, activeRefundReceiptToken, t]);
 
   /**
-   * Settled seam (Phase 3 wires AVOIR printing here — the full /return
-   * response, incl. qr_token + issued_voucher, also stays readable in
-   * refundCheckoutStore.settledResponse). The checkout store already cleared
-   * the cart's return lines; this handler tears down the refund session,
-   * removes the crash-safety draft, and shows the success feedback.
+   * Settled seam. The checkout store already cleared the cart's return
+   * lines; this handler tears down the refund session, removes the
+   * crash-safety draft, shows the success feedback, then prints the AVOIR
+   * (+ voucher ticket on store_voucher settlements) fire-and-forget from the
+   * /return response — a print failure surfaces a toast but can never block
+   * or unwind a refund that already settled server-side.
    */
   const handleRefundSettled = useCallback((response: ReturnSettlementResponse) => {
     const companyId = useAuthStore.getState().companyId;
     const draftId = activeRefundDraftId;
+    // Capture the ORIGINAL ticket reference before the teardown nulls it —
+    // it is printed on the AVOIR (REMBOURSEMENT header block).
+    const originalReceiptNumber = activeRefundReceiptNumber;
+    const originalReceiptQrToken = activeRefundReceiptToken;
 
     setActiveRefundReceiptUuid(null);
     setActiveRefundReceiptNumber(null);
@@ -936,7 +942,34 @@ export function HomePage() {
     });
     setTimeout(() => setScanMessage(null), 4000);
     useRefundCheckoutStore.getState().acknowledgeSettled();
-  }, [activeRefundDraftId, clearDraftState, t]);
+
+    // Phase 3: print the AVOIR + voucher ticket. Kicked off AFTER the
+    // teardown completed synchronously above — the orchestration never
+    // throws, so a print failure only replaces the toast (the settled
+    // receipt number is repeated inside the failure message).
+    void printRefundSettlementArtifacts({
+      response,
+      originalReceiptNumber,
+      originalReceiptQrToken,
+      visibilitySettings: receiptVisibility,
+    }).then((outcome) => {
+      if (outcome.status === 'failed') {
+        console.error('[refundFlow] AVOIR print failed:', serializeErrorForLog(outcome.error));
+        setScanMessage({
+          text: t('pos:refundFlow.checkout.printFailed', { number: response.receipt_number }),
+          type: 'error',
+        });
+        setTimeout(() => setScanMessage(null), 6000);
+      }
+    });
+  }, [
+    activeRefundDraftId,
+    activeRefundReceiptNumber,
+    activeRefundReceiptToken,
+    receiptVisibility,
+    clearDraftState,
+    t,
+  ]);
 
   const handlePayCash = useCallback(() => {
     switch (decidePayInterception(cartItems)) {

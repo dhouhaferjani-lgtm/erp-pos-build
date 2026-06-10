@@ -328,12 +328,28 @@ function isIssuedVoucher(value: unknown): value is IssuedVoucher {
   );
 }
 
+function isReturnSettlementLine(value: unknown): value is ReturnSettlementLine {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value['product_name'] === 'string' &&
+    typeof value['quantity'] === 'string' &&
+    typeof value['unit_price'] === 'string' &&
+    typeof value['line_total'] === 'string'
+  );
+}
+
 function parseReturnSettlementResponse(value: unknown): ReturnSettlementResponse | null {
   if (!isRecord(value)) return null;
   if (
     typeof value['id'] !== 'string' ||
     typeof value['receipt_number'] !== 'string' ||
-    typeof value['total'] !== 'string'
+    typeof value['total'] !== 'string' ||
+    // The AVOIR print path (Phase 3) consumes these directly — a response
+    // missing them must fail closed, not reach the printer half-shaped.
+    typeof value['subtotal'] !== 'string' ||
+    typeof value['tax_amount'] !== 'string' ||
+    typeof value['currency'] !== 'string' ||
+    typeof value['posted_at'] !== 'string'
   ) {
     return null;
   }
@@ -341,6 +357,8 @@ function parseReturnSettlementResponse(value: unknown): ReturnSettlementResponse
   if (qrToken !== null && typeof qrToken !== 'string') return null;
   const voucher = value['issued_voucher'];
   if (voucher !== null && !isIssuedVoucher(voucher)) return null;
+  const lines = value['lines'];
+  if (!Array.isArray(lines) || !lines.every(isReturnSettlementLine)) return null;
 
   return value as unknown as ReturnSettlementResponse;
 }
