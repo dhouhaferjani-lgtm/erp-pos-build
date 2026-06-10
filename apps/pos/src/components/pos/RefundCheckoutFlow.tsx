@@ -18,7 +18,7 @@
  */
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, Loader2, X } from 'lucide-react';
 import { Modal } from '@/components/pos/Modal';
 import { RefundConfirmModal } from '@/components/pos/RefundConfirmModal';
 import { RefundDestinationPickerStateful } from '@/components/pos/RefundDestinationPicker';
@@ -26,7 +26,6 @@ import {
   useRefundCheckoutStore,
   type RefundCheckoutError,
 } from '@/stores/refundCheckoutStore';
-import { useCartStore } from '@/stores/cartStore';
 import { useCurrency } from '@/lib/currency';
 import { bcabs, bcsum } from '@/lib/decimal';
 import type { PosOverrideContext } from '@/lib/operatorApproval/posOverrideAuthoring';
@@ -74,16 +73,19 @@ export function RefundCheckoutFlow({
   const approveAndSubmit = useRefundCheckoutStore((s) => s.approveAndSubmit);
   const cancel = useRefundCheckoutStore((s) => s.cancel);
   const clearError = useRefundCheckoutStore((s) => s.clearError);
+  const approvalCached = useRefundCheckoutStore((s) => s.approval !== null);
 
-  // Total being refunded = abs sum of the cart's return-line totals (the
-  // return lines stay in the cart until the settlement succeeds).
-  const cartItems = useCartStore((s) => s.items);
+  // Total being refunded = abs sum of the return-line totals SNAPSHOTTED at
+  // begin() — the displayed amount is frozen to the lines that were actually
+  // prepared/mapped, never the live cart (which can drift behind the modals;
+  // the store fail-closes on drift before submitting).
+  const refundItemsSnapshot = useRefundCheckoutStore((s) => s.refundItemsSnapshot);
   const refundAmount = useMemo(() => {
-    const returnTotals = cartItems
-      .filter((item) => (item.kind ?? 'sale') === 'return')
-      .map((item) => bcabs(item.line_total, decimals));
+    const returnTotals = (refundItemsSnapshot ?? []).map((item) =>
+      bcabs(item.line_total, decimals),
+    );
     return format(bcsum(returnTotals, decimals));
-  }, [cartItems, decimals, format]);
+  }, [refundItemsSnapshot, decimals, format]);
 
   const approvalOpen = step === 'approval' || step === 'submitting';
   const isSubmitting = step === 'submitting';
@@ -104,6 +106,27 @@ export function RefundCheckoutFlow({
 
   return (
     <>
+      {/* Blocking busy overlay while the (retried) server prepare runs —
+          without it the preparing step rendered NOTHING and the terminal
+          looked frozen. Also covers submitting as a belt-and-braces layer on
+          top of the approval modal's own disabled controls. */}
+      {(step === 'preparing' || isSubmitting) && (
+        <div
+          data-testid="refund-checkout-busy-overlay"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30"
+          role="status"
+        >
+          <div className="flex items-center gap-3 rounded-xl bg-white px-6 py-4 shadow-2xl">
+            <Loader2 className="h-6 w-6 animate-spin text-blue-500" aria-hidden="true" />
+            <span className="text-sm font-medium text-gray-700">
+              {step === 'preparing'
+                ? t('refundFlow.checkout.preparing', { defaultValue: 'Checking the original receipt…' })
+                : t('refundFlow.approval.submitting', { defaultValue: 'Processing…' })}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Prepare-failure banner (idle state) — translated, dismissible. */}
       {step === 'idle' && error !== null && (
         <div
@@ -168,11 +191,13 @@ export function RefundCheckoutFlow({
       <Modal
         isOpen={approvalOpen}
         onClose={isSubmitting ? () => {} : cancel}
+        closable={!isSubmitting}
         title={t('refundFlow.approval.title', { defaultValue: 'Manager authorization' })}
         size="sm"
       >
         <RefundApprovalStep
           isSubmitting={isSubmitting}
+          approvalCached={approvalCached}
           error={error}
           contextReady={approvalContext !== undefined && terminalId !== null}
           onCancel={cancel}
@@ -187,6 +212,14 @@ export function RefundCheckoutFlow({
 
 interface RefundApprovalStepProps {
   isSubmitting: boolean;
+  /**
+   * True once approval evidence was authored and cached for this settlement.
+   * The PIN/reason inputs FREEZE then: the authored fiscal events bind the
+   * original reason, and a retry reuses the cached evidence — editing either
+   * field would desync the submit payload from the evidence (server 422),
+   * and the retry must not demand a second PIN entry.
+   */
+  approvalCached: boolean;
   error: RefundCheckoutError | null;
   /** False when the approval context / terminal is unavailable — authorize disabled. */
   contextReady: boolean;
@@ -196,6 +229,7 @@ interface RefundApprovalStepProps {
 
 function RefundApprovalStep({
   isSubmitting,
+  approvalCached,
   error,
   contextReady,
   onCancel,
@@ -206,7 +240,9 @@ function RefundApprovalStep({
   const [managerPin, setManagerPin] = useState('');
   const [reason, setReason] = useState('');
 
-  const authorizeDisabled = isSubmitting || managerPin.length < 4 || !contextReady;
+  const inputsFrozen = isSubmitting || approvalCached;
+  const authorizeDisabled =
+    isSubmitting || !contextReady || (!approvalCached && managerPin.length < 4);
 
   return (
     <div className="space-y-4 p-4" data-testid="refund-approval-modal">
@@ -216,14 +252,19 @@ function RefundApprovalStep({
         })}
       </p>
 
-      {error !== null && (
-        <p
-          data-testid="refund-approval-error"
-          className="rounded-md bg-red-50 p-3 text-sm text-red-700"
-        >
-          {errorText(error)}
-        </p>
-      )}
+      {/* Fixed-height error slot — space is RESERVED whether or not an error
+          is showing, so the modal never resizes when a failure arrives
+          (project rule: modals keep fixed dimensions on interaction). */}
+      <div className="min-h-16" aria-live="polite">
+        {error !== null && (
+          <p
+            data-testid="refund-approval-error"
+            className="rounded-md bg-red-50 p-3 text-sm text-red-700"
+          >
+            {errorText(error)}
+          </p>
+        )}
+      </div>
 
       <div>
         <label
@@ -236,7 +277,7 @@ function RefundApprovalStep({
           id="refund-approval-reason"
           type="text"
           value={reason}
-          disabled={isSubmitting}
+          disabled={inputsFrozen}
           onChange={(e) => setReason(e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
         />
@@ -255,7 +296,7 @@ function RefundApprovalStep({
           inputMode="numeric"
           autoComplete="off"
           value={managerPin}
-          disabled={isSubmitting}
+          disabled={inputsFrozen}
           onChange={(e) => setManagerPin(e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
         />

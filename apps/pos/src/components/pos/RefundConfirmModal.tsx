@@ -240,13 +240,20 @@ export function RefundConfirmModal({
           <p className="text-2xl font-bold text-gray-900" data-testid="refund-amount-value">
             {refundAmount}
           </p>
-          {destinationLabel !== undefined && (
-            <p className="mt-1 text-sm text-gray-600" data-testid="refund-destination-summary">
-              {t('refundFlow.destination.label', { defaultValue: 'Refund destination' })}
-              {': '}
-              {destinationLabel}
-            </p>
-          )}
+          {/* Fixed-height destination row — space is reserved even when no
+              destination label is supplied, so the modal height never jumps
+              when the label appears (modals keep fixed dimensions). */}
+          <p className="mt-1 min-h-5 text-sm text-gray-600" data-testid="refund-destination-summary">
+            {destinationLabel !== undefined ? (
+              <>
+                {t('refundFlow.destination.label', { defaultValue: 'Refund destination' })}
+                {': '}
+                {destinationLabel}
+              </>
+            ) : (
+              ' '
+            )}
+          </p>
         </div>
 
         {/* Manager PIN panel — shown when override is required */}

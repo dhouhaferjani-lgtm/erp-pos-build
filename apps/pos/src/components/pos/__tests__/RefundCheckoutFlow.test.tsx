@@ -40,13 +40,17 @@ vi.mock('@/lib/refundFlow/refundSettlementService', async () => {
   };
 });
 vi.mock('@/lib/refundFlow/refundApproval', () => ({
-  authorizeRefundReturnApproval: vi.fn(),
+  authorRefundReturnApproval: vi.fn(),
+  syncRefundApprovalEvents: vi.fn(),
 }));
 
 import {
   submitRefundReturn,
 } from '@/lib/refundFlow/refundSettlementService';
-import { authorizeRefundReturnApproval } from '@/lib/refundFlow/refundApproval';
+import {
+  authorRefundReturnApproval,
+  syncRefundApprovalEvents,
+} from '@/lib/refundFlow/refundApproval';
 
 const approvalContext: PosOverrideContext = {
   tenantId: 'tenant-1',
@@ -61,6 +65,15 @@ const prepared = {
   serverReceiptId: 'server-receipt-1',
   lines: [{ line_id: 'line-1', quantity: '2.0000' }],
   serverLines: [],
+};
+
+const approvalEvidence = {
+  approval_id: 'approval-uuid',
+  approval_fiscal_event_id: 'fe-approval-1',
+  approval_scope: 'void_or_return_override' as const,
+  approval_supervisor_user_id: 'manager-9',
+  approval_override_event_id: 'fe-override-1',
+  authorized_by_user_id: 'manager-9',
 };
 
 const settlementResponse = {
@@ -114,14 +127,8 @@ beforeEach(() => {
     cartLinesRemovedThisSession: 0,
   });
   vi.mocked(submitRefundReturn).mockResolvedValue({ ok: true, response: settlementResponse });
-  vi.mocked(authorizeRefundReturnApproval).mockResolvedValue({
-    approval_id: 'approval-uuid',
-    approval_fiscal_event_id: 'fe-approval-1',
-    approval_scope: 'void_or_return_override',
-    approval_supervisor_user_id: 'manager-9',
-    approval_override_event_id: 'fe-override-1',
-    authorized_by_user_id: 'manager-9',
-  });
+  vi.mocked(authorRefundReturnApproval).mockResolvedValue(approvalEvidence);
+  vi.mocked(syncRefundApprovalEvents).mockResolvedValue(undefined);
 });
 
 describe('RefundCheckoutFlow', () => {
@@ -227,6 +234,7 @@ describe('RefundCheckoutFlow', () => {
       prepared,
       receiptNumber: 'L01-T01-00042',
       destination: 'cash',
+      refundItemsSnapshot: [returnItem()],
     });
     renderFlow(onSettled);
 
@@ -263,5 +271,69 @@ describe('RefundCheckoutFlow', () => {
     );
     // The idle banner is NOT shown for approval-step errors.
     expect(screen.queryByTestId('refund-checkout-error-banner')).toBeNull();
+  });
+
+  it('shows a blocking busy overlay while preparing (Fix 4)', () => {
+    useRefundCheckoutStore.setState({ step: 'preparing' });
+    renderFlow();
+
+    const overlay = screen.getByTestId('refund-checkout-busy-overlay');
+    expect(overlay.textContent).toContain('refundFlow.checkout.preparing');
+  });
+
+  it('renders the refund amount from the begin() snapshot, NOT the live cart (Fix 3)', () => {
+    useRefundCheckoutStore.setState({
+      step: 'confirm',
+      prepared,
+      receiptNumber: 'L01-T01-00042',
+      destination: 'cash',
+      // Snapshot says 20.00 was prepared …
+      refundItemsSnapshot: [returnItem()],
+    });
+    // … but the live cart has since drifted to a 10.00 return line.
+    useCartStore.setState({
+      items: [{ ...returnItem(), quantity: -1, line_total: '-10.00' }],
+    });
+    renderFlow();
+
+    const amount = screen.getByTestId('refund-amount-value').textContent ?? '';
+    expect(amount).toContain('20,00');
+    expect(amount).not.toContain('10,00');
+  });
+
+  it('freezes the reason and PIN inputs once approval evidence is cached (Fix 6)', () => {
+    useRefundCheckoutStore.setState({
+      step: 'approval',
+      prepared,
+      receiptNumber: 'L01-T01-00042',
+      destination: 'cash',
+      refundItemsSnapshot: [returnItem()],
+      approval: approvalEvidence,
+      error: { key: 'refundFlow.checkout.errorApprovalSync', serverMessage: null },
+    });
+    renderFlow();
+
+    const reason = screen.getByLabelText(/voidReturn.reason/) as HTMLInputElement;
+    const pin = screen.getByLabelText(/voidReturn.managerPin/) as HTMLInputElement;
+    expect(reason.disabled).toBe(true);
+    expect(pin.disabled).toBe(true);
+    // Retry does NOT require a second PIN entry — authorize stays enabled
+    // even with an empty PIN field.
+    const authorize = screen.getByTestId('refund-approval-authorize') as HTMLButtonElement;
+    expect(authorize.disabled).toBe(false);
+  });
+
+  it('visibly disables the modal close affordance while submitting (Fix 7d)', () => {
+    useRefundCheckoutStore.setState({
+      step: 'submitting',
+      prepared,
+      receiptNumber: 'L01-T01-00042',
+      destination: 'cash',
+      refundItemsSnapshot: [returnItem()],
+    });
+    renderFlow();
+
+    const close = screen.getByTestId('modal-close-button') as HTMLButtonElement;
+    expect(close.disabled).toBe(true);
   });
 });
