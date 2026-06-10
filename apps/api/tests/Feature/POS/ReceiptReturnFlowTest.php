@@ -14,16 +14,23 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
+use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\PaymentStatus;
+use App\Modules\Treasury\Domain\Enums\PaymentType;
+use App\Modules\Treasury\Domain\Payment;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +39,7 @@ use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 /**
  * Integration tests for receipt return flow.
@@ -41,6 +49,7 @@ use Tests\TestCase;
  */
 final class ReceiptReturnFlowTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -813,6 +822,224 @@ final class ReceiptReturnFlowTest extends TestCase
         ]);
     }
 
+    // ---------------------------------------------------------------
+    // Task 2a — refund_request_id + refund_destination HTTP contract
+    // ---------------------------------------------------------------
+
+    public function test_process_return_requires_refund_request_id(): void
+    {
+        $saleReceipt = $this->createSaleReceipt();
+        $line = $this->createReceiptLine($saleReceipt);
+
+        $payload = $this->withVoidReturnApproval($saleReceipt, [
+            'terminal_id' => $this->terminal->id,
+            'return_reason' => ReturnReason::Defective->value,
+            'lines' => [
+                ['line_id' => $line->id, 'quantity' => '1'],
+            ],
+        ]);
+        unset($payload['refund_request_id']);
+
+        $response = $this->postJson(
+            "/api/v1/pos/receipts/{$saleReceipt->id}/return",
+            $payload,
+        );
+
+        $this->assertApiValidationErrors($response, ['refund_request_id']);
+    }
+
+    public function test_process_return_rejects_exchange_deferred_destination(): void
+    {
+        // exchange_deferred is reserved for ExchangeService (service-layer only)
+        // and must never be reachable over HTTP.
+        $saleReceipt = $this->createSaleReceipt();
+        $line = $this->createReceiptLine($saleReceipt);
+
+        $response = $this->postJson(
+            "/api/v1/pos/receipts/{$saleReceipt->id}/return",
+            $this->withVoidReturnApproval($saleReceipt, [
+                'terminal_id' => $this->terminal->id,
+                'return_reason' => ReturnReason::Defective->value,
+                'lines' => [
+                    ['line_id' => $line->id, 'quantity' => '1'],
+                ],
+                'refund_destination' => 'exchange_deferred',
+            ]),
+        );
+
+        $this->assertApiValidationErrors($response, ['refund_destination']);
+    }
+
+    public function test_process_return_idempotent_replay_returns_same_receipt_without_second_payout(): void
+    {
+        $saleReceipt = $this->createSaleReceipt();
+        $line = $this->createReceiptLine($saleReceipt);
+
+        $refundRequestId = Str::uuid()->toString();
+        $payload = $this->withVoidReturnApproval($saleReceipt, [
+            'terminal_id' => $this->terminal->id,
+            'return_reason' => ReturnReason::Defective->value,
+            'lines' => [
+                ['line_id' => $line->id, 'quantity' => '2'],
+            ],
+            'refund_request_id' => $refundRequestId,
+        ]);
+
+        $response1 = $this->postJson("/api/v1/pos/receipts/{$saleReceipt->id}/return", $payload);
+        $response1->assertStatus(201);
+
+        // Replay the exact same request (e.g. POS retry after network blip).
+        $response2 = $this->postJson("/api/v1/pos/receipts/{$saleReceipt->id}/return", $payload);
+        $response2->assertStatus(201);
+
+        // Same return receipt returned both times.
+        $this->assertSame($response1->json('data.id'), $response2->json('data.id'));
+
+        // Only ONE return receipt was created.
+        $this->assertSame(1, Receipt::where('original_receipt_id', $saleReceipt->id)
+            ->where('receipt_type', ReceiptType::Return)
+            ->count());
+        $this->assertSame(1, Receipt::where('refund_request_id', $refundRequestId)->count());
+
+        // Only ONE cash-drawer payout was recorded (no second payout on replay).
+        $this->assertSame(1, (int) DB::table('pos_cash_drawer_operations')
+            ->where('operation_type', 'REFUND')
+            ->count());
+    }
+
+    public function test_process_return_cashier_selected_store_voucher_issues_voucher(): void
+    {
+        // Seed GL accounts required for VoucherIssuanceService.
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        $saleReceipt = $this->createSaleReceipt();
+        $line = $this->createReceiptLine($saleReceipt);
+
+        // No policy forcing — receipt is in-window and the default policy allows
+        // all cashier-facing destinations. The voucher must come from the
+        // cashier's explicit refund_destination choice.
+        $response = $this->postJson(
+            "/api/v1/pos/receipts/{$saleReceipt->id}/return",
+            $this->withVoidReturnApproval($saleReceipt, [
+                'terminal_id' => $this->terminal->id,
+                'return_reason' => ReturnReason::CustomerChangedMind->value,
+                'lines' => [
+                    ['line_id' => $line->id, 'quantity' => '1'],
+                ],
+                'refund_destination' => 'store_voucher',
+            ]),
+        );
+
+        $response->assertStatus(201);
+        $data = $response->json('data');
+
+        $this->assertNotNull(
+            $data['issued_voucher'],
+            'Cashier-selected store_voucher must surface the issued_voucher payload',
+        );
+        $this->assertIsString($data['issued_voucher']['code']);
+
+        // No cash payout for a voucher refund.
+        $this->assertSame(0, (int) DB::table('pos_cash_drawer_operations')
+            ->where('operation_type', 'REFUND')
+            ->count());
+    }
+
+    public function test_process_return_cashier_selected_original_payment_routes_treasury_proration(): void
+    {
+        $saleReceipt = $this->createSaleReceipt();
+        $line = $this->createReceiptLine($saleReceipt);
+
+        // Link a completed Treasury payment to the original receipt so the
+        // proration path has something to refund against.
+        $partner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Returning Customer',
+            'type' => PartnerType::Customer,
+            'is_active' => true,
+        ]);
+        $cashMethod = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH',
+            'name' => 'Cash',
+            'is_physical' => false,
+            'is_active' => true,
+        ]);
+        $originalPayment = Payment::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $partner->id,
+            'payment_method_id' => $cashMethod->id,
+            'amount' => '119.000',
+            'currency' => 'EUR',
+            'payment_date' => now(),
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::POS,
+            'reference' => 'PMT-'.Str::random(6),
+        ]);
+        ReceiptPayment::create([
+            'receipt_id' => $saleReceipt->id,
+            'payment_method_id' => $cashMethod->id,
+            'payment_type' => 'cash',
+            'amount' => '119.000',
+            'treasury_payment_id' => $originalPayment->id,
+        ]);
+
+        $response = $this->postJson(
+            "/api/v1/pos/receipts/{$saleReceipt->id}/return",
+            $this->withVoidReturnApproval($saleReceipt, [
+                'terminal_id' => $this->terminal->id,
+                'return_reason' => ReturnReason::CustomerChangedMind->value,
+                'lines' => [
+                    ['line_id' => $line->id, 'quantity' => '1'],
+                ],
+                'refund_destination' => 'original_payment',
+            ]),
+        );
+
+        $response->assertStatus(201);
+
+        // Treasury proration created a negative refund Payment row.
+        $refundRows = Payment::where('company_id', $this->company->id)
+            ->where('payment_type', PaymentType::Refund->value)
+            ->get();
+        $this->assertCount(1, $refundRows);
+        $this->assertTrue(
+            bccomp((string) $refundRows->first()?->amount, '0', 3) < 0,
+            'Refund payment amount must be negative',
+        );
+
+        // No cash-drawer payout when refunding to original payment.
+        $this->assertSame(0, (int) DB::table('pos_cash_drawer_operations')
+            ->where('operation_type', 'REFUND')
+            ->count());
+    }
+
+    // ---------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------
+
+    private function createReceiptLine(Receipt $receipt): ReceiptLine
+    {
+        return ReceiptLine::create([
+            'receipt_id' => $receipt->id,
+            'line_number' => 1,
+            'product_id' => null,
+            'product_code' => 'PROD-001',
+            'product_name' => 'Widget A',
+            'quantity' => '5.000',
+            'unit' => 'pcs',
+            'unit_price' => '10.000',
+            'line_total' => '50.000',
+            'tax_rate' => '19.00',
+            'tax_amount' => '9.500',
+            'discount_amount' => '0.000',
+        ]);
+    }
+
     /**
      * @param  array<string, mixed>  $requestData
      * @return array<string, mixed>
@@ -885,6 +1112,9 @@ final class ReceiptReturnFlowTest extends TestCase
         );
 
         return $requestData + [
+            // Task 2a — refund_request_id is a required idempotency key on the
+            // /return contract. Tests that need a stable id pass their own.
+            'refund_request_id' => Str::uuid()->toString(),
             'approval_id' => $approvalId,
             'approval_fiscal_event_id' => $approvalEventId,
             'approval_scope' => 'void_or_return_override',

@@ -257,6 +257,8 @@ final class NewSaleServerAuthoringDispositionTest extends TestCase
                 'lines' => [
                     ['line_id' => $line->id, 'quantity' => '2'],
                 ],
+                // Task 2a — refund_request_id is a required idempotency key.
+                'refund_request_id' => Str::uuid()->toString(),
             ] + $this->voidReturnApprovalPayload(
                 $saleReceipt,
                 'POS_RECEIPT_RETURN',

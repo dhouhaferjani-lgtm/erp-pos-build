@@ -18,6 +18,7 @@ use App\Modules\POS\Application\Services\ReceiptReturnService;
 use App\Modules\POS\Application\Services\ReceiptVoidService;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\PrintMethod;
+use App\Modules\POS\Domain\Enums\RefundDestination;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
 use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
@@ -266,6 +267,10 @@ final class ReceiptController extends Controller
                 ],
             );
 
+            $requestedDestination = isset($validated['refund_destination'])
+                ? RefundDestination::from((string) $validated['refund_destination'])
+                : null;
+
             $returnReceipt = $this->receiptReturnService->processReturn(
                 originalReceiptId: $id,
                 returnLines: $validated['lines'],
@@ -273,6 +278,8 @@ final class ReceiptController extends Controller
                 cashier: $user,
                 terminalId: $validated['terminal_id'],
                 notes: $validated['notes'] ?? null,
+                destination: $requestedDestination,
+                refundRequestId: (string) $validated['refund_request_id'],
                 authorizedByUserId: $validated['approval_supervisor_user_id'],
                 overrideReason: $validated['override_reason'] ?? $validated['notes'] ?? null,
             );
