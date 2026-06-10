@@ -1513,6 +1513,10 @@ export const migrations: Migration[] = [
         original_receipt_number TEXT NOT NULL,
         shift_id TEXT NOT NULL,
         terminal_id TEXT NOT NULL,
+        -- NOTE: server RefundDestination enum also has 'exchange_deferred' (apps/api/.../RefundDestination.php)
+        -- which is NOT POS-reachable today (used only by ExchangeService). If an exchange flow ever
+        -- reaches settle on this device, this CHECK would reject the row and the Z would silently
+        -- undercount with only a toast. Extend the CHECK (and add a migration) before enabling exchanges.
         destination TEXT NOT NULL
           CHECK (destination IN ('original_payment', 'cash', 'store_voucher')),
         total TEXT NOT NULL,

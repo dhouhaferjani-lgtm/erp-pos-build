@@ -15,9 +15,15 @@
  *     surfaces a translated warning when the local write fails so the
  *     operator knows the Z needs server reconciliation — the refund itself
  *     is NEVER un-settled.
+ *   - Shift-rollover race: if a shift closes and a new one opens between
+ *     the server settle and this write, the refund is attributed to the NEW
+ *     shift while the physical cash left the drawer under the OLD window.
+ *     The server Z/reconciliation path absorbs this asymmetry; the device Z
+ *     will show a mismatch that the server can explain via its own records.
  *
  * NEVER throws — returns false when the record could not be written.
  */
+import { bcabs } from '@/lib/decimal';
 import { getDatabase } from '@/lib/db';
 import { insertLocalRefundRecord } from '@/lib/db/repositories/localRefundRecordRepository';
 import {
@@ -33,11 +39,6 @@ export interface RecordRefundSettlementInput {
   destination: PickerRefundDestination;
   originalReceiptNumber: string;
   response: ReturnSettlementResponse;
-}
-
-/** Positive magnitude of a signed decimal string ('-23.80' → '23.80'). */
-function absAmount(value: string): string {
-  return value.startsWith('-') ? value.slice(1) : value;
 }
 
 /**
@@ -72,7 +73,7 @@ export async function recordRefundSettlementForZ(
       terminal_id: input.terminalId,
       destination,
       total: input.response.total,
-      cash_impact: destination === 'cash' ? absAmount(input.response.total) : '0',
+      cash_impact: destination === 'cash' ? bcabs(input.response.total) : '0',
       currency: input.response.currency,
       settled_at: input.response.posted_at,
     });

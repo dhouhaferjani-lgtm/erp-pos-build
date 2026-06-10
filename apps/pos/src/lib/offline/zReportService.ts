@@ -10,7 +10,7 @@ import type Database from '@tauri-apps/plugin-sql';
 import Big from 'big.js';
 import { queryAll } from '@/lib/db';
 import { getCurrencyDecimals } from '@/lib/currency';
-import { bcadd, bcsub, bcformat, bccomp } from '@/lib/decimal';
+import { bcadd, bcabs, bcsub, bcformat, bccomp } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
 import { computeZReportHash } from '@/lib/fiscal/zReportHashService';
 import { insertZReport, getZReportByShift } from '@/lib/db/repositories/zReportRepository';
@@ -647,11 +647,6 @@ async function buildPaymentMethodMap(db: Database): Promise<Map<string, string>>
   return map;
 }
 
-/** Positive magnitude of a signed decimal string ('-23.80' → '23.80'). */
-function absAmount(value: string): string {
-  return value.startsWith('-') ? value.slice(1) : value;
-}
-
 function aggregateReportData(
   receipts: OfflineReceipt[],
   paymentMethodMap: Map<string, string>,
@@ -677,7 +672,7 @@ function aggregateReportData(
   const refundsCount = refundRecords.length;
   let refundsAmount = '0';
   for (const record of refundRecords) {
-    refundsAmount = bcadd(refundsAmount, absAmount(record.total));
+    refundsAmount = bcadd(refundsAmount, bcabs(record.total));
   }
   const voidedCount = 0;
 
