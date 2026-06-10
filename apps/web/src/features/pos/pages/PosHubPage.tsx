@@ -9,7 +9,6 @@ import {
   ChefHat,
   Monitor,
   Clock,
-  Receipt,
   ChevronRight,
   ExternalLink,
 } from 'lucide-react'
@@ -62,14 +61,6 @@ const cards: HubCard[] = [
     icon: <Clock className="h-6 w-6" />,
     href: '/pos/shift-history',
     color: 'bg-amber-100 text-amber-600',
-    permissionModule: 'pos',
-  },
-  {
-    titleKey: 'hub.cards.receipts.title',
-    descriptionKey: 'hub.cards.receipts.description',
-    icon: <Receipt className="h-6 w-6" />,
-    href: '/pos/receipts',
-    color: 'bg-teal-100 text-teal-600',
     permissionModule: 'pos',
   },
 ]

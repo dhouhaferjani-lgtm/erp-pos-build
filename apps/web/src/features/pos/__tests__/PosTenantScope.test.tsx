@@ -11,7 +11,6 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { CashOperationModal } from '../components/CashOperationModal'
 import { EarnPointsPreview } from '../components/EarnPointsPreview'
 import { LoyaltyRewardSelector } from '../components/LoyaltyRewardSelector'
-import { ReturnItemsModal } from '../components/ReturnItemsModal'
 import { TerminalSelector } from '../components/TerminalSelector'
 import { useActiveMenu } from '../hooks/useActiveMenu'
 import { AdvancedPaymentsModal } from '../organisms/AdvancedPaymentsModal/AdvancedPaymentsModal'
@@ -22,7 +21,6 @@ const mockApiGetHelper = vi.hoisted(() => vi.fn())
 const mockRecordCashDeposit = vi.hoisted(() => vi.fn())
 const mockPreviewEarning = vi.hoisted(() => vi.fn())
 const mockGetRewards = vi.hoisted(() => vi.fn())
-const mockGetReceiptDetail = vi.hoisted(() => vi.fn())
 const mockFetchPaymentMethods = vi.hoisted(() => vi.fn())
 const mockFetchPaymentRepositories = vi.hoisted(() => vi.fn())
 
@@ -47,11 +45,6 @@ vi.mock('../api/loyaltyApi', () => ({
   previewEarning: mockPreviewEarning,
   getRewards: mockGetRewards,
   redeemReward: vi.fn(),
-}))
-
-vi.mock('../api/receiptApi', () => ({
-  getReceiptDetail: mockGetReceiptDetail,
-  processReturn: vi.fn(),
 }))
 
 vi.mock('../api/paymentMethodApi', () => ({
@@ -154,7 +147,6 @@ beforeEach(() => {
   mockRecordCashDeposit.mockResolvedValue({})
   mockPreviewEarning.mockResolvedValue({ points_to_earn: 10 })
   mockGetRewards.mockResolvedValue({ current_balance: '100', rewards: [] })
-  mockGetReceiptDetail.mockResolvedValue({ lines: [] })
   mockFetchPaymentMethods.mockResolvedValue([])
   mockFetchPaymentRepositories.mockResolvedValue([])
   mockApiGetHelper.mockImplementation((url: string) => {
@@ -183,7 +175,6 @@ describe('POS tenant scope', () => {
         <CashOperationModal isOpen={true} onClose={vi.fn()} type="deposit" shiftId="shift-1" terminalCode="TERM-1" />
         <EarnPointsPreview enrollmentId="enroll-1" cartTotal="10" cartItems={[]} />
         <LoyaltyRewardSelector enrollmentId="enroll-1" onRewardRedeemed={vi.fn()} />
-        <ReturnItemsModal isOpen={true} onClose={vi.fn()} receiptId="receipt-1" terminalId="TERM-1" onSuccess={vi.fn()} />
         <TerminalSelector onSelect={vi.fn()} />
         <AdvancedPaymentsModal
           isOpen={true}
@@ -201,7 +192,6 @@ describe('POS tenant scope', () => {
     await waitFor(() => {
       expect(queryClient.getQueryData(['loyalty', 'preview-earning', 'enroll-1', '10', 0, 'tenant-A', 'company-1'])).toBeDefined()
       expect(queryClient.getQueryData(['loyalty', 'rewards', 'enroll-1', 'tenant-A', 'company-1'])).toBeDefined()
-      expect(queryClient.getQueryData(['pos', 'receipt-detail', 'receipt-1', 'tenant-A', 'company-1'])).toBeDefined()
       expect(queryClient.getQueryData(['pos', 'terminals', 'tenant-A', 'company-1'])).toBeDefined()
       expect(queryClient.getQueryData(['pos', 'active-menu', 'tenant-A', 'company-1'])).toBeDefined()
       expect(queryClient.getQueryData(['payment-methods', 'tenant-A', 'company-1'])).toBeDefined()
