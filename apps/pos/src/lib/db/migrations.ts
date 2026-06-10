@@ -1480,4 +1480,49 @@ export const migrations: Migration[] = [
         ON queued_audit_events(status);
     `,
   },
+  {
+    // Phase 4 (fiscal audit B2) — record-at-settle refund mirror.
+    //
+    // The device performs refunds via POST /pos/receipts/{id}/return; the
+    // settlement response (server return receipt) is mirrored here so the
+    // device Z-report can fold REAL refunds_count / refunds_amount /
+    // expected_cash into the SIGNED Z instead of hardcoded zeros.
+    //
+    // `id` is the SERVER return receipt id — the PK makes the settle-path
+    // insert idempotent (INSERT OR IGNORE), so submit retries replaying the
+    // same settlement can never double-count a refund.
+    //
+    // `total` is stored signed exactly as the server returns it (negative);
+    // `cash_impact` is the POSITIVE amount that physically left this drawer:
+    // abs(total) when destination='cash', '0' otherwise (store_voucher moves
+    // no cash; original_payment is settled by server-side Treasury proration
+    // and moves no physical cash at this terminal).
+    //
+    // Cross-terminal honesty: refunds processed at OTHER terminals never
+    // appear here — they do not affect this device's drawer or its Z. Global
+    // reconciliation is owned by the server Z/report side. Record-at-settle
+    // also means a device crash between the server settle and this local
+    // write undercounts the local Z; the server remains the source of truth
+    // and reconciliation is the server's job (documented trade-off).
+    version: 47,
+    name: 'create_local_refund_records',
+    sql: `
+      CREATE TABLE IF NOT EXISTS local_refund_records (
+        id TEXT PRIMARY KEY,
+        receipt_number TEXT NOT NULL,
+        original_receipt_number TEXT NOT NULL,
+        shift_id TEXT NOT NULL,
+        terminal_id TEXT NOT NULL,
+        destination TEXT NOT NULL
+          CHECK (destination IN ('original_payment', 'cash', 'store_voucher')),
+        total TEXT NOT NULL,
+        cash_impact TEXT NOT NULL,
+        currency TEXT NOT NULL,
+        settled_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_local_refund_records_shift
+        ON local_refund_records(shift_id);
+    `,
+  },
 ];
