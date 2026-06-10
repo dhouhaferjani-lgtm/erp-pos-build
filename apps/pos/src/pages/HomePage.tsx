@@ -941,6 +941,15 @@ export function HomePage() {
   const handleCashConfirm = useCallback(
     async (tenderedAmount: number) => {
       if (!terminal) return;
+      // Defense-in-depth (Task 2b): a receipt scan can hydrate return lines
+      // while the cash modal is already open — a non-pure-sale cart must
+      // NEVER reach buildSaleReceiptPayload (negative lines fail the fiscal
+      // money invariant).
+      if (classifyCartForCheckout(cartItems) !== 'sale') {
+        setShowCashModal(false);
+        blockMixedCheckout();
+        return;
+      }
       try {
         await processCashCheckout(
           terminal.id,
@@ -963,7 +972,7 @@ export function HomePage() {
         });
       }
     },
-    [terminal, cartItems, transactionDiscount, processCashCheckout, isFnB, consumptionMode, selectedTableId],
+    [terminal, cartItems, transactionDiscount, processCashCheckout, isFnB, consumptionMode, selectedTableId, blockMixedCheckout],
   );
 
   const handleAdvancedPayments = useCallback(() => {
@@ -986,6 +995,12 @@ export function HomePage() {
       options?: Parameters<typeof processAdvancedCheckout>[6],
     ) => {
       if (!terminal) return;
+      // Defense-in-depth (Task 2b): see handleCashConfirm.
+      if (classifyCartForCheckout(cartItems) !== 'sale') {
+        setShowAdvancedModal(false);
+        blockMixedCheckout();
+        return;
+      }
       try {
         await processAdvancedCheckout(
           terminal.id,
@@ -1009,7 +1024,7 @@ export function HomePage() {
         });
       }
     },
-    [terminal, cartItems, transactionDiscount, processAdvancedCheckout, isFnB, consumptionMode, selectedTableId],
+    [terminal, cartItems, transactionDiscount, processAdvancedCheckout, isFnB, consumptionMode, selectedTableId, blockMixedCheckout],
   );
 
   const handleChargeToAccount = useCallback(
