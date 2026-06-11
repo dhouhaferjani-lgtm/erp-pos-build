@@ -1,0 +1,24 @@
+{
+  "recordTitle": "Enregistrer un paiement",
+  "recordButton": "Enregistrer un paiement",
+  "tabLabel": "Acomptes",
+  "recordedToast": "Paiement enregistré — {{settled}} imputé, {{credited}} crédité",
+  "form": {
+    "amount": "Montant",
+    "paymentMethod": "Mode de paiement",
+    "selectPaymentMethod": "Sélectionner un mode de paiement",
+    "repository": "Caisse / dépôt",
+    "selectRepository": "Sélectionner une caisse",
+    "note": "Note",
+    "submit": "Enregistrer le paiement"
+  },
+  "history": {
+    "title": "Historique des acomptes",
+    "empty": "Aucun acompte enregistré pour le moment.",
+    "date": "Date",
+    "amount": "Montant",
+    "method": "Mode",
+    "note": "Note",
+    "actor": "Enregistré par"
+  }
+}

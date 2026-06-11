@@ -38,12 +38,15 @@ final class PaymentsOriginColumnsTest extends TestCase
         $this->assertTrue(Schema::hasColumn('payments', 'fiscal_event_id'));
     }
 
-    public function test_payment_origin_enum_has_phase1_cases_in_order(): void
+    public function test_payment_origin_enum_cases_are_append_only_and_in_order(): void
     {
         $values = array_map(static fn (PaymentOrigin $c): string => $c->value, PaymentOrigin::cases());
 
+        // Existing cases keep their order (never reorder); new origins are
+        // appended. `back_office` (Phase 5 DEPOSIT_RECEIPT treasury bridge) is
+        // appended after the Phase-1 set.
         $this->assertSame(
-            ['pos', 'web_admin', 'mobile', 'api', 'unknown_legacy'],
+            ['pos', 'web_admin', 'mobile', 'api', 'unknown_legacy', 'back_office'],
             $values,
         );
     }
@@ -84,6 +87,7 @@ final class PaymentsOriginColumnsTest extends TestCase
             'mobile' => ['mobile', PaymentOrigin::Mobile],
             'api' => ['api', PaymentOrigin::Api],
             'unknown_legacy' => ['unknown_legacy', PaymentOrigin::UnknownLegacy],
+            'back_office' => ['back_office', PaymentOrigin::BackOffice],
         ];
     }
 

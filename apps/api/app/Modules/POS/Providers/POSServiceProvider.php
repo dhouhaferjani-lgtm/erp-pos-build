@@ -7,6 +7,7 @@ namespace App\Modules\POS\Providers;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\POS\Application\Projections\AccountChargeReceiptProjection;
 use App\Modules\POS\Application\Projections\AccountPaymentReceiptProjection;
+use App\Modules\POS\Application\Projections\DepositReceiptProjection;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Application\Projections\ZReportProjection;
 use App\Modules\POS\Application\Projections\ZSessionLifecycleProjection;
@@ -50,6 +51,7 @@ final class POSServiceProvider extends ServiceProvider
                 PosCoreReceiptProjection::class,
                 AccountPaymentReceiptProjection::class,
                 AccountChargeReceiptProjection::class,
+                DepositReceiptProjection::class,
                 ZReportProjection::class,
                 ZSessionLifecycleProjection::class,
             ],

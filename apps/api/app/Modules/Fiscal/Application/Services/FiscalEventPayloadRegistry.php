@@ -10,6 +10,7 @@ use App\Modules\Fiscal\Domain\DTOs\AccountStatusChangedPayload;
 use App\Modules\Fiscal\Domain\DTOs\CashDrawerMovementPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainBreakDetectedPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainRestartPayload;
+use App\Modules\Fiscal\Domain\DTOs\DepositReceiptPayload;
 use App\Modules\Fiscal\Domain\DTOs\OperatorApprovalGrantedPayload;
 use App\Modules\Fiscal\Domain\DTOs\OverrideAccountStatusPayload;
 use App\Modules\Fiscal\Domain\DTOs\OverrideCreditLimitPayload;
@@ -57,6 +58,7 @@ final class FiscalEventPayloadRegistry
         FiscalEventType::ACCOUNT_PAYMENT->value => [AccountPaymentPayload::class, 1],
         FiscalEventType::ACCOUNT_CHARGE->value => [AccountChargePayload::class, 1],
         FiscalEventType::ACCOUNT_STATUS_CHANGED->value => [AccountStatusChangedPayload::class, 1],
+        FiscalEventType::DEPOSIT_RECEIPT->value => [DepositReceiptPayload::class, 1],
         FiscalEventType::OPERATOR_APPROVAL_GRANTED->value => [OperatorApprovalGrantedPayload::class, 1],
         FiscalEventType::OVERRIDE_CREDIT_LIMIT->value => [OverrideCreditLimitPayload::class, 1],
         FiscalEventType::OVERRIDE_ACCOUNT_STATUS->value => [OverrideAccountStatusPayload::class, 1],
