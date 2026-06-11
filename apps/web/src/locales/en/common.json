@@ -44,7 +44,8 @@
     "goHome": "Go Home",
     "retry": "Retry",
     "import": "Import",
-    "export": "Export"
+    "export": "Export",
+    "actions": "Actions"
   },
   "common": {
     "create": "Create",
@@ -155,7 +156,9 @@
   "errors": {
     "realtimeConnectionFailed": "Real-time updates are unavailable. Changes may not appear automatically.",
     "locationsFetchFailed": "Failed to load locations.",
-    "operationFailed": "Operation failed. Please try again."
+    "operationFailed": "Operation failed. Please try again.",
+    "unexpectedError": "Something went wrong",
+    "unexpectedErrorDetails": "An unexpected error occurred. Please try again or refresh the page."
   },
   "dashboard": {
     "title": "Dashboard",

@@ -23,6 +23,9 @@ export interface StockTransferLine {
   product_id: string
   product_name: string | null
   product_sku: string | null
+  variant_id: string | null
+  variant_sku: string | null
+  variant_name: string | null
   quantity: string
   unit_cost_snapshot: string | null
   allocated_transfer_cost: string
@@ -69,6 +72,7 @@ export interface StockTransfer {
 
 export interface CreateStockTransferLineInput {
   product_id: string
+  variant_id?: string | null
   quantity: string
   batch_allocations?: CreateStockTransferLineBatchAllocationInput[]
 }

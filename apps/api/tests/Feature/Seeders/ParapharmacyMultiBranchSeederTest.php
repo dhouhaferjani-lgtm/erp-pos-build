@@ -4,13 +4,21 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Seeders;
 
+use App\Modules\Catalog\Domain\Entities\ProductAttribute;
+use App\Modules\Catalog\Domain\Entities\ProductAttributeValue;
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
+use App\Modules\Catalog\Domain\Entities\ProductVariantAttributeValue;
+use App\Modules\Company\Application\Services\TaxIdentityResolver;
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Partner\Domain\Enums\CustomerAccountStatus;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Product\Domain\Product;
 use Database\Seeders\ParapharmacyMultiBranchSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -164,5 +172,80 @@ final class ParapharmacyMultiBranchSeederTest extends TestCase
         $this->assertSame([$lyon->id], $membership->allowed_location_ids, 'Lyon cashier must be scoped to Lyon only');
         $this->assertTrue($membership->canAccessLocation($lyon));
         $this->assertFalse($membership->canAccessLocation($paris));
+    }
+
+    public function test_each_shop_has_a_distinct_branch_tax_id_resolved_via_resolver(): void
+    {
+        $this->seed(ParapharmacyMultiBranchSeeder::class);
+
+        $paris = Location::where('name', 'PharmaBio Paris')->firstOrFail();
+        $lyon = Location::where('name', 'PharmaBio Lyon')->firstOrFail();
+        $warehouse = Location::where('type', LocationType::Warehouse)->firstOrFail();
+
+        // Each shop carries its own establishment SIRET; they differ.
+        $this->assertNotNull($paris->tax_id, 'Paris shop must have a per-branch tax id');
+        $this->assertNotNull($lyon->tax_id, 'Lyon shop must have a per-branch tax id');
+        $this->assertNotSame($paris->tax_id, $lyon->tax_id, 'Paris and Lyon must have distinct branch tax ids');
+
+        // The warehouse leaves tax_id NULL → it inherits the company tax id.
+        $this->assertNull($warehouse->tax_id, 'Warehouse must inherit company tax id (NULL override)');
+
+        $resolver = new TaxIdentityResolver;
+
+        // Shops resolve to their OWN SIRET; the warehouse resolves to the company's.
+        $this->assertSame($paris->tax_id, $resolver->resolve($paris)->taxId);
+        $this->assertSame($lyon->tax_id, $resolver->resolve($lyon)->taxId);
+
+        $companyTaxId = $warehouse->company()->firstOrFail()->tax_id;
+        $this->assertSame($companyTaxId, $resolver->resolve($warehouse)->taxId, 'Warehouse must inherit company tax id');
+        $this->assertNotSame($resolver->resolve($paris)->taxId, $resolver->resolve($warehouse)->taxId);
+    }
+
+    public function test_seeds_orthopedic_variant_products_with_one_sku_per_size(): void
+    {
+        $this->seed(ParapharmacyMultiBranchSeeder::class);
+
+        // A size attribute flagged as a variant axis, with one value per size.
+        $sizeAttribute = ProductAttribute::where('code', 'size')->firstOrFail();
+        $this->assertTrue((bool) $sizeAttribute->is_variant_axis, 'Size must be a variant axis');
+        $this->assertGreaterThanOrEqual(
+            5,
+            ProductAttributeValue::where('attribute_id', $sizeAttribute->id)->count(),
+            'At least 5 size values (EU 38–42)',
+        );
+
+        // The orthopedic shoe parent has one variant per size, with distinct SKUs.
+        $shoe = Product::where('sku', 'PB-ORT-SHOE')->firstOrFail();
+        $variants = ProductVariant::where('product_id', $shoe->id)->get();
+        $this->assertGreaterThanOrEqual(5, $variants->count(), 'Shoe must have one variant per size (>=5)');
+        $this->assertSame($variants->count(), $variants->pluck('sku')->unique()->count(), 'Variant SKUs must be unique');
+        $this->assertSame(1, $variants->where('is_default', true)->count(), 'Exactly one default variant');
+        $this->assertContains('PB-ORT-SHOE-40', $variants->pluck('sku')->all(), 'Size 40 SKU expected');
+
+        // Each variant is linked to a size attribute value.
+        $this->assertSame(
+            $variants->count(),
+            ProductVariantAttributeValue::whereIn('variant_id', $variants->pluck('id'))->count(),
+            'Every variant must link to its size attribute value',
+        );
+
+        // Variant stock lands at a shop (variant_id populated).
+        $paris = Location::where('name', 'PharmaBio Paris')->firstOrFail();
+        $this->assertGreaterThan(
+            0,
+            StockLevel::where('location_id', $paris->id)->whereNotNull('variant_id')->count(),
+            'Paris shop must hold variant stock rows',
+        );
+    }
+
+    public function test_seeds_a_chargeable_house_account_customer(): void
+    {
+        $this->seed(ParapharmacyMultiBranchSeeder::class);
+
+        $customer = Partner::where('email', 'compte@clinique-saint-louis.fr')->firstOrFail();
+
+        $this->assertTrue($customer->isCustomer(), 'House account must be a customer partner');
+        $this->assertSame(CustomerAccountStatus::Active, $customer->account_status, 'House account must be active');
+        $this->assertTrue($customer->hasActiveCreditLimit(), 'House account must have a non-zero credit limit (chargeable)');
     }
 }

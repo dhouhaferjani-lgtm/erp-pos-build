@@ -266,7 +266,7 @@ describe('batch hooks tenant scope', () => {
       ['batches', 'stock', 'batch-1', 'tenant-A', 'company-1'],
       ['batches', 'expiring', 30, 'tenant-A', 'company-1'],
       ['batches', 'fefo', 'product-1', 1, 1, 'tenant-A', 'company-1'],
-      ['batches', 'product', 'product-1', 'tenant-A', 'company-1'],
+      ['batches', 'product', 'product-1', null, 'tenant-A', 'company-1'],
     ]))
   })
 

@@ -40,6 +40,20 @@ class StoreStockTransferRequest extends FormRequest
             'idempotency_key' => ['nullable', 'string', 'max:128'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_id' => ['required', 'string', 'uuid', ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id)],
+            // Variant ownership (variant belongs to THIS line's product) and the
+            // "required when the product has active variants" rule are enforced
+            // in StockTransferService::assertVariantValidForProduct, where the
+            // per-line product is in scope. Here we only check existence +
+            // tenant/company + active.
+            'lines.*.variant_id' => [
+                'nullable',
+                'string',
+                'uuid',
+                Rule::exists('product_variants', 'id')
+                    ->where('tenant_id', $company->tenant_id)
+                    ->where('company_id', $company->id)
+                    ->where('is_active', true),
+            ],
             'lines.*.quantity' => ['required', 'numeric', 'min:0.0001'],
             'lines.*.batch_allocations' => ['nullable', 'array'],
             'lines.*.batch_allocations.*.batch_id' => [

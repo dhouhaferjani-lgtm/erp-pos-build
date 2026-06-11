@@ -211,4 +211,46 @@ describe('hydrateFromReceipt', () => {
     const items = hydrateFromReceipt(makeEvent(), makeOfflineReceipt('[]'));
     expect(items).toHaveLength(0);
   });
+
+  it('threads variant identity from the stored line onto the cart item', () => {
+    const lines = JSON.stringify([
+      {
+        product_id: 'prod-1',
+        variant_id: 'variant-9',
+        variant_name: 'T-Shirt — Size M / Red',
+        name: 'T-Shirt — Size M / Red',
+        sku: 'TS-M-RED',
+        quantity: 1,
+        unit_price: '15.00',
+        line_total: '15.00',
+        tax_rate: '19.00',
+        tax_amount: '2.85',
+      },
+    ]);
+
+    const items = hydrateFromReceipt(makeEvent(), makeOfflineReceipt(lines));
+
+    expect(items[0]!.product.variant_id).toBe('variant-9');
+    expect(items[0]!.product.variant_name).toBe('T-Shirt — Size M / Red');
+  });
+
+  it('omits variant fields when the stored line has none', () => {
+    const lines = JSON.stringify([
+      {
+        product_id: 'prod-1',
+        name: 'Widget A',
+        sku: 'PROD-001',
+        quantity: 1,
+        unit_price: '10.00',
+        line_total: '10.00',
+        tax_rate: '19.00',
+        tax_amount: '1.90',
+      },
+    ]);
+
+    const items = hydrateFromReceipt(makeEvent(), makeOfflineReceipt(lines));
+
+    expect('variant_id' in items[0]!.product).toBe(false);
+    expect('variant_name' in items[0]!.product).toBe(false);
+  });
 });

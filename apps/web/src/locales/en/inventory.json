@@ -710,6 +710,9 @@
       "withProducts": "With Products"
     }
   },
+  "stockLevels": {
+    "title": "Stock Levels"
+  },
   "hub": {
     "title": "Inventory",
     "description": "Manage your products, stock levels, and inventory operations",

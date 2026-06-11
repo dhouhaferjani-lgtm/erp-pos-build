@@ -710,6 +710,9 @@
       "withProducts": "Avec produits"
     }
   },
+  "stockLevels": {
+    "title": "Niveaux de stock"
+  },
   "hub": {
     "title": "Inventaire",
     "description": "Gérer vos produits, niveaux de stock et opérations d'inventaire",

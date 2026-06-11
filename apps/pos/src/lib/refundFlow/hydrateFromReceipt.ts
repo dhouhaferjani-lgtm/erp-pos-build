@@ -15,6 +15,14 @@ function inferScale(value: string): number {
 interface OfflineReceiptLine {
   product_id?: string;
   composite_item_id?: string;
+  /**
+   * T2 — variant identity persisted by receiptService alongside the line
+   * (out of band from fiscal bytes). Threaded back onto the hydrated cart
+   * item for display fidelity; NOT sent in the /return payload (the server
+   * derives variants from the original lines).
+   */
+  variant_id?: string;
+  variant_name?: string;
   name: string;
   sku: string;
   quantity: number;
@@ -64,6 +72,8 @@ export function hydrateFromReceipt(
         sku: line.sku,
         price: unitPrice,
         ...(line.composite_item_id ? { sellableType: 'composite_item' as const } : {}),
+        ...(line.variant_id ? { variant_id: line.variant_id } : {}),
+        ...(line.variant_name ? { variant_name: line.variant_name } : {}),
       },
       quantity: negativeQty,
       unit_price: unitPrice,

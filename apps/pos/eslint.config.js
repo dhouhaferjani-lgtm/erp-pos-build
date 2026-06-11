@@ -57,7 +57,10 @@ export default tseslint.config(
       // because typecheck + tests gate first.
       ...reactHooks.configs.recommended.rules,
       'react-hooks/exhaustive-deps': 'warn',
-      'react-hooks/rules-of-hooks': 'warn',
+      // rules-of-hooks is a hard error: a conditional / after-early-return hook
+      // call is ALWAYS a guaranteed runtime crash. Repo is clean (0 violations),
+      // so this gates CI with no blast radius. Mirrors apps/web.
+      'react-hooks/rules-of-hooks': 'error',
       // Newer hooks rules (v7+) — same warn treatment so the legacy
       // surface doesn't block CI on rule additions.
       'react-hooks/set-state-in-effect': 'warn',

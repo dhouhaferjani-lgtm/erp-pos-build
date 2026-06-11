@@ -18,6 +18,7 @@ use App\Modules\POS\Application\Services\ReceiptReturnService;
 use App\Modules\POS\Application\Services\ReceiptVoidService;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\PrintMethod;
+use App\Modules\POS\Domain\Enums\RefundDestination;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
 use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
@@ -181,6 +182,21 @@ final class ReceiptController extends Controller
             ], 422);
         }
 
+        // Phase 6 guard — refund is the ONLY post-seal correction surface.
+        // A RETURN receipt cannot be voided: the void path never reverses
+        // the batch restitution the return performed (F4), so a later
+        // re-return of the original sale would over-restore
+        // inventory_batch_stock. A wrong return is corrected by a
+        // compensating sale, not by voiding the return.
+        if ($receipt->isReturn()) {
+            return response()->json([
+                'error' => [
+                    'code' => 'CANNOT_VOID_RETURN_RECEIPT',
+                    'message' => 'Return receipts cannot be voided.',
+                ],
+            ], 422);
+        }
+
         /** @var User $user */
         $user = Auth::user();
 
@@ -266,6 +282,10 @@ final class ReceiptController extends Controller
                 ],
             );
 
+            $requestedDestination = isset($validated['refund_destination'])
+                ? RefundDestination::from((string) $validated['refund_destination'])
+                : null;
+
             $returnReceipt = $this->receiptReturnService->processReturn(
                 originalReceiptId: $id,
                 returnLines: $validated['lines'],
@@ -273,6 +293,8 @@ final class ReceiptController extends Controller
                 cashier: $user,
                 terminalId: $validated['terminal_id'],
                 notes: $validated['notes'] ?? null,
+                destination: $requestedDestination,
+                refundRequestId: (string) $validated['refund_request_id'],
                 authorizedByUserId: $validated['approval_supervisor_user_id'],
                 overrideReason: $validated['override_reason'] ?? $validated['notes'] ?? null,
             );

@@ -12,6 +12,10 @@ import { bcadd, bcsub, bccomp, bcformat } from '@/lib/decimal';
 import { getCurrencyDecimals } from '@/lib/currency';
 import type { AccountPaymentPayload } from '@/lib/fiscal/payloads/AccountPaymentPayload';
 import type { AccountChargePrintable } from '@/lib/accountCharge/accountChargePrintable';
+import type {
+  IssuedVoucher,
+  ReturnSettlementResponse,
+} from '@/lib/refundFlow/refundSettlementService';
 
 function formatReceiptDateTime(date: Date, locale: string): string {
   try {
@@ -557,4 +561,140 @@ export function buildVoucherTicketData(input: VoucherTicketInput): VoucherTicket
     operator_name: input.operatorName,
     labels: buildVoucherTicketLabels(),
   };
+}
+
+// ─── Refund (AVOIR) receipt builder — Phase 3 ───────────────────────────────
+
+/**
+ * Local context for the AVOIR print. The /return response carries the return
+ * receipt itself (number, totals, lines, qr_token) but not the company /
+ * terminal / operator header nor the ORIGINAL ticket reference — those come
+ * from the refund session and the auth/terminal/operator stores (same
+ * assembly pattern as getOfflineReceiptForPrint).
+ */
+export interface RefundReceiptPrintContext {
+  companyName: string;
+  companyCountryCode: string;
+  terminalName: string;
+  operatorName: string;
+  /** Original (sale) receipt number — null when the session lost it (resumed draft edge). */
+  originalReceiptNumber: string | null;
+  /** Original (sale) receipt's QR token — re-printed for further partial refunds. */
+  originalReceiptQrToken: string | null;
+}
+
+/**
+ * Transform the POST /pos/receipts/{id}/return settlement response into the
+ * ESC/POS ReceiptData for the REMBOURSEMENT/AVOIR template
+ * (`receipt_kind: 'refund'`).
+ *
+ * Amount signing: the server already signs the return receipt NEGATIVE
+ * (quantities `-N`, line_total/subtotal/tax/total negative; unit_price stays
+ * positive). The Rust template prints monetary strings verbatim, so the
+ * server-signed values pass through, re-rendered at the receipt currency's
+ * native scale (EUR=2, TND=3, …) via bcformat.
+ *
+ * The response carries no tender lines and no per-rate VAT breakdown, so the
+ * payments / VAT sections are force-hidden regardless of company visibility
+ * settings (an empty section header would print otherwise).
+ */
+export function buildEscPosRefundReceiptData(
+  response: ReturnSettlementResponse,
+  context: RefundReceiptPrintContext,
+  visibilitySettings?: ReceiptVisibilitySettings,
+): ReceiptData {
+  const decimals = getCurrencyDecimals(response.currency);
+  const currencySymbol = getCurrencySymbol(response.currency);
+
+  return {
+    company: {
+      name: context.companyName,
+      address_line1: '',
+      address_line2: null,
+      city: '',
+      postal_code: '',
+      country: context.companyCountryCode,
+      tax_id: '',
+      phone: null,
+    },
+    receipt_number: response.receipt_number,
+    date_time: response.posted_at,
+    terminal_name: context.terminalName,
+    operator_name: context.operatorName,
+    lines: response.lines.map((line) => ({
+      name: line.product_name,
+      quantity: line.quantity,
+      unit_price: bcformat(line.unit_price, decimals),
+      line_total: bcformat(line.line_total, decimals),
+      modifiers: null,
+      discount: null,
+    })),
+    subtotal: bcformat(response.subtotal, decimals),
+    discount_amount: bcformat('0', decimals),
+    tax_amount: bcformat(response.tax_amount, decimals),
+    total: bcformat(response.total, decimals),
+    currency_symbol: currencySymbol,
+    vat_breakdown: [],
+    payments: [],
+    change_due: bcformat('0', decimals),
+    tolerance_writeoff: null,
+    has_tolerance: false,
+    fiscal_hash: null,
+    fiscal_signature: null,
+    customer_name: null,
+    notes: null,
+    labels: buildReceiptLabels(),
+    show_vat_breakdown: false,
+    show_fiscal_info: visibilitySettings?.show_fiscal_info,
+    show_payment_details: false,
+    show_customer: false,
+    qr_token: response.qr_token,
+    receipt_kind: 'refund',
+    original_receipt_number: context.originalReceiptNumber,
+    original_receipt_qr_token: context.originalReceiptQrToken,
+  };
+}
+
+/** Context for the voucher ticket printed alongside a store_voucher refund. */
+export interface RefundVoucherPrintContext {
+  companyName: string;
+  companyCountryCode: string;
+  terminalName: string;
+  operatorName: string;
+  /** Voucher issuance instant — the settlement's posted_at (the response carries no issued_at). */
+  issuedAt: string;
+}
+
+/**
+ * Normalize the server RedemptionMode enum values ('bearer' /
+ * 'customer_bound') onto the template's discriminator. Unknown values fall
+ * back to Bearer — the more permissive label is the safer print (the server
+ * remains the redemption authority either way).
+ */
+function normalizeRedemptionMode(value: string): 'Bearer' | 'CustomerBound' {
+  return value === 'customer_bound' || value === 'CustomerBound'
+    ? 'CustomerBound'
+    : 'Bearer';
+}
+
+/**
+ * Transform the /return response's `issued_voucher` into the
+ * `print_voucher_ticket` payload (code / amount / expiry from the response).
+ */
+export function buildRefundVoucherTicketData(
+  voucher: IssuedVoucher,
+  context: RefundVoucherPrintContext,
+): VoucherTicketData {
+  return buildVoucherTicketData({
+    code: voucher.code,
+    initialBalance: voucher.initial_balance,
+    currency: voucher.currency,
+    expiresAt: voucher.expires_at,
+    redemptionMode: normalizeRedemptionMode(voucher.redemption_mode),
+    issuedAt: context.issuedAt,
+    companyName: context.companyName,
+    companyCountry: context.companyCountryCode,
+    terminalName: context.terminalName,
+    operatorName: context.operatorName,
+  });
 }

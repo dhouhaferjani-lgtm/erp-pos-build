@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Domain;
 
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
@@ -20,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property string $tenant_id
  * @property string $company_id
  * @property string $product_id
+ * @property string|null $variant_id
  * @property numeric-string $quantity
  * @property numeric-string|null $unit_cost_snapshot
  * @property numeric-string $allocated_transfer_cost
@@ -42,6 +44,7 @@ class StockTransferLine extends Model
         'tenant_id',
         'company_id',
         'product_id',
+        'variant_id',
         'quantity',
         'unit_cost_snapshot',
         'allocated_transfer_cost',
@@ -97,5 +100,17 @@ class StockTransferLine extends Model
     public function batchAllocations(): HasMany
     {
         return $this->hasMany(StockTransferLineBatchAllocation::class, 'stock_transfer_line_id');
+    }
+
+    /**
+     * Read-side projection of the targeted variant (presentation eager-load
+     * only — no domain logic crosses the module boundary; mirrors the existing
+     * product()/company() relations on this model).
+     *
+     * @return BelongsTo<ProductVariant, $this>
+     */
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 }

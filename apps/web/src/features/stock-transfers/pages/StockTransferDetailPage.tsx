@@ -201,9 +201,12 @@ export function StockTransferDetailPage() {
                 <tr key={line.id}>
                   <td className={`px-6 py-3 text-sm ${textColors.primary}`}>
                     {line.product_name ?? '—'}
+                    {line.variant_id !== null && line.variant_name !== null ? (
+                      <span className={`block text-xs ${textColors.tertiary}`}>{line.variant_name}</span>
+                    ) : null}
                   </td>
                   <td className={`px-6 py-3 text-sm ${textColors.tertiary}`}>
-                    {line.product_sku ?? '—'}
+                    {line.variant_sku ?? line.product_sku ?? '—'}
                   </td>
                   <td className={`px-6 py-3 text-end text-sm ${textColors.secondary}`}>
                     {line.quantity}

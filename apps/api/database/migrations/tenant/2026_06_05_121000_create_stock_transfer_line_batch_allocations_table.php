@@ -16,7 +16,10 @@ return new class extends Migration
             $table->foreignUuid('stock_transfer_line_id')
                 ->constrained('stock_transfer_lines')
                 ->cascadeOnDelete();
-            $table->foreignUuid('tenant_id')->constrained('tenants')->cascadeOnDelete();
+            // tenant_id is a plain indexed uuid (NOT an FK): `tenants` lives in
+            // the central database (db-per-tenant), so a cross-DB FK is
+            // impossible. Matches every sibling tenant table.
+            $table->uuid('tenant_id');
             $table->foreignUuid('company_id')->constrained('companies')->cascadeOnDelete();
             $table->foreignId('batch_id')->constrained('product_batches')->restrictOnDelete();
             $table->decimal('quantity', 15, 4);

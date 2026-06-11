@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Presentation\Requests;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\POS\Domain\Enums\RefundDestination;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
@@ -49,8 +50,26 @@ final class StoreReturnRequest extends FormRequest
             'return_reason' => ['required', 'string', Rule::in(array_column(ReturnReason::cases(), 'value'))],
             'lines' => 'required|array|min:1',
             'lines.*.line_id' => 'required|uuid',
-            'lines.*.quantity' => ['required', 'numeric', 'min:0.001', 'regex:/^\d+(\.\d{1,4})?$/'],
+            // min matches the canonical quantity scale (4): the regex already
+            // allows 4-decimal quantities, so the floor must be 0.0001 — a
+            // 0.001 floor silently rejected the smallest legal partial return.
+            'lines.*.quantity' => ['required', 'numeric', 'min:0.0001', 'regex:/^\d+(\.\d{1,4})?$/'],
             'notes' => 'nullable|string|max:1000',
+            // Client-supplied idempotency key — one per settlement attempt,
+            // reused across retries so a replayed POST cannot double-refund.
+            'refund_request_id' => ['required', 'uuid'],
+            // Cashier-selectable refund destinations only. ExchangeDeferred is
+            // a service-layer value reserved for ExchangeService and must never
+            // be reachable over HTTP.
+            'refund_destination' => [
+                'nullable',
+                'string',
+                Rule::in([
+                    RefundDestination::OriginalPayment->value,
+                    RefundDestination::Cash->value,
+                    RefundDestination::StoreVoucher->value,
+                ]),
+            ],
             'approval_id' => ['required', 'uuid'],
             'approval_fiscal_event_id' => ['required', 'uuid'],
             'approval_scope' => ['required', 'in:void_or_return_override'],

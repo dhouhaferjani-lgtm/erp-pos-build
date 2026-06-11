@@ -10,7 +10,7 @@ import type Database from '@tauri-apps/plugin-sql';
 import Big from 'big.js';
 import { queryAll } from '@/lib/db';
 import { getCurrencyDecimals } from '@/lib/currency';
-import { bcadd, bcsub, bcformat, bccomp } from '@/lib/decimal';
+import { bcadd, bcabs, bcsub, bcformat, bccomp } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
 import { computeZReportHash } from '@/lib/fiscal/zReportHashService';
 import { insertZReport, getZReportByShift } from '@/lib/db/repositories/zReportRepository';
@@ -22,6 +22,8 @@ import {
 } from '@/lib/db/repositories/terminalStateRepository';
 import { insertZReportCounts } from '@/lib/db/repositories/zReportCountRepository';
 import type { ZReportCountRow } from '@/lib/db/repositories/zReportCountRepository';
+import { getRefundRecordsForShift } from '@/lib/db/repositories/localRefundRecordRepository';
+import type { LocalRefundRecord } from '@/lib/db/repositories/localRefundRecordRepository';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import type {
   LocalZReport,
@@ -151,7 +153,19 @@ export async function generateZReport(
     [terminalId, shiftOpenedAt]
   );
 
-  if (receipts.length === 0) {
+  // 3b. Phase 4 (fiscal audit B2) — refunds settled AT THIS terminal during
+  // this shift, mirrored at settle time into local_refund_records (see
+  // localRefundRecordRepository). Refunds processed at OTHER terminals do not
+  // affect this device's drawer or its Z — the server Z/report side owns
+  // global reconciliation. A device crash between the server settle and the
+  // local mirror write undercounts here (server remains source of truth).
+  // Loaded BEFORE the empty-shift guard (Codex r1 M1): a refund-only shift
+  // (open → online refund → close) has zero offline_receipts but a settled
+  // refund that MUST reach a local signed Z — only a shift with neither
+  // receipts nor settled refunds is rejected.
+  const refundRecords = await getRefundRecordsForShift(db, shiftId);
+
+  if (receipts.length === 0 && refundRecords.length === 0) {
     throw new Error('Cannot generate Z-report for a shift with no receipts.');
   }
 
@@ -159,14 +173,21 @@ export async function generateZReport(
   const paymentMethodMap = await buildPaymentMethodMap(db);
 
   // 4. Compute report data
-  const reportData = aggregateReportData(receipts, paymentMethodMap, decimals);
+  const reportData = aggregateReportData(receipts, paymentMethodMap, decimals, refundRecords);
 
   // 5. Compute expected cash BEFORE hashing — must be embedded in report_data
   // to match the server's ReportGenerationService which adds opening_cash/expected_cash
   // to report_data before hash computation.
+  // Cash-destination refunds physically left this drawer and reduce the
+  // expected cash; voucher / original-payment refunds move no till cash
+  // (cash_impact is '0' for those rows by construction).
   const cashPayments = reportData.payment_methods.find((p) => p.payment_type === 'CASH');
   const cashSales = cashPayments ? cashPayments.total_amount : '0';
-  const expectedCash = bcadd(openingCash, cashSales, decimals);
+  let cashRefundImpact = '0';
+  for (const record of refundRecords) {
+    cashRefundImpact = bcadd(cashRefundImpact, record.cash_impact);
+  }
+  const expectedCash = bcsub(bcadd(openingCash, cashSales, decimals), cashRefundImpact, decimals);
 
   reportData.opening_cash = new Big(openingCash).toFixed(decimals);
   reportData.expected_cash = new Big(expectedCash).toFixed(decimals);
@@ -634,15 +655,29 @@ function aggregateReportData(
   receipts: OfflineReceipt[],
   paymentMethodMap: Map<string, string>,
   decimals: number,
+  refundRecords: LocalRefundRecord[],
 ): ZReportData {
   let grossSales = '0';
   let netSales = '0';
   let taxAmount = '0';
   let salesCount = 0;
-  // Void/refund counters are always 0 offline — voiding and refunding
-  // are server-side operations tracked after sync.
-  const refundsCount = 0;
-  const refundsAmount = '0';
+  // Phase 4 (fiscal audit B2) — refund counters fold in the record-at-settle
+  // mirror of refunds settled at THIS terminal during this shift.
+  // refunds_amount is a POSITIVE magnitude: the server pins these semantics
+  // (ReportGenerationService::calculateShiftTotals asserts a positive
+  // refunds_amount in ZReportV3AggregationTest, and GrandtotalService
+  // advances perpetual_grand_total by gross_sales − refunds_amount). The
+  // signed totals stay on the record's `total`; only the magnitude enters
+  // the report. Store-voucher refunds count here as refunds — voucher
+  // ISSUANCE/redemption counters are a separate server-side v3 ledger
+  // aggregation and are not part of the device report_data (no double-count).
+  // Void counters remain 0 offline — voiding is a server-side operation
+  // tracked after sync.
+  const refundsCount = refundRecords.length;
+  let refundsAmount = '0';
+  for (const record of refundRecords) {
+    refundsAmount = bcadd(refundsAmount, bcabs(record.total));
+  }
   const voidedCount = 0;
 
   const vatByRate = new Map<string, { net: string; vat: string; gross: string }>();

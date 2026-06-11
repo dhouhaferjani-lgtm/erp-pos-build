@@ -309,7 +309,6 @@ class ParapharmacySeeder extends Seeder
                 'status' => SubscriptionStatus::Active,
                 'billing_cycle' => 'yearly',
                 'price' => 0,
-                'started_at' => now(),
                 'current_period_start' => now(),
                 'current_period_end' => now()->addYear(),
             ]);
