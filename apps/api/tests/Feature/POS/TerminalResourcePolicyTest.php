@@ -61,6 +61,14 @@ final class TerminalResourcePolicyTest extends TestCase
         $payload = TerminalResource::make($terminal->load(['location', 'company']))->resolve();
 
         self::assertSame('block', $payload['pos_stock_policy']);
+
+        // Contract pin: the key is present (defaulting 'block') even when the
+        // company relation was never loaded — a renderer that forgets to
+        // eager-load must fail safe-for-retail, never drop the key.
+        $unloaded = TerminalResource::make(
+            Terminal::query()->with('location')->findOrFail($terminal->id),
+        )->resolve();
+        self::assertSame('block', $unloaded['pos_stock_policy']);
     }
 
     public function test_terminal_location_with_null_address_fields_exposes_nulls(): void
