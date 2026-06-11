@@ -21,6 +21,7 @@ use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Contracts\ProductVariantLookup;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\Test;
@@ -83,6 +84,7 @@ class DraftLineEventV2Test extends TestCase
         $this->service = new DraftPersistenceService(
             new DocumentNumberingService,
             new DocumentTotalsCalculator(app(TaxCalculationService::class)),
+            app(ProductVariantLookup::class),
         );
     }
 
