@@ -14,6 +14,8 @@
 
 **Spec cross-reference:** §-references below point at the spec. Read the spec FIRST.
 
+**Codex plan-review r1 adjudication** (review: `docs/superpowers/reviews/2026-06-11-pos-location-aware-stock-plan-codex-review.md`, REQUEST-CHANGES 86%): applied — migration object shape (P1-3), `@/lib/decimal` path + explicit scale 4 (P1-4), JSON-blob pending aggregate (P1-5), unconditional `api.get` for pagination meta (P1-7), backfill moved out of the migration into a console command (NIT — no `tenant()` precedent in tenant migrations), permission gate + spec-wording alignment on `terminal_id` (BLOCKER-1, downgraded: no server-side terminal session exists; `ShiftController.php:50` takes `terminal_code` from the request — same trust boundary), PHP+TS fixture pairing (P2-1), accumulator/as_of clarifications (P2-2/P2-3). **Rejected with evidence:** P1-1 (`Terminal::company()` exists, `Terminal.php:146`), P1-2 (`QuantityScale::round(value, places, method)` exists, `QuantityScale.php:33`), P1-6 (no `location_id`/NOT NULL constraint anywhere in Task 1 — misread).
+
 ---
 
 ## Phase 1 — Server (apps/api)
@@ -172,18 +174,11 @@ return new class extends Migration
                 ->after('compliance_profile');
         });
 
-        // Backfill: Menu-module verticals (restaurant, coffee_shop) → off.
-        // Tenant migrations run inside tenant context, so tenant() resolves
-        // the central Tenant row (Stancl). Guard for the central/test run
-        // where no tenant context exists.
-        $tenant = function_exists('tenant') ? tenant() : null;
-        $vertical = $tenant?->vertical;
-        if ($vertical instanceof Vertical
-            && PosStockPolicy::defaultForVertical($vertical) === PosStockPolicy::Off) {
-            DB::table('companies')->update([
-                'pos_stock_policy' => PosStockPolicy::Off->value,
-            ]);
-        }
+        // NO in-migration backfill: zero tenant migrations in this repo read
+        // tenant context (verified — grep tenant() in database/migrations/tenant/
+        // is empty), and on fresh signup this migration runs before companies
+        // exist. Existing-tenant backfill = the console command below (Step 8a);
+        // new companies derive the default at creation (Step 10).
     }
 
     public function down(): void
@@ -205,9 +200,21 @@ In `apps/api/app/Modules/Company/Domain/Company.php`: add `@property PosStockPol
 
 (Import `App\Modules\Company\Domain\Enums\PosStockPolicy`.)
 
+- [ ] **Step 8a: Backfill console command** — `apps/api/app/Modules/Company/Presentation/Console/BackfillPosStockPolicyCommand.php`, signature `pos:stock-policy-backfill {--dry-run}`. Walks the central tenant directory (mirror how `tenant:migrate-rolling` iterates tenants and initializes tenancy per DB), and inside each tenant context runs:
+
+```php
+$vertical = $tenant->vertical; // Vertical cast on the central Tenant model (Tenant.php:121-127)
+$target = PosStockPolicy::defaultForVertical($vertical);
+if ($target === PosStockPolicy::Off) {
+    DB::table('companies')->update(['pos_stock_policy' => $target->value]);
+}
+```
+
+Test (`tests/Feature/Company/BackfillPosStockPolicyCommandTest.php`): a restaurant-vertical tenant's companies flip to `off`; a retail tenant's stay `block`; `--dry-run` reports without writing. Deploy runbook note: run once after `tenant:migrate-rolling`.
+
 - [ ] **Step 9: Run tests + static analysis**
 
-Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/PosStockPolicyMigrationTest.php tests/Unit/Company/PosStockPolicyTest.php && ./vendor/bin/phpstan analyse app/Modules/Company --no-progress && ./vendor/bin/pint --dirty --test`
+Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/PosStockPolicyMigrationTest.php tests/Unit/Company/PosStockPolicyTest.php tests/Feature/Company/BackfillPosStockPolicyCommandTest.php && ./vendor/bin/phpstan analyse app/Modules/Company --no-progress && ./vendor/bin/pint --dirty --test`
 Expected: PASS, PHPStan `[OK]`, Pint clean
 
 - [ ] **Step 10: New-company creation derives the default** — find the company-creation service (`grep -rn "Company::create\|companies()->create" apps/api/app --include='*.php' | grep -iv test`) and set `pos_stock_policy => PosStockPolicy::defaultForVertical($tenant->vertical)` where the tenant's companies are first created (signup/reference seed path). Add an assertion to the signup/company-creation feature test that a restaurant-vertical tenant's company lands `off`. If creation flows rely on the column default, the explicit derivation in the creation service still wins for Menu verticals (the column default alone would wrongly give them `block`).
@@ -294,7 +301,7 @@ In the resource's `toArray()`: alongside the existing location block (`TerminalR
 'address_country' => $this->location->address_country,
 ```
 
-If `Terminal` has no `company()` relation yet, add `public function company(): BelongsTo` returning `$this->belongsTo(Company::class)` — but check first (`grep -n "function company" apps/api/app/Modules/POS/Domain/Terminal.php`); cross-module model relation is already established there for `location()`, follow the same pattern. Update every `TerminalResource::make($terminal->load('location'))` call site in `TerminalController` to `->load(['location', 'company'])` to avoid N+1 (`grep -n "load('location')" apps/api/app/Modules/POS/Presentation/Controllers/TerminalController.php`).
+`Terminal::company()` already exists (`Terminal.php:146` — verified). Update every `TerminalResource::make($terminal->load('location'))` call site in `TerminalController` to `->load(['location', 'company'])` to avoid N+1 (`grep -n "load('location')" apps/api/app/Modules/POS/Presentation/Controllers/TerminalController.php`).
 
 - [ ] **Step 4: Run tests + scoped checks**
 
@@ -707,7 +714,12 @@ final class PosStockLevelEndpointTest extends TestCase
     public function test_terminal_id_is_required_and_company_scoped(): void
     {
         // Missing terminal_id → 422. terminal_id belonging to ANOTHER company
-        // → 404/422 (ScopedExists) — a device cannot read across companies.
+        // → 404 — a device cannot read across companies.
+    }
+
+    public function test_requires_pos_operate_terminal_permission(): void
+    {
+        // A user without pos.operate_terminal → 403 (same gate as ShiftController).
     }
 
     public function test_as_of_is_server_issued_and_echoes_into_next_delta(): void
@@ -760,6 +772,13 @@ final class PosStockLevelController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        // terminal_id is client-supplied + company-scoped + permission-gated —
+        // the SAME trust boundary as every POS endpoint (ShiftController takes
+        // terminal_code from the request, ShiftController.php:50). There is no
+        // server-side terminal session to resolve from. The LOCATION is never
+        // client-supplied (spec §4.1).
+        \Illuminate\Support\Facades\Gate::authorize('pos.operate_terminal');
+
         $company = $this->companyContext->requireCompany();
 
         $validated = $request->validate([
@@ -830,7 +849,7 @@ Route (inside the existing `Route::prefix('api/v1')->middleware([...])` group in
 Route::get('/pos/stock-levels', [PosStockLevelController::class, 'index']);
 ```
 
-`as_of` is captured BEFORE the read so a row updated mid-request is re-sent next delta rather than skipped (overlap is safe — upserts are idempotent; gaps are not).
+`as_of` is captured BEFORE the read so a row updated mid-request is re-sent next delta rather than skipped (overlap is safe — upserts are idempotent; gaps are not). This is advisory-only overlap handling under READ COMMITTED — no isolation-level change (Codex P2-3).
 
 - [ ] **Step 4: Run tests + checks**
 
@@ -1009,9 +1028,11 @@ git add apps/api/tests && git commit -m "test(fiscal): pin — location-identity
 ```ts
 {
   version: 50,
-  description: 'location_stock: per-location availability + incoming for the terminal branch',
-  statements: [
-    `CREATE TABLE IF NOT EXISTS location_stock (
+  name: 'create_location_stock',
+  sql: '',
+  async run(db) {
+    const statements = [
+      `CREATE TABLE IF NOT EXISTS location_stock (
       product_id TEXT NOT NULL,
       variant_id TEXT NOT NULL DEFAULT '',
       quantity TEXT NOT NULL DEFAULT '0',
@@ -1022,12 +1043,14 @@ git add apps/api/tests && git commit -m "test(fiscal): pin — location-identity
       updated_at TEXT,
       PRIMARY KEY (product_id, variant_id)
     )`,
-    `CREATE INDEX IF NOT EXISTS idx_location_stock_product ON location_stock(product_id)`,
-  ],
+      `CREATE INDEX IF NOT EXISTS idx_location_stock_product ON location_stock(product_id)`,
+    ];
+    for (const sql of statements) await db.execute(sql);
+  },
 },
 ```
 
-(Match the surrounding migration-object shape exactly — read the last entry at `migrations.ts:1567` first. `variant_id` uses `''` for product-grain because SQLite PKs reject NULL; spec §4.3.)
+(The real migration-object shape is `{version, name, sql, async run(db)}` — Codex plan-review P1-3, verified at `migrations.ts:1238-1248`. Match the `run(db)` body style of the v41 entry exactly. `variant_id` uses `''` for product-grain because SQLite PKs reject NULL; spec §4.3.)
 
 - [ ] **Step 2: Write failing repository tests** (follow the existing repository test setup in `apps/pos/src/lib/db/repositories/__tests__/` — they run against the SQL mock/in-memory harness used by sibling repo tests; if repos there are tested via integration-only, mirror that decision and note it)
 
@@ -1200,7 +1223,7 @@ export async function fetchLocationStock(
 }
 ```
 
-> The memory-documented `apiGet`-on-paginated-endpoints pitfall applies: `apiGet` strips `meta`. Either (a) use `api.get` directly here and read `meta.pagination.last_page` (preferred — mirrors the documented fix), or (b) saturation paging on `stock.length === 500`. Pick (a); the snippet above documents the trap deliberately — implementer must switch to the `api.get` form used by web-admin paginated fetches (`return response.data`).
+> MANDATORY (Codex plan-review P1-7): `apiGet` strips `meta`, so pagination would silently stop after page 1. Use the raw `api.get` form and `return response.data` (the memory-documented paginated-endpoint fix) — the snippet's `apiGet` is shown only to document the trap; implement with `api.get` and read `meta.pagination.last_page`.
 
 - [ ] **Step 2: Write failing sync tests**
 
@@ -1235,6 +1258,9 @@ export async function pullLocationStock(
   let lastPage = 1;
   let asOf: string | null = null;
   let total = 0;
+  // Accumulators live OUTSIDE the page loop (Codex P2-2): replaceAllStock gets
+  // the union of ALL pages — per-page replace would delete everything but the
+  // last page. No DB write happens until every page has been fetched.
   const allStock: ServerStockRow[] = [];
   let incoming: ServerIncomingRow[] = [];
 
@@ -1351,7 +1377,7 @@ describe('effectiveAvailable', () => {
 // Single source of truth for location sellability (spec §4.4).
 // `null` = not stock-managed (exempt) — callers treat as always sellable.
 
-import { bcsub, bccomp } from '@/lib/bc'; // match the actual decimal-helper module path (grep "export function bcsub" apps/pos/src)
+import { bcsub, bccomp } from '@/lib/decimal'; // verified: apps/pos/src/lib/decimal.ts:26,42 — NOTE its default scale is 3; ALWAYS pass 4 explicitly for quantities
 
 export interface AvailabilityInputs {
   product: { id: string; is_physical: boolean; sellable_type?: string | null };
@@ -1374,7 +1400,7 @@ export function effectiveAvailable(input: AvailabilityInputs): string | null {
 }
 ```
 
-Plus an async assembler `getEffectiveAvailable(db, product, variantId, cartLines)` in the same file that loads `stockRow` via `getStockFor`, computes `pendingSaleQty` with one SQL aggregate over the unsynced offline-receipt lines (read the `offline_receipts` line storage shape in `receiptService.ts` first — lines are serialized JSON in a column or a child table; whichever it is, write the aggregate accordingly and test it in the repository test file), and sums `cartQty` from the passed cart lines. Snapshot changes never evict cart lines (spec §4.4, Codex r2): the selector only gates FURTHER adds.
+Plus an async assembler `getEffectiveAvailable(db, product, variantId, cartLines)` in the same file that loads `stockRow` via `getStockFor`, computes `pendingSaleQty` over the unsynced offline receipts, and sums `cartQty` from the passed cart lines. **`offline_receipts.lines` is a JSON TEXT blob (`migrations.ts:99`, Codex plan-review P1-5)** — so: `SELECT lines FROM offline_receipts WHERE synced = 0` (match the actual unsynced predicate used by the drain — grep `synced` in `receiptService.ts`), then `JSON.parse` each and `bcsum` the matching (product, variant) quantities at scale 4 in TypeScript. Pending receipts are a small bounded set; no `json_each` SQL needed. Snapshot changes never evict cart lines (spec §4.4, Codex r2): the selector only gates FURTHER adds.
 
 - [ ] **Step 4: Run + commit**
 
@@ -1619,7 +1645,7 @@ export function resolveSellerIdentity(
 
 - [ ] **Step 4: Display headers** — `buildReceiptData.ts:132`: tax_id from `resolveSellerIdentity(...)`, and append `vat_number` + `legal_identifiers` display lines from `terminal.location` when present (display may exceed the signed shape — spec §4.6). Same for the printed Z header. Update the print-template tests by rendered output.
 
-- [ ] **Step 5: Existing-test sweep** — `pnpm vitest run src/stores src/lib/fiscal src/lib/buildReceiptData* --silent` — the canonical-parity tests (`saleReceiptV2CanonicalParity.test.ts`) must stay green: the payload SHAPE is unchanged. If any parity fixture hardcodes the company tax number with a branch-configured terminal, the fixture's terminal must be made fiscally-INcomplete (or the expectation updated to the branch value) — judge which preserves the fixture's intent.
+- [ ] **Step 5: Existing-test sweep** — `pnpm vitest run src/stores src/lib/fiscal src/lib/buildReceiptData* --silent` — the canonical-parity tests (`saleReceiptV2CanonicalParity.test.ts`) must stay green: the payload SHAPE is unchanged. If any parity fixture hardcodes the company tax number with a branch-configured terminal, the fixture's terminal must be made fiscally-INcomplete (or the expectation updated to the branch value) — judge which preserves the fixture's intent. **Any fixture change is a cross-language PAIR (Codex P2-1): the PHP counterpart under `apps/api/tests/` fiscal fixtures must change in the same commit, or the fixture-sync CI gate goes red** (see `project_fiscal_chain_ci_gates` — fixture-deletion + cross-language drift gates).
 
 - [ ] **Step 6: Run + commit**
 

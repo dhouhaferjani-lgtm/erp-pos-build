@@ -95,7 +95,7 @@ New terminal-authenticated endpoint in the POS module:
 GET /api/v1/pos/stock-levels?updated_since=<iso8601>&page=N
 ```
 
-- **Location is resolved from the authenticated terminal** (`$terminal->location_id`), never from a client-supplied parameter — a device cannot read another branch's stock. Route follows Rule 12 middleware (`['api', 'auth:sanctum', SetPermissionsTeam::class]` + the POS terminal guard pattern used by sibling POS routes).
+- **The LOCATION is resolved server-side from the terminal row** (`$terminal->location_id`) and is never a client-supplied parameter. The device passes its `terminal_id`, company-scoped and `pos.operate_terminal`-gated — the same trust boundary as every existing POS endpoint (cf. `ShiftController` taking `terminal_code` from the request; there is no server-side terminal session to resolve from). Route follows Rule 12 middleware (`['api', 'auth:sanctum', SetPermissionsTeam::class]` within the POS route group).
 - Response rows, per `(product_id, variant_id)` at the terminal's location — all quantities as **decimal strings at scale 4** (precision contract; no floats anywhere):
 
 ```json
