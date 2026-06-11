@@ -10,10 +10,12 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 /**
- * @cross-tenant-by-design Walks every tenant and applies the vertical-derived default
- * PosStockPolicy to companies that have not been explicitly overridden (or sets all
- * when run post-migration). Under db_per_tenant mode each tenant is initialized in
- * turn so the DB::table() write lands in the correct per-tenant database.
+ * @cross-tenant-by-design Walks every tenant and unconditionally sets pos_stock_policy
+ * on ALL of that tenant's companies to the vertical-derived default. For tenants whose
+ * vertical maps to PosStockPolicy::Off (e.g. Restaurant, CoffeeShop) every company row
+ * is overwritten regardless of any prior value. Tenants that map to the DB-column default
+ * (Block) are skipped entirely (no-op). Under db_per_tenant mode each tenant is
+ * initialized in turn so the DB::table() write lands in the correct per-tenant database.
  */
 class BackfillPosStockPolicyCommand extends Command
 {

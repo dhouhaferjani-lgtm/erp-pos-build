@@ -32,6 +32,7 @@
         <ini name="memory_limit" value="2G"/>
         <ini name="max_execution_time" value="0"/>
         <env name="APP_ENV" value="testing"/>
+        <env name="APP_KEY" value="base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY="/>
         <env name="APP_DEBUG" value="false"/>
 <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

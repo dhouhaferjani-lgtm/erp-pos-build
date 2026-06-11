@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Company;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\HashChainType;
 use App\Modules\Company\Domain\Enums\MembershipRole;
+use App\Modules\Company\Domain\Enums\PosStockPolicy;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
@@ -258,5 +260,33 @@ class CreateCompanyTest extends TestCase
             ->assertJsonPath('data.address_street', '123 Rue de la Paix')
             ->assertJsonPath('data.address_city', 'Paris')
             ->assertJsonPath('data.address_postal_code', '75001');
+    }
+
+    /**
+     * Pins the third callsite: CompanyController::store() must derive pos_stock_policy
+     * from the tenant vertical, not leave it at the DB default ('block').
+     *
+     * A restaurant-vertical tenant creating a SECOND company (via this endpoint)
+     * must get pos_stock_policy = 'off' — not 'block'.
+     */
+    public function test_company_creation_derives_pos_stock_policy_from_tenant_vertical(): void
+    {
+        // Swap the tenant to restaurant vertical.
+        $this->tenant->update(['vertical' => Vertical::Restaurant->value]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/companies', [
+                'name' => 'Second Café',
+                'country_code' => 'FR',
+                'currency' => 'EUR',
+                'locale' => 'fr_FR',
+                'timezone' => 'Europe/Paris',
+            ]);
+
+        $response->assertCreated();
+
+        $companyId = $response->json('data.id');
+        $company = Company::findOrFail($companyId);
+        self::assertSame(PosStockPolicy::Off, $company->pos_stock_policy);
     }
 }
