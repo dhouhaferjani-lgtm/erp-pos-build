@@ -25,6 +25,7 @@ import type { ZReportCountRow } from '@/lib/db/repositories/zReportCountReposito
 import { getRefundRecordsForShift } from '@/lib/db/repositories/localRefundRecordRepository';
 import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerRepository';
 import { getAccountPaymentRecordsForShift } from '@/lib/db/repositories/localAccountPaymentRecordRepository';
+import { getShiftReceiptAnchor } from '@/lib/db/repositories/shiftReceiptAnchorRepository';
 import type { LocalRefundRecord } from '@/lib/db/repositories/localRefundRecordRepository';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import type {
@@ -147,7 +148,21 @@ export async function generateZReport(
   // Z-report totals or the Z-chain hash; this mirrors the server-side
   // `Terminal::scopeProduction()` exclusion that NF525 / ReportGenerationService
   // already apply on the canonical reporting path.
-  const receipts = await queryAll<OfflineReceipt>(
+  // M3: prefer the monotonic hash_sequence window (rollback-immune) when the
+  // shift recorded an opening anchor; fall back to the wall-clock window for
+  // legacy shifts opened before anchors were captured. No upper bound is needed
+  // — the Z is generated at close, before any later shift opens, so every
+  // receipt after the anchor belongs to this shift.
+  const anchor = await getShiftReceiptAnchor(db, shiftId);
+  const receipts = anchor
+    ? await queryAll<OfflineReceipt>(
+        db,
+        `SELECT * FROM offline_receipts
+         WHERE terminal_id = $1 AND hash_sequence > $2 AND is_training = 0
+         ORDER BY hash_sequence ASC`,
+        [terminalId, anchor.opening_hash_sequence],
+      )
+    : await queryAll<OfflineReceipt>(
     db,
     `SELECT * FROM offline_receipts
      WHERE terminal_id = $1 AND created_at >= $2 AND is_training = 0

@@ -201,6 +201,27 @@ async function authorShiftOpenFiscalEvents(
     openingCashDrawerOperationId: null,
   });
 
+  // M3: record the terminal's receipt hash_sequence at shift open so the device
+  // Z can select this shift's receipts by monotonic sequence (clock-rollback
+  // immune) instead of wall-clock created_at. Best-effort — a failure here must
+  // never block opening the shift; the Z simply falls back to the time window.
+  try {
+    const db = await getDatabase(auth.companyId);
+    const { getTerminalState } = await import('@/lib/db/repositories/terminalStateRepository');
+    const { insertShiftReceiptAnchor } = await import(
+      '@/lib/db/repositories/shiftReceiptAnchorRepository'
+    );
+    const state = await getTerminalState(db, terminal.id);
+    if (state) {
+      await insertShiftReceiptAnchor(db, {
+        shift_id: shift.id,
+        opening_hash_sequence: state.hash_sequence,
+      });
+    }
+  } catch (err) {
+    console.error('[M3] failed to record shift receipt anchor (Z falls back to time window)', err);
+  }
+
   if (shift.fiscal_shift_id === fiscalShiftId && shift.fiscal_session_id === fiscalSessionId) {
     return shift;
   }

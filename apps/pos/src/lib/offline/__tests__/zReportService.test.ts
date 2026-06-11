@@ -202,9 +202,14 @@ function mockQueryAll(
   refundRecords: ReturnType<typeof makeRefundRecordRows> = [],
   drawerOps: ReturnType<typeof makeDrawerOpRows> = [],
   accountPayments: ReturnType<typeof makeAccountPaymentRows> = [],
+  anchor: { shift_id: string; opening_hash_sequence: number } | null = null,
 ) {
   vi.mocked(queryAll).mockImplementation(async (_db, sql, params) => {
     const s = sql as string;
+    if (s.includes('shift_receipt_anchors')) {
+      const shiftId = (params as unknown[] | undefined)?.[0];
+      return (anchor && anchor.shift_id === shiftId ? [anchor] : []) as unknown as never[];
+    }
     if (s.includes('local_account_payment_records')) {
       const shiftId = (params as unknown[] | undefined)?.[0];
       return accountPayments.filter((a) => a.shift_id === shiftId) as unknown as never[];
@@ -290,6 +295,35 @@ describe('generateZReport', () => {
       expect(advanceZChain).not.toHaveBeenCalled();
       expect(getFiscalEventEngine).not.toHaveBeenCalled();
       expect(appendZSessionCloseAndZReport).not.toHaveBeenCalled();
+    });
+
+    it('M3: bounds the receipt window by hash_sequence (rollback-safe) when a shift anchor exists', async () => {
+      mockQueryAll(db, makeReceiptRows(), [], [], [], {
+        shift_id: 'shift-1',
+        opening_hash_sequence: 7,
+      });
+
+      await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      const receiptsCall = vi
+        .mocked(queryAll)
+        .mock.calls.find((c) => String(c[1]).includes('FROM offline_receipts'));
+      expect(receiptsCall).toBeDefined();
+      // Uses the monotonic sequence bound, not the wall-clock created_at bound.
+      expect(String(receiptsCall![1])).toMatch(/hash_sequence\s*>\s*\$2/);
+      expect(String(receiptsCall![1])).not.toMatch(/created_at\s*>=/);
+      expect((receiptsCall![2] as unknown[])[1]).toBe(7);
+    });
+
+    it('M3: falls back to the wall-clock window when no shift anchor exists (legacy shift)', async () => {
+      mockQueryAll(db, makeReceiptRows()); // no anchor
+
+      await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      const receiptsCall = vi
+        .mocked(queryAll)
+        .mock.calls.find((c) => String(c[1]).includes('FROM offline_receipts'));
+      expect(String(receiptsCall![1])).toMatch(/created_at\s*>=\s*\$2/);
     });
 
     it('T2.7: filters offline_receipts WHERE is_training = 0 (training rows excluded from Z totals)', async () => {
