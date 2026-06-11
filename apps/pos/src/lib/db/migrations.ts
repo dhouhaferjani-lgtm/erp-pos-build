@@ -1529,4 +1529,32 @@ export const migrations: Migration[] = [
         ON local_refund_records(shift_id);
     `,
   },
+  {
+    // H2 (2026-06-11 NF525/DSFinV-K cash-reconciliation): mirror each customer
+    // ACCOUNT_PAYMENT settled at this terminal so the device Z can fold CASH
+    // account collections into expected_cash (money received into the drawer
+    // against a customer credit account is drawer cash — NOT a sales payment).
+    // Same record-at-author trade-off as local_refund_records: a crash between
+    // the fiscal-event append and this mirror write undercounts the local Z;
+    // the server remains the source of truth.
+    version: 48,
+    name: 'create_local_account_payment_records',
+    sql: `
+      CREATE TABLE IF NOT EXISTS local_account_payment_records (
+        id TEXT PRIMARY KEY,
+        shift_id TEXT NOT NULL,
+        terminal_id TEXT NOT NULL,
+        method_code TEXT NOT NULL,
+        amount TEXT NOT NULL,
+        -- POSITIVE cash that physically entered this drawer: amount when
+        -- method_code='CASH', '0' otherwise (card/voucher account payments
+        -- move no till cash at this terminal).
+        cash_impact TEXT NOT NULL,
+        currency TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_local_account_payment_records_shift
+        ON local_account_payment_records(shift_id);
+    `,
+  },
 ];

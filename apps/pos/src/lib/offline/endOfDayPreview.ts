@@ -19,6 +19,7 @@ import { queryAll } from '@/lib/db';
 import { bcadd, bcsub, bcformat, bccomp } from '@/lib/decimal';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerRepository';
+import { getAccountPaymentRecordsForShift } from '@/lib/db/repositories/localAccountPaymentRecordRepository';
 
 interface OfflineReceiptRow {
   id: string;
@@ -244,6 +245,11 @@ export async function buildEndOfDayPreview(
     const drawerOps = await getCashDrawerOpsForShift(db, shiftId);
     for (const op of drawerOps) {
       drawerNet = op.type === 'deposit' ? bcadd(drawerNet, op.amount) : bcsub(drawerNet, op.amount);
+    }
+    // Cash collected against customer credit accounts is drawer cash.
+    const accountPayments = await getAccountPaymentRecordsForShift(db, shiftId);
+    for (const ap of accountPayments) {
+      drawerNet = bcadd(drawerNet, ap.cash_impact);
     }
   }
   const expectedCash = bcadd(

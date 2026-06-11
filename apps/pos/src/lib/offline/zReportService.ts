@@ -24,6 +24,7 @@ import { insertZReportCounts } from '@/lib/db/repositories/zReportCountRepositor
 import type { ZReportCountRow } from '@/lib/db/repositories/zReportCountRepository';
 import { getRefundRecordsForShift } from '@/lib/db/repositories/localRefundRecordRepository';
 import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerRepository';
+import { getAccountPaymentRecordsForShift } from '@/lib/db/repositories/localAccountPaymentRecordRepository';
 import type { LocalRefundRecord } from '@/lib/db/repositories/localRefundRecordRepository';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import type {
@@ -203,9 +204,21 @@ export async function generateZReport(
         : bcsub(drawerNet, op.amount, decimals);
   }
 
+  // Cash collected against customer credit accounts physically enters this
+  // drawer (cash_impact is the CASH-only positive impact; non-cash = '0').
+  const accountPayments = await getAccountPaymentRecordsForShift(db, shiftId);
+  let cashAccountCollections = '0';
+  for (const ap of accountPayments) {
+    cashAccountCollections = bcadd(cashAccountCollections, ap.cash_impact, decimals);
+  }
+
   const expectedCash = bcadd(
-    bcsub(bcadd(openingCash, cashSales, decimals), cashRefundImpact, decimals),
-    drawerNet,
+    bcadd(
+      bcsub(bcadd(openingCash, cashSales, decimals), cashRefundImpact, decimals),
+      drawerNet,
+      decimals,
+    ),
+    cashAccountCollections,
     decimals,
   );
 

@@ -190,15 +190,25 @@ function makeDrawerOpRows() {
   return [] as Array<{ id: string; type: 'deposit' | 'payout'; amount: string; shift_id: string }>;
 }
 
-/** Setup queryAll to return receipts / payment_methods / refund records / drawer ops by SQL shape */
+/** Account-payment records mirrored locally (cash account collections raise the drawer). */
+function makeAccountPaymentRows() {
+  return [] as Array<{ id: string; shift_id: string; method_code: string; cash_impact: string }>;
+}
+
+/** Setup queryAll to return receipts / payment_methods / refund records / drawer ops / account payments by SQL shape */
 function mockQueryAll(
   db: Database,
   receipts: ReturnType<typeof makeReceiptRows>,
   refundRecords: ReturnType<typeof makeRefundRecordRows> = [],
   drawerOps: ReturnType<typeof makeDrawerOpRows> = [],
+  accountPayments: ReturnType<typeof makeAccountPaymentRows> = [],
 ) {
   vi.mocked(queryAll).mockImplementation(async (_db, sql, params) => {
     const s = sql as string;
+    if (s.includes('local_account_payment_records')) {
+      const shiftId = (params as unknown[] | undefined)?.[0];
+      return accountPayments.filter((a) => a.shift_id === shiftId) as unknown as never[];
+    }
     if (s.includes('offline_cash_drawer_ops')) {
       const shiftId = (params as unknown[] | undefined)?.[0];
       return drawerOps.filter((o) => o.shift_id === shiftId) as unknown as never[];
@@ -373,6 +383,35 @@ describe('generateZReport', () => {
       const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
 
       // No ops for shift-1 → opening 100 + cash sales 50 = 150.00
+      expect(report.report_data.expected_cash).toBe('150.00');
+    });
+  });
+
+  describe('cash account payments in expected_cash (H2)', () => {
+    // NF525/DSFinV-K: cash received against a customer credit account is drawer
+    // cash (a cash-balance event), folded into expected_cash — NOT a sales
+    // payment-method total. Non-cash account payments move no till cash.
+    it('adds CASH account-payment collections to expected_cash', async () => {
+      const accountPayments = [
+        { id: 'ap1', shift_id: 'shift-1', method_code: 'CASH', cash_impact: '30.00' },
+      ];
+      mockQueryAll(db, makeReceiptRows(), [], [], accountPayments);
+
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      // opening 100 + cash sales 50 + cash account-payment 30 = 180.00
+      expect(report.report_data.expected_cash).toBe('180.00');
+    });
+
+    it('does NOT add non-cash account payments (cash_impact 0) to expected_cash', async () => {
+      const accountPayments = [
+        { id: 'ap1', shift_id: 'shift-1', method_code: 'CARD', cash_impact: '0' },
+      ];
+      mockQueryAll(db, makeReceiptRows(), [], [], accountPayments);
+
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      // opening 100 + cash sales 50 + 0 = 150.00
       expect(report.report_data.expected_cash).toBe('150.00');
     });
   });

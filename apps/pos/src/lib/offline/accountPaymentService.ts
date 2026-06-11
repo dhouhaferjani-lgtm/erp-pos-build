@@ -9,6 +9,7 @@ import type {
 } from '@/lib/fiscal/payloads/AccountPaymentPayload';
 import type { SaleReceiptSellerInput } from '@/lib/fiscal/payloads/SaleReceiptPayload';
 import { assertCustomerAliasMatches } from '@/lib/db/repositories/pendingCustomerRepository';
+import { insertLocalAccountPaymentRecord } from '@/lib/db/repositories/localAccountPaymentRecordRepository';
 import { buildEscPosAccountPaymentReceiptData } from '@/lib/buildReceiptData';
 import type { ReceiptData } from '@/lib/printing';
 import { useSyncStore } from '@/stores/syncStore';
@@ -302,6 +303,24 @@ export async function createAccountPayment(
       source_event_class: 'account_payments',
       source_event_id: accountPaymentUuid,
     });
+
+    // Mirror the payment so the device Z can fold CASH account collections into
+    // expected_cash (H2). Training payments never touch the real drawer, so
+    // they are excluded — matching the is_training=0 receipt/Z filter. cash_impact
+    // is the CASH-only positive drawer impact; card/voucher = '0'.
+    if (input.isTraining !== true) {
+      const mirrorAmount = bcformat(input.payment.amount, getCurrencyDecimals(input.currency));
+      await insertLocalAccountPaymentRecord(db, {
+        id: accountPaymentUuid,
+        shift_id: input.shiftId,
+        terminal_id: input.terminalId,
+        method_code: input.payment.methodCode,
+        amount: mirrorAmount,
+        cash_impact: input.payment.methodCode === 'CASH' ? mirrorAmount : '0',
+        currency: input.currency,
+      });
+    }
+
     await db.execute('COMMIT');
   } catch (error) {
     await db.execute('ROLLBACK');

@@ -153,7 +153,18 @@ describe('accountPaymentService', () => {
       },
     });
     expect(db.execute).toHaveBeenNthCalledWith(1, 'BEGIN TRANSACTION');
-    expect(db.execute).toHaveBeenNthCalledWith(2, 'COMMIT');
+    // H2: the account payment is mirrored into local_account_payment_records
+    // INSIDE the transaction (before COMMIT) so the device Z can fold CASH
+    // account collections into expected_cash.
+    const mirrorCall = vi.mocked(db.execute).mock.calls.find(
+      (c) => typeof c[0] === 'string' && c[0].includes('local_account_payment_records'),
+    );
+    expect(mirrorCall).toBeDefined();
+    // This fixture pays in CASH, so cash_impact equals the amount.
+    expect(mirrorCall?.[1]).toEqual(
+      expect.arrayContaining(['CASH']),
+    );
+    expect(db.execute).toHaveBeenNthCalledWith(3, 'COMMIT');
     expect(incrementPendingCountSpy).toHaveBeenCalledOnce();
     expect(triggerSyncSpy).toHaveBeenCalledOnce();
     expect(result.printableData.receipt_kind).toBe('account_payment');
