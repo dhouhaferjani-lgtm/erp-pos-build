@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Company;
 
-use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\PosStockPolicy;
 use App\Modules\Tenant\Domain\Tenant;
@@ -34,33 +33,6 @@ final class PosStockPolicyMigrationTest extends TestCase
         ]);
 
         self::assertSame(PosStockPolicy::Warn, $company->refresh()->pos_stock_policy);
-    }
-
-    /**
-     * Step 10: new-company creation derives the default from the tenant vertical.
-     * Mirrors what TenantProvisioningService / AuthController do at signup.
-     *
-     * NOTE: This test is intentionally a tautology — it calls defaultForVertical()
-     * directly and would not fail if the production creation path were removed.
-     * The load-bearing tests are test_register_restaurant_vertical_sets_pos_stock_policy_off
-     * and test_register_retail_vertical_sets_pos_stock_policy_block below, which
-     * exercise the real HTTP registration path.
-     */
-    public function test_restaurant_vertical_company_creation_derives_off(): void
-    {
-        $tenant = Tenant::factory()->create(['vertical' => Vertical::Restaurant]);
-
-        $company = Company::create([
-            'tenant_id' => $tenant->id,
-            'name' => 'Café Test',
-            'country_code' => 'FR',
-            'currency' => 'EUR',
-            'locale' => 'fr_FR',
-            'timezone' => 'Europe/Paris',
-            'pos_stock_policy' => PosStockPolicy::defaultForVertical($tenant->vertical),
-        ]);
-
-        self::assertSame(PosStockPolicy::Off, $company->refresh()->pos_stock_policy);
     }
 
     /**

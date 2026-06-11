@@ -29,4 +29,27 @@ final class PosStockPolicyTest extends TestCase
         self::assertSame(PosStockPolicy::Block, PosStockPolicy::defaultForVertical(Vertical::Parapharmacy));
         self::assertSame(PosStockPolicy::Block, PosStockPolicy::defaultForVertical(Vertical::Mechanic));
     }
+
+    /**
+     * Exhaustive map over every vertical. The default derives from 'Menu' being
+     * in the vertical's default modules — if a vertical ever gains/loses Menu,
+     * its stock-enforcement default silently flips with it. This pin turns that
+     * silent flip into a test failure that forces a deliberate decision.
+     */
+    public function test_full_vertical_to_policy_map(): void
+    {
+        $expectedOff = [Vertical::Restaurant, Vertical::CoffeeShop];
+
+        foreach (Vertical::cases() as $vertical) {
+            $expected = in_array($vertical, $expectedOff, true)
+                ? PosStockPolicy::Off
+                : PosStockPolicy::Block;
+
+            self::assertSame(
+                $expected,
+                PosStockPolicy::defaultForVertical($vertical),
+                "Unexpected default policy for vertical '{$vertical->value}'",
+            );
+        }
+    }
 }
