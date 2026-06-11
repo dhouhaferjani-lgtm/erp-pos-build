@@ -163,8 +163,8 @@ final class ReceiptCreationService
 
             // Resolve the over-stock enforcement policy ONCE per receipt
             // (spec §4.2) and thread it into every stock decrement below —
-            // including composite leaf deduction. Block keeps the historical
-            // throw; Warn/Off log and proceed (negative stock allowed).
+            // including composite leaf deduction. Block throws; Warn/Off
+            // log and proceed (negative stock allowed).
             $stockPolicy = $company->pos_stock_policy;
 
             // 3. Load and validate sellable items (products and/or composite items)
@@ -874,7 +874,7 @@ final class ReceiptCreationService
      *
      * `$policy` is the per-receipt POS over-stock policy resolved once at
      * the createReceipt boundary (spec §4.2): Block throws on insufficient
-     * stock (historical behavior, message unchanged); Warn/Off log a
+     * stock (the message clients pattern-match on); Warn/Off log a
      * warning and proceed into negative stock — the same direction the
      * fiscal-event projection path (PosCoreReceiptProjection) takes.
      *
@@ -928,7 +928,8 @@ final class ReceiptCreationService
                 );
             }
 
-            Log::warning('POS sale proceeding despite insufficient stock (policy '.$policy->value.')', [
+            Log::warning('ReceiptCreationService: sale proceeding despite insufficient stock', [
+                'policy' => $policy->value,
                 'product_id' => $productId,
                 'available' => $available,
                 'requested' => $quantity,

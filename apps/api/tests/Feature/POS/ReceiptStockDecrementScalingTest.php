@@ -94,7 +94,7 @@ final class ReceiptStockDecrementScalingTest extends TestCase
             '0.0010', // canonical quantity scale 4 — would be lost at scale 2
             $receiptId,
             $this->cashier->id,
-            PosStockPolicy::Block, // Task 6 (spec §4.2) — historical throw-on-insufficient behavior
+            PosStockPolicy::Block, // Block = the throw-on-insufficient path this test pins
         );
 
         $this->assertNotNull($movement, 'decrementStock should return a movement when stock exists');
