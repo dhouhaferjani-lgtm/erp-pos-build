@@ -20,6 +20,7 @@ import { bcadd, bcsub, bcformat, bccomp } from '@/lib/decimal';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerRepository';
 import { getAccountPaymentRecordsForShift } from '@/lib/db/repositories/localAccountPaymentRecordRepository';
+import { getRefundRecordsForShift } from '@/lib/db/repositories/localRefundRecordRepository';
 
 interface OfflineReceiptRow {
   id: string;
@@ -32,6 +33,9 @@ interface OfflineReceiptRow {
   // Receipt-level change given back to the customer (offline_receipts.change_due,
   // written by receiptService.ts). Change is only ever given on cash tenders.
   change_due: string;
+  // Primary payment method — used only for the legacy fallback when a receipt
+  // has no usable payments_json (mirrors the signed-Z aggregation).
+  payment_method_id: string;
 }
 
 interface PaymentJsonRow {
@@ -118,9 +122,9 @@ export async function buildEndOfDayPreview(
   // 1. Fetch all non-voided receipts for this terminal since the shift opened
   const receipts = await queryAll<OfflineReceiptRow>(
     db,
-    `SELECT id, total, subtotal, tax_amount, payments_json, lines, created_at, change_due
+    `SELECT id, total, subtotal, tax_amount, payments_json, lines, created_at, change_due, payment_method_id
      FROM offline_receipts
-     WHERE terminal_id = ? AND created_at >= ? AND voided = 0
+     WHERE terminal_id = ? AND created_at >= ? AND voided = 0 AND is_training = 0
      ORDER BY created_at ASC`,
     [terminalId, shiftOpenedAt],
   );
@@ -205,11 +209,35 @@ export async function buildEndOfDayPreview(
       }
     }
 
-    // change_due is a receipt-level column (offline_receipts.change_due) and is
-    // only ever non-zero when the receipt was paid (over-tendered) in cash, so
-    // subtract it once per cash-paid receipt — never per payment row.
-    if (receiptHasCash) {
-      cashChangeDueSum = bcadd(cashChangeDueSum, receipt.change_due ?? '0');
+    if (payments.length > 0) {
+      // change_due is a receipt-level column (offline_receipts.change_due) and is
+      // only ever non-zero when the receipt was paid (over-tendered) in cash, so
+      // subtract it once per cash-paid receipt — never per payment row.
+      if (receiptHasCash) {
+        cashChangeDueSum = bcadd(cashChangeDueSum, receipt.change_due ?? '0');
+      }
+    } else {
+      // Legacy fallback (mirrors the signed Z): no usable payments_json →
+      // attribute the whole sale to the primary method. receipt.total is ALREADY
+      // net (drawer gains tendered − change = total), so do NOT subtract change.
+      const method = paymentMethods.find((m) => m.id === receipt.payment_method_id);
+      if (method) {
+        const key = method.code;
+        const existing = perMethod.get(key) ?? {
+          payment_method_id: method.id,
+          payment_method_code: method.code,
+          payment_method_name: method.name,
+          is_physical: method.is_physical === 1,
+          total_amount: '0',
+          transaction_count: 0,
+        };
+        existing.total_amount = bcadd(existing.total_amount, receipt.total);
+        existing.transaction_count += 1;
+        perMethod.set(key, existing);
+        if (method.code === 'CASH') {
+          cashTenderedSum = bcadd(cashTenderedSum, receipt.total);
+        }
+      }
     }
   }
 
@@ -241,6 +269,7 @@ export async function buildEndOfDayPreview(
   //    + cash drawer deposits − payouts (NF525 drawer reality; mirrors the
   //    signed Z). deposit=+, payout=− per the device fetchDrawerBalance.
   let drawerNet = '0';
+  let cashRefundImpact = '0';
   if (shiftId) {
     const drawerOps = await getCashDrawerOpsForShift(db, shiftId);
     for (const op of drawerOps) {
@@ -251,10 +280,16 @@ export async function buildEndOfDayPreview(
     for (const ap of accountPayments) {
       drawerNet = bcadd(drawerNet, ap.cash_impact);
     }
+    // Cash-destination refunds physically left this drawer (matches the signed
+    // Z's cashRefundImpact so the preview does not overstate expected cash).
+    const refundRecords = await getRefundRecordsForShift(db, shiftId);
+    for (const r of refundRecords) {
+      cashRefundImpact = bcadd(cashRefundImpact, r.cash_impact);
+    }
   }
-  const expectedCash = bcadd(
-    bcsub(bcadd(openingCash, cashTenderedSum), cashChangeDueSum),
-    drawerNet,
+  const expectedCash = bcsub(
+    bcadd(bcsub(bcadd(openingCash, cashTenderedSum), cashChangeDueSum), drawerNet),
+    cashRefundImpact,
   );
 
   // 5. Build VAT breakdown sorted by rate ascending

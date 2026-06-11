@@ -252,6 +252,97 @@ describe('buildEndOfDayPreview — cash drawer movements (H2)', () => {
   });
 });
 
+describe('buildEndOfDayPreview — review fixes (refunds, training, legacy fallback)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('subtracts cash refund impact from expected_cash so the preview matches the signed Z', async () => {
+    vi.mocked(queryAll).mockImplementation(async (_db, sql, params) => {
+      const s = sql as string;
+      if (s.includes('local_refund_records')) {
+        const shiftId = (params as unknown[] | undefined)?.[0];
+        return (
+          shiftId === 'shift-1' ? [{ id: 'rr1', shift_id: 'shift-1', cash_impact: '10.00' }] : []
+        ) as unknown as never[];
+      }
+      if (s.includes('offline_cash_drawer_ops') || s.includes('local_account_payment_records')) {
+        return [] as never[];
+      }
+      if (s.includes('offline_receipts')) {
+        return [
+          {
+            id: 'r1',
+            total: '50.00',
+            subtotal: '42.02',
+            tax_amount: '7.98',
+            change_due: '0.00',
+            payment_method_id: 'pm-cash',
+            payments_json: JSON.stringify([
+              { payment_method_id: 'pm-cash', amount: '50.00', method_code: 'CASH' },
+            ]),
+            lines: JSON.stringify([{ tax_rate: '19', tax_amount: '7.98', line_total: '42.02' }]),
+            created_at: '2026-06-10T10:00:00Z',
+          },
+        ] as unknown as never[];
+      }
+      if (s.includes('payment_methods')) {
+        return [{ id: 'pm-cash', code: 'CASH', name: 'Cash', is_physical: 1 }] as unknown as never[];
+      }
+      return [] as never[];
+    });
+
+    const preview = await buildEndOfDayPreview(
+      mockDb, 'term-1', '2026-06-10T08:00:00Z', '100', 'EUR', 'shift-1',
+    );
+
+    // opening 100 + net cash 50 − cash refund 10 = 140.00
+    expect(preview.expected_cash).toBe('140.00');
+  });
+
+  it('excludes training receipts from the preview (is_training = 0 in the query)', async () => {
+    vi.mocked(queryAll).mockResolvedValue([] as never[]);
+    await buildEndOfDayPreview(mockDb, 'term-1', '2026-06-10T08:00:00Z', '100', 'EUR', 'shift-1');
+
+    const receiptsCall = vi
+      .mocked(queryAll)
+      .mock.calls.find((c) => String(c[1]).includes('FROM offline_receipts'));
+    expect(receiptsCall).toBeDefined();
+    expect(String(receiptsCall![1])).toMatch(/is_training\s*=\s*0/);
+  });
+
+  it('legacy fallback: a receipt without payments_json is attributed to its primary method at net total', async () => {
+    vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
+      const s = sql as string;
+      if (s.includes('offline_receipts')) {
+        return [
+          {
+            id: 'r1',
+            total: '50.00',
+            subtotal: '42.02',
+            tax_amount: '7.98',
+            change_due: '5.00', // already netted into total — must NOT be subtracted again
+            payment_method_id: 'pm-cash',
+            payments_json: null,
+            lines: JSON.stringify([{ tax_rate: '19', tax_amount: '7.98', line_total: '42.02' }]),
+            created_at: '2026-06-10T10:00:00Z',
+          },
+        ] as unknown as never[];
+      }
+      if (s.includes('payment_methods')) {
+        return [{ id: 'pm-cash', code: 'CASH', name: 'Cash', is_physical: 1 }] as unknown as never[];
+      }
+      return [] as never[];
+    });
+
+    const preview = await buildEndOfDayPreview(mockDb, 'term-1', '2026-06-10T08:00:00Z', '100', 'EUR');
+
+    const cash = preview.payment_methods.find((p) => p.payment_method_code === 'CASH')!;
+    expect(cash.total_amount).toBe('50.00'); // net total, not 45
+    expect(preview.expected_cash).toBe('150.00'); // 100 + 50 (no shiftId → no drawer/refunds)
+  });
+});
+
 describe('buildEndOfDayPreview — physical-method seeding (D2)', () => {
   beforeEach(() => {
     vi.clearAllMocks();

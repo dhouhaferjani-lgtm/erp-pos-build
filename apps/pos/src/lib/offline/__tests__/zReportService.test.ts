@@ -355,6 +355,28 @@ describe('generateZReport', () => {
       // expected_cash = opening 100 + net cash 60 = 160 (no refunds).
       expect(report.report_data.expected_cash).toBe('160.00');
     });
+
+    it('legacy fallback: receipt.total is already net cash — does NOT subtract change again', async () => {
+      // A legacy receipt without payments_json. receipt.total is the sale value;
+      // for a fully-cash receipt the drawer gains tendered − change = total, so
+      // the cash figure IS receipt.total — subtracting change_due would double-net.
+      const legacy = [
+        {
+          ...makeReceiptRows()[0]!,
+          total: '50.00',
+          change_due: '5.00',
+          payment_method_id: 'pm-cash',
+          payments_json: null,
+        },
+      ];
+      mockQueryAll(db, legacy);
+
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      const cash = report.report_data.payment_methods.find((m) => m.payment_type === 'CASH')!;
+      expect(cash.total_amount).toBe('50.00'); // NOT 45.00
+      expect(report.report_data.expected_cash).toBe('150.00'); // 100 + 50
+    });
   });
 
   describe('cash drawer movements in expected_cash (H2)', () => {
@@ -413,6 +435,18 @@ describe('generateZReport', () => {
 
       // opening 100 + cash sales 50 + 0 = 150.00
       expect(report.report_data.expected_cash).toBe('150.00');
+    });
+
+    it('closes a shift whose only activity is a cash account payment (no receipts/refunds)', async () => {
+      const accountPayments = [
+        { id: 'ap1', shift_id: 'shift-1', method_code: 'CASH', cash_impact: '30.00' },
+      ];
+      mockQueryAll(db, [], [], [], accountPayments);
+
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      // opening 100 + cash account-payment 30 = 130.00 (no sales/refunds)
+      expect(report.report_data.expected_cash).toBe('130.00');
     });
   });
 
@@ -883,12 +917,12 @@ describe('generateZReport', () => {
       expect(cashRow.transaction_count).toBe(0);
     });
 
-    it('still throws when the shift has NEITHER receipts NOR refund records', async () => {
+    it('still throws when the shift has NO activity (no receipts/refunds/drawer ops/account payments)', async () => {
       mockQueryAll(db, [], []);
 
       await expect(
         generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00'),
-      ).rejects.toThrow(/no receipts/);
+      ).rejects.toThrow(/no activity/);
 
       expect(insertZReport).not.toHaveBeenCalled();
       expect(advanceZChain).not.toHaveBeenCalled();

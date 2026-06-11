@@ -167,8 +167,20 @@ export async function generateZReport(
   // receipts nor settled refunds is rejected.
   const refundRecords = await getRefundRecordsForShift(db, shiftId);
 
-  if (receipts.length === 0 && refundRecords.length === 0) {
-    throw new Error('Cannot generate Z-report for a shift with no receipts.');
+  // Cash drawer movements + customer account collections are real fiscal/drawer
+  // activity that must close into the signed Z too. Loaded BEFORE the empty-shift
+  // guard so an account-payment-only or drawer-only shift (zero receipts/refunds)
+  // is still closeable instead of being wrongly rejected.
+  const drawerOps = await getCashDrawerOpsForShift(db, shiftId);
+  const accountPayments = await getAccountPaymentRecordsForShift(db, shiftId);
+
+  if (
+    receipts.length === 0 &&
+    refundRecords.length === 0 &&
+    drawerOps.length === 0 &&
+    accountPayments.length === 0
+  ) {
+    throw new Error('Cannot generate Z-report for a shift with no activity.');
   }
 
   // Build payment method lookup for names
@@ -195,7 +207,6 @@ export async function generateZReport(
   // source of truth, so expected_cash must mirror the real drawer. Sign matches
   // the device's fetchDrawerBalance: deposit=+, payout=− (NOT the server's
   // bank-deposit sign).
-  const drawerOps = await getCashDrawerOpsForShift(db, shiftId);
   let drawerNet = '0';
   for (const op of drawerOps) {
     drawerNet =
@@ -206,7 +217,6 @@ export async function generateZReport(
 
   // Cash collected against customer credit accounts physically enters this
   // drawer (cash_impact is the CASH-only positive impact; non-cash = '0').
-  const accountPayments = await getAccountPaymentRecordsForShift(db, shiftId);
   let cashAccountCollections = '0';
   for (const ap of accountPayments) {
     cashAccountCollections = bcadd(cashAccountCollections, ap.cash_impact, decimals);
@@ -774,11 +784,13 @@ function aggregateReportData(
         paymentByType.set('CASH', ex);
       }
     } else {
+      // Legacy receipt without payments_json: attribute the whole sale to the
+      // primary method. receipt.total is ALREADY the net amount allocated to
+      // the receipt (for a fully-cash receipt the drawer gains tendered − change
+      // = total), so do NOT subtract change_due again here — that would double-net.
       const methodCode = paymentMethodMap.get(receipt.payment_method_id) ?? 'UNKNOWN';
-      const amount =
-        methodCode === 'CASH' ? bcsub(receipt.total, receipt.change_due ?? '0') : receipt.total;
       const existing = paymentByType.get(methodCode) ?? { amount: '0', count: 0 };
-      existing.amount = bcadd(existing.amount, amount);
+      existing.amount = bcadd(existing.amount, receipt.total);
       existing.count += 1;
       paymentByType.set(methodCode, existing);
     }
