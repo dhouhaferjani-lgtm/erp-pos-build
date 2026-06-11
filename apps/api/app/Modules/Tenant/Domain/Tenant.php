@@ -91,6 +91,7 @@ class Tenant extends BaseTenant implements TenantWithDatabase
         'slug',
         'status',
         'plan',
+        'is_demo',
         'tax_id',
         'registration_number',
         'address',
@@ -123,6 +124,7 @@ class Tenant extends BaseTenant implements TenantWithDatabase
         return [
             'status' => TenantStatus::class,
             'plan' => SubscriptionPlan::class,
+            'is_demo' => 'boolean',
             'vertical' => Vertical::class,
             'address' => 'array',
             'settings' => 'array',

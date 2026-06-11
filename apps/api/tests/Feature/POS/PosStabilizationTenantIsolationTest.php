@@ -344,7 +344,12 @@ final class PosStabilizationTenantIsolationTest extends TestCase
 
         /** @var self */
         return $this->actingAs($user, 'sanctum')
-            ->withHeader('X-Company-Id', $company->id);
+            ->withHeader('X-Company-Id', $company->id)
+            // These isolation tests exercise the DEVICE flow on routes that
+            // are web-gated to demo tenants (EnsureWebPosDemoTenant, owner
+            // decision 2026-06-11); the device marker keeps them reaching
+            // the validation layer under test.
+            ->withHeader('X-Client-Type', 'pos-tauri');
     }
 
     /**

@@ -52,3 +52,12 @@ packages, seeders, console commands, CI for every route/helper being removed.
 
 - No server-authored web SALE path (NF525 server register) — explicitly not
   wanted; the complexity is the reason for this decision.
+
+## Status 2026-06-11 (same day)
+
+Server-side gate SHIPPED (`EnsureWebPosDemoTenant` + central `tenants.is_demo`
+default false + the six routes wrapped). Web POS mutating actions now 403
+`WEB_POS_DEMO_ONLY` for every real tenant ("disabled by default" achieved).
+REMAINING: expose `is_demo` in the auth payload (AuthUserData) and hide the
+POS hub nav for non-demo tenants ("hidden"), and decide the flagging process
+for the pharmacy demo account (one UPDATE on synerivia_central once decided).
