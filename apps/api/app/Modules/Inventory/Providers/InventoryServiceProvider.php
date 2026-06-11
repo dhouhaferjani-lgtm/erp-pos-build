@@ -7,9 +7,11 @@ namespace App\Modules\Inventory\Providers;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Inventory\Application\Contracts\InventoryReservationServiceInterface;
 use App\Modules\Inventory\Application\Listeners\ApplyStockAdjustmentsOnCountingCompleted;
+use App\Modules\Inventory\Application\Services\LocationStockQueryService;
 use App\Modules\Inventory\Application\Services\StockReservationService;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
 use App\Modules\Inventory\Listeners\PostCOGSOnInvoice;
+use App\Shared\Contracts\LocationStockReader;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -21,6 +23,10 @@ class InventoryServiceProvider extends ServiceProvider
             InventoryReservationServiceInterface::class,
             StockReservationService::class,
         );
+
+        // POS location stock feed read model (spec §4.1) — implemented by
+        // Inventory, consumed cross-module via the Shared contract.
+        $this->app->bind(LocationStockReader::class, LocationStockQueryService::class);
     }
 
     public function boot(): void
