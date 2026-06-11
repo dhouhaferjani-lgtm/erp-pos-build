@@ -183,6 +183,33 @@ async function authorShiftOpenFiscalEvents(
     throw new Error(`Cannot author Z-session opening event with invalid shift opened_at ${shift.opened_at}.`);
   }
 
+  // M3: record the terminal's last receipt hash_sequence at shift open so the
+  // device Z can select THIS shift's receipts by monotonic, clock-rollback-immune
+  // sequence (`hash_sequence > anchor`) instead of wall-clock created_at.
+  //
+  // The anchor MUST be in the same sequence space the Z window bounds by —
+  // `offline_receipts.hash_sequence` (the fiscal-event operational
+  // sequence_number) — NOT `terminal_state.hash_sequence`, which is the separate
+  // legacy receipt-V3 counter (using it would re-include the previous shift's
+  // receipts in the next Z and corrupt every total + the Z hash).
+  //
+  // Written BEFORE authoring the open event and fail-CLOSED: a device-authority
+  // shift must not run without a correct fiscal Z boundary, so a failure here
+  // aborts the open (no fiscal event has been authored yet). The created_at
+  // fallback in generateZReport now only applies to shifts that pre-date
+  // migration 49 (which never recorded an anchor).
+  {
+    const db = await getDatabase(auth.companyId);
+    const { getMaxReceiptHashSequence, insertShiftReceiptAnchor } = await import(
+      '@/lib/db/repositories/shiftReceiptAnchorRepository'
+    );
+    const openingHashSequence = await getMaxReceiptHashSequence(db, terminal.id);
+    await insertShiftReceiptAnchor(db, {
+      shift_id: shift.id,
+      opening_hash_sequence: openingHashSequence,
+    });
+  }
+
   await authorZSessionOpenWithOpeningFloat({
     tenantId: auth.user.tenantId,
     companyId: auth.companyId,
@@ -200,27 +227,6 @@ async function authorShiftOpenFiscalEvents(
     openedAtDevice,
     openingCashDrawerOperationId: null,
   });
-
-  // M3: record the terminal's receipt hash_sequence at shift open so the device
-  // Z can select this shift's receipts by monotonic sequence (clock-rollback
-  // immune) instead of wall-clock created_at. Best-effort — a failure here must
-  // never block opening the shift; the Z simply falls back to the time window.
-  try {
-    const db = await getDatabase(auth.companyId);
-    const { getTerminalState } = await import('@/lib/db/repositories/terminalStateRepository');
-    const { insertShiftReceiptAnchor } = await import(
-      '@/lib/db/repositories/shiftReceiptAnchorRepository'
-    );
-    const state = await getTerminalState(db, terminal.id);
-    if (state) {
-      await insertShiftReceiptAnchor(db, {
-        shift_id: shift.id,
-        opening_hash_sequence: state.hash_sequence,
-      });
-    }
-  } catch (err) {
-    console.error('[M3] failed to record shift receipt anchor (Z falls back to time window)', err);
-  }
 
   if (shift.fiscal_shift_id === fiscalShiftId && shift.fiscal_session_id === fiscalSessionId) {
     return shift;

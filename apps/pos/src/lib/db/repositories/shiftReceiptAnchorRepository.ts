@@ -34,6 +34,26 @@ export async function insertShiftReceiptAnchor(
   );
 }
 
+/**
+ * The terminal's highest receipt hash_sequence so far, in the SAME sequence
+ * space the Z window bounds by (`offline_receipts.hash_sequence`, which is the
+ * fiscal-event operational sequence_number — NOT the legacy
+ * `terminal_state.hash_sequence` counter). Used as the shift-open anchor: the
+ * new shift's receipts all have a strictly greater hash_sequence. Returns 0
+ * when the terminal has no receipts yet.
+ */
+export async function getMaxReceiptHashSequence(
+  db: Database,
+  terminalId: string,
+): Promise<number> {
+  const rows = await queryAll<{ max_seq: number | null }>(
+    db,
+    `SELECT MAX(hash_sequence) AS max_seq FROM offline_receipts WHERE terminal_id = $1`,
+    [terminalId],
+  );
+  return rows[0]?.max_seq ?? 0;
+}
+
 /** The opening anchor for a shift, or null when none was recorded (legacy shift). */
 export async function getShiftReceiptAnchor(
   db: Database,
