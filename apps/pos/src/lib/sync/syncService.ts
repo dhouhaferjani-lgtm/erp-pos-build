@@ -6,6 +6,7 @@ import {
   deleteProducts,
   reconcileMenuProducts,
 } from '@/lib/db/repositories/productRepository';
+import { deleteForProducts as deleteLocationStockForProducts } from '@/lib/db/repositories/locationStockRepository';
 import { flattenMenuToProducts } from '@/api/productApi';
 import {
   upsertPaymentMethods,
@@ -572,6 +573,9 @@ export async function pullProductsCore(
 
   if (deletedIdsAccumulator.length > 0) {
     await deleteProducts(db, deletedIdsAccumulator);
+    // Task 8 — tombstone cascade: remove cached location_stock rows for
+    // products the server has deleted so stale stock data is never surfaced.
+    await deleteLocationStockForProducts(db, deletedIdsAccumulator);
   }
 
   if (totalPulled > 0 || deletedIdsAccumulator.length > 0) {
