@@ -385,6 +385,56 @@ class LocationStockQueryServiceTest extends TestCase
         $this->assertSame('6.0000', $page->incoming[0]->incomingTransfer);
     }
 
+    public function test_incoming_merges_transfer_and_po_on_the_same_product_grain_key(): void
+    {
+        // Null-variant in-transit transfer AND a confirmed PO for the SAME
+        // product: the merge true-branch must produce ONE row with both sums.
+        $this->makeTransfer(TransferStatus::InTransit, $this->locationB, $this->locationA, $this->plainProduct, null, '2.5');
+        $this->makePurchaseOrderLine(DocumentStatus::Confirmed, $this->locationA, $this->plainProduct, '10', '4', 'PO-1001');
+
+        // Company-scope noise: a row pointing at location A but belonging to a
+        // DIFFERENT company (inserted directly — locations are company-owned,
+        // so this can only arise from corruption; the company predicate is the
+        // defense and this pins it).
+        $otherCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Other Co',
+            'country_code' => 'TN',
+            'currency' => 'TND',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'status' => CompanyStatus::Active,
+        ]);
+        $foreign = StockTransfer::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'transfer_number' => 'TR-FOREIGN',
+            'transfer_type' => 'intracompany',
+            'status' => TransferStatus::InTransit->value,
+            'source_location_id' => $this->locationB->id,
+            'destination_location_id' => $this->locationA->id,
+            'initiated_by_user_id' => $this->user->id,
+            'initiated_at' => now(),
+        ]);
+        StockTransferLine::create([
+            'transfer_id' => $foreign->id,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'product_id' => $this->plainProduct->id,
+            'variant_id' => null,
+            'quantity' => '99',
+        ]);
+
+        $page = $this->reader->read($this->tenant->id, $this->company->id, $this->locationA->id, null, 1, 500);
+
+        $this->assertCount(1, $page->incoming);
+        $row = $page->incoming[0];
+        $this->assertSame($this->plainProduct->id, $row->productId);
+        $this->assertNull($row->variantId);
+        $this->assertSame('2.5000', $row->incomingTransfer);
+        $this->assertSame('6.0000', $row->incomingPo);
+    }
+
     public function test_incoming_present_only_on_page_one(): void
     {
         $thirdProduct = Product::create([

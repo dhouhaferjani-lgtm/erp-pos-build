@@ -45,6 +45,11 @@ final class LocationStockQueryService implements LocationStockReader
         int $page,
         int $perPage,
     ): LocationStockPageDTO {
+        // Clamp: page 0 would make paginate() fall back to the HTTP request's
+        // current page (request-coupled behavior inside a service), and a
+        // negative page would report page 1 stock with empty incoming.
+        $page = max(1, $page);
+
         $paginator = StockLevel::query()
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
@@ -63,7 +68,7 @@ final class LocationStockQueryService implements LocationStockReader
                 quantity: $level->quantity,
                 reserved: $level->reserved,
                 available: $level->getAvailableQuantity(),
-                updatedAt: $level->updated_at?->toIso8601String() ?? '',
+                updatedAt: $level->updated_at?->toIso8601String(),
             );
         }
 
