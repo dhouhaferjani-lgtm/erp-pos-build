@@ -706,12 +706,49 @@ function aggregateReportData(
       vatByRate.set(rate, existing);
     }
 
-    // Payment method breakdown
-    const methodCode = paymentMethodMap.get(receipt.payment_method_id) ?? 'UNKNOWN';
-    const existing = paymentByType.get(methodCode) ?? { amount: '0', count: 0 };
-    existing.amount = bcadd(existing.amount, receipt.total);
-    existing.count += 1;
-    paymentByType.set(methodCode, existing);
+    // Payment method breakdown (NF525 / DSFinV-K, 2026-06-11 research):
+    // attribute each tender to its OWN method (split tenders), and record the
+    // cash figure NET of change — change is netted into the cash line, never the
+    // whole receipt total against the primary method. Legacy receipts without
+    // payments_json fall back to the single primary method (cash net of change).
+    let payments: Array<{ method_code: string; amount: string }> = [];
+    if (receipt.payments_json) {
+      const parsed = JSON.parse(receipt.payments_json) as unknown;
+      if (Array.isArray(parsed)) {
+        payments = parsed as Array<{ method_code: string; amount: string }>;
+      }
+    }
+
+    if (payments.length > 0) {
+      let cashTendered = '0';
+      let receiptHasCash = false;
+      for (const p of payments) {
+        if (p.method_code === 'CASH') {
+          cashTendered = bcadd(cashTendered, p.amount);
+          receiptHasCash = true;
+          continue;
+        }
+        const ex = paymentByType.get(p.method_code) ?? { amount: '0', count: 0 };
+        ex.amount = bcadd(ex.amount, p.amount);
+        ex.count += 1;
+        paymentByType.set(p.method_code, ex);
+      }
+      if (receiptHasCash) {
+        const netCash = bcsub(cashTendered, receipt.change_due ?? '0');
+        const ex = paymentByType.get('CASH') ?? { amount: '0', count: 0 };
+        ex.amount = bcadd(ex.amount, netCash);
+        ex.count += 1;
+        paymentByType.set('CASH', ex);
+      }
+    } else {
+      const methodCode = paymentMethodMap.get(receipt.payment_method_id) ?? 'UNKNOWN';
+      const amount =
+        methodCode === 'CASH' ? bcsub(receipt.total, receipt.change_due ?? '0') : receipt.total;
+      const existing = paymentByType.get(methodCode) ?? { amount: '0', count: 0 };
+      existing.amount = bcadd(existing.amount, amount);
+      existing.count += 1;
+      paymentByType.set(methodCode, existing);
+    }
   }
 
   const vatBreakdown: ZReportVatBreakdown[] = [];

@@ -207,6 +207,15 @@ export async function buildEndOfDayPreview(
     }
   }
 
+  // Net change into the CASH per-method figure (NF525 / DSFinV-K, 2026-06-11
+  // research): the cash method total reflects net cash retained in the drawer,
+  // not gross tendered. expected_cash already nets change below; keep the
+  // per-method CASH line consistent (and identical to the signed Z).
+  const cashEntry = perMethod.get('CASH');
+  if (cashEntry) {
+    cashEntry.total_amount = bcsub(cashEntry.total_amount, cashChangeDueSum);
+  }
+
   // 3b. Seed all enabled physical methods that had no transactions
   for (const method of paymentMethods) {
     if (method.is_physical !== 1) continue;

@@ -127,7 +127,7 @@ function makeReceiptRows() {
       idempotency_key: 'idem-r1',
       status: 'pending',
       retry_count: 0,
-      payments_json: null,
+      payments_json: null as string | null,
       consumption_mode: null,
       table_id: null,
       server_receipt_id: null,
@@ -288,6 +288,52 @@ describe('generateZReport', () => {
       });
       expect(receiptsCall).toBeDefined();
       expect(String(receiptsCall![1])).toMatch(/is_training\s*=\s*0/);
+    });
+  });
+
+  describe('split tenders + net cash (H1)', () => {
+    // NF525/DSFinV-K: the per-method Z total is the NET amount allocated to each
+    // method (change netted into the cash figure), and split tenders attribute
+    // each payment to its own method — NOT the whole receipt total to the
+    // primary payment_method_id. See the 2026-06-11 cash-reconciliation research.
+    function makeSplitTenderReceipt() {
+      const base = makeReceiptRows()[0]!;
+      return [
+        {
+          ...base,
+          total: '100.00',
+          subtotal: '84.03',
+          tax_amount: '15.97',
+          // Cash 65 tendered + card 40 = 105 tendered on a 100 sale → 5 change
+          // on the cash portion. Net cash in drawer = 65 − 5 = 60; card = 40.
+          change_due: '5.00',
+          payment_method_id: 'pm-cash',
+          payments_json: JSON.stringify([
+            { payment_method_id: 'pm-cash', amount: '65.00', method_code: 'CASH' },
+            { payment_method_id: 'pm-card', amount: '40.00', method_code: 'CARD' },
+          ]),
+          lines: JSON.stringify([
+            { name: 'Widget', quantity: 1, unit_price: '100.00', line_total: '84.03', tax_rate: '19', tax_amount: '15.97', discount_amount: null },
+          ]),
+        },
+      ];
+    }
+
+    it('attributes each tender to its own method and nets change into the cash figure', async () => {
+      mockQueryAll(db, makeSplitTenderReceipt());
+
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      const methods = report.report_data.payment_methods;
+      const cash = methods.find((m) => m.payment_type === 'CASH')!;
+      const card = methods.find((m) => m.payment_type === 'CARD')!;
+      expect(cash).toBeDefined();
+      expect(card).toBeDefined();
+      // Net cash retained (tendered 65 − change 5), NOT the whole 100 receipt total.
+      expect(cash.total_amount).toBe('60.00');
+      expect(card.total_amount).toBe('40.00');
+      // expected_cash = opening 100 + net cash 60 = 160 (no refunds).
+      expect(report.report_data.expected_cash).toBe('160.00');
     });
   });
 

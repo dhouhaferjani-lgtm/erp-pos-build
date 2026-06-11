@@ -188,10 +188,11 @@ describe('buildEndOfDayPreview — writer-shape regression (B1)', () => {
 
     const cash = preview.payment_methods.find((p) => p.payment_method_code === 'CASH')!;
     expect(cash).toBeDefined();
-    // Tendered, not receipt total.
-    expect(cash.total_amount).toBe('105.00');
+    // Net cash retained in the drawer (tendered 105 − change 5), per
+    // NF525/DSFinV-K — change is netted into the cash figure, not gross tender.
+    expect(cash.total_amount).toBe('100.00');
     expect(cash.transaction_count).toBe(1);
-    // expected_cash = 100 (opening) + 105.00 (tendered) − 5.00 (change) = 200.00
+    // expected_cash = 100 (opening) + 100.00 (net cash in drawer) = 200.00
     expect(preview.expected_cash).toBe('200.00');
   });
 });
