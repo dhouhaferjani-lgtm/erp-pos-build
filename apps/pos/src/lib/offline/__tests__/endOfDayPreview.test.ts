@@ -197,6 +197,61 @@ describe('buildEndOfDayPreview — writer-shape regression (B1)', () => {
   });
 });
 
+describe('buildEndOfDayPreview — cash drawer movements (H2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('folds drawer deposits (+) and payouts (−) into expected_cash when shiftId is given', async () => {
+    vi.mocked(queryAll).mockImplementation(async (_db, sql, params) => {
+      const s = sql as string;
+      if (s.includes('offline_cash_drawer_ops')) {
+        const shiftId = (params as unknown[] | undefined)?.[0];
+        return (
+          shiftId === 'shift-1'
+            ? [
+                { id: 'd1', type: 'deposit', amount: '20.00', shift_id: 'shift-1' },
+                { id: 'd2', type: 'payout', amount: '5.00', shift_id: 'shift-1' },
+              ]
+            : []
+        ) as unknown as never[];
+      }
+      if (s.includes('offline_receipts')) {
+        return [
+          {
+            id: 'r1',
+            total: '50.00',
+            subtotal: '42.02',
+            tax_amount: '7.98',
+            change_due: '0.00',
+            payments_json: JSON.stringify([
+              { payment_method_id: 'pm-cash', amount: '50.00', method_code: 'CASH' },
+            ]),
+            lines: JSON.stringify([{ tax_rate: '19', tax_amount: '7.98', line_total: '42.02' }]),
+            created_at: '2026-06-10T10:00:00Z',
+          },
+        ] as unknown as never[];
+      }
+      if (s.includes('payment_methods')) {
+        return [{ id: 'pm-cash', code: 'CASH', name: 'Cash', is_physical: 1 }] as unknown as never[];
+      }
+      return [] as never[];
+    });
+
+    const preview = await buildEndOfDayPreview(
+      mockDb,
+      'term-1',
+      '2026-06-10T08:00:00Z',
+      '100',
+      'EUR',
+      'shift-1',
+    );
+
+    // opening 100 + net cash 50 + deposit 20 − payout 5 = 165.00
+    expect(preview.expected_cash).toBe('165.00');
+  });
+});
+
 describe('buildEndOfDayPreview — physical-method seeding (D2)', () => {
   beforeEach(() => {
     vi.clearAllMocks();

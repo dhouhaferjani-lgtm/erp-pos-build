@@ -185,14 +185,24 @@ function makeRefundRecordRows() {
   ];
 }
 
-/** Setup queryAll to return receipts / payment_methods / refund records by SQL shape */
+/** Cash drawer ops mirrored locally (offline_cash_drawer_ops): deposit=+drawer, payout=−drawer. */
+function makeDrawerOpRows() {
+  return [] as Array<{ id: string; type: 'deposit' | 'payout'; amount: string; shift_id: string }>;
+}
+
+/** Setup queryAll to return receipts / payment_methods / refund records / drawer ops by SQL shape */
 function mockQueryAll(
   db: Database,
   receipts: ReturnType<typeof makeReceiptRows>,
   refundRecords: ReturnType<typeof makeRefundRecordRows> = [],
+  drawerOps: ReturnType<typeof makeDrawerOpRows> = [],
 ) {
   vi.mocked(queryAll).mockImplementation(async (_db, sql, params) => {
     const s = sql as string;
+    if (s.includes('offline_cash_drawer_ops')) {
+      const shiftId = (params as unknown[] | undefined)?.[0];
+      return drawerOps.filter((o) => o.shift_id === shiftId) as unknown as never[];
+    }
     if (s.includes('FROM offline_receipts') || s.includes('offline_receipts')) {
       return receipts;
     }
@@ -334,6 +344,36 @@ describe('generateZReport', () => {
       expect(card.total_amount).toBe('40.00');
       // expected_cash = opening 100 + net cash 60 = 160 (no refunds).
       expect(report.report_data.expected_cash).toBe('160.00');
+    });
+  });
+
+  describe('cash drawer movements in expected_cash (H2)', () => {
+    // NF525/DSFinV-K: paid-ins (deposits) and payouts are cash-balance events
+    // folded into theoretical/expected cash — deposit raises it, payout lowers
+    // it. The device is source of truth, so expected_cash must mirror the drawer.
+    it('adds drawer deposits and subtracts payouts from expected_cash', async () => {
+      const drawerOps = [
+        { id: 'd1', type: 'deposit' as const, amount: '20.00', shift_id: 'shift-1' },
+        { id: 'd2', type: 'payout' as const, amount: '5.00', shift_id: 'shift-1' },
+      ];
+      mockQueryAll(db, makeReceiptRows(), [], drawerOps);
+
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      // opening 100 + cash sales 50 + deposit 20 − payout 5 = 165.00
+      expect(report.report_data.expected_cash).toBe('165.00');
+    });
+
+    it('ignores drawer ops from a different shift', async () => {
+      const drawerOps = [
+        { id: 'd1', type: 'deposit' as const, amount: '99.00', shift_id: 'OTHER-shift' },
+      ];
+      mockQueryAll(db, makeReceiptRows(), [], drawerOps);
+
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      // No ops for shift-1 → opening 100 + cash sales 50 = 150.00
+      expect(report.report_data.expected_cash).toBe('150.00');
     });
   });
 

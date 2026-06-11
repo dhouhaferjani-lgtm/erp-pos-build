@@ -18,6 +18,7 @@ import type Database from '@tauri-apps/plugin-sql';
 import { queryAll } from '@/lib/db';
 import { bcadd, bcsub, bcformat, bccomp } from '@/lib/decimal';
 import { getCurrencyDecimals } from '@/lib/currency';
+import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerRepository';
 
 interface OfflineReceiptRow {
   id: string;
@@ -91,6 +92,9 @@ export interface EndOfDayPreview {
  * @param openingCash   - Opening cash amount for the shift (decimal string)
  * @param currencyCode  - ISO 4217 currency code (e.g. 'EUR', 'TND'). When omitted,
  *                        falls back to the company currency from authStore.
+ * @param shiftId       - Shift UUID. When provided, cash drawer deposits/payouts
+ *                        for the shift are folded into expected_cash so the
+ *                        preview mirrors the signed Z (NF525 drawer reality).
  */
 export async function buildEndOfDayPreview(
   db: Database,
@@ -98,6 +102,7 @@ export async function buildEndOfDayPreview(
   shiftOpenedAt: string,
   openingCash: string,
   currencyCode?: string,
+  shiftId?: string,
 ): Promise<EndOfDayPreview> {
   // Resolve currency and scale
   let resolvedCurrency = currencyCode;
@@ -231,8 +236,20 @@ export async function buildEndOfDayPreview(
     }
   }
 
-  // 4. expected_cash = opening + Σ(CASH tendered) − Σ(change_due)
-  const expectedCash = bcsub(bcadd(openingCash, cashTenderedSum), cashChangeDueSum);
+  // 4. expected_cash = opening + net cash sales (Σ tendered − Σ change)
+  //    + cash drawer deposits − payouts (NF525 drawer reality; mirrors the
+  //    signed Z). deposit=+, payout=− per the device fetchDrawerBalance.
+  let drawerNet = '0';
+  if (shiftId) {
+    const drawerOps = await getCashDrawerOpsForShift(db, shiftId);
+    for (const op of drawerOps) {
+      drawerNet = op.type === 'deposit' ? bcadd(drawerNet, op.amount) : bcsub(drawerNet, op.amount);
+    }
+  }
+  const expectedCash = bcadd(
+    bcsub(bcadd(openingCash, cashTenderedSum), cashChangeDueSum),
+    drawerNet,
+  );
 
   // 5. Build VAT breakdown sorted by rate ascending
   const vatBreakdown: VatBreakdownItem[] = Array.from(vatByRate.entries())

@@ -23,6 +23,7 @@ import {
 import { insertZReportCounts } from '@/lib/db/repositories/zReportCountRepository';
 import type { ZReportCountRow } from '@/lib/db/repositories/zReportCountRepository';
 import { getRefundRecordsForShift } from '@/lib/db/repositories/localRefundRecordRepository';
+import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerRepository';
 import type { LocalRefundRecord } from '@/lib/db/repositories/localRefundRecordRepository';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import type {
@@ -187,7 +188,26 @@ export async function generateZReport(
   for (const record of refundRecords) {
     cashRefundImpact = bcadd(cashRefundImpact, record.cash_impact);
   }
-  const expectedCash = bcsub(bcadd(openingCash, cashSales, decimals), cashRefundImpact, decimals);
+
+  // Cash drawer movements (NF525 / DSFinV-K, 2026-06-11 research): paid-ins
+  // (deposit) raise the theoretical drawer, payouts lower it. The device is the
+  // source of truth, so expected_cash must mirror the real drawer. Sign matches
+  // the device's fetchDrawerBalance: deposit=+, payout=− (NOT the server's
+  // bank-deposit sign).
+  const drawerOps = await getCashDrawerOpsForShift(db, shiftId);
+  let drawerNet = '0';
+  for (const op of drawerOps) {
+    drawerNet =
+      op.type === 'deposit'
+        ? bcadd(drawerNet, op.amount, decimals)
+        : bcsub(drawerNet, op.amount, decimals);
+  }
+
+  const expectedCash = bcadd(
+    bcsub(bcadd(openingCash, cashSales, decimals), cashRefundImpact, decimals),
+    drawerNet,
+    decimals,
+  );
 
   reportData.opening_cash = new Big(openingCash).toFixed(decimals);
   reportData.expected_cash = new Big(expectedCash).toFixed(decimals);

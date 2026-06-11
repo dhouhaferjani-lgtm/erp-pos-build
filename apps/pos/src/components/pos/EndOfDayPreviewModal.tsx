@@ -122,6 +122,8 @@ export function EndOfDayPreviewModal({
           terminalId,
           shift.opened_at,
           shift.opening_cash,
+          undefined, // currencyCode — fall back to company currency
+          shift.id, // fold cash drawer deposits/payouts into expected_cash
         );
         if (!cancelled) {
           setPreview(data);
@@ -138,7 +140,7 @@ export function EndOfDayPreviewModal({
 
     void loadPreview();
     return () => { cancelled = true; };
-  }, [isOpen, terminalId, shift.opened_at, shift.opening_cash]);
+  }, [isOpen, terminalId, shift.opened_at, shift.opening_cash, shift.id]);
 
   const handleConfirm = useCallback(async () => {
     if (!preview) return;
