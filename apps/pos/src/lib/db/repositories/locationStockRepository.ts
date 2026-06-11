@@ -14,6 +14,11 @@ import { queryAll, queryOne, execute } from '@/lib/db';
 // Types
 // ──────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Quantities are decimal STRINGS. Zeroed/default values are stored as '0',
+ * while server-supplied values arrive at scale 4 ('10.0000') — never compare
+ * with string equality; use the decimal helpers (bccomp) for any comparison.
+ */
 export interface LocationStockRow {
   product_id: string;
   variant_id: string; // '' = product-grain
