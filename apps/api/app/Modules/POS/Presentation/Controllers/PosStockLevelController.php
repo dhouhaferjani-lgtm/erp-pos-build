@@ -33,6 +33,13 @@ use Illuminate\Validation\ValidationException;
  */
 final class PosStockLevelController extends Controller
 {
+    /**
+     * 5× the voucher/receipt sync page size (PAGE_SIZE = 100): stock rows are
+     * flat scalar tuples (no nested payloads), and the client pulls this feed
+     * on every sync tick — fewer round-trips matter more than payload size.
+     */
+    private const PER_PAGE = 500;
+
     public function __construct(
         private readonly LocationStockReader $stockReader,
         private readonly CompanyContext $companyContext,
@@ -47,27 +54,7 @@ final class PosStockLevelController extends Controller
             'page' => ['sometimes', 'integer', 'min:1'],
         ]);
 
-        // updated_since is an ISO-8601 timestamp passed as a URL query param.
-        // Laravel's built-in `date` rule calls strtotime() which decodes `+` as
-        // a space, making e.g. "2026-06-11T23:00:00+00:00" fail. We parse it
-        // manually so that both "+00:00" and "Z" timezone variants are accepted.
-        $updatedSince = null;
-        $updatedSinceRaw = $request->query('updated_since');
-        if (is_string($updatedSinceRaw) && $updatedSinceRaw !== '') {
-            // When an ISO-8601 timestamp with a +HH:MM timezone offset is passed as
-            // a URL query parameter, RFC 3986 query-string decoding treats `+` as a
-            // space (application/x-www-form-urlencoded convention). Re-encode any
-            // space that appears in the numeric timezone segment so that Carbon can
-            // parse both "2026-06-11T22:00:00+00:00" and the space-decoded variant.
-            $normalised = preg_replace('/T(\d{2}:\d{2}:\d{2}) (\d{2}:\d{2})$/', 'T$1+$2', $updatedSinceRaw);
-            try {
-                $updatedSince = CarbonImmutable::parse($normalised ?? $updatedSinceRaw);
-            } catch (InvalidFormatException) {
-                throw ValidationException::withMessages([
-                    'updated_since' => ['The updated_since must be a valid date.'],
-                ]);
-            }
-        }
+        $updatedSince = $this->parseUpdatedSince($request);
 
         $companyId = $this->companyContext->requireCompanyId();
 
@@ -93,7 +80,7 @@ final class PosStockLevelController extends Controller
             locationId: (string) $terminal->location_id,
             updatedSince: $updatedSince,
             page: (int) ($validated['page'] ?? 1),
-            perPage: 500,
+            perPage: self::PER_PAGE,
         );
 
         return response()->json([
@@ -122,5 +109,35 @@ final class PosStockLevelController extends Controller
                 ],
             ],
         ]);
+    }
+
+    /**
+     * Parse the optional ISO-8601 cursor. Laravel's `date` rule (strtotime)
+     * rejects the server's own as_of format: RFC 3986 query decoding turns the
+     * `+` of a "+HH:MM" offset into a space (x-www-form-urlencoded convention),
+     * so "2026-06-11T22:00:00+00:00" arrives as "...22:00:00 00:00". Restore
+     * the `+` in the offset segment (second or sub-second precision), then
+     * parse; anything Carbon still rejects is a 422.
+     */
+    private function parseUpdatedSince(Request $request): ?CarbonImmutable
+    {
+        $raw = $request->query('updated_since');
+        if (! is_string($raw) || $raw === '') {
+            return null;
+        }
+
+        $normalised = preg_replace(
+            '/T(\d{2}:\d{2}:\d{2}(?:\.\d+)?) (\d{2}:\d{2})$/',
+            'T$1+$2',
+            $raw,
+        );
+
+        try {
+            return CarbonImmutable::parse($normalised ?? $raw);
+        } catch (InvalidFormatException) {
+            throw ValidationException::withMessages([
+                'updated_since' => ['The updated_since must be a valid date.'],
+            ]);
+        }
     }
 }
