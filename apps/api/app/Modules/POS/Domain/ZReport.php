@@ -76,6 +76,35 @@ class ZReport extends Model
     public $timestamps = false;
 
     /**
+     * `canonical_bytes` is a BYTEA column; pdo_pgsql hydrates BYTEA as a PHP
+     * stream resource (SQLite returns a string), so every reader on
+     * production PostgreSQL would receive a stream without this accessor.
+     * Mirrors FiscalEvent::getCanonicalBytesAttribute — the standalone
+     * readers (ZReportHashService / ReceiptHashService / Nf525DataProvider
+     * stringify helpers) already normalise raw query-builder rows; this
+     * covers the Eloquent path.
+     */
+    public function getCanonicalBytesAttribute(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_resource($value)) {
+            $meta = stream_get_meta_data($value);
+            if ($meta['seekable'] === true) {
+                rewind($value);
+            }
+
+            $contents = stream_get_contents($value);
+
+            return $contents === false ? '' : $contents;
+        }
+
+        return (string) $value;
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

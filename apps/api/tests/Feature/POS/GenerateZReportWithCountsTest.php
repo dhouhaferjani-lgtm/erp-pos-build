@@ -424,6 +424,13 @@ final class GenerateZReportWithCountsTest extends TestCase
         $this->assertSame('-5.0000', (string) $closedShift->variance, 'variance must not be overwritten');
         $this->assertSame('warning', $closedShift->variance_severity, 'variance_severity must not be cleared');
 
+        // expected_cash must stay CONSISTENT with the preserved pair — the
+        // pos_shifts_variance_calc CHECK (variance = actual_cash − expected_cash)
+        // enforces this at the DB level on PostgreSQL (production), where an
+        // inconsistent recompute makes the close UPDATE throw. SQLite has no
+        // CHECK, so this assertion is the portable guard: 95 − (−5) = 100.
+        $this->assertSame('100.0000', (string) $closedShift->expected_cash, 'expected_cash must equal actual_cash − variance (the per-tender expected the count was validated against)');
+
         // Shift must still be fully closed.
         $this->assertSame(ShiftStatus::Closed, $closedShift->status);
         $this->assertNotNull($closedShift->closed_at);
