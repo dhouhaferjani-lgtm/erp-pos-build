@@ -30,7 +30,9 @@ The POS terminal is location-bound (server: `Terminal.company_id` + `Terminal.lo
 | Enforcement policy grain | **Company-level** `companies.pos_stock_policy` enum (`block` / `warn` / `off`), defaults derived from vertical (F&B/Menu → `off`; retail/parapharmacy/automotive → `block`) |
 | Insufficient stock under `block` | **Hard block, no manager override** (override is additive later; G2/N1 PIN-audit machinery exists if wanted) |
 | "Incoming" scope | **In-transit transfers + confirmed POs** (both terms, separately labeled) |
-| Fiscal identity depth | **Complete the sourcing, keep the signed shape** — no event-version bump; display layers get full location identity |
+| Fiscal identity depth | **Complete the sourcing, keep the signed shape** — no event-version bump; display layers get full location identity. Hardened post-Codex-review: branch identity is sourced **atomically**, never per-field (§4.6) |
+
+> **Codex adversarial review r1 (2026-06-11):** REQUEST-CHANGES (1 BLOCKER, 3 P1, 2 P2) — `docs/superpowers/reviews/2026-06-11-pos-location-aware-stock-spec-codex-review.md`. All findings resolved in this revision: atomic seller sourcing + fiscal-contract documentation (BLOCKER E + P1 E), stock deletion reconciliation (P1 B), policy delivery moved off `/company/config` onto the terminal payload (P1 D), server-issued sync cursor (P2 B), explicit `QuantityScale` binding (P2 G).
 
 ---
 
@@ -114,6 +116,8 @@ GET /api/v1/pos/stock-levels?updated_since=<iso8601>&page=N
 ```
 
 - **Delta semantics:** `updated_since` filters the `stock` array on `stock_levels.updated_at`. The `incoming` array is returned **complete on every pull** (never delta-filtered): incoming changes do not touch the destination's `stock_levels.updated_at` (transfer initiate only updates the SOURCE row), so a delta on stock rows would silently miss arrival/initiation of transfers. The incoming set is bounded small — only products with active in-transit transfers or open confirmed POs toward this location. The client replaces its incoming columns wholesale each pull (missing = zero).
+- **Cursor is server-issued (Codex P2-B):** every response carries `as_of` (server clock); the client persists it and sends it back verbatim as the next `updated_since`. The device clock is NEVER used for the stock cursor (the products pull's device-time cursor at `syncService.ts:577-578` is the anti-pattern: backward clock drift silently skips updates).
+- **Full-reconciliation mode (Codex P1-B):** omitting `updated_since` returns the complete stock set for the location. The client treats a full pull as **replace-all**: local `location_stock` rows absent from the full response are deleted (covers `stock_levels` rows removed by product/location cascades — the delta feed has no tombstones). Cadence in §4.3 decides when full vs delta runs. Product tombstones from the existing catalog sync additionally delete the corresponding `location_stock` rows when a product is deleted.
 - **Incoming computation:**
   - Transfers term: `SUM(stock_transfer_lines.quantity)` joined to `stock_transfers` where `destination_location_id = :location` AND `status = 'in_transit'`, grouped by `(product_id, variant_id)`.
   - PO term: the existing confirmed-PO computation from `ProductController::stockLevels:612-626`, additionally scoped to `document_lines.location_id = :location`, grouped by product. (PO lines are not variant-aware today; the PO term lands on `variant_id = null` rows. Documented asymmetry.)
@@ -124,7 +128,7 @@ GET /api/v1/pos/stock-levels?updated_since=<iso8601>&page=N
 
 - Migration (tenant): `companies.pos_stock_policy` `string` column, NOT NULL, with a `PosStockPolicy` PHP enum (`Block = 'block'`, `Warn = 'warn'`, `Off = 'off'`) — Rule: enums for all status/type columns.
 - **Backfill in the same migration:** companies whose tenant vertical is F&B / has the Menu module → `off`; all others → `block`. New-company creation derives the same default from vertical.
-- Exposed in the `/company/config` payload (`CompanyConfig.pos_stock_policy`) so the POS caches it at boot with the existing config fetch.
+- **Delivered via the terminal payload, NOT `/company/config` (Codex P1-D):** `CompanyConfigController` resolves the authenticated user's *primary* company, not the `X-Company-Id` active company (`CompanyConfigController.php:58-68`) — in a multi-company tenant the policy could misreport. The terminal → company relation is unambiguous, so `TerminalResource` gains a `pos_stock_policy` field (resolved from the terminal's company), cached in `terminalStore` alongside the location data the client already persists. `/company/config` is untouched.
 - `ReceiptCreationService::decrementStock` becomes policy-aware: `Block` keeps today's `RuntimeException`; `Warn` and `Off` log (`Log::warning`) and proceed with the decrement (negative allowed). The composite leaf deduction path (`deductCompositeItemStock`) respects the same policy.
 - `PosCoreReceiptProjection` is **unchanged**: warn-and-continue unconditionally — signed fiscal events always land.
 - Web admin: a settings control to change the policy is OUT of scope for v1 (the default-by-vertical covers launch); changing it is a DB-level operation until a follow-up adds UI.
@@ -148,8 +152,8 @@ CREATE TABLE location_stock (
 ```
 
   Quantities stored as TEXT decimal strings (precision contract — the POS already carries money/qty as strings; no `parseFloat` on these columns, comparisons via the existing bc-style helpers).
-- `pullLocationStock()` in `syncService.ts`: pulls the endpoint, upserts stock rows (delta), wholesale-replaces the two incoming columns from the `incoming` array (set-to-zero for rows absent from it), records `stock_last_sync` + the server `as_of` in `sync_metadata`.
-- **Cadence:** terminal claim/boot → shift open → every periodic sync tick (alongside, not gated on, the catalog pull) → **immediately after each successful offline-receipt drain** (the server snapshot now includes our own sales; re-baselining right then collapses the local-pending adjustment to zero). Skipped entirely for Menu tenants (`hasModule(config, 'Menu')`).
+- `pullLocationStock()` in `syncService.ts`: pulls the endpoint, upserts stock rows (delta) or replace-all (full mode), wholesale-replaces the two incoming columns from the `incoming` array (set-to-zero for rows absent from it), records the server `as_of` in `sync_metadata` as the next cursor (never device time) plus `stock_last_sync` for staleness display.
+- **Cadence:** **full pull** on terminal claim/boot and on shift open (daily replace-all bounds deletion staleness to one business day); **delta pull** on every periodic sync tick (alongside, not gated on, the catalog pull) and **immediately after each successful offline-receipt drain** (the server snapshot now includes our own sales; re-baselining right then collapses the local-pending adjustment to zero). Skipped entirely for Menu tenants (`hasModule(config, 'Menu')`).
 - Failure handling mirrors `pullProductsCore`'s typed-error discipline (FetchTimeoutError propagates; 5xx/parse/network classified): a failed stock pull NEVER blocks selling — the POS keeps enforcing against the last snapshot (offline-first; positive-evidence-only downgrade philosophy applies to auth, not stock; stock staleness is surfaced, not fail-closed).
 
 ### 4.4 Client — availability computation + enforcement
@@ -166,7 +170,7 @@ effectiveAvailable(productId, variantId) =
 
 - Pending **refund/return** records are ignored (they only add stock back; ignoring is the conservative direction).
 - Consumers: `ProductCard` (badge + the existing out-of-stock gating, now fed real data), barcode-scan add path, cart quantity increment, and any "+1" repeat-line path. Every ingress to the cart goes through one guard (lesson L9: canonicalize before state-machine input — enumerate ingress sites).
-- Behavior by policy (from cached `CompanyConfig.pos_stock_policy`):
+- Behavior by policy (from the terminal payload's `pos_stock_policy`, persisted in `terminalStore`):
   - `block`: refuse add/increment beyond `effectiveAvailable`; toast with `t()` key explaining branch availability. **No override.**
   - `warn`: allow; toast + persistent line badge.
   - `off`: current behavior (no checks).
@@ -181,7 +185,11 @@ effectiveAvailable(productId, variantId) =
 ### 4.6 Fiscal identity completion (values change, shape doesn't)
 
 - **ACCOUNT_CHARGE gap:** `paymentStore.ts:788` gets the same `branchTaxNumber ?? companyField(…)` sourcing as the SALE_RECEIPT/ACCOUNT_PAYMENT paths.
-- **Seller address:** add the location's address fields (`address_street`, `address_city`, `address_postal_code`, `address_country`) to `TerminalResource` and the client `Location` type (`terminalStore.ts`); all three seller-block builders source address from the location **when present**, company fallback per-field. The signed seller SHAPE is unchanged (`name, taxNumber, countryCode, street, city, postalCode`) — values authored going forward differ; historical events untouched; **no event-version bump** (same class of change as the already-shipped branch tax_number sourcing).
+- **Seller identity is ATOMIC — never per-field (Codex BLOCKER-E / P1-E):** add the location's address fields (`address_street`, `address_city`, `address_postal_code`, `address_country`) to `TerminalResource` and the client `Location` type (`terminalStore.ts`). A single resolver (one function, used by all three seller-block builders) chooses the identity source:
+  - The location's identity is used **only when it is fiscally complete**: `tax_id` AND full address (street, city, postal code, country) all present. Then ALL seller fields (taxNumber, street, city, postalCode, countryCode) come from the location.
+  - Otherwise the seller block sources **wholesale from the company** — exactly today's behavior. No mixing of a branch tax number with a company address or vice versa: `FiscalPayloadConstraintValidator` requires a complete seller (key set, tax-number-format-vs-country, full address — `FiscalPayloadConstraintValidator.php:1541-1569, 2391-2420`) and a mixed identity would be legally incoherent even when it validates.
+  - This SUPERSEDES the shipped `branchTaxNumber ?? company` per-field pattern at `paymentStore.ts:586/698` — those two sites migrate to the atomic resolver (a branch with `tax_id` but no address reverts to full company identity until its address is entered; flagged in the rollout note).
+- **Versioning rationale (Codex BLOCKER-E):** the signed seller SHAPE is unchanged (`name, taxNumber, countryCode, street, city, postalCode`); `FiscalEventPayloadRegistry` accepts SALE_RECEIPT v1/v2 and validation semantics don't reference company records, so location-sourced values parse and validate identically — **no event-version bump**. This is a value-sourcing semantic, not a contract change; precedent: branch tax_number sourcing already ships in v2. The decision IS however a fiscal-contract decision: the SoT/fiscal documentation gains a "seller block = identity of the selling ESTABLISHMENT (location), company as fallback" clause, canonical fixtures gain a location-identity case, and the change is logged for the server team (REALIGNMENT-LOG pattern). Historical events untouched; only newly authored values differ.
 - **Printed receipt header** (`buildReceiptData.ts:132`) and the printed **Z header**: switch from `company.tax_id` to the resolved location identity — tax_id, vat_number, legal_identifiers — sourced from the terminal store (display layers get the FULL identity; the signed payload keeps its narrower shape).
 - **Z-report signed `seller` stays `null`** (current behavior). Populating it is a flagged follow-up requiring server-side canonical Z validation review — not this workstream.
 - Server PDF path already correct via `TaxIdentityResolver`; no change.
@@ -196,13 +204,15 @@ effectiveAvailable(productId, variantId) =
 
 ### 4.8 Testing strategy (TDD)
 
-- **PHPUnit:** `LocationStockReader` contract (variant grain, transfers term excludes Draft/Completed/Cancelled, PO term scoped to location + unreceived remainder, delta on stock + always-complete incoming); endpoint auth (terminal-bound location, no cross-location reads, middleware pattern); `PosStockPolicy` enum + migration backfill by vertical; policy-aware draft enforcement (`block` throws / `warn`+`off` proceed; composite leaves; projection untouched). Valid UUIDs for FKs; PG-gated where partial indexes matter.
-- **Vitest:** availability selector (missing row ⇒ 0; pending-receipt subtraction; cart subtraction; clamp; '' variant key normalization; exemptions); `pullLocationStock` (delta upsert; wholesale incoming replace incl. zeroing absent rows; typed errors; Menu skip); ProductCard states with real data; policy gating from companyConfig; ingress guards (tile, barcode, increment).
+- **PHPUnit:** `LocationStockReader` contract (variant grain, transfers term excludes Draft/Completed/Cancelled, PO term scoped to location + unreceived remainder, delta on stock + always-complete incoming, full mode returns the complete set); endpoint auth (terminal-bound location, no cross-location reads, middleware pattern); `as_of` echo semantics; `PosStockPolicy` enum + migration backfill by vertical + `TerminalResource` exposure; policy-aware draft enforcement (`block` throws / `warn`+`off` proceed; composite leaves; projection untouched); **seller-coherence**: a location-identity seller block passes `FiscalPayloadConstraintValidator` (tax-number-vs-country, full address) and an incomplete location yields the full company identity (atomic resolver, no mixing). Valid UUIDs for FKs; PG-gated where partial indexes matter. **Quantity math uses `QuantityScale` helpers — no hardcoded bcmath scales (PHPStan `ForbidHardcodedBcmathScale`); do NOT copy the scale-2 stock totals at `ProductController.php:642-646` (Codex P2-G).**
+- **Vitest:** availability selector (missing row ⇒ 0; pending-receipt subtraction; cart subtraction; clamp; '' variant key normalization; exemptions); `pullLocationStock` (delta upsert; full-mode replace-all deletes absent rows; wholesale incoming replace incl. zeroing absent rows; cursor = server `as_of`, never device time; typed errors; Menu skip); atomic seller resolver (complete location → all-location fields; incomplete location → all-company fields; never mixed); ProductCard states with real data; policy gating from the terminal payload; ingress guards (tile, barcode, increment).
 - **Tauri manual smoke** (browser cannot run the SQLite layer): sell-to-block flow, offline sell + drain + re-pull, in-transit badge after initiating a transfer toward the terminal's branch, ACCOUNT_CHARGE branch tax_id on the signed payload, printed header identity. Checklist ships with the implementation plan.
 
 ### 4.9 Rollout
 
 Everything is additive: one new company column (with backfill), one new read endpoint, one new client table + sync path, policy gate on an existing throw. No destructive schema change, no event-version bump, no data migration beyond the enum backfill. Safe to ship behind the vertical defaults (F&B unaffected by construction).
+
+**One behavioral note for operators:** under the atomic seller resolver (§4.6), a branch that has `tax_id` set but an incomplete address will author **company** identity (today it authors the branch tax number with the company address — a mixed identity). Branches wanting their own fiscal identity on receipts must have a complete location record. Surface this in the deploy notes.
 
 ---
 
