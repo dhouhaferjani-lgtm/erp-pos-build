@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Fiscal;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
@@ -505,6 +506,91 @@ final class PosCoreReceiptProjectionTest extends TestCase
         // StockLevel decremented (10 - 2 = 8).
         $stockLevel->refresh();
         $this->assertSame('8.0000', $stockLevel->quantity);
+    }
+
+    public function test_v2_variant_line_writes_variant_id_on_pos_receipt_line(): void
+    {
+        // SaleReceiptV2 (M4): the canonical line carries the variant identity;
+        // the projection binds pos_receipt_lines.variant_id tenant-scoped and
+        // anchored to the resolved product FK.
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+        ]);
+        $variant = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'product_id' => $product->id,
+            'is_active' => true,
+        ]);
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            lines: [
+                [
+                    'sku' => $product->sku,
+                    'product_id' => $product->id,
+                    'variant_id' => $variant->id,
+                    'variant_name' => 'Default item — Red / L',
+                    'variant_sku' => 'SKU-X-RED-L',
+                    'unit_price' => '10.00',
+                    'line_total' => '10.00',
+                    'quantity' => '1',
+                    'tax_rate' => '0',
+                    'tax_amount' => '0.00',
+                ],
+            ],
+        );
+
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        $line = DB::table('pos_receipt_lines')->first();
+        $this->assertNotNull($line);
+        $this->assertSame($product->id, $line->product_id);
+        $this->assertSame($variant->id, $line->variant_id);
+    }
+
+    public function test_v2_variant_of_a_different_product_does_not_bind(): void
+    {
+        // A variant_id that is not a variant OF the line's product must not
+        // bind the FK — the sealed canonical payload stays authoritative.
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+        ]);
+        $otherProduct = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+        ]);
+        $foreignVariant = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'product_id' => $otherProduct->id,
+            'is_active' => true,
+        ]);
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            lines: [
+                [
+                    'sku' => $product->sku,
+                    'product_id' => $product->id,
+                    'variant_id' => $foreignVariant->id,
+                    'variant_name' => 'Foreign variant',
+                    'variant_sku' => 'SKU-FOREIGN',
+                    'unit_price' => '10.00',
+                    'line_total' => '10.00',
+                    'quantity' => '1',
+                    'tax_rate' => '0',
+                    'tax_amount' => '0.00',
+                ],
+            ],
+        );
+
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        $line = DB::table('pos_receipt_lines')->first();
+        $this->assertNotNull($line);
+        $this->assertSame($product->id, $line->product_id);
+        $this->assertNull($line->variant_id);
     }
 
     public function test_voucher_plus_stock_combined_both_side_effects_fire_and_are_idempotent(): void
@@ -1273,6 +1359,10 @@ final class PosCoreReceiptProjectionTest extends TestCase
                 'sku' => $rl['sku'] ?? 'SKU-X',
                 'tax_category_code' => 'Z',
                 'unit_price' => $rl['unit_price'] ?? '10.00',
+                // SaleReceiptV2 (M4) variant identity — null for non-variant lines.
+                'variant_id' => $rl['variant_id'] ?? null,
+                'variant_name' => $rl['variant_name'] ?? null,
+                'variant_sku' => $rl['variant_sku'] ?? null,
                 // Pad to scale-2 if integer ("0" → "0.00").
                 'vat_rate' => $this->padToScaleTwo($rl['tax_rate'] ?? '0'),
             ];

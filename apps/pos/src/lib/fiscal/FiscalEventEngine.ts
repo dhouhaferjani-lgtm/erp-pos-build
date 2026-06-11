@@ -1675,11 +1675,19 @@ const ADDRESS_KEYS = ['city', 'country_code', 'postal_code', 'street'] as const;
 const ORIGINAL_RECEIPT_REFERENCE_KEYS = [
   'fiscal_event_id', 'original_business_date', 'original_receipt_uuid', 'refund_reason',
 ] as const;
-const LINE_ITEM_KEYS = [
+// SaleReceiptV2 (M4, event_version=2) line-item key set — V1 + the three
+// variant-identity keys (null for non-variant lines). The device authors
+// ONLY V2 after the cutover, so append-time validation enforces the V2
+// shape; authoring a V1-shaped line now fails closed here. Mirrors the PHP
+// FiscalPayloadConstraintValidator::SALE_RECEIPT_LINE_ITEM_KEYS_V2 (the
+// FiscalPayloadKeyDrift gate pins the two lists against each other).
+export const SALE_RECEIPT_LINE_ITEM_KEYS_V2 = [
   'gtin', 'line_discount_amount', 'line_discount_reason', 'line_subtotal',
   'line_vat', 'name', 'non_collected_subtype', 'product_id', 'quantity',
-  'sku', 'tax_category_code', 'unit_price', 'vat_rate',
+  'sku', 'tax_category_code', 'unit_price', 'variant_id', 'variant_name',
+  'variant_sku', 'vat_rate',
 ] as const;
+const LINE_ITEM_KEYS = SALE_RECEIPT_LINE_ITEM_KEYS_V2;
 const PAYMENT_KEYS = [
   'amount', 'foreign_currency_amount', 'foreign_currency_code',
   'instrument_serial', 'instrument_type', 'method_code',
@@ -2601,6 +2609,29 @@ function validateLineItem(index: number, row: unknown, money: RegExp, scale: num
     throw new FiscalEventPayloadValidationError(
       `payload_line_item_non_collected_subtype_invalid:${path}.non_collected_subtype must be one of ${NON_COLLECTED_SUBTYPES.join('|')} or null; got ${jsonOrType(ncs)}`,
     );
+  }
+
+  // SaleReceiptV2 (M4) variant identity: nullable strings; variant_id must
+  // be a UUID when present; a variant_name/variant_sku without variant_id
+  // is an orphan identity and must never be signed.
+  const variantId = row['variant_id'];
+  if (variantId !== null && (typeof variantId !== 'string' || !LOWER_HEX_UUID.test(variantId))) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_line_item_variant_id_invalid:${path}.variant_id must be UUID or null; got ${jsonOrType(variantId)}`,
+    );
+  }
+  for (const f of ['variant_name', 'variant_sku'] as const) {
+    const v = row[f];
+    if (v !== null && (typeof v !== 'string' || v === '')) {
+      throw new FiscalEventPayloadValidationError(
+        `payload_line_item_${f}_invalid:${path}.${f} must be non-empty string or null; got ${jsonOrType(v)}`,
+      );
+    }
+    if (v !== null && variantId === null) {
+      throw new FiscalEventPayloadValidationError(
+        `payload_line_item_variant_orphan:${path}.${f} present without variant_id`,
+      );
+    }
   }
 
   // Line-level discount-reason consistency (symmetric with invoice-level rule).

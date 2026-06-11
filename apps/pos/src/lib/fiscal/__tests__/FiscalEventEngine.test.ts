@@ -132,6 +132,9 @@ function validSaleReceiptPayload(): Record<string, unknown> {
         sku: 'A',
         tax_category_code: '',
         unit_price: '10.000',
+        variant_id: null,
+        variant_name: null,
+        variant_sku: null,
         vat_rate: '20.00',
       },
     ],
@@ -406,7 +409,7 @@ d('FiscalEventEngine.append', () => {
     expect(event.sequence_number).toBe(1);
     expect(event.previous_hash).toBe(GENESIS_SEED);
     expect(event.current_hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(event.event_version).toBe(1);
+    expect(event.event_version).toBe(2); // SaleReceiptV2 (M4)
     expect(event.signature_version).toBe('hash-chain-integrity-v1');
     expect(event.sync_status).toBe('pending');
     expect(event.signature_status).toBe('not_required');
@@ -603,7 +606,7 @@ d('FiscalEventEngine.append', () => {
     expect(parsed.chain_context).toBe('operational');
     expect(parsed.previous_hash).toBe(GENESIS_SEED);
     expect(parsed.event_type).toBe('SALE_RECEIPT');
-    expect(parsed.event_version).toBe(1);
+    expect(parsed.event_version).toBe(2); // SaleReceiptV2 (M4)
     expect(parsed.signature_version).toBe('hash-chain-integrity-v1');
     expect(parsed.reference_event_id).toBeNull();
     expect(parsed.reference_document_id).toBeNull();

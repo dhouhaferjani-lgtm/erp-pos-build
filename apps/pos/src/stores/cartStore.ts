@@ -287,12 +287,12 @@ export const useCartStore = create<CartStore>()((set, get) => ({
 
       const cartProduct: CartItem['product'] = {
         id: product.id,
-        // The cart-line `sku` stays the PRODUCT sku so the fiscal canonical
-        // payload (which reads `product.sku`) is byte-identical to a
-        // no-variant sale — fiscal bytes are never touched by variant
-        // selection. The variant identity (and thus the variant sku) is
-        // carried out-of-band via `variant_id`; the server recovers the
-        // variant sku from it.
+        // The cart-line `sku` stays the PRODUCT sku — the canonical line item
+        // keeps the parent identity in `name`/`sku`/`product_id`. Since
+        // SaleReceiptV2 (M4) the variant identity travels IN the signed
+        // canonical bytes as dedicated `variant_id`/`variant_sku`/
+        // `variant_name` line fields (null for non-variant lines), so the
+        // sealed record identifies the exact article the ticket printed.
         name: product.name,
         sku: product.sku,
         price: priceValue,
@@ -304,6 +304,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
       if (variant) {
         cartProduct.variant_id = variant.id;
         cartProduct.variant_name = `${product.name}${variant.name_suffix}`;
+        cartProduct.variant_sku = variant.sku;
       }
 
       const taxRate = product.tax_rate ?? '0';

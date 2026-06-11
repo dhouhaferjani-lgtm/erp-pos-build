@@ -163,6 +163,13 @@ export class FiscalEventPayloadRegistry {
     if (!this.implemented.has(type as ImplementedEventType)) {
       throw new FiscalEventTypeNotImplementedError(type);
     }
+    // SaleReceiptV2 (M4): SALE_RECEIPT canonical line items carry the
+    // variant identity (variant_id/variant_name/variant_sku) since
+    // event_version 2. Mirrors the server registry's PHASE_1_MAP entry —
+    // the server accepts {1, 2} for parse, the device AUTHORS only 2.
+    if (type === 'SALE_RECEIPT') {
+      return 2;
+    }
     return 1;
   }
 

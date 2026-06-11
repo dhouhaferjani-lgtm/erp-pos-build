@@ -362,9 +362,10 @@ final class FiscalPayloadConstraintValidator
         FiscalEventType $type,
         array $payload,
         string $chainContext = 'operational',
+        int $eventVersion = 1,
     ): void {
         match ($type) {
-            FiscalEventType::SALE_RECEIPT => $this->validateSaleReceiptPayload($payload),
+            FiscalEventType::SALE_RECEIPT => $this->validateSaleReceiptPayload($payload, $eventVersion),
             FiscalEventType::CHAIN_BREAK_DETECTED => $this->validateChainBreakDetectedPayload($payload),
             FiscalEventType::CHAIN_RESTART => $this->validateChainRestartPayload($payload),
             FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT => $this->validateTerminalRegistrySnapshotPayload($payload),
@@ -686,7 +687,7 @@ final class FiscalPayloadConstraintValidator
      *
      * @param  array<string, mixed>  $payload
      */
-    private function validateSaleReceiptPayload(array $payload): void
+    private function validateSaleReceiptPayload(array $payload, int $eventVersion = 1): void
     {
         // ---- 1. currency_scale + currency_code first — every subsequent
         // ----    money-string check depends on the scale. ----
@@ -804,7 +805,7 @@ final class FiscalPayloadConstraintValidator
             throw new RuntimeException('payload_line_items_empty:line_items must have >= 1 row');
         }
         foreach ($lineItems as $index => $row) {
-            $this->validateLineItem($index, $row, $moneyRegex, $scale);
+            $this->validateLineItem($index, $row, $moneyRegex, $scale, $eventVersion);
         }
 
         $payments = $this->requireList($payload, 'payments');
@@ -1698,19 +1699,43 @@ final class FiscalPayloadConstraintValidator
     }
 
     /**
+     * SALE_RECEIPT line-item key sets by event_version.
+     *
+     * V1 — the original 13-key Candidate C-v3 line shape (immutable forever).
+     * V2 (M4, SaleReceiptV2) — V1 + the variant identity keys
+     * `variant_id` / `variant_name` / `variant_sku` (null for non-variant
+     * lines), so the SIGNED record identifies the exact article the ticket
+     * printed (NF525 line fidelity).
+     *
+     * The device-side mirror lives in `apps/pos/src/lib/fiscal/
+     * FiscalEventEngine.ts` (`LINE_ITEM_KEYS`); the FiscalPayloadKeyDrift
+     * vitest gate pins the two V2 lists against each other.
+     */
+    public const SALE_RECEIPT_LINE_ITEM_KEYS_V1 = [
+        'gtin', 'line_discount_amount', 'line_discount_reason', 'line_subtotal',
+        'line_vat', 'name', 'non_collected_subtype', 'product_id', 'quantity',
+        'sku', 'tax_category_code', 'unit_price', 'vat_rate',
+    ];
+
+    public const SALE_RECEIPT_LINE_ITEM_KEYS_V2 = [
+        'gtin', 'line_discount_amount', 'line_discount_reason', 'line_subtotal',
+        'line_vat', 'name', 'non_collected_subtype', 'product_id', 'quantity',
+        'sku', 'tax_category_code', 'unit_price', 'variant_id', 'variant_name',
+        'variant_sku', 'vat_rate',
+    ];
+
+    /**
      * Validate one `line_items[i]` row.
      */
-    private function validateLineItem(int|string $index, mixed $row, string $moneyRegex, int $scale): void
+    private function validateLineItem(int|string $index, mixed $row, string $moneyRegex, int $scale, int $eventVersion = 1): void
     {
         if (! is_array($row) || (count($row) > 0 && array_is_list($row))) {
             throw new RuntimeException("payload_line_item_invalid:line_items[{$index}] must be object; got ".get_debug_type($row));
         }
         /** @var array<string, mixed> $row */
-        $expected = [
-            'gtin', 'line_discount_amount', 'line_discount_reason', 'line_subtotal',
-            'line_vat', 'name', 'non_collected_subtype', 'product_id', 'quantity',
-            'sku', 'tax_category_code', 'unit_price', 'vat_rate',
-        ];
+        $expected = $eventVersion >= 2
+            ? self::SALE_RECEIPT_LINE_ITEM_KEYS_V2
+            : self::SALE_RECEIPT_LINE_ITEM_KEYS_V1;
         $missing = array_diff($expected, array_keys($row));
         if (count($missing) > 0) {
             sort($missing);
@@ -1761,6 +1786,25 @@ final class FiscalPayloadConstraintValidator
         $ncs = $row['non_collected_subtype'];
         if ($ncs !== null && (! is_string($ncs) || ! in_array($ncs, self::NON_COLLECTED_SUBTYPES, true))) {
             throw new RuntimeException("payload_line_item_non_collected_subtype_invalid:{$path}.non_collected_subtype must be one of ".implode('|', self::NON_COLLECTED_SUBTYPES).' or null; got '.var_export($ncs, true));
+        }
+
+        // SaleReceiptV2 (M4) variant identity: nullable; variant_id must be a
+        // lowercase-hex UUID when present; a variant_name/variant_sku without
+        // variant_id is an orphan identity and must never have been signed.
+        if ($eventVersion >= 2) {
+            $variantId = $row['variant_id'];
+            if ($variantId !== null && (! is_string($variantId) || preg_match(self::LOWER_HEX_UUID, $variantId) !== 1)) {
+                throw new RuntimeException("payload_line_item_variant_id_invalid:{$path}.variant_id must be lowercase-hex UUID or null; got ".var_export($variantId, true));
+            }
+            foreach (['variant_name', 'variant_sku'] as $f) {
+                $v = $row[$f];
+                if ($v !== null && (! is_string($v) || $v === '')) {
+                    throw new RuntimeException("payload_line_item_{$f}_invalid:{$path}.{$f} must be non-empty string or null; got ".var_export($v, true));
+                }
+                if ($v !== null && $variantId === null) {
+                    throw new RuntimeException("payload_line_item_variant_orphan:{$path}.{$f} present without variant_id");
+                }
+            }
         }
 
         // Discount-reason consistency at line level — same rule as the

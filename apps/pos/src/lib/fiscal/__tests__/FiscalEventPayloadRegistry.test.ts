@@ -56,7 +56,7 @@ describe('FiscalEventPayloadRegistry', () => {
   });
 
   it('returns eventVersion=1 for implemented types', () => {
-    expect(registry.eventVersionFor('SALE_RECEIPT')).toBe(1);
+    expect(registry.eventVersionFor('SALE_RECEIPT')).toBe(2); // SaleReceiptV2 (M4)
     expect(registry.eventVersionFor('CHAIN_BREAK_DETECTED')).toBe(1);
     expect(registry.eventVersionFor('CHAIN_RESTART')).toBe(1);
     expect(registry.eventVersionFor('TERMINAL_REGISTRY_SNAPSHOT')).toBe(1);

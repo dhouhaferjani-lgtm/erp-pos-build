@@ -191,15 +191,18 @@ final class StrictCanonicalParser
 
         try {
             $dtoClass = $this->registry->dtoClassFor($type);
-            $expectedVersion = $this->registry->eventVersionFor($type);
+            $supportedVersions = $this->registry->supportedVersionsFor($type);
         } catch (FiscalEventTypeNotImplemented) {
             return ParseResult::failure('event_type_unimplemented:'.$type->value);
         }
 
-        $envelopeError = $this->validateEnvelopeShape($envelope, $expectedVersion);
+        $envelopeError = $this->validateEnvelopeShape($envelope, $supportedVersions);
         if ($envelopeError !== null) {
             return ParseResult::failure($envelopeError);
         }
+
+        /** @var int $eventVersion validated against the registry set above */
+        $eventVersion = $envelope['event_version'];
 
         /** @var array<string, mixed> $payload */
         $payload = $envelope['payload'];
@@ -226,7 +229,7 @@ final class StrictCanonicalParser
         }
 
         try {
-            $this->constraintValidator->validatePerEventConstraints($type, $payload, $chainContext);
+            $this->constraintValidator->validatePerEventConstraints($type, $payload, $chainContext, $eventVersion);
         } catch (RuntimeException $e) {
             return ParseResult::failure('sub_array_shape:'.$e->getMessage());
         }
@@ -599,7 +602,11 @@ final class StrictCanonicalParser
     /**
      * @param  array<string, mixed>  $envelope
      */
-    private function validateEnvelopeShape(array $envelope, int $expectedEventVersion): ?string
+    /**
+     * @param  array<string, mixed>  $envelope
+     * @param  list<int>  $supportedEventVersions
+     */
+    private function validateEnvelopeShape(array $envelope, array $supportedEventVersions): ?string
     {
         $actual = array_keys($envelope);
         $missing = array_diff(self::ENVELOPE_KEYS, $actual);
@@ -611,16 +618,17 @@ final class StrictCanonicalParser
             return 'envelope_extra_field:'.implode(',', $extras);
         }
 
-        // event_version: positive int matching the registry. The registry
-        // is the source of truth; a mismatched version means either a
-        // device drift or an unknown event flavor.
+        // event_version: positive int in the registry's supported set. The
+        // registry is the source of truth; an unsupported version means
+        // either a device drift or an unknown event flavor. Historical
+        // versions stay supported forever (Events are Immutable Forever).
         if (! is_int($envelope['event_version']) || $envelope['event_version'] < 1) {
             return 'envelope_event_version_invalid:got='.var_export($envelope['event_version'], true);
         }
-        if ($envelope['event_version'] !== $expectedEventVersion) {
+        if (! in_array($envelope['event_version'], $supportedEventVersions, true)) {
             return sprintf(
-                'envelope_event_version_mismatch:expected=%d,envelope=%d',
-                $expectedEventVersion,
+                'envelope_event_version_mismatch:expected=%s,envelope=%d',
+                implode('|', $supportedEventVersions),
                 $envelope['event_version'],
             );
         }
