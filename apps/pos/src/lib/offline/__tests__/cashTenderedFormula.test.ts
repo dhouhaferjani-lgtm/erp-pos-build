@@ -15,7 +15,7 @@ describe('buildEndOfDayPreview — cash-tendered formula (TND multi-receipt with
             subtotal: '84.740',
             tax_amount: '15.380',
             payments_json: JSON.stringify([
-              { payment_method_code: 'CASH', amount: '100.100', change_due: '0.000', tolerance_writeoff: '0.020' },
+              { payment_method_id: 'pm-cash', amount: '100.100', method_code: 'CASH', tolerance_writeoff: '0.020' },
             ]),
             lines: JSON.stringify([]),
             created_at: '2026-04-24T10:00:00Z',
@@ -26,7 +26,7 @@ describe('buildEndOfDayPreview — cash-tendered formula (TND multi-receipt with
             subtotal: '42.370',
             tax_amount: '7.630',
             payments_json: JSON.stringify([
-              { payment_method_code: 'CASH', amount: '50.000', change_due: '0.000', tolerance_writeoff: '0.000' },
+              { payment_method_id: 'pm-cash', amount: '50.000', method_code: 'CASH' },
             ]),
             lines: JSON.stringify([]),
             created_at: '2026-04-24T10:05:00Z',

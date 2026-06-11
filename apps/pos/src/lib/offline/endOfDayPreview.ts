@@ -27,12 +27,18 @@ interface OfflineReceiptRow {
   payments_json: string;
   lines: string;
   created_at: string;
+  // Receipt-level change given back to the customer (offline_receipts.change_due,
+  // written by receiptService.ts). Change is only ever given on cash tenders.
+  change_due: string;
 }
 
 interface PaymentJsonRow {
-  payment_method_code: string;
+  // The writer (receiptService.ts) persists `method_code` and an `amount` that
+  // is the cashier's PHYSICALLY TENDERED amount (backend contract:
+  // CashCountToleranceVarianceRegressionTest.php). `change_due` is NOT on the
+  // payment row — it is a receipt-level column (see OfflineReceiptRow).
+  method_code: string;
   amount: string;
-  change_due?: string;
   tolerance_writeoff?: string;
 }
 
@@ -106,7 +112,7 @@ export async function buildEndOfDayPreview(
   // 1. Fetch all non-voided receipts for this terminal since the shift opened
   const receipts = await queryAll<OfflineReceiptRow>(
     db,
-    `SELECT id, total, subtotal, tax_amount, payments_json, lines, created_at
+    `SELECT id, total, subtotal, tax_amount, payments_json, lines, created_at, change_due
      FROM offline_receipts
      WHERE terminal_id = ? AND created_at >= ? AND voided = 0
      ORDER BY created_at ASC`,
@@ -164,8 +170,9 @@ export async function buildEndOfDayPreview(
 
     // Per-payment aggregation from payments_json
     const payments = JSON.parse(receipt.payments_json || '[]') as PaymentJsonRow[];
+    let receiptHasCash = false;
     for (const p of payments) {
-      const method = methodByCode.get(p.payment_method_code);
+      const method = methodByCode.get(p.method_code);
       if (!method) continue;
 
       const key = method.code;
@@ -183,13 +190,20 @@ export async function buildEndOfDayPreview(
 
       if (method.code === 'CASH') {
         cashTenderedSum = bcadd(cashTenderedSum, p.amount);
-        cashChangeDueSum = bcadd(cashChangeDueSum, p.change_due ?? '0');
+        receiptHasCash = true;
         const writeoff = p.tolerance_writeoff ?? '0';
         if (writeoff !== '' && bccomp(writeoff, '0') !== 0) {
           toleranceTotal = bcadd(toleranceTotal, writeoff);
           toleranceCount += 1;
         }
       }
+    }
+
+    // change_due is a receipt-level column (offline_receipts.change_due) and is
+    // only ever non-zero when the receipt was paid (over-tendered) in cash, so
+    // subtract it once per cash-paid receipt — never per payment row.
+    if (receiptHasCash) {
+      cashChangeDueSum = bcadd(cashChangeDueSum, receipt.change_due ?? '0');
     }
   }
 

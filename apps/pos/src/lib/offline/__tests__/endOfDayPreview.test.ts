@@ -31,7 +31,7 @@ describe('buildEndOfDayPreview', () => {
             subtotal: '8.40',
             tax_amount: '1.60',
             payments_json: JSON.stringify([
-              { payment_method_code: 'CASH', amount: '10.00', change_due: '0.00', tolerance_writeoff: '0.00' },
+              { payment_method_id: 'pm-cash', amount: '10.00', method_code: 'CASH' },
             ]),
             lines: JSON.stringify([
               { tax_rate: '19', tax_amount: '1.60', line_total: '8.40' },
@@ -44,7 +44,7 @@ describe('buildEndOfDayPreview', () => {
             subtotal: '16.81',
             tax_amount: '3.19',
             payments_json: JSON.stringify([
-              { payment_method_code: 'CARD', amount: '20.00', change_due: '0.00', tolerance_writeoff: '0.00' },
+              { payment_method_id: 'pm-card', amount: '20.00', method_code: 'CARD' },
             ]),
             lines: JSON.stringify([
               { tax_rate: '19', tax_amount: '3.19', line_total: '16.81' },
@@ -122,7 +122,7 @@ describe('buildEndOfDayPreview', () => {
             subtotal: '8.40',
             tax_amount: '1.60',
             payments_json: JSON.stringify([
-              { payment_method_code: 'CASH', amount: '10.00', change_due: '0.00', tolerance_writeoff: '0.00' },
+              { payment_method_id: 'pm-cash', amount: '10.00', method_code: 'CASH' },
             ]),
             lines: JSON.stringify([{ tax_rate: '19', tax_amount: '1.60', line_total: '8.40' }]),
             created_at: '2026-04-24T10:00:00Z',
@@ -143,6 +143,56 @@ describe('buildEndOfDayPreview', () => {
     const cash = preview.payment_methods.find((p) => p.payment_method_code === 'CASH')!;
     expect(cash).toBeDefined();
     expect(cash.payment_method_name).toBe('Cash');
+  });
+});
+
+describe('buildEndOfDayPreview — writer-shape regression (B1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // B1: the reader must consume payments_json in the SHAPE THE WRITER ACTUALLY
+  // PERSISTS (receiptService.ts): each payment row carries `method_code` (not
+  // `payment_method_code`), and `change_due` lives at the RECEIPT level (the
+  // offline_receipts.change_due column), not inside the payment row. The old
+  // tests fed the reader's (buggy) expected shape, so they passed while
+  // production silently skipped every payment and stamped expected_cash =
+  // opening float on every shift close.
+  it('counts CASH tendered and subtracts receipt-level change_due (over-tender)', async () => {
+    vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
+      if ((sql as string).includes('FROM offline_receipts')) {
+        return [
+          {
+            id: 'r1',
+            total: '100.00',
+            subtotal: '84.03',
+            tax_amount: '15.97',
+            // Customer tendered 105.00 cash on a 100.00 sale → 5.00 change.
+            change_due: '5.00',
+            // Real writer shape: method_code, amount = physically tendered.
+            payments_json: JSON.stringify([
+              { payment_method_id: 'pm-cash', amount: '105.00', method_code: 'CASH' },
+            ]),
+            lines: JSON.stringify([{ tax_rate: '19', tax_amount: '15.97', line_total: '84.03' }]),
+            created_at: '2026-06-10T10:00:00Z',
+          },
+        ] as unknown as never[];
+      }
+      if ((sql as string).includes('FROM payment_methods')) {
+        return [{ id: 'pm-cash', code: 'CASH', name: 'Cash', is_physical: 1 }] as unknown as never[];
+      }
+      return [] as never[];
+    });
+
+    const preview = await buildEndOfDayPreview(mockDb, 'term-1', '2026-06-10T08:00:00Z', '100', 'EUR');
+
+    const cash = preview.payment_methods.find((p) => p.payment_method_code === 'CASH')!;
+    expect(cash).toBeDefined();
+    // Tendered, not receipt total.
+    expect(cash.total_amount).toBe('105.00');
+    expect(cash.transaction_count).toBe(1);
+    // expected_cash = 100 (opening) + 105.00 (tendered) − 5.00 (change) = 200.00
+    expect(preview.expected_cash).toBe('200.00');
   });
 });
 
@@ -189,7 +239,7 @@ describe('buildEndOfDayPreview — physical-method seeding (D2)', () => {
             subtotal: '25.21',
             tax_amount: '4.79',
             payments_json: JSON.stringify([
-              { payment_method_code: 'CARD', amount: '30.00', change_due: '0.00', tolerance_writeoff: '0.00' },
+              { payment_method_id: 'pm-card', amount: '30.00', method_code: 'CARD' },
             ]),
             lines: JSON.stringify([{ tax_rate: '19', tax_amount: '4.79', line_total: '25.21' }]),
             created_at: '2026-04-24T10:00:00Z',
