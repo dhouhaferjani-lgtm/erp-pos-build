@@ -6,6 +6,7 @@ namespace App\Modules\Company\Domain;
 
 use App\Models\Country;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\PosStockPolicy;
 use App\Modules\Company\Domain\Enums\VerificationStatus;
 use App\Modules\Company\Domain\Enums\VerificationTier;
 use App\Modules\Company\Domain\Events\CompanyCreated;
@@ -89,6 +90,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $verified_by UUID of verifier
  * @property string|null $verification_notes Verification notes
  * @property string|null $compliance_profile Compliance profile identifier
+ * @property PosStockPolicy $pos_stock_policy POS over-stock enforcement behavior (spec §4.2)
  * @property string|null $parent_company_id UUID of parent company (for chains)
  * @property bool $is_headquarters Whether this is headquarters
  * @property CompanyTaxStatus $tax_status Tax registration status
@@ -246,6 +248,7 @@ class Company extends Model
         'verified_by',
         'verification_notes',
         'compliance_profile',
+        'pos_stock_policy',
         'parent_company_id',
         'is_headquarters',
         'status',
@@ -301,6 +304,7 @@ class Company extends Model
             'reservation_settings' => 'array',
             'smart_prompts_enabled' => 'boolean',
             'smart_prompts_variant' => SmartPromptsVariant::class,
+            'pos_stock_policy' => PosStockPolicy::class,
         ];
     }
 

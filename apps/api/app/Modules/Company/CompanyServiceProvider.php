@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Company;
 
 use App\Modules\Company\Infrastructure\Services\CompanyVerticalQueryService;
+use App\Modules\Company\Presentation\Console\BackfillPosStockPolicyCommand;
 use App\Shared\Contracts\Company\CompanyVerticalQueryContract;
 use Illuminate\Support\ServiceProvider;
 
@@ -21,5 +22,11 @@ class CompanyServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadRoutesFrom(__DIR__.'/routes.php');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                BackfillPosStockPolicyCommand::class,
+            ]);
+        }
     }
 }
