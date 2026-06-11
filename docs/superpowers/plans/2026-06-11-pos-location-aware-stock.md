@@ -1194,36 +1194,35 @@ git add apps/pos && git commit -m "feat(pos): location_stock SQLite table + repo
 - [ ] **Step 1: stockApi**
 
 ```ts
-import { apiGet, type ApiRequestOptions } from '@/lib/api';
+import { api, type ApiRequestOptions } from '@/lib/api'; // raw client — NOT apiGet (see note below); match the actual raw-request export in lib/api.ts
 import type { ServerIncomingRow, ServerStockRow } from '@/lib/db/repositories/locationStockRepository';
 
 export interface LocationStockPage {
-  stock: ServerStockRow[];
-  incoming: ServerIncomingRow[];
-  as_of: string;
-}
-
-interface LocationStockResponse extends LocationStockPage {
-  // apiGet unwraps response.data.data → we receive { stock, incoming, as_of }.
-  // Pagination meta is LOST by apiGet (known paginated-endpoint pitfall) —
-  // so this endpoint signals "more pages" by page-size saturation, exactly
-  // like pullProductsCore's products.length === 500 idiom.
+  data: {
+    stock: ServerStockRow[];
+    incoming: ServerIncomingRow[];
+    as_of: string;
+  };
+  meta: {
+    pagination: { current_page: number; last_page: number; total: number };
+  };
 }
 
 export async function fetchLocationStock(
   terminalId: string,
   params: { updated_since?: string; page?: string },
   opts?: ApiRequestOptions,
-): Promise<LocationStockResponse> {
-  return apiGet<LocationStockResponse>(
+): Promise<LocationStockPage> {
+  const response = await api.get<LocationStockPage>(
     '/pos/stock-levels',
     { terminal_id: terminalId, ...params },
     opts,
   );
+  return response.data; // preserve the { data, meta } wrapper — meta carries pagination
 }
 ```
 
-> MANDATORY (Codex plan-review P1-7): `apiGet` strips `meta`, so pagination would silently stop after page 1. Use the raw `api.get` form and `return response.data` (the memory-documented paginated-endpoint fix) — the snippet's `apiGet` is shown only to document the trap; implement with `api.get` and read `meta.pagination.last_page`.
+> MANDATORY (Codex plan-review P1-7 + r2 minor edit): do NOT use `apiGet` here — it unwraps `response.data.data` and silently DROPS `meta`, so pagination would stop after page 1 (the memory-documented paginated-endpoint pitfall, cf. CompositeItemListPage). The raw form above preserves `meta.pagination.last_page`. Match the exact raw-request helper that `lib/api.ts` actually exports (grep how web-admin paginated fetches do it).
 
 - [ ] **Step 2: Write failing sync tests**
 
