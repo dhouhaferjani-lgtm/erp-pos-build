@@ -52,6 +52,7 @@ enum FiscalEventType: string
             self::ACCOUNT_PAYMENT,
             self::ACCOUNT_CHARGE,
             self::ACCOUNT_STATUS_CHANGED,
+            self::DEPOSIT_RECEIPT,
             self::OPERATOR_APPROVAL_GRANTED,
             self::OVERRIDE_CREDIT_LIMIT,
             self::OVERRIDE_ACCOUNT_STATUS,
@@ -76,6 +77,7 @@ enum FiscalEventType: string
             self::TERMINAL_REGISTRY_SNAPSHOT,
             self::COMPANY_DAY_CLOSURE_MANIFEST,
             self::ACCOUNT_STATUS_CHANGED,
+            self::DEPOSIT_RECEIPT,
         ], true);
     }
 

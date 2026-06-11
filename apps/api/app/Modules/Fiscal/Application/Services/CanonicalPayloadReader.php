@@ -18,6 +18,9 @@ use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountPaymentPaymentDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountPaymentStalenessDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountPaymentView;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\BuyerDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\DepositReceiptCustomerDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\DepositReceiptPaymentDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\DepositReceiptView;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\LineItemDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\OriginalReceiptReferenceDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\PaymentDTO;
@@ -25,6 +28,7 @@ use App\Modules\Fiscal\Domain\DTOs\Canonical\SaleReceiptCanonicalView;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\SellerDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\VatBreakdownDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\VoucherRedemptionDTO;
+use App\Modules\Fiscal\Domain\DTOs\DepositReceiptPayload;
 use App\Modules\Fiscal\Domain\DTOs\SaleReceiptPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
@@ -136,6 +140,31 @@ final class CanonicalPayloadReader
             localBalanceSnapshot: AccountPaymentBalanceSnapshotDTO::fromArray($payload->localBalanceSnapshot),
             staleness: AccountPaymentStalenessDTO::fromArray($payload->staleness),
             seller: SellerDTO::fromArray($payload->seller),
+        );
+    }
+
+    public function forDepositReceipt(FiscalEvent $event): DepositReceiptView
+    {
+        if ($event->event_type !== FiscalEventType::DEPOSIT_RECEIPT) {
+            throw new InvalidArgumentException(sprintf(
+                'CanonicalPayloadReader::forDepositReceipt called with event_type=%s; expected DEPOSIT_RECEIPT',
+                $event->event_type->value,
+            ));
+        }
+        $payloadArray = $event->payload;
+        if ($payloadArray === null) {
+            throw new InvalidArgumentException(sprintf(
+                'CanonicalPayloadReader::forDepositReceipt called on fiscal_event_id=%s with NULL payload (parse_failure quarantine?)',
+                $event->id,
+            ));
+        }
+
+        $payload = DepositReceiptPayload::fromArray($payloadArray);
+
+        return new DepositReceiptView(
+            payload: $payload,
+            customer: DepositReceiptCustomerDTO::fromArray($payload->customer),
+            payment: DepositReceiptPaymentDTO::fromArray($payload->payment),
         );
     }
 

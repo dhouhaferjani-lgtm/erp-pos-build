@@ -7,6 +7,7 @@ namespace App\Modules\Fiscal\Application\Services;
 use App\Modules\Fiscal\Domain\DTOs\AccountChargePayload;
 use App\Modules\Fiscal\Domain\DTOs\AccountStatusChangedPayload;
 use App\Modules\Fiscal\Domain\DTOs\CashDrawerMovementPayload;
+use App\Modules\Fiscal\Domain\DTOs\DepositReceiptPayload;
 use App\Modules\Fiscal\Domain\DTOs\OperatorApprovalGrantedPayload;
 use App\Modules\Fiscal\Domain\DTOs\OverrideAccountStatusPayload;
 use App\Modules\Fiscal\Domain\DTOs\OverrideCreditLimitPayload;
@@ -194,6 +195,8 @@ final class FiscalPayloadConstraintValidator
 
     private const ACCOUNT_PAYMENT_ALLOCATION_POLICIES = ['FIFO'];
 
+    private const DEPOSIT_RECEIPT_ALLOCATION_POLICIES = ['FIFO'];
+
     private const ACCOUNT_PAYMENT_STALENESS_REASONS = ['never_synced', 'older_than_threshold', 'server_conflict_pending'];
 
     private const ACCOUNT_CHARGE_INVOICE_CLASSIFICATIONS = ['b2c_charge_receipt', 'b2b_facture_draft_requested'];
@@ -285,6 +288,7 @@ final class FiscalPayloadConstraintValidator
         ],
         'ACCOUNT_CHARGE' => AccountChargePayload::PAYLOAD_KEYS,
         'ACCOUNT_STATUS_CHANGED' => AccountStatusChangedPayload::PAYLOAD_KEYS,
+        'DEPOSIT_RECEIPT' => DepositReceiptPayload::PAYLOAD_KEYS,
         'OPERATOR_APPROVAL_GRANTED' => OperatorApprovalGrantedPayload::PAYLOAD_KEYS,
         'OVERRIDE_CREDIT_LIMIT' => OverrideCreditLimitPayload::PAYLOAD_KEYS,
         'OVERRIDE_ACCOUNT_STATUS' => OverrideAccountStatusPayload::PAYLOAD_KEYS,
@@ -367,6 +371,7 @@ final class FiscalPayloadConstraintValidator
             FiscalEventType::ACCOUNT_PAYMENT => $this->validateAccountPaymentPayload($payload),
             FiscalEventType::ACCOUNT_CHARGE => $this->validateAccountChargePayload($payload),
             FiscalEventType::ACCOUNT_STATUS_CHANGED => $this->validateAccountStatusChangedPayload($payload),
+            FiscalEventType::DEPOSIT_RECEIPT => $this->validateDepositReceiptPayload($payload),
             FiscalEventType::OPERATOR_APPROVAL_GRANTED => $this->validateOperatorApprovalGrantedPayload($payload),
             FiscalEventType::OVERRIDE_CREDIT_LIMIT,
             FiscalEventType::OVERRIDE_ACCOUNT_STATUS,
@@ -425,6 +430,75 @@ final class FiscalPayloadConstraintValidator
         if (! is_array($payload['partner_snapshot'] ?? null) || $payload['partner_snapshot'] === []) {
             throw new RuntimeException('payload_object_required:partner_snapshot');
         }
+    }
+
+    /**
+     * Server-authored DEPOSIT_RECEIPT — back-office payment toward a customer
+     * account. Leaner than ACCOUNT_PAYMENT (no device staleness / balance
+     * snapshot / seller block); the server is the authority and the money is
+     * settled FIFO with overflow → credit by the shared allocation engine.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateDepositReceiptPayload(array $payload): void
+    {
+        $this->validatePhase4Common($payload);
+
+        $scale = $payload['currency_scale'] ?? null;
+        if (! is_int($scale)) {
+            throw new RuntimeException('payload_currency_scale_invalid:must be int; got '.var_export($scale, true));
+        }
+        if (! in_array($scale, self::SUPPORTED_CURRENCY_SCALES, true)) {
+            throw new RuntimeException(
+                'payload_currency_scale_unsupported:value='.$scale.':allowed='.implode(',', self::SUPPORTED_CURRENCY_SCALES)
+            );
+        }
+        $moneyRegex = $this->moneyRegex($scale);
+
+        $currencyCode = $payload['currency_code'] ?? null;
+        if (! is_string($currencyCode) || preg_match(self::ISO_4217, $currencyCode) !== 1) {
+            throw new RuntimeException('payload_currency_code_invalid:must be ISO 4217 alpha-3 uppercase; got '.var_export($currencyCode, true));
+        }
+
+        $this->assertUuid($payload, 'actor_user_id');
+        $this->assertNonEmptyString($payload, 'actor_name');
+        $this->assertIsoDate($payload, 'business_date');
+        $this->assertUuid($payload, 'deposit_receipt_uuid');
+        $this->assertUuid($payload, 'partner_id');
+        $this->assertOptionalNullableString($payload, 'notes');
+        $this->assertEnum($payload, 'treasury_allocation_policy', self::DEPOSIT_RECEIPT_ALLOCATION_POLICIES);
+
+        $this->validateDepositReceiptCustomer($payload['customer'] ?? null, $payload['partner_id'] ?? null);
+        $this->validateDepositReceiptPayment($payload['payment'] ?? null, $moneyRegex, $scale, (bool) $payload['training_flag']);
+    }
+
+    private function validateDepositReceiptCustomer(mixed $customer, mixed $partnerId): void
+    {
+        $row = $this->requireAssocObject($customer, 'customer');
+        $expected = ['customer_category', 'customer_id', 'email', 'name', 'phone'];
+        $this->assertExactObjectKeys($row, $expected, 'customer');
+        $this->assertUuid($row, 'customer_id', 'customer.customer_id');
+        $this->assertNonEmptyString($row, 'name', 'customer.name');
+        $this->assertOptionalNullableString($row, 'phone', 'customer.phone');
+        $this->assertOptionalNullableString($row, 'email', 'customer.email');
+        $this->assertOptionalNullableString($row, 'customer_category', 'customer.customer_category');
+
+        if ($row['customer_id'] !== $partnerId) {
+            throw new RuntimeException('payload_deposit_receipt_customer_partner_mismatch:customer.customer_id must equal partner_id');
+        }
+    }
+
+    private function validateDepositReceiptPayment(mixed $payment, string $moneyRegex, int $scale, bool $training): void
+    {
+        $row = $this->requireAssocObject($payment, 'payment');
+        $expected = ['amount', 'method_code', 'repository_id'];
+        $this->assertExactObjectKeys($row, $expected, 'payment');
+        $this->assertMoneyString($row, 'amount', $moneyRegex, $scale, 'payment.amount');
+        if (! $training && bccomp($this->asNumericString($row['amount'], 'payment.amount'), '0', $scale) === 0) {
+            throw new RuntimeException('payload_deposit_receipt_amount_zero:payment.amount must be greater than zero unless training_flag=true');
+        }
+        $this->assertNonEmptyString($row, 'method_code', 'payment.method_code');
+        $this->assertOptionalNullableString($row, 'repository_id', 'payment.repository_id');
     }
 
     /**

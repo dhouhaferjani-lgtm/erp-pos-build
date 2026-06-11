@@ -43,6 +43,7 @@ import enPickers from '../locales/en/pickers.json'
 import enDocuments from '../locales/en/documents.json'
 import enVouchers from '../locales/en/vouchers.json'
 import enRefundPolicies from '../locales/en/refund-policies.json'
+import enDeposits from '../locales/en/deposits.json'
 import enCustomerHistoryAudit from '../locales/en/customer-history-audit.json'
 import enChannels from '../locales/en/channels.json'
 import enReports from '../locales/en/reports.json'
@@ -88,6 +89,7 @@ import frPickers from '../locales/fr/pickers.json'
 import frDocuments from '../locales/fr/documents.json'
 import frVouchers from '../locales/fr/vouchers.json'
 import frRefundPolicies from '../locales/fr/refund-policies.json'
+import frDeposits from '../locales/fr/deposits.json'
 import frCustomerHistoryAudit from '../locales/fr/customer-history-audit.json'
 import frChannels from '../locales/fr/channels.json'
 import frReports from '../locales/fr/reports.json'
@@ -161,6 +163,7 @@ const resources = {
     documents: enDocuments,
     vouchers: enVouchers,
     'refund-policies': enRefundPolicies,
+    deposits: enDeposits,
     'customer-history-audit': enCustomerHistoryAudit,
     channels: enChannels,
     reports: enReports,
@@ -207,6 +210,7 @@ const resources = {
     documents: frDocuments,
     vouchers: frVouchers,
     'refund-policies': frRefundPolicies,
+    deposits: frDeposits,
     'customer-history-audit': frCustomerHistoryAudit,
     channels: frChannels,
     reports: frReports,
@@ -256,6 +260,7 @@ const resources = {
     documents: arDocuments,
     vouchers: arVouchers,
     'refund-policies': enRefundPolicies,
+    deposits: enDeposits,
     'customer-history-audit': enCustomerHistoryAudit,
     channels: arChannels,
     reports: arReports,
@@ -270,7 +275,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'customer-history-audit', 'channels', 'reports', 'stock-transfers'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'deposits', 'customer-history-audit', 'channels', 'reports', 'stock-transfers'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

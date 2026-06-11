@@ -23,6 +23,8 @@ import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
 import { usePartnerBalanceRealtime } from './hooks/usePartnerBalanceRealtime'
+import { usePartnerDeposits } from './hooks/usePartnerDeposits'
+import { RecordDepositModal } from './RecordDepositModal'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Tabs'
 import { AddVehicleModal } from '../../components/organisms'
 import { VehiclesTab } from '../vehicles/components/organisms/VehiclesTab'
@@ -121,6 +123,7 @@ export function PartnerDetailPage() {
   const { id = '' } = useParams<{ id: string }>()
   const location = useLocation()
   const [showVehicleModal, setShowVehicleModal] = useState(false)
+  const [showDepositModal, setShowDepositModal] = useState(false)
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
@@ -175,6 +178,9 @@ export function PartnerDetailPage() {
   // Fetch related vehicles (for customers) — uses the ownership-aware endpoint via the
   // shared VehiclesTab organism. We still read the count here to surface it in the tab trigger.
   const showVehiclesTab = isCustomerContext && (partner?.type === 'customer' || partner?.type === 'both')
+  const showDepositsTab = isCustomerContext && (partner?.type === 'customer' || partner?.type === 'both')
+
+  const { data: deposits = [] } = usePartnerDeposits(id)
   const { data: partnerVehiclesData } = usePartnerVehicles(showVehiclesTab ? id : undefined)
 
   // Fetch partner account balance (unallocated deposits/credits)
@@ -276,6 +282,14 @@ export function PartnerDetailPage() {
                 <Receipt className="h-4 w-4" />
                 {t('actions.newInvoice')}
               </Link>
+              <button
+                type="button"
+                onClick={() => { setShowDepositModal(true); }}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <Wallet className="h-4 w-4" />
+                {t('deposits:recordButton')}
+              </button>
             </>
           )}
           {isSupplierContext && (
@@ -312,6 +326,11 @@ export function PartnerDetailPage() {
           {showVehiclesTab && (
             <TabsTrigger value="vehicles">
               {t('tabs.vehicles')} ({vehicleCount})
+            </TabsTrigger>
+          )}
+          {showDepositsTab && (
+            <TabsTrigger value="deposits">
+              {t('deposits:tabLabel')} ({deposits.length})
             </TabsTrigger>
           )}
         </TabsList>
@@ -676,6 +695,57 @@ export function PartnerDetailPage() {
             <VehiclesTab partnerId={id} />
           </TabsContent>
         )}
+
+        {/* Deposits Tab */}
+        {showDepositsTab && (
+          <TabsContent value="deposits" className="mt-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-900">{t('deposits:history.title')}</h3>
+              <button
+                type="button"
+                onClick={() => { setShowDepositModal(true); }}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <Wallet className="h-4 w-4" />
+                {t('deposits:recordButton')}
+              </button>
+            </div>
+            {deposits.length === 0 ? (
+              <div className="rounded-lg border border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-500">
+                {t('deposits:history.empty')}
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">{t('deposits:history.date')}</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">{t('deposits:history.amount')}</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">{t('deposits:history.method')}</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">{t('deposits:history.note')}</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">{t('deposits:history.actor')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {deposits.map((deposit) => (
+                      <tr key={deposit.fiscal_event_id}>
+                        <td className="px-4 py-2 text-sm text-gray-700">
+                          {new Date(deposit.recorded_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-2 text-sm font-medium text-gray-900">
+                          {formatCurrency(deposit.amount, { currency: companyCurrency, locale: companyLocale })}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-700">{deposit.payment_method_code}</td>
+                        <td className="px-4 py-2 text-sm text-gray-700">{deposit.note}</td>
+                        <td className="px-4 py-2 text-sm text-gray-700">{deposit.actor_name}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Add Vehicle Modal */}
@@ -688,6 +758,13 @@ export function PartnerDetailPage() {
             predicate: partnerVehiclesInvalidationPredicate(id, tenantId, companyId),
           })
         }}
+      />
+
+      {/* Record Deposit Modal */}
+      <RecordDepositModal
+        isOpen={showDepositModal}
+        onClose={() => { setShowDepositModal(false); }}
+        partnerId={partner.id}
       />
     </div>
   )
