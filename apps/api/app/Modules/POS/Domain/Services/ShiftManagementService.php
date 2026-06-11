@@ -142,12 +142,23 @@ final class ShiftManagementService
             // the recompute entirely so we do not overwrite those validated values.
             $cashCountAlreadyApplied = $shift->variance_severity !== null;
 
-            /** @var numeric-string $expectedCash */
-            $expectedCash = $this->cashDrawerService->calculateExpectedCash($shift);
-
             if ($cashCountAlreadyApplied) {
-                // Cash-count path: preserve actual_cash, variance, variance_severity.
-                // Only update status, closed_at, closed_by, and expected_cash.
+                // Cash-count path: preserve actual_cash, variance, variance_severity —
+                // and keep expected_cash CONSISTENT with that preserved pair:
+                // expected = actual − variance (by construction, the per-tender
+                // expected the cash-count validation ran against). Recomputing it
+                // from CashDrawerService::calculateExpectedCash here would write a
+                // value from a DIFFERENT formula/data source; whenever the two
+                // disagree, the row violates the pos_shifts_variance_calc CHECK
+                // (variance = actual_cash − expected_cash) and the close UPDATE
+                // throws on PostgreSQL (production). SQLite has no CHECK, which is
+                // why the suite never caught this.
+                /** @var numeric-string $authoritativeActual */
+                $authoritativeActual = (string) $shift->actual_cash;
+                /** @var numeric-string $authoritativeVariance */
+                $authoritativeVariance = (string) $shift->variance;
+                $expectedCash = bcsub($authoritativeActual, $authoritativeVariance, $this->scale());
+
                 $shift->update([
                     'status' => ShiftStatus::Closed,
                     'expected_cash' => $expectedCash,
@@ -155,6 +166,9 @@ final class ShiftManagementService
                     'closed_by' => $closedBy->id,
                 ]);
             } else {
+                /** @var numeric-string $expectedCash */
+                $expectedCash = $this->cashDrawerService->calculateExpectedCash($shift);
+
                 // Legacy path: recompute actual_cash and variance from the raw argument.
                 /** @var numeric-string $actualCash */
                 /** @var numeric-string $variance */
