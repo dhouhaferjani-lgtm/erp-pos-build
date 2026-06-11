@@ -186,22 +186,18 @@ function makeRefundRecordRows() {
 }
 
 /** Cash drawer ops mirrored locally (offline_cash_drawer_ops): deposit=+drawer, payout=−drawer. */
-function makeDrawerOpRows() {
-  return [] as Array<{ id: string; type: 'deposit' | 'payout'; amount: string; shift_id: string }>;
-}
+type DrawerOpRow = { id: string; type: 'deposit' | 'payout'; amount: string; shift_id: string };
 
 /** Account-payment records mirrored locally (cash account collections raise the drawer). */
-function makeAccountPaymentRows() {
-  return [] as Array<{ id: string; shift_id: string; method_code: string; cash_impact: string }>;
-}
+type AccountPaymentRow = { id: string; shift_id: string; method_code: string; cash_impact: string };
 
 /** Setup queryAll to return receipts / payment_methods / refund records / drawer ops / account payments by SQL shape */
 function mockQueryAll(
   db: Database,
   receipts: ReturnType<typeof makeReceiptRows>,
   refundRecords: ReturnType<typeof makeRefundRecordRows> = [],
-  drawerOps: ReturnType<typeof makeDrawerOpRows> = [],
-  accountPayments: ReturnType<typeof makeAccountPaymentRows> = [],
+  drawerOps: DrawerOpRow[] = [],
+  accountPayments: AccountPaymentRow[] = [],
   anchor: { shift_id: string; opening_hash_sequence: number } | null = null,
 ) {
   vi.mocked(queryAll).mockImplementation(async (_db, sql, params) => {
