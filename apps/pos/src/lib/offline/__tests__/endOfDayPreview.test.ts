@@ -341,6 +341,114 @@ describe('buildEndOfDayPreview — review fixes (refunds, training, legacy fallb
     expect(cash.total_amount).toBe('50.00'); // net total, not 45
     expect(preview.expected_cash).toBe('150.00'); // 100 + 50 (no shiftId → no drawer/refunds)
   });
+
+  it('counts a payment row even when its method_code is missing from payment_methods (signed-Z parity)', async () => {
+    // The signed Z (zReportService aggregateReportData) keys per-method totals
+    // on the raw payments_json method_code; it never drops a tender because the
+    // local payment_methods table no longer lists that method (e.g. deactivated
+    // and removed by sync mid-shift). The preview must not undercount vs the Z.
+    vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
+      const s = sql as string;
+      if (s.includes('offline_receipts')) {
+        return [
+          {
+            id: 'r1',
+            total: '30.00',
+            subtotal: '25.21',
+            tax_amount: '4.79',
+            change_due: '2.00',
+            payment_method_id: 'pm-cash',
+            payments_json: JSON.stringify([
+              { method_code: 'CASH', amount: '22.00' },
+              { method_code: 'CHEQUE', amount: '10.00' }, // no longer in payment_methods
+            ]),
+            lines: JSON.stringify([{ tax_rate: '19', tax_amount: '4.79', line_total: '25.21' }]),
+            created_at: '2026-06-10T10:00:00Z',
+          },
+        ] as unknown as never[];
+      }
+      if (s.includes('payment_methods')) {
+        // CHEQUE was deactivated and removed by sync after the sale
+        return [{ id: 'pm-cash', code: 'CASH', name: 'Cash', is_physical: 1 }] as unknown as never[];
+      }
+      return [] as never[];
+    });
+
+    const preview = await buildEndOfDayPreview(mockDb, 'term-1', '2026-06-10T08:00:00Z', '100', 'EUR');
+
+    const cheque = preview.payment_methods.find((p) => p.payment_method_code === 'CHEQUE')!;
+    expect(cheque).toBeDefined();
+    expect(cheque.total_amount).toBe('10.00');
+    const cash = preview.payment_methods.find((p) => p.payment_method_code === 'CASH')!;
+    expect(cash.total_amount).toBe('20.00'); // 22 tendered − 2 change
+    expect(preview.expected_cash).toBe('120.00'); // 100 + 22 − 2
+  });
+
+  it('still nets change and counts cash when CASH itself is missing from payment_methods (signed-Z parity)', async () => {
+    vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
+      const s = sql as string;
+      if (s.includes('offline_receipts')) {
+        return [
+          {
+            id: 'r1',
+            total: '10.00',
+            subtotal: '8.40',
+            tax_amount: '1.60',
+            change_due: '5.00',
+            payment_method_id: 'pm-cash',
+            payments_json: JSON.stringify([{ method_code: 'CASH', amount: '15.00' }]),
+            lines: JSON.stringify([{ tax_rate: '19', tax_amount: '1.60', line_total: '8.40' }]),
+            created_at: '2026-06-10T10:00:00Z',
+          },
+        ] as unknown as never[];
+      }
+      if (s.includes('payment_methods')) {
+        return [] as never[]; // lookup table empty — must not zero the drawer math
+      }
+      return [] as never[];
+    });
+
+    const preview = await buildEndOfDayPreview(mockDb, 'term-1', '2026-06-10T08:00:00Z', '100', 'EUR');
+
+    const cash = preview.payment_methods.find((p) => p.payment_method_code === 'CASH')!;
+    expect(cash).toBeDefined();
+    expect(cash.total_amount).toBe('10.00'); // 15 tendered − 5 change
+    expect(preview.expected_cash).toBe('110.00'); // 100 + 15 − 5
+  });
+
+  it('legacy fallback buckets an unknown primary method as UNKNOWN instead of dropping it (signed-Z parity)', async () => {
+    vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
+      const s = sql as string;
+      if (s.includes('offline_receipts')) {
+        return [
+          {
+            id: 'r1',
+            total: '40.00',
+            subtotal: '33.61',
+            tax_amount: '6.39',
+            change_due: '0',
+            payment_method_id: 'pm-gone',
+            payments_json: null,
+            lines: JSON.stringify([{ tax_rate: '19', tax_amount: '6.39', line_total: '33.61' }]),
+            created_at: '2026-06-10T10:00:00Z',
+          },
+        ] as unknown as never[];
+      }
+      if (s.includes('payment_methods')) {
+        return [{ id: 'pm-cash', code: 'CASH', name: 'Cash', is_physical: 1 }] as unknown as never[];
+      }
+      return [] as never[];
+    });
+
+    const preview = await buildEndOfDayPreview(mockDb, 'term-1', '2026-06-10T08:00:00Z', '100', 'EUR');
+
+    // The signed Z buckets this under 'UNKNOWN' (paymentMethodMap miss) — the
+    // preview must mirror that, not silently drop the sale from the breakdown.
+    const unknown = preview.payment_methods.find((p) => p.payment_method_code === 'UNKNOWN')!;
+    expect(unknown).toBeDefined();
+    expect(unknown.total_amount).toBe('40.00');
+    expect(preview.expected_cash).toBe('100.00'); // not cash → drawer unchanged
+  });
 });
 
 describe('buildEndOfDayPreview — physical-method seeding (D2)', () => {

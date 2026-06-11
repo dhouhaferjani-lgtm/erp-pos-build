@@ -178,19 +178,22 @@ export async function buildEndOfDayPreview(
       vatByRate.set(rate, existing);
     }
 
-    // Per-payment aggregation from payments_json
+    // Per-payment aggregation from payments_json. Keyed on the RAW method_code
+    // — exactly like the signed Z (zReportService aggregateReportData) — so a
+    // tender is never dropped because the local payment_methods table no longer
+    // lists its method (deactivated/removed by sync mid-shift). The lookup table
+    // only supplies display metadata (id, name, is_physical).
     const payments = JSON.parse(receipt.payments_json || '[]') as PaymentJsonRow[];
     let receiptHasCash = false;
     for (const p of payments) {
       const method = methodByCode.get(p.method_code);
-      if (!method) continue;
 
-      const key = method.code;
+      const key = p.method_code;
       const existing = perMethod.get(key) ?? {
-        payment_method_id: method.id,
-        payment_method_code: method.code,
-        payment_method_name: method.name,
-        is_physical: method.is_physical === 1,
+        payment_method_id: method?.id ?? '',
+        payment_method_code: key,
+        payment_method_name: method?.name ?? key,
+        is_physical: method?.is_physical === 1,
         total_amount: '0',
         transaction_count: 0,
       };
@@ -198,7 +201,7 @@ export async function buildEndOfDayPreview(
       existing.transaction_count += 1;
       perMethod.set(key, existing);
 
-      if (method.code === 'CASH') {
+      if (key === 'CASH') {
         cashTenderedSum = bcadd(cashTenderedSum, p.amount);
         receiptHasCash = true;
         const writeoff = p.tolerance_writeoff ?? '0';
@@ -220,23 +223,23 @@ export async function buildEndOfDayPreview(
       // Legacy fallback (mirrors the signed Z): no usable payments_json →
       // attribute the whole sale to the primary method. receipt.total is ALREADY
       // net (drawer gains tendered − change = total), so do NOT subtract change.
+      // An unresolvable primary method buckets under 'UNKNOWN' exactly like the
+      // signed Z's paymentMethodMap miss — never silently dropped.
       const method = paymentMethods.find((m) => m.id === receipt.payment_method_id);
-      if (method) {
-        const key = method.code;
-        const existing = perMethod.get(key) ?? {
-          payment_method_id: method.id,
-          payment_method_code: method.code,
-          payment_method_name: method.name,
-          is_physical: method.is_physical === 1,
-          total_amount: '0',
-          transaction_count: 0,
-        };
-        existing.total_amount = bcadd(existing.total_amount, receipt.total);
-        existing.transaction_count += 1;
-        perMethod.set(key, existing);
-        if (method.code === 'CASH') {
-          cashTenderedSum = bcadd(cashTenderedSum, receipt.total);
-        }
+      const key = method?.code ?? 'UNKNOWN';
+      const existing = perMethod.get(key) ?? {
+        payment_method_id: method?.id ?? '',
+        payment_method_code: key,
+        payment_method_name: method?.name ?? key,
+        is_physical: method?.is_physical === 1,
+        total_amount: '0',
+        transaction_count: 0,
+      };
+      existing.total_amount = bcadd(existing.total_amount, receipt.total);
+      existing.transaction_count += 1;
+      perMethod.set(key, existing);
+      if (key === 'CASH') {
+        cashTenderedSum = bcadd(cashTenderedSum, receipt.total);
       }
     }
   }
