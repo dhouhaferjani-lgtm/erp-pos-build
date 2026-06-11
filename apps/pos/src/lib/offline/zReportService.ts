@@ -167,21 +167,13 @@ export async function generateZReport(
   // receipts nor settled refunds is rejected.
   const refundRecords = await getRefundRecordsForShift(db, shiftId);
 
-  // Cash drawer movements + customer account collections are real fiscal/drawer
-  // activity that must close into the signed Z too. Loaded BEFORE the empty-shift
-  // guard so an account-payment-only or drawer-only shift (zero receipts/refunds)
-  // is still closeable instead of being wrongly rejected.
+  // Cash drawer movements + customer account collections also close into the
+  // signed Z. (H3 — allow empty Z: a cashier can always close the register; an
+  // empty shift produces a nil Z with all-zero totals and expected_cash =
+  // opening float, matching the server ReportGenerationService which has no
+  // empty-shift guard. There is therefore no closeability guard here.)
   const drawerOps = await getCashDrawerOpsForShift(db, shiftId);
   const accountPayments = await getAccountPaymentRecordsForShift(db, shiftId);
-
-  if (
-    receipts.length === 0 &&
-    refundRecords.length === 0 &&
-    drawerOps.length === 0 &&
-    accountPayments.length === 0
-  ) {
-    throw new Error('Cannot generate Z-report for a shift with no activity.');
-  }
 
   // Build payment method lookup for names
   const paymentMethodMap = await buildPaymentMethodMap(db);

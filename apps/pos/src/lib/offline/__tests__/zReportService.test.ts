@@ -917,15 +917,19 @@ describe('generateZReport', () => {
       expect(cashRow.transaction_count).toBe(0);
     });
 
-    it('still throws when the shift has NO activity (no receipts/refunds/drawer ops/account payments)', async () => {
+    it('generates a nil Z for a truly-empty shift (allow empty Z, H3 — server parity)', async () => {
+      // A cashier can always close the register; an empty shift produces a nil
+      // Z (Z néant) with all-zero totals and expected_cash = opening float. The
+      // server ReportGenerationService allows this; the device must match.
       mockQueryAll(db, [], []);
 
-      await expect(
-        generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00'),
-      ).rejects.toThrow(/no activity/);
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
 
-      expect(insertZReport).not.toHaveBeenCalled();
-      expect(advanceZChain).not.toHaveBeenCalled();
+      expect(report.report_data.sales_count).toBe(0);
+      expect(report.report_data.gross_sales).toBe('0.00');
+      expect(report.report_data.expected_cash).toBe('100.00'); // opening only
+      expect(insertZReport).toHaveBeenCalled();
+      expect(advanceZChain).toHaveBeenCalled();
     });
   });
 });
