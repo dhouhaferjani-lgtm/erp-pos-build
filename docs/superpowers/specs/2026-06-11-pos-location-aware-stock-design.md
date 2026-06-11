@@ -169,6 +169,7 @@ effectiveAvailable(productId, variantId) =
 ```
 
 - Pending **refund/return** records are ignored (they only add stock back; ignoring is the conservative direction).
+- **Snapshot changes never mutate the cart (Codex r2 minor):** availability is recomputed live at each ingress from the current `location_stock` state — a delta or replace-all pull landing while a cart is open simply changes what *further* adds are allowed; existing cart lines are never auto-evicted or re-validated retroactively. A row deleted by replace-all reads as 0, which (minus the cart's own lines, clamped at 0) blocks further adds only.
 - Consumers: `ProductCard` (badge + the existing out-of-stock gating, now fed real data), barcode-scan add path, cart quantity increment, and any "+1" repeat-line path. Every ingress to the cart goes through one guard (lesson L9: canonicalize before state-machine input — enumerate ingress sites).
 - Behavior by policy (from the terminal payload's `pos_stock_policy`, persisted in `terminalStore`):
   - `block`: refuse add/increment beyond `effectiveAvailable`; toast with `t()` key explaining branch availability. **No override.**
