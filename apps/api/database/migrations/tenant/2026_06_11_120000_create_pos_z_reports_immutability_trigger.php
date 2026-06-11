@@ -44,6 +44,8 @@ return new class extends Migration
 
         DB::unprepared(<<<'SQL'
             CREATE OR REPLACE FUNCTION prevent_z_report_modification() RETURNS trigger AS $$
+            DECLARE
+                ev RECORD;
             BEGIN
                 -- Block all DELETE operations (NF525 append-only requirement)
                 IF TG_OP = 'DELETE' THEN
@@ -71,6 +73,36 @@ return new class extends Migration
                     -- (fiscal_event_id NULL -> value) may modify it.
                     IF NEW.fiscal_event_id IS NULL THEN
                         RAISE EXCEPTION 'Z-report % is sealed; only the one-time canonical projection upgrade may modify it', OLD.z_number
+                            USING ERRCODE = 'integrity_constraint_violation';
+                    END IF;
+
+                    -- The upgrade must actually come FROM the stamped event: the FK
+                    -- only proves the event exists. Pin every authoritative mirror
+                    -- field to the event so a tamperer cannot rewrite the row while
+                    -- stamping a real event id in the same statement (Codex P1).
+                    SELECT event_type,
+                           integrity_status,
+                           terminal_id,
+                           current_hash,
+                           canonical_bytes,
+                           payload
+                      INTO ev
+                      FROM fiscal_events
+                     WHERE id = NEW.fiscal_event_id;
+
+                    IF NOT FOUND
+                       OR ev.event_type <> 'Z_REPORT'
+                       OR ev.integrity_status <> 'verified'
+                       OR ev.terminal_id IS DISTINCT FROM NEW.terminal_id THEN
+                        RAISE EXCEPTION 'Z-report % upgrade rejected: fiscal event % is not a verified Z_REPORT for this terminal', OLD.z_number, NEW.fiscal_event_id
+                            USING ERRCODE = 'integrity_constraint_violation';
+                    END IF;
+
+                    IF NEW.fiscal_hash IS DISTINCT FROM ev.current_hash
+                       OR NEW.canonical_bytes IS DISTINCT FROM ev.canonical_bytes
+                       OR (ev.payload IS NOT NULL AND NEW.z_number IS DISTINCT FROM (ev.payload::jsonb->>'z_number')::int)
+                       OR (ev.payload IS NOT NULL AND (NEW.report_data::jsonb->'canonical_z_report') IS DISTINCT FROM ev.payload::jsonb) THEN
+                        RAISE EXCEPTION 'Z-report % upgrade rejected: mirror does not match fiscal event % (fiscal_hash / canonical_bytes / z_number / report_data)', OLD.z_number, NEW.fiscal_event_id
                             USING ERRCODE = 'integrity_constraint_violation';
                     END IF;
 

@@ -224,6 +224,95 @@ final class ZReportImmutabilityTest extends TestCase
             ]);
     }
 
+    public function test_id_is_immutable(): void
+    {
+        $report = $this->createLegacyZReport();
+
+        $this->expectException(QueryException::class);
+        $this->expectExceptionMessage('identity');
+
+        DB::table('pos_z_reports')
+            ->where('id', $report->id)
+            ->update(['id' => Str::uuid()->toString()]);
+    }
+
+    public function test_terminal_id_is_immutable(): void
+    {
+        $report = $this->createLegacyZReport();
+        $otherLocation = Location::factory()->create(['company_id' => $this->companyId]);
+        $otherTerminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'location_id' => $otherLocation->id,
+            'code' => 'T-IMM2',
+        ]);
+
+        $this->expectException(QueryException::class);
+        $this->expectExceptionMessage('identity');
+
+        DB::table('pos_z_reports')
+            ->where('id', $report->id)
+            ->update(['terminal_id' => $otherTerminal->id]);
+    }
+
+    // ─── Same-statement tamper through the upgrade branch (Codex P1) ─────────
+
+    public function test_upgrade_stamping_event_with_mismatched_fiscal_hash_is_blocked(): void
+    {
+        // A direct SQL UPDATE stamps a real, verified Z_REPORT event id but
+        // writes a fiscal_hash that is NOT the event's current_hash. The FK
+        // proves the event exists; the trigger must prove the mirror fields
+        // actually come from that event.
+        $report = $this->createLegacyZReport();
+        $event = $this->storeZReportFiscalEvent();
+
+        $this->expectException(QueryException::class);
+        $this->expectExceptionMessage('does not match');
+
+        DB::table('pos_z_reports')
+            ->where('id', $report->id)
+            ->update([
+                'fiscal_event_id' => $event->id,
+                'fiscal_hash' => str_repeat('f', 64),
+            ]);
+    }
+
+    public function test_upgrade_stamping_event_with_tampered_z_number_is_blocked(): void
+    {
+        $report = $this->createLegacyZReport();
+        $event = $this->storeZReportFiscalEvent();
+
+        $this->expectException(QueryException::class);
+        $this->expectExceptionMessage('does not match');
+
+        DB::table('pos_z_reports')
+            ->where('id', $report->id)
+            ->update([
+                'fiscal_event_id' => $event->id,
+                'fiscal_hash' => $event->current_hash,
+                'canonical_bytes' => $event->canonical_bytes,
+                'z_number' => 42, // payload says 3
+            ]);
+    }
+
+    public function test_upgrade_stamping_event_without_canonical_bytes_is_blocked(): void
+    {
+        // Stamping the event while leaving the legacy row's NULL canonical_bytes
+        // in place must fail closed — the upgrade must carry the event's bytes.
+        $report = $this->createLegacyZReport();
+        $event = $this->storeZReportFiscalEvent();
+
+        $this->expectException(QueryException::class);
+        $this->expectExceptionMessage('does not match');
+
+        DB::table('pos_z_reports')
+            ->where('id', $report->id)
+            ->update([
+                'fiscal_event_id' => $event->id,
+                'fiscal_hash' => $event->current_hash,
+            ]);
+    }
+
     // ─── Legitimate flows keep working ───────────────────────────────────────
 
     public function test_insert_with_fiscal_hash_set_succeeds(): void
