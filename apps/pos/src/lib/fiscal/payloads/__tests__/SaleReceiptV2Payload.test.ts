@@ -116,6 +116,21 @@ describe('buildSaleReceiptV2Payload', () => {
     expect(v2Lines).toHaveLength(v1Lines.length);
   });
 
+  it('coerces empty-string variant fields from a stale catalog sync to null (never signs "")', () => {
+    const item = makeCartItem({
+      variant_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      variant_name: '',
+      variant_sku: '',
+    });
+
+    const payload = buildSaleReceiptV2Payload(makeInput([item]));
+
+    const line = payload.line_items[0]!;
+    expect(line.variant_id).toBe('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+    expect(line.variant_name).toBeNull();
+    expect(line.variant_sku).toBeNull();
+  });
+
   it('rejects an orphan variant identity (sku/name without variant_id)', () => {
     const item = makeCartItem({ variant_sku: 'TSHIRT-RED-L' });
 

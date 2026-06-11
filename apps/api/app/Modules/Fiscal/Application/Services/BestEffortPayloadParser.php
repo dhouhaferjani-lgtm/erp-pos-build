@@ -59,9 +59,13 @@ final class BestEffortPayloadParser
         }
 
         /** @var array<string, mixed> $payload */
+        // Validate against the envelope's OWN event_version (M4 Codex P2-1)
+        // so a v2 SALE_RECEIPT in the repair path is not mis-flagged with
+        // v1 line-item defects. Unparseable versions fall back to 1.
+        $eventVersion = is_int($envelope['event_version'] ?? null) ? $envelope['event_version'] : 1;
         $parsed = $this->expectedPayloadFields($eventType, $payload);
         $defects = array_merge($defects, $this->keySetDefects($eventType, $payload));
-        $defects = array_merge($defects, $this->schemaDefects($eventType, $payload));
+        $defects = array_merge($defects, $this->schemaDefects($eventType, $payload, $eventVersion));
 
         return new BestEffortParseResult($parsed, $this->uniqueDefects($defects));
     }
@@ -109,7 +113,7 @@ final class BestEffortPayloadParser
      * @param  array<string, mixed>  $payload
      * @return list<ParseDefect>
      */
-    private function schemaDefects(FiscalEventType $eventType, array $payload): array
+    private function schemaDefects(FiscalEventType $eventType, array $payload, int $eventVersion = 1): array
     {
         $defects = [];
 
@@ -125,7 +129,7 @@ final class BestEffortPayloadParser
         }
 
         try {
-            $this->constraintValidator->validatePerEventConstraints($eventType, $payload);
+            $this->constraintValidator->validatePerEventConstraints($eventType, $payload, 'operational', $eventVersion);
         } catch (RuntimeException $e) {
             $defects[] = new ParseDefect(
                 $this->inferPayloadPath($e->getMessage(), $eventType),

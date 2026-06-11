@@ -78,7 +78,29 @@ final class BestEffortPayloadParserTest extends TestCase
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function envelope(string $eventType, array $payload): string
+    public function test_v2_sale_receipt_lines_are_validated_with_the_v2_rules(): void
+    {
+        // M4 Codex P2-1: the repair path must validate against the
+        // envelope's OWN event_version — a v2 payload mis-checked against
+        // the v1 line-item allowlist would report bogus extra-key defects.
+        $payload = $this->saleReceiptPayload();
+        /** @var list<array<string, mixed>> $lines */
+        $lines = $payload['line_items'];
+        $lines[0]['variant_id'] = '44444444-4444-4444-8444-444444444444';
+        $lines[0]['variant_name'] = 'Default item — Red / L';
+        $lines[0]['variant_sku'] = 'SKU-DEFAULT-RED-L';
+        ksort($lines[0]);
+        $payload['line_items'] = $lines;
+
+        $result = $this->parser()->parse(
+            $this->envelope('SALE_RECEIPT', $payload, eventVersion: 2),
+            FiscalEventType::SALE_RECEIPT,
+        );
+
+        $this->assertSame([], $result->defects);
+    }
+
+    private function envelope(string $eventType, array $payload, int $eventVersion = 1): string
     {
         $fields = [
             'business_date' => '2026-05-20',
@@ -86,7 +108,7 @@ final class BestEffortPayloadParserTest extends TestCase
             'company_id' => '00000000-0000-4000-8000-000000000002',
             'event_time_device' => '2026-05-20T14:30:00Z',
             'event_type' => $eventType,
-            'event_version' => 1,
+            'event_version' => $eventVersion,
             'operator_id' => '00000000-0000-4000-8000-000000000003',
             'payload' => $payload,
             'previous_hash' => str_repeat('0', 64),

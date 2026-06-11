@@ -35,6 +35,10 @@ export interface SaleReceiptV2PayloadInput extends Omit<SaleReceiptPayloadInput,
   readonly line_items: ReadonlyArray<LineItemV2Input>;
 }
 
+function orNull(value: string | undefined): string | null {
+  return value === undefined || value === '' ? null : value;
+}
+
 export function buildSaleReceiptV2Payload(
   input: BuildSaleReceiptPayloadInput,
 ): SaleReceiptV2PayloadInput {
@@ -50,9 +54,13 @@ export function buildSaleReceiptV2Payload(
       );
     }
 
-    const variantId = item.product.variant_id ?? null;
-    const variantName = item.product.variant_name ?? null;
-    const variantSku = item.product.variant_sku ?? null;
+    // Empty strings from a stale/partial catalog sync are coerced to null
+    // (Codex P2-2): the engine/server validators reject '' (non-empty
+    // string or null), and a degraded variant label must never hard-fail
+    // an otherwise-legal checkout at append time.
+    const variantId = orNull(item.product.variant_id);
+    const variantName = orNull(item.product.variant_name);
+    const variantSku = orNull(item.product.variant_sku);
 
     // A variant identity without its anchor id must never be signed —
     // mirrors the server validator's coupling rule.
