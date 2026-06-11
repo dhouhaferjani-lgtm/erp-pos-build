@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Application\Services;
 
-use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Inventory\Domain\Enums\TransferStatus;
@@ -118,13 +117,15 @@ final class LocationStockQueryService implements LocationStockReader
         // location — same shape as ProductController@stockLevels' incoming
         // query, but grouped by product for ONE location instead of by
         // location for one product.
+        // Query-builder, NOT the Document model (Rule 6: never import models
+        // across modules — enums are the sanctioned shared vocabulary).
         /** @var Collection<int, object{product_id: string, incoming: float|int|string}> $poRows */
-        $poRows = DocumentLine::query()
+        $poRows = DB::table('document_lines')
             ->join('documents', 'document_lines.document_id', '=', 'documents.id')
             ->where('documents.tenant_id', $tenantId)
             ->where('documents.company_id', $companyId)
-            ->where('documents.type', DocumentType::PurchaseOrder)
-            ->where('documents.status', DocumentStatus::Confirmed)
+            ->where('documents.type', DocumentType::PurchaseOrder->value)
+            ->where('documents.status', DocumentStatus::Confirmed->value)
             ->where('document_lines.location_id', $locationId)
             ->whereNotNull('document_lines.product_id')
             ->whereRaw('document_lines.quantity > COALESCE(document_lines.quantity_received, 0)')
