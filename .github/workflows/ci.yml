@@ -358,6 +358,14 @@ jobs:
           sed -i 's/REDIS_PORT=.*/REDIS_PORT=6379/' .env.testing
           sed -i 's/BROADCAST_CONNECTION=.*/BROADCAST_CONNECTION=null/' .env.testing
 
+      # ChokepointCompletenessTest (in the filter below) shells out to `rg`
+      # (ripgrep) to sweep the codebase for §14.3 fiscal chokepoints. Without
+      # ripgrep the Symfony Process returns exit 127 and the test hard-fails —
+      # this is the H5 CI red (the chokepoint-gate job installs ripgrep, this
+      # job did not). The test MUST run in the merge gate, so install rg here.
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
       - name: Run pgsql-only invariant tests
         # DB_CONNECTION=pgsql is set at the step level, NOT the job level.
         # phpunit.xml pins DB_CONNECTION=sqlite via <env> without force="true",
@@ -538,7 +546,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|AccountChargeProjectionTest|TreasuryAccountChargeBridgeTest|DocumentAccountChargeFactureBridgeTest|TaskPhase3AccountChargeFullFlowTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest|DeviceLossIncidentTest|VirtualAdminTerminalResolverTest|WacSerializationConcurrencyTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|AccountChargeProjectionTest|TreasuryAccountChargeBridgeTest|DocumentAccountChargeFactureBridgeTest|TaskPhase3AccountChargeFullFlowTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest|DeviceLossIncidentTest|VirtualAdminTerminalResolverTest|WacSerializationConcurrencyTest|ZReportImmutabilityTest"
 
   t6-phase0b-pgsql:
     name: T6 Phase 0b — database-per-tenant flip (PHPUnit + PostgreSQL)

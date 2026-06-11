@@ -1,9 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('@/lib/api', () => ({
-  apiGet: vi.fn(),
-  apiPost: vi.fn(),
-}));
+vi.mock('@/lib/api', () => {
+  class ApiRequestError extends Error {
+    constructor(
+      public status: number,
+      message: string,
+      public code: string,
+      public details?: unknown,
+    ) {
+      super(message);
+      this.name = 'ApiRequestError';
+    }
+  }
+  return {
+    apiGet: vi.fn(),
+    apiPost: vi.fn(),
+    ApiRequestError,
+  };
+});
 
 vi.mock('@/lib/db/repositories/offlineReceiptRepository', async () => {
   const actual = await vi.importActual<typeof import('@/lib/db/repositories/offlineReceiptRepository')>('@/lib/db/repositories/offlineReceiptRepository');
@@ -123,13 +137,15 @@ vi.mock('@/lib/offline/voucherRepository', () => ({
 
 import {
   pushOfflineReceipts,
+  pushZReports,
   pullProducts,
   pullPaymentConfig,
   pullOperatorPins,
   pullTerminalState,
   runFullSync,
 } from '../syncService';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet, apiPost, ApiRequestError } from '@/lib/api';
+import { getUnsyncedZReports, markZReportSynced } from '@/lib/db/repositories/zReportRepository';
 import { updateReceiptStatus } from '@/lib/db/repositories/offlineReceiptRepository';
 import {
   getPendingFiscalEventsForSync,
@@ -1327,5 +1343,48 @@ describe('B3-followup audit (Finding 4): receiptToPayload fails loudly on invali
 
     const wire = __test_receiptToPayload(receipt);
     expect(wire.fiscal_schema_version).toBe(3);
+  });
+});
+
+describe('pushZReports — H4 legacy Z sync cutover', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('marks a legacy Z synced (not retried) when the server retires legacy sync for a v3 terminal', async () => {
+    const db = makeMockDb();
+    vi.mocked(getUnsyncedZReports).mockResolvedValue([
+      { id: 'z1', formatted_z_number: 'Z0001' },
+    ] as unknown as never[]);
+    vi.mocked(apiPost).mockRejectedValue(
+      new ApiRequestError(
+        409,
+        'Legacy Z-report sync is retired for cutover terminal term-1.',
+        'Z_SESSION_DEVICE_AUTHORITY_REQUIRED',
+      ),
+    );
+
+    const result = await pushZReports(db);
+
+    // Superseded by the device-authored canonical Z fiscal event — mark done,
+    // do NOT count as failed, do NOT surface an error, do NOT retry.
+    expect(markZReportSynced).toHaveBeenCalledWith(db, 'z1', expect.any(String));
+    expect(result.failed).toBe(0);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('still fails (and retries) on a non-cutover error', async () => {
+    const db = makeMockDb();
+    vi.mocked(getUnsyncedZReports).mockResolvedValue([
+      { id: 'z1', formatted_z_number: 'Z0001' },
+    ] as unknown as never[]);
+    vi.mocked(apiPost).mockRejectedValue(
+      new ApiRequestError(500, 'Internal Server Error', 'SERVER_ERROR'),
+    );
+
+    const result = await pushZReports(db);
+
+    expect(markZReportSynced).not.toHaveBeenCalled();
+    expect(result.failed).toBe(1);
   });
 });

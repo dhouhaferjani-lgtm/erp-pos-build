@@ -23,10 +23,14 @@ export interface CartItem {
      * exactly which variant was sold. Populated when the cashier picks a
      * variant via the variant picker; left undefined for non-variant
      * products. `variant_name` is the human label (product name + variant
-     * suffix) used for cart-line + receipt display.
+     * suffix) used for cart-line + receipt display. `variant_sku` is the
+     * variant's own SKU — since SaleReceiptV2 (M4) it is part of the SIGNED
+     * canonical line item, so the sealed record identifies the exact
+     * article sold (NF525 line fidelity).
      */
     variant_id?: string;
     variant_name?: string;
+    variant_sku?: string;
   };
   quantity: number;
   unit_price: string;

@@ -322,9 +322,15 @@ final class ParseFailureResolutionService
         }
 
         try {
+            // Validate against the EVENT'S OWN version (M4 Codex P2-1):
+            // a corrected v2 SALE_RECEIPT payload must be checked with the
+            // v2 line-item rules, not the version-1 default — otherwise a
+            // legal v2 correction is rejected as malformed.
             $this->constraintValidator->validatePerEventConstraints(
                 $event->event_type,
                 $correctedPayload,
+                'operational',
+                $event->event_version,
             );
         } catch (Throwable $e) {
             throw new InvalidCorrectedPayloadException(

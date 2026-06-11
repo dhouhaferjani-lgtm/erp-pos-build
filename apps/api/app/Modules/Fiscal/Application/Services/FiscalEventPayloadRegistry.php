@@ -51,7 +51,11 @@ final class FiscalEventPayloadRegistry
      * @var array<value-of<FiscalEventType>, array{class-string, int}>
      */
     private const PHASE_1_MAP = [
-        FiscalEventType::SALE_RECEIPT->value => [SaleReceiptPayload::class, 1],
+        // SaleReceiptV2 (M4): version 2 adds variant_id/variant_name/
+        // variant_sku to each line_items[] row (null for non-variant lines).
+        // The authoring version is 2; version 1 events remain parseable —
+        // see SUPPORTED_VERSIONS (Events are Immutable Forever).
+        FiscalEventType::SALE_RECEIPT->value => [SaleReceiptPayload::class, 2],
         FiscalEventType::CHAIN_BREAK_DETECTED->value => [ChainBreakDetectedPayload::class, 1],
         FiscalEventType::CHAIN_RESTART->value => [ChainRestartPayload::class, 1],
         FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT->value => [TerminalRegistrySnapshotPayload::class, 1],
@@ -92,6 +96,19 @@ final class FiscalEventPayloadRegistry
     }
 
     /**
+     * Event types whose historical versions remain parseable alongside the
+     * current authoring version. Per "Events are Immutable Forever", a
+     * version bump NEVER retires the older parse path.
+     *
+     * @var array<value-of<FiscalEventType>, list<int>>
+     */
+    private const SUPPORTED_VERSIONS = [
+        FiscalEventType::SALE_RECEIPT->value => [1, 2],
+    ];
+
+    /**
+     * The CURRENT authoring version (what new events are stamped with).
+     *
      * @throws FiscalEventTypeNotImplemented when the type is reserved but unimplemented in Phase 1.
      */
     public function eventVersionFor(FiscalEventType $type): int
@@ -102,6 +119,19 @@ final class FiscalEventPayloadRegistry
         }
 
         return $entry[1];
+    }
+
+    /**
+     * Every event_version the parser accepts for this type. Defaults to
+     * exactly the authoring version when no historical versions exist.
+     *
+     * @return list<int>
+     *
+     * @throws FiscalEventTypeNotImplemented when the type is reserved but unimplemented in Phase 1.
+     */
+    public function supportedVersionsFor(FiscalEventType $type): array
+    {
+        return self::SUPPORTED_VERSIONS[$type->value] ?? [$this->eventVersionFor($type)];
     }
 
     public function isImplemented(FiscalEventType $type): bool

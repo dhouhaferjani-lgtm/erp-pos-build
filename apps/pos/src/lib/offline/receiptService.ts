@@ -7,9 +7,9 @@ import type {
   SaleReceiptApprovalReferenceInput,
 } from '@/lib/fiscal/FiscalEventEngine';
 import {
-  buildSaleReceiptPayload,
   type SaleReceiptSellerInput,
 } from '@/lib/fiscal/payloads/SaleReceiptPayload';
+import { buildSaleReceiptV2Payload } from '@/lib/fiscal/payloads/SaleReceiptV2Payload';
 import type { CartTransactionDiscount } from '@/stores/cartStore';
 import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
 import { getTerminalState } from '@/lib/db/repositories/terminalStateRepository';
@@ -292,7 +292,10 @@ export async function createOfflineReceipt(
   const businessDate = postedAt.slice(0, 10);
   const totalFormatted = bcformat(total, decimals);
   const approvalReferences = collectApprovalReferences(input);
-  const canonicalPayload = buildSaleReceiptPayload({
+  // M4 — SaleReceiptV2 (event_version=2): the signed canonical line items
+  // carry the variant identity (variant_id/variant_name/variant_sku, null
+  // for non-variant lines) so the sealed record matches the printed ticket.
+  const canonicalPayload = buildSaleReceiptV2Payload({
     receiptId,
     terminalId: input.terminalId,
     operatorId: input.operatorId,
@@ -422,11 +425,10 @@ export async function createOfflineReceipt(
           product_id: item.product.sellableType === 'composite_item' ? undefined : item.product.id,
           composite_item_id: item.product.sellableType === 'composite_item' ? item.product.id : undefined,
           // T2 — variant identity persisted alongside the line so the stored
-          // sale records exactly which variant was sold. This is OUT OF BAND
-          // from the fiscal canonical payload (built separately in
-          // buildSaleReceiptPayload, which reads only product_id/sku/price) —
-          // it never alters fiscal bytes. Wave-2 sync forwards this to the
-          // server; current sync ignores the extra field harmlessly.
+          // sale records exactly which variant was sold. Since M4
+          // (SaleReceiptV2) the variant identity ALSO travels in the signed
+          // canonical line items; this mirror stays for the local receipt
+          // store + Wave-2 sync.
           variant_id: item.product.variant_id ?? undefined,
           name: item.product.name,
           sku: item.product.sku,

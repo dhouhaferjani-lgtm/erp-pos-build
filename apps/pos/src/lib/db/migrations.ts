@@ -1529,4 +1529,52 @@ export const migrations: Migration[] = [
         ON local_refund_records(shift_id);
     `,
   },
+  {
+    // H2 (2026-06-11 NF525/DSFinV-K cash-reconciliation): mirror each customer
+    // ACCOUNT_PAYMENT settled at this terminal so the device Z can fold CASH
+    // account collections into expected_cash (money received into the drawer
+    // against a customer credit account is drawer cash — NOT a sales payment).
+    // Same record-at-author trade-off as local_refund_records: a crash between
+    // the fiscal-event append and this mirror write undercounts the local Z;
+    // the server remains the source of truth.
+    version: 48,
+    name: 'create_local_account_payment_records',
+    sql: `
+      CREATE TABLE IF NOT EXISTS local_account_payment_records (
+        id TEXT PRIMARY KEY,
+        shift_id TEXT NOT NULL,
+        terminal_id TEXT NOT NULL,
+        method_code TEXT NOT NULL,
+        amount TEXT NOT NULL,
+        -- POSITIVE cash that physically entered this drawer: amount when
+        -- method_code='CASH', '0' otherwise (card/voucher account payments
+        -- move no till cash at this terminal).
+        cash_impact TEXT NOT NULL,
+        currency TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_local_account_payment_records_shift
+        ON local_account_payment_records(shift_id);
+    `,
+  },
+  {
+    // M3 (2026-06-09 Z-report audit): the device Z selected its receipts by
+    // wall-clock (created_at >= shift opened_at). A device clock rollback during
+    // a shift could push a receipt's created_at before the shift open and
+    // silently drop it from the SIGNED Z totals. hash_sequence is monotonic and
+    // rollback-immune, so we anchor each shift to the terminal's receipt
+    // hash_sequence at open time and bound the Z by `hash_sequence > anchor`.
+    version: 49,
+    name: 'create_shift_receipt_anchors',
+    sql: `
+      CREATE TABLE IF NOT EXISTS shift_receipt_anchors (
+        shift_id TEXT PRIMARY KEY,
+        -- Terminal receipt hash_sequence at shift open (the last receipt of the
+        -- previous shift). The current shift's receipts all have a strictly
+        -- greater hash_sequence.
+        opening_hash_sequence INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `,
+  },
 ];

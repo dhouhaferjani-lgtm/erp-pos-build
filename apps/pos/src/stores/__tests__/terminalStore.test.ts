@@ -84,7 +84,7 @@ vi.mock('@/stores/operatorStore', () => ({
 }));
 
 import { apiGet, apiPost } from '@/lib/api';
-import { getDatabase } from '@/lib/db';
+import { getDatabase, execute, queryAll } from '@/lib/db';
 import { invalidateTerminalDiscountPermissions } from '@/lib/db/repositories/operatorPinRepository';
 import { authorZSessionOpenWithOpeningFloat } from '@/lib/fiscal/zSessionAuthoring';
 import { getStoredValue, setStoredValue, removeStoredValue } from '@/lib/storage';
@@ -220,6 +220,32 @@ describe('terminalStore', () => {
 
     expect(authorZSessionOpenWithOpeningFloat).not.toHaveBeenCalled();
     expect(useTerminalStore.getState().shift).toEqual(expect.objectContaining(mockShift));
+  });
+
+  it('openShift (M3) records the shift receipt anchor from the offline_receipts MAX sequence, not terminal_state', async () => {
+    useTerminalStore.setState({ terminal: { ...mockTerminal, fiscal_schema_version: 3 } });
+    vi.mocked(apiPost).mockResolvedValue(mockShift);
+    // The terminal's last receipt is at operational sequence 42.
+    vi.mocked(queryAll).mockImplementation(async (_db, sql) =>
+      (String(sql).includes('offline_receipts') ? [{ max_seq: 42 }] : []) as unknown as never[],
+    );
+
+    await useTerminalStore.getState().openShift('100.00');
+
+    // The boundary query reads offline_receipts.hash_sequence (the same space the
+    // Z window bounds by) — NOT terminal_state.hash_sequence (the legacy counter).
+    const maxQuery = vi
+      .mocked(queryAll)
+      .mock.calls.find((c) => String(c[1]).includes('MAX(hash_sequence)'));
+    expect(maxQuery).toBeDefined();
+    expect(String(maxQuery![1])).toContain('FROM offline_receipts');
+
+    // The anchor INSERT carries that sequence (42).
+    const anchorInsert = vi
+      .mocked(execute)
+      .mock.calls.find((c) => String(c[1]).includes('shift_receipt_anchors'));
+    expect(anchorInsert).toBeDefined();
+    expect(anchorInsert![2]).toEqual(expect.arrayContaining([42]));
   });
 
   it('openShift authors Z-session opening fiscal events for cutover terminals', async () => {

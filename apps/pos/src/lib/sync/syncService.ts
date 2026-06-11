@@ -198,6 +198,17 @@ function isChainBreakError(error: unknown): boolean {
 }
 
 /**
+ * H4: the server retires the legacy Z-report sync endpoint for cutover
+ * (v3 device-authority) terminals — it returns 409 with code
+ * `Z_SESSION_DEVICE_AUTHORITY_REQUIRED` because the device-authored canonical
+ * Z_REPORT fiscal event is the authority and syncs via the fiscal-event path.
+ * Without recognising this, the device retries the legacy push forever.
+ */
+function isLegacyZSyncRetiredError(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.code === 'Z_SESSION_DEVICE_AUTHORITY_REQUIRED';
+}
+
+/**
  * Push device-authored fiscal events to the server.
  *
  * Kept under the legacy function name because the scheduler and UI badge
@@ -340,6 +351,22 @@ export async function pushZReports(db: Database): Promise<{
       await logSyncOperation(db, 'push', 'z_report', zReport.id, 'success');
       pushed++;
     } catch (error) {
+      // H4: cutover (v3) terminal — the legacy Z mirror is retired server-side.
+      // Mark it synced so it is never retried; the canonical Z_REPORT fiscal
+      // event already carries authority and syncs via the fiscal-event path.
+      if (isLegacyZSyncRetiredError(error)) {
+        await markZReportSynced(db, zReport.id, new Date().toISOString());
+        await logSyncOperation(
+          db,
+          'push',
+          'z_report',
+          zReport.id,
+          'success',
+          'legacy Z sync retired (cutover) — superseded by device-authored Z fiscal event',
+        );
+        continue;
+      }
+
       const message = coerceSyncError(error);
       await logSyncOperation(db, 'push', 'z_report', zReport.id, 'error', message);
       errors.push(`Z-Report ${zReport.formatted_z_number}: ${message}`);

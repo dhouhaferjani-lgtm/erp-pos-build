@@ -755,6 +755,26 @@ final class StrictCanonicalParserTest extends TestCase
      *
      * @param  array<string, mixed>  $overrides
      */
+    /**
+     * SaleReceiptV2 (M4) payload: the V1 shape with the variant identity
+     * keys on each line — here a variant sale of the default item.
+     *
+     * @return array<string, mixed>
+     */
+    private function canonicalSaleReceiptV2Payload(): array
+    {
+        $payload = $this->canonicalSaleReceiptPayload();
+        /** @var list<array<string, mixed>> $lines */
+        $lines = $payload['line_items'];
+        $lines[0]['variant_id'] = '44444444-4444-4444-8444-444444444444';
+        $lines[0]['variant_name'] = 'Default item — Red / L';
+        $lines[0]['variant_sku'] = 'SKU-DEFAULT-RED-L';
+        ksort($lines[0]);
+        $payload['line_items'] = $lines;
+
+        return $payload;
+    }
+
     private function canonicalSaleReceiptPayloadJson(array $overrides = []): string
     {
         $payload = array_replace($this->canonicalSaleReceiptPayload(), $overrides);
@@ -1080,13 +1100,115 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_rejects_envelope_with_event_version_mismatch_to_registry(): void
     {
-        // Phase 1 SALE_RECEIPT is event_version=1; sending v2 must reject.
-        $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'event_version', '2');
+        // SALE_RECEIPT supports event_version {1, 2} since SaleReceiptV2
+        // (M4); an unknown version 3 must reject.
+        $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'event_version', '3');
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
 
         $this->assertFailed($result);
         $this->assertStringContainsString('envelope_event_version_mismatch', $result->failureReason ?? '');
+    }
+
+    // ─── SaleReceiptV2 (M4) — event_version=2 variant line fidelity ─────────
+
+    public function test_parses_valid_sale_receipt_v2_envelope_with_variant_line(): void
+    {
+        $bytes = $this->envelope(
+            'SALE_RECEIPT',
+            $this->canonicalSaleReceiptV2Payload(),
+            ['event_version' => 2],
+        );
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+        /** @var array<string, mixed> $payload */
+        $payload = $result->payload;
+        /** @var list<array<string, mixed>> $lines */
+        $lines = $payload['line_items'];
+        $this->assertSame('44444444-4444-4444-8444-444444444444', $lines[0]['variant_id']);
+        $this->assertSame('SKU-DEFAULT-RED-L', $lines[0]['variant_sku']);
+        $this->assertSame('Default item — Red / L', $lines[0]['variant_name']);
+    }
+
+    public function test_parses_v2_envelope_with_null_variant_fields_on_non_variant_line(): void
+    {
+        $payload = $this->canonicalSaleReceiptV2Payload();
+        /** @var list<array<string, mixed>> $lines */
+        $lines = $payload['line_items'];
+        $lines[0]['variant_id'] = null;
+        $lines[0]['variant_name'] = null;
+        $lines[0]['variant_sku'] = null;
+        $payload['line_items'] = $lines;
+
+        $bytes = $this->envelope('SALE_RECEIPT', $payload, ['event_version' => 2]);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+    }
+
+    public function test_rejects_v2_sale_receipt_with_v1_shaped_line_items(): void
+    {
+        // A v2 envelope must carry the full V2 line shape — the variant keys
+        // are required (explicit null for non-variant lines), never absent.
+        $bytes = $this->envelope(
+            'SALE_RECEIPT',
+            $this->canonicalSaleReceiptPayload(),
+            ['event_version' => 2],
+        );
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('payload_line_item_missing_keys', $result->failureReason ?? '');
+        $this->assertStringContainsString('variant_id', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_v1_sale_receipt_with_variant_keys(): void
+    {
+        // V1 events are immutable forever — variant keys on a version-1
+        // envelope are foreign keys to that shape and must reject.
+        $bytes = $this->envelope('SALE_RECEIPT', $this->canonicalSaleReceiptV2Payload());
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('payload_line_item_extra_keys', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_v2_variant_identity_without_variant_id(): void
+    {
+        $payload = $this->canonicalSaleReceiptV2Payload();
+        /** @var list<array<string, mixed>> $lines */
+        $lines = $payload['line_items'];
+        $lines[0]['variant_id'] = null;
+        $lines[0]['variant_name'] = null;
+        $payload['line_items'] = $lines;
+
+        $bytes = $this->envelope('SALE_RECEIPT', $payload, ['event_version' => 2]);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('payload_line_item_variant_orphan', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_v2_variant_id_with_invalid_uuid_format(): void
+    {
+        $payload = $this->canonicalSaleReceiptV2Payload();
+        /** @var list<array<string, mixed>> $lines */
+        $lines = $payload['line_items'];
+        $lines[0]['variant_id'] = 'NOT-A-UUID';
+        $payload['line_items'] = $lines;
+
+        $bytes = $this->envelope('SALE_RECEIPT', $payload, ['event_version' => 2]);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('payload_line_item_variant_id_invalid', $result->failureReason ?? '');
     }
 
     public function test_rejects_envelope_with_zero_sequence_number(): void

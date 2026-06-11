@@ -547,15 +547,15 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      *   - tax_category_code (unified KSA/IT axis)
      *   - non_collected_subtype (IT future)
      *
-     * **T2 variant_id gap (Task 18).** The `pos_receipt_lines` table has a
-     * `variant_id` column (added in Task 8 migration). However, the canonical
-     * `LineItemDTO` (fiscal_events.payload.line_items[]) does NOT carry a
-     * `variant_id` field — the 13-property canonical shape was finalised before
-     * the T2 variants spec introduced the column. The `PosCoreReceiptProjection`
-     * therefore writes `null` for `variant_id` on all projection-path rows.
-     * Rows written directly by `ReceiptCreationService` (the draft-creation path)
-     * DO carry `variant_id` (Task 18). Aligning the canonical payload to carry
-     * `variant_id` is deferred to a future canonical schema bump (Phase 2 T2).
+     * **T2 variant_id gap — CLOSED by SaleReceiptV2 (M4).** Since
+     * event_version=2 the canonical `LineItemDTO` carries the variant
+     * identity (`variant_id`/`variant_name`/`variant_sku`, null for
+     * non-variant lines and for all v1 events). The projection resolves the
+     * `pos_receipt_lines.variant_id` FK tenant-scoped (same stance as
+     * `resolveProductFk` — Codex BLOCKER-1) and anchored to the resolved
+     * product FK, honouring the table CHECK
+     * `variant_id IS NULL OR product_id IS NOT NULL`. The sealed canonical
+     * payload remains authoritative when the FK does not resolve.
      */
     private function writeLines(string $receiptId, FiscalEvent $event, SaleReceiptCanonicalView $view): void
     {
@@ -581,12 +581,16 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             // (sealed snapshot in the canonical payload remains
             // authoritative).
             $productFk = $this->resolveProductFk($event->tenant_id, $line->productId);
+            $variantFk = $productFk !== null && $line->variantId !== null
+                ? $this->resolveVariantFk($event->tenant_id, $productFk, $line->variantId)
+                : null;
 
             ReceiptLine::query()->create([
                 'id' => Str::uuid()->toString(),
                 'receipt_id' => $receiptId,
                 'line_number' => $lineNumber++,
                 'product_id' => $productFk,
+                'variant_id' => $variantFk,
                 'composite_item_id' => null,
                 'menu_category_id' => null,
                 'product_code' => $line->sku,
@@ -630,6 +634,41 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             $row = DB::table('products')
                 ->where('tenant_id', $tenantId)
                 ->where('id', $productSnapshot)
+                ->first('id');
+        } catch (QueryException) {
+            return null;
+        }
+
+        if ($row === null) {
+            return null;
+        }
+
+        $id = $row->id;
+
+        return is_string($id) ? $id : (string) $id;
+    }
+
+    /**
+     * Resolve the local `product_variants.id` FK for the canonical
+     * `variant_id` snapshot (SaleReceiptV2 / M4). Same
+     * snapshot-survives-deletion + cross-tenant-gate stance as
+     * `resolveProductFk`, additionally anchored to the resolved product FK
+     * so a variant of a DIFFERENT product can never bind (and the
+     * `pos_receipt_lines` CHECK `variant_id IS NULL OR product_id IS NOT
+     * NULL` always holds — callers only invoke this with a non-null
+     * product FK).
+     */
+    private function resolveVariantFk(string $tenantId, string $productFk, string $variantSnapshot): ?string
+    {
+        if (! Str::isUuid($variantSnapshot)) {
+            return null;
+        }
+
+        try {
+            $row = DB::table('product_variants')
+                ->where('tenant_id', $tenantId)
+                ->where('product_id', $productFk)
+                ->where('id', $variantSnapshot)
                 ->first('id');
         } catch (QueryException) {
             return null;

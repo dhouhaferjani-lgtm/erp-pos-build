@@ -23,6 +23,9 @@ import {
 import { insertZReportCounts } from '@/lib/db/repositories/zReportCountRepository';
 import type { ZReportCountRow } from '@/lib/db/repositories/zReportCountRepository';
 import { getRefundRecordsForShift } from '@/lib/db/repositories/localRefundRecordRepository';
+import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerRepository';
+import { getAccountPaymentRecordsForShift } from '@/lib/db/repositories/localAccountPaymentRecordRepository';
+import { getShiftReceiptAnchor } from '@/lib/db/repositories/shiftReceiptAnchorRepository';
 import type { LocalRefundRecord } from '@/lib/db/repositories/localRefundRecordRepository';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import type {
@@ -145,7 +148,21 @@ export async function generateZReport(
   // Z-report totals or the Z-chain hash; this mirrors the server-side
   // `Terminal::scopeProduction()` exclusion that NF525 / ReportGenerationService
   // already apply on the canonical reporting path.
-  const receipts = await queryAll<OfflineReceipt>(
+  // M3: prefer the monotonic hash_sequence window (rollback-immune) when the
+  // shift recorded an opening anchor; fall back to the wall-clock window for
+  // legacy shifts opened before anchors were captured. No upper bound is needed
+  // — the Z is generated at close, before any later shift opens, so every
+  // receipt after the anchor belongs to this shift.
+  const anchor = await getShiftReceiptAnchor(db, shiftId);
+  const receipts = anchor
+    ? await queryAll<OfflineReceipt>(
+        db,
+        `SELECT * FROM offline_receipts
+         WHERE terminal_id = $1 AND hash_sequence > $2 AND is_training = 0
+         ORDER BY hash_sequence ASC`,
+        [terminalId, anchor.opening_hash_sequence],
+      )
+    : await queryAll<OfflineReceipt>(
     db,
     `SELECT * FROM offline_receipts
      WHERE terminal_id = $1 AND created_at >= $2 AND is_training = 0
@@ -165,9 +182,13 @@ export async function generateZReport(
   // receipts nor settled refunds is rejected.
   const refundRecords = await getRefundRecordsForShift(db, shiftId);
 
-  if (receipts.length === 0 && refundRecords.length === 0) {
-    throw new Error('Cannot generate Z-report for a shift with no receipts.');
-  }
+  // Cash drawer movements + customer account collections also close into the
+  // signed Z. (H3 — allow empty Z: a cashier can always close the register; an
+  // empty shift produces a nil Z with all-zero totals and expected_cash =
+  // opening float, matching the server ReportGenerationService which has no
+  // empty-shift guard. There is therefore no closeability guard here.)
+  const drawerOps = await getCashDrawerOpsForShift(db, shiftId);
+  const accountPayments = await getAccountPaymentRecordsForShift(db, shiftId);
 
   // Build payment method lookup for names
   const paymentMethodMap = await buildPaymentMethodMap(db);
@@ -187,7 +208,36 @@ export async function generateZReport(
   for (const record of refundRecords) {
     cashRefundImpact = bcadd(cashRefundImpact, record.cash_impact);
   }
-  const expectedCash = bcsub(bcadd(openingCash, cashSales, decimals), cashRefundImpact, decimals);
+
+  // Cash drawer movements (NF525 / DSFinV-K, 2026-06-11 research): paid-ins
+  // (deposit) raise the theoretical drawer, payouts lower it. The device is the
+  // source of truth, so expected_cash must mirror the real drawer. Sign matches
+  // the device's fetchDrawerBalance: deposit=+, payout=− (NOT the server's
+  // bank-deposit sign).
+  let drawerNet = '0';
+  for (const op of drawerOps) {
+    drawerNet =
+      op.type === 'deposit'
+        ? bcadd(drawerNet, op.amount, decimals)
+        : bcsub(drawerNet, op.amount, decimals);
+  }
+
+  // Cash collected against customer credit accounts physically enters this
+  // drawer (cash_impact is the CASH-only positive impact; non-cash = '0').
+  let cashAccountCollections = '0';
+  for (const ap of accountPayments) {
+    cashAccountCollections = bcadd(cashAccountCollections, ap.cash_impact, decimals);
+  }
+
+  const expectedCash = bcadd(
+    bcadd(
+      bcsub(bcadd(openingCash, cashSales, decimals), cashRefundImpact, decimals),
+      drawerNet,
+      decimals,
+    ),
+    cashAccountCollections,
+    decimals,
+  );
 
   reportData.opening_cash = new Big(openingCash).toFixed(decimals);
   reportData.expected_cash = new Big(expectedCash).toFixed(decimals);
@@ -706,12 +756,51 @@ function aggregateReportData(
       vatByRate.set(rate, existing);
     }
 
-    // Payment method breakdown
-    const methodCode = paymentMethodMap.get(receipt.payment_method_id) ?? 'UNKNOWN';
-    const existing = paymentByType.get(methodCode) ?? { amount: '0', count: 0 };
-    existing.amount = bcadd(existing.amount, receipt.total);
-    existing.count += 1;
-    paymentByType.set(methodCode, existing);
+    // Payment method breakdown (NF525 / DSFinV-K, 2026-06-11 research):
+    // attribute each tender to its OWN method (split tenders), and record the
+    // cash figure NET of change — change is netted into the cash line, never the
+    // whole receipt total against the primary method. Legacy receipts without
+    // payments_json fall back to the single primary method (cash net of change).
+    let payments: Array<{ method_code: string; amount: string }> = [];
+    if (receipt.payments_json) {
+      const parsed = JSON.parse(receipt.payments_json) as unknown;
+      if (Array.isArray(parsed)) {
+        payments = parsed as Array<{ method_code: string; amount: string }>;
+      }
+    }
+
+    if (payments.length > 0) {
+      let cashTendered = '0';
+      let receiptHasCash = false;
+      for (const p of payments) {
+        if (p.method_code === 'CASH') {
+          cashTendered = bcadd(cashTendered, p.amount);
+          receiptHasCash = true;
+          continue;
+        }
+        const ex = paymentByType.get(p.method_code) ?? { amount: '0', count: 0 };
+        ex.amount = bcadd(ex.amount, p.amount);
+        ex.count += 1;
+        paymentByType.set(p.method_code, ex);
+      }
+      if (receiptHasCash) {
+        const netCash = bcsub(cashTendered, receipt.change_due ?? '0');
+        const ex = paymentByType.get('CASH') ?? { amount: '0', count: 0 };
+        ex.amount = bcadd(ex.amount, netCash);
+        ex.count += 1;
+        paymentByType.set('CASH', ex);
+      }
+    } else {
+      // Legacy receipt without payments_json: attribute the whole sale to the
+      // primary method. receipt.total is ALREADY the net amount allocated to
+      // the receipt (for a fully-cash receipt the drawer gains tendered − change
+      // = total), so do NOT subtract change_due again here — that would double-net.
+      const methodCode = paymentMethodMap.get(receipt.payment_method_id) ?? 'UNKNOWN';
+      const existing = paymentByType.get(methodCode) ?? { amount: '0', count: 0 };
+      existing.amount = bcadd(existing.amount, receipt.total);
+      existing.count += 1;
+      paymentByType.set(methodCode, existing);
+    }
   }
 
   const vatBreakdown: ZReportVatBreakdown[] = [];

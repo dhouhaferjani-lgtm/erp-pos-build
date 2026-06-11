@@ -127,7 +127,7 @@ function makeReceiptRows() {
       idempotency_key: 'idem-r1',
       status: 'pending',
       retry_count: 0,
-      payments_json: null,
+      payments_json: null as string | null,
       consumption_mode: null,
       table_id: null,
       server_receipt_id: null,
@@ -185,14 +185,35 @@ function makeRefundRecordRows() {
   ];
 }
 
-/** Setup queryAll to return receipts / payment_methods / refund records by SQL shape */
+/** Cash drawer ops mirrored locally (offline_cash_drawer_ops): deposit=+drawer, payout=−drawer. */
+type DrawerOpRow = { id: string; type: 'deposit' | 'payout'; amount: string; shift_id: string };
+
+/** Account-payment records mirrored locally (cash account collections raise the drawer). */
+type AccountPaymentRow = { id: string; shift_id: string; method_code: string; cash_impact: string };
+
+/** Setup queryAll to return receipts / payment_methods / refund records / drawer ops / account payments by SQL shape */
 function mockQueryAll(
   db: Database,
   receipts: ReturnType<typeof makeReceiptRows>,
   refundRecords: ReturnType<typeof makeRefundRecordRows> = [],
+  drawerOps: DrawerOpRow[] = [],
+  accountPayments: AccountPaymentRow[] = [],
+  anchor: { shift_id: string; opening_hash_sequence: number } | null = null,
 ) {
   vi.mocked(queryAll).mockImplementation(async (_db, sql, params) => {
     const s = sql as string;
+    if (s.includes('shift_receipt_anchors')) {
+      const shiftId = (params as unknown[] | undefined)?.[0];
+      return (anchor && anchor.shift_id === shiftId ? [anchor] : []) as unknown as never[];
+    }
+    if (s.includes('local_account_payment_records')) {
+      const shiftId = (params as unknown[] | undefined)?.[0];
+      return accountPayments.filter((a) => a.shift_id === shiftId) as unknown as never[];
+    }
+    if (s.includes('offline_cash_drawer_ops')) {
+      const shiftId = (params as unknown[] | undefined)?.[0];
+      return drawerOps.filter((o) => o.shift_id === shiftId) as unknown as never[];
+    }
     if (s.includes('FROM offline_receipts') || s.includes('offline_receipts')) {
       return receipts;
     }
@@ -272,6 +293,35 @@ describe('generateZReport', () => {
       expect(appendZSessionCloseAndZReport).not.toHaveBeenCalled();
     });
 
+    it('M3: bounds the receipt window by hash_sequence (rollback-safe) when a shift anchor exists', async () => {
+      mockQueryAll(db, makeReceiptRows(), [], [], [], {
+        shift_id: 'shift-1',
+        opening_hash_sequence: 7,
+      });
+
+      await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      const receiptsCall = vi
+        .mocked(queryAll)
+        .mock.calls.find((c) => String(c[1]).includes('FROM offline_receipts'));
+      expect(receiptsCall).toBeDefined();
+      // Uses the monotonic sequence bound, not the wall-clock created_at bound.
+      expect(String(receiptsCall![1])).toMatch(/hash_sequence\s*>\s*\$2/);
+      expect(String(receiptsCall![1])).not.toMatch(/created_at\s*>=/);
+      expect((receiptsCall![2] as unknown[])[1]).toBe(7);
+    });
+
+    it('M3: falls back to the wall-clock window when no shift anchor exists (legacy shift)', async () => {
+      mockQueryAll(db, makeReceiptRows()); // no anchor
+
+      await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      const receiptsCall = vi
+        .mocked(queryAll)
+        .mock.calls.find((c) => String(c[1]).includes('FROM offline_receipts'));
+      expect(String(receiptsCall![1])).toMatch(/created_at\s*>=\s*\$2/);
+    });
+
     it('T2.7: filters offline_receipts WHERE is_training = 0 (training rows excluded from Z totals)', async () => {
       // Mirrors the server-side `Terminal::scopeProduction()` exclusion that
       // NF525 / ReportGenerationService apply on the canonical reporting path.
@@ -288,6 +338,145 @@ describe('generateZReport', () => {
       });
       expect(receiptsCall).toBeDefined();
       expect(String(receiptsCall![1])).toMatch(/is_training\s*=\s*0/);
+    });
+  });
+
+  describe('split tenders + net cash (H1)', () => {
+    // NF525/DSFinV-K: the per-method Z total is the NET amount allocated to each
+    // method (change netted into the cash figure), and split tenders attribute
+    // each payment to its own method — NOT the whole receipt total to the
+    // primary payment_method_id. See the 2026-06-11 cash-reconciliation research.
+    function makeSplitTenderReceipt() {
+      const base = makeReceiptRows()[0]!;
+      return [
+        {
+          ...base,
+          total: '100.00',
+          subtotal: '84.03',
+          tax_amount: '15.97',
+          // Cash 65 tendered + card 40 = 105 tendered on a 100 sale → 5 change
+          // on the cash portion. Net cash in drawer = 65 − 5 = 60; card = 40.
+          change_due: '5.00',
+          payment_method_id: 'pm-cash',
+          payments_json: JSON.stringify([
+            { payment_method_id: 'pm-cash', amount: '65.00', method_code: 'CASH' },
+            { payment_method_id: 'pm-card', amount: '40.00', method_code: 'CARD' },
+          ]),
+          lines: JSON.stringify([
+            { name: 'Widget', quantity: 1, unit_price: '100.00', line_total: '84.03', tax_rate: '19', tax_amount: '15.97', discount_amount: null },
+          ]),
+        },
+      ];
+    }
+
+    it('attributes each tender to its own method and nets change into the cash figure', async () => {
+      mockQueryAll(db, makeSplitTenderReceipt());
+
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      const methods = report.report_data.payment_methods;
+      const cash = methods.find((m) => m.payment_type === 'CASH')!;
+      const card = methods.find((m) => m.payment_type === 'CARD')!;
+      expect(cash).toBeDefined();
+      expect(card).toBeDefined();
+      // Net cash retained (tendered 65 − change 5), NOT the whole 100 receipt total.
+      expect(cash.total_amount).toBe('60.00');
+      expect(card.total_amount).toBe('40.00');
+      // expected_cash = opening 100 + net cash 60 = 160 (no refunds).
+      expect(report.report_data.expected_cash).toBe('160.00');
+    });
+
+    it('legacy fallback: receipt.total is already net cash — does NOT subtract change again', async () => {
+      // A legacy receipt without payments_json. receipt.total is the sale value;
+      // for a fully-cash receipt the drawer gains tendered − change = total, so
+      // the cash figure IS receipt.total — subtracting change_due would double-net.
+      const legacy = [
+        {
+          ...makeReceiptRows()[0]!,
+          total: '50.00',
+          change_due: '5.00',
+          payment_method_id: 'pm-cash',
+          payments_json: null,
+        },
+      ];
+      mockQueryAll(db, legacy);
+
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      const cash = report.report_data.payment_methods.find((m) => m.payment_type === 'CASH')!;
+      expect(cash.total_amount).toBe('50.00'); // NOT 45.00
+      expect(report.report_data.expected_cash).toBe('150.00'); // 100 + 50
+    });
+  });
+
+  describe('cash drawer movements in expected_cash (H2)', () => {
+    // NF525/DSFinV-K: paid-ins (deposits) and payouts are cash-balance events
+    // folded into theoretical/expected cash — deposit raises it, payout lowers
+    // it. The device is source of truth, so expected_cash must mirror the drawer.
+    it('adds drawer deposits and subtracts payouts from expected_cash', async () => {
+      const drawerOps = [
+        { id: 'd1', type: 'deposit' as const, amount: '20.00', shift_id: 'shift-1' },
+        { id: 'd2', type: 'payout' as const, amount: '5.00', shift_id: 'shift-1' },
+      ];
+      mockQueryAll(db, makeReceiptRows(), [], drawerOps);
+
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      // opening 100 + cash sales 50 + deposit 20 − payout 5 = 165.00
+      expect(report.report_data.expected_cash).toBe('165.00');
+    });
+
+    it('ignores drawer ops from a different shift', async () => {
+      const drawerOps = [
+        { id: 'd1', type: 'deposit' as const, amount: '99.00', shift_id: 'OTHER-shift' },
+      ];
+      mockQueryAll(db, makeReceiptRows(), [], drawerOps);
+
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      // No ops for shift-1 → opening 100 + cash sales 50 = 150.00
+      expect(report.report_data.expected_cash).toBe('150.00');
+    });
+  });
+
+  describe('cash account payments in expected_cash (H2)', () => {
+    // NF525/DSFinV-K: cash received against a customer credit account is drawer
+    // cash (a cash-balance event), folded into expected_cash — NOT a sales
+    // payment-method total. Non-cash account payments move no till cash.
+    it('adds CASH account-payment collections to expected_cash', async () => {
+      const accountPayments = [
+        { id: 'ap1', shift_id: 'shift-1', method_code: 'CASH', cash_impact: '30.00' },
+      ];
+      mockQueryAll(db, makeReceiptRows(), [], [], accountPayments);
+
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      // opening 100 + cash sales 50 + cash account-payment 30 = 180.00
+      expect(report.report_data.expected_cash).toBe('180.00');
+    });
+
+    it('does NOT add non-cash account payments (cash_impact 0) to expected_cash', async () => {
+      const accountPayments = [
+        { id: 'ap1', shift_id: 'shift-1', method_code: 'CARD', cash_impact: '0' },
+      ];
+      mockQueryAll(db, makeReceiptRows(), [], [], accountPayments);
+
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      // opening 100 + cash sales 50 + 0 = 150.00
+      expect(report.report_data.expected_cash).toBe('150.00');
+    });
+
+    it('closes a shift whose only activity is a cash account payment (no receipts/refunds)', async () => {
+      const accountPayments = [
+        { id: 'ap1', shift_id: 'shift-1', method_code: 'CASH', cash_impact: '30.00' },
+      ];
+      mockQueryAll(db, [], [], [], accountPayments);
+
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      // opening 100 + cash account-payment 30 = 130.00 (no sales/refunds)
+      expect(report.report_data.expected_cash).toBe('130.00');
     });
   });
 
@@ -758,15 +947,19 @@ describe('generateZReport', () => {
       expect(cashRow.transaction_count).toBe(0);
     });
 
-    it('still throws when the shift has NEITHER receipts NOR refund records', async () => {
+    it('generates a nil Z for a truly-empty shift (allow empty Z, H3 — server parity)', async () => {
+      // A cashier can always close the register; an empty shift produces a nil
+      // Z (Z néant) with all-zero totals and expected_cash = opening float. The
+      // server ReportGenerationService allows this; the device must match.
       mockQueryAll(db, [], []);
 
-      await expect(
-        generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00'),
-      ).rejects.toThrow(/no receipts/);
+      const report = await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
 
-      expect(insertZReport).not.toHaveBeenCalled();
-      expect(advanceZChain).not.toHaveBeenCalled();
+      expect(report.report_data.sales_count).toBe(0);
+      expect(report.report_data.gross_sales).toBe('0.00');
+      expect(report.report_data.expected_cash).toBe('100.00'); // opening only
+      expect(insertZReport).toHaveBeenCalled();
+      expect(advanceZChain).toHaveBeenCalled();
     });
   });
 });
