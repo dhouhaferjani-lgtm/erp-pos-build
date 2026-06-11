@@ -44,6 +44,15 @@ final class TerminalResourcePolicyTest extends TestCase
         self::assertSame('Tunis', $payload['location']['address_city']);
         self::assertSame('1001', $payload['location']['address_postal_code']);
         self::assertSame('TN', $payload['location']['address_country']);
+
+        // Contract pin: when the company relation is NOT loaded, the key is
+        // still present and falls back to 'block'. Using the WARN company makes
+        // this discriminating — a lazy-load (or direct property read) would
+        // yield 'warn', only the whenLoaded fallback yields 'block'.
+        $unloaded = TerminalResource::make(
+            Terminal::query()->with('location')->findOrFail($terminal->id),
+        )->resolve();
+        self::assertSame('block', $unloaded['pos_stock_policy']);
     }
 
     public function test_terminal_with_default_policy_exposes_block(): void
@@ -61,14 +70,6 @@ final class TerminalResourcePolicyTest extends TestCase
         $payload = TerminalResource::make($terminal->load(['location', 'company']))->resolve();
 
         self::assertSame('block', $payload['pos_stock_policy']);
-
-        // Contract pin: the key is present (defaulting 'block') even when the
-        // company relation was never loaded — a renderer that forgets to
-        // eager-load must fail safe-for-retail, never drop the key.
-        $unloaded = TerminalResource::make(
-            Terminal::query()->with('location')->findOrFail($terminal->id),
-        )->resolve();
-        self::assertSame('block', $unloaded['pos_stock_policy']);
     }
 
     public function test_terminal_location_with_null_address_fields_exposes_nulls(): void
