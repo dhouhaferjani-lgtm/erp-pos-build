@@ -154,13 +154,13 @@ export function buildEscPosReceiptData(
   return {
     company: {
       name: receipt.company.name,
-      address_line1: identity.street ?? receipt.company.address_street ?? '',
+      address_line1: identity.street ?? '',
       // address_street_2 has no location counterpart — printing it under a
       // location street would mix identities, so it only prints with the
       // company address.
       address_line2: locationComplete ? null : receipt.company.address_street_2 ?? null,
-      city: identity.city ?? receipt.company.address_city ?? '',
-      postal_code: identity.postalCode ?? receipt.company.address_postal_code ?? '',
+      city: identity.city ?? '',
+      postal_code: identity.postalCode ?? '',
       country: identity.countryCode ?? receipt.company.country_code,
       tax_id: identity.taxNumber ?? '',
       phone: receipt.company.phone ?? null,

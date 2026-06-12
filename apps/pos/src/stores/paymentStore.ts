@@ -567,7 +567,7 @@ async function createReceiptLocalFirst(
         currency,
         // Atomic seller identity (spec 2026-06-11 §4.6): complete location
         // identity wholesale, otherwise company wholesale — never mixed.
-        seller: { ...resolveSellerIdentity(company, terminal?.location ?? null) },
+        seller: resolveSellerIdentity(company, terminal?.location ?? null),
         paymentMethodId: primary.paymentMethodId,
         paymentRepositoryId: primary.repositoryId,
         tenderedAmount,
@@ -672,7 +672,7 @@ async function createAccountPaymentLocalFirst(
       currency,
       // Atomic seller identity (spec 2026-06-11 §4.6) — same resolver as the
       // SALE_RECEIPT path; never a branch tax number with a company address.
-      seller: { ...resolveSellerIdentity(company, terminal?.location ?? null) },
+      seller: resolveSellerIdentity(company, terminal?.location ?? null),
       customer: selectedCustomer,
       payment: {
         amount,
@@ -758,7 +758,7 @@ async function createAccountChargeLocalFirst(
       // Atomic seller identity (spec 2026-06-11 §4.6). This closes the
       // ACCOUNT_CHARGE gap: charges now carry the branch identity when the
       // terminal's location is fiscally complete (previously company-only).
-      seller: { ...resolveSellerIdentity(company, terminal?.location ?? null) },
+      seller: resolveSellerIdentity(company, terminal?.location ?? null),
       customer: selectedCustomer,
       lines: cart.lines,
       vatBreakdown: cart.vatBreakdown,
