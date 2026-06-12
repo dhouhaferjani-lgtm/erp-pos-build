@@ -1,5 +1,6 @@
 import Database from '@tauri-apps/plugin-sql';
 import { migrations } from './db/migrations';
+import { wrapDatabaseWithBusyRetry } from './db/busyRetry';
 
 let db: Database | null = null;
 let currentDbName: string | null = null;
@@ -20,6 +21,16 @@ export async function getDatabase(companyId: string): Promise<Database> {
   db = await Database.load(`sqlite:${dbName}`);
   currentDbName = dbName;
 
+  // The Tauri SQL plugin wraps a SQLx connection POOL: each execute/select
+  // borrows a different physical connection, so the cashier's receipt path and
+  // the background sync scheduler contend → `(code: 5) database is locked`
+  // surfaced as a raw STRING. The busy_timeout the block below assumes SQLx
+  // sets is NOT waiting in the field (the read at receiptService.ts getTerminalState
+  // failed immediately, pre-transaction). Wrap execute/select to retry on the
+  // lock family — the app-layer equivalent of busy_timeout, pool-agnostic. Must
+  // wrap BEFORE the WAL pragma + migrations so they are covered too.
+  wrapDatabaseWithBusyRetry(db);
+
   // Bug 5 — enable WAL so concurrent readers (the sync scheduler's pending
   // queue read) do not contend with the writer that the cashier-facing
   // `createOfflineReceipt` transaction holds. Default `journal_mode=DELETE`
@@ -31,9 +42,9 @@ export async function getDatabase(companyId: string): Promise<Database> {
   //
   // WAL mode is database-file-persistent — a single `PRAGMA journal_mode=WAL`
   // before migrations is sufficient; subsequent connections from the SQLx
-  // pool inherit it. busy_timeout is intentionally NOT set in app code —
-  // SQLx 0.8.6 already defaults connections to 5s
-  // (sqlx-sqlite/src/options/mod.rs:194-201).
+  // pool inherit it. NOTE: SQLx's documented 5s busy_timeout default did NOT
+  // hold in production (writers/readers failed immediately with code 5) — lock
+  // patience is now enforced explicitly by wrapDatabaseWithBusyRetry above.
   //
   // Operational note: WAL creates `-wal` and `-shm` sidecar files next to
   // the main `.db` file. Any backup tooling must include them OR call
