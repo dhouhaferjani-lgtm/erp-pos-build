@@ -179,6 +179,18 @@ function parsePendingLines(blob: string): ParsedPendingLine[] {
  * `product.sellable_id`. The stock lookup uses the bare id; pending/cart line
  * matching accepts EITHER id, since local receipt lines and cart lines
  * persist the local (possibly composite) cart product id.
+ *
+ * HARD PRECONDITION (FU-5) — cross-category composite-id alias gap: this
+ * EITHER-id matching assumes `product.sellable_id` is the canonical
+ * `location_stock` key. For Menu tenants, a cross-category composite item can
+ * carry an ALIAS sellable id that is NOT the canonical id stored server-side,
+ * so the alias would silently miss its stock/pending rows. This is INERT today
+ * because Menu tenants run `pos_stock_policy = off` (stock is skipped entirely
+ * for them — see the Menu exemption in `isStockExempt` / the pre-DB
+ * short-circuit), so the path is never exercised. It becomes LIVE the moment a
+ * Menu tenant is granted stock enforcement: that alias resolution (map every
+ * composite alias to its canonical sellable id before lookup) MUST be fixed
+ * FIRST, or availability will be computed against the wrong key.
  */
 export async function getEffectiveAvailable(
   db: Database,

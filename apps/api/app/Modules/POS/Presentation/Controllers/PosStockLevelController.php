@@ -37,6 +37,14 @@ final class PosStockLevelController extends Controller
      * 5× the voucher/receipt sync page size (PAGE_SIZE = 100): stock rows are
      * flat scalar tuples (no nested payloads), and the client pulls this feed
      * on every sync tick — fewer round-trips matter more than payload size.
+     *
+     * FU-8 — no shared client constant by design: the client
+     * (`pullLocationStock` in apps/pos/src/lib/sync/syncService.ts) paginates by
+     * `meta.pagination.last_page`, NOT by assuming this page size, so changing
+     * this value is self-adapting and needs no coordinated client change. The
+     * only client-side assumption is payload-size headroom (it buffers all pages
+     * in memory before writing) — a large increase here should be sanity-checked
+     * against that buffer.
      */
     private const PER_PAGE = 500;
 
