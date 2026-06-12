@@ -388,7 +388,16 @@ export async function createOfflineReceipt(
   //     commit, or none do — this prevents the cashier from sealing a
   //     fiscal receipt that references a voucher whose local projection
   //     never moved.
-  await db.execute('BEGIN TRANSACTION');
+  //
+  //     IMMEDIATE (not deferred) takes the write lock at BEGIN. A deferred
+  //     BEGIN reads the chain head on a snapshot, then upgrades to a write —
+  //     but a concurrent sync-scheduler write under WAL invalidates that
+  //     snapshot → SQLite 517 BUSY_SNAPSHOT → "Échec du paiement" at checkout.
+  //     IMMEDIATE also correctly serialises the chain read-modify-write.
+  //     NOTE: the other fiscal/offline write txs (zReportService, account
+  //     payment/charge, override/cash-drawer authoring) have the same deferred
+  //     BEGIN and need the same change — tracked for the fiscal session.
+  await db.execute('BEGIN IMMEDIATE TRANSACTION');
   let fiscalEventResult: FiscalEventAppendResult | null = null;
   let receiptNumber = '';
   try {

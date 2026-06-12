@@ -108,6 +108,37 @@ describe('receiptService — fiscal-event engine wiring', () => {
     } as never);
   });
 
+  it('opens the receipt write with BEGIN IMMEDIATE (avoids SQLITE_BUSY_SNAPSHOT 517 under concurrent sync writes)', async () => {
+    const db = makeMockDb();
+
+    await createOfflineReceipt(db, {
+      tenantId: '11111111-1111-4111-8111-111111111111',
+      companyId: '22222222-2222-4222-8222-222222222222',
+      terminalId: terminalState.terminal_id,
+      operatorId: '33333333-3333-4333-8333-333333333333',
+      operatorName: 'Cashier',
+      shiftId: '55555555-5555-4555-8555-555555555555',
+      cartItems: [makeCartItem({ tax_rate: '0.00' })],
+      currency: 'EUR',
+      seller,
+      paymentMethodId: 'pm-1',
+      paymentRepositoryId: 'repo-1',
+      tenderedAmount: 10,
+      idempotencyKey: '66666666-6666-4666-8666-666666666666',
+      payments: [{ methodCode: 'CASH', amount: '10.00' }],
+    });
+
+    const beginStmt = vi
+      .mocked(db.execute)
+      .mock.calls.map((c) => String(c[0]))
+      .find((s) => /^BEGIN/i.test(s));
+    // Deferred BEGIN reads a snapshot then upgrades to write; a concurrent sync
+    // write invalidates that snapshot → SQLite 517 BUSY_SNAPSHOT → "Échec du
+    // paiement". IMMEDIATE takes the write lock up front (also serialising the
+    // fiscal-chain read-modify-write).
+    expect(beginStmt).toBe('BEGIN IMMEDIATE TRANSACTION');
+  });
+
   it('appends SALE_RECEIPT through FiscalEventEngine and mirrors canonical bytes', async () => {
     const db = makeMockDb();
 
