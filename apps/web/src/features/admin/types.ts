@@ -420,3 +420,23 @@ export interface AdminUserDetail {
     status: string
   }>
 }
+
+// Vertical Configuration Types (super-admin module assignment per vertical)
+export interface AdminVerticalConfig {
+  vertical: string
+  label: string
+  product: string
+  default_modules: string[]
+  compatible_extras: string[]
+  is_overridden: boolean
+}
+
+export interface AdminVerticalsResponse {
+  data: AdminVerticalConfig[]
+  available_modules: string[]
+}
+
+export interface UpdateVerticalConfigRequest {
+  default_modules: string[]
+  compatible_extras: string[]
+}

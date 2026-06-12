@@ -25,6 +25,7 @@ const AdminInvoicesPage = lazy(() => import('../features/admin/pages/InvoicesPag
 const AdminPaymentsPage = lazy(() => import('../features/admin/pages/PaymentsPage').then((m) => ({ default: m.PaymentsPage })))
 const AdminMonitoringPage = lazy(() => import('../features/admin/pages/MonitoringPage').then((m) => ({ default: m.MonitoringPage })))
 const CompanyOwnersPage = lazy(() => import('../features/admin/pages/CompanyOwnersPage').then((m) => ({ default: m.CompanyOwnersPage })))
+const AdminVerticalsPage = lazy(() => import('../features/admin/pages/VerticalsPage').then((m) => ({ default: m.VerticalsPage })))
 const AdminLayout = lazy(() => import('../features/admin/components/AdminLayout').then((m) => ({ default: m.AdminLayout })))
 const RequireAdminAuth = lazy(() => import('../features/admin/components/RequireAdminAuth').then((m) => ({ default: m.RequireAdminAuth })))
 
@@ -379,6 +380,14 @@ export function AppRoutes() {
           element={
             <SuspenseWrapper>
               <CompanyOwnersPage />
+            </SuspenseWrapper>
+          }
+        />
+        <Route
+          path="verticals"
+          element={
+            <SuspenseWrapper>
+              <AdminVerticalsPage />
             </SuspenseWrapper>
           }
         />

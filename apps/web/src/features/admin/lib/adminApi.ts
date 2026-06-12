@@ -57,3 +57,11 @@ export async function adminApiPatch<T>(url: string, data?: unknown): Promise<T> 
   const response = await adminApi.patch<{ data: T }>(url, data)
   return response.data.data
 }
+
+/**
+ * Helper for PUT requests
+ */
+export async function adminApiPut<T>(url: string, data?: unknown): Promise<T> {
+  const response = await adminApi.put<{ data: T }>(url, data)
+  return response.data.data
+}

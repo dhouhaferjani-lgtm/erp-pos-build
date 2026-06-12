@@ -1,5 +1,5 @@
 import { apiPost, ensureCsrfCookie } from '@/lib/api'
-import { adminApiGet, adminApiGetPaginated, adminApiPost, adminApiPatch } from '../lib/adminApi'
+import { adminApiGet, adminApiGetPaginated, adminApiPost, adminApiPatch, adminApiPut } from '../lib/adminApi'
 import type {
   AdminAuthResponse,
   AdminDashboardStats,
@@ -18,6 +18,9 @@ import type {
   RefundPaymentRequest,
   UpdateSubscriptionRequest,
   PlanSummary,
+  AdminVerticalConfig,
+  AdminVerticalsResponse,
+  UpdateVerticalConfigRequest,
 } from '../types'
 
 // Authentication (uses regular API since not authenticated yet)
@@ -133,6 +136,24 @@ export async function getAdminAuditLogs(params?: {
     `/admin/audit-logs${query ? `?${query}` : ''}`
   )
   return { data: response.data.data }
+}
+
+// ============================================================================
+// Vertical Configuration API (super-admin module assignment per vertical)
+// ============================================================================
+
+// The verticals index returns BOTH `data` and a top-level `available_modules`
+// key, so we use the raw-response helper (adminApiGetPaginated returns
+// response.data as-is) — adminApiGet would drop `available_modules`.
+export async function getVerticals(): Promise<AdminVerticalsResponse> {
+  return adminApiGetPaginated<AdminVerticalsResponse>('/admin/verticals')
+}
+
+export async function updateVerticalConfig(
+  vertical: string,
+  payload: UpdateVerticalConfigRequest
+): Promise<AdminVerticalConfig> {
+  return adminApiPut<AdminVerticalConfig>(`/admin/verticals/${vertical}`, payload)
 }
 
 // ============================================================================
