@@ -201,7 +201,12 @@ return [
     'defaults' => [
         'supervisor-1' => [
             'connection' => 'redis',
-            'queue' => ['default'],
+            // Every queue named in an onQueue() callsite MUST be listed here
+            // (or under its own supervisor) — an unlisted queue is silently
+            // never consumed. Guarded by HorizonQueueCoverageTest.
+            // `fiscal-projections` feeds pos_receipts and every server-backed
+            // POS report; it sat unconsumed from 2026-05-18 to 2026-06-12.
+            'queue' => ['default', 'fiscal-projections', 'enrichment', 'images', 'imports'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,
