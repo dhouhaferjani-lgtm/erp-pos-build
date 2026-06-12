@@ -5,6 +5,16 @@ export interface Migration {
   run?: (db: { execute: (sql: string, params?: unknown[]) => Promise<unknown> }) => Promise<void>;
 }
 
+export function isDuplicateColumnError(error: unknown): boolean {
+  // The Tauri SQL plugin (@tauri-apps/plugin-sql) rejects with a plain STRING,
+  // not an Error instance (unlike the better-sqlite3 test harness). Coerce to a
+  // string before matching, else `error instanceof Error` silently misses the
+  // production case and the (harmless, expected) duplicate-column re-throws and
+  // ABORTS the whole migration run. See migrations.tauri-string-errors.test.ts.
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('duplicate column');
+}
+
 export const migrations: Migration[] = [
   {
     version: 1,
@@ -209,8 +219,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -248,8 +257,7 @@ export const migrations: Migration[] = [
       try {
         await db.execute("ALTER TABLE terminal_state ADD COLUMN location_code TEXT NOT NULL DEFAULT 'MAIN'");
       } catch (error) {
-        const msg = error instanceof Error ? error.message : '';
-        if (!msg.includes('duplicate column')) {
+        if (!isDuplicateColumnError(error)) {
           throw error;
         }
       }
@@ -292,8 +300,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -315,8 +322,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -624,8 +630,7 @@ export const migrations: Migration[] = [
       try {
         await db.execute('ALTER TABLE receipt_qr_index ADD COLUMN partner_id TEXT NULL');
       } catch (error) {
-        const msg = error instanceof Error ? error.message : '';
-        if (!msg.includes('duplicate column')) {
+        if (!isDuplicateColumnError(error)) {
           throw error;
         }
       }
@@ -692,8 +697,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -718,8 +722,7 @@ export const migrations: Migration[] = [
           'ALTER TABLE offline_receipts ADD COLUMN is_training INTEGER NOT NULL DEFAULT 0',
         );
       } catch (error) {
-        const msg = error instanceof Error ? error.message : '';
-        if (!msg.includes('duplicate column')) {
+        if (!isDuplicateColumnError(error)) {
           throw error;
         }
       }
@@ -758,8 +761,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -828,8 +830,7 @@ export const migrations: Migration[] = [
       try {
         await db.execute('ALTER TABLE operator_pins ADD COLUMN discount_permissions_fetched_at TEXT');
       } catch (error) {
-        const msg = error instanceof Error ? error.message : '';
-        if (!msg.includes('duplicate column')) {
+        if (!isDuplicateColumnError(error)) {
           throw error;
         }
       }
@@ -843,8 +844,7 @@ export const migrations: Migration[] = [
       try {
         await db.execute("ALTER TABLE operator_pins ADD COLUMN discount_permissions_status TEXT DEFAULT 'unavailable'");
       } catch (error) {
-        const msg = error instanceof Error ? error.message : '';
-        if (!msg.includes('duplicate column')) {
+        if (!isDuplicateColumnError(error)) {
           throw error;
         }
       }
@@ -858,8 +858,7 @@ export const migrations: Migration[] = [
       try {
         await db.execute('ALTER TABLE operator_pins ADD COLUMN discount_permissions_terminal_code TEXT');
       } catch (error) {
-        const msg = error instanceof Error ? error.message : '';
-        if (!msg.includes('duplicate column')) {
+        if (!isDuplicateColumnError(error)) {
           throw error;
         }
       }
@@ -881,8 +880,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(statement);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -1074,8 +1072,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -1120,8 +1117,7 @@ export const migrations: Migration[] = [
       try {
         await db.execute('ALTER TABLE offline_receipts ADD COLUMN canonical_bytes TEXT');
       } catch (error) {
-        const msg = error instanceof Error ? error.message : '';
-        if (!msg.includes('duplicate column')) {
+        if (!isDuplicateColumnError(error)) {
           throw error;
         }
       }
@@ -1153,8 +1149,7 @@ export const migrations: Migration[] = [
           "ALTER TABLE terminal_state ADD COLUMN fiscal_chain_status TEXT NOT NULL DEFAULT 'healthy' CHECK (fiscal_chain_status IN ('healthy', 'degraded'))",
         );
       } catch (error) {
-        const msg = error instanceof Error ? error.message : '';
-        if (!msg.includes('duplicate column')) {
+        if (!isDuplicateColumnError(error)) {
           throw error;
         }
       }
@@ -1250,8 +1245,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -1275,8 +1269,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -1302,8 +1295,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -1328,8 +1320,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -1350,8 +1341,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -1373,8 +1363,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
