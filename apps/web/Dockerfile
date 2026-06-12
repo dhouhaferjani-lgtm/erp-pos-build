@@ -18,8 +18,12 @@
 # -----------------------------------------------------------------------------
 FROM node:22-alpine AS builder
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Install pnpm — version is resolved from the root package.json `packageManager`
+# field (copied below) so the image always builds with the workspace-pinned pnpm.
+# Never `corepack prepare pnpm@latest`: a floating version broke the build on
+# 2026-06-12 against the pnpm@9.14.2 lockfile.
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable
 
 WORKDIR /app
 
