@@ -57,7 +57,11 @@ export function StockFreshness() {
         const parsed = Date.parse(raw);
         setStockSyncAt(Number.isFinite(parsed) ? parsed : null);
       } catch {
-        // Browser / non-Tauri dev — no local DB; render nothing.
+        // DB read failed. Leave `stockSyncAt` untouched (FU-10 keep-last-good):
+        // on a terminal that never read successfully (browser / non-Tauri dev,
+        // or a failed first read) it stays null → renders nothing; after a prior
+        // good read, a transient error keeps showing the last-good time, which
+        // ages into the amber stale tint rather than vanishing.
       }
     })();
     return () => {
