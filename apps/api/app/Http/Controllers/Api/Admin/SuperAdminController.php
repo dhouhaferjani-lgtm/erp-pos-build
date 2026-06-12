@@ -11,6 +11,7 @@ use App\Modules\Billing\Application\Services\PlanEnforcementService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Services\AdminAuditService;
+use App\Services\TenantFleetStatsService;
 use App\Services\VerticalConfigService;
 use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
@@ -22,12 +23,15 @@ class SuperAdminController extends Controller
     public function __construct(
         private readonly AdminAuditService $auditService,
         private readonly PlanEnforcementService $planEnforcementService,
-        private readonly VerticalConfigService $verticalConfigService
+        private readonly VerticalConfigService $verticalConfigService,
+        private readonly TenantFleetStatsService $fleetStatsService
     ) {}
 
     #[CrossTenantRoute(reason: 'Super-admin dashboard aggregates fleet-wide tenant, user, and subscription counts for the platform-operations panel; mounted under the auth:sanctum-admin + super_admin (EnsureSuperAdmin) middleware group at routes/api.php:54.')]
     public function dashboard(): JsonResponse
     {
+        $fleetTotals = $this->fleetStatsService->getUserAndCompanyTotals();
+
         $stats = [
             'total_tenants' => Tenant::count(),
             'active_tenants' => Tenant::where('status', 'active')->count(),
@@ -37,8 +41,8 @@ class SuperAdminController extends Controller
             'expired_tenants' => DB::table('tenant_subscriptions')
                 ->where('status', 'expired')
                 ->count(),
-            'total_users' => DB::table('users')->count(),
-            'total_companies' => DB::table('companies')->count(),
+            'total_users' => $fleetTotals['total_users'],
+            'total_companies' => $fleetTotals['total_companies'],
         ];
 
         return response()->json(['data' => $stats]);
