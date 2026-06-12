@@ -8,6 +8,7 @@ use App\Modules\Catalog\Application\Queries\CatalogMediaQuery;
 use App\Modules\Catalog\Application\Services\CompositeItemImportService;
 use App\Modules\Catalog\Domain\Contracts\MediaAssetRepositoryInterface;
 use App\Modules\Catalog\Domain\Contracts\MediaAttachmentRepositoryInterface;
+use App\Modules\Catalog\Domain\Contracts\MediaStorageInterface;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\Modifier;
 use App\Modules\Catalog\Domain\Entities\ModifierGroup;
@@ -20,6 +21,7 @@ use App\Modules\Catalog\Infrastructure\Persistence\EloquentMediaAttachmentReposi
 use App\Modules\Catalog\Infrastructure\Repositories\EloquentAttributeRepository;
 use App\Modules\Catalog\Infrastructure\Repositories\EloquentAttributeValueRepository;
 use App\Modules\Catalog\Infrastructure\Repositories\EloquentProductVariantRepository;
+use App\Modules\Catalog\Infrastructure\Storage\MediaStorageAdapter;
 use App\Modules\POS\Infrastructure\Broadcasting\CatalogModelObserver;
 use App\Shared\Contracts\CatalogMediaQueryInterface;
 use App\Shared\Contracts\CompositeItemServiceInterface;
@@ -39,6 +41,7 @@ class CatalogServiceProvider extends ServiceProvider
         $this->app->bind(MediaAttachmentRepositoryInterface::class, EloquentMediaAttachmentRepository::class);
         $this->app->bind(MediaAssetRepositoryInterface::class, EloquentMediaAssetRepository::class);
         $this->app->bind(CatalogMediaQueryInterface::class, CatalogMediaQuery::class);
+        $this->app->bind(MediaStorageInterface::class, MediaStorageAdapter::class);
     }
 
     public function boot(): void
