@@ -34,9 +34,8 @@ import { ReceiptLocatorScreen } from '@/components/pos/ReceiptLocatorScreen';
 import { ResumeRefundDraftBanner } from '@/components/pos/ResumeRefundDraftBanner';
 import { CartCustomerControl } from '@/components/customers/CartCustomerControl';
 import { CustomerSearchModal } from '@/components/customers/CustomerSearchModal';
-import { MoneyInput } from '@/components/atoms/MoneyInput';
+import { OpenShiftScreen } from '@/components/pos/OpenShiftScreen';
 import { getErrorMessage } from '@/lib/api';
-import { useCurrency } from '@/lib/currency';
 import { resolveDiscountAccess } from '@/lib/discountPermissions';
 import { fetchReceipt } from '@/api/receiptApi';
 import { buildEscPosReceiptData } from '@/lib/buildReceiptData';
@@ -93,11 +92,9 @@ async function lookupQrToken(receiptNumber: string, companyId: string | null): P
 
 export function HomePage() {
   const { t } = useTranslation();
-  const { currency } = useCurrency();
   const { shift, terminal, openShift, isLoading: terminalLoading } = useTerminalStore();
   const hashChainReady = useTerminalStore((s) => s.hashChainReady);
   const operator = useOperatorStore((s) => s.operator);
-  const [openingCash, setOpeningCash] = useState('0.00');
   const [shiftError, setShiftError] = useState<string | null>(null);
 
   // Product store
@@ -820,14 +817,14 @@ export function HomePage() {
   // Task 52: Net total for the footer (sale total − abs(return total)).
   const netTotal = useCartStore((s) => s.netTotal)();
 
-  const handleOpenShift = useCallback(async () => {
+  const handleOpenShift = useCallback(async (openingCash: string) => {
     setShiftError(null);
     try {
       await openShift(openingCash, operator?.id);
     } catch (err) {
       setShiftError(getErrorMessage(err));
     }
-  }, [openShift, openingCash, operator?.id]);
+  }, [openShift, operator?.id]);
 
   const handleConsumptionModeChange = useCallback((mode: ConsumptionMode) => {
     setConsumptionMode(mode);
@@ -1309,42 +1306,12 @@ export function HomePage() {
       <div className="flex h-full flex-col">
         <TerminalNotReadyBanner />
         <ChainBreakAlert />
-        <div className="flex flex-1 items-center justify-center">
-        <div className="w-full max-w-sm text-center">
-          <h2 className="text-xl font-bold text-gray-900">{t('shift.openTitle')}</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            {t('shift.terminal')} {terminal?.name ?? t('shift.unknown')}
-          </p>
-
-          <div className="mt-6">
-            <label htmlFor="openingCash" className="block text-sm font-medium text-gray-700">
-              {t('shift.openingCash')}
-            </label>
-            <MoneyInput
-              id="openingCash"
-              currency={currency}
-              min="0"
-              value={openingCash}
-              onChange={setOpeningCash}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-center text-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-
-          {shiftError && (
-            <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
-              {shiftError}
-            </div>
-          )}
-
-          <button
-            onClick={() => void handleOpenShift()}
-            disabled={terminalLoading}
-            className="mt-4 w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {terminalLoading ? t('shift.openingLoading') : t('shift.openingButton')}
-          </button>
-        </div>
-        </div>
+        <OpenShiftScreen
+          terminalName={terminal?.name ?? null}
+          isLoading={terminalLoading}
+          error={shiftError}
+          onOpenShift={(openingCash) => void handleOpenShift(openingCash)}
+        />
       </div>
     );
   }
