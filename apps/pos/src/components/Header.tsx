@@ -12,6 +12,7 @@ import { usePaymentStore } from '@/stores/paymentStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { SyncButton } from '@/components/atoms/SyncButton/SyncButton';
+import { StockFreshness } from '@/components/atoms/StockFreshness/StockFreshness';
 import { EndOfDayPreviewModal } from '@/components/pos/EndOfDayPreviewModal';
 import { ReportsMenu } from '@/components/pos/ReportsMenu';
 import { XReportModal } from '@/components/pos/XReportModal';
@@ -26,6 +27,11 @@ import type { EndOfDayPreview } from '@/lib/offline/endOfDayPreview';
 import { printReceipt, getPrintSettingsFromStore, isTauriEnvironment, buildZReceiptData } from '@/lib/printing';
 import type { ZReceiptCashCountRow } from '@/lib/printing';
 import { buildReceiptLabels } from '@/lib/buildReceiptData';
+import {
+  formatLegalIdentifierLines,
+  locationIsFiscallyComplete,
+  resolveSellerIdentity,
+} from '@/lib/fiscal/sellerIdentity';
 import type { ZReportCountEntry } from '@/lib/offline/types';
 import type { PaymentMethodItem } from '@/lib/offline/endOfDayPreview';
 import { bcadd, bccomp, bcsub, bcformat } from '@/lib/decimal';
@@ -332,8 +338,21 @@ export function Header() {
         ? (authorizedManagers.find((m) => m.id === payload.managerUserId)?.name ?? null)
         : null;
 
+    // Atomic header identity (spec 2026-06-11 §4.6): the Z header prints the
+    // terminal location's tax id (+ vat number / legal identifiers) when the
+    // location is fiscally complete, otherwise the company tax id. The SIGNED
+    // Z-report seller stays null — this is display-only.
+    const zLocation = terminal?.location ?? null;
+    const zIdentity = resolveSellerIdentity(company, zLocation);
+    const zLocationComplete = locationIsFiscallyComplete(zLocation);
+
     const receiptData = buildZReceiptData({
       companyName: company?.name ?? '',
+      taxId: zIdentity.taxNumber,
+      vatNumber: zLocationComplete ? zLocation?.vat_number ?? null : null,
+      legalIdentifierLines: zLocationComplete
+        ? formatLegalIdentifierLines(zLocation?.legal_identifiers)
+        : null,
       formattedZNumber: result.formattedZNumber,
       dateTime: new Date().toISOString(),
       terminalName: terminal?.name ?? '',
@@ -411,6 +430,9 @@ export function Header() {
 
           {/* Manual sync button */}
           <SyncButton />
+
+          {/* Task 12 — stock staleness hint beside the sync freshness display */}
+          <StockFreshness />
 
           {/* Shift badge — opens End of Day preview */}
           {shift ? (

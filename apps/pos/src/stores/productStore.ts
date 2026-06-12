@@ -10,6 +10,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { diffProducts } from '@/lib/sync/productDiff';
 import { pullProductsForeground } from '@/lib/sync/syncService';
 import { clearScanCache } from '@/lib/scan/scanResolutionCache';
+import { buildGridLocationStock, type GridLocationStockMap } from '@/lib/stock/gridStock';
 import type { POSProduct } from '@/types/product';
 import type { CompanyConfig } from '@/types/companyConfig';
 
@@ -30,11 +31,19 @@ interface ProductState {
   error: string | null;
   lastFetched: number | null;
   companyConfig: CompanyConfig | null;
+  /**
+   * Task 12 — per-tile location-stock display map, keyed by GRID product id
+   * (`POSProduct.id`). See `buildGridLocationStock` for the
+   * slice / null / absent semantics. Stays `{}` for Menu tenants so their
+   * tiles keep the legacy 999 chrome verbatim.
+   */
+  locationStock: GridLocationStockMap;
 }
 
 interface ProductActions {
   fetchProducts: (force?: boolean) => Promise<void>;
   refreshFromSQLite: () => Promise<void>;
+  refreshLocationStock: () => Promise<void>;
   getById: (id: string) => POSProduct | undefined;
   reset: () => void;
 }
@@ -48,6 +57,7 @@ const initialState: ProductState = {
   error: null,
   lastFetched: null,
   companyConfig: null,
+  locationStock: {},
 };
 
 /**
@@ -351,15 +361,26 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
 
     const doApiFetch = isMenuTenant ? doMenuApiFetch : doStandardForegroundPull;
 
+    // Task 12 — the config is resolved by here, so the SQLite-hydrated grid
+    // can get its location-stock chrome immediately (before the API fetch
+    // lands). Fire-and-forget: the action swallows its own failures.
+    if (hasLocalData) {
+      void get().refreshLocationStock();
+    }
+
     if (hasLocalData) {
       // Non-blocking: fire and forget the API fetch (guard against concurrent syncs)
       if (!syncInFlight) {
         syncInFlight = true;
-        doApiFetch().finally(() => { syncInFlight = false; });
+        doApiFetch().finally(() => {
+          syncInFlight = false;
+          void get().refreshLocationStock();
+        });
       }
     } else {
       // First launch (empty SQLite): await the API call
       await doApiFetch();
+      void get().refreshLocationStock();
     }
   },
 
@@ -399,8 +420,41 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
         clearScanCache();
         set({ products: merged, categories: canonicalFresh.categories });
       }
+      // Task 12 — stock can change without any product-row change (the sync
+      // tick's pullLocationStock writes only location_stock), so the display
+      // map refreshes unconditionally, not just inside `if (changed)`.
+      await get().refreshLocationStock();
     } catch (error) {
       console.error('[productStore] refreshFromSQLite failed:', error);
+    }
+  },
+
+  /**
+   * Task 12 — rebuild the per-tile location-stock display map from the local
+   * `location_stock` table (ONE batched read via `buildGridLocationStock`).
+   *
+   * Gates (all leave the map untouched → tiles keep legacy rendering):
+   *   - Menu tenants NEVER get a map (display chrome must stay the 999 path);
+   *   - unknown tenant kind (`companyConfig` still null) — fail toward
+   *     unchanged display rather than flashing zero-stock at a Menu tenant
+   *     whose config hasn't loaded yet;
+   *   - no companyId / local DB unavailable (browser non-Tauri dev).
+   *
+   * Never throws — display chrome must not break catalog loading.
+   */
+  refreshLocationStock: async () => {
+    try {
+      const config = get().companyConfig;
+      if (config === null || hasModule(config, 'Menu')) return;
+
+      const companyId = useAuthStore.getState().companyId;
+      if (!companyId) return;
+
+      const db = await getDatabase(companyId);
+      const locationStock = await buildGridLocationStock(db, get().products);
+      set({ locationStock });
+    } catch (error) {
+      console.warn('[productStore] refreshLocationStock failed:', error);
     }
   },
 

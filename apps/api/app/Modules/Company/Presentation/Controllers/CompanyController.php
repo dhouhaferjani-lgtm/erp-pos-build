@@ -12,6 +12,7 @@ use App\Modules\Company\Domain\Enums\HashChainType;
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
+use App\Modules\Company\Domain\Enums\PosStockPolicy;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\Services\CompanyTaxStatusValidationService;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -21,6 +22,7 @@ use App\Modules\Company\Presentation\Requests\UpdateCompanyRequest;
 use App\Modules\Company\Presentation\Requests\UpdateReceiptSettingsRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
+use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Http\JsonResponse;
@@ -64,6 +66,9 @@ class CompanyController extends Controller
         $validated = $request->validated();
 
         $company = DB::transaction(function () use ($tenantId, $user, $validated): Company {
+            /** @var Tenant $tenant */
+            $tenant = Tenant::findOrFail($tenantId);
+
             // 1. Create the company
             $company = Company::create([
                 'tenant_id' => $tenantId,
@@ -101,6 +106,7 @@ class CompanyController extends Controller
                 'receipt_prefix' => 'REC-',
                 'receipt_next_number' => 1,
                 'is_headquarters' => true,
+                'pos_stock_policy' => PosStockPolicy::defaultForVertical($tenant->vertical),
             ]);
 
             // 2. Create default location

@@ -16,6 +16,12 @@ import type {
   IssuedVoucher,
   ReturnSettlementResponse,
 } from '@/lib/refundFlow/refundSettlementService';
+import {
+  formatLegalIdentifierLines,
+  locationIsFiscallyComplete,
+  resolveSellerIdentity,
+  type LocationFiscalFields,
+} from '@/lib/fiscal/sellerIdentity';
 
 function formatReceiptDateTime(date: Date, locale: string): string {
   try {
@@ -83,19 +89,37 @@ export interface ReceiptExtras {
 }
 
 /**
+ * Terminal-location identity passed by the print call sites (sourced from
+ * `useTerminalStore.getState().terminal?.location` — this builder stays a
+ * pure transform, so the store read happens at the caller like the other
+ * header fields). Drives the atomic header identity per spec 2026-06-11 §4.6.
+ */
+export interface SellerDisplayLocation extends LocationFiscalFields {
+  vat_number?: string | null;
+  legal_identifiers?: Record<string, unknown> | null;
+}
+
+/**
  * Transforms a full receipt API response into the ESC/POS ReceiptData
  * structure expected by the Tauri thermal printing backend.
+ *
+ * Header identity is ATOMIC (spec 2026-06-11 §4.6): when `sellerLocation` is
+ * fiscally complete, the tax id AND the address print from the location
+ * (plus the display-only vat_number / legal identifier lines); otherwise the
+ * header is wholesale the receipt's company block — never mixed.
  *
  * @param receipt Full receipt response from the API
  * @param visibilitySettings Optional visibility flags from company receipt settings
  * @param isReprint True if this is a duplicata of an already-issued receipt
  * @param extras Optional QR token + refund cross-references
+ * @param sellerLocation Terminal location for the atomic header identity
  */
 export function buildEscPosReceiptData(
   receipt: FullReceiptResponse,
   visibilitySettings?: ReceiptVisibilitySettings,
   isReprint?: boolean,
   extras?: ReceiptExtras,
+  sellerLocation?: SellerDisplayLocation | null,
 ): ReceiptData {
   const currencySymbol = getCurrencySymbol(receipt.currency);
   const decimals = getCurrencyDecimals(receipt.currency);
@@ -121,16 +145,29 @@ export function buildEscPosReceiptData(
   const receiptKind: 'sale' | 'refund' =
     extras?.receiptKind ?? (receipt.receipt_type === 'return' ? 'refund' : 'sale');
 
+  // Atomic header identity (spec 2026-06-11 §4.6): complete location →
+  // location tax id + address; otherwise wholesale company. The resolver's
+  // company branch reads the snake_case receipt.company fields directly.
+  const locationComplete = locationIsFiscallyComplete(sellerLocation);
+  const identity = resolveSellerIdentity(receipt.company, sellerLocation);
+
   return {
     company: {
       name: receipt.company.name,
-      address_line1: receipt.company.address_street ?? '',
-      address_line2: receipt.company.address_street_2 ?? null,
-      city: receipt.company.address_city ?? '',
-      postal_code: receipt.company.address_postal_code ?? '',
-      country: receipt.company.country_code,
-      tax_id: receipt.company.tax_id ?? '',
+      address_line1: identity.street ?? '',
+      // address_street_2 has no location counterpart — printing it under a
+      // location street would mix identities, so it only prints with the
+      // company address.
+      address_line2: locationComplete ? null : receipt.company.address_street_2 ?? null,
+      city: identity.city ?? '',
+      postal_code: identity.postalCode ?? '',
+      country: identity.countryCode ?? receipt.company.country_code,
+      tax_id: identity.taxNumber ?? '',
       phone: receipt.company.phone ?? null,
+      vat_number: locationComplete ? sellerLocation?.vat_number ?? null : null,
+      legal_identifier_lines: locationComplete
+        ? formatLegalIdentifierLines(sellerLocation?.legal_identifiers)
+        : null,
     },
     receipt_number: receipt.receipt_number,
     date_time: receipt.posted_at,
@@ -457,6 +494,7 @@ export function buildReceiptLabels(): ReceiptLabels {
     tax_col: t('taxCol'),
     thank_you: t('thankYou'),
     tax_id: t('taxId'),
+    vat_number: t('vatNumber'),
     tel: t('tel'),
     cash_count_section_title: cc('section_title'),
     cash_count_total_variance: cc('table.variance'),

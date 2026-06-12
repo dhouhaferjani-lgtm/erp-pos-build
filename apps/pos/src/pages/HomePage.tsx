@@ -13,6 +13,7 @@ import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { useRefundFlowStore } from '@/stores/refundFlowStore';
 import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { dispatchScan } from '@/lib/scan/dispatcher';
+import { addItemGated, updateQuantityGated } from '@/lib/stock/cartIngress';
 import { resolveScannedCode } from '@/lib/scan/resolveScannedCode';
 import { setCachedScan } from '@/lib/scan/scanResolutionCache';
 import { BarcodeChooserModal } from '@/components/molecules/BarcodeChooserModal/BarcodeChooserModal';
@@ -105,14 +106,16 @@ export function HomePage() {
   const categories = useProductStore((s) => s.categories);
   const productsLoading = useProductStore((s) => s.isLoading);
   const fetchProducts = useProductStore((s) => s.fetchProducts);
+  // Task 12 — per-tile location-stock display map ({} for Menu tenants).
+  const locationStock = useProductStore((s) => s.locationStock);
+  // Out-of-stock tiles refuse activation only under 'block' (Codex P1):
+  // 'warn' must let the tap reach the stock gate so the warning toast fires.
+  const posStockPolicy = useTerminalStore((s) => s.terminal?.pos_stock_policy ?? 'block');
 
   // Cart store
   const cartItems = useCartStore((s) => s.items);
   const transactionDiscount = useCartStore((s) => s.transactionDiscount);
-  const addItem = useCartStore((s) => s.addItem);
-  const addItemWithDefaults = useCartStore((s) => s.addItemWithDefaults);
   const updateLineModifiers = useCartStore((s) => s.updateLineModifiers);
-  const updateQuantity = useCartStore((s) => s.updateQuantity);
   const removeItem = useCartStore((s) => s.removeItem);
   const clearCart = useCartStore((s) => s.clearCart);
   const subtotal = useCartStore((s) => s.subtotal);
@@ -300,19 +303,46 @@ export function HomePage() {
   const [detailsNotLocalWarning, setDetailsNotLocalWarning] = useState(false);
 
   /**
+   * Task 11 — catalog lookup handed to the gated quantity funnel so the
+   * stock gate sees the full product (is_physical / sellable_id), not the
+   * trimmed cart-line slice.
+   */
+  const resolveProductForGate = useCallback(
+    (productId: string): POSProduct | undefined =>
+      products.find((p) => p.id === productId),
+    [products],
+  );
+
+  /**
+   * Task 11 — every quantity change from the cart UI (line stepper +1/−1 and
+   * the quantity numpad) routes through the gated funnel; only sale-line
+   * increases are actually gated.
+   */
+  const handleUpdateQuantity = useCallback(
+    (itemId: string, quantity: number) => {
+      void updateQuantityGated(itemId, quantity, resolveProductForGate);
+    },
+    [resolveProductForGate],
+  );
+
+  /**
    * Add a resolved product to the cart with the success-toast UX.
    * Shared by Tier 1/2/3 hits and chooser-modal picks.
+   * Task 11 — routes through the stock gate; the success toast only fires
+   * when the line actually entered the cart (blocked adds toast separately).
    */
   const addProductToCartWithToast = useCallback(
     (product: POSProduct) => {
       const { autoAddToCart } = useScannerStore.getState();
-      if (autoAddToCart) {
-        addItem(product);
+      if (!autoAddToCart) return;
+      void (async () => {
+        const added = await addItemGated(product);
+        if (!added) return;
         setScanMessage({ text: t('barcode.productAdded', { name: product.name }), type: 'success' });
         setTimeout(() => setScanMessage(null), 2000);
-      }
+      })();
     },
-    [addItem, t],
+    [t],
   );
 
   /**
@@ -671,6 +701,11 @@ export function HomePage() {
     const loader = async () => {
       try {
         const companyId = useAuthStore.getState().companyId;
+        // Atomic header identity (spec 2026-06-11 §4.6) — the printed header
+        // shows the branch identity when the terminal's location is fiscally
+        // complete; sourced from the terminal store like the other header
+        // context (terminal name, operator, …).
+        const sellerLocation = useTerminalStore.getState().terminal?.location ?? null;
 
         if (lastReceiptPrintData) {
           if (!cancelled) {
@@ -687,7 +722,7 @@ export function HomePage() {
             setEscPosData(
               buildEscPosReceiptData(fullReceipt, receiptVisibility, undefined, {
                 qrToken,
-              }),
+              }, sellerLocation),
             );
             setEscPosSource('server');
           }
@@ -701,7 +736,7 @@ export function HomePage() {
             setEscPosData(
               buildEscPosReceiptData(localReceipt, receiptVisibility, undefined, {
                 qrToken,
-              }),
+              }, sellerLocation),
             );
             setEscPosSource('local');
           }
@@ -803,23 +838,25 @@ export function HomePage() {
         setVariantPickerProduct(product);
         return;
       }
-      // Products with modifiers: quick-add with default selections
+      // Products with modifiers: quick-add with default selections.
+      // Task 11 — both paths route through the stock gate.
       if (product.modifier_groups && product.modifier_groups.length > 0) {
-        addItemWithDefaults(product);
+        void addItemGated(product, { withDefaults: true });
       } else {
-        addItem(product);
+        void addItemGated(product);
       }
     },
-    [addItem, addItemWithDefaults],
+    [],
   );
 
   const handleVariantConfirm = useCallback(
     (variant: POSProductVariant) => {
       if (!variantPickerProduct) return;
-      addItem(variantPickerProduct, undefined, variant);
+      // Task 11 — gated at the variant grain (the picked variant's id).
+      void addItemGated(variantPickerProduct, { variant });
       setVariantPickerProduct(null);
     },
-    [variantPickerProduct, addItem],
+    [variantPickerProduct],
   );
 
   const handleAddRecommendation = useCallback(
@@ -827,7 +864,8 @@ export function HomePage() {
       try {
         const productData = await apiGet<POSProduct>(`/products/${productId}`);
         if (productData) {
-          addItem(productData);
+          // Task 11 — smart-prompt adds are gated like every other ingress.
+          await addItemGated(productData);
         }
       } catch (recommendError) {
         // Best-effort — log so a persistent product-fetch failure isn't invisible.
@@ -837,7 +875,7 @@ export function HomePage() {
         });
       }
     },
-    [addItem],
+    [],
   );
 
   const handleCustomize = useCallback(
@@ -864,14 +902,16 @@ export function HomePage() {
     (selectedModifiers: SelectedModifier[]) => {
       if (!modifierProduct) return;
       if (editingLineId) {
+        // Editing modifiers on an EXISTING line never changes quantity — ungated.
         updateLineModifiers(editingLineId, selectedModifiers);
       } else {
-        addItem(modifierProduct, selectedModifiers);
+        // Task 11 — a new modifier-configured line is a stock add: gated.
+        void addItemGated(modifierProduct, { selectedModifiers });
       }
       setModifierProduct(null);
       setEditingLineId(null);
     },
-    [modifierProduct, editingLineId, addItem, updateLineModifiers],
+    [modifierProduct, editingLineId, updateLineModifiers],
   );
 
   // ── Task 2b: refund checkout interception ──────────────────────────────────
@@ -1219,11 +1259,12 @@ export function HomePage() {
   const handleQuantityConfirm = useCallback(
     (qty: number) => {
       if (quantityEditItemId) {
-        updateQuantity(quantityEditItemId, qty);
+        // Task 11 — numpad quantity edits route through the gated funnel.
+        handleUpdateQuantity(quantityEditItemId, qty);
       }
       setQuantityEditItemId(null);
     },
-    [quantityEditItemId, updateQuantity],
+    [quantityEditItemId, handleUpdateQuantity],
   );
 
   const quantityEditItem = quantityEditItemId
@@ -1356,7 +1397,7 @@ export function HomePage() {
             total={total()}
             itemCount={itemCount()}
             hasDiscount={!!transactionDiscount}
-            onUpdateQuantity={updateQuantity}
+            onUpdateQuantity={handleUpdateQuantity}
             onRemoveItem={removeItem}
             onClearCart={clearCart}
             onPayCash={handlePayCash}
@@ -1395,6 +1436,8 @@ export function HomePage() {
           onCustomize={handleCustomize}
           cartProductIds={cartProductIds}
           isLoading={productsLoading}
+          locationStock={locationStock}
+          hardBlockOutOfStock={posStockPolicy === 'block'}
           consumptionModeToggle={isFnB ? (
             <ConsumptionModeToggle
               value={consumptionMode}

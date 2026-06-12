@@ -60,6 +60,19 @@ export interface POSProduct {
    */
   sellable_id?: string;
   menu_category_id?: string | null;
+  /**
+   * Task 10 — whether the product is a physical (stock-tracked) item.
+   * `false` means the product is a service/non-physical and is exempt from
+   * stock enforcement (availability selector returns `null`).
+   *
+   * Optional because the Menu flatten path does not set it; an absent value
+   * is treated as `true` (physical / stock-checked) so we fail toward
+   * enforcement rather than silently exempting an unknown product.
+   *
+   * Persisted in the local SQLite `products` table as an INTEGER (1 / 0)
+   * via migration v51. Sourced from `ProductData.is_physical` on the server.
+   */
+  is_physical?: boolean;
 }
 
 export interface GetPOSProductsParams {

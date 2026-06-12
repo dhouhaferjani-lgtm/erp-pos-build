@@ -208,6 +208,32 @@ export async function getPendingReceiptsForSync(db: Database): Promise<OfflineRe
   );
 }
 
+/**
+ * Task 10 (location-aware stock) — `lines` JSON blobs of every receipt the
+ * server has NOT yet acknowledged, for the availability selector's
+ * pending-sale subtraction (spec §4.4).
+ *
+ * Predicate notes:
+ * - `status != 'synced'` (NOT the drain's `IN ('pending','failed') AND
+ *   retry_count < MAX`): a `'syncing'` row and a stuck `'failed'` row are
+ *   both fiscally sealed sales the server snapshot cannot reflect yet, so
+ *   they must still subtract from availability.
+ * - `voided = 0`: a sealed-then-voided receipt's sale was reversed.
+ * - `is_training = 0`: training receipts never move real stock.
+ *
+ * Refund/return records live in the separate `local_refund_records` table
+ * and are deliberately NOT read here — refunds never alter availability.
+ */
+export async function getUnsyncedReceiptLineBlobs(db: Database): Promise<string[]> {
+  const rows = await queryAll<{ lines: string }>(
+    db,
+    `SELECT lines FROM offline_receipts
+     WHERE status != 'synced' AND voided = 0 AND is_training = 0
+     ORDER BY hash_sequence ASC`,
+  );
+  return rows.map((row) => row.lines);
+}
+
 export async function incrementRetryCount(db: Database, id: string): Promise<void> {
   await execute(
     db,

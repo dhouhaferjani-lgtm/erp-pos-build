@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
+use App\Modules\Company\Domain\Enums\PosStockPolicy;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Application\DTOs\AuthUserData;
@@ -418,6 +419,7 @@ class AuthController extends Controller
                     'address_postal_code' => $validated['address_postal_code'] ?? null,
                     'address_state' => $validated['address_state'] ?? null,
                     'email' => $validated['email'], // Use user email as company email
+                    'pos_stock_policy' => PosStockPolicy::defaultForVertical($tenant->vertical),
                 ]);
 
                 // 3.5. Create default location (always needed for operations)

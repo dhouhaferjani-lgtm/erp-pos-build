@@ -15,6 +15,7 @@ use App\Modules\Catalog\Domain\Entities\RecipeLine;
 use App\Modules\Catalog\Domain\Enums\ComponentType;
 use App\Modules\Catalog\Domain\Enums\PricingMode;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\PosStockPolicy;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Contact\Domain\Contact;
 use App\Modules\Identity\Domain\User;
@@ -159,6 +160,12 @@ final class ReceiptCreationService
             // Load company for currency
             /** @var Company $company */
             $company = $terminal->company ?? Company::findOrFail($terminal->company_id);
+
+            // Resolve the over-stock enforcement policy ONCE per receipt
+            // (spec §4.2) and thread it into every stock decrement below —
+            // including composite leaf deduction. Block throws; Warn/Off
+            // log and proceed (negative stock allowed).
+            $stockPolicy = $company->pos_stock_policy;
 
             // 3. Load and validate sellable items (products and/or composite items)
             $productIds = array_values(array_filter(array_column($lines, 'product_id')));
@@ -656,6 +663,7 @@ final class ReceiptCreationService
                         quantity: $lineData['quantity'],
                         receiptId: $receipt->id,
                         cashierId: $shift->cashier_id,
+                        policy: $stockPolicy,
                         variantId: $lineVariantId,
                     );
 
@@ -684,6 +692,7 @@ final class ReceiptCreationService
                         locationId: $terminal->location_id,
                         receiptId: $receipt->id,
                         cashierId: $shift->cashier_id,
+                        policy: $stockPolicy,
                     );
                 }
             }
@@ -863,7 +872,13 @@ final class ReceiptCreationService
      *
      * Creates a StockMovement audit record.
      *
-     * @throws \RuntimeException If insufficient stock
+     * `$policy` is the per-receipt POS over-stock policy resolved once at
+     * the createReceipt boundary (spec §4.2): Block throws on insufficient
+     * stock (the message clients pattern-match on); Warn/Off log a
+     * warning and proceed into negative stock — the same direction the
+     * fiscal-event projection path (PosCoreReceiptProjection) takes.
+     *
+     * @throws \RuntimeException If insufficient stock and policy is Block
      */
     private function decrementStock(
         string $tenantId,
@@ -873,6 +888,7 @@ final class ReceiptCreationService
         string $quantity,
         string $receiptId,
         string $cashierId,
+        PosStockPolicy $policy,
         ?string $variantId = null,
     ): ?StockMovement {
         $stockLevelQuery = StockLevel::where('product_id', $productId)
@@ -897,18 +913,28 @@ final class ReceiptCreationService
         $available = $stockLevel->getAvailableQuantity();
         /** @var numeric-string $quantity */
         if (bccomp($available, $quantity, 4) < 0) {
-            // api.pos-stabilization.024 — scope Product::find by tenant + company
-            // (the decrementStock arg list already carries both, so no change to
-            // the call sites; this is a defense-in-depth gap closer that pins
-            // the SQL shape against any future regression).
-            $product = Product::query()
-                ->where('tenant_id', $tenantId)
-                ->where('company_id', $companyId)
-                ->find($productId);
-            $productName = $product->name ?? $productId;
-            throw new \RuntimeException(
-                "Insufficient stock for '{$productName}'. Available: {$available}, Requested: {$quantity}"
-            );
+            if ($policy === PosStockPolicy::Block) {
+                // api.pos-stabilization.024 — scope Product::find by tenant + company
+                // (the decrementStock arg list already carries both, so no change to
+                // the call sites; this is a defense-in-depth gap closer that pins
+                // the SQL shape against any future regression).
+                $product = Product::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->find($productId);
+                $productName = $product->name ?? $productId;
+                throw new \RuntimeException(
+                    "Insufficient stock for '{$productName}'. Available: {$available}, Requested: {$quantity}"
+                );
+            }
+
+            Log::warning('ReceiptCreationService: sale proceeding despite insufficient stock', [
+                'policy' => $policy->value,
+                'product_id' => $productId,
+                'available' => $available,
+                'requested' => $quantity,
+                'receipt_id' => $receiptId,
+            ]);
         }
 
         $quantityBefore = $stockLevel->quantity;
@@ -1154,6 +1180,10 @@ final class ReceiptCreationService
     /**
      * Recursively deduct stock for a composite item by exploding its recipe
      * down to leaf-level products.
+     *
+     * `$policy` is the per-receipt POS over-stock policy (spec §4.2),
+     * threaded unchanged into every leaf decrementStock() call so composite
+     * leaf deduction enforces the same behavior as direct product lines.
      */
     private function deductCompositeItemStock(
         string $compositeItemId,
@@ -1163,6 +1193,7 @@ final class ReceiptCreationService
         string $locationId,
         string $receiptId,
         string $cashierId,
+        PosStockPolicy $policy,
         int $depth = 0,
     ): void {
         if ($depth > 10) {
@@ -1192,6 +1223,7 @@ final class ReceiptCreationService
                     locationId: $locationId,
                     receiptId: $receiptId,
                     cashierId: $cashierId,
+                    policy: $policy,
                     depth: $depth + 1,
                 );
             } else {
@@ -1203,6 +1235,7 @@ final class ReceiptCreationService
                     quantity: $requiredQty,
                     receiptId: $receiptId,
                     cashierId: $cashierId,
+                    policy: $policy,
                 );
             }
         }

@@ -96,7 +96,15 @@ export interface ApiRequestOptions {
   signal?: AbortSignal;
 }
 
-async function request<T>(
+/**
+ * Task 9 (location stock) — lower-level request that returns the FULL
+ * parsed JSON body instead of unwrapping `.data`. Needed by paginated
+ * endpoints whose `meta.pagination` envelope the standard `request`
+ * (and therefore `apiGet`) silently drops — without it a pagination
+ * loop would stop after page 1. All header / timeout / error-shaping
+ * behavior is shared with `request` (which delegates here).
+ */
+async function requestRaw<T>(
   method: string,
   url: string,
   body?: unknown,
@@ -163,8 +171,33 @@ async function request<T>(
     throw new ApiRequestError(response.status, apiMessage, code, details);
   }
 
-  const json = (await response.json()) as ApiResponse<T>;
+  return (await response.json()) as T;
+}
+
+async function request<T>(
+  method: string,
+  url: string,
+  body?: unknown,
+  params?: Record<string, unknown>,
+  opts?: ApiRequestOptions,
+): Promise<T> {
+  const json = await requestRaw<ApiResponse<T>>(method, url, body, params, opts);
   return json.data;
+}
+
+/**
+ * Raw GET preserving the full `{ data, meta }` response envelope.
+ *
+ * Use this (NOT `apiGet`) for paginated endpoints — `apiGet` unwraps
+ * `response.data` and DROPS `meta.pagination`, which silently stops a
+ * pagination loop after page 1.
+ */
+export async function apiGetRaw<T>(
+  url: string,
+  params?: Record<string, unknown>,
+  opts?: ApiRequestOptions,
+): Promise<T> {
+  return requestRaw<T>('GET', url, undefined, params, opts);
 }
 
 export async function apiGet<T>(

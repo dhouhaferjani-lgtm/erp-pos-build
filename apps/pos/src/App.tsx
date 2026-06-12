@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { Toaster } from 'sonner';
 import { useAuthStore } from '@/stores/authStore';
 import { useBootstrapStore } from '@/stores/bootstrapStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
@@ -416,6 +417,11 @@ export function MainApp() {
         <BrowserRouter>
           <AppRouter />
         </BrowserRouter>
+        {/* Task 11 — sonner mount point. `toast.*` calls (Header, TodaySales,
+            stock gate) previously had NO <Toaster /> anywhere in the tree and
+            silently rendered nothing. Top-center matches the scan-feedback
+            banner position the cashier already watches. */}
+        <Toaster position="top-center" richColors />
       </QueryClientProvider>
     </ErrorBoundary>
   );
