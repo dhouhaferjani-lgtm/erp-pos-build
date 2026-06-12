@@ -1,4 +1,5 @@
 mod commands;
+mod db_writer;
 mod printing;
 
 use tauri::Manager;
@@ -18,7 +19,12 @@ pub fn run() {
         )
         .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
+        .manage(db_writer::WriterState::default())
         .invoke_handler(tauri::generate_handler![
+            db_writer::writer_open,
+            db_writer::writer_execute,
+            db_writer::writer_select,
+            db_writer::writer_close,
             commands::greet,
             commands::printing::discover_printers,
             commands::printing::print_receipt,
