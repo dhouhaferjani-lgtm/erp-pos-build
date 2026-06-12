@@ -7,6 +7,7 @@ namespace App\Observers;
 use App\Enums\Vertical;
 use App\Models\VerticalConfig;
 use App\Services\VerticalConfigService;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Observer for VerticalConfig model — self-enforcing cache invalidation.
@@ -43,8 +44,15 @@ class VerticalConfigObserver
     {
         $vertical = Vertical::tryFrom($config->vertical);
 
-        if ($vertical !== null) {
-            $this->verticalConfigService->invalidateVertical($vertical);
+        if ($vertical === null) {
+            Log::warning('VerticalConfigObserver: unparseable vertical on vertical_configs row — cache NOT invalidated', [
+                'vertical' => $config->vertical,
+                'vertical_config_id' => $config->getKey(),
+            ]);
+
+            return;
         }
+
+        $this->verticalConfigService->invalidateVertical($vertical);
     }
 }

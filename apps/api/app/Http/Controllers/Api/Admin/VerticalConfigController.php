@@ -9,13 +9,12 @@ use App\Enums\Vertical;
 use App\Http\Controllers\Controller;
 use App\Models\SuperAdmin;
 use App\Models\VerticalConfig;
-use App\Modules\Tenant\Domain\Tenant;
 use App\Services\AdminAuditService;
+use App\Services\CompanyConfigService;
 use App\Services\VerticalConfigService;
 use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * Super-admin management of per-vertical module lists.
@@ -29,6 +28,7 @@ class VerticalConfigController extends Controller
 {
     public function __construct(
         private readonly VerticalConfigService $verticalConfigService,
+        private readonly CompanyConfigService $companyConfigService,
         private readonly AdminAuditService $auditService
     ) {}
 
@@ -68,8 +68,8 @@ class VerticalConfigController extends Controller
         if ($verticalEnum === null) {
             return response()->json([
                 'error' => "Unknown vertical '{$vertical}'. Valid values: "
-                    .implode(', ', array_map(static fn (Vertical $v): string => $v->value, Vertical::cases())),
-                'valid_verticals' => array_map(static fn (Vertical $v): string => $v->value, Vertical::cases()),
+                    .implode(', ', Vertical::values()),
+                'valid_verticals' => Vertical::values(),
             ], 422);
         }
 
@@ -117,16 +117,10 @@ class VerticalConfigController extends Controller
         // if the observer registration ever changes (defense in depth).
         $this->verticalConfigService->invalidateVertical($verticalEnum);
 
-        // Every tenant on this vertical caches its merged config for 24h
-        // under tenant_config:{id} — bust those so the change is visible
-        // immediately, not after TTL expiry.
-        Tenant::query()
-            ->where('vertical', $verticalEnum->value)
-            ->select('id')
-            ->pluck('id')
-            ->each(static function (string $tenantId): void {
-                Cache::forget("tenant_config:{$tenantId}");
-            });
+        // Every tenant on this vertical caches its merged config for 24h —
+        // bust those so the change is visible immediately, not after TTL
+        // expiry. CompanyConfigService owns the key and the tenant fanout.
+        $this->companyConfigService->invalidateForVertical($verticalEnum);
 
         /** @var SuperAdmin $admin */
         $admin = $request->user();

@@ -138,6 +138,19 @@ enum Vertical: string
     }
 
     /**
+     * Get all vertical string values
+     *
+     * @return array<int, string>
+     */
+    public static function values(): array
+    {
+        return array_map(
+            static fn (self $case): string => $case->value,
+            self::cases()
+        );
+    }
+
+    /**
      * Get all vertical labels as an associative array
      *
      * @return array<string, string>
