@@ -173,6 +173,28 @@ final class TreasuryReceiptBridgeTest extends TestCase
         $this->assertSame(1, DB::table('payments')->count());
     }
 
+    public function test_bridge_applies_without_a_bound_company_context_like_a_queue_worker(): void
+    {
+        // 2026-06-12 reports audit: ApplyFiscalEventProjectionJob runs on a
+        // Horizon worker with NO CompanyContext bound (no middleware). The
+        // bridge's GL post path must therefore never consult the no-arg
+        // CurrencyScaleResolver::getScale() — it threw
+        // UnboundCompanyContextException in production the first time the
+        // fiscal-projections queue was actually consumed. This test mirrors
+        // the worker reality by clearing the context the setUp() bound.
+        $event = $this->projectedSaleReceiptFiscalEvent();
+        $bridge = $this->app->make(TreasuryReceiptBridge::class);
+
+        app(CompanyContext::class)->clear();
+
+        $bridge->apply($event);
+
+        $this->assertSame(1, DB::table('payments')->count());
+        $payment = DB::table('payments')->first();
+        $this->assertNotNull($payment);
+        $this->assertNotNull($payment->journal_entry_id);
+    }
+
     public function test_requires_module_is_canonical_treasury_token(): void
     {
         // The PascalCase token is load-bearing — `CompanyConfig::hasModule()`

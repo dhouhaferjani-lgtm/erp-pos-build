@@ -1090,8 +1090,14 @@ final class GeneralLedgerService
 
     /**
      * Post a journal entry (make it permanent with hash).
+     *
+     * @param  string|null  $currencyCode  Pass the entity currency when calling
+     *                                     from a queued job or console command —
+     *                                     there is no CompanyContext bound there,
+     *                                     so the no-arg scale resolution throws
+     *                                     (precision contract, F-RES-1).
      */
-    public function postEntry(JournalEntry $entry, User $user): void
+    public function postEntry(JournalEntry $entry, User $user, ?string $currencyCode = null): void
     {
         if ($entry->status !== JournalEntryStatus::Draft) {
             throw new \InvalidArgumentException('Only draft entries can be posted');
@@ -1115,9 +1121,13 @@ final class GeneralLedgerService
         $totalDebit = '0';
         $totalCredit = '0';
 
+        $scale = $currencyCode !== null
+            ? $this->scaleResolver->getScale($currencyCode)
+            : $this->scale();
+
         foreach ($entry->lines as $line) {
-            $totalDebit = bcadd($totalDebit, $line->debit, $this->scale());
-            $totalCredit = bcadd($totalCredit, $line->credit, $this->scale());
+            $totalDebit = bcadd($totalDebit, $line->debit, $scale);
+            $totalCredit = bcadd($totalCredit, $line->credit, $scale);
         }
 
         event(new JournalEntryPosted(
