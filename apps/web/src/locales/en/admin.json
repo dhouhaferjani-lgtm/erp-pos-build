@@ -1,4 +1,8 @@
 {
+  "tenantModules": {
+    "defaultsTitle": "Default modules",
+    "defaultsHint": "Included with the {{vertical}} vertical — always on, cannot be toggled."
+  },
   "verticals": {
     "title": "Vertical Configuration",
     "loading": "Loading verticals...",

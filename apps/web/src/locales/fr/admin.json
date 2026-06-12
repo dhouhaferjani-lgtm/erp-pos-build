@@ -1,4 +1,8 @@
 {
+  "tenantModules": {
+    "defaultsTitle": "Modules par défaut",
+    "defaultsHint": "Inclus avec la verticale {{vertical}} — toujours actifs, non modifiables."
+  },
   "verticals": {
     "title": "Configuration des verticales",
     "loading": "Chargement des verticales...",

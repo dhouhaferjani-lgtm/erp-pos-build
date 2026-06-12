@@ -87,6 +87,9 @@ class SuperAdminController extends Controller
         $compatibleExtras = $vertical !== null
             ? $this->verticalConfigService->getCompatibleExtras($vertical)
             : [];
+        $defaultModules = $vertical !== null
+            ? $this->verticalConfigService->getDefaultModules($vertical)
+            : [];
 
         return response()->json([
             'data' => [
@@ -94,6 +97,7 @@ class SuperAdminController extends Controller
                 'stats' => $stats,
                 'plan_summary' => $planSummary,
                 'compatible_extras' => $compatibleExtras,
+                'default_modules' => $defaultModules,
             ],
         ]);
     }

@@ -1,4 +1,8 @@
 {
+  "tenantModules": {
+    "defaultsTitle": "الوحدات الافتراضية",
+    "defaultsHint": "مضمّنة مع قطاع {{vertical}} — مفعّلة دائمًا ولا يمكن تعطيلها."
+  },
   "verticals": {
     "title": "إعداد القطاعات",
     "loading": "جارٍ تحميل القطاعات...",

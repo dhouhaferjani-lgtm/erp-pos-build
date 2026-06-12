@@ -391,6 +391,7 @@ export interface TenantDetailResponse {
   }
   plan_summary: PlanSummary
   compatible_extras?: string[]
+  default_modules?: string[]
 }
 
 // User Management Types

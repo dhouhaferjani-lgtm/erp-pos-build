@@ -200,4 +200,38 @@ class UpdateTenantExtrasTest extends TestCase
         $this->assertContains('Loyalty', $compatibleExtras);
         $this->assertContains('Inventory', $compatibleExtras);
     }
+
+    public function test_show_tenant_includes_default_modules(): void
+    {
+        $response = $this->actingAs($this->superAdmin, 'sanctum-admin')
+            ->getJson("/api/v1/admin/tenants/{$this->tenantWithVertical->id}");
+
+        $response->assertOk()
+            ->assertJsonStructure([
+                'data' => [
+                    'tenant',
+                    'stats',
+                    'compatible_extras',
+                    'default_modules',
+                ],
+            ]);
+
+        // coffee_shop default_modules from config/verticals.php
+        $defaultModules = $response->json('data.default_modules');
+        $this->assertIsArray($defaultModules);
+        $this->assertEqualsCanonicalizing(
+            [
+                'Identity',
+                'Tenant',
+                'Catalog',
+                'Menu',
+                'Partner',
+                'Sales',
+                'Treasury',
+                'Accounting',
+                'CompositeItems',
+            ],
+            $defaultModules
+        );
+    }
 }
