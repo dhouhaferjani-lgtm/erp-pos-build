@@ -85,6 +85,11 @@ class DatabaseSeeder extends Seeder
         $this->command->info('Creating payment repositories for French company...');
         $this->call(PaymentRepositorySeeder::class, false, ['company' => $frCompany]);
 
+        $this->command->info('Provisioning tax configurations for French company...');
+        (new \App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService(
+            failLoudOnMissingCountry: true,
+        ))->provisionForCompany($frCompany);
+
         $this->command->info('Creating partners for French company...');
         $this->createPartners($tenant, $frCompany);
 
@@ -114,8 +119,10 @@ class DatabaseSeeder extends Seeder
         $this->command->info('Creating payment repositories for Tunisian company...');
         $this->call(PaymentRepositorySeeder::class, false, ['company' => $tnCompany]);
 
-        $this->command->info('Creating Tunisia tax configurations...');
-        $this->call(TunisiaTaxConfigurationSeeder::class);
+        $this->command->info('Provisioning tax configurations for Tunisian company...');
+        (new \App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService(
+            failLoudOnMissingCountry: true,
+        ))->provisionForCompany($tnCompany);
 
         $this->command->info('Creating partners for Tunisian company...');
         $this->createPartners($tenant, $tnCompany);

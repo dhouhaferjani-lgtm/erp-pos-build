@@ -131,6 +131,14 @@ final class ParapharmacyMultiBranchSeeder extends ParapharmacySeeder
         $this->command->info('💰 Setting up financial foundation...');
         $this->setupFinancialFoundation($this->company);
 
+        // 4b. Provision country tax configurations (FR TVA + company default).
+        //     Countries are seeded at step 2 via seedReferenceDataIfMissing().
+        $companyTaxProvisioning = new \App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService(
+            failLoudOnMissingCountry: true,
+        );
+        $companyTaxProvisioning->provisionForCompany($this->company);
+        $this->command->info('✓ Tax configurations provisioned');
+
         // 5. Products (shared — 1000 default; SCALE-aware).
         $this->command->info('📦 Seeding products...');
         $products = $this->seedProducts($this->company);

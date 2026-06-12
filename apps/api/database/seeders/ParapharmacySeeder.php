@@ -218,6 +218,16 @@ class ParapharmacySeeder extends Seeder
         $this->command->info('💰 Setting up financial foundation...');
         $this->setupFinancialFoundation($this->company);
 
+        // 4b. Provision country tax configurations (FR: 5 TVA bands + company default).
+        //     Called after CoA + countries (seeded above at step 2) so the
+        //     provisioning service can resolve GL accounts and the countries
+        //     FK is already in the tenant-scoped connection.
+        $companyTaxProvisioning = new \App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService(
+            failLoudOnMissingCountry: true,
+        );
+        $companyTaxProvisioning->provisionForCompany($this->company);
+        $this->command->info('✓ Tax configurations provisioned');
+
         // 5. Seed products (1000 default; T1.0: configurable via SCALE)
         $this->command->info('📦 Seeding products...');
         $products = $this->seedProducts($this->company);

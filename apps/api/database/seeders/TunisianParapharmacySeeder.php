@@ -96,9 +96,16 @@ class TunisianParapharmacySeeder extends Seeder
             $this->command->info('Payment repositories already exist - skipping');
         }
 
-        // Create Tunisia tax configuration
-        $this->command->info('Creating Tunisia tax configuration...');
-        $this->call(TunisiaTaxConfigurationSeeder::class);
+        // Provision country tax configurations for this TN company (idempotent).
+        // Uses provisionForCompany() instead of calling TunisiaTaxConfigurationSeeder
+        // directly so the company.default_tax_configuration_id FK is also set.
+        // Requires: countries table must be populated (by a prior seeder run or
+        // DatabaseSeeder); if countries is empty this will throw loudly.
+        $this->command->info('Provisioning Tunisia tax configuration...');
+        $companyTaxProvisioning = new \App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService(
+            failLoudOnMissingCountry: true,
+        );
+        $companyTaxProvisioning->provisionForCompany($company);
 
         // Create Tunisian withholding rules
         $this->command->info('Creating Tunisian withholding tax rules...');

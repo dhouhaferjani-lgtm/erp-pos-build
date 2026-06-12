@@ -38,10 +38,14 @@ class ProductionSeeder extends Seeder
         $this->call(CountryTaxRatesSeeder::class);
         $this->command->info('     Tax rates seeded successfully.');
 
-        // 3. Tunisia Tax Configurations (VAT rates + stamp duties)
-        $this->command->info('[3/6] Seeding Tunisia tax configurations...');
-        $this->call(TunisiaTaxConfigurationSeeder::class);
+        // 3. Country Tax Configurations (VAT rates; no company FK to set here —
+        //    ProductionSeeder creates no company, so we call the seeders directly
+        //    rather than going through CompanyTaxProvisioningService).
+        $this->command->info('[3/6] Seeding country tax configurations...');
+        (new TunisiaTaxConfigurationSeeder)->run();
         $this->command->info('     Tunisia tax configurations seeded successfully.');
+        (new FranceTaxConfigurationSeeder)->run();
+        $this->command->info('     France tax configurations seeded successfully.');
 
         // 4. Subscription Plans (required for tenant creation)
         $this->command->info('[4/6] Seeding subscription plans...');

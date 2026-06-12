@@ -124,6 +124,14 @@ class CoffeeShopSeeder extends Seeder
         $this->command->info('Setting up financial foundation...');
         $this->setupFinancialFoundation();
 
+        // 4b. Provision country tax configurations (TN: VAT bands + stamp duty + company default).
+        //     Countries are seeded at step 2 above; CoA is now in place.
+        $companyTaxProvisioning = new \App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService(
+            failLoudOnMissingCountry: true,
+        );
+        $companyTaxProvisioning->provisionForCompany($this->company);
+        $this->command->info('Tax configurations provisioned');
+
         // 5. Ingredient products
         $this->command->info('Creating ingredient products...');
         $this->seedIngredients();
