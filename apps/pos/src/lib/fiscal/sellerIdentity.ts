@@ -79,14 +79,32 @@ export function locationIsFiscallyComplete(
   );
 }
 
+/** Which record authored the resolved seller identity. */
+export type SellerIdentitySource = 'location' | 'company';
+
+export interface ResolvedSellerIdentity {
+  identity: SellerIdentity;
+  /** The selling establishment (`location`) when fiscally complete, else `company`. */
+  source: SellerIdentitySource;
+}
+
 /**
- * Resolve the seller identity for fiscal payload authoring and display
- * headers. See the module docblock for the atomicity contract.
+ * Resolve the seller identity AND report which record authored it.
+ *
+ * This is the single decision point for the location-vs-company choice
+ * (spec §4.6). DISPLAY callers (printed receipt / Z header) consume `source`
+ * instead of separately re-calling `locationIsFiscallyComplete` — so the
+ * "show the location's vat_number / legal identifiers" display decision can
+ * never drift from the identity actually resolved here.
+ *
+ * FISCAL-SENSITIVE callers must use {@link resolveSellerIdentity} instead,
+ * which returns ONLY the bare `SellerIdentity` — the `source` discriminant
+ * must never reach the signed seller block (it would change the signed shape).
  */
-export function resolveSellerIdentity(
+export function resolveSellerIdentityWithSource(
   company: unknown,
   location: LocationFiscalFields | null | undefined,
-): SellerIdentity {
+): ResolvedSellerIdentity {
   // The establishment shares the company's registered name — the name always
   // sources from the company (legal name preferred, display name fallback).
   const name = companyField(company, 'legalName', 'legal_name')
@@ -94,26 +112,48 @@ export function resolveSellerIdentity(
 
   if (location && locationIsFiscallyComplete(location)) {
     return {
-      name,
-      // Values are passed through as stored (no trimming) — completeness was
-      // checked trimmed, but the signed bytes must match the server record.
-      taxNumber: location.tax_id ?? null,
-      // Country codes are ISO-3166 alpha-2 uppercase in canonical payloads.
-      countryCode: (location.address_country ?? '').trim().toUpperCase() || null,
-      street: location.address_street ?? null,
-      city: location.address_city ?? null,
-      postalCode: location.address_postal_code ?? null,
+      source: 'location',
+      identity: {
+        name,
+        // Values are passed through as stored (no trimming) — completeness was
+        // checked trimmed, but the signed bytes must match the server record.
+        taxNumber: location.tax_id ?? null,
+        // Country codes are ISO-3166 alpha-2 uppercase in canonical payloads.
+        countryCode: (location.address_country ?? '').trim().toUpperCase() || null,
+        street: location.address_street ?? null,
+        city: location.address_city ?? null,
+        postalCode: location.address_postal_code ?? null,
+      },
     };
   }
 
   return {
-    name,
-    taxNumber: companyField(company, 'taxId', 'tax_id'),
-    countryCode: companyField(company, 'countryCode', 'country_code'),
-    street: companyField(company, 'addressStreet', 'address_street'),
-    city: companyField(company, 'addressCity', 'address_city'),
-    postalCode: companyField(company, 'addressPostalCode', 'address_postal_code'),
+    source: 'company',
+    identity: {
+      name,
+      taxNumber: companyField(company, 'taxId', 'tax_id'),
+      countryCode: companyField(company, 'countryCode', 'country_code'),
+      street: companyField(company, 'addressStreet', 'address_street'),
+      city: companyField(company, 'addressCity', 'address_city'),
+      postalCode: companyField(company, 'addressPostalCode', 'address_postal_code'),
+    },
   };
+}
+
+/**
+ * Resolve the seller identity for fiscal payload authoring and display
+ * headers. See the module docblock for the atomicity contract.
+ *
+ * Returns ONLY the bare `SellerIdentity` (no `source` discriminant) so the
+ * three paymentStore sites can assign it DIRECTLY as the signed seller block
+ * without leaking an extra key. Delegates to
+ * {@link resolveSellerIdentityWithSource} so the decision lives in one place.
+ */
+export function resolveSellerIdentity(
+  company: unknown,
+  location: LocationFiscalFields | null | undefined,
+): SellerIdentity {
+  return resolveSellerIdentityWithSource(company, location).identity;
 }
 
 /**

@@ -34,7 +34,8 @@ async function restrictedSyntaxMessages(relPath: string): Promise<string[]> {
   const results = await eslint.lintText(BYPASS_SNIPPET, {
     filePath: resolve(posRoot, relPath),
   });
-  return results[0].messages
+  const [result] = results;
+  return (result?.messages ?? [])
     .filter((m) => m.ruleId === 'no-restricted-syntax')
     .map((m) => m.message);
 }
