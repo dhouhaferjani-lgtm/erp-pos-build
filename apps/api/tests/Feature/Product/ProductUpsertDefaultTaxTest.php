@@ -111,4 +111,39 @@ final class ProductUpsertDefaultTaxTest extends TestCase
         $product = Product::findOrFail($id);
         $this->assertSame(0, bccomp((string) $product->tax_rate, '13.00', 2));
     }
+
+    /**
+     * Test D: re-importing an existing product WITHOUT a tax_rate column in the data
+     * must NOT clobber the stored explicit rate with the company default.
+     *
+     * Scenario:
+     *   company default_tax_rate = 19.00
+     *   First upsert: sku P1 with explicit tax_rate = 7.00  → stored rate = 7.00
+     *   Second upsert: sku P1, NO tax_rate key, name changed → stored rate must still be 7.00, NOT 19.00
+     */
+    public function test_reimport_without_tax_rate_preserves_existing_stored_rate(): void
+    {
+        // First import — explicit rate 7.00 wins over the company default 19.00
+        $this->service->upsert(
+            $this->tenant->id,
+            $this->company->id,
+            ['name' => 'Preserved Rate Product', 'sku' => 'PRV-001', 'tax_rate' => '7.00']
+        );
+
+        // Second import — same SKU, no tax_rate supplied, only name changed
+        $idAfterReimport = $this->service->upsert(
+            $this->tenant->id,
+            $this->company->id,
+            ['name' => 'Preserved Rate Product (updated)', 'sku' => 'PRV-001']
+        );
+
+        $product = Product::findOrFail($idAfterReimport);
+
+        // Must still be 7.00 — not reset to the company default 19.00
+        $this->assertSame(
+            0,
+            bccomp((string) $product->tax_rate, '7.00', 2),
+            "Expected tax_rate to remain 7.00 after re-import, got {$product->tax_rate}"
+        );
+    }
 }

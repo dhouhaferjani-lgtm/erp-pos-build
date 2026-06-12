@@ -80,14 +80,24 @@ final class ProductService implements ProductServiceInterface
         }
 
         if (($attributes['tax_rate'] ?? null) === null) {
-            $company = Company::where('tenant_id', $tenantId)
-                ->where('id', $companyId)
-                ->firstOrFail();
+            $existing = Product::where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('sku', $data['sku'])
+                ->first();
 
-            $attributes['tax_rate'] = $this->taxResolution->getDefaultTaxForNewProduct(
-                $company,
-                $attributes['category_id'] ?? null,
-            );
+            if ($existing !== null && $existing->tax_rate !== null) {
+                // Re-import without a rate column must not clobber an existing explicit rate.
+                $attributes['tax_rate'] = $existing->tax_rate;
+            } else {
+                $company = Company::where('tenant_id', $tenantId)
+                    ->where('id', $companyId)
+                    ->firstOrFail();
+
+                $attributes['tax_rate'] = $this->taxResolution->getDefaultTaxForNewProduct(
+                    $company,
+                    $attributes['category_id'] ?? null,
+                );
+            }
         }
 
         $product = Product::updateOrCreate(
