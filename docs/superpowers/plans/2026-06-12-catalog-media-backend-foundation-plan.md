@@ -50,7 +50,7 @@
 - `app/Console/Commands/GenerateProductImageVariants.php` (regenerate renditions)
 - `database/seeders/ProductImagePlaceholderSeeder.php` (write new model)
 
-**Deleted:** `app/Modules/Product/Domain/ProductImage.php`, `Application/Services/ProductImageService.php`, `Application/Jobs/GenerateImageVariants.php`, `Application/Services/ImageVariantService.php` (logic reused — see Task 9; delete only after Task 17).
+**Deleted (in Task 15, only after their replacements land):** `app/Modules/Product/Domain/ProductImage.php`, `Application/Services/ProductImageService.php`, `Application/Jobs/GenerateImageVariants.php`, `Application/Services/ImageVariantService.php`. `ImageVariantService::resizeAndEncode()` must be copied into `ImageRenditionGenerator` in **Task 8** first, and **Task 14** must stop importing `GenerateImageVariants`, before Task 15 deletes them.
 
 ---
 
@@ -495,7 +495,15 @@ return new class extends Migration
 
 - [ ] **Step 4: Create the model**
 
-`MediaAttachment.php`: `HasUuids`, `$table='media_attachments'`, fillable = `tenant_id, media_asset_id, owner_type, owner_id, role, sort_order, channel, locale, alt, caption`, casts `owner_type => MediaOwnerType::class`, `role => MediaRole::class`, `sort_order => 'integer'`; `belongsTo(MediaAsset::class, 'media_asset_id')`. **No `SoftDeletes`.**
+`MediaAttachment.php`: `HasUuids`, `$table='media_attachments'`, fillable = `tenant_id, media_asset_id, owner_type, owner_id, role, sort_order, channel, locale, alt, caption`, casts `owner_type => MediaOwnerType::class`, `role => MediaRole::class`, `sort_order => 'integer'`. **No `SoftDeletes`.** Define the belongsTo relation with the **canonical name `mediaAsset`** (used verbatim in Tasks 4/5/6/13/14 — do not introduce an `asset()` alias):
+
+```php
+/** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<MediaAsset, $this> */
+public function mediaAsset(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+{
+    return $this->belongsTo(MediaAsset::class, 'media_asset_id');
+}
+```
 
 - [ ] **Step 5: Run test to verify it passes (PG)**
 
@@ -520,7 +528,7 @@ git commit -m "feat(catalog-media): media_attachments table + single-primary par
 **Files:**
 - Create: `app/Modules/Catalog/Domain/Contracts/MediaAssetRepositoryInterface.php`, `MediaAttachmentRepositoryInterface.php`
 - Create: `app/Modules/Catalog/Infrastructure/Persistence/EloquentMediaAssetRepository.php`, `EloquentMediaAttachmentRepository.php`
-- Modify: the Catalog module service provider (bind interfaces)
+- Modify: `app/Modules/Catalog/Providers/CatalogServiceProvider.php` (the actual provider path — `register()` at ~line 24-33; bind interfaces here)
 - Test: `tests/Feature/Modules/Catalog/Media/EloquentMediaRepositoryTest.php`
 
 - [ ] **Step 1: Write the failing test**
@@ -572,12 +580,19 @@ final class EloquentMediaAttachmentRepository implements MediaAttachmentReposito
             return [];
         }
 
+        // Defense-in-depth: tenant-scope EVERY tenant-scoped table in the query
+        // (the link, the asset via whereHas, and both eager-loaded relations).
         $rows = MediaAttachment::query()
             ->where('tenant_id', $tenantId)
             ->where('owner_type', $type)
             ->whereIn('owner_id', $ownerIds)
-            ->whereHas('mediaAsset', fn ($q) => $q->where('status', MediaStatus::Ready))
-            ->with(['mediaAsset.renditions'])
+            ->whereHas('mediaAsset', fn ($q) => $q
+                ->where('tenant_id', $tenantId)
+                ->where('status', MediaStatus::Ready))
+            ->with([
+                'mediaAsset' => fn ($q) => $q->where('tenant_id', $tenantId),
+                'mediaAsset.renditions' => fn ($q) => $q->where('tenant_id', $tenantId),
+            ])
             ->orderBy('sort_order')
             ->get();
 
@@ -587,7 +602,7 @@ final class EloquentMediaAttachmentRepository implements MediaAttachmentReposito
     }
 }
 ```
-(Add `mediaAsset()` belongsTo alias on `MediaAttachment` if you prefer it over `asset()`; keep names consistent.) `MediaAssetRepositoryInterface` exposes `save(MediaAsset): void`, `find(string $id, string $tenantId): ?MediaAsset`, `markReady`/`markFailed` helpers used by the job.
+`MediaAssetRepositoryInterface` exposes `save(MediaAsset): void`, `find(string $id, string $tenantId): ?MediaAsset` (**scopes by BOTH `id` and `tenant_id`**), and `markProcessing`/`markReady`/`markFailed` helpers used by the job. The relation name is `mediaAsset` everywhere (Task 3) — no `asset()` alias.
 
 - [ ] **Step 4: Bind in the service provider**
 
@@ -605,7 +620,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add app/Modules/Catalog/Domain/Contracts app/Modules/Catalog/Infrastructure/Persistence app/Modules/Catalog/*ServiceProvider.php tests/Feature/Modules/Catalog/Media/EloquentMediaRepositoryTest.php
+git add app/Modules/Catalog/Domain/Contracts app/Modules/Catalog/Infrastructure/Persistence app/Modules/Catalog/Providers/CatalogServiceProvider.php tests/Feature/Modules/Catalog/Media/EloquentMediaRepositoryTest.php
 git commit -m "feat(catalog-media): media repositories + bindings"
 ```
 
@@ -623,8 +638,8 @@ git commit -m "feat(catalog-media): media repositories + bindings"
 public function test_attachment_data_exposes_url_and_role_from_model(): void
 {
     // Build a MediaAttachment + READY MediaAsset (EXTERNAL_URL) in memory or via factory,
-    // then assert MediaAttachmentData::fromModel($attachment) yields url=external_url, role='PRIMARY'.
-    $data = MediaAttachmentData::fromModel($attachment);
+    // then assert MediaAttachmentData::fromModel($attachment, $url) is a PURE mapping.
+    $data = MediaAttachmentData::fromModel($attachment, 'https://x/y.jpg');
     self::assertSame('https://x/y.jpg', $data->url);
     self::assertSame('PRIMARY', $data->role);
 }
@@ -649,9 +664,18 @@ final class MediaAttachmentData extends Data
         public ?string $caption,
     ) {}
 
-    public static function fromModel(MediaAttachment $a): self { /* resolve url via MediaUrlResolver, Task 9 */ }
+    /** PURE mapping — caller resolves $url via MediaUrlResolver (no service-location in a DTO). */
+    public static function fromModel(MediaAttachment $a, ?string $url): self
+    {
+        return new self(
+            id: $a->id, asset_id: $a->media_asset_id, type: $a->mediaAsset->type->value,
+            role: $a->role->value, sort_order: $a->sort_order, url: $url,
+            alt: $a->alt, caption: $a->caption,
+        );
+    }
 }
 ```
+> **Why a `$url` parameter (Codex plan review HIGH):** resolving URLs *inside* a static DTO factory would re-introduce the exact service-boundary smell we removed from `ProductData`. `MediaUrlResolver` is injected into `CatalogMediaQuery` (Task 6), which computes the URL and passes it in. DTOs never call `app()`.
 `ProductMediaData`:
 ```php
 #[TypeScript]
@@ -726,7 +750,10 @@ interface CatalogMediaQueryInterface
 // CatalogMediaQuery.php
 final class CatalogMediaQuery implements CatalogMediaQueryInterface
 {
-    public function __construct(private readonly MediaAttachmentRepositoryInterface $attachments) {}
+    public function __construct(
+        private readonly MediaAttachmentRepositoryInterface $attachments,
+        private readonly MediaUrlResolver $urls,        // injected — DTO stays pure
+    ) {}
 
     public function forProducts(array $productIds, string $tenantId): array
     {
@@ -734,7 +761,10 @@ final class CatalogMediaQuery implements CatalogMediaQueryInterface
         $out = [];
         foreach ($productIds as $id) {
             $rows = $byOwner[$id] ?? [];
-            $dtos = array_map(fn ($a) => MediaAttachmentData::fromModel($a), $rows);
+            $dtos = array_map(
+                fn ($a) => MediaAttachmentData::fromModel($a, $this->urls->forAttachment($a, 'sm')),
+                $rows,
+            );
             $primary = null;
             foreach ($dtos as $d) { if ($d->role === MediaRole::Primary->value) { $primary = $d->url; break; } }
             $out[$id] = new ProductMediaData($primary, $dtos);
@@ -820,7 +850,7 @@ public function test_generates_thumbnail_small_web_webp_rows_for_image_asset(): 
 
 - [ ] **Step 2: Run** → FAIL.
 
-- [ ] **Step 3: Implement** — `RenditionGeneratorInterface::generate(string $bytes, int $maxWidth): string` (WebP). `ImageRenditionGenerator` delegates to the existing GD routine (lift `ImageVariantService::resizeAndEncode` into this class verbatim — same algorithm; do NOT keep two copies once Task 17 deletes the old service). `RenditionService::generate(MediaAsset)`:
+- [ ] **Step 3: Implement** — `RenditionGeneratorInterface::generate(string $bytes, int $maxWidth): string` (WebP). `ImageRenditionGenerator` delegates to the existing GD routine (lift `ImageVariantService::resizeAndEncode` into this class verbatim — same algorithm; do NOT keep two copies once Task 15 deletes the old service). `RenditionService::generate(MediaAsset)`:
 ```php
 public const TARGETS = [
     RenditionName::Thumbnail->value => 150,
@@ -843,18 +873,24 @@ Reads the original via the storage adapter, loops TARGETS, encodes WebP, writes 
 - [ ] **Step 1: Write the failing test**
 
 ```php
-public function test_job_carries_tenant_id_and_marks_ready_with_renditions(): void
+public function test_job_marks_ready_and_does_not_touch_another_tenants_asset(): void
 {
     Storage::fake('s3');
-    // create a real Tenant row (central) so BindsTenantContext can resolve it; seed original bytes;
-    // asset status = PROCESSING.
-    (new GenerateRenditions($tenantId, $asset->id))->handle(app(RenditionService::class), app(MediaAssetRepositoryInterface::class));
+    // create a real Tenant row (central) for tenant A so BindsTenantContext can resolve it; seed
+    // original bytes for asset A (status=UPLOADED). Also seed asset B under a DIFFERENT tenant_id.
+    (new GenerateRenditions($tenantA, $assetA->id))->handle(app(RenditionService::class), app(MediaAssetRepositoryInterface::class));
 
-    $fresh = MediaAsset::withoutGlobalScopes()->find($asset->id);
-    self::assertSame(MediaStatus::Ready, $fresh->status);
-    self::assertGreaterThan(0, $fresh->renditions()->count());
+    $freshA = MediaAsset::withoutGlobalScopes()->find($assetA->id);
+    self::assertSame(MediaStatus::Ready, $freshA->status);
+    self::assertGreaterThan(0, $freshA->renditions()->count());
+
+    // Tenant isolation: B is untouched (still UPLOADED, no renditions).
+    $freshB = MediaAsset::withoutGlobalScopes()->find($assetB->id);
+    self::assertSame(MediaStatus::Uploaded, $freshB->status);
+    self::assertSame(0, $freshB->renditions()->count());
 }
 ```
+> The job's `$assets->find($id, $tenantId)` must filter on BOTH columns; this test fails if the lookup ignores `tenant_id`. (Codex plan review.)
 
 - [ ] **Step 2: Run** → FAIL.
 
@@ -917,7 +953,7 @@ public function test_upload_image_creates_processing_asset_dispatches_job_and_re
 {
     Storage::fake('s3'); Bus::fake();
     $asset = app(MediaUploadService::class)->uploadForProduct($tenantId, $productId, UploadedFile::fake()->image('p.jpg', 800, 600), $userId);
-    self::assertSame(MediaStatus::Processing, $asset->status);
+    self::assertSame(MediaStatus::Uploaded, $asset->status);   // upload creates UPLOADED; the job flips PROCESSING→READY
     self::assertNotNull($asset->checksum);
     Bus::assertDispatched(GenerateRenditions::class);
 
@@ -934,7 +970,13 @@ public function test_attaching_new_primary_demotes_prior_primary(): void
 
 - [ ] **Step 2: Run** → FAIL.
 
-- [ ] **Step 3: Implement** — `MediaUploadService::uploadForProduct(tenantId, productId, UploadedFile, userId): MediaAsset` mirrors the current `ProductImageService::upload()` flow: validate **image-only** allow-list (`image/jpeg,png,webp,gif`, max 5 MB) in a `UploadMediaRequest` + a service guard; compute `checksum = hash('sha256', file_get_contents($realPath))`; path `products/{tenant}/{product}/{assetUuid}/original.{ext}`; `Storage::disk('s3')->putFileAs(...)` before the transaction; `DB::transaction` → create `MediaAsset` (`status=Processing`, dims via `getimagesize`); `DB::afterCommit` → `GenerateRenditions::dispatch($tenantId, $asset->id)`; on throw, delete the orphaned S3 object. `MediaAttachmentService`: `attach(assetId, owner, role, sort)` — if `role=PRIMARY`, demote the current primary to `GALLERY` in the same transaction (the partial index is the backstop); `reorder(owner, ids)`; `detachLink(attachmentId)` (hard delete; promote next by sort if it was primary); `deleteAsset(assetId)` (only if no links remain; soft-delete asset, cascade renditions, delete files after commit).
+- [ ] **Step 3: Implement** — `MediaUploadService::uploadForProduct(tenantId, productId, UploadedFile, userId): MediaAsset` mirrors the current `ProductImageService::upload()` flow. **Image-only validation in BOTH layers, exact current allow-list:**
+  - `UploadMediaRequest` rules: `['image' => ['required','image','mimes:jpeg,png,webp,gif','max:5120']]`.
+  - Service guard constant: `private const ALLOWED_MIME = ['image/jpeg','image/png','image/webp','image/gif'];` — throw `ValidationException` if `$file->getMimeType()` not in it.
+
+  Then: compute `checksum = hash('sha256', (string) file_get_contents($file->getRealPath()))`; path `products/{tenant}/{product}/{assetUuid}/original.{ext}`; `Storage::disk('s3')->putFileAs(...)` before the transaction; `DB::transaction` → create `MediaAsset` (**`status=MediaStatus::Uploaded`**, dims via `getimagesize`); `DB::afterCommit` → `GenerateRenditions::dispatch($tenantId, $asset->id)`; on throw, delete the orphaned S3 object. The job (Task 9) flips `Uploaded`→`Processing`→`Ready`.
+
+  `MediaAttachmentService`: `attach(assetId, owner, role, sort)` — if `role=PRIMARY`, demote the current primary to `GALLERY` in the same transaction (the partial index is the backstop); `reorder(owner, ids)`; `detachLink(attachmentId)` (hard delete; promote next by sort if it was primary); `deleteAsset(assetId)` (only if no links remain; soft-delete asset, cascade renditions, delete files after commit).
 
 - [ ] **Step 4: Run** → PASS. **Step 5: Commit** — `git commit -m "feat(catalog-media): upload + attachment services (image-only, single-primary)"`.
 
@@ -948,25 +990,37 @@ public function test_attaching_new_primary_demotes_prior_primary(): void
 - Create: `app/Modules/Catalog/Presentation/Controllers/ProductMediaController.php`, `MediaServeController.php`
 - Create: `app/Modules/Catalog/Presentation/Requests/{UploadMediaRequest,AttachMediaRequest,ReorderMediaRequest}.php`
 - Modify: `app/Modules/Product/routes.php` (point the existing `products/{product}/images` group at the new controllers — **reuse the existing route group exactly**: `['api','auth:sanctum',SetPermissionsTeam,EnforceTokenTenantClaim,'module:Inventory']` + per-route `can:products.*`, `throttle:image-upload`)
-- Test: `tests/Feature/Modules/Catalog/Media/ProductImageFacadeTest.php`
+- Test: `tests/Feature/Modules/Catalog/Media/ProductImageFacadeTest.php` **and** `ProductImageFacadeTenantIsolationTest.php` (port the hard-won cases from the existing `tests/Feature/Product/ProductImageTenantIsolationTest.php`)
 
-- [ ] **Step 1: Write the failing test (parity + `{image}`=attachment id)**
+- [ ] **Step 1: Write the failing tests — full CRUD parity + isolation regressions**
 
 ```php
-public function test_facade_index_download_store_reorder_behave_as_before(): void
+public function test_facade_index_download_store_update_delete_reorder_behave_as_before(): void
 {
     // auth as a user with products.* on a seeded tenant/company/product.
     $list = $this->getJson("/api/v1/products/{$productId}/images")->assertOk()->json('data');
     $imageId = $list[0]['id'];               // == media_attachments.id
     $this->get("/api/v1/products/{$productId}/images/{$imageId}/download?variant=sm")->assertSuccessful();
     $this->postJson("/api/v1/products/{$productId}/images", ['image' => UploadedFile::fake()->image('n.jpg')])->assertCreated();
+    $this->patchJson("/api/v1/products/{$productId}/images/{$imageId}", ['is_primary' => true])->assertOk(); // PATCH sets PRIMARY
     $this->postJson("/api/v1/products/{$productId}/images/reorder", ['image_ids' => [$imageId]])->assertOk();
+    $this->deleteJson("/api/v1/products/{$productId}/images/{$imageId}")->assertNoContent();                 // DELETE
+}
+
+public function test_isolation_and_validation_regressions(): void
+{
+    // Port from ProductImageTenantIsolationTest:
+    // - index is scoped by company/tenant (foreign product's images never appear)
+    // - download/update/destroy with an attachment id from ANOTHER product → 404
+    // - reorder with an attachment id outside the product → 422
+    // - cross-company / cross-tenant access → 404 (indistinguishable from missing)
+    // - deleting the PRIMARY link promotes the next by sort_order
 }
 ```
 
 - [ ] **Step 2: Run** → FAIL.
 
-- [ ] **Step 3: Implement the controllers** — constructor-inject `MediaUploadService`, `MediaAttachmentService`, `MediaServeService`, `CompanyContext`. `index()` returns the **same JSON shape** today's `ProductImageController::index` returns (id, url, is_primary, sort_order, …) built from `MediaAttachmentData`; `{image}` resolves a `media_attachments` row scoped to the product + tenant (validate UUID first — `Str::isUuid`). `download()` → `MediaServeService::serve($attachment, $variant)`. `store/update/destroy/reorder` delegate to the services. Keep company-scoped authz identical (chained `->where('tenant_id', ...)->where('company_id'/owner...)`).
+- [ ] **Step 3: Implement the controllers** — constructor-inject `MediaUploadService`, `MediaAttachmentService`, `MediaServeService`, `CompanyContext`. `index()` returns the **same JSON shape** today's `ProductImageController::index` returns (id, url, is_primary, sort_order, …) built from `MediaAttachmentData` (note `is_primary = role === PRIMARY`). `{image}` resolves a `media_attachments` row scoped to the product + tenant (validate UUID first — `Str::isUuid`; foreign/mixed ids → 404, outside-product reorder ids → 422). `download()` → `MediaServeService::serve($attachment, $variant)`. `store/update/destroy/reorder` delegate to the services. Keep company-scoped authz identical (chained `->where('tenant_id', ...)` then owner/company scope).
 
 - [ ] **Step 4: Run** → PASS. **Step 5: Commit** — `git commit -m "feat(catalog-media): product image façade over media model"`.
 
@@ -979,9 +1033,9 @@ public function test_facade_index_download_store_reorder_behave_as_before(): voi
 - Modify: `app/Modules/Product/routes.php` (`/api/v1/public/products/{product}/images[...]` → new controller; same `['api','throttle:public-product-images']` group, no auth, `is_active_for_ecommerce` guard)
 - Test: `tests/Feature/Modules/Catalog/Media/PublicProductImageFacadeTest.php`
 
-- [ ] **Step 1: Write the failing test** — public index returns the preserved shape for an e-commerce-active product; 404/empty for an inactive one. (Mirror `PublicProductImageController`'s current contract + `canBeAccessedPublicly()` guard.)
+- [ ] **Step 1: Write the failing test** — public index returns the preserved shape for an e-commerce-active product; **empty/404 for a product where `is_active_for_ecommerce = false`**. The gate is the **product flag `is_active_for_ecommerce`** directly (do NOT carry forward `ProductImage::canBeAccessedPublicly()` — that helper dies with the model in Task 15).
 - [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement** — replicate the public shape from `media_attachments` (READY image assets), preserving `is_active_for_ecommerce` gating and public URL resolution.
+- [ ] **Step 3: Implement** — replicate the public shape from `media_attachments` (READY image assets), gating on the product's `is_active_for_ecommerce` flag and resolving public URLs. If a media-façade helper is wanted, add a new explicit one; don't depend on the deleted model.
 - [ ] **Step 4: Run** → PASS. **Step 5: Commit** — `git commit -m "feat(catalog-media): preserve public product-image API over media model"`.
 
 ---
@@ -1004,11 +1058,28 @@ public function test_primary_image_url_parity_across_sources_and_endpoints(): vo
     // product C: no media -> primary_image_url null
     foreach (["/api/v1/products", "/api/v1/products/{$a}"] as $url) { /* assert shapes */ }
 }
+
+public function test_index_resolves_media_in_one_batched_call_no_n_plus_one(): void
+{
+    // seed N (>=5) products each with a primary attachment.
+    $spy = $this->mock(CatalogMediaQueryInterface::class);
+    $spy->shouldReceive('forProducts')->once()->andReturn(/* map of ProductMediaData */);
+    $spy->shouldNotReceive('forProduct');
+    $this->getJson('/api/v1/products?per_page=50')->assertOk();
+    // forProducts() called exactly ONCE for the page (the formatter must not call forProduct per row).
+}
 ```
 
 - [ ] **Step 2: Run** → FAIL (after the eager-load removal in Step 3 the old path is gone).
 
-- [ ] **Step 3: Implement** — change `ProductData::fromModel(Product $product)` → `fromModel(Product $product, ProductMediaData $media)`; set `primary_image_url = $media->primary_image_url` and add `public array $media = []` (= `$media->media`). Remove the `relationLoaded('primaryImage')` branch. In `ProductController`: constructor-inject `CatalogMediaQueryInterface`; `index()` — after pagination, call `forProducts($ids, $tenantId)` once and pass each product's `ProductMediaData` into DTO building (extend the pagination formatter to accept a media map, or map the collection manually); `show/store/update` call `forProduct($id, $tenantId)`. Remove `'primaryImage'` from the `with([...])` arrays. Re-run `php artisan typescript:transform`.
+- [ ] **Step 3: Implement** — change `ProductData::fromModel(Product $product)` → `fromModel(Product $product, ?ProductMediaData $media = null)` (**optional with a null default** so the existing `formatOffsetPaginatedResponse()` — which calls `ProductData::fromModel($item)` at `app/Support/Traits/PaginatesResults.php:70-74` — keeps compiling). When `$media === null`, set `primary_image_url = null, media = []`. Add the field with a TS-emitting docblock:
+
+```php
+/** @param array<int, \App\Modules\Catalog\Application\DTOs\MediaAttachmentData> $media */
+public function __construct(/* ...existing... */, public array $media = []) {}
+```
+
+In `ProductController`: constructor-inject `CatalogMediaQueryInterface`. **`index()`** — do NOT rely on the generic formatter to inject media (it has no media arg). Instead: build the paginated payload, then in ONE call `forProducts($paginator->pluck('id')->all(), $company->tenant_id)` and map each row's `data` to `ProductData::fromModel($product, $mediaMap[$product->id])` (override the formatter output, or replace the `formatOffsetPaginatedResponse` call with an explicit map that passes media). **`show/store/update`** call `forProduct($id, $company->tenant_id)`. Remove `'primaryImage'` from every `with([...])` array. Re-run `php artisan typescript:transform` and **grep `packages/shared/types/generated.d.ts` for `media:` under `ProductData`** to confirm the type emitted as `Array<MediaAttachmentData>` (not `Array<any>`).
 
 - [ ] **Step 4: Run** → PASS. **Step 5: Commit** — `git commit -m "refactor(product): compose media via CatalogMediaQuery (out of the DTO)"`.
 
@@ -1020,21 +1091,33 @@ public function test_primary_image_url_parity_across_sources_and_endpoints(): vo
 - Modify: `app/Modules/POS/Presentation/Controllers/SyncController.php`
 - Modify: `app/Modules/Product/Application/Services/ProductImageImportService.php`
 - Modify: `app/Console/Commands/GenerateProductImageVariants.php`
-- Test: `tests/Feature/Modules/POS/SyncImageContractTest.php` (+ adjust the import service test)
+- Test: `tests/Feature/Modules/POS/SyncImageContractTest.php`, `tests/Feature/Modules/Catalog/Media/ProductImageImportServiceMediaTest.php`
 
-- [ ] **Step 1: Write the failing test (POS sync URL contract unchanged)**
+- [ ] **Step 1: Write the failing tests**
 
 ```php
-public function test_sync_emits_same_primary_image_url_shape(): void
+// POS sync: the payload field stays `product.image_url` (one scalar, NOT a media array) and
+// keeps the exact download-URL shape so the POS SQLite cache (keyed by product_id + remote_url) is untouched.
+public function test_sync_emits_same_primary_image_url_field_and_shape(): void
 {
-    // seed a product with an UPLOAD primary; hit the sync endpoint;
-    // assert the product payload's image URL still points at .../images/{id}/download?variant=sm
+    // seed a product with an UPLOAD primary; hit the sync endpoint.
+    $payload = $this->getJson('/api/v1/pos/sync/...')->json('...');
+    $url = $payload['image_url'];
+    self::assertTrue($url === null || str_contains($url, '/images/') && str_contains($url, 'variant=sm'));
+    self::assertArrayNotHasKey('media', $payload); // POS contract: single image_url, not an array
+}
+
+// ZIP import behavior over the new model
+public function test_zip_import_creates_one_asset_and_primary_attachment(): void
+{
+    // process a ZIP with one SKU-matched image; assert exactly one media_assets row,
+    // one media_attachments row with role=PRIMARY, and the returned image_id == the ATTACHMENT id.
 }
 ```
 
 - [ ] **Step 2: Run** → FAIL.
 
-- [ ] **Step 3: Implement** — `SyncController`: resolve the primary image URL through `CatalogMediaQueryInterface` (inject it), producing the **same `variant=sm` download URL** as before so the POS SQLite cache (`apps/pos/.../imageCache.ts`) keeps working untouched. `ProductImageImportService`: replace `ProductImageService` calls with `MediaUploadService::uploadForProduct(...)` + `MediaAttachmentService::attach(... role: first→PRIMARY)`. `GenerateProductImageVariants` command: iterate `media_assets` (UPLOAD, IMAGE) and dispatch/run `GenerateRenditions` (carry `tenantId`); keep the command signature/name.
+- [ ] **Step 3: Implement** — `SyncController`: obtain the tenant via `$this->companyContext->requireCompany()`, **batch** all product ids and call `forProducts($products->pluck('id')->all(), $company->tenant_id)` **once** (never `forProduct()` inside the `map()` loop), emitting the **same single `image_url`** field with the `variant=sm` download shape; remove the `primaryImage` eager-load. `ProductImageImportService`: replace `ProductImageService` calls with `MediaUploadService::uploadForProduct(...)` + `MediaAttachmentService::attach(... first→PRIMARY)`; the returned `image_id` is the **attachment id** (façade identity). `GenerateProductImageVariants` command: iterate `media_assets` (UPLOAD, IMAGE) and dispatch `GenerateRenditions($tenantId, $asset->id)`; keep the command signature/name.
 
 - [ ] **Step 4: Run** → PASS. **Step 5: Commit** — `git commit -m "refactor: migrate POS sync, image import, variants command to media model"`.
 
@@ -1063,7 +1146,17 @@ public function test_seeder_creates_external_url_primary_attachments_and_is_reru
 
 - [ ] **Step 2: Run** → FAIL.
 
-- [ ] **Step 3: Rewrite the seeder** to create `MediaAsset` (`source=EXTERNAL_URL`, `status=READY`, `storage_disk='url'`, `external_url=<placeholder>`) + a `MediaAttachment` (`owner_type=PRODUCT`, `role=PRIMARY`) per demo product (incl. the 24 Tunisia PB- hero images). Keep the existing idempotency guard.
+- [ ] **Step 3: Rewrite the seeder** to create `MediaAsset` (`source=EXTERNAL_URL`, `status=READY`, `storage_disk='url'`, `external_url=<placeholder>`) + a `MediaAttachment` (`owner_type=PRODUCT`, `role=PRIMARY`) per demo product (incl. the 24 Tunisia PB- hero images). Keep the existing idempotency guard. **Route external-URL creation through a single validated path** — `MediaUploadService::registerExternalUrl($tenantId, $productId, string $url): MediaAsset` — which validates `https` scheme, length ≤ 2048, and rejects non-URL/`http://`/localhost/private-IP literals (basic SSRF-safe, display-only). The seeder calls this helper; do not insert `external_url` rows raw.
+
+- [ ] **Step 3b: Test the external-URL validation** (`tests/Feature/Modules/Catalog/Media/ExternalUrlValidationTest.php`): `registerExternalUrl` accepts a valid `https://…` and **rejects** `http://x`, `not-a-url`, a `>2048`-char string, and `https://localhost/…`/`https://127.0.0.1/…`. Run → it must drive the validation code (red→green).
+
+- [ ] **Step 3c: Migrate/replace the existing image tests that import to-be-deleted classes** (they will break when Task 15 Step 5 deletes the classes — migrate them BEFORE deletion):
+  - `tests/Feature/Product/ProductImageControllerTest.php` → port to the façade (`ProductImageFacadeTest`, Task 11) or delete if fully superseded.
+  - `tests/Feature/Product/ProductImageTenantIsolationTest.php` → port to `ProductImageFacadeTenantIsolationTest` (Task 11).
+  - `tests/Unit/Modules/Product/Application/Services/ProductImageServiceTest.php` → replace with `MediaUploadServiceTest`/`MediaAttachmentServiceTest` (Task 10).
+  - `tests/Unit/Modules/Product/Application/Services/ImageVariantServiceTest.php` → replace with `RenditionServiceTest` (Task 8).
+  - `tests/Unit/Modules/Product/Application/Jobs/GenerateImageVariantsTest.php` → replace with `GenerateRenditionsJobTest` (Task 9).
+  Delete the originals in the same commit as the class deletions so nothing imports a removed symbol.
 
 - [ ] **Step 4: Write the drop migration with a pre-drop row-count guard**
 
@@ -1081,22 +1174,29 @@ public function down(): void { /* no-op: table replaced by media_* model; restor
 
 - [ ] **Step 5: Delete the old classes & relations**, then run the targeted suites + static analysis to prove nothing references the removed symbols.
 
-Run:
+Run (the historical create-migration and the new drop-migration legitimately contain `product_images`, so exclude them; search ALL code surfaces, not just `app/ database/`):
 ```bash
+cd ../..   # repo root
+rg -n "ProductImage\b|ProductImageService|ImageVariantService|GenerateImageVariants|primaryImage|product_images" \
+  apps/api/app apps/api/tests apps/api/database/seeders packages/shared apps/web apps/pos \
+  -g '!apps/api/database/migrations/tenant/2025_12_29_155412_create_product_images_table.php' \
+  -g '!apps/api/database/migrations/tenant/2026_06_12_100004_drop_product_images_table.php' \
+  && echo "STILL REFERENCED — fix before commit" || echo "clean"
 cd apps/api
-grep -rn "ProductImage\b\|ProductImageService\|ImageVariantService\|GenerateImageVariants\|primaryImage\|product_images" app/ database/ && echo "STILL REFERENCED" || echo "clean"
 ./vendor/bin/phpstan analyse app/Modules/Catalog app/Modules/Product --level=8
 ./vendor/bin/pint app/Modules/Catalog
 ./vendor/bin/deptrac
 php artisan typescript:transform
 ```
-Expected: `clean`, PHPStan 0 errors on new code, Pint clean, Deptrac green.
+Expected: `clean` (the only acceptable remaining hits are intentional POS local-cache identifiers, if any — confirm each by eye), PHPStan 0 errors on new code, Pint clean, Deptrac green. **Note:** `apps/pos` has its own image cache using the word `image`/`product_id` — those are NOT references to the backend `product_images` table and are expected to remain; the regex above targets the specific symbol names, so spot-check any pos hits.
 
 - [ ] **Step 6: Run the full set of media/product feature tests added in this plan (scoped)**
 
 Run:
 ```bash
-cd apps/api && ./vendor/bin/phpunit --filter 'Catalog\\Media|ProductDataMediaParity|SyncImageContract|ProductImageFacade'
+cd apps/api && ./vendor/bin/phpunit --filter 'Catalog\\Media|ProductDataMediaParity|SyncImageContract|ProductImageFacade|ProductImageImportServiceMedia|ExternalUrlValidation'
+# Confirm the OLD image test files are gone (deleted/migrated in Step 3c) — these must NOT exist post-Task-15:
+test ! -f tests/Feature/Product/ProductImageControllerTest.php && test ! -f tests/Unit/Modules/Product/Application/Jobs/GenerateImageVariantsTest.php && echo "old tests migrated" || echo "OLD TESTS STILL PRESENT — migrate them (Step 3c)"
 ```
 Expected: PASS (run the PG-only index test in the real-PG lane).
 
