@@ -98,6 +98,7 @@ class SuperAdminController extends Controller
                 'plan_summary' => $planSummary,
                 'compatible_extras' => $compatibleExtras,
                 'default_modules' => $defaultModules,
+                'vertical_label' => $vertical !== null ? $this->verticalConfigService->getLabel($vertical) : null,
             ],
         ]);
     }

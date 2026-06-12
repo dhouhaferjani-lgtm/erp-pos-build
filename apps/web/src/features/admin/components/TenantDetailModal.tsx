@@ -235,24 +235,16 @@ function PlanUsageSection({ planSummary }: { planSummary: PlanSummary }) {
 
 interface ManageModulesSectionProps {
   tenantId: string
-  vertical: string | null
+  verticalLabel: string | null
   defaultModules: string[]
   compatibleExtras: string[]
   enabledExtras: string[]
   onRefresh: (() => void) | undefined
 }
 
-function formatVerticalLabel(vertical: string | null): string {
-  if (vertical === null || vertical === '') return ''
-  return vertical
-    .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-}
-
 export function ManageModulesSection({
   tenantId,
-  vertical,
+  verticalLabel,
   defaultModules,
   compatibleExtras,
   enabledExtras,
@@ -301,7 +293,7 @@ export function ManageModulesSection({
           </h5>
           <p className={`mb-2 mt-0.5 text-xs ${textColors.disabled}`}>
             {tAdmin('tenantModules.defaultsHint', {
-              vertical: formatVerticalLabel(vertical),
+              vertical: verticalLabel ?? '',
             })}
           </p>
           <div className="flex flex-wrap gap-2">
@@ -429,7 +421,9 @@ export function TenantDetailModal({
                       {tenantId !== null && (
                         <ManageModulesSection
                           tenantId={tenantId}
-                          vertical={data?.tenant?.vertical ?? null}
+                          verticalLabel={
+                            data?.vertical_label ?? data?.tenant?.vertical ?? null
+                          }
                           defaultModules={defaultModules}
                           compatibleExtras={compatibleExtras}
                           enabledExtras={enabledExtras}

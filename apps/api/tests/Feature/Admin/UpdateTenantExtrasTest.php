@@ -213,8 +213,12 @@ class UpdateTenantExtrasTest extends TestCase
                     'stats',
                     'compatible_extras',
                     'default_modules',
+                    'vertical_label',
                 ],
             ]);
+
+        // Canonical label comes from config/verticals.php via VerticalConfigService::getLabel
+        $this->assertSame('Coffee Shop', $response->json('data.vertical_label'));
 
         // coffee_shop default_modules from config/verticals.php
         $defaultModules = $response->json('data.default_modules');

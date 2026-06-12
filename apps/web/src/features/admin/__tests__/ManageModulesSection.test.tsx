@@ -6,7 +6,6 @@ vi.mock('../hooks/useTenants', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../hooks/useTenants')>()
   return {
     ...actual,
-    useTenant: vi.fn(),
     useUpdateTenantExtras: vi.fn(),
   }
 })
@@ -44,7 +43,7 @@ function renderSection(
   return render(
     <ManageModulesSection
       tenantId="tenant-1"
-      vertical="coffee_shop"
+      verticalLabel="Coffee Shop"
       defaultModules={DEFAULT_MODULES}
       compatibleExtras={['Tables', 'Loyalty']}
       enabledExtras={['Tables']}
