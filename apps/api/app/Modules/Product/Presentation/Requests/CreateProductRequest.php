@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Presentation\Requests;
 
+use App\Modules\Catalog\Presentation\Rules\TaxConfigurationCountryCoherent;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Domain\Enums\AgeRestriction;
 use App\Modules\Product\Domain\Enums\AutomotiveArticleStatus;
@@ -20,6 +22,12 @@ use Illuminate\Validation\Rules\Enum;
 
 class CreateProductRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -33,6 +41,8 @@ class CreateProductRequest extends FormRequest
         /** @var User|null $user */
         $user = $this->user();
         $tenantId = $user?->tenant_id;
+
+        $company = $this->companyContext->requireCompany();
 
         return [
             'name' => ['required', 'string', 'max:255'],
@@ -58,7 +68,12 @@ class CreateProductRequest extends FormRequest
             // See docs/superpowers/audits/2026-05-04-scanner-tax-configurations-false-positive.md.
             // Mirrors the api.catalog.002 / 005 precedent (UpdateCompositeItemRequest /
             // StoreCompositeItemRequest) closed via the same annotation.
-            'default_tax_configuration_id' => ['nullable', 'uuid', 'exists:tax_configurations,id'],
+            // Defense-in-depth coherence check enforced below via
+            // TaxConfigurationCountryCoherent rule (Task 11 parity with categories).
+            'default_tax_configuration_id' => [
+                'nullable', 'uuid', 'exists:tax_configurations,id',
+                new TaxConfigurationCountryCoherent($company->country_code),
+            ],
             'unit' => ['nullable', 'string', 'max:50'],
             // Unit of measure FK — drives quantity precision (decimals/step).
             // Without this the API could not set it, so new products defaulted
