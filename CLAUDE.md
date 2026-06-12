@@ -75,6 +75,14 @@ When editing `.tsx` files in `apps/web/src/`, migrate hardcoded Tailwind color c
 - **`unit_price` is context-overloaded — confirm the flow before any tax math:** tax-**INCLUSIVE** (TTC) in the B2C POS (the canonical SALE_RECEIPT `line_items[].unit_price` is the inclusive cart price; net is `line_subtotal`), but **net/HT** in B2B/documents. Never assert `line_subtotal == unit_price×qty − discount` on a POS line (compares net vs gross → false-positive); enforce fiscal integrity at the **aggregate** level. See the [`unit_price` semantics section](docs/architecture/precision-contract.md#unit_price-is-context-overloaded-tax-inclusive-b2c-pos-vs-nethtb2b--read-before-touching-price-fields) in the precision contract.
 - **Guards:** PHPStan (`ForbidFloatCastOnDecimalProperty`, `ForbidHardcodedBcmathScale`) + ESLint (`no-hardcoded-step`, `no-parsefloat-on-money`) fail CI on new drift.
 
+### 20. POS Cross-Layer Data Contracts (post-2026-06-12 reports audit)
+The POS spans device SQLite, server projections, and queue workers — each layer has contracts that are invisible from the other layers. All four root causes of the "reports show zero sales" incident violated one:
+- **SQLite TEXT timestamps:** columns with `DEFAULT (datetime('now'))` store `YYYY-MM-DD HH:MM:SS` UTC (SPACE separator). Never bind an ISO 8601 value (`T` separator — `toISOString()`, server Carbon) into a SQL comparison against them — SQLite compares TEXT lexicographically and `' ' < 'T'` silently excludes same-day rows. Route every JS-supplied boundary through `apps/pos/src/lib/db/sqliteTime.ts` `toSqliteUtc()`.
+- **Device-authored shift fields:** `fiscal_shift_id` / `fiscal_session_id` exist only on the device. Any code that re-hydrates a shift from a server response must MERGE these from the cached shift (same shift id), never replace wholesale. See `fetchCurrentShift`.
+- **New named queues:** every `onQueue('x')` needs a matching entry in `apps/api/config/horizon.php` `defaults.*.queue` — an unlisted queue is silently never consumed. CI-guarded by `HorizonQueueCoverageTest`.
+- **Queued jobs / fiscal projections run with NO CompanyContext:** pass explicit currency to scale resolution (rule 19). Projection tests must `app(CompanyContext::class)->clear()` before `apply()` — binding context in setUp masks the worker reality.
+- **Retiring/gating a server endpoint** (e.g. fiscal v3 retired server X reports): the client's fallback path becomes the PRIMARY path — audit and test that path with same-day data before shipping the retirement.
+
 ---
 
 ## Context Files
