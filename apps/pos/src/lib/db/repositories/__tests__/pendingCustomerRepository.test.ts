@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
-import { migrations } from '@/lib/db/migrations';
+import { applyAllMigrations } from '@/lib/db/__tests__/helpers/migrationTestHelpers';
 import {
   assertCustomerAliasMatches,
   enqueuePendingCustomer,
@@ -10,16 +10,6 @@ import {
   StaleCustomerAliasConflictError,
   storeCustomerAlias,
 } from '../pendingCustomerRepository';
-
-async function applyAllMigrations(adapter: SqliteTestAdapter): Promise<void> {
-  for (const migration of migrations) {
-    if (migration.run) {
-      await migration.run(adapter);
-    } else if (migration.sql) {
-      await adapter.execute(migration.sql);
-    }
-  }
-}
 
 describe('pendingCustomerRepository', () => {
   let adapter: SqliteTestAdapter;

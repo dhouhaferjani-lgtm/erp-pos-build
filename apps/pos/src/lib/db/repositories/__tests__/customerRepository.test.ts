@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
-import { migrations } from '@/lib/db/migrations';
+import {
+  applyAllMigrations,
+  runMigrationsUpTo,
+  runMigrationVersion,
+} from '@/lib/db/__tests__/helpers/migrationTestHelpers';
 import type { CustomerMirrorRow } from '@/lib/customer/customerTypes';
 import {
   CustomerCompanyDriftError,
@@ -9,33 +13,6 @@ import {
   searchCustomers,
   upsertCustomer,
 } from '../customerRepository';
-
-async function applyAllMigrations(adapter: SqliteTestAdapter): Promise<void> {
-  await runMigrationsUpTo(adapter, Infinity);
-}
-
-async function runMigrationsUpTo(adapter: SqliteTestAdapter, maxVersion: number): Promise<void> {
-  for (const migration of migrations) {
-    if (migration.version > maxVersion) continue;
-    if (migration.run) {
-      await migration.run(adapter);
-    } else if (migration.sql) {
-      await adapter.execute(migration.sql);
-    }
-  }
-}
-
-async function runMigrationVersion(adapter: SqliteTestAdapter, version: number): Promise<void> {
-  const migration = migrations.find((item) => item.version === version);
-  if (!migration) {
-    throw new Error(`Migration v${version} not found.`);
-  }
-  if (migration.run) {
-    await migration.run(adapter);
-  } else if (migration.sql) {
-    await adapter.execute(migration.sql);
-  }
-}
 
 function customer(overrides: Partial<CustomerMirrorRow> = {}): CustomerMirrorRow {
   return {

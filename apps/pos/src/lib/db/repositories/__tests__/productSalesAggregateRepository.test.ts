@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
-import { migrations } from '@/lib/db/migrations';
+import { applyAllMigrations } from '@/lib/db/__tests__/helpers/migrationTestHelpers';
 import { aggregateProductSales } from '../productSalesAggregateRepository';
 
 const nodeSqliteAvailable = (() => {
@@ -12,16 +12,6 @@ const nodeSqliteAvailable = (() => {
 })();
 
 const d = nodeSqliteAvailable ? describe : describe.skip;
-
-async function applyAllMigrations(adapter: SqliteTestAdapter): Promise<void> {
-  for (const m of migrations) {
-    if (m.run) {
-      await m.run(adapter);
-    } else if (m.sql) {
-      await adapter.execute(m.sql);
-    }
-  }
-}
 
 async function insertReceipt(
   adapter: SqliteTestAdapter,
