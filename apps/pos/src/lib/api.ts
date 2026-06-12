@@ -216,6 +216,22 @@ export async function apiPost<T>(
   return request<T>('POST', url, data, undefined, opts);
 }
 
+/**
+ * Raw POST preserving the server's top-level response body (no `.data`
+ * unwrap). Required by endpoints that deliberately do NOT use the
+ * `{ data, meta }` envelope — e.g. `POST /pos/sync/fiscal-events`, whose
+ * contract is a top-level `{ results: [...] }`
+ * (FiscalEventIngestionController). Using `apiPost` there unwraps
+ * `json.data` → `undefined` and crashes on `response.results`.
+ */
+export async function apiPostRaw<T>(
+  url: string,
+  data?: unknown,
+  opts?: ApiRequestOptions,
+): Promise<T> {
+  return requestRaw<T>('POST', url, data, undefined, opts);
+}
+
 export async function apiPut<T>(
   url: string,
   data?: unknown,
