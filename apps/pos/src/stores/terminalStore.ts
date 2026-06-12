@@ -12,6 +12,13 @@ import { serializeErrorForLog } from '@/lib/errorLogging';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { authorZSessionOpenWithOpeningFloat } from '@/lib/fiscal/zSessionAuthoring';
 
+/**
+ * Company-level stock-enforcement policy delivered on the terminal payload
+ * (spec 2026-06-11 §4.2). Absent on payloads predating the field — consumers
+ * default to 'block' (fail-safe for retail).
+ */
+export type PosStockPolicy = 'block' | 'warn' | 'off';
+
 export interface Location {
   id: string;
   name: string;
@@ -48,7 +55,7 @@ export interface Terminal {
    * Optional because cached pre-Task-2 terminal payloads lack the field —
    * the stock gate treats an absent value as 'block' (fail-safe for retail).
    */
-  pos_stock_policy?: 'block' | 'warn' | 'off';
+  pos_stock_policy?: PosStockPolicy;
   max_discount_percent?: number;
   allow_line_discounts?: boolean;
   allow_transaction_discounts?: boolean;

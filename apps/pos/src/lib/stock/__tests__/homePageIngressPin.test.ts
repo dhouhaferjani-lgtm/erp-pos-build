@@ -49,7 +49,9 @@ describe('HomePage cart-ingress wiring (structural pin)', () => {
   });
 
   it('routes every add ingress through addItemGated (tile, variant, modifier, scan, recommendation)', () => {
-    const gatedAdds = homePageSource.match(/addItemGated\(/g) ?? [];
+    // Anchored to CALL shape (void/await prefix) so a comment mentioning
+    // `addItemGated(` can never satisfy the floor.
+    const gatedAdds = homePageSource.match(/(?:void|await) addItemGated\(/g) ?? [];
     // 1 tile (plain), 2 tile (withDefaults), 3 variant-picker confirm,
     // 4 modifier confirm, 5 scan/chooser add, 6 smart-prompts recommendation.
     expect(gatedAdds.length).toBeGreaterThanOrEqual(6);
