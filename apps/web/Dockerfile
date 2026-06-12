@@ -29,7 +29,10 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # Copy the web app package.json
 COPY apps/web/package.json ./apps/web/
 
-# Copy shared packages (uses .dockerignore to handle missing dirs)
+# Copy shared workspace packages (manifests + generated TS types incl. the `App`
+# namespace from packages/shared/types) BEFORE install + build, else tsc fails
+# with "Cannot find namespace 'App'" / unresolved vite/client types.
+COPY packages/ ./packages/
 
 # Install dependencies (workspace-aware)
 RUN pnpm install --frozen-lockfile
