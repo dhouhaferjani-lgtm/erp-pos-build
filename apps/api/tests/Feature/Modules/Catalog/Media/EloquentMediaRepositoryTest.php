@@ -27,26 +27,26 @@ final class EloquentMediaRepositoryTest extends TestCase
 
     public function test_attachment_repo_returns_product_attachments_ordered_with_ready_assets(): void
     {
-        $tenantId  = (string) Str::uuid();
+        $tenantId = (string) Str::uuid();
         $productId = (string) Str::uuid();
 
         $asset = MediaAsset::create([
-            'tenant_id'    => $tenantId,
-            'type'         => MediaAssetType::Image,
-            'source'       => MediaSource::Upload,
-            'status'       => MediaStatus::Ready,
+            'tenant_id' => $tenantId,
+            'type' => MediaAssetType::Image,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Ready,
             'storage_disk' => 's3',
             'storage_path' => 'products/'.$tenantId.'/p/original.jpg',
-            'mime_type'    => 'image/jpeg',
+            'mime_type' => 'image/jpeg',
         ]);
 
         $attachment = MediaAttachment::create([
-            'tenant_id'      => $tenantId,
+            'tenant_id' => $tenantId,
             'media_asset_id' => $asset->id,
-            'owner_type'     => MediaOwnerType::Product,
-            'owner_id'       => $productId,
-            'role'           => MediaRole::Primary,
-            'sort_order'     => 0,
+            'owner_type' => MediaOwnerType::Product,
+            'owner_id' => $productId,
+            'role' => MediaRole::Primary,
+            'sort_order' => 0,
         ]);
 
         /** @var MediaAttachmentRepositoryInterface $repo */
@@ -60,25 +60,25 @@ final class EloquentMediaRepositoryTest extends TestCase
 
     public function test_attachment_repo_excludes_non_ready_assets(): void
     {
-        $tenantId  = (string) Str::uuid();
+        $tenantId = (string) Str::uuid();
         $productId = (string) Str::uuid();
 
         $processingAsset = MediaAsset::create([
-            'tenant_id'    => $tenantId,
-            'type'         => MediaAssetType::Image,
-            'source'       => MediaSource::Upload,
-            'status'       => MediaStatus::Processing,
+            'tenant_id' => $tenantId,
+            'type' => MediaAssetType::Image,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Processing,
             'storage_disk' => 's3',
             'storage_path' => 'products/'.$tenantId.'/p/original.jpg',
         ]);
 
         MediaAttachment::create([
-            'tenant_id'      => $tenantId,
+            'tenant_id' => $tenantId,
             'media_asset_id' => $processingAsset->id,
-            'owner_type'     => MediaOwnerType::Product,
-            'owner_id'       => $productId,
-            'role'           => MediaRole::Primary,
-            'sort_order'     => 0,
+            'owner_type' => MediaOwnerType::Product,
+            'owner_id' => $productId,
+            'role' => MediaRole::Primary,
+            'sort_order' => 0,
         ]);
 
         /** @var MediaAttachmentRepositoryInterface $repo */
@@ -90,27 +90,27 @@ final class EloquentMediaRepositoryTest extends TestCase
 
     public function test_attachment_repo_tenant_isolation(): void
     {
-        $tenantA   = (string) Str::uuid();
-        $tenantB   = (string) Str::uuid();
+        $tenantA = (string) Str::uuid();
+        $tenantB = (string) Str::uuid();
         $productId = (string) Str::uuid();
 
         // Asset and attachment belong to tenant B
         $assetB = MediaAsset::create([
-            'tenant_id'    => $tenantB,
-            'type'         => MediaAssetType::Image,
-            'source'       => MediaSource::Upload,
-            'status'       => MediaStatus::Ready,
+            'tenant_id' => $tenantB,
+            'type' => MediaAssetType::Image,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Ready,
             'storage_disk' => 's3',
             'storage_path' => 'products/'.$tenantB.'/p/original.jpg',
         ]);
 
         MediaAttachment::create([
-            'tenant_id'      => $tenantB,
+            'tenant_id' => $tenantB,
             'media_asset_id' => $assetB->id,
-            'owner_type'     => MediaOwnerType::Product,
-            'owner_id'       => $productId,
-            'role'           => MediaRole::Primary,
-            'sort_order'     => 0,
+            'owner_type' => MediaOwnerType::Product,
+            'owner_id' => $productId,
+            'role' => MediaRole::Primary,
+            'sort_order' => 0,
         ]);
 
         /** @var MediaAttachmentRepositoryInterface $repo */
@@ -134,44 +134,44 @@ final class EloquentMediaRepositoryTest extends TestCase
 
     public function test_attachment_repo_orders_by_sort_order(): void
     {
-        $tenantId  = (string) Str::uuid();
+        $tenantId = (string) Str::uuid();
         $productId = (string) Str::uuid();
 
         $asset1 = MediaAsset::create([
-            'tenant_id'    => $tenantId,
-            'type'         => MediaAssetType::Image,
-            'source'       => MediaSource::Upload,
-            'status'       => MediaStatus::Ready,
+            'tenant_id' => $tenantId,
+            'type' => MediaAssetType::Image,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Ready,
             'storage_disk' => 's3',
             'storage_path' => 'products/'.$tenantId.'/p/original1.jpg',
         ]);
 
         $asset2 = MediaAsset::create([
-            'tenant_id'    => $tenantId,
-            'type'         => MediaAssetType::Image,
-            'source'       => MediaSource::Upload,
-            'status'       => MediaStatus::Ready,
+            'tenant_id' => $tenantId,
+            'type' => MediaAssetType::Image,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Ready,
             'storage_disk' => 's3',
             'storage_path' => 'products/'.$tenantId.'/p/original2.jpg',
         ]);
 
         // Create in reverse order to verify sorting
         $attachmentB = MediaAttachment::create([
-            'tenant_id'      => $tenantId,
+            'tenant_id' => $tenantId,
             'media_asset_id' => $asset2->id,
-            'owner_type'     => MediaOwnerType::Product,
-            'owner_id'       => $productId,
-            'role'           => MediaRole::Gallery,
-            'sort_order'     => 2,
+            'owner_type' => MediaOwnerType::Product,
+            'owner_id' => $productId,
+            'role' => MediaRole::Gallery,
+            'sort_order' => 2,
         ]);
 
         $attachmentA = MediaAttachment::create([
-            'tenant_id'      => $tenantId,
+            'tenant_id' => $tenantId,
             'media_asset_id' => $asset1->id,
-            'owner_type'     => MediaOwnerType::Product,
-            'owner_id'       => $productId,
-            'role'           => MediaRole::Primary,
-            'sort_order'     => 0,
+            'owner_type' => MediaOwnerType::Product,
+            'owner_id' => $productId,
+            'role' => MediaRole::Primary,
+            'sort_order' => 0,
         ]);
 
         /** @var MediaAttachmentRepositoryInterface $repo */
@@ -184,27 +184,27 @@ final class EloquentMediaRepositoryTest extends TestCase
         self::assertSame($attachmentB->id, $rows[$productId][1]->id);
     }
 
-    public function test_attachment_repo_eager_loads_asset_and_renditions(): void
+    public function test_attachment_repo_eager_loads_asset(): void
     {
-        $tenantId  = (string) Str::uuid();
+        $tenantId = (string) Str::uuid();
         $productId = (string) Str::uuid();
 
         $asset = MediaAsset::create([
-            'tenant_id'    => $tenantId,
-            'type'         => MediaAssetType::Image,
-            'source'       => MediaSource::Upload,
-            'status'       => MediaStatus::Ready,
+            'tenant_id' => $tenantId,
+            'type' => MediaAssetType::Image,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Ready,
             'storage_disk' => 's3',
             'storage_path' => 'products/'.$tenantId.'/p/original.jpg',
         ]);
 
         MediaAttachment::create([
-            'tenant_id'      => $tenantId,
+            'tenant_id' => $tenantId,
             'media_asset_id' => $asset->id,
-            'owner_type'     => MediaOwnerType::Product,
-            'owner_id'       => $productId,
-            'role'           => MediaRole::Primary,
-            'sort_order'     => 0,
+            'owner_type' => MediaOwnerType::Product,
+            'owner_id' => $productId,
+            'role' => MediaRole::Primary,
+            'sort_order' => 0,
         ]);
 
         /** @var MediaAttachmentRepositoryInterface $repo */
@@ -214,7 +214,9 @@ final class EloquentMediaRepositoryTest extends TestCase
         $loadedAttachment = $rows[$productId][0];
         self::assertTrue($loadedAttachment->relationLoaded('mediaAsset'));
         self::assertSame($asset->id, $loadedAttachment->mediaAsset->id);
-        self::assertTrue($loadedAttachment->mediaAsset->relationLoaded('renditions'));
+        // Renditions are NOT eager-loaded here; they are loaded on-demand by the
+        // serve adapter (Task 7) when a specific uploaded asset needs to be streamed.
+        // The query path (CatalogMediaQuery) only needs asset metadata (source, external_url).
     }
 
     // -----------------------------------------------------------------------
@@ -226,10 +228,10 @@ final class EloquentMediaRepositoryTest extends TestCase
         $tenantId = (string) Str::uuid();
 
         $asset = new MediaAsset([
-            'tenant_id'    => $tenantId,
-            'type'         => MediaAssetType::Image,
-            'source'       => MediaSource::Upload,
-            'status'       => MediaStatus::Uploaded,
+            'tenant_id' => $tenantId,
+            'type' => MediaAssetType::Image,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Uploaded,
             'storage_disk' => 's3',
             'storage_path' => 'products/'.$tenantId.'/p/original.jpg',
         ]);
@@ -251,10 +253,10 @@ final class EloquentMediaRepositoryTest extends TestCase
         $tenantB = (string) Str::uuid();
 
         $asset = MediaAsset::create([
-            'tenant_id'    => $tenantA,
-            'type'         => MediaAssetType::Image,
-            'source'       => MediaSource::Upload,
-            'status'       => MediaStatus::Uploaded,
+            'tenant_id' => $tenantA,
+            'type' => MediaAssetType::Image,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Uploaded,
             'storage_disk' => 's3',
             'storage_path' => 'products/'.$tenantA.'/p/original.jpg',
         ]);
@@ -276,10 +278,10 @@ final class EloquentMediaRepositoryTest extends TestCase
         $tenantId = (string) Str::uuid();
 
         $asset = MediaAsset::create([
-            'tenant_id'    => $tenantId,
-            'type'         => MediaAssetType::Image,
-            'source'       => MediaSource::Upload,
-            'status'       => MediaStatus::Uploaded,
+            'tenant_id' => $tenantId,
+            'type' => MediaAssetType::Image,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Uploaded,
             'storage_disk' => 's3',
             'storage_path' => 'products/'.$tenantId.'/p/original.jpg',
         ]);
@@ -298,10 +300,10 @@ final class EloquentMediaRepositoryTest extends TestCase
         $tenantId = (string) Str::uuid();
 
         $asset = MediaAsset::create([
-            'tenant_id'    => $tenantId,
-            'type'         => MediaAssetType::Image,
-            'source'       => MediaSource::Upload,
-            'status'       => MediaStatus::Processing,
+            'tenant_id' => $tenantId,
+            'type' => MediaAssetType::Image,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Processing,
             'storage_disk' => 's3',
             'storage_path' => 'products/'.$tenantId.'/p/original.jpg',
         ]);
@@ -320,10 +322,10 @@ final class EloquentMediaRepositoryTest extends TestCase
         $tenantId = (string) Str::uuid();
 
         $asset = MediaAsset::create([
-            'tenant_id'    => $tenantId,
-            'type'         => MediaAssetType::Image,
-            'source'       => MediaSource::Upload,
-            'status'       => MediaStatus::Processing,
+            'tenant_id' => $tenantId,
+            'type' => MediaAssetType::Image,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Processing,
             'storage_disk' => 's3',
             'storage_path' => 'products/'.$tenantId.'/p/original.jpg',
         ]);

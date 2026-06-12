@@ -9,7 +9,6 @@ use App\Modules\Catalog\Domain\Enums\MediaOwnerType;
 use App\Modules\Catalog\Domain\Enums\MediaStatus;
 use App\Modules\Catalog\Domain\Media\MediaAsset;
 use App\Modules\Catalog\Domain\Media\MediaAttachment;
-use App\Modules\Catalog\Domain\Media\MediaRendition;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\Relation;
 
@@ -39,10 +38,6 @@ final readonly class EloquentMediaAttachmentRepository implements MediaAttachmen
             ->with([
                 'mediaAsset' => static function (Relation $relation) use ($tenantId): void {
                     /** @var Relation<MediaAsset, MediaAttachment, *> $relation */
-                    $relation->where('tenant_id', $tenantId);
-                },
-                'mediaAsset.renditions' => static function (Relation $relation) use ($tenantId): void {
-                    /** @var Relation<MediaRendition, MediaAsset, *> $relation */
                     $relation->where('tenant_id', $tenantId);
                 },
             ])
