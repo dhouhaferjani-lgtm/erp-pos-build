@@ -822,6 +822,16 @@
       "not_enabled": "Ce client n'est pas autorisé à facturer sur compte."
     }
   },
+  "customer": {
+    "attach": "Client",
+    "detach": "Retirer le client",
+    "modalTitle": "Client",
+    "attached": "Rattaché",
+    "amount": "Montant",
+    "record": "Enregistrer",
+    "createLocal": "Créer un client local",
+    "searchPlaceholder": "Rechercher par nom, téléphone, e-mail…"
+  },
   "voucherTender": {
     "title": "Appliquer un bon",
     "codeLabel": "Code du bon",

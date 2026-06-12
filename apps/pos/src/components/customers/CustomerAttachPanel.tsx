@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { User, UserPlus, Wallet, X } from 'lucide-react';
 import { getDatabase } from '@/lib/db';
 import { enqueuePendingCustomer } from '@/lib/db/repositories/pendingCustomerRepository';
@@ -16,6 +17,19 @@ export interface CustomerAttachPanelProps {
   staleThresholdMinutes?: number;
   now?: () => Date;
   onAccountPaymentComplete?: () => void;
+}
+
+export interface CustomerAttachBodyProps {
+  tenantId: string | null | undefined;
+  companyId: string | null | undefined;
+  terminalId?: string | null | undefined;
+  staleThresholdMinutes?: number;
+  now?: () => Date;
+  onAccountPaymentComplete?: () => void;
+  /** Called with true before account-payment await, false after (success or failure). */
+  onProcessingChange?: (processing: boolean) => void;
+  /** Called after a customer is attached (search-select or create-local success). */
+  onSelected?: () => void;
 }
 
 function fromMirror(row: CustomerMirrorRow): AttachedCheckoutCustomer {
@@ -44,14 +58,24 @@ function fromMirror(row: CustomerMirrorRow): AttachedCheckoutCustomer {
   };
 }
 
-export function CustomerAttachPanel({
+/**
+ * The extracted body of the customer attach panel — renders search/create/selected
+ * states. Accepts optional lifecycle callbacks so it can be hosted inside a Modal
+ * without changing any attach/create/account-payment logic.
+ *
+ * `CustomerAttachPanel` wraps this body with a section container for inline use.
+ */
+export function CustomerAttachBody({
   tenantId,
   companyId,
   terminalId,
   staleThresholdMinutes = 30,
   now = () => new Date(),
   onAccountPaymentComplete,
-}: CustomerAttachPanelProps) {
+  onProcessingChange,
+  onSelected,
+}: CustomerAttachBodyProps) {
+  const { t } = useTranslation('pos');
   const selectedCustomer = usePaymentStore((state) => state.selectedCustomer);
   const attachCustomer = usePaymentStore((state) => state.attachCustomer);
   const detachCustomer = usePaymentStore((state) => state.detachCustomer);
@@ -75,6 +99,7 @@ export function CustomerAttachPanel({
     }
     attachCustomer(fromMirror(row));
     setError(null);
+    onSelected?.();
   };
 
   const handleCreate = async () => {
@@ -142,6 +167,7 @@ export function CustomerAttachPanel({
       setNewName('');
       setNewPhone('');
       setNewEmail('');
+      onSelected?.();
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Customer create failed.');
     } finally {
@@ -175,6 +201,7 @@ export function CustomerAttachPanel({
     }
 
     setError(null);
+    onProcessingChange?.(true);
     try {
       const result = await processAccountPayment(terminalId, amount, {
         balanceSnapshotStale: stale,
@@ -185,19 +212,21 @@ export function CustomerAttachPanel({
       }
     } catch (paymentError) {
       setError(paymentError instanceof Error ? paymentError.message : 'Account payment failed.');
+    } finally {
+      onProcessingChange?.(false);
     }
   };
 
   return (
-    <section className="border-b border-gray-200 bg-white px-3 py-2">
+    <>
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <User className="h-4 w-4 text-gray-600" aria-hidden="true" />
-          <h3 className="text-sm font-semibold text-gray-900">Customer</h3>
+          <h3 className="text-sm font-semibold text-gray-900">{t('customer.attach')}</h3>
         </div>
         {selectedCustomer && (
           <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
-            Attached
+            {t('customer.attached')}
           </span>
         )}
       </div>
@@ -232,7 +261,7 @@ export function CustomerAttachPanel({
               value={accountPaymentAmount}
               onChange={(event) => setAccountPaymentAmount(event.target.value)}
               inputMode="decimal"
-              placeholder="Amount"
+              placeholder={t('customer.amount')}
               className="min-w-0 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <button
@@ -242,7 +271,7 @@ export function CustomerAttachPanel({
               className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Wallet className="h-4 w-4" aria-hidden="true" />
-              Record
+              {t('customer.record')}
             </button>
           </div>
         </div>
@@ -283,12 +312,34 @@ export function CustomerAttachPanel({
             className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <UserPlus className="h-4 w-4" aria-hidden="true" />
-            {creating ? 'Creating...' : 'Create local customer'}
+            {creating ? 'Creating...' : t('customer.createLocal')}
           </button>
         </div>
       )}
 
       {error && <div className="mt-2 text-xs font-medium text-red-700">{error}</div>}
+    </>
+  );
+}
+
+export function CustomerAttachPanel({
+  tenantId,
+  companyId,
+  terminalId,
+  staleThresholdMinutes = 30,
+  now = () => new Date(),
+  onAccountPaymentComplete,
+}: CustomerAttachPanelProps) {
+  return (
+    <section className="border-b border-gray-200 bg-white px-3 py-2">
+      <CustomerAttachBody
+        tenantId={tenantId}
+        companyId={companyId}
+        terminalId={terminalId}
+        staleThresholdMinutes={staleThresholdMinutes}
+        now={now}
+        onAccountPaymentComplete={onAccountPaymentComplete}
+      />
     </section>
   );
 }
