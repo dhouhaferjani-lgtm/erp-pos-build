@@ -109,7 +109,11 @@ export async function upsertProducts(db: Database, products: POSProduct[]): Prom
         p.sku,
         p.barcode ?? null,
         p.sale_price,
-        p.stock_quantity,
+        // Location-aware-stock tenants: real stock lives in `location_stock`, so
+        // `/products` no longer carries stock_quantity (mapped value is undefined).
+        // Default the legacy NOT NULL column to 0 rather than violate the constraint
+        // and drop the entire catalog. See productRepository.stockQuantity.test.ts.
+        p.stock_quantity ?? 0,
         p.category ?? null,
         p.image_url ?? null,
         p.tax_rate ?? null,
