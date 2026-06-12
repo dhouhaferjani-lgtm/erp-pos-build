@@ -17,6 +17,8 @@ use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class SuperAdminController extends Controller
 {
@@ -75,13 +77,31 @@ class SuperAdminController extends Controller
     {
         $tenant = Tenant::with(['subscription.plan'])->findOrFail($id);
 
-        $companyIds = DB::table('companies')->where('tenant_id', $id)->pluck('id');
+        // users/companies/locations live in the PER-TENANT database (T6
+        // Phase 0b) — counts must execute inside $tenant->run(). tenant_id
+        // scoping kept: harmless in prod, required in the shared-schema test
+        // env. A broken tenant DB degrades to zeros instead of 500ing the
+        // support view.
+        try {
+            /** @var array{users_count: int, companies_count: int, locations_count: int} $stats */
+            $stats = $tenant->run(static function () use ($id): array {
+                $companyIds = DB::table('companies')->where('tenant_id', $id)->pluck('id');
 
-        $stats = [
-            'users_count' => DB::table('users')->where('tenant_id', $id)->count(),
-            'companies_count' => $companyIds->count(),
-            'locations_count' => DB::table('locations')->whereIn('company_id', $companyIds)->count(),
-        ];
+                return [
+                    'users_count' => DB::table('users')->where('tenant_id', $id)->count(),
+                    'companies_count' => $companyIds->count(),
+                    'locations_count' => DB::table('locations')->whereIn('company_id', $companyIds)->count(),
+                ];
+            });
+            $statsAvailable = true;
+        } catch (Throwable $e) {
+            Log::warning('Admin tenant detail: tenant database unreachable', [
+                'tenant_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+            $stats = ['users_count' => 0, 'companies_count' => 0, 'locations_count' => 0];
+            $statsAvailable = false;
+        }
 
         // Get plan limits and usage from PlanEnforcementService
         $planSummary = $this->planEnforcementService->getPlanSummary($tenant);
@@ -99,6 +119,7 @@ class SuperAdminController extends Controller
             'data' => [
                 'tenant' => $tenant,
                 'stats' => $stats,
+                'stats_available' => $statsAvailable,
                 'plan_summary' => $planSummary,
                 'compatible_extras' => $compatibleExtras,
                 'default_modules' => $defaultModules,
