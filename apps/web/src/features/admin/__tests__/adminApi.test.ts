@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AxiosError, type InternalAxiosRequestConfig } from 'axios'
+import { AxiosError, isAxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { adminApi } from '../lib/adminApi'
 import { useAdminAuthStore } from '../stores/adminAuthStore'
 
@@ -50,7 +50,11 @@ describe('adminApi auth interceptors', () => {
         status: 401, statusText: 'Unauthorized', headers: {}, config, data: {},
       })
     }) as never
-    await expect(adminApi.get('/admin/dashboard')).rejects.toThrow()
+    // The original AxiosError must flow through unchanged so downstream
+    // getErrorMessage() can still read error.response.
+    await expect(adminApi.get('/admin/dashboard')).rejects.toSatisfy(
+      (e: unknown) => isAxiosError(e) && e.response?.status === 401
+    )
     expect(useAdminAuthStore.getState().token).toBeNull()
     expect(window.location.assign).toHaveBeenCalledWith('/admin/login')
   })
