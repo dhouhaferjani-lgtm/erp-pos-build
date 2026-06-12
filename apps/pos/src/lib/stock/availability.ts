@@ -9,16 +9,20 @@
  *   clamped ≥ 0.
  *
  * `null` means "not stock-managed" (exempt): non-product sellables
- * (Menu/composite items). Snapshot changes never evict cart lines — this
- * selector only gates FURTHER adds (Tasks 11/12 consume it).
+ * (Menu/composite items), and non-physical products (services — labour lines
+ * in the automotive vertical).
  *
- * Exemption gap — `is_physical`: POSProduct (src/types/product.ts) does NOT
- * carry a physicality flag locally (the products sync does not project it),
- * so the spec's "non-physical product" exemption cannot be evaluated on the
- * terminal today. The only locally-available discriminator is
- * `sellableType` ('product' | 'composite_item'); when the local catalog
- * gains an `is_physical` projection, add `is_physical === false ⇒ null`
- * here and in `AvailabilityInputs.product`.
+ * Exemption rules:
+ *   1. `sellableType !== 'product'` (and not undefined) — composite/Menu items.
+ *   2. `is_physical === false` — service products; an absent / undefined value
+ *      is treated as physical (fail toward enforcement, not silent exemption).
+ *
+ * The `is_physical` flag is persisted via SQLite migration v51 and sourced
+ * from `ProductData.is_physical` on the server. The gap documented in earlier
+ * versions of this file is now closed.
+ *
+ * Snapshot changes never evict cart lines — this selector only gates FURTHER
+ * adds (Tasks 11/12 consume it).
  *
  * Refunds/returns NEVER touch availability: refund records live in the
  * separate `local_refund_records` table (not read here), cart lines with
@@ -48,10 +52,11 @@ const ZERO = '0.0000';
 
 export interface AvailabilityInputs {
   /**
-   * Only `sellableType` is needed for the exemption rules the POS can
-   * evaluate locally (see the `is_physical` gap note above).
+   * `sellableType` drives the composite/Menu exemption; `is_physical` drives
+   * the service-product exemption. Both are evaluated before any stock lookup.
+   * An absent `is_physical` (undefined) is treated as physical (stock-checked).
    */
-  product: Pick<POSProduct, 'sellableType'>;
+  product: Pick<POSProduct, 'sellableType' | 'is_physical'>;
   variantId: string | null;
   /** Local `location_stock` row; `null` when the location has no row. */
   stockRow: { available: string } | null;
@@ -66,9 +71,15 @@ export interface AvailabilityInputs {
  * when the product is not stock-managed (exempt).
  */
 export function effectiveAvailable(input: AvailabilityInputs): string | null {
-  // Exemption: non-product sellables (Menu/composite) are not stock-managed.
+  // Exemption 1: non-product sellables (Menu/composite) are not stock-managed.
   // An absent sellableType means a standard product row (stock-managed).
   if (input.product.sellableType !== undefined && input.product.sellableType !== 'product') {
+    return null;
+  }
+
+  // Exemption 2: non-physical products (services, labour lines) are exempt.
+  // Absent/undefined is treated as physical — fail toward enforcement.
+  if (input.product.is_physical === false) {
     return null;
   }
 
@@ -165,6 +176,10 @@ export async function getEffectiveAvailable(
 ): Promise<string | null> {
   // Exempt sellables short-circuit before any DB read.
   if (product.sellableType !== undefined && product.sellableType !== 'product') {
+    return null;
+  }
+  // Non-physical products (services) are also exempt — no DB read needed.
+  if (product.is_physical === false) {
     return null;
   }
 

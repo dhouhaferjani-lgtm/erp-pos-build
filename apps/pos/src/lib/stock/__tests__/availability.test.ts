@@ -7,12 +7,10 @@
  * real `location_stock` + `offline_receipts` rows so the unsynced predicate
  * and JSON line parsing are exercised against the actual schema.
  *
- * NOTE on `is_physical`: POSProduct (src/types/product.ts) does NOT carry an
- * `is_physical` flag locally — the only exemption discriminator the POS has
- * offline is `sellableType` ('product' | 'composite_item'). The spec §4.4
- * "non-physical products are exempt" rule therefore cannot be implemented
- * until the products sync projects physicality; the gap is documented in
- * availability.ts. Test 6 of the task brief is intentionally absent.
+ * `is_physical` exemption (spec §4.4): `is_physical === false` returns null
+ * (exempt); `is_physical` absent/undefined is treated as physical (stock-
+ * checked) — fail toward enforcement. The gap noted in previous versions of
+ * this file is now closed (migration v51 + upsertProducts projection).
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
@@ -128,6 +126,43 @@ describe('effectiveAvailable (pure core)', () => {
         cartQty: '0',
       }),
     ).toBe('7.0000');
+  });
+
+  it('returns null (exempt) when is_physical is false — service product', () => {
+    expect(
+      effectiveAvailable({
+        product: { sellableType: 'product', is_physical: false },
+        variantId: null,
+        stockRow: { available: '10.0000' },
+        pendingSaleQty: '0',
+        cartQty: '0',
+      }),
+    ).toBeNull();
+  });
+
+  it('remains stock-checked when is_physical is undefined (absent field)', () => {
+    // Absent is_physical must NOT exempt — fail toward enforcement.
+    expect(
+      effectiveAvailable({
+        product: { sellableType: 'product' },
+        variantId: null,
+        stockRow: { available: '5.0000' },
+        pendingSaleQty: '0',
+        cartQty: '0',
+      }),
+    ).toBe('5.0000');
+  });
+
+  it('remains stock-checked when is_physical is true', () => {
+    expect(
+      effectiveAvailable({
+        product: { sellableType: 'product', is_physical: true },
+        variantId: null,
+        stockRow: { available: '3.0000' },
+        pendingSaleQty: '1.0000',
+        cartQty: '0',
+      }),
+    ).toBe('2.0000');
   });
 });
 
@@ -416,5 +451,50 @@ describe('getEffectiveAvailable (assembler — real SQLite)', () => {
     ]);
     // 10 − 2 pending − 1 cart = 7
     expect(result).toBe('7.0000');
+  });
+
+  it('returns null for a non-physical (service) product without consulting stock', async () => {
+    // Even with a stock row present, is_physical: false exempts the product.
+    // This is the core automotive-vertical labour-line scenario.
+    await upsertStockRows(db, [
+      {
+        product_id: 'svc-1',
+        variant_id: null,
+        quantity: '0.0000',
+        reserved: '0',
+        available: '0.0000',
+        updated_at: null,
+      },
+    ]);
+
+    const result = await getEffectiveAvailable(
+      db,
+      posProduct({ id: 'svc-1', is_physical: false }),
+      null,
+      [],
+    );
+    expect(result).toBeNull();
+  });
+
+  it('remains stock-checked when is_physical is undefined (absent — fail toward enforcement)', async () => {
+    await upsertStockRows(db, [
+      {
+        product_id: 'p-absent-phys',
+        variant_id: null,
+        quantity: '4.0000',
+        reserved: '0',
+        available: '4.0000',
+        updated_at: null,
+      },
+    ]);
+
+    const result = await getEffectiveAvailable(
+      db,
+      // No is_physical field — mirrors Menu flatten path.
+      posProduct({ id: 'p-absent-phys' }),
+      null,
+      [],
+    );
+    expect(result).toBe('4.0000');
   });
 });

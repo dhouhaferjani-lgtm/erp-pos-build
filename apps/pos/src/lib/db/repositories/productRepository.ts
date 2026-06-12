@@ -16,6 +16,8 @@ interface ProductRow {
   modifier_groups: string | null;
   sellable_id: string | null;
   menu_category_id: string | null;
+  /** SQLite integer: 1 = physical (stock-checked), 0 = non-physical (exempt). */
+  is_physical: number;
 }
 
 function rowToProduct(row: ProductRow): POSProduct {
@@ -40,6 +42,9 @@ function rowToProduct(row: ProductRow): POSProduct {
     // and the columns are NULL post-migration v30).
     ...(row.sellable_id !== null ? { sellable_id: row.sellable_id } : {}),
     ...(row.menu_category_id !== null ? { menu_category_id: row.menu_category_id } : {}),
+    // Task 10 — physicality flag. Column defaults to 1 (physical) in SQLite;
+    // we map 0 → false, any other value → true (absent/1/null all stay physical).
+    is_physical: row.is_physical === 0 ? false : true,
   };
 }
 
@@ -84,7 +89,7 @@ export async function getProductsByBarcode(db: Database, barcode: string): Promi
 
 const BATCH_SIZE = 50;
 /** Number of $-placeholder parameters per product row (excludes datetime('now') literals) */
-const PARAMS_PER_ROW = 13;
+const PARAMS_PER_ROW = 14;
 
 export async function upsertProducts(db: Database, products: POSProduct[]): Promise<void> {
   for (let i = 0; i < products.length; i += BATCH_SIZE) {
@@ -96,7 +101,7 @@ export async function upsertProducts(db: Database, products: POSProduct[]): Prom
       const p = batch[j]!;
       const offset = j * PARAMS_PER_ROW;
       valueClauses.push(
-        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, datetime('now'), datetime('now'))`
+        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, datetime('now'), datetime('now'))`
       );
       params.push(
         p.id,
@@ -114,12 +119,15 @@ export async function upsertProducts(db: Database, products: POSProduct[]): Prom
         // not set, so standard-retail callsites stay backwards-compatible.
         p.sellable_id ?? null,
         p.menu_category_id ?? null,
+        // Task 10 — physicality flag. `undefined` (absent) maps to 1 (physical)
+        // so the Menu flatten path, which never sets this field, stays safe.
+        p.is_physical === false ? 0 : 1,
       );
     }
 
     await execute(
       db,
-      `INSERT INTO products (id, name, sku, barcode, sale_price, stock_quantity, category, image_url, tax_rate, sellable_type, modifier_groups, sellable_id, menu_category_id, updated_at, synced_at)
+      `INSERT INTO products (id, name, sku, barcode, sale_price, stock_quantity, category, image_url, tax_rate, sellable_type, modifier_groups, sellable_id, menu_category_id, is_physical, updated_at, synced_at)
        VALUES ${valueClauses.join(', ')}
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
@@ -134,6 +142,7 @@ export async function upsertProducts(db: Database, products: POSProduct[]): Prom
          modifier_groups = excluded.modifier_groups,
          sellable_id = excluded.sellable_id,
          menu_category_id = excluded.menu_category_id,
+         is_physical = excluded.is_physical,
          updated_at = datetime('now'),
          synced_at = datetime('now')`,
       params
