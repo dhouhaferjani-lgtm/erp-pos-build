@@ -5,9 +5,13 @@ declare(strict_types=1);
 namespace App\Observers;
 
 use App\Modules\Identity\Domain\User;
+use App\Modules\Identity\Infrastructure\CentralPersonalAccessToken;
+use App\Modules\Tenant\Domain\CentralIdentity;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Services\CompanyConfigService;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Observer for Tenant model — cache invalidation + Sanctum token revocation
@@ -17,7 +21,7 @@ use App\Services\CompanyConfigService;
  * config cache must be invalidated so CompanyConfigService rebuilds with
  * the new settings on the next request.
  *
- * Token revocation:
+ * Token revocation (Invariants A.1 + A.2):
  *   - On status transition to Suspended: every user in the tenant has their
  *     personal_access_tokens revoked synchronously. This blocks suspended-
  *     tenant users from continuing to authenticate with pre-suspension
@@ -29,6 +33,14 @@ use App\Services\CompanyConfigService;
  *     Sanctum personal_access_tokens has polymorphic FK (tokenable_type +
  *     tokenable_id), NOT a hard FK to users.id, so DB cascade does not
  *     transitively purge tokens — explicit revocation is required.
+ *
+ * T6 Phase 0b topology: Users live in the PER-TENANT database; token rows
+ * live in the CENTRAL personal_access_tokens table. Enumeration therefore
+ * runs inside $tenant->run(); deletion of tokens runs from central context
+ * by (tokenable_type, tokenable_id) in chunks of 200. If the tenant DB is
+ * unreachable (G1 — broken/unprovisioned tenant being deprovisioned), the
+ * implementation falls back to central_identities user_id pointers so the
+ * lifecycle hook degrades gracefully instead of aborting.
  */
 class TenantObserver
 {
@@ -90,16 +102,46 @@ class TenantObserver
 
     /**
      * Revoke every personal access token for every user belonging to the
-     * given tenant. Uses chunking to bound memory on large tenants.
+     * given tenant.
+     *
+     * Users live in the PER-TENANT database (T6 Phase 0b) — enumeration runs
+     * inside $tenant->run(); token rows live in the CENTRAL
+     * personal_access_tokens table and are deleted from central context by
+     * (tokenable_type, tokenable_id) chunks. If the tenant DB is unreachable
+     * (e.g. deletion of a broken/unprovisioned tenant — G1), fall back to the
+     * central_identities user_id pointers so the lifecycle hook degrades
+     * instead of aborting the suspend/delete.
      */
     private function revokeAllUserTokens(Tenant $tenant): void
     {
-        User::where('tenant_id', $tenant->id)
-            ->select(['id', 'tenant_id'])
-            ->chunkById(200, static function ($users): void {
-                foreach ($users as $user) {
-                    $user->tokens()->delete();
-                }
-            });
+        try {
+            /** @var array<int, string> $userIds */
+            $userIds = $tenant->run(
+                static fn (): array => User::where('tenant_id', $tenant->id)->pluck('id')->all()
+            );
+        } catch (Throwable $e) {
+            Log::warning('Token revocation: tenant DB unreachable, using central identity index', [
+                'tenant_id' => $tenant->id,
+                'error' => $e->getMessage(),
+            ]);
+            /** @var array<int, string> $userIds */
+            $userIds = CentralIdentity::where('tenant_id', $tenant->id)
+                ->whereNotNull('user_id')
+                ->pluck('user_id')
+                ->all();
+        }
+
+        if ($userIds === []) {
+            return;
+        }
+
+        $morphClass = (new User)->getMorphClass();
+
+        foreach (array_chunk($userIds, 200) as $chunk) {
+            CentralPersonalAccessToken::query()
+                ->where('tokenable_type', $morphClass)
+                ->whereIn('tokenable_id', $chunk)
+                ->delete();
+        }
     }
 }
