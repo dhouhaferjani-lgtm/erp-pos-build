@@ -21,6 +21,13 @@ type SortMode = 'default' | 'mostSold';
 
 const DISPLAY_MODE_STORAGE_KEY = 'pos-display-mode';
 
+/**
+ * Stable default for the `locationStock` prop — an inline `{}` default would
+ * be a brand-new object every render, invalidating the `filteredProducts`
+ * memo (which depends on it) on each pass.
+ */
+const EMPTY_LOCATION_STOCK: GridLocationStockMap = {};
+
 function getStoredDisplayMode(): DisplayMode {
   const stored = localStorage.getItem(DISPLAY_MODE_STORAGE_KEY);
   if (stored === 'grid' || stored === 'visual') return stored;
@@ -71,7 +78,7 @@ export function ProductGrid({
   cartProductIds,
   isLoading = false,
   consumptionModeToggle,
-  locationStock = {},
+  locationStock = EMPTY_LOCATION_STOCK,
 }: ProductGridProps) {
   const { t } = useTranslation('pos');
   const [searchQuery, setSearchQuery] = useState('');
