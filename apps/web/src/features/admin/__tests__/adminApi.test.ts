@@ -25,7 +25,7 @@ describe('adminApi auth interceptors', () => {
 
   afterEach(() => {
     Object.defineProperty(window, 'location', { value: originalLocation, writable: true })
-    adminApi.defaults.adapter = undefined
+    delete adminApi.defaults.adapter
   })
 
   it('attaches Authorization: Bearer when a token is in the store', async () => {
