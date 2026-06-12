@@ -9,6 +9,20 @@ import { usePaymentStore } from '@/stores/paymentStore';
 import type { CustomerMirrorRow } from '@/lib/customer/customerTypes';
 import { CustomerAttachPanel } from './CustomerAttachPanel';
 
+// Map translation keys to their English values so assertions match the rendered text.
+const enPosCustomer: Record<string, string> = {
+  'customer.attach': 'Customer',
+  'customer.attached': 'Attached',
+  'customer.amount': 'Amount',
+  'customer.record': 'Record',
+  'customer.createLocal': 'Create local customer',
+  'customer.searchPlaceholder': 'Search by name, phone, email…',
+};
+vi.mock('react-i18next', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-i18next')>();
+  return { ...actual, useTranslation: () => ({ t: (k: string) => enPosCustomer[k] ?? k }) };
+});
+
 vi.mock('@/lib/db', async () => {
   const actual = await vi.importActual<typeof import('@/lib/db')>('@/lib/db');
   return {
