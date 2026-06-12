@@ -812,6 +812,16 @@
       "not_enabled": "This customer is not enabled for account charge."
     }
   },
+  "customer": {
+    "attach": "Customer",
+    "detach": "Remove customer",
+    "modalTitle": "Customer",
+    "attached": "Attached",
+    "amount": "Amount",
+    "record": "Record",
+    "createLocal": "Create local customer",
+    "searchPlaceholder": "Search by name, phone, email…"
+  },
   "voucherTender": {
     "title": "Apply voucher",
     "codeLabel": "Voucher code",
