@@ -1,8 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useTerminalStore } from '../terminalStore';
+import { useTerminalStore, fiscalShiftIdForReceipt } from '../terminalStore';
 import type { Terminal, Shift } from '../terminalStore';
 
 vi.mock('@/lib/api', () => ({
+  // Real-shaped stub so `error instanceof ApiRequestError` works in the store.
+  ApiRequestError: class ApiRequestError extends Error {
+    constructor(
+      public readonly status: number,
+      public readonly apiMessage: string,
+      public readonly code: string,
+    ) {
+      super(apiMessage);
+      this.name = 'ApiRequestError';
+    }
+  },
   apiGet: vi.fn(),
   apiPost: vi.fn(),
 }));
@@ -83,7 +94,7 @@ vi.mock('@/stores/operatorStore', () => ({
   },
 }));
 
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet, apiPost, ApiRequestError } from '@/lib/api';
 import { getDatabase, execute, queryAll } from '@/lib/db';
 import { invalidateTerminalDiscountPermissions } from '@/lib/db/repositories/operatorPinRepository';
 import { authorZSessionOpenWithOpeningFloat } from '@/lib/fiscal/zSessionAuthoring';
@@ -271,6 +282,73 @@ describe('terminalStore', () => {
     }));
   });
 
+  it('openShift synthesizes user from the auth session when the server payload lacks user (2026-06-12 live crash)', async () => {
+    // ShiftResource returns cashier_id (+ cashier when loaded) but never
+    // `user` — the fiscal v3 open path crashed with "undefined is not an
+    // object (evaluating 'shift.user.id')" on every server-opened shift.
+    useTerminalStore.setState({ terminal: { ...mockTerminal, fiscal_schema_version: 3 } });
+    const serverShift: Record<string, unknown> = {
+      ...mockShift,
+      cashier_id: '22222222-2222-4222-8222-222222222222',
+    };
+    delete serverShift['user'];
+    vi.mocked(apiPost).mockResolvedValue(serverShift);
+
+    await useTerminalStore.getState().openShift('100.00');
+
+    expect(authorZSessionOpenWithOpeningFloat).toHaveBeenCalledWith(expect.objectContaining({
+      operatorId: '22222222-2222-4222-8222-222222222222',
+      operatorName: 'Jane',
+    }));
+    expect(useTerminalStore.getState().shift?.user).toEqual({
+      id: '22222222-2222-4222-8222-222222222222',
+      name: 'Jane',
+    });
+  });
+
+  it('openShift adopts the existing server shift on SHIFT_ALREADY_OPEN instead of forking an offline shift', async () => {
+    // A reachable server refusing the open means a shift is ALREADY open for
+    // this terminal. Treating the 409 as "offline" forked a local `offline-…`
+    // shift, splitting the device from the server shift (2026-06-12 live
+    // regression: Today Sales 404'd and checkout payloads carried a
+    // non-UUID shift_id).
+    useTerminalStore.setState({ terminal: mockTerminal });
+    vi.mocked(apiPost).mockRejectedValue(
+      new ApiRequestError(409, 'A shift is already open', 'SHIFT_ALREADY_OPEN'),
+    );
+    const serverShift: Record<string, unknown> = {
+      ...mockShift,
+      cashier_id: '22222222-2222-4222-8222-222222222222',
+    };
+    delete serverShift['user'];
+    vi.mocked(apiGet).mockResolvedValue(serverShift);
+
+    await useTerminalStore.getState().openShift('100.00');
+
+    expect(apiGet).toHaveBeenCalledWith('/pos/shifts/current/T001');
+    const shift = useTerminalStore.getState().shift;
+    expect(shift?.id).toBe(mockShift.id);
+    expect(shift?.id).not.toMatch(/^offline-/);
+  });
+
+  it('fetchCurrentShift synthesizes user when the server payload lacks user', async () => {
+    useTerminalStore.setState({ terminal: mockTerminal });
+    const serverShift: Record<string, unknown> = {
+      ...mockShift,
+      cashier_id: '22222222-2222-4222-8222-222222222222',
+    };
+    delete serverShift['user'];
+    vi.mocked(getStoredValue).mockResolvedValue(null);
+    vi.mocked(apiGet).mockResolvedValue(serverShift);
+
+    await useTerminalStore.getState().fetchCurrentShift();
+
+    expect(useTerminalStore.getState().shift?.user).toEqual({
+      id: '22222222-2222-4222-8222-222222222222',
+      name: 'Jane',
+    });
+  });
+
   it('openShift throws when no terminal configured', async () => {
     await expect(useTerminalStore.getState().openShift('100.00')).rejects.toThrow(
       'No terminal configured',
@@ -444,5 +522,41 @@ describe('terminalStore', () => {
     expect(operatorStoreMocks.invalidateDiscountPermissions).toHaveBeenCalled();
     expect(invalidateTerminalDiscountPermissions).toHaveBeenCalledWith(mockDb, 'T001');
     expect(operatorStoreMocks.refreshDiscountPermissions).toHaveBeenCalled();
+  });
+});
+
+describe('fiscalShiftIdForReceipt', () => {
+  // Fiscal canonical payloads validate shift_id as a lowercase-hex UUID.
+  // Raw shift.id is NOT safe: offline-opened shifts are `offline-<uuid>`
+  // (2026-06-12 live failure: checkout rejected with payload_field_invalid).
+  const base: Shift = {
+    id: 'shift-1',
+    terminal_id: 'term-1',
+    shift_number: 1,
+    status: 'OPEN',
+    opening_cash: '100.00',
+    opened_at: '2026-06-12T08:00:00.000Z',
+    user: { id: 'user-1', name: 'Jane' },
+  };
+
+  it('returns the device-minted fiscal_shift_id when present', () => {
+    const shift = { ...base, fiscal_shift_id: '11111111-1111-4111-8111-111111111111' };
+    expect(fiscalShiftIdForReceipt(shift)).toBe('11111111-1111-4111-8111-111111111111');
+  });
+
+  it('falls back to the shift id when it is already a UUID', () => {
+    const shift = { ...base, id: '33333333-3333-4333-8333-333333333333' };
+    expect(fiscalShiftIdForReceipt(shift)).toBe('33333333-3333-4333-8333-333333333333');
+  });
+
+  it('derives the UUID from an offline- prefixed shift id', () => {
+    const shift = { ...base, id: 'offline-44444444-4444-4444-8444-444444444444' };
+    expect(fiscalShiftIdForReceipt(shift)).toBe('44444444-4444-4444-8444-444444444444');
+  });
+
+  it('fails loud on an underivable shift id instead of minting a random one', () => {
+    // A random UUID here would scatter receipts across phantom shift ids and
+    // silently corrupt the Z window — fail-closed is the only safe behavior.
+    expect(() => fiscalShiftIdForReceipt(base)).toThrow(/fiscal shift id/i);
   });
 });

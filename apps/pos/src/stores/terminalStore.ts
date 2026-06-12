@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet, apiPost, ApiRequestError } from '@/lib/api';
 import { getDeviceId } from '@/lib/device';
 import { getStoredValue, setStoredValue, removeStoredValue, StorageKeys } from '@/lib/storage';
 import { getDatabase } from '@/lib/db';
@@ -189,6 +189,53 @@ function fiscalSessionIdForShift(shift: Shift): string {
 
 function fiscalShiftIdForShift(shift: Shift): string {
   return shift.fiscal_shift_id ?? (isUuid(shift.id) ? shift.id : crypto.randomUUID());
+}
+
+/**
+ * The shift id to stamp into fiscal canonical payloads (SALE_RECEIPT,
+ * ACCOUNT_PAYMENT, ACCOUNT_CHARGE). Payload validation requires a
+ * lowercase-hex UUID, and raw `shift.id` is NOT one for offline-opened
+ * shifts (`offline-<uuid>`). Resolution order:
+ *   1. the device-minted `fiscal_shift_id` (matches the SESSION_OPEN event),
+ *   2. the shift id itself when it is a UUID (server-opened shifts),
+ *   3. the UUID inside an `offline-` prefixed id (deterministic — the same
+ *      value on every call, unlike a random fallback which would scatter
+ *      receipts across phantom shift ids and corrupt the Z window),
+ *   4. fail loud. A blocked sale beats silently mis-attributed fiscal data.
+ */
+export function fiscalShiftIdForReceipt(shift: Shift): string {
+  if (shift.fiscal_shift_id) return shift.fiscal_shift_id;
+  const raw = shift.id.startsWith('offline-') ? shift.id.slice('offline-'.length) : shift.id;
+  if (isUuid(raw)) return raw.toLowerCase();
+  throw new Error(`Shift ${shift.id} has no usable fiscal shift id; cannot author fiscal events.`);
+}
+
+/**
+ * Server shift payloads (ShiftResource) carry `cashier_id` (+ `cashier` when
+ * the relation is loaded) but never `user` — that object exists only on
+ * device-built shifts. Synthesize it at the boundary so the fiscal v3 open
+ * path and every report surface can rely on `shift.user` (the 2026-06-12
+ * live crash: "undefined is not an object (evaluating 'shift.user.id')").
+ */
+interface ServerShiftPayload extends Omit<Shift, 'user'> {
+  user?: Shift['user'];
+  cashier_id?: string;
+  cashier?: { id: string; name: string };
+}
+
+function withShiftUser(serverShift: ServerShiftPayload, cached: Shift | null): Shift {
+  if (serverShift.user?.id) return serverShift as Shift;
+
+  const auth = useAuthStore.getState();
+  const cashierId = serverShift.cashier_id ?? auth.user?.id ?? '';
+  let name = serverShift.cashier?.name ?? '';
+  if (!name && cached && cached.id === serverShift.id && cached.user?.id === cashierId) {
+    name = cached.user.name;
+  }
+  if (!name && auth.user && cashierId === auth.user.id) {
+    name = auth.user.name;
+  }
+  return { ...serverShift, user: { id: cashierId, name } };
 }
 
 async function authorShiftOpenFiscalEvents(
@@ -676,7 +723,7 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     if (!terminal) return;
 
     try {
-      const serverShift = await apiGet<Shift | null>(`/pos/shifts/current/${terminal.code}`);
+      const serverShift = await apiGet<ServerShiftPayload | null>(`/pos/shifts/current/${terminal.code}`);
       if (serverShift) {
         // fiscal_shift_id / fiscal_session_id are minted on the DEVICE at
         // shift open (Z-session authoring) — the server payload never
@@ -684,13 +731,14 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
         // restart severs the live shift from its SESSION_OPEN fiscal event
         // and X/Z authoring breaks for the rest of the shift.
         const cached = await getStoredValue<Shift>(StorageKeys.SHIFT);
-        const shift: Shift = cached && cached.id === serverShift.id
+        const normalized = withShiftUser(serverShift, cached);
+        const shift: Shift = cached && cached.id === normalized.id
           ? {
-              ...serverShift,
-              fiscal_shift_id: serverShift.fiscal_shift_id ?? cached.fiscal_shift_id,
-              fiscal_session_id: serverShift.fiscal_session_id ?? cached.fiscal_session_id,
+              ...normalized,
+              fiscal_shift_id: normalized.fiscal_shift_id ?? cached.fiscal_shift_id,
+              fiscal_session_id: normalized.fiscal_session_id ?? cached.fiscal_session_id,
             }
-          : serverShift;
+          : normalized;
         await setStoredValue(StorageKeys.SHIFT, shift);
         set({ shift });
       } else {
@@ -718,25 +766,49 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
       if (cashierId) {
         body['cashier_id'] = cashierId;
       }
-      shift = await apiPost<Shift>('/pos/shifts/open', body);
-    } catch {
-      // Offline fallback: create local shift
-      const authState = useAuthStore.getState();
-      const user = authState.user;
-      shift = {
-        id: `offline-${crypto.randomUUID()}`,
-        terminal_id: terminal.id,
-        shift_number: 0,
-        status: 'OPEN',
-        opening_cash: openingCash,
-        opened_at: new Date().toISOString(),
-        fiscal_shift_id: crypto.randomUUID(),
-        fiscal_session_id: crypto.randomUUID(),
-        user: {
-          id: cashierId ?? user?.id ?? '',
-          name: user?.name ?? 'Operator',
-        },
-      };
+      shift = withShiftUser(await apiPost<ServerShiftPayload>('/pos/shifts/open', body), null);
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.code === 'SHIFT_ALREADY_OPEN') {
+        // A reachable server refusing the open means a shift is ALREADY open
+        // for this terminal — adopt it. Forking a local `offline-…` shift
+        // here split the device from the server shift (2026-06-12 live
+        // regression: Today Sales 404'd on the unknown shift id and fiscal
+        // payloads carried a non-UUID shift_id).
+        try {
+          const current = await apiGet<ServerShiftPayload | null>(`/pos/shifts/current/${terminal.code}`);
+          if (!current) throw error;
+          const cached = await getStoredValue<Shift>(StorageKeys.SHIFT);
+          shift = withShiftUser(current, cached);
+          if (cached && cached.id === shift.id) {
+            shift = {
+              ...shift,
+              fiscal_shift_id: shift.fiscal_shift_id ?? cached.fiscal_shift_id,
+              fiscal_session_id: shift.fiscal_session_id ?? cached.fiscal_session_id,
+            };
+          }
+        } catch (adoptionError) {
+          set({ isLoading: false });
+          throw adoptionError;
+        }
+      } else {
+        // Offline fallback: create local shift
+        const authState = useAuthStore.getState();
+        const user = authState.user;
+        shift = {
+          id: `offline-${crypto.randomUUID()}`,
+          terminal_id: terminal.id,
+          shift_number: 0,
+          status: 'OPEN',
+          opening_cash: openingCash,
+          opened_at: new Date().toISOString(),
+          fiscal_shift_id: crypto.randomUUID(),
+          fiscal_session_id: crypto.randomUUID(),
+          user: {
+            id: cashierId ?? user?.id ?? '',
+            name: user?.name ?? 'Operator',
+          },
+        };
+      }
     }
 
     // Task 9 — full location-stock re-baseline on shift open (spec §4.3):

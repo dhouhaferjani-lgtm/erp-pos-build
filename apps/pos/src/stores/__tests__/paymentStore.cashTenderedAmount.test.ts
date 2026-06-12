@@ -125,7 +125,7 @@ describe('paymentStore — cash payment amount is tendered (Bug 2)', () => {
         location: { id: 'loc1', name: 'Main', code: 'MAIN' },
       },
       shift: {
-        id: 'shift-1',
+        id: '019eb000-0000-7000-8000-000000000001',
         terminal_id: 'term-1',
         shift_number: 1,
         status: 'OPEN',

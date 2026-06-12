@@ -3,7 +3,7 @@ import i18n from '@/lib/i18n';
 import { fetchPaymentMethods, fetchPaymentRepositories } from '@/api/paymentApi';
 import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
-import { useTerminalStore } from '@/stores/terminalStore';
+import { useTerminalStore, fiscalShiftIdForReceipt } from '@/stores/terminalStore';
 import { getActiveCurrency, getCurrencyDecimals } from '@/lib/currency';
 import { bcsum, bcmul, bcdiv, bcsub, bccomp, bcformat } from '@/lib/decimal';
 import { getDatabase } from '@/lib/db';
@@ -562,7 +562,7 @@ async function createReceiptLocalFirst(
         terminalId,
         operatorId,
         operatorName,
-        shiftId: shift.id,
+        shiftId: fiscalShiftIdForReceipt(shift),
         cartItems,
         currency,
         // Atomic seller identity (spec 2026-06-11 §4.6): complete location
@@ -668,7 +668,7 @@ async function createAccountPaymentLocalFirst(
       terminalName: terminal.name,
       operatorId,
       operatorName,
-      shiftId: shift.id,
+      shiftId: fiscalShiftIdForReceipt(shift),
       currency,
       // Atomic seller identity (spec 2026-06-11 §4.6) — same resolver as the
       // SALE_RECEIPT path; never a branch tax number with a company address.
@@ -753,7 +753,7 @@ async function createAccountChargeLocalFirst(
       terminalName: terminal.name,
       operatorId,
       operatorName,
-      shiftId: shift.id,
+      shiftId: fiscalShiftIdForReceipt(shift),
       currency,
       // Atomic seller identity (spec 2026-06-11 §4.6). This closes the
       // ACCOUNT_CHARGE gap: charges now carry the branch identity when the
