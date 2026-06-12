@@ -106,6 +106,8 @@ export function HomePage() {
   const categories = useProductStore((s) => s.categories);
   const productsLoading = useProductStore((s) => s.isLoading);
   const fetchProducts = useProductStore((s) => s.fetchProducts);
+  // Task 12 — per-tile location-stock display map ({} for Menu tenants).
+  const locationStock = useProductStore((s) => s.locationStock);
 
   // Cart store
   const cartItems = useCartStore((s) => s.items);
@@ -1426,6 +1428,7 @@ export function HomePage() {
           onCustomize={handleCustomize}
           cartProductIds={cartProductIds}
           isLoading={productsLoading}
+          locationStock={locationStock}
           consumptionModeToggle={isFnB ? (
             <ConsumptionModeToggle
               value={consumptionMode}

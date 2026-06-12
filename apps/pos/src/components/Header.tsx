@@ -12,6 +12,7 @@ import { usePaymentStore } from '@/stores/paymentStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { SyncButton } from '@/components/atoms/SyncButton/SyncButton';
+import { StockFreshness } from '@/components/atoms/StockFreshness/StockFreshness';
 import { EndOfDayPreviewModal } from '@/components/pos/EndOfDayPreviewModal';
 import { ReportsMenu } from '@/components/pos/ReportsMenu';
 import { XReportModal } from '@/components/pos/XReportModal';
@@ -411,6 +412,9 @@ export function Header() {
 
           {/* Manual sync button */}
           <SyncButton />
+
+          {/* Task 12 — stock staleness hint beside the sync freshness display */}
+          <StockFreshness />
 
           {/* Shift badge — opens End of Day preview */}
           {shift ? (

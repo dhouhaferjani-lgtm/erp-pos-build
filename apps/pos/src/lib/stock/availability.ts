@@ -53,14 +53,14 @@ const ZERO = '0.0000';
 type ExemptionProduct = Pick<POSProduct, 'sellableType' | 'is_physical'>;
 
 /**
- * Exemption rules (shared by the pure core and the assembler's pre-DB
- * short-circuit — keep them in ONE place):
+ * Exemption rules (shared by the pure core, the assembler's pre-DB
+ * short-circuit, and the Task 12 grid join — keep them in ONE place):
  * 1. non-product sellables (Menu/composite) are not stock-managed; an absent
  *    sellableType means a standard product row (stock-managed).
  * 2. non-physical products (services, labour lines) are exempt;
  *    absent/undefined is treated as physical — fail toward enforcement.
  */
-function isStockExempt(product: ExemptionProduct): boolean {
+export function isStockExempt(product: ExemptionProduct): boolean {
   if (product.sellableType !== undefined && product.sellableType !== 'product') {
     return true;
   }

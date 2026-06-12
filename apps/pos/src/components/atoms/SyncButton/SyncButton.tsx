@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { RefreshCw } from 'lucide-react';
 import { useSyncStore } from '@/stores/syncStore';
 import { cn } from '@/lib/utils';
+import { formatRelativeTime } from '@/lib/relativeTime';
 
 const DEBOUNCE_MS = 500;
 
@@ -10,14 +11,9 @@ function formatTimeAgo(
   timestamp: number | null,
   t: (key: string, opts?: Record<string, unknown>) => string,
 ): string | null {
-  if (!timestamp) return null;
-  const diffMs = Date.now() - timestamp;
-  const diffMin = Math.floor(diffMs / 60_000);
-
-  if (diffMin < 1) return t('sync.lastSync', { time: '<1m' });
-  if (diffMin < 60) return t('sync.lastSync', { time: `${diffMin}m` });
-  const diffHours = Math.floor(diffMin / 60);
-  return t('sync.lastSync', { time: `${diffHours}h` });
+  const time = formatRelativeTime(timestamp);
+  if (time === null) return null;
+  return t('sync.lastSync', { time });
 }
 
 export function SyncButton() {

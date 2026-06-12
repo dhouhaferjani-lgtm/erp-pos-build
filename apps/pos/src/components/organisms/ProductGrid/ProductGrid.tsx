@@ -6,8 +6,10 @@ import { cn } from '@/lib/utils';
 import { Search, X, Package, LayoutGrid, Image, TrendingUp } from 'lucide-react';
 import { ProductCard } from '@/components/molecules/ProductCard';
 import type { POSProduct } from '@/types/product';
+import type { GridLocationStockMap } from '@/lib/stock/gridStock';
 import { useAuthStore } from '@/stores/authStore';
 import { useMostSoldCounts } from '@/hooks/useMostSoldCounts';
+import { bccomp } from '@/lib/decimal';
 import {
   CARD_MIN_H_GRID,
   CARD_MIN_H_VISUAL,
@@ -33,6 +35,13 @@ export interface ProductGridProps {
   cartProductIds: string[];
   isLoading?: boolean;
   consumptionModeToggle?: ReactNode;
+  /**
+   * Task 12 — per-tile location-stock display map
+   * (`productStore.locationStock`, passed down by HomePage). `{}` for Menu
+   * tenants / browser dev → every lookup is undefined → legacy tile
+   * rendering verbatim.
+   */
+  locationStock?: GridLocationStockMap;
 }
 
 /** Column counts per display mode. */
@@ -62,6 +71,7 @@ export function ProductGrid({
   cartProductIds,
   isLoading = false,
   consumptionModeToggle,
+  locationStock = {},
 }: ProductGridProps) {
   const { t } = useTranslation('pos');
   const [searchQuery, setSearchQuery] = useState('');
@@ -125,7 +135,15 @@ export function ProductGrid({
     }
 
     if (inStockOnly) {
-      filtered = filtered.filter((p) => p.stock_quantity > 0);
+      // Task 12 — when the location-stock slice exists it wins over the
+      // legacy stock_quantity; null = exempt (services) → always "in stock";
+      // undefined (Menu tenants / browser dev) → legacy behaviour verbatim.
+      filtered = filtered.filter((p) => {
+        const slice = locationStock[p.id];
+        if (slice === null) return true;
+        if (slice !== undefined) return bccomp(slice.available, '0') > 0;
+        return p.stock_quantity > 0;
+      });
     }
 
     if (searchQuery.trim()) {
@@ -139,7 +157,7 @@ export function ProductGrid({
     }
 
     return filtered;
-  }, [sortedProducts, selectedCategory, searchQuery, inStockOnly]);
+  }, [sortedProducts, selectedCategory, searchQuery, inStockOnly, locationStock]);
 
   const columns = useMemo(() => getColumns(displayMode), [displayMode]);
   const rowCount = Math.ceil(filteredProducts.length / columns);
@@ -419,6 +437,7 @@ export function ProductGrid({
                       onCustomize={onCustomize}
                       isInCart={cartProductIds.includes(product.id)}
                       displayMode={displayMode}
+                      locationStock={locationStock[product.id]}
                     />
                   ))}
                 </div>
