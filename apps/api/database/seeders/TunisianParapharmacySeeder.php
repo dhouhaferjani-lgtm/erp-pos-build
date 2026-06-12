@@ -15,6 +15,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Taxation\Domain\Entities\WithholdingTaxRule;
 use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Taxation\Domain\Enums\TransactionType;
@@ -102,7 +103,7 @@ class TunisianParapharmacySeeder extends Seeder
         // Requires: countries table must be populated (by a prior seeder run or
         // DatabaseSeeder); if countries is empty this will throw loudly.
         $this->command->info('Provisioning Tunisia tax configuration...');
-        $companyTaxProvisioning = new \App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService(
+        $companyTaxProvisioning = new CompanyTaxProvisioningService(
             failLoudOnMissingCountry: true,
         );
         $companyTaxProvisioning->provisionForCompany($company);
@@ -470,13 +471,16 @@ class TunisianParapharmacySeeder extends Seeder
             ]);
         }
 
-        // Add some generic products using factory
+        // Add some generic products using factory.
+        // Explicit tax_rate override ensures TN products use the 19% standard
+        // TVA rather than the factory's default FR-rate random pool (task T15).
         Product::factory()
             ->count(100)
             ->goods()
             ->create([
                 'tenant_id' => $company->tenant_id,
                 'company_id' => $company->id,
+                'tax_rate' => '19.00',
             ]);
 
         $totalProducts = count($parapharmacyProducts) + 100;
