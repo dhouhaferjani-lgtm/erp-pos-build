@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-05-30",
+  "generated_at": "2026-06-12",
   "note": "Regenerate with: node scripts/lint-ratchet.mjs --update-baseline",
-  "baseline_bump_justification": "2026-05-30 Phase-11 precision-guard: web baseline raised 11343 -> 11662 (+319 net) by introducing two WARN-level rules (precision/no-hardcoded-step, precision/no-parsefloat-on-money). The rules surface pre-existing float-precision debt (hardcoded fractional step= literals on number inputs; parseFloat()/Number() coercion of money/quantity-named values). 29 step + 291 parseFloat hits. The Phase-10-migrated MoneyInput/QuantityInput atoms and forms carry ZERO new-rule violations on their money/quantity inputs; the surfaced hits are legacy/unmigrated callsites (percentage-field step literals and computation-side parseFloat) outside the Phase-10 input-migration scope.",
+  "baseline_bump_justification": "2026-06-12 i18n EN/FR sweep: web baseline raised 11662 -> 12375 (+713) and pos 40 -> 101 (+61) by introducing the WARN-level local/no-untranslated-literal rule. It surfaces pre-existing untranslated user-facing string literals (JSX text + placeholder/title/alt/aria-label/label attributes) that bypass react-i18next t(). These are burned down cluster-by-cluster per docs/i18n/i18n-tracker.yaml; the count may only shrink from here, and cleaned feature dirs are promoted to ERROR via eslint.config.js overrides so they cannot regress. PRIOR bump (2026-05-30 Phase-11 precision-guard): web 11343 -> 11662 (+319 net) from precision/no-hardcoded-step + precision/no-parsefloat-on-money surfacing legacy float-precision debt.",
   "apps": {
     "@autoerp/web": {
       "errors": 0,
-      "warnings": 11662
+      "warnings": 12375
     },
     "@autoerp/pos": {
       "errors": 0,
-      "warnings": 40
+      "warnings": 101
     }
   }
 }

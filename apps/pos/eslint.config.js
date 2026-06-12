@@ -3,6 +3,16 @@ import globals from 'globals';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
+import noUntranslatedLiteral from './eslint-rules/no-untranslated-literal.js';
+
+// Local i18n guard plugin — flags user-facing string literals that bypass
+// react-i18next `t()`. WARN on the legacy surface (ratcheted by
+// scripts/lint-ratchet.mjs); cleaned dirs promote to ERROR via an override.
+const localPlugin = {
+  rules: {
+    'no-untranslated-literal': noUntranslatedLiteral,
+  },
+};
 
 /**
  * T2.6 — flat ESLint v9 config for apps/pos.
@@ -49,8 +59,12 @@ export default tseslint.config(
     plugins: {
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
+      local: localPlugin,
     },
     rules: {
+      // i18n guard — WARN on the legacy surface (ratcheted). Cleaned dirs
+      // promote to ERROR via an i18n-clean override block.
+      'local/no-untranslated-literal': 'warn',
       // React Hooks — recommended preset, demoted to warn for the
       // legacy surface (apps/pos has accumulated violations across
       // many files predating this config). New code lands clean

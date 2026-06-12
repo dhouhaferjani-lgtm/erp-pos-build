@@ -5,6 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import noHardcodedStep from './eslint-rules/no-hardcoded-step.js'
 import noParseFloatOnMoney from './eslint-rules/no-parsefloat-on-money.js'
+import noUntranslatedLiteral from './eslint-rules/no-untranslated-literal.js'
 
 // Local Phase-11 precision-guard plugin. Two custom rules discourage the
 // float-precision anti-patterns the precision-drift remediation eliminates:
@@ -17,6 +18,17 @@ const precisionPlugin = {
   rules: {
     'no-hardcoded-step': noHardcodedStep,
     'no-parsefloat-on-money': noParseFloatOnMoney,
+  },
+}
+
+// Local i18n guard plugin. `no-untranslated-literal` flags user-facing string
+// literals (JSX text + user-facing attributes) that bypass react-i18next
+// `t()`. WARN on the legacy surface (ratcheted by scripts/lint-ratchet.mjs);
+// promoted to ERROR for i18n-clean feature dirs in the override block below so
+// they can never regress.
+const localPlugin = {
+  rules: {
+    'no-untranslated-literal': noUntranslatedLiteral,
   },
 }
 
@@ -58,9 +70,13 @@ export default tseslint.config(
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
       precision: precisionPlugin,
+      local: localPlugin,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      // i18n guard — WARN on the legacy surface (ratcheted). Cleaned feature
+      // dirs promote it to ERROR in the i18n-clean override block at the end.
+      'local/no-untranslated-literal': 'warn',
       // Phase-11 precision-guard rules — WARN level (ratcheted, not hard-fail).
       'precision/no-hardcoded-step': 'warn',
       'precision/no-parsefloat-on-money': 'warn',
