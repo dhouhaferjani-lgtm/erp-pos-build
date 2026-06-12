@@ -42,6 +42,8 @@ final class ChannelOrdersAggregateTest extends TestCase
             'slug' => 'test-tenant',
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
+            // /api/v1/channels/* is gated on the Ecommerce extra (T8).
+            'enabled_extras' => ['Ecommerce'],
         ]);
 
         $this->company = Company::create([

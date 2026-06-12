@@ -18,8 +18,11 @@ Route::prefix('api/v1/webhooks/channels')
             ->name('channels.webhooks.ingest');
     });
 
+// Tenant-facing channel management — gated on the Ecommerce extra. The
+// webhook ingress above is intentionally NOT module-gated: external
+// platforms call it and authenticate via the channel signature strategy.
 Route::prefix('api/v1/channels')
-    ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])
+    ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'module:Ecommerce'])
     ->group(function (): void {
         Route::get('/', [ChannelController::class, 'index'])->name('channels.index');
         Route::post('/', [ChannelController::class, 'store'])->name('channels.store');
