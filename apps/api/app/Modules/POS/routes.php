@@ -24,6 +24,7 @@ use App\Modules\POS\Presentation\Controllers\SyncController;
 use App\Modules\POS\Presentation\Controllers\TerminalController;
 use App\Modules\POS\Presentation\Controllers\VoucherSyncController;
 use App\Modules\POS\Presentation\Controllers\ZReportSyncController;
+use App\Modules\POS\Presentation\Middleware\EnsureWebPosDemoTenant;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -66,22 +67,29 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/pos/terminals/{terminal}/fiscal-schema-cutover', FiscalSchemaCutoverController::class);
 
     // Shift Management
-    Route::post('/pos/shifts/open', [ShiftController::class, 'open']);
-    Route::post('/pos/shifts/{id}/close', [ShiftController::class, 'close']);
+    // Web POS is demo-account-only (owner decision 2026-06-11): the six
+    // fiscal-mutating routes the browser POS reaches are gated by
+    // EnsureWebPosDemoTenant — Tauri devices (X-Client-Type: pos-tauri)
+    // pass; browser callers need tenants.is_demo. Read-only shift/Z views
+    // stay open for all tenants (back-office windows onto synced data).
+    Route::middleware(EnsureWebPosDemoTenant::class)->group(function (): void {
+        Route::post('/pos/shifts/open', [ShiftController::class, 'open']);
+        Route::post('/pos/shifts/{id}/close', [ShiftController::class, 'close']);
+        Route::post('/pos/cash-drawer/deposit', [CashDrawerController::class, 'deposit']);
+        Route::post('/pos/cash-drawer/payout', [CashDrawerController::class, 'payout']);
+        Route::post('/pos/reports/x', [ReportController::class, 'generateXReport']);
+        Route::post('/pos/reports/z', [ReportController::class, 'generateZReport']);
+    });
     Route::get('/pos/shifts/current/{terminalCode}', [ShiftController::class, 'current']);
     Route::get('/pos/shifts/{id}', [ShiftController::class, 'show']);
     Route::get('/pos/shifts', [ShiftController::class, 'index']);
 
     // Cash Drawer Operations
-    Route::post('/pos/cash-drawer/deposit', [CashDrawerController::class, 'deposit']);
-    Route::post('/pos/cash-drawer/payout', [CashDrawerController::class, 'payout']);
     Route::get('/pos/cash-drawer/{shiftId}/operations', [CashDrawerController::class, 'operations']);
     Route::get('/pos/cash-drawer/{shiftId}/balance', [CashDrawerController::class, 'balance']);
 
     // Reports (sync route before parameterized routes)
     Route::post('/pos/reports/z/sync', [ZReportSyncController::class, 'sync']);
-    Route::post('/pos/reports/x', [ReportController::class, 'generateXReport']);
-    Route::post('/pos/reports/z', [ReportController::class, 'generateZReport']);
     Route::get('/pos/reports/z/{zNumber}', [ReportController::class, 'showZReport']);
     Route::get('/pos/reports/z/{zNumber}/pdf', [ReportController::class, 'downloadPdf']);
     Route::get('/pos/reports/z', [ReportController::class, 'listZReports']);

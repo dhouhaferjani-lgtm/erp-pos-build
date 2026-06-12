@@ -51,6 +51,12 @@ final class GenerateZReportEndToEndTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // These suites exercise the DEVICE/server flow on routes that are
+        // web-gated to demo tenants (EnsureWebPosDemoTenant, owner decision
+        // 2026-06-11); the device marker keeps them reaching the layer
+        // under test.
+        $this->defaultHeaders['X-Client-Type'] = 'pos-tauri';
         $this->setupTestData();
     }
 
