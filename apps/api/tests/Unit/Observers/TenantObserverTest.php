@@ -7,8 +7,9 @@ namespace Tests\Unit\Observers;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Observers\TenantObserver;
+use App\Services\CompanyConfigService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
+use Stancl\Tenancy\Facades\GlobalCache;
 use Tests\TestCase;
 
 /**
@@ -20,7 +21,9 @@ use Tests\TestCase;
  * 3. Cache is NOT invalidated when other tenant fields change
  *
  * Note: Cache is tenant-based (tenant_config:{tenant_id}) since all companies
- * within a tenant share the same vertical configuration.
+ * within a tenant share the same vertical configuration. The key lives in the
+ * tenancy-neutral GlobalCache keyspace (never swapped by
+ * CacheTenancyBootstrapper) — see CompanyConfigService.
  */
 class TenantObserverTest extends TestCase
 {
@@ -32,7 +35,7 @@ class TenantObserverTest extends TestCase
     {
         parent::setUp();
 
-        $this->observer = new TenantObserver;
+        $this->observer = new TenantObserver(app(CompanyConfigService::class));
     }
 
     public function test_invalidates_tenant_config_cache_when_vertical_changes(): void
@@ -45,17 +48,17 @@ class TenantObserverTest extends TestCase
 
         // Simulate cache being set
         $cacheKey = "tenant_config:{$tenant->id}";
-        Cache::put($cacheKey, ['test' => 'data'], 3600);
+        GlobalCache::put($cacheKey, ['test' => 'data'], 3600);
 
         // Verify cache exists
-        $this->assertTrue(Cache::has($cacheKey), 'Cache should exist before update');
+        $this->assertTrue(GlobalCache::has($cacheKey), 'Cache should exist before update');
 
         // Change vertical
         $tenant->vertical = 'pharmacy';
         $tenant->save();
 
         // Verify cache was invalidated
-        $this->assertFalse(Cache::has($cacheKey), 'Cache should be invalidated after vertical change');
+        $this->assertFalse(GlobalCache::has($cacheKey), 'Cache should be invalidated after vertical change');
     }
 
     public function test_invalidates_tenant_config_cache_when_enabled_extras_changes(): void
@@ -68,17 +71,17 @@ class TenantObserverTest extends TestCase
 
         // Simulate cache being set
         $cacheKey = "tenant_config:{$tenant->id}";
-        Cache::put($cacheKey, ['test' => 'data'], 3600);
+        GlobalCache::put($cacheKey, ['test' => 'data'], 3600);
 
         // Verify cache exists
-        $this->assertTrue(Cache::has($cacheKey), 'Cache should exist before update');
+        $this->assertTrue(GlobalCache::has($cacheKey), 'Cache should exist before update');
 
         // Change enabled_extras
         $tenant->enabled_extras = ['Fleet'];
         $tenant->save();
 
         // Verify cache was invalidated
-        $this->assertFalse(Cache::has($cacheKey), 'Cache should be invalidated after enabled_extras change');
+        $this->assertFalse(GlobalCache::has($cacheKey), 'Cache should be invalidated after enabled_extras change');
     }
 
     public function test_invalidates_cache_even_with_multiple_companies(): void
@@ -94,17 +97,17 @@ class TenantObserverTest extends TestCase
 
         // Simulate cache being set
         $cacheKey = "tenant_config:{$tenant->id}";
-        Cache::put($cacheKey, ['test' => 'data'], 3600);
+        GlobalCache::put($cacheKey, ['test' => 'data'], 3600);
 
         // Verify cache exists
-        $this->assertTrue(Cache::has($cacheKey));
+        $this->assertTrue(GlobalCache::has($cacheKey));
 
         // Change vertical
         $tenant->vertical = 'pharmacy';
         $tenant->save();
 
         // Verify cache was invalidated (one cache entry per tenant, regardless of company count)
-        $this->assertFalse(Cache::has($cacheKey), 'Tenant cache should be invalidated');
+        $this->assertFalse(GlobalCache::has($cacheKey), 'Tenant cache should be invalidated');
     }
 
     public function test_does_not_invalidate_cache_when_other_fields_change(): void
@@ -118,17 +121,17 @@ class TenantObserverTest extends TestCase
 
         // Simulate cache being set
         $cacheKey = "tenant_config:{$tenant->id}";
-        Cache::put($cacheKey, ['test' => 'data'], 3600);
+        GlobalCache::put($cacheKey, ['test' => 'data'], 3600);
 
         // Verify cache exists
-        $this->assertTrue(Cache::has($cacheKey));
+        $this->assertTrue(GlobalCache::has($cacheKey));
 
         // Change non-vertical field
         $tenant->name = 'Updated Name';
         $tenant->save();
 
         // Verify cache was NOT invalidated
-        $this->assertTrue(Cache::has($cacheKey), 'Cache should NOT be invalidated when non-vertical fields change');
+        $this->assertTrue(GlobalCache::has($cacheKey), 'Cache should NOT be invalidated when non-vertical fields change');
     }
 
     public function test_does_not_throw_error_when_tenant_has_no_companies(): void
@@ -157,10 +160,10 @@ class TenantObserverTest extends TestCase
 
         // Simulate cache being set
         $cacheKey = "tenant_config:{$tenant->id}";
-        Cache::put($cacheKey, ['test' => 'data'], 3600);
+        GlobalCache::put($cacheKey, ['test' => 'data'], 3600);
 
         // Verify cache exists
-        $this->assertTrue(Cache::has($cacheKey));
+        $this->assertTrue(GlobalCache::has($cacheKey));
 
         // Change both vertical and enabled_extras
         $tenant->vertical = 'pharmacy';
@@ -168,6 +171,6 @@ class TenantObserverTest extends TestCase
         $tenant->save();
 
         // Verify cache was invalidated (should only invalidate once)
-        $this->assertFalse(Cache::has($cacheKey), 'Cache should be invalidated when multiple relevant fields change');
+        $this->assertFalse(GlobalCache::has($cacheKey), 'Cache should be invalidated when multiple relevant fields change');
     }
 }

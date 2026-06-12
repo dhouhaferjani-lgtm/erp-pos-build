@@ -9,8 +9,8 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
 use Laravel\Sanctum\Sanctum;
+use Stancl\Tenancy\Facades\GlobalCache;
 use Tests\TestCase;
 
 /**
@@ -179,7 +179,7 @@ class CompanyConfigControllerTest extends TestCase
 
         // Verify cache was set
         $cacheKey = "tenant_config:{$this->mechanicTenant->id}";
-        $this->assertTrue(Cache::has($cacheKey), 'Cache should be set after first request');
+        $this->assertTrue(GlobalCache::has($cacheKey), 'Cache should be set after first request');
 
         // Second request - should hit cache
         $response2 = $this->getJson('/api/v1/company/config');

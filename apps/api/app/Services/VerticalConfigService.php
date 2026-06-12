@@ -6,7 +6,7 @@ namespace App\Services;
 
 use App\Enums\Vertical;
 use App\Models\VerticalConfig;
-use Illuminate\Support\Facades\Cache;
+use Stancl\Tenancy\Facades\GlobalCache;
 
 /**
  * Service for managing vertical configurations
@@ -18,6 +18,16 @@ use Illuminate\Support\Facades\Cache;
  * database overrides the config/verticals.php values per field — a null
  * DB field falls back to the config file value. The DB lookup is cached
  * for 24 hours (including the "no row" result, via a sentinel array).
+ *
+ * CACHE TOPOLOGY — GlobalCache, NOT the Cache facade. The override is read
+ * from tenant context (RequireModule -> CompanyConfigService) but
+ * invalidated from central context (VerticalConfigObserver / admin
+ * controller). CacheTenancyBootstrapper swaps the Cache facade to Stancl's
+ * tagging CacheManager inside tenant context, so Cache-facade reads would
+ * store tagged entries the central untagged forget can never reach. Stancl's
+ * GlobalCache is never swapped — one tenancy-neutral keyspace, isolation by
+ * the vertical embedded in the key. Same mechanism as CompanyConfigService;
+ * regression: tests/Feature/Services/TenantConfigCacheTenancyTest.php.
  */
 class VerticalConfigService
 {
@@ -57,7 +67,7 @@ class VerticalConfigService
      */
     public function invalidateVertical(Vertical $vertical): void
     {
-        Cache::forget(self::CACHE_KEY_PREFIX.$vertical->value);
+        GlobalCache::forget(self::CACHE_KEY_PREFIX.$vertical->value);
     }
 
     /**
@@ -72,7 +82,7 @@ class VerticalConfigService
     private function getOverride(Vertical $vertical): array
     {
         /** @var array{default_modules: array<int, string>|null, compatible_extras: array<int, string>|null} $override */
-        $override = Cache::remember(
+        $override = GlobalCache::remember(
             self::CACHE_KEY_PREFIX.$vertical->value,
             self::CACHE_TTL_SECONDS,
             function () use ($vertical): array {

@@ -7,7 +7,7 @@ namespace App\Services;
 use App\DTOs\CompanyConfig;
 use App\Enums\Vertical;
 use App\Modules\Tenant\Domain\Tenant;
-use Illuminate\Support\Facades\Cache;
+use Stancl\Tenancy\Facades\GlobalCache;
 
 /**
  * Service for managing company effective configuration
@@ -17,6 +17,17 @@ use Illuminate\Support\Facades\Cache;
  *
  * Configuration is cached per tenant for 24 hours since all companies
  * within a tenant share the same vertical and enabled extras.
+ *
+ * CACHE TOPOLOGY — GlobalCache, NOT the Cache facade. In db-per-tenant
+ * mode CacheTenancyBootstrapper swaps the Cache facade to Stancl's tagging
+ * CacheManager while tenancy is initialized, so a tenant-context read
+ * (RequireModule middleware) would store a `tenant<id>`-TAGGED entry that a
+ * central-context forget (TenantObserver / admin fanout) can never reach —
+ * module changes would stay invisible to gating until the 24h TTL. Stancl's
+ * GlobalCache is never swapped, so reads, writes, and forgets always share
+ * one tenancy-neutral keyspace; cross-tenant isolation is preserved by the
+ * tenant id embedded in the key. Regression coverage:
+ * tests/Feature/Services/TenantConfigCacheTenancyTest.php.
  */
 class CompanyConfigService
 {
@@ -38,7 +49,7 @@ class CompanyConfigService
     {
         $cacheKey = $this->cacheKeyForTenant($tenant->id);
 
-        return Cache::remember($cacheKey, self::CACHE_TTL_SECONDS, function () use ($tenant) {
+        return GlobalCache::remember($cacheKey, self::CACHE_TTL_SECONDS, function () use ($tenant) {
             // Get vertical enum from tenant (already cast to Vertical enum by Eloquent)
             $vertical = $tenant->vertical;
 
@@ -72,7 +83,7 @@ class CompanyConfigService
      */
     public function invalidateForTenant(string $tenantId): void
     {
-        Cache::forget($this->cacheKeyForTenant($tenantId));
+        GlobalCache::forget($this->cacheKeyForTenant($tenantId));
     }
 
     /**

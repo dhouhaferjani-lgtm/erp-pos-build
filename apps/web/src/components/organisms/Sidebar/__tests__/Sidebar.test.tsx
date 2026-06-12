@@ -255,9 +255,9 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
     it('maps "services" sidebar key to "Workshop" module name', async () => {
       renderSidebar(mechanicCompanyConfig)
 
-      // allServices is rendered under the Automotive group because its
-      // `module: 'services'` resolves through MODULE_NAME_MAP to Workshop,
-      // which is enabled for the mechanic vertical.
+      // allServices is rendered because its nav item declares the typed
+      // `module: 'Workshop'` prop directly, and Workshop is enabled for the
+      // mechanic vertical.
       const allServicesLink = await screen.findByRole('link', { name: /navigation\.allServices/i })
       expect(allServicesLink).toBeInTheDocument()
     })
@@ -267,15 +267,16 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
     // Regression test for AutoSpecs vertical scoping (Part 2 of the design-audit task).
     //
     // All five AutoSpecs child entries under the Automotive group —
-    //   * vehicles          → MODULE_NAME_MAP.vehicles = Vehicle
-    //   * scheduling        → MODULE_NAME_MAP.scheduling = Workshop
-    //   * workshopWorkOrders→ MODULE_NAME_MAP['workshop-work-orders'] = Workshop
-    //   * workshopBundles   → MODULE_NAME_MAP['workshop-bundles'] = Workshop
-    //   * workshopTechnicians→ MODULE_NAME_MAP['workshop-technicians'] = Workshop
+    //   * vehicles           → module: 'Vehicle'
+    //   * scheduling         → module: 'Workshop'
+    //   * workshopWorkOrders → module: 'Workshop'
+    //   * workshopBundles    → module: 'Workshop'
+    //   * workshopTechnicians→ module: 'Workshop'
     //
-    // must be hidden for any non-automotive vertical. Missing a MODULE_NAME_MAP
-    // entry makes the filter fall through to "always visible", which would leak
-    // workshop links into retail / pharmacy / restaurant sidebars. Guard here.
+    // must be hidden for any non-automotive vertical. Each nav item declares
+    // its typed `module:` prop directly; an item with NO module prop is
+    // always visible, which would leak workshop links into retail / pharmacy
+    // / restaurant sidebars. Guard here.
     const retailConfig: TestCompanyConfig = {
       vertical: 'retail',
       default_modules: ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
@@ -330,9 +331,10 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
 
       await screen.findByRole('button', { name: /navigation\.sales/i })
 
-      // Regression: workshop-technicians was missing from MODULE_NAME_MAP before
-      // the design-audit fix, which caused the filter to fall through to
-      // "always visible" and leaked the entry into retail sidebars.
+      // Regression: workshopTechnicians historically lacked a module
+      // declaration, which caused the filter to fall through to "always
+      // visible" and leaked the entry into retail sidebars. The typed
+      // `module: 'Workshop'` prop on the nav item guards against that.
       const link = screen.queryByRole('link', { name: /navigation\.workshopTechnicians/i })
       expect(link).not.toBeInTheDocument()
     })
