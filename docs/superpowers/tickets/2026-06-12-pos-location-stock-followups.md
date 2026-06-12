@@ -4,6 +4,26 @@ Source: review trail from the `feat/pos-location-aware-stock` implementation.
 
 ---
 
+## Resolution status (2026-06-12 — branch `feat/pos-location-stock-followups`, PR vs `dev`)
+
+All ten resolved (code change or documented decision). Owner decisions for
+FU-1 / FU-9 / FU-10 captured 2026-06-12.
+
+| Ticket | Resolution |
+|--------|------------|
+| FU-1  | ✅ **Decision: keep hard-block + document.** Batch-FEFO always hard-blocks on exhaustion regardless of policy (perishable/lot traceability + concurrency). Documented on `allocateBatches`. |
+| FU-2  | ✅ **Code.** ESLint `no-restricted-syntax` rule (error) bans raw `cartStore.addItem`/`updateQuantity` outside `lib/stock/`; config pinned by an ESLint-API test. Source-pin kept. |
+| FU-3  | ✅ **Code.** `resolveSellerIdentityWithSource()` returns `{ identity, source }`; display callers consume `source`; bare `resolveSellerIdentity` unchanged for the 3 signed sites (no-leak guard test). `buildEscPosReceiptData` → options bag. |
+| FU-4  | ✅ **Documented residual.** Docblock on `cleanupStuckReceipts` + deploy-note (e). Accepted; pull-then-delete if a re-pull gate is ever added. |
+| FU-5  | ✅ **Documented precondition.** C2 alias note in `availability.ts` hardened: alias→canonical resolution MUST precede any Menu-tenant stock enforcement. |
+| FU-6  | ✅ **Code.** 6 `applyAllMigrations` copies hoisted to `migrationTestHelpers.ts`. |
+| FU-7  | ✅ **Decision: document the tolerance.** `'0'` vs `'0.0000'` both valid (bccomp-indifferent); `LocationStockRow` contract clause + characterization test. |
+| FU-8  | ✅ **Documented.** Cross-reference comments on `PER_PAGE` ↔ client loop; client self-adapts via `meta.pagination.last_page` (no shared constant needed). |
+| FU-9  | ✅ **Decision: yes.** `approvalFiscalSync` fires an immediate non-blocking swallowed `pullLocationStock(db,'delta')` after the drain. |
+| FU-10 | ✅ **Decision: keep last-good + amber >15min.** `StockFreshness` turns amber + gains a stale title past 15 min; timestamp still last-good. |
+
+---
+
 ## FU-1: Batch-FEFO deduction ignores `pos_stock_policy`
 
 **Context:** FEFO batch deduction (`ReceiptCreationService` ~:1349-1363) throws `InsufficientBatchStockException` when a sale would exceed batch-tracked stock. This throw path does not consult `pos_stock_policy`; there is no `warn`/`off` equivalent for batch-tracked products.
