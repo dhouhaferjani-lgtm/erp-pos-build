@@ -21,6 +21,7 @@ use App\Modules\Company\Presentation\Requests\CreateCompanyRequest;
 use App\Modules\Company\Presentation\Requests\UpdateCompanyRequest;
 use App\Modules\Company\Presentation\Requests\UpdateReceiptSettingsRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -44,6 +45,7 @@ class CompanyController extends Controller
         private readonly ChartOfAccountsService $chartOfAccountsService,
         private readonly CompanyTaxStatusValidationService $taxStatusValidationService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly CompanyTaxProvisioningService $companyTaxProvisioning,
     ) {}
 
     /**
@@ -156,6 +158,9 @@ class CompanyController extends Controller
                 // Country might not have a seeder yet
                 Log::warning("Could not seed COA for company {$company->id}: ".$e->getMessage());
             }
+
+            // 6. Provision country tax configurations and set company default tax
+            $this->companyTaxProvisioning->provisionForCompany($company);
 
             return $company;
         });

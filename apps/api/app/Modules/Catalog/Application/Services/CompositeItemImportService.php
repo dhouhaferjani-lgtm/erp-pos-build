@@ -8,11 +8,17 @@ use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Enums\PricingMode;
 use App\Modules\Catalog\Domain\Enums\ProductionType;
 use App\Modules\Catalog\Domain\Enums\VerticalType;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Category;
+use App\Modules\Taxation\Domain\Services\TaxResolutionService;
 use App\Shared\Contracts\CompositeItemServiceInterface;
 
 final class CompositeItemImportService implements CompositeItemServiceInterface
 {
+    public function __construct(
+        private readonly TaxResolutionService $taxResolutionService,
+    ) {}
+
     /**
      * @param  array<string, mixed>  $data
      */
@@ -29,9 +35,11 @@ final class CompositeItemImportService implements CompositeItemServiceInterface
             'pricing_mode' => $this->resolvePricingMode($data),
         ];
 
-        if (isset($data['tax_rate']) && $data['tax_rate'] !== '') {
-            $attributes['tax_rate'] = $data['tax_rate'];
-        }
+        // Resolve the tax_rate from the import row.
+        // An empty/absent value in the data means "no explicit rate supplied".
+        $explicitTaxRate = (isset($data['tax_rate']) && $data['tax_rate'] !== '')
+            ? (string) $data['tax_rate']
+            : null;
 
         if (isset($data['manual_cost']) && $data['manual_cost'] !== '') {
             $attributes['manual_cost'] = $data['manual_cost'];
@@ -41,12 +49,14 @@ final class CompositeItemImportService implements CompositeItemServiceInterface
             $attributes['is_active'] = in_array(strtolower((string) $data['is_active']), ['true', '1', 'yes'], true);
         }
 
+        $resolvedCategoryId = null;
         if (isset($data['category_name']) && $data['category_name'] !== '') {
             $category = Category::where('company_id', $companyId)
                 ->where('name', $data['category_name'])
                 ->first();
             if ($category !== null) {
                 $attributes['category_id'] = $category->id;
+                $resolvedCategoryId = $category->id;
             }
         }
 
@@ -56,9 +66,34 @@ final class CompositeItemImportService implements CompositeItemServiceInterface
             ->first();
 
         if ($item !== null) {
+            // Re-import: if the caller supplied an explicit rate, use it.
+            // If no rate was supplied but the composite already has one, preserve it (no clobber).
+            // Only resolve the company default when the existing record has no rate at all.
+            if ($explicitTaxRate !== null) {
+                $attributes['tax_rate'] = $explicitTaxRate;
+            } elseif ($item->tax_rate === null) {
+                $company = Company::where('id', $companyId)->firstOrFail();
+                $attributes['tax_rate'] = $this->taxResolutionService->getDefaultTaxForNewProduct(
+                    $company,
+                    $resolvedCategoryId,
+                );
+            }
+            // else: existing non-null rate is preserved — tax_rate not included in $attributes
+
             $item->update($attributes);
 
             return $item->id;
+        }
+
+        // New composite: resolve tax rate.
+        if ($explicitTaxRate !== null) {
+            $attributes['tax_rate'] = $explicitTaxRate;
+        } else {
+            $company = Company::where('id', $companyId)->firstOrFail();
+            $attributes['tax_rate'] = $this->taxResolutionService->getDefaultTaxForNewProduct(
+                $company,
+                $resolvedCategoryId,
+            );
         }
 
         $item = CompositeItem::create([

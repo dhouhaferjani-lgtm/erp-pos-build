@@ -31,6 +31,7 @@ use App\Modules\Scheduling\Domain\Enums\WaitType;
 use App\Modules\Scheduling\Domain\ScheduleConfig;
 use App\Modules\Service\Domain\Enums\PricingType;
 use App\Modules\Service\Domain\Service;
+use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -218,6 +219,10 @@ class DemoTenantSeeder extends Seeder
             $coaSeeder->setCommand($this->command);
             $coaSeeder->run($company->id, $tenant->id);
         }
+
+        // Provision tax configurations if countries is already seeded
+        // (silent no-op when countries table is empty — see provisionCompanyTax()).
+        $this->provisionCompanyTax($company);
 
         $this->seedAutomotiveCatalog($tenant, $company);
         $this->seedWorkshopTechnicians($tenant, $company, $user);
@@ -1503,6 +1508,7 @@ class DemoTenantSeeder extends Seeder
         );
 
         $this->assignAdminRoleAndMembership($user, $tenant, $company);
+        $this->provisionCompanyTax($company);
 
         $this->command->info("Created trial tenant: {$tenant->name}");
         $this->command->line('  - Email: admin@trial.local');
@@ -1599,6 +1605,7 @@ class DemoTenantSeeder extends Seeder
         );
 
         $this->assignAdminRoleAndMembership($user, $tenant, $company);
+        $this->provisionCompanyTax($company);
 
         $this->command->info("Created professional tenant: {$tenant->name}");
         $this->command->line('  - Email: admin@pro.local');
@@ -1672,6 +1679,7 @@ class DemoTenantSeeder extends Seeder
         );
 
         $this->assignAdminRoleAndMembership($user, $tenant, $company);
+        $this->provisionCompanyTax($company);
 
         $this->command->info("Created retail demo tenant: {$tenant->name}");
         $this->command->line('  - Email: retail@demo.local');
@@ -1745,6 +1753,7 @@ class DemoTenantSeeder extends Seeder
         );
 
         $this->assignAdminRoleAndMembership($user, $tenant, $company);
+        $this->provisionCompanyTax($company);
 
         $this->command->info("Created pharmacy demo tenant: {$tenant->name}");
         $this->command->line('  - Email: pharmacy@demo.local');
@@ -1818,6 +1827,7 @@ class DemoTenantSeeder extends Seeder
         );
 
         $this->assignAdminRoleAndMembership($user, $tenant, $company);
+        $this->provisionCompanyTax($company);
 
         $this->command->info("Created restaurant demo tenant: {$tenant->name}");
         $this->command->line('  - Email: restaurant@demo.local');
@@ -1891,6 +1901,7 @@ class DemoTenantSeeder extends Seeder
         );
 
         $this->assignAdminRoleAndMembership($user, $tenant, $company);
+        $this->provisionCompanyTax($company);
 
         $this->command->info("Created coffee shop demo tenant: {$tenant->name}");
         $this->command->line('  - Email: coffee_shop@demo.local');
@@ -1964,6 +1975,7 @@ class DemoTenantSeeder extends Seeder
         );
 
         $this->assignAdminRoleAndMembership($user, $tenant, $company);
+        $this->provisionCompanyTax($company);
 
         $this->command->info("Created fashion demo tenant: {$tenant->name}");
         $this->command->line('  - Email: fashion@demo.local');
@@ -2037,11 +2049,29 @@ class DemoTenantSeeder extends Seeder
         );
 
         $this->assignAdminRoleAndMembership($user, $tenant, $company);
+        $this->provisionCompanyTax($company);
 
         $this->command->info("Created parapharmacy demo tenant: {$tenant->name}");
         $this->command->line('  - Email: parapharmacy@demo.local');
         $this->command->line('  - Password: password');
         $this->command->line('  - Vertical: parapharmacy');
+    }
+
+    /**
+     * Provision country tax configurations for a demo company (idempotent).
+     *
+     * DemoTenantSeeder does NOT seed `countries` — it creates skeleton tenants
+     * only. If the countries table is empty for this connection,
+     * provisionForCompany() silently returns (failLoudOnMissingCountry: false).
+     * If countries was already seeded (e.g. by DatabaseSeeder), the provisioning
+     * runs and sets company.default_tax_configuration_id + default_tax_rate.
+     */
+    private function provisionCompanyTax(Company $company): void
+    {
+        $provisioning = new CompanyTaxProvisioningService(
+            failLoudOnMissingCountry: false,
+        );
+        $provisioning->provisionForCompany($company);
     }
 
     /**

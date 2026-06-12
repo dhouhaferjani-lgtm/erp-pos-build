@@ -28,6 +28,7 @@ use App\Modules\Product\Domain\HealthClaim;
 use App\Modules\Product\Domain\Ingredient;
 use App\Modules\Product\Domain\KeyComponent;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -130,6 +131,14 @@ final class ParapharmacyMultiBranchSeeder extends ParapharmacySeeder
         // 4. Financial foundation (shared).
         $this->command->info('💰 Setting up financial foundation...');
         $this->setupFinancialFoundation($this->company);
+
+        // 4b. Provision country tax configurations (FR TVA + company default).
+        //     Countries are seeded at step 2 via seedReferenceDataIfMissing().
+        $companyTaxProvisioning = new CompanyTaxProvisioningService(
+            failLoudOnMissingCountry: true,
+        );
+        $companyTaxProvisioning->provisionForCompany($this->company);
+        $this->command->info('✓ Tax configurations provisioned');
 
         // 5. Products (shared — 1000 default; SCALE-aware).
         $this->command->info('📦 Seeding products...');

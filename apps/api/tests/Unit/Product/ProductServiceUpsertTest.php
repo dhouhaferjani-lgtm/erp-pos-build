@@ -29,7 +29,7 @@ class ProductServiceUpsertTest extends TestCase
     {
         parent::setUp();
 
-        $this->service = new ProductService;
+        $this->service = $this->app->make(ProductService::class);
 
         $this->tenant = Tenant::create([
             'name' => 'Test Tenant',
@@ -77,10 +77,9 @@ class ProductServiceUpsertTest extends TestCase
 
         $product = Product::find($id);
         $this->assertNotNull($product);
-        // tax_rate is a decimal(5,2) column; PostgreSQL returns the stored
-        // scale ("19.00") while SQLite returns "19". Compare numerically so the
-        // assertion holds on both drivers.
-        $this->assertEqualsWithDelta(19.0, (float) $product->tax_rate, 0.001);
+        // tax_rate is a decimal(5,2) column; PostgreSQL returns "19.00" while
+        // SQLite returns "19". Use bccomp for driver-agnostic numeric comparison.
+        $this->assertSame(0, bccomp((string) $product->tax_rate, '19.00', 2)); // precision-ok: test assertion, not service-layer math
     }
 
     public function test_upsert_sets_unit(): void
@@ -158,8 +157,11 @@ class ProductServiceUpsertTest extends TestCase
         $this->assertNull($product->category_id);
     }
 
-    public function test_upsert_converts_empty_strings_to_null(): void
+    public function test_upsert_converts_empty_strings_to_null_except_tax_rate(): void
     {
+        // tax_rate '' is treated as "not provided"; the service resolves the company
+        // default (0.00 here since no default_tax_rate is set on the test company)
+        // rather than persisting NULL — the workstream invariant forbids NULL tax_rate.
         $id = $this->service->upsert($this->tenant->id, $this->company->id, [
             'name' => 'Empty Fields',
             'sku' => 'EMPTY-001',
@@ -171,7 +173,8 @@ class ProductServiceUpsertTest extends TestCase
 
         $product = Product::find($id);
         $this->assertNotNull($product);
-        $this->assertNull($product->tax_rate);
+        // tax_rate falls back to '0.00' (company has no default_tax_rate configured)
+        $this->assertSame(0, bccomp((string) $product->tax_rate, '0.00', 2));
         $this->assertNull($product->unit);
         $this->assertNull($product->barcode);
     }

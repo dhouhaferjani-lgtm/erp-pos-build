@@ -6,6 +6,7 @@ namespace App\Modules\Taxation\Domain\Services;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Product;
+use Illuminate\Support\Facades\DB;
 
 class TaxResolutionService
 {
@@ -60,22 +61,31 @@ class TaxResolutionService
     }
 
     /**
-     * Get default tax rate for a new product
+     * Get default tax rate for a new product.
      *
-     * When creating a new product, inherit from category or company
+     * When creating a new product, inherit from category or company:
+     * 1. Category default_tax_rate (if category id given and rate is set)
+     * 2. Company default_tax_rate
+     * 3. '0.00' (hard fallback when neither is configured)
+     *
+     * @param  int|string|null  $categoryId  Category primary-key value. The product `categories`
+     *                                       table uses an integer auto-increment PK, but callers
+     *                                       may pass it as a string from HTTP request payloads, so
+     *                                       both are accepted; the query coerces either.
      */
-    public function getDefaultTaxForNewProduct(Company $company, ?int $categoryId = null): string
+    public function getDefaultTaxForNewProduct(Company $company, int|string|null $categoryId = null): string
     {
-        // If category specified, try to get its default tax rate
         if ($categoryId !== null) {
-            $category = \DB::table('categories')->find($categoryId);
-            /** @var object{default_tax_rate: string|null}|null $category */
-            if ($category !== null && $category->default_tax_rate !== null) {
-                return $category->default_tax_rate;
+            $rate = DB::table('categories')
+                ->where('id', $categoryId)
+                ->where('company_id', $company->id)
+                ->value('default_tax_rate');
+
+            if ($rate !== null) {
+                return (string) $rate;
             }
         }
 
-        // Fallback to company default
         return (string) ($company->default_tax_rate ?? '0.00');
     }
 }
