@@ -23,6 +23,9 @@ Route::prefix('api/v1/channels')
     ->group(function (): void {
         Route::get('/', [ChannelController::class, 'index'])->name('channels.index');
         Route::post('/', [ChannelController::class, 'store'])->name('channels.store');
+        // MUST stay registered before any '{id}/...' route so the literal
+        // 'orders' segment is never captured as a channel {id}.
+        Route::get('orders', [ChannelOrderController::class, 'indexAll'])->name('channels.orders.all');
         Route::post('{id}/test-connection', [ChannelController::class, 'testConnection'])->name('channels.test-connection');
         Route::post('{id}/resync', [ChannelController::class, 'resync'])->name('channels.resync');
         Route::get('{id}/sync-operations', [ChannelSyncOperationController::class, 'index'])->name('channels.sync-operations.index');
