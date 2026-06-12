@@ -2,10 +2,8 @@ import { Fragment, useState } from 'react'
 import { Dialog, DialogPanel, DialogTitle, Transition, TransitionChild } from '@headlessui/react'
 import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import {
-  useUpdateVerticalConfig,
-  getVerticalConfigErrorMessage,
-} from '../hooks/useVerticals'
+import { useUpdateVerticalConfig } from '../hooks/useVerticals'
+import { getVerticalConfigErrorMessage } from '../api'
 import type { AdminVerticalConfig } from '../types'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 

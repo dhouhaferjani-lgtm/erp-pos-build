@@ -1,3 +1,4 @@
+import axios from 'axios'
 import { apiPost, ensureCsrfCookie } from '@/lib/api'
 import { adminApiGet, adminApiGetPaginated, adminApiPost, adminApiPatch, adminApiPut } from '../lib/adminApi'
 import type {
@@ -154,6 +155,24 @@ export async function updateVerticalConfig(
   payload: UpdateVerticalConfigRequest
 ): Promise<AdminVerticalConfig> {
   return adminApiPut<AdminVerticalConfig>(`/admin/verticals/${vertical}`, payload)
+}
+
+/**
+ * The verticals endpoints return validation failures as a flat
+ * `{ error: string, valid_modules: string[] }` 422 body (NOT the standard
+ * `{ error: { code, message } }` envelope), so getErrorMessage() cannot
+ * extract it. This pulls the flat string out when present.
+ */
+export function getVerticalConfigErrorMessage(error: unknown): string | null {
+  if (!axios.isAxiosError(error)) {
+    return null
+  }
+  const data: unknown = error.response?.data
+  if (typeof data !== 'object' || data === null || !('error' in data)) {
+    return null
+  }
+  const { error: errorValue } = data
+  return typeof errorValue === 'string' ? errorValue : null
 }
 
 // ============================================================================

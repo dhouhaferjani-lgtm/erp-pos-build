@@ -1,5 +1,7 @@
 import { render, screen, within, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { AxiosError, AxiosHeaders } from 'axios'
+import type { AxiosResponse } from 'axios'
 import { VerticalConfigModal } from '../components/VerticalConfigModal'
 import type { AdminVerticalConfig } from '../types'
 
@@ -121,11 +123,21 @@ describe('VerticalConfigModal', () => {
   })
 
   it('surfaces the server 422 error text', () => {
+    const response: AxiosResponse = {
+      status: 422,
+      statusText: 'Unprocessable Entity',
+      data: { error: 'Invalid module names: bogus' },
+      headers: {},
+      config: { headers: new AxiosHeaders() },
+    }
     mockMutation({
-      error: {
-        isAxiosError: true,
-        response: { status: 422, data: { error: 'Invalid module names: bogus' } },
-      },
+      error: new AxiosError(
+        'Request failed with status code 422',
+        AxiosError.ERR_BAD_REQUEST,
+        undefined,
+        undefined,
+        response
+      ),
     })
 
     render(
