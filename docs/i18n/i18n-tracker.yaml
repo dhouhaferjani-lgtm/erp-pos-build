@@ -4,11 +4,11 @@
 
 summary:
   web:
-    en_keys: 6454
+    en_keys: 6517
     missing_fr: 54
-    identical_fr: 194
+    identical_fr: 205
     extra_fr: 22
-    hardcoded_candidates: 663
+    hardcoded_candidates: 601
   pos:
     en_keys: 833
     missing_fr: 0
@@ -17,31 +17,6 @@ summary:
     hardcoded_candidates: 0
 
 clusters:
-  - id: web:components
-    status: pending
-    candidates: 77
-    files:
-      - { count: 20, path: apps/web/src/components/organisms/AddCompanyModal/AddCompanyModal.tsx }
-      - { count: 18, path: apps/web/src/components/organisms/AddLocationModal/AddLocationModal.tsx }
-      - { count: 6, path: apps/web/src/components/organisms/AddVehicleModal/AddVehicleModal.tsx }
-      - { count: 6, path: apps/web/src/components/organisms/InventorySettings/InventorySettings.tsx }
-      - { count: 5, path: apps/web/src/components/organisms/AddRepositoryModal/AddRepositoryModal.tsx }
-      - { count: 4, path: apps/web/src/components/organisms/LocationSelector/LocationSelector.tsx }
-      - { count: 3, path: apps/web/src/components/organisms/CompanySelector/CompanySelector.tsx }
-      - { count: 2, path: apps/web/src/components/ui/filters/DateRangeFilter.tsx }
-      - { count: 1, path: apps/web/src/components/catalog/CategoryTree.tsx }
-      - { count: 1, path: apps/web/src/components/molecules/Breadcrumb/Breadcrumb.tsx }
-      - { count: 1, path: apps/web/src/components/organisms/AdditionalCostsForm/AdditionalCostsForm.tsx }
-      - { count: 1, path: apps/web/src/components/organisms/LandedCostBreakdown/LandedCostBreakdown.tsx }
-      - { count: 1, path: apps/web/src/components/organisms/Modal/Modal.tsx }
-      - { count: 1, path: apps/web/src/components/organisms/ProductPricingCard/ProductPricingCard.tsx }
-      - { count: 1, path: apps/web/src/components/organisms/TopBar/TopBar.tsx }
-      - { count: 1, path: apps/web/src/components/ui/ConfirmDialog.tsx }
-      - { count: 1, path: apps/web/src/components/ui/DocumentSearchSelect.tsx }
-      - { count: 1, path: apps/web/src/components/ui/LocationSelector.tsx }
-      - { count: 1, path: apps/web/src/components/ui/PartnerSearchSelect.tsx }
-      - { count: 1, path: apps/web/src/components/ui/ProductSearchSelect.tsx }
-      - { count: 1, path: apps/web/src/components/ui/filters/SearchFilter.tsx }
   - id: web:inventory
     status: pending
     candidates: 53
@@ -86,6 +61,24 @@ clusters:
     candidates: 21
     files:
       - { count: 21, path: apps/web/src/features/vehicles/VehicleForm.tsx }
+  - id: web:components
+    status: pending
+    candidates: 15
+    files:
+      - { count: 2, path: apps/web/src/components/ui/filters/DateRangeFilter.tsx }
+      - { count: 1, path: apps/web/src/components/catalog/CategoryTree.tsx }
+      - { count: 1, path: apps/web/src/components/molecules/Breadcrumb/Breadcrumb.tsx }
+      - { count: 1, path: apps/web/src/components/organisms/AdditionalCostsForm/AdditionalCostsForm.tsx }
+      - { count: 1, path: apps/web/src/components/organisms/LandedCostBreakdown/LandedCostBreakdown.tsx }
+      - { count: 1, path: apps/web/src/components/organisms/Modal/Modal.tsx }
+      - { count: 1, path: apps/web/src/components/organisms/ProductPricingCard/ProductPricingCard.tsx }
+      - { count: 1, path: apps/web/src/components/organisms/TopBar/TopBar.tsx }
+      - { count: 1, path: apps/web/src/components/ui/ConfirmDialog.tsx }
+      - { count: 1, path: apps/web/src/components/ui/DocumentSearchSelect.tsx }
+      - { count: 1, path: apps/web/src/components/ui/LocationSelector.tsx }
+      - { count: 1, path: apps/web/src/components/ui/PartnerSearchSelect.tsx }
+      - { count: 1, path: apps/web/src/components/ui/ProductSearchSelect.tsx }
+      - { count: 1, path: apps/web/src/components/ui/filters/SearchFilter.tsx }
   - id: web:pos
     status: pending
     candidates: 15
@@ -294,6 +287,7 @@ parity:
         - navigation.crm
         - navigation.ecommerce
         - locations.code
+        - locations.modal.cityPlaceholder
         - table.actionsColumn
         - pagination.page
         - actionsLabel
@@ -434,6 +428,8 @@ parity:
         - fields.source
         - drawer.sectionServices
       settings:
+        - company.modal.cityPlaceholder
+        - company.modal.taxIdPlaceholder
         - appInfo.version
         - tax.configurations.table.code
         - tax.configurations.table.actions
@@ -449,6 +445,10 @@ parity:
         - detail.summary.destination
       treasury:
         - payments.fields.document
+        - repositories.code
+        - repositories.bic
+        - repositories.ibanPlaceholder
+        - repositories.bicPlaceholder
         - paymentMethods.code
         - paymentMethods.table.code
         - paymentMethods.table.actions
@@ -465,6 +465,10 @@ parity:
       vehicles:
         - vin
         - transmission
+        - placeholders.licensePlate
+        - placeholders.vin
+        - placeholders.brand
+        - placeholders.model
       vouchers:
         - fields.code
         - fields.source

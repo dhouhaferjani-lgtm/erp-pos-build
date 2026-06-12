@@ -32,6 +32,18 @@
   },
   "created": "Cree",
   "updated": "Mis a jour",
+  "vinValidation": "Le NIV doit comporter 17 caractères (sans I, O, Q)",
+  "yearMin": "L'année doit être postérieure à 1900",
+  "yearMax": "L'année est trop éloignée dans le futur",
+  "addVehicleHint": "Création rapide du véhicule. Vous pourrez ajouter plus de détails (carburant, transmission, kilométrage, etc.) en modifiant le véhicule ultérieurement.",
+  "placeholders": {
+    "licensePlate": "AB-123-CD",
+    "vin": "VF1RFB00X51234567",
+    "brand": "Renault",
+    "model": "Clio",
+    "color": "Bleu",
+    "year": "2020"
+  },
   "empty": {
     "title": "Aucun vehicule",
     "description": "Commencez par ajouter votre premier vehicule."

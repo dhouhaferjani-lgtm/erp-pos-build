@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { X, Loader2 } from 'lucide-react'
 import { createLocation, type CreateLocationInput, transformLocationResponse } from '../../../features/location/api'
 import { useInvalidateLocations } from '../../../features/location/LocationProvider'
@@ -13,21 +14,19 @@ interface AddLocationModalProps {
 }
 
 /**
- * Location types with labels
- */
-const LOCATION_TYPES: { value: LocationType; label: string; description: string }[] = [
-  { value: 'shop', label: 'Shop', description: 'Customer-facing retail location' },
-  { value: 'warehouse', label: 'Warehouse', description: 'Storage and distribution center' },
-  { value: 'office', label: 'Office', description: 'Administrative location' },
-  { value: 'mobile', label: 'Mobile', description: 'Mobile service unit' },
-]
-
-/**
  * Modal for adding a new location
  */
 export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
+  const { t } = useTranslation(['common'])
   const invalidateLocations = useInvalidateLocations()
   const setCurrentLocation = useLocationStore((state) => state.setCurrentLocation)
+
+  const LOCATION_TYPES: { value: LocationType; label: string; description: string }[] = [
+    { value: 'shop', label: t('common:locations.types.shop'), description: t('common:locations.typeDescriptions.shop') },
+    { value: 'warehouse', label: t('common:locations.types.warehouse'), description: t('common:locations.typeDescriptions.warehouse') },
+    { value: 'office', label: t('common:locations.types.office'), description: t('common:locations.typeDescriptions.office') },
+    { value: 'mobile', label: t('common:locations.types.mobile'), description: t('common:locations.typeDescriptions.mobile') },
+  ]
 
   const [formData, setFormData] = useState({
     name: '',
@@ -81,7 +80,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
     setError(null)
 
     if (!formData.name.trim()) {
-      setError('Location name is required')
+      setError(t('common:locations.modal.locationNameRequired'))
       return
     }
 
@@ -116,12 +115,12 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
       <div className="relative mx-4 w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">Add New Location</h2>
+          <h2 className="text-xl font-semibold text-gray-900">{t('common:locations.modal.addTitle')}</h2>
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-            aria-label="Close"
+            aria-label={t('common:actions.close')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -139,7 +138,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
           {/* Location Type */}
           <div>
             <label htmlFor="type" className="block text-sm font-medium text-gray-700">
-              Location Type <span className="text-red-500">*</span>
+              {t('common:locations.form.type')} <span className="text-red-500">*</span>
             </label>
             <select
               id="type"
@@ -155,14 +154,14 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
               ))}
             </select>
             <p className="mt-1 text-xs text-gray-500">
-              {LOCATION_TYPES.find((t) => t.value === formData.type)?.description}
+              {LOCATION_TYPES.find((ltype) => ltype.value === formData.type)?.description}
             </p>
           </div>
 
           {/* Location Name */}
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-              Location Name <span className="text-red-500">*</span>
+              {t('common:locations.form.name')} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
@@ -170,7 +169,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
               name="name"
               value={formData.name}
               onChange={handleChange}
-              placeholder="Main Warehouse"
+              placeholder={t('common:locations.modal.namePlaceholder')}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               required
             />
@@ -179,7 +178,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
           {/* Location Code */}
           <div>
             <label htmlFor="code" className="block text-sm font-medium text-gray-700">
-              Location Code
+              {t('common:locations.form.code')}
             </label>
             <input
               type="text"
@@ -187,11 +186,11 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
               name="code"
               value={formData.code}
               onChange={handleChange}
-              placeholder="WH-001 (auto-generated if empty)"
+              placeholder={t('common:locations.modal.codePlaceholder')}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Leave empty to auto-generate
+              {t('common:common.leaveBlankForAutoGenerate')}
             </p>
           </div>
 
@@ -199,7 +198,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email
+                {t('common:locations.form.email')}
               </label>
               <input
                 type="email"
@@ -207,13 +206,13 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
                 name="email"
                 value={formData.email}
                 onChange={handleChange}
-                placeholder="warehouse@company.com"
+                placeholder={t('common:locations.modal.emailPlaceholder')}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
             <div>
               <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                Phone
+                {t('common:locations.form.phone')}
               </label>
               <input
                 type="tel"
@@ -221,7 +220,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
                 name="phone"
                 value={formData.phone}
                 onChange={handleChange}
-                placeholder="+33 1 23 45 67 89"
+                placeholder={t('common:locations.modal.phonePlaceholder')}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
@@ -230,7 +229,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
           {/* Address */}
           <div>
             <label htmlFor="addressStreet" className="block text-sm font-medium text-gray-700">
-              Street Address
+              {t('common:locations.form.address')}
             </label>
             <input
               type="text"
@@ -238,7 +237,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
               name="addressStreet"
               value={formData.addressStreet}
               onChange={handleChange}
-              placeholder="123 Industrial Ave"
+              placeholder={t('common:locations.modal.streetPlaceholder')}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -246,7 +245,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label htmlFor="addressCity" className="block text-sm font-medium text-gray-700">
-                City
+                {t('common:locations.form.city')}
               </label>
               <input
                 type="text"
@@ -254,13 +253,13 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
                 name="addressCity"
                 value={formData.addressCity}
                 onChange={handleChange}
-                placeholder="Paris"
+                placeholder={t('common:locations.modal.cityPlaceholder')}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
             <div>
               <label htmlFor="addressPostalCode" className="block text-sm font-medium text-gray-700">
-                Postal Code
+                {t('common:locations.form.postalCode')}
               </label>
               <input
                 type="text"
@@ -268,7 +267,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
                 name="addressPostalCode"
                 value={formData.addressPostalCode}
                 onChange={handleChange}
-                placeholder="75001"
+                placeholder={t('common:locations.modal.postalCodePlaceholder')}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
@@ -285,7 +284,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
               className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <label htmlFor="posEnabled" className="text-sm font-medium text-gray-700">
-              Enable Point of Sale (POS)
+              {t('common:locations.form.posEnabled')}
             </label>
           </div>
 
@@ -297,7 +296,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
               className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               disabled={mutation.isPending}
             >
-              Cancel
+              {t('common:actions.cancel')}
             </button>
             <button
               type="submit"
@@ -305,7 +304,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
               disabled={mutation.isPending}
             >
               {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Create Location
+              {t('common:locations.modal.createButton')}
             </button>
           </div>
         </form>

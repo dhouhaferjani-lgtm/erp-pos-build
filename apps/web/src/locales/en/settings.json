@@ -78,6 +78,20 @@
       "dateFormat": "Date Format",
       "language": "Language"
     },
+    "modal": {
+      "title": "Add New Company",
+      "currencyTimezone": "Currency: {{currency}} | Timezone: {{timezone}}",
+      "createButton": "Create Company",
+      "companyNameRequired": "Company name is required",
+      "namePlaceholder": "My Company",
+      "legalNamePlaceholder": "My Company SARL",
+      "emailPlaceholder": "contact@company.com",
+      "phonePlaceholder": "+33 1 23 45 67 89",
+      "streetPlaceholder": "123 Main Street",
+      "cityPlaceholder": "Paris",
+      "postalCodePlaceholder": "75001",
+      "taxIdPlaceholder": "FR12345678901"
+    },
     "actions": {
       "replaceLogo": "Replace"
     },

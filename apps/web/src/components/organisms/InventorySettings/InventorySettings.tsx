@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
+import { tokens } from '../../../lib/designTokens'
 
 export interface MarginSettings {
   defaultTargetMargin: number
@@ -20,7 +21,7 @@ export function InventorySettings({
   onSave,
   disabled = false,
 }: InventorySettingsProps) {
-  const { t } = useTranslation(['inventory'])
+  const { t } = useTranslation(['inventory', 'common'])
   const [formData, setFormData] = useState<MarginSettings>(settings)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -33,7 +34,7 @@ export function InventorySettings({
     try {
       await onSave(formData)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save settings')
+      setError(err instanceof Error ? err.message : t('inventory:settings.saveError'))
     } finally {
       setIsSaving(false)
     }
@@ -52,7 +53,7 @@ export function InventorySettings({
       </h2>
 
       {error && (
-        <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+        <div className={`mb-4 rounded-lg p-3 text-sm dark:bg-red-900/20 dark:text-red-400 ${tokens.alert.error}`}>
           {error}
         </div>
       )}
@@ -88,7 +89,7 @@ export function InventorySettings({
             </span>
           </div>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            The target margin percentage for new products
+            {t('inventory:pricing.settings.targetDescription')}
           </p>
         </div>
 
@@ -122,7 +123,7 @@ export function InventorySettings({
             </span>
           </div>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            The minimum acceptable margin percentage
+            {t('inventory:pricing.settings.minimumDescription')}
           </p>
         </div>
 
@@ -149,7 +150,7 @@ export function InventorySettings({
               {t('inventory:pricing.settings.requireApprovalBelow')}
             </label>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Require manager approval for prices below minimum margin
+              {t('inventory:pricing.settings.requireApprovalDescription')}
             </p>
           </div>
         </div>
@@ -177,7 +178,7 @@ export function InventorySettings({
               {t('inventory:pricing.settings.blockSalesAtLoss')}
             </label>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Prevent selling products below their cost price
+              {t('inventory:pricing.settings.blockSalesDescription')}
             </p>
           </div>
         </div>
@@ -190,15 +191,15 @@ export function InventorySettings({
             disabled={disabled || isSaving || !hasChanges}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
           >
-            Reset
+            {t('common:actions.reset')}
           </button>
           <button
             type="submit"
             disabled={disabled || isSaving || !hasChanges}
-            className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50 ${tokens.button.primary}`}
           >
             {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-            Save Changes
+            {t('inventory:pricing.settings.saveChanges')}
           </button>
         </div>
       </form>

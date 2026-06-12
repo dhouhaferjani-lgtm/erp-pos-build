@@ -289,11 +289,32 @@
     "default": "Default",
     "posEnabled": "POS Enabled",
     "code": "Code",
+    "selectLocation": "Select location",
+    "switchLocation": "Switch Location",
+    "currentLocation": "Current: {{name}}",
     "types": {
       "shop": "Shop",
       "warehouse": "Warehouse",
       "office": "Office",
       "mobile": "Mobile Unit"
+    },
+    "typeDescriptions": {
+      "shop": "Customer-facing retail location",
+      "warehouse": "Storage and distribution center",
+      "office": "Administrative location",
+      "mobile": "Mobile service unit"
+    },
+    "modal": {
+      "addTitle": "Add New Location",
+      "locationNameRequired": "Location name is required",
+      "createButton": "Create Location",
+      "namePlaceholder": "Main Warehouse",
+      "codePlaceholder": "WH-001",
+      "emailPlaceholder": "warehouse@company.com",
+      "phonePlaceholder": "+33 1 23 45 67 89",
+      "streetPlaceholder": "123 Industrial Ave",
+      "cityPlaceholder": "Paris",
+      "postalCodePlaceholder": "75001"
     },
     "form": {
       "name": "Location Name",
@@ -327,6 +348,11 @@
       "deleted": "Location deleted successfully",
       "defaultSet": "Default location updated"
     }
+  },
+  "company": {
+    "select": "Select company",
+    "switchCompany": "Switch Company",
+    "addCompany": "Add Company"
   },
   "table": {
     "actionsColumn": "Actions",

@@ -78,6 +78,20 @@
       "dateFormat": "Format de date",
       "language": "Langue"
     },
+    "modal": {
+      "title": "Ajouter une entreprise",
+      "currencyTimezone": "Devise : {{currency}} | Fuseau horaire : {{timezone}}",
+      "createButton": "Créer l'entreprise",
+      "companyNameRequired": "Le nom de l'entreprise est requis",
+      "namePlaceholder": "Mon Entreprise",
+      "legalNamePlaceholder": "Mon Entreprise SARL",
+      "emailPlaceholder": "contact@entreprise.com",
+      "phonePlaceholder": "+33 1 23 45 67 89",
+      "streetPlaceholder": "123 Rue Principale",
+      "cityPlaceholder": "Paris",
+      "postalCodePlaceholder": "75001",
+      "taxIdPlaceholder": "FR12345678901"
+    },
     "actions": {
       "replaceLogo": "Remplacer"
     },

@@ -298,12 +298,18 @@
       "defaultTarget": "Default Target Margin",
       "defaultMinimum": "Default Minimum Margin",
       "requireApprovalBelow": "Require Approval Below Minimum",
-      "blockSalesAtLoss": "Block Sales at Loss"
+      "blockSalesAtLoss": "Block Sales at Loss",
+      "targetDescription": "The target margin percentage for new products",
+      "minimumDescription": "The minimum acceptable margin percentage",
+      "requireApprovalDescription": "Require manager approval for prices below minimum margin",
+      "blockSalesDescription": "Prevent selling products below their cost price",
+      "saveChanges": "Save Changes"
     }
   },
   "settings": {
     "title": "Inventory & Pricing Settings",
     "description": "Configure inventory costing methods and default margin policies for your company.",
+    "saveError": "Failed to save settings",
     "costing": {
       "title": "Inventory Costing Method",
       "description": "Choose how product costs are calculated when inventory is received.",

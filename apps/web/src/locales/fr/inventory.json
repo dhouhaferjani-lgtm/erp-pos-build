@@ -298,12 +298,18 @@
       "defaultTarget": "Marge cible par défaut",
       "defaultMinimum": "Marge minimum par défaut",
       "requireApprovalBelow": "Approbation requise sous le minimum",
-      "blockSalesAtLoss": "Bloquer les ventes à perte"
+      "blockSalesAtLoss": "Bloquer les ventes à perte",
+      "targetDescription": "Le pourcentage de marge cible pour les nouveaux produits",
+      "minimumDescription": "Le pourcentage de marge minimum acceptable",
+      "requireApprovalDescription": "Requiert l'approbation du responsable pour les prix inférieurs à la marge minimum",
+      "blockSalesDescription": "Empêcher la vente de produits en dessous de leur prix de revient",
+      "saveChanges": "Enregistrer les modifications"
     }
   },
   "settings": {
     "title": "Paramètres d'inventaire et tarification",
     "description": "Configurer les méthodes de coût d'inventaire et les politiques de marge par défaut pour votre entreprise.",
+    "saveError": "Échec de l'enregistrement des paramètres",
     "costing": {
       "title": "Méthode de coût d'inventaire",
       "description": "Choisissez comment les coûts des produits sont calculés lors de la réception de l'inventaire.",
