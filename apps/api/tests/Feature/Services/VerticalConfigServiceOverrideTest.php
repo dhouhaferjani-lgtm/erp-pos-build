@@ -79,10 +79,16 @@ class VerticalConfigServiceOverrideTest extends TestCase
             $this->service->getDefaultModules(Vertical::Fashion)
         );
 
-        VerticalConfig::query()->create([
+        // Insert via raw query so the VerticalConfigObserver saved-hook
+        // (T2 self-enforcing invalidation) does NOT fire — this test covers
+        // the manual invalidateVertical() API in isolation. Eloquent writes
+        // self-invalidate; that path is covered in VerticalConfigManagementTest.
+        (new VerticalConfig)->getConnection()->table('vertical_configs')->insert([
             'vertical' => Vertical::Fashion->value,
-            'default_modules' => ['Identity', 'Tenant', 'Catalog'],
+            'default_modules' => json_encode(['Identity', 'Tenant', 'Catalog']),
             'compatible_extras' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         // Cached sentinel still wins: the new row must NOT be visible yet.
