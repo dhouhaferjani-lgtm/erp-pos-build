@@ -276,6 +276,25 @@ describe('pullLocationStock — gates', () => {
     expect(fetchLocationStock).not.toHaveBeenCalled();
     expect(setSyncMetadata).not.toHaveBeenCalled();
   });
+
+  it('explicit opts.terminalId overrides an empty store (boot/claim ordering)', async () => {
+    // Load-bearing: claim paths call seedOfflineHashChain BEFORE
+    // set({ terminal }) — without the override the boot full-pull would
+    // silently no-op. Pin that the explicit id wins over a null store.
+    terminalState.terminal = null;
+    vi.mocked(fetchLocationStock).mockResolvedValueOnce(
+      makePage({ stock: [stockRow('p-1')] }),
+    );
+
+    const result = await pullLocationStock(db, 'full', { terminalId: 'term-override' });
+
+    expect(result.count).toBe(1);
+    expect(fetchLocationStock).toHaveBeenCalledWith(
+      'term-override',
+      expect.objectContaining({ page: '1' }),
+      expect.anything(),
+    );
+  });
 });
 
 describe('pullLocationStock — error classification (mirrors pullProductsCore)', () => {

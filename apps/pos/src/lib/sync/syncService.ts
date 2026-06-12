@@ -856,6 +856,9 @@ export async function pullLocationStock(
 ): Promise<{ count: number }> {
   const gate = await resolveCatalogTenantGate();
   if (gate.decision !== 'standard') {
+    // No defer breadcrumb here: pullProducts logs the single
+    // config-unknown defer for the cycle — a second row per tick would
+    // just duplicate it. Menu tenants are a silent permanent skip.
     return { count: 0 };
   }
 
