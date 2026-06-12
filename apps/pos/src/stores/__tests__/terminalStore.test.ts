@@ -356,6 +356,52 @@ describe('terminalStore', () => {
     expect(useTerminalStore.getState().shift).toBeNull();
   });
 
+  it('fetchCurrentShift preserves device-local fiscal ids when the server returns the same shift', async () => {
+    // fiscal_shift_id / fiscal_session_id are minted on the DEVICE at shift
+    // open (Z-session authoring) — the server's shift payload never carries
+    // them. Overwriting the cached shift wholesale on app restart severed
+    // the live shift from its SESSION_OPEN fiscal event, silently flipping
+    // the X report onto the (retired-for-v3) server path.
+    useTerminalStore.setState({ terminal: mockTerminal });
+    const cachedFiscalShift: Shift = {
+      ...mockShift,
+      fiscal_shift_id: 'fiscal-shift-1',
+      fiscal_session_id: 'fiscal-session-1',
+    };
+    vi.mocked(getStoredValue).mockResolvedValue(cachedFiscalShift);
+    vi.mocked(apiGet).mockResolvedValue({ ...mockShift });
+
+    await useTerminalStore.getState().fetchCurrentShift();
+
+    const shift = useTerminalStore.getState().shift;
+    expect(shift?.fiscal_shift_id).toBe('fiscal-shift-1');
+    expect(shift?.fiscal_session_id).toBe('fiscal-session-1');
+    expect(setStoredValue).toHaveBeenCalledWith('current_shift', expect.objectContaining({
+      id: mockShift.id,
+      fiscal_shift_id: 'fiscal-shift-1',
+      fiscal_session_id: 'fiscal-session-1',
+    }));
+  });
+
+  it('fetchCurrentShift does NOT carry cached fiscal ids onto a different shift', async () => {
+    useTerminalStore.setState({ terminal: mockTerminal });
+    const staleCachedShift: Shift = {
+      ...mockShift,
+      id: 'shift-OLD',
+      fiscal_shift_id: 'fiscal-shift-old',
+      fiscal_session_id: 'fiscal-session-old',
+    };
+    vi.mocked(getStoredValue).mockResolvedValue(staleCachedShift);
+    vi.mocked(apiGet).mockResolvedValue({ ...mockShift });
+
+    await useTerminalStore.getState().fetchCurrentShift();
+
+    const shift = useTerminalStore.getState().shift;
+    expect(shift?.id).toBe(mockShift.id);
+    expect(shift?.fiscal_shift_id).toBeUndefined();
+    expect(shift?.fiscal_session_id).toBeUndefined();
+  });
+
   it('closeShift clears shift even when API fails (offline)', async () => {
     useTerminalStore.setState({ terminal: mockTerminal, shift: mockShift });
     vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));

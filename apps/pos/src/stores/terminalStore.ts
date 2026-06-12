@@ -676,13 +676,27 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     if (!terminal) return;
 
     try {
-      const shift = await apiGet<Shift | null>(`/pos/shifts/current/${terminal.code}`);
-      if (shift) {
+      const serverShift = await apiGet<Shift | null>(`/pos/shifts/current/${terminal.code}`);
+      if (serverShift) {
+        // fiscal_shift_id / fiscal_session_id are minted on the DEVICE at
+        // shift open (Z-session authoring) — the server payload never
+        // carries them. Merge them back from the cached shift, or an app
+        // restart severs the live shift from its SESSION_OPEN fiscal event
+        // and X/Z authoring breaks for the rest of the shift.
+        const cached = await getStoredValue<Shift>(StorageKeys.SHIFT);
+        const shift: Shift = cached && cached.id === serverShift.id
+          ? {
+              ...serverShift,
+              fiscal_shift_id: serverShift.fiscal_shift_id ?? cached.fiscal_shift_id,
+              fiscal_session_id: serverShift.fiscal_session_id ?? cached.fiscal_session_id,
+            }
+          : serverShift;
         await setStoredValue(StorageKeys.SHIFT, shift);
+        set({ shift });
       } else {
         await removeStoredValue(StorageKeys.SHIFT);
+        set({ shift: null });
       }
-      set({ shift });
     } catch {
       // Offline fallback: restore from persistent storage
       const cachedShift = await getStoredValue<Shift>(StorageKeys.SHIFT);
