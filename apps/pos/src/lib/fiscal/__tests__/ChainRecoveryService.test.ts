@@ -16,6 +16,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setWriter, __resetWriteGateForTesting } from '@/lib/db/writeGate';
+import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
 
 import { migrations } from '@/lib/db/migrations';
 import {
@@ -260,6 +262,8 @@ d('ChainRecoveryService.recordBreakAndRestart', () => {
 
   beforeEach(async () => {
     adapter = new SqliteTestAdapter();
+    __resetWriteGateForTesting();
+    setWriter(adapter as unknown as SqlSurface);
     await runMigrationsUpTo(adapter, 38);
     await seedTerminalState(adapter);
     const engine = new FiscalEventEngine(adapter, encoder, integrityProvider, registry);

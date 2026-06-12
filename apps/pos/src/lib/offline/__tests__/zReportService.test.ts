@@ -7,6 +7,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { setWriter, __resetWriteGateForTesting } from '@/lib/db/writeGate';
+import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
 
 // ─── Hoist mocks before any imports ──────────────────────────────────────────
 
@@ -242,6 +244,8 @@ describe('generateZReport', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     db = makeMockDb();
+    __resetWriteGateForTesting();
+    setWriter(db as unknown as SqlSurface);
   });
 
   describe('without cash counts (backwards-compatible)', () => {
@@ -697,7 +701,8 @@ describe('generateZReport', () => {
       );
 
       const executeCalls = vi.mocked(db.execute).mock.calls.map((c) => c[0]);
-      expect(executeCalls).toContain('BEGIN TRANSACTION');
+      // Single-writer gate opens IMMEDIATE (takes the write lock up front).
+      expect(executeCalls).toContain('BEGIN IMMEDIATE TRANSACTION');
       expect(executeCalls).toContain('COMMIT');
       expect(insertZReport).toHaveBeenCalledOnce();
       expect(insertZReportCounts).toHaveBeenCalledOnce();

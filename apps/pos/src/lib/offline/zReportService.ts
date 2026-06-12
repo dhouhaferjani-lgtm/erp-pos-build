@@ -44,6 +44,7 @@ import {
   type CashCountThresholds,
 } from '@/lib/offline/cashCountValidation';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
+import { withWriteTransaction } from '@/lib/db/writeGate';
 import {
   appendZSessionCloseAndZReport,
   type AuthorZSessionCloseInput,
@@ -421,14 +422,16 @@ export async function generateZReport(
   }
 
   // 12. Persist atomically: insert Z-report + (optionally) cash count rows + advance Z-chain + update grand totals
-  await db.execute('BEGIN TRANSACTION');
-  try {
-    await insertZReport(db, zReport);
+  // Single-writer architecture: the whole block is ONE exclusive write-gate
+  // job on the single connection (fiscal lane) — see writeGate.ts.
+  await withWriteTransaction('fiscal', async (tx) => {
+    const txDb = tx as unknown as Database;
+    await insertZReport(txDb, zReport);
     if (zReportCountRows !== null && zReportCountRows.length > 0) {
-      await insertZReportCounts(db, zReportCountRows);
+      await insertZReportCounts(txDb, zReportCountRows);
     }
-    await advanceZChain(db, terminalId, fiscalHash, newHashSequence, newZNumber);
-    await updateGrandTotals(db, terminalId, grossSalesStr, taxStr, refundsStr, salesCount);
+    await advanceZChain(txDb, terminalId, fiscalHash, newHashSequence, newZNumber);
+    await updateGrandTotals(txDb, terminalId, grossSalesStr, taxStr, refundsStr, salesCount);
 
     const closeInput = buildFiscalCloseInput({
       companyId,
@@ -451,14 +454,9 @@ export async function generateZReport(
     });
     if (closeInput !== null && companyId !== null) {
       const engine = await getFiscalEventEngine(companyId, db);
-      await appendZSessionCloseAndZReport(db, engine, closeInput);
+      await appendZSessionCloseAndZReport(tx, engine, closeInput);
     }
-
-    await db.execute('COMMIT');
-  } catch (error) {
-    await db.execute('ROLLBACK');
-    throw error;
-  }
+  });
 
   return zReport;
 }
