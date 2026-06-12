@@ -9,6 +9,7 @@
 import type Database from '@tauri-apps/plugin-sql';
 import Big from 'big.js';
 import { queryAll } from '@/lib/db';
+import { toSqliteUtc } from '@/lib/db/sqliteTime';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bcabs, bcsub, bcformat, bccomp } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
@@ -168,7 +169,10 @@ export async function generateZReport(
     `SELECT * FROM offline_receipts
      WHERE terminal_id = $1 AND created_at >= $2 AND is_training = 0
      ORDER BY hash_sequence ASC`,
-    [terminalId, shiftOpenedAt]
+    // created_at is `datetime('now')` format (space separator, UTC); the ISO
+    // shift timestamp must be normalized or the TEXT comparison excludes
+    // every same-day receipt (' ' < 'T').
+    [terminalId, toSqliteUtc(shiftOpenedAt)]
   );
 
   // 3b. Phase 4 (fiscal audit B2) — refunds settled AT THIS terminal during

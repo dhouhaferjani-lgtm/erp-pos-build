@@ -16,6 +16,7 @@
 
 import type Database from '@tauri-apps/plugin-sql';
 import { queryAll } from '@/lib/db';
+import { toSqliteUtc } from '@/lib/db/sqliteTime';
 import { bcadd, bcsub, bcformat, bccomp } from '@/lib/decimal';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { getCashDrawerOpsForShift } from '@/lib/db/repositories/cashDrawerRepository';
@@ -119,14 +120,17 @@ export async function buildEndOfDayPreview(
   }
   const scale = getCurrencyDecimals(resolvedCurrency);
 
-  // 1. Fetch all non-voided receipts for this terminal since the shift opened
+  // 1. Fetch all non-voided receipts for this terminal since the shift opened.
+  // created_at is `datetime('now')` format (space separator, UTC); the ISO
+  // shift timestamp must be normalized or the TEXT comparison excludes every
+  // same-day receipt (' ' < 'T').
   const receipts = await queryAll<OfflineReceiptRow>(
     db,
     `SELECT id, total, subtotal, tax_amount, payments_json, lines, created_at, change_due, payment_method_id
      FROM offline_receipts
      WHERE terminal_id = ? AND created_at >= ? AND voided = 0 AND is_training = 0
      ORDER BY created_at ASC`,
-    [terminalId, shiftOpenedAt],
+    [terminalId, toSqliteUtc(shiftOpenedAt)],
   );
 
   // 2. Fetch payment method lookup (id, code, name, is_physical)

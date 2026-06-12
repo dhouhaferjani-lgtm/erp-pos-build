@@ -95,6 +95,21 @@ describe('buildEndOfDayPreview', () => {
     expect(cardMethod.is_physical).toBe(false);
   });
 
+  it('normalizes an ISO shiftOpenedAt to SQLite UTC format in the receipts query', async () => {
+    // offline_receipts.created_at is `datetime('now')` format (space
+    // separator, UTC); binding the raw ISO string (T separator) would
+    // lexicographically exclude every same-day receipt.
+    vi.mocked(queryAll).mockResolvedValue([]);
+
+    await buildEndOfDayPreview(mockDb, 'term-1', '2026-04-23T08:00:00Z', '100', 'EUR');
+
+    const receiptsCall = vi.mocked(queryAll).mock.calls.find(
+      ([, sql]) => (sql as string).includes('FROM offline_receipts'),
+    );
+    expect(receiptsCall).toBeDefined();
+    expect((receiptsCall![2] as unknown[])[1]).toBe('2026-04-23 08:00:00');
+  });
+
   it('returns a preview with sales_count=0 when there are no receipts (no throw)', async () => {
     vi.mocked(queryAll).mockResolvedValue([]);
 
