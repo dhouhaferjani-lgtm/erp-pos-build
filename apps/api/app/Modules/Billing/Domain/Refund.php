@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Stancl\Tenancy\Database\Concerns\CentralConnection;
 
 /**
  * Refund record for a payment.
@@ -33,6 +34,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 final class Refund extends Model
 {
+    // Central table — platform billing (invoices the platform issues to tenants).
+    use CentralConnection;
     use HasUuids;
 
     protected $table = 'billing_refunds';

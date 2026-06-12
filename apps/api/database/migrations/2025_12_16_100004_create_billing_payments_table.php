@@ -6,6 +6,14 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
+/**
+ * CENTRAL table — platform billing (invoices the platform issues to tenants).
+ * Moved out of database/migrations/tenant/ on 2026-06-12: these tables were
+ * misfiled during the T6 db-per-tenant flip and must live in the central DB
+ * (read from central context by AdminBillingController / MonitoringService /
+ * StripeWebhookController / InvoiceService). Monetary scales baked in at 3
+ * (precision contract) since no central DB has ever run this file.
+ */
 return new class extends Migration
 {
     public function up(): void
@@ -23,13 +31,13 @@ return new class extends Migration
             $table->string('status')->default('pending');
 
             // Amounts
-            $table->decimal('amount', 12, 2);
-            $table->decimal('fee', 12, 2)->default(0);
-            $table->decimal('net_amount', 12, 2);
+            $table->decimal('amount', 12, 3);
+            $table->decimal('fee', 12, 3)->default(0);
+            $table->decimal('net_amount', 12, 3);
             $table->string('currency', 3)->default('EUR');
 
             // Refund tracking
-            $table->decimal('refunded_amount', 12, 2)->default(0);
+            $table->decimal('refunded_amount', 12, 3)->default(0);
 
             // Payment method details (card last 4, bank name, etc.)
             $table->string('payment_method_type')->nullable(); // card, bank_transfer, cash, check

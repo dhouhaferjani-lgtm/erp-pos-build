@@ -6,6 +6,14 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
+/**
+ * CENTRAL table — platform billing (invoices the platform issues to tenants).
+ * Moved out of database/migrations/tenant/ on 2026-06-12: these tables were
+ * misfiled during the T6 db-per-tenant flip and must live in the central DB
+ * (read from central context by AdminBillingController / MonitoringService /
+ * StripeWebhookController / InvoiceService). Monetary scales baked in at 3
+ * (precision contract) since no central DB has ever run this file.
+ */
 return new class extends Migration
 {
     public function up(): void
@@ -22,12 +30,12 @@ return new class extends Migration
             $table->string('status')->default('draft');
 
             // Amounts
-            $table->decimal('subtotal', 12, 2)->default(0);
-            $table->decimal('tax_amount', 12, 2)->default(0);
-            $table->decimal('discount_amount', 12, 2)->default(0);
-            $table->decimal('total', 12, 2)->default(0);
-            $table->decimal('amount_paid', 12, 2)->default(0);
-            $table->decimal('amount_due', 12, 2)->default(0);
+            $table->decimal('subtotal', 12, 3)->default(0);
+            $table->decimal('tax_amount', 12, 3)->default(0);
+            $table->decimal('discount_amount', 12, 3)->default(0);
+            $table->decimal('total', 12, 3)->default(0);
+            $table->decimal('amount_paid', 12, 3)->default(0);
+            $table->decimal('amount_due', 12, 3)->default(0);
             $table->string('currency', 3)->default('EUR');
 
             // Tax details
