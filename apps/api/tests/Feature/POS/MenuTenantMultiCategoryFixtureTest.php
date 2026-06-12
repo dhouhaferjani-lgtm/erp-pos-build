@@ -10,6 +10,7 @@ use App\Modules\Menu\Domain\Entities\MenuCategory;
 use App\Modules\Menu\Domain\Entities\MenuCategoryItem;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Services\VerticalConfigService;
 use Database\Seeders\MenuTenantMultiCategoryFixture;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -27,7 +28,10 @@ final class MenuTenantMultiCategoryFixtureTest extends TestCase
             ->firstOrFail();
 
         $this->assertSame(Vertical::CoffeeShop, $tenant->vertical);
-        $this->assertContains('Menu', $tenant->vertical->defaultModules());
+        $this->assertContains(
+            'Menu',
+            $this->app->make(VerticalConfigService::class)->getDefaultModules($tenant->vertical),
+        );
 
         $menu = Menu::query()
             ->where('tenant_id', $tenant->id)

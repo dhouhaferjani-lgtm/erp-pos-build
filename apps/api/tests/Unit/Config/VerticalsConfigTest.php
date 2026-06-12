@@ -113,10 +113,11 @@ class VerticalsConfigTest extends TestCase
 
     public function test_parapharmacy_vertical_enables_its_own_domain_module(): void
     {
-        // Drift guard: Vertical::defaultModules() lists 'Parapharmacy' but the
-        // runtime config had dropped it, which hides the Parapharmacy nav
-        // group and blocks RequireModule-gated routes for the very vertical
-        // the module was built for.
+        // Drift guard: the runtime config once dropped 'Parapharmacy' (while
+        // the since-deleted Vertical::defaultModules() duplicate still listed
+        // it), which hides the Parapharmacy nav group and blocks
+        // RequireModule-gated routes for the very vertical the module was
+        // built for. config/verticals.php is now the single source of truth.
         $this->assertContains(
             'Parapharmacy',
             config('verticals.parapharmacy.default_modules'),

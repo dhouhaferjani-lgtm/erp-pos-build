@@ -17,13 +17,15 @@ use Illuminate\Database\QueryException;
  * `RequireModule` middleware reads. The token is passed through to
  * `hasModule()` **without transformation** (no case folding, no aliasing) so
  * the canonical-PascalCase contract (§7.3) is preserved end-to-end and the
- * strict `in_array(..., true)` compare on `Vertical::defaultModules()` keeps
+ * strict `in_array(..., true)` compare on the `config/verticals.php`
+ * `default_modules` lists (read via `VerticalConfigService`) keeps
  * a lowercase 'treasury' from accidentally resolving true.
  *
  * **Phase 1 caveat (§18 carry-forward).** The underlying surface is
  * tenant-level-cached — cache key `tenant_config:{tenant_id}`, TTL 24h —
- * and every current `Vertical::defaultModules()` includes `'Treasury'`.
- * Treasury is not even a `compatibleExtras()` toggle, so no current
+ * and every vertical's `default_modules` list in `config/verticals.php`
+ * includes `'Treasury'`. Treasury is not a `compatible_extras` toggle
+ * for any vertical either, so no current
  * vertical can run with it inactive in production. The seam is therefore
  * real and testable via test doubles today (e.g.
  * `FiscalEventProjectionRegistryTest` in Task 18 constructs the resolver

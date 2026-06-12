@@ -4,6 +4,16 @@ declare(strict_types=1);
 
 namespace App\Enums;
 
+/**
+ * Business vertical identity (case list, product mapping, labels).
+ *
+ * Module lists (default modules / compatible extras) deliberately do NOT
+ * live here — the single source of truth is `config/verticals.php`, read
+ * via `App\Services\VerticalConfigService` (DB-first with central
+ * `vertical_configs` overrides). The former `defaultModules()` /
+ * `compatibleExtras()` enum duplicates drifted from the config and were
+ * deleted; do not re-add them.
+ */
 enum Vertical: string
 {
     case Mechanic = 'mechanic';
@@ -89,52 +99,6 @@ enum Vertical: string
     public function isAutomotive(): bool
     {
         return $this->product() === 'otospex';
-    }
-
-    /**
-     * Get compatible optional modules (extras) for this vertical
-     *
-     * @return array<int, string>
-     */
-    public function compatibleExtras(): array
-    {
-        return match ($this) {
-            self::Mechanic => ['Appointments', 'Fleet'],
-            self::Pharmacy => ['BatchExpiry', 'Prescription', 'Ecommerce'],
-            self::Restaurant => ['Tables', 'Reservation'],
-            self::CoffeeShop => ['Tables', 'Loyalty'],
-            self::Retail => ['Loyalty', 'Ecommerce'],
-            self::Fashion => ['Loyalty', 'Ecommerce'],
-            self::BodyShop => ['Appointments', 'Fleet'],
-            self::PartsRetailer => ['Ecommerce'],
-            self::CarGlass => ['Appointments', 'Fleet'],
-            self::TireShop => ['Appointments'],
-            self::ServiceStation => [],
-            self::Parapharmacy => ['BatchExpiry', 'Loyalty', 'Ecommerce'],
-        };
-    }
-
-    /**
-     * Get default modules enabled for this vertical
-     *
-     * @return array<int, string>
-     */
-    public function defaultModules(): array
-    {
-        return match ($this) {
-            self::Mechanic => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Workshop', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'PlatformIntegration'],
-            self::Pharmacy => ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'BatchExpiry'],
-            self::Restaurant => ['Identity', 'Tenant', 'Catalog', 'Menu', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'Tables'],
-            self::CoffeeShop => ['Identity', 'Tenant', 'Catalog', 'Menu', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
-            self::Retail => ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
-            self::Fashion => ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
-            self::BodyShop => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Workshop', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'PlatformIntegration'],
-            self::PartsRetailer => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'PlatformIntegration'],
-            self::CarGlass => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Workshop', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'PlatformIntegration'],
-            self::TireShop => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'PlatformIntegration'],
-            self::ServiceStation => ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'PlatformIntegration'],
-            self::Parapharmacy => ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'Parapharmacy'],
-        };
     }
 
     /**

@@ -3,10 +3,11 @@
  * in the frontend.
  *
  * These names MUST match the PascalCase module names the backend emits in
- * `all_enabled_modules`. The RUNTIME source on the backend is
+ * `all_enabled_modules`. The single source on the backend is
  * `config/verticals.php` (read via `VerticalConfigService` →
- * `CompanyConfigService`); `App\Enums\Vertical::defaultModules()` is a
- * drifted duplicate — trust the config file when they disagree.
+ * `CompanyConfigService`, DB-first with central `vertical_configs`
+ * overrides); the old drifted `App\Enums\Vertical::defaultModules()`
+ * duplicate has been deleted.
  * Navigation and feature gating reference modules through the
  * `BackendModule` type so an unknown name is a compile error instead of a
  * silently-always-visible nav item.

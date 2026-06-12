@@ -19,7 +19,8 @@ use Tests\TestCase;
  *
  * The contract pins **canonical PascalCase tokens** (`'Treasury'`, never
  * `'treasury'`): `CompanyConfig::hasModule()` does an `in_array(..., true)`
- * strict-compare against `Vertical::defaultModules()` (which uses PascalCase),
+ * strict-compare against the `config/verticals.php` `default_modules` lists
+ * (read via `VerticalConfigService`, which uses PascalCase),
  * so a lowercase token would always resolve false and the Treasury bridge
  * (Task 22) would never run. §17.3 of the spec test-locks this — those locks
  * are these tests.
@@ -37,7 +38,7 @@ final class ModuleActivationResolverTest extends TestCase
         parent::setUp();
 
         // Vertical::Retail is the simplest standard vertical — its
-        // defaultModules() includes 'Treasury' but NOT 'Workshop'. That gives
+        // config default_modules list includes 'Treasury' but NOT 'Workshop'. That gives
         // us one assertTrue and one assertFalse without a second tenant.
         $this->tenant = Tenant::factory()->create([
             'vertical' => Vertical::Retail,
@@ -56,8 +57,8 @@ final class ModuleActivationResolverTest extends TestCase
     {
         // §7.3 test-lock: a standard tenant whose vertical defaults include
         // 'Treasury' must report Treasury as active. Every current
-        // Vertical::defaultModules() includes 'Treasury', so this is the
-        // floor of the contract.
+        // default_modules list in config/verticals.php includes 'Treasury',
+        // so this is the floor of the contract.
         $this->assertTrue(
             $this->resolver()->isActive('Treasury', $this->tenant->id, $this->company->id),
             'Vertical::Retail defaults include Treasury; resolver must report active.',
@@ -71,7 +72,7 @@ final class ModuleActivationResolverTest extends TestCase
         // failure mode the Phase 1 spec v4 P1 closed.
         $this->assertFalse(
             $this->resolver()->isActive('treasury', $this->tenant->id, $this->company->id),
-            'Lowercase token must fail strict-compare — Vertical::defaultModules() emits PascalCase.',
+            'Lowercase token must fail strict-compare — config/verticals.php default_modules emits PascalCase.',
         );
     }
 
