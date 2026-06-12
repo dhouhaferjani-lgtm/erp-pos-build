@@ -1,0 +1,191 @@
+# =============================================================================
+# AutoERP — FULL-STACK DEMO (Tunisia parapharmacy) on the db-per-tenant model
+# =============================================================================
+# Single-origin local stack for the Tunisia parapharmacy demo. The web container
+# (nginx) serves the SPA and proxies /api → the api container, so the whole demo
+# is reachable at ONE origin (http://localhost:8089) — which keeps Sanctum SPA
+# auth + Playwright simple.
+#
+#   Bring up:   docker compose -f docker-compose.demo.yml up -d --build
+#   Seed once:  docker compose -f docker-compose.demo.yml exec api \
+#                 php artisan db:seed --class=ParapharmacyTunisiaSeeder --force
+#   Web:        http://localhost:8089   (login owner@pharmabio.tn / password)
+#
+# DB-per-tenant: central DB = pharmabio_tn_central; per-tenant DB =
+# pharmabiotn_tenant_<uuid>. Runtime queries pool through pgbouncer; provisioning
+# DDL goes direct to postgres (DB_DIRECT_HOST), per the db-per-tenant deploy work.
+# Postgres is NOT published (avoids clashing with a host Postgres on 5432); use
+# `docker compose -f docker-compose.demo.yml exec postgres psql -U autoerp ...`.
+# =============================================================================
+
+x-api-env: &api-env
+  APP_ENV: local
+  APP_DEBUG: "true"
+  APP_KEY: ${APP_KEY:-base64:jbkOZNdi4R+v9uwaYisE0PhuOuZUA+3ilJZHUdxVlIU=}
+  APP_URL: http://localhost:8089
+  FRONTEND_URL: http://localhost:8089
+  # db-per-tenant: Sanctum STATEFUL (cookie) guard does NOT resolve the tenant
+  # (only the Bearer-PAT guard does), so a session cookie makes tenant-scoped
+  # queries hit the central DB → "users does not exist". Disable stateful domains
+  # so the SPA authenticates Bearer-only. (Matches the api client's "Bearer token
+  # required for reverse-proxy deployments" path.)
+  SANCTUM_STATEFUL_DOMAINS: ""
+  SESSION_DOMAIN: localhost
+  SESSION_SECURE_COOKIE: "false"
+  SESSION_SAME_SITE: lax
+  # --- db-per-tenant (Tunisia demo) ---
+  DB_CONNECTION: central
+  TENANCY_DB_PER_TENANT: "true"
+  # NOTE: runtime points DIRECT at postgres (not pgbouncer). Under PgBouncer
+  # transaction pooling the per-request tenant DB swap leaks across pooled
+  # backends (tenant query lands on central → "users does not exist"). Tracked
+  # as a db-per-tenant deploy blocker; the demo runs direct. See demo SETUP doc.
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_PGBOUNCER: "false"
+  DB_DIRECT_HOST: postgres
+  DB_DIRECT_PORT: "5432"
+  DB_CENTRAL_DATABASE: pharmabio_tn_central
+  TENANCY_DB_PREFIX: pharmabiotn_tenant_
+  DB_DATABASE: pharmabio_tn_central
+  DB_USERNAME: autoerp
+  DB_PASSWORD: ${DB_PASSWORD:-autoerp_secret}
+  # --- infra ---
+  REDIS_HOST: redis
+  REDIS_PASSWORD: ${REDIS_PASSWORD:-autoerp_redis}
+  REDIS_PORT: "6379"
+  CACHE_STORE: redis
+  QUEUE_CONNECTION: redis
+  SESSION_DRIVER: redis
+  BROADCAST_CONNECTION: log
+  MEILISEARCH_HOST: http://meilisearch:7700
+  MEILISEARCH_KEY: ${MEILISEARCH_KEY:-autoerp_meili_master_key}
+  SCOUT_DRIVER: "null"
+  # Product images on the public disk so the demo serves them at /storage.
+  FILESYSTEM_DISK: public
+  AWS_ENDPOINT: http://minio:9000
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-autoerp_minio}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-autoerp_minio_secret}
+  AWS_DEFAULT_REGION: us-east-1
+  AWS_BUCKET: autoerp
+  AWS_USE_PATH_STYLE_ENDPOINT: "true"
+  LOG_CHANNEL: stack
+  LOG_LEVEL: debug
+  AUTO_SEED: "false"   # seed the Tunisia tenant explicitly (see header) — not on every boot
+
+services:
+  postgres:
+    image: timescale/timescaledb:2.13.0-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pharmabio_tn_central
+      POSTGRES_USER: autoerp
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-autoerp_secret}
+    volumes:
+      - demo_postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autoerp -d pharmabio_tn_central"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-autoerp_redis}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-autoerp_redis}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.6
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILISEARCH_KEY:-autoerp_meili_master_key}
+      MEILI_ENV: development
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-autoerp_minio}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-autoerp_minio_secret}
+    volumes:
+      - demo_minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      target: api
+    restart: unless-stopped
+    environment:
+      <<: *api-env
+      CONTAINER_ROLE: api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      target: worker
+    restart: unless-stopped
+    environment:
+      <<: *api-env
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Visual-verification stack: SPA is built on the HOST (pnpm build with
+  # VITE_API_URL=http://localhost:8089) and mounted into a stock nginx —
+  # the image build path (corepack pnpm@latest) is not reproducible today.
+  web:
+    image: nginx:alpine
+    restart: unless-stopped
+    command: ["sh", "/usr/local/bin/entrypoint.sh"]
+    environment:
+      API_URL: http://api
+    volumes:
+      - ./apps/web/dist:/usr/share/nginx/html:ro
+      - ./apps/web/docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./apps/web/docker/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+    ports:
+      - "8089:80"
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  demo_postgres_data:
+  demo_minio_data:

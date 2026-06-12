@@ -12,6 +12,15 @@ Owner decisions (2026-06-12):
 - Regression pin: super-admin `update-extras` → tenant config cache invalidation (already worked via `TenantObserver::updated`; now tested end-to-end in `UpdateTenantExtrasTest`).
 - Existing super-admin surface confirmed working: `sanctum-admin` guard, `POST /v1/admin/tenants/{id}/update-extras` (validates against vertical's compatible extras, audit-logged), React `TenantDetailModal → ManageModulesSection` toggles (reads `compatible_extras` from the API, so new extras appear automatically).
 
+## 🚨 Finding from the 2026-06-12 visual verification (launch-relevant)
+
+**The super-admin panel cannot authenticate on a Bearer-only (db-per-tenant) deployment.** The admin SPA client (`apps/web/src/features/admin/lib/adminApi.ts`) is cookie-only by design, but:
+- With `SANCTUM_STATEFUL_DOMAINS=""` (required by the db-per-tenant demo/deploy), cookie sessions are never established → all `/admin/*` calls 401.
+- With stateful domains enabled, `POST /admin/auth/login` 500s — the stateful pipeline's default user lookup hits the central DB's nonexistent `users` table (same root cause as the tracked Sanctum-stateful-not-tenancy-aware blocker).
+- The backend login already returns a Sanctum Bearer token (`SuperAdminAuthController:49-54`) that the frontend discards.
+
+Fix (small, before launch ops need the panel on a db-per-tenant deploy): adminApi gains an in-memory Bearer fallback (keep the no-localStorage security posture), used when cookie auth is unavailable. The new Verticals page + tenant-extras toggles are fully covered by automated tests (19 backend + 14 frontend) — only the live-panel walkthrough was blocked by this.
+
 ## Phase 2 backlog (in priority order)
 
 1. **Assign modules by vertical (super-admin)** — vertical defaults live in `config/verticals.php` (file, deploy-time). To make them super-admin-editable: central-DB tables (`vertical_module_defaults`, `vertical_compatible_extras`) seeded from the config file, `VerticalConfigService` reads DB-first with config fallback, admin CRUD UI + audit logging. Decide: is deploy-time config actually enough for launch? (One customer in July — possibly yes; the per-tenant extras toggle already covers day-to-day needs.)
