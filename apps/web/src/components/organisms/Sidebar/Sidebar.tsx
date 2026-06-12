@@ -221,9 +221,9 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         { key: 'analytics', href: '/pos/analytics', icon: BarChart3, permission: 'pos' },
       ],
     },
-    // E-commerce — external sales channels. Gated on the Ecommerce extra;
-    // channel orders live inside each channel today (an aggregate orders
-    // page is planned to land here).
+    // E-commerce — external sales channels. Gated on the Ecommerce extra.
+    // Channel Orders is the aggregate inbound-orders view across all
+    // channels (per-channel staging still lives inside each channel).
     {
       key: 'ecommerce',
       icon: Globe,
@@ -231,6 +231,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       permission: 'inventory',
       children: [
         { key: 'channels', href: '/channels', icon: Cable },
+        { key: 'channelOrders', href: '/ecommerce/orders', icon: ClipboardList },
       ],
     },
     {

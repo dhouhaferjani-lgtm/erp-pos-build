@@ -156,6 +156,7 @@
     "enrichmentQueue": "File d'enrichissement",
     "inventoryCounting": "Inventaire physique",
     "channels": "Canaux",
+    "channelOrders": "Commandes des canaux",
     "priceLists": "Listes de prix",
     "compositeItems": "Articles composés",
     "modifierGroups": "Groupes de modificateurs",

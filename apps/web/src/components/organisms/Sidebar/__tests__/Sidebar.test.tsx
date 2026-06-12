@@ -493,9 +493,10 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       await screen.findByRole('button', { name: /navigation\.sales/i })
       expect(screen.queryByRole('button', { name: /navigation\.ecommerce/i })).not.toBeInTheDocument()
       expect(screen.queryByRole('link', { name: /navigation\.channels/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: /navigation\.channelOrders/i })).not.toBeInTheDocument()
     })
 
-    it('shows Channels under E-commerce when the Ecommerce module is enabled', async () => {
+    it('shows Channels and Channel Orders under E-commerce when the Ecommerce module is enabled', async () => {
       renderSidebar({
         ...retailConfig,
         enabled_extras: ['Ecommerce'],
@@ -503,8 +504,10 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       })
 
       expect(await screen.findByRole('button', { name: /navigation\.ecommerce/i })).toBeInTheDocument()
-      const channelsLink = await screen.findByRole('link', { name: /navigation\.channels/i })
+      const channelsLink = await screen.findByRole('link', { name: /navigation\.channels$/i })
       expect(channelsLink).toHaveAttribute('href', '/channels')
+      const channelOrdersLink = await screen.findByRole('link', { name: /navigation\.channelOrders/i })
+      expect(channelOrdersLink).toHaveAttribute('href', '/ecommerce/orders')
     })
 
     it('shows Batches only when BatchExpiry or Parapharmacy is enabled', async () => {

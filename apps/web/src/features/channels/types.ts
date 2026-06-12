@@ -41,6 +41,46 @@ export interface ChannelOrder {
   error_message: string | null
 }
 
+/**
+ * Subset of the eager-loaded `channel` relation the aggregate
+ * orders page consumes.
+ */
+export interface AggregateChannelOrderChannel {
+  id: string
+  name: string
+}
+
+/**
+ * Row shape of GET /channels/orders (aggregate endpoint): the raw
+ * ChannelOrder model fields plus the eager-loaded channel relation.
+ * `payload` is the adapter-specific external order payload — untyped
+ * by design; consumers must type-guard any access.
+ */
+export interface AggregateChannelOrderRow extends ChannelOrder {
+  payload: Record<string, unknown> | null
+  document_id: string | null
+  channel: AggregateChannelOrderChannel
+}
+
+export interface AggregateChannelOrdersMeta {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+}
+
+export interface AggregateChannelOrdersResponse {
+  data: AggregateChannelOrderRow[]
+  meta: AggregateChannelOrdersMeta
+}
+
+export interface AggregateChannelOrdersParams {
+  status?: string | undefined
+  channel_id?: string | undefined
+  page?: number | undefined
+  per_page?: number | undefined
+}
+
 export interface ChannelSyncOperation {
   id: string
   channel_id: string

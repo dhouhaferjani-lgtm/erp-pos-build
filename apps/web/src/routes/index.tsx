@@ -159,6 +159,7 @@ const ChannelCreateWizard = lazy(() => import('../features/channels').then((m) =
 const ChannelProductMappingPage = lazy(() => import('../features/channels').then((m) => ({ default: m.ChannelProductMappingPage })))
 const ChannelSyncStatusDashboard = lazy(() => import('../features/channels').then((m) => ({ default: m.ChannelSyncStatusDashboard })))
 const ChannelOrdersPage = lazy(() => import('../features/channels').then((m) => ({ default: m.ChannelOrdersPage })))
+const EcommerceOrdersPage = lazy(() => import('../features/channels').then((m) => ({ default: m.EcommerceOrdersPage })))
 
 // Import module
 const ImportDashboardPage = lazy(() => import('../features/import/pages/ImportDashboardPage').then((m) => ({ default: m.ImportDashboardPage })))
@@ -1806,6 +1807,20 @@ export function AppRoutes() {
               <RequirePermission moduleKey="inventory">
                 <SuspenseWrapper>
                   <ChannelOrdersPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+        </Route>
+
+        {/* E-commerce — aggregate orders across all channels */}
+        <Route path="ecommerce">
+          <Route
+            path="orders"
+            element={
+              <RequirePermission moduleKey="inventory">
+                <SuspenseWrapper>
+                  <EcommerceOrdersPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

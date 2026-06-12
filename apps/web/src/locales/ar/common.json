@@ -203,6 +203,7 @@
     "enrichmentQueue": "قائمة الإثراء",
     "inventoryCounting": "جرد المخزون",
     "channels": "القنوات",
+    "channelOrders": "طلبات القنوات",
     "priceLists": "قوائم الأسعار",
     "compositeItems": "العناصر المركّبة",
     "modifierGroups": "مجموعات الإضافات",
