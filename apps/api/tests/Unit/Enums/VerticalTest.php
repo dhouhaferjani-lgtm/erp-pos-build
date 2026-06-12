@@ -255,25 +255,6 @@ class VerticalTest extends TestCase
         $this->assertEquals('izipos', Vertical::Parapharmacy->product());
     }
 
-    public function test_all_verticals_have_compatible_extras_method(): void
-    {
-        foreach (Vertical::cases() as $vertical) {
-            $extras = $vertical->compatibleExtras();
-
-            $this->assertIsArray($extras);
-        }
-    }
-
-    public function test_all_verticals_have_default_modules_method(): void
-    {
-        foreach (Vertical::cases() as $vertical) {
-            $modules = $vertical->defaultModules();
-
-            $this->assertIsArray($modules);
-            $this->assertNotEmpty($modules);
-        }
-    }
-
     public function test_can_get_all_labels(): void
     {
         $labels = Vertical::labels();

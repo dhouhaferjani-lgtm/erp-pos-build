@@ -16,7 +16,8 @@ namespace App\Shared\Contracts\Fiscal;
  *
  * **Canonical PascalCase tokens — load-bearing.** `$module` is passed
  * through to `CompanyConfig::hasModule()` which does an `in_array(..., true)`
- * strict-compare against `Vertical::defaultModules()` (PascalCase). A
+ * strict-compare against the `config/verticals.php` `default_modules` lists
+ * (read via `VerticalConfigService`, PascalCase). A
  * lowercase or alternate-cased token always resolves false. Callers must
  * use the canonical token — `'Treasury'`, `'Accounting'`, `'Sales'`,
  * `'Inventory'`, etc.

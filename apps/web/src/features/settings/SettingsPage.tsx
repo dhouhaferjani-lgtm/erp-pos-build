@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { usePageTitle } from '../../hooks/usePageTitle'
 import { useTranslation } from 'react-i18next'
-import { Settings, Users, Shield, Building2, Upload, Calculator, Package, ChevronRight, Receipt, Ruler, Store } from 'lucide-react'
+import { Settings, Users, Shield, Building2, Upload, Calculator, Package, ChevronRight, Receipt, Ruler, Store, RotateCcw, ShieldAlert } from 'lucide-react'
 
 interface SettingsSection {
   titleKey: string
@@ -74,6 +74,20 @@ const sections: SettingsSection[] = [
     icon: <Store className="h-6 w-6" />,
     href: '/pos/terminals',
     color: 'bg-emerald-100 text-emerald-600',
+  },
+  {
+    titleKey: 'sections.posRefundPolicies.title',
+    descriptionKey: 'sections.posRefundPolicies.description',
+    icon: <RotateCcw className="h-6 w-6" />,
+    href: '/settings/pos-refund-policies',
+    color: 'bg-rose-100 text-rose-600',
+  },
+  {
+    titleKey: 'sections.customerHistoryAudit.title',
+    descriptionKey: 'sections.customerHistoryAudit.description',
+    icon: <ShieldAlert className="h-6 w-6" />,
+    href: '/settings/audit/customer-history',
+    color: 'bg-slate-100 text-slate-600',
   },
 ]
 

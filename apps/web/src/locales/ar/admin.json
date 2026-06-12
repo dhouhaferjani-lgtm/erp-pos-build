@@ -1,0 +1,32 @@
+{
+  "tenantModules": {
+    "defaultsTitle": "الوحدات الافتراضية",
+    "defaultsHint": "مضمّنة مع قطاع {{vertical}} — مفعّلة دائمًا ولا يمكن تعطيلها."
+  },
+  "verticals": {
+    "title": "إعداد القطاعات",
+    "loading": "جارٍ تحميل القطاعات...",
+    "loadError": "فشل تحميل القطاعات",
+    "empty": "لا توجد قطاعات",
+    "updateSuccess": "تم تحديث إعداد القطاع",
+    "table": {
+      "label": "القطاع",
+      "product": "المنتج",
+      "defaultModules": "الوحدات الافتراضية",
+      "compatibleExtras": "الإضافات المتوافقة",
+      "status": "الحالة",
+      "actions": "الإجراءات",
+      "customized": "مخصّص",
+      "edit": "تعديل"
+    },
+    "modal": {
+      "title": "تعديل القطاع: {{label}}",
+      "defaultModules": "الوحدات الافتراضية",
+      "compatibleExtras": "الإضافات المتوافقة",
+      "save": "حفظ",
+      "saving": "جارٍ الحفظ...",
+      "cancel": "إلغاء",
+      "close": "إغلاق"
+    }
+  }
+}

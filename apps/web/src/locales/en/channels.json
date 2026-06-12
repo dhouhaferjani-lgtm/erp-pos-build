@@ -60,5 +60,23 @@
     "receivedAt": "Received",
     "document": "Document",
     "empty": "No staged orders received."
+  },
+  "aggregateOrders": {
+    "title": "E-commerce orders",
+    "subtitle": "All inbound orders across your sales channels.",
+    "channel": "Channel",
+    "customer": "Customer",
+    "total": "Total",
+    "filterStatus": "Filter by status",
+    "allStatuses": "All statuses",
+    "empty": "No channel orders received yet.",
+    "loadError": "Failed to load channel orders.",
+    "pageOf": "Page {{current}} / {{last}} ({{total}})"
+  },
+  "orderStatus": {
+    "pending": "Pending",
+    "processed": "Processed",
+    "failed": "Failed",
+    "ignored": "Ignored"
   }
 }

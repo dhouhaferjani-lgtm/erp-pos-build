@@ -60,5 +60,23 @@
     "receivedAt": "Reçue",
     "document": "Document",
     "empty": "Aucune commande en attente."
+  },
+  "aggregateOrders": {
+    "title": "Commandes e-commerce",
+    "subtitle": "Toutes les commandes entrantes de vos canaux de vente.",
+    "channel": "Canal",
+    "customer": "Client",
+    "total": "Total",
+    "filterStatus": "Filtrer par statut",
+    "allStatuses": "Tous les statuts",
+    "empty": "Aucune commande de canal reçue pour le moment.",
+    "loadError": "Échec du chargement des commandes de canal.",
+    "pageOf": "Page {{current}} / {{last}} ({{total}})"
+  },
+  "orderStatus": {
+    "pending": "En attente",
+    "processed": "Traitée",
+    "failed": "Échec",
+    "ignored": "Ignorée"
   }
 }

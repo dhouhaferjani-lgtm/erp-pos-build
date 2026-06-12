@@ -60,5 +60,23 @@
     "receivedAt": "تاريخ الاستلام",
     "document": "المستند",
     "empty": "لا توجد طلبات واردة."
+  },
+  "aggregateOrders": {
+    "title": "طلبات التجارة الإلكترونية",
+    "subtitle": "جميع الطلبات الواردة عبر قنوات البيع الخاصة بك.",
+    "channel": "القناة",
+    "customer": "العميل",
+    "total": "الإجمالي",
+    "filterStatus": "تصفية حسب الحالة",
+    "allStatuses": "كل الحالات",
+    "empty": "لم تصل أي طلبات من القنوات بعد.",
+    "loadError": "تعذر تحميل طلبات القنوات.",
+    "pageOf": "صفحة {{current}} / {{last}} ({{total}})"
+  },
+  "orderStatus": {
+    "pending": "قيد الانتظار",
+    "processed": "تمت المعالجة",
+    "failed": "فشل",
+    "ignored": "متجاهل"
   }
 }

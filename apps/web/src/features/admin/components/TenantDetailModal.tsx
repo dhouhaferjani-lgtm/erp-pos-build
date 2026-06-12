@@ -6,6 +6,7 @@ import { useTenant } from '../hooks/useTenants'
 import { useUpdateTenantExtras } from '../hooks/useTenants'
 import type { PlanSummary, UsageStat } from '../types'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { tokens, textColors } from '@/lib/designTokens'
 
 interface TenantDetailModalProps {
   tenantId: string | null
@@ -234,22 +235,27 @@ function PlanUsageSection({ planSummary }: { planSummary: PlanSummary }) {
 
 interface ManageModulesSectionProps {
   tenantId: string
+  verticalLabel: string | null
+  defaultModules: string[]
   compatibleExtras: string[]
   enabledExtras: string[]
   onRefresh: (() => void) | undefined
 }
 
-function ManageModulesSection({
+export function ManageModulesSection({
   tenantId,
+  verticalLabel,
+  defaultModules,
   compatibleExtras,
   enabledExtras,
   onRefresh,
 }: ManageModulesSectionProps) {
   const { t } = useTranslation('settings')
+  const { t: tAdmin } = useTranslation('admin')
   const updateExtras = useUpdateTenantExtras()
   const [pendingToggle, setPendingToggle] = useState<{ module: string; enable: boolean } | null>(null)
 
-  if (compatibleExtras.length === 0) {
+  if (compatibleExtras.length === 0 && defaultModules.length === 0) {
     return null
   }
 
@@ -275,7 +281,33 @@ function ManageModulesSection({
 
   return (
     <div>
-      <h4 className="mb-3 font-semibold text-gray-900">{t('admin.tenants.manageModules')}</h4>
+      <h4 className={`mb-3 font-semibold ${textColors.primary}`}>{t('admin.tenants.manageModules')}</h4>
+      {defaultModules.length > 0 && (
+        <div
+          role="group"
+          aria-label={tAdmin('tenantModules.defaultsTitle')}
+          className="mb-4"
+        >
+          <h5 className={`text-sm font-medium ${textColors.secondary}`}>
+            {tAdmin('tenantModules.defaultsTitle')}
+          </h5>
+          <p className={`mb-2 mt-0.5 text-xs ${textColors.disabled}`}>
+            {tAdmin('tenantModules.defaultsHint', {
+              vertical: verticalLabel ?? '',
+            })}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {defaultModules.map((module) => (
+              <span
+                key={module}
+                className={`${tokens.badge.base} ${tokens.badge.gray}`}
+              >
+                {module}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="space-y-2">
         {compatibleExtras.map((extra) => {
           const isEnabled = enabledExtras.includes(extra)
@@ -333,6 +365,7 @@ export function TenantDetailModal({
 
   const enabledExtras = data?.tenant?.enabled_extras ?? []
   const compatibleExtras = data?.compatible_extras ?? []
+  const defaultModules = data?.default_modules ?? []
 
   return (
     <Transition appear show={isOpen} as={Fragment}>
@@ -388,6 +421,10 @@ export function TenantDetailModal({
                       {tenantId !== null && (
                         <ManageModulesSection
                           tenantId={tenantId}
+                          verticalLabel={
+                            data?.vertical_label ?? data?.tenant?.vertical ?? null
+                          }
+                          defaultModules={defaultModules}
                           compatibleExtras={compatibleExtras}
                           enabledExtras={enabledExtras}
                           onRefresh={onRefresh}

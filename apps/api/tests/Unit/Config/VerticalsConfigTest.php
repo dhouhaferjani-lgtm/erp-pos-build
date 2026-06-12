@@ -87,6 +87,43 @@ class VerticalsConfigTest extends TestCase
         $this->assertEquals('izipos', $product);
     }
 
+    public function test_ecommerce_is_an_optional_extra_for_pharmacy_retail_verticals(): void
+    {
+        // Owner decision 2026-06-12: e-commerce matters for pharmacies and
+        // most retailers, but must be OPT-IN (super-admin activated), never
+        // a default module.
+        $verticalsWithEcommerce = ['pharmacy', 'parapharmacy', 'retail', 'fashion', 'parts_retailer'];
+
+        foreach ($verticalsWithEcommerce as $verticalKey) {
+            $extras = config("verticals.{$verticalKey}.compatible_extras");
+            $defaults = config("verticals.{$verticalKey}.default_modules");
+
+            $this->assertContains(
+                'Ecommerce',
+                $extras,
+                "Vertical {$verticalKey} should offer Ecommerce as a compatible extra"
+            );
+            $this->assertNotContains(
+                'Ecommerce',
+                $defaults,
+                "Vertical {$verticalKey} must NOT enable Ecommerce by default"
+            );
+        }
+    }
+
+    public function test_parapharmacy_vertical_enables_its_own_domain_module(): void
+    {
+        // Drift guard: the runtime config once dropped 'Parapharmacy' (while
+        // the since-deleted Vertical::defaultModules() duplicate still listed
+        // it), which hides the Parapharmacy nav group and blocks
+        // RequireModule-gated routes for the very vertical the module was
+        // built for. config/verticals.php is now the single source of truth.
+        $this->assertContains(
+            'Parapharmacy',
+            config('verticals.parapharmacy.default_modules'),
+        );
+    }
+
     public function test_compatible_extras_are_arrays(): void
     {
         $config = config('verticals');

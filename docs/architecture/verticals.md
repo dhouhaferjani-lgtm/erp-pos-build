@@ -532,11 +532,12 @@ $description = $vertical->description(); // "Automotive repair and maintenance s
 // Get associated product
 $product = $vertical->product(); // "otospex"
 
-// Get compatible extras
-$extras = $vertical->compatibleExtras(); // ['Appointments', 'Fleet']
-
-// Get default modules
-$modules = $vertical->defaultModules(); // ['Identity', 'Tenant', ...]
+// Get compatible extras / default modules — module lists live in
+// config/verticals.php, read via VerticalConfigService (constructor-injected;
+// DB-first with central vertical_configs overrides). The former
+// Vertical::compatibleExtras()/defaultModules() enum duplicates were deleted.
+$extras = $verticalConfigService->getCompatibleExtras($vertical); // ['Appointments', 'Fleet']
+$modules = $verticalConfigService->getDefaultModules($vertical); // ['Identity', 'Tenant', ...]
 
 // Filter verticals by product
 $otospexVerticals = Vertical::forProduct('otospex'); // Returns array of 6 Otospex verticals

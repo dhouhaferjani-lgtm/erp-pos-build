@@ -1,0 +1,32 @@
+{
+  "tenantModules": {
+    "defaultsTitle": "Modules par défaut",
+    "defaultsHint": "Inclus avec la verticale {{vertical}} — toujours actifs, non modifiables."
+  },
+  "verticals": {
+    "title": "Configuration des verticales",
+    "loading": "Chargement des verticales...",
+    "loadError": "Échec du chargement des verticales",
+    "empty": "Aucune verticale trouvée",
+    "updateSuccess": "Configuration de la verticale mise à jour",
+    "table": {
+      "label": "Verticale",
+      "product": "Produit",
+      "defaultModules": "Modules par défaut",
+      "compatibleExtras": "Extras compatibles",
+      "status": "Statut",
+      "actions": "Actions",
+      "customized": "Personnalisée",
+      "edit": "Modifier"
+    },
+    "modal": {
+      "title": "Modifier la verticale : {{label}}",
+      "defaultModules": "Modules par défaut",
+      "compatibleExtras": "Extras compatibles",
+      "save": "Enregistrer",
+      "saving": "Enregistrement...",
+      "cancel": "Annuler",
+      "close": "Fermer"
+    }
+  }
+}

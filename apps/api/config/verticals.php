@@ -44,7 +44,7 @@ return [
         'label' => 'Pharmacy',
         'description' => 'Pharmaceutical retail with prescription management',
         'product' => 'izipos',
-        'compatible_extras' => ['BatchExpiry', 'Prescription'],
+        'compatible_extras' => ['BatchExpiry', 'Prescription', 'Ecommerce'],
         'product_defaults' => [
             'requires_batch_tracking' => true,
         ],
@@ -329,7 +329,7 @@ return [
         'label' => 'Parapharmacy',
         'description' => 'Health and wellness retail',
         'product' => 'izipos',
-        'compatible_extras' => ['BatchExpiry', 'Loyalty'],
+        'compatible_extras' => ['BatchExpiry', 'Loyalty', 'Ecommerce'],
         'product_defaults' => [
             'requires_batch_tracking' => true,
         ],
@@ -342,6 +342,7 @@ return [
             'Inventory',
             'Treasury',
             'Accounting',
+            'Parapharmacy',
         ],
     ],
 ];

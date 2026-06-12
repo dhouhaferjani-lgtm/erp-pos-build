@@ -9,6 +9,7 @@ use App\Models\SuperAdmin;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Services\CompanyConfigService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -158,6 +159,27 @@ class UpdateTenantExtrasTest extends TestCase
         $this->assertEquals([], $this->tenantWithVertical->enabled_extras);
     }
 
+    public function test_update_extras_invalidates_cached_company_config(): void
+    {
+        // Prime the 24h tenant-config cache the way the tenant app does.
+        $configService = app(CompanyConfigService::class);
+        $before = $configService->getConfigForTenant($this->tenantWithVertical);
+        $this->assertNotContains('Tables', $before->allEnabledModules);
+
+        $this->actingAs($this->superAdmin, 'sanctum-admin')
+            ->postJson("/api/v1/admin/tenants/{$this->tenantWithVertical->id}/update-extras", [
+                'enabled_extras' => ['Tables'],
+            ])
+            ->assertOk();
+
+        // A module toggled by a super admin must be visible to the tenant
+        // immediately — not after the 24h cache TTL expires.
+        $this->tenantWithVertical->refresh();
+        $after = $configService->getConfigForTenant($this->tenantWithVertical);
+        $this->assertContains('Tables', $after->allEnabledModules);
+        $this->assertEquals(['Tables'], $after->enabledExtras);
+    }
+
     public function test_show_tenant_includes_compatible_extras(): void
     {
         $response = $this->actingAs($this->superAdmin, 'sanctum-admin')
@@ -177,5 +199,43 @@ class UpdateTenantExtrasTest extends TestCase
         $this->assertContains('Tables', $compatibleExtras);
         $this->assertContains('Loyalty', $compatibleExtras);
         $this->assertContains('Inventory', $compatibleExtras);
+    }
+
+    public function test_show_tenant_includes_default_modules(): void
+    {
+        $response = $this->actingAs($this->superAdmin, 'sanctum-admin')
+            ->getJson("/api/v1/admin/tenants/{$this->tenantWithVertical->id}");
+
+        $response->assertOk()
+            ->assertJsonStructure([
+                'data' => [
+                    'tenant',
+                    'stats',
+                    'compatible_extras',
+                    'default_modules',
+                    'vertical_label',
+                ],
+            ]);
+
+        // Canonical label comes from config/verticals.php via VerticalConfigService::getLabel
+        $this->assertSame('Coffee Shop', $response->json('data.vertical_label'));
+
+        // coffee_shop default_modules from config/verticals.php
+        $defaultModules = $response->json('data.default_modules');
+        $this->assertIsArray($defaultModules);
+        $this->assertEqualsCanonicalizing(
+            [
+                'Identity',
+                'Tenant',
+                'Catalog',
+                'Menu',
+                'Partner',
+                'Sales',
+                'Treasury',
+                'Accounting',
+                'CompositeItems',
+            ],
+            $defaultModules
+        );
     }
 }

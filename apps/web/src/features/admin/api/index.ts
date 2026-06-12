@@ -1,5 +1,6 @@
+import axios from 'axios'
 import { apiPost, ensureCsrfCookie } from '@/lib/api'
-import { adminApiGet, adminApiGetPaginated, adminApiPost, adminApiPatch } from '../lib/adminApi'
+import { adminApiGet, adminApiGetPaginated, adminApiPost, adminApiPatch, adminApiPut } from '../lib/adminApi'
 import type {
   AdminAuthResponse,
   AdminDashboardStats,
@@ -18,6 +19,9 @@ import type {
   RefundPaymentRequest,
   UpdateSubscriptionRequest,
   PlanSummary,
+  AdminVerticalConfig,
+  AdminVerticalsResponse,
+  UpdateVerticalConfigRequest,
 } from '../types'
 
 // Authentication (uses regular API since not authenticated yet)
@@ -133,6 +137,42 @@ export async function getAdminAuditLogs(params?: {
     `/admin/audit-logs${query ? `?${query}` : ''}`
   )
   return { data: response.data.data }
+}
+
+// ============================================================================
+// Vertical Configuration API (super-admin module assignment per vertical)
+// ============================================================================
+
+// The verticals index returns BOTH `data` and a top-level `available_modules`
+// key, so we use the raw-response helper (adminApiGetPaginated returns
+// response.data as-is) — adminApiGet would drop `available_modules`.
+export async function getVerticals(): Promise<AdminVerticalsResponse> {
+  return adminApiGetPaginated<AdminVerticalsResponse>('/admin/verticals')
+}
+
+export async function updateVerticalConfig(
+  vertical: string,
+  payload: UpdateVerticalConfigRequest
+): Promise<AdminVerticalConfig> {
+  return adminApiPut<AdminVerticalConfig>(`/admin/verticals/${vertical}`, payload)
+}
+
+/**
+ * The verticals endpoints return validation failures as a flat
+ * `{ error: string, valid_modules: string[] }` 422 body (NOT the standard
+ * `{ error: { code, message } }` envelope), so getErrorMessage() cannot
+ * extract it. This pulls the flat string out when present.
+ */
+export function getVerticalConfigErrorMessage(error: unknown): string | null {
+  if (!axios.isAxiosError(error)) {
+    return null
+  }
+  const data: unknown = error.response?.data
+  if (typeof data !== 'object' || data === null || !('error' in data)) {
+    return null
+  }
+  const { error: errorValue } = data
+  return typeof errorValue === 'string' ? errorValue : null
 }
 
 // ============================================================================

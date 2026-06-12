@@ -1,0 +1,32 @@
+{
+  "tenantModules": {
+    "defaultsTitle": "Default modules",
+    "defaultsHint": "Included with the {{vertical}} vertical — always on, cannot be toggled."
+  },
+  "verticals": {
+    "title": "Vertical Configuration",
+    "loading": "Loading verticals...",
+    "loadError": "Failed to load verticals",
+    "empty": "No verticals found",
+    "updateSuccess": "Vertical configuration updated",
+    "table": {
+      "label": "Vertical",
+      "product": "Product",
+      "defaultModules": "Default modules",
+      "compatibleExtras": "Compatible extras",
+      "status": "Status",
+      "actions": "Actions",
+      "customized": "Customized",
+      "edit": "Edit"
+    },
+    "modal": {
+      "title": "Edit vertical: {{label}}",
+      "defaultModules": "Default modules",
+      "compatibleExtras": "Compatible extras",
+      "save": "Save",
+      "saving": "Saving...",
+      "cancel": "Cancel",
+      "close": "Close"
+    }
+  }
+}

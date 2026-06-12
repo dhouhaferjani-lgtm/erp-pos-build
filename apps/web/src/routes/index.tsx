@@ -25,6 +25,7 @@ const AdminInvoicesPage = lazy(() => import('../features/admin/pages/InvoicesPag
 const AdminPaymentsPage = lazy(() => import('../features/admin/pages/PaymentsPage').then((m) => ({ default: m.PaymentsPage })))
 const AdminMonitoringPage = lazy(() => import('../features/admin/pages/MonitoringPage').then((m) => ({ default: m.MonitoringPage })))
 const CompanyOwnersPage = lazy(() => import('../features/admin/pages/CompanyOwnersPage').then((m) => ({ default: m.CompanyOwnersPage })))
+const AdminVerticalsPage = lazy(() => import('../features/admin/pages/VerticalsPage').then((m) => ({ default: m.VerticalsPage })))
 const AdminLayout = lazy(() => import('../features/admin/components/AdminLayout').then((m) => ({ default: m.AdminLayout })))
 const RequireAdminAuth = lazy(() => import('../features/admin/components/RequireAdminAuth').then((m) => ({ default: m.RequireAdminAuth })))
 
@@ -158,6 +159,7 @@ const ChannelCreateWizard = lazy(() => import('../features/channels').then((m) =
 const ChannelProductMappingPage = lazy(() => import('../features/channels').then((m) => ({ default: m.ChannelProductMappingPage })))
 const ChannelSyncStatusDashboard = lazy(() => import('../features/channels').then((m) => ({ default: m.ChannelSyncStatusDashboard })))
 const ChannelOrdersPage = lazy(() => import('../features/channels').then((m) => ({ default: m.ChannelOrdersPage })))
+const EcommerceOrdersPage = lazy(() => import('../features/channels').then((m) => ({ default: m.EcommerceOrdersPage })))
 
 // Import module
 const ImportDashboardPage = lazy(() => import('../features/import/pages/ImportDashboardPage').then((m) => ({ default: m.ImportDashboardPage })))
@@ -379,6 +381,14 @@ export function AppRoutes() {
           element={
             <SuspenseWrapper>
               <CompanyOwnersPage />
+            </SuspenseWrapper>
+          }
+        />
+        <Route
+          path="verticals"
+          element={
+            <SuspenseWrapper>
+              <AdminVerticalsPage />
             </SuspenseWrapper>
           }
         />
@@ -1797,6 +1807,20 @@ export function AppRoutes() {
               <RequirePermission moduleKey="inventory">
                 <SuspenseWrapper>
                   <ChannelOrdersPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+        </Route>
+
+        {/* E-commerce — aggregate orders across all channels */}
+        <Route path="ecommerce">
+          <Route
+            path="orders"
+            element={
+              <RequirePermission moduleKey="inventory">
+                <SuspenseWrapper>
+                  <EcommerceOrdersPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

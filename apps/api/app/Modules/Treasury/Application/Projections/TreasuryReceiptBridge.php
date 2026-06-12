@@ -135,7 +135,8 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
     public function requiresModule(): string
     {
         // Canonical PascalCase token — `CompanyConfig::hasModule()` strict-
-        // compares against the `Vertical::defaultModules()` identifier set;
+        // compares against the `config/verticals.php` `default_modules`
+        // identifier set (read via `VerticalConfigService`);
         // a lowercase `'treasury'` would silently always-deactivate (locked
         // by `FiscalEventProjectionRegistryTest::test_canonical_pascalcase_token_required`).
         return 'Treasury';

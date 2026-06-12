@@ -7,7 +7,7 @@ namespace App\Observers;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
-use Illuminate\Support\Facades\Cache;
+use App\Services\CompanyConfigService;
 
 /**
  * Observer for Tenant model — cache invalidation + Sanctum token revocation
@@ -32,6 +32,10 @@ use Illuminate\Support\Facades\Cache;
  */
 class TenantObserver
 {
+    public function __construct(
+        private readonly CompanyConfigService $companyConfigService
+    ) {}
+
     /**
      * Handle the Tenant "updated" event.
      *
@@ -76,12 +80,12 @@ class TenantObserver
      * Invalidate tenant config cache.
      *
      * Since all companies within a tenant share the same vertical and extras,
-     * we only need to invalidate a single cache entry per tenant.
+     * we only need to invalidate a single cache entry per tenant. The cache
+     * key is owned by CompanyConfigService — never hand-build it here.
      */
     private function invalidateTenantConfigCache(Tenant $tenant): void
     {
-        $cacheKey = "tenant_config:{$tenant->id}";
-        Cache::forget($cacheKey);
+        $this->companyConfigService->invalidateForTenant($tenant->id);
     }
 
     /**

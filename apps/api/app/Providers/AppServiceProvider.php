@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Models\Country;
+use App\Models\VerticalConfig;
 use App\Modules\Accounting\Application\Services\AccountingService;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
@@ -24,6 +25,7 @@ use App\Modules\Product\Infrastructure\Services\ProductInventoryQueryService;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Observers\TenantObserver;
 use App\Observers\UserObserver;
+use App\Observers\VerticalConfigObserver;
 use App\Services\CompanyConfigService;
 use App\Services\ProductService as AppProductService;
 use App\Services\VerticalConfigService;
@@ -117,6 +119,11 @@ class AppServiceProvider extends ServiceProvider
         // (api.auth-permissions Invariant A.3 — forward-compat defense; no production
         // endpoint mutates users.tenant_id today)
         User::observe(UserObserver::class);
+
+        // Self-enforcing cache invalidation: any write/delete on a central
+        // vertical_configs row busts the 24h per-vertical override cache,
+        // so future writers cannot forget to invalidate (T1 review finding).
+        VerticalConfig::observe(VerticalConfigObserver::class);
 
         // T6 Phase 0b: personal_access_tokens lives in the CENTRAL database, so
         // Sanctum must read token rows from the central connection even after the

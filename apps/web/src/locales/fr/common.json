@@ -156,6 +156,7 @@
     "enrichmentQueue": "File d'enrichissement",
     "inventoryCounting": "Inventaire physique",
     "channels": "Canaux",
+    "channelOrders": "Commandes des canaux",
     "priceLists": "Listes de prix",
     "compositeItems": "Articles composés",
     "modifierGroups": "Groupes de modificateurs",
@@ -197,8 +198,6 @@
     "analytics": "Analytique",
     "zReports": "Rapports Z",
     "vouchers": "Bons d'achat & Avoirs",
-    "posRefundPolicies": "Politiques de remboursement",
-    "customerHistoryAudit": "Audit des recherches client",
     "automotive": "Automobile",
     "vehicles": "Véhicules",
     "services": "Prestations",
@@ -228,7 +227,10 @@
     "pos": "Point de vente",
     "catalog": "Catalogue",
     "crm": "CRM",
-    "compliance": "Export de Conformité"
+    "compliance": "Export de Conformité",
+    "ecommerce": "E-commerce",
+    "customersAndMarketing": "Clients & Marketing",
+    "stockTransfers": "Transferts de stock"
   },
   "fields": {
     "totalReceivable": "Total à recevoir",

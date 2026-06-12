@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\Admin\SuperAdminAuthController;
 use App\Http\Controllers\Api\Admin\SuperAdminController;
+use App\Http\Controllers\Api\Admin\VerticalConfigController;
 use App\Http\Controllers\Api\CompanyConfigController;
 use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\SubscriptionController;
@@ -67,6 +68,10 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/tenants/{id}/activate', [SuperAdminController::class, 'activateTenant']);
             Route::post('/tenants/{id}/update-extras', [SuperAdminController::class, 'updateExtras']);
             Route::get('/audit-logs', [SuperAdminController::class, 'auditLogs']);
+
+            // Vertical module configuration (central vertical_configs overrides)
+            Route::get('/verticals', [VerticalConfigController::class, 'index']);
+            Route::put('/verticals/{vertical}', [VerticalConfigController::class, 'update']);
 
             // User management
             Route::get('/users', [SuperAdminController::class, 'users']);

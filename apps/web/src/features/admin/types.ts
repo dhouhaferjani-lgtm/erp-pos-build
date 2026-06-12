@@ -391,6 +391,8 @@ export interface TenantDetailResponse {
   }
   plan_summary: PlanSummary
   compatible_extras?: string[]
+  default_modules?: string[]
+  vertical_label?: string | null
 }
 
 // User Management Types
@@ -419,4 +421,24 @@ export interface AdminUserDetail {
     is_primary: boolean
     status: string
   }>
+}
+
+// Vertical Configuration Types (super-admin module assignment per vertical)
+export interface AdminVerticalConfig {
+  vertical: string
+  label: string
+  product: string
+  default_modules: string[]
+  compatible_extras: string[]
+  is_overridden: boolean
+}
+
+export interface AdminVerticalsResponse {
+  data: AdminVerticalConfig[]
+  available_modules: string[]
+}
+
+export interface UpdateVerticalConfigRequest {
+  default_modules: string[]
+  compatible_extras: string[]
 }

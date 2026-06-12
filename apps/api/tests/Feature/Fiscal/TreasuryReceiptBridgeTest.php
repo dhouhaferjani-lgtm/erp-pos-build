@@ -176,7 +176,8 @@ final class TreasuryReceiptBridgeTest extends TestCase
     public function test_requires_module_is_canonical_treasury_token(): void
     {
         // The PascalCase token is load-bearing — `CompanyConfig::hasModule()`
-        // strict-compares against the `Vertical::defaultModules()` set; a
+        // strict-compares against the `config/verticals.php` `default_modules`
+        // set (read via `VerticalConfigService`); a
         // lowercase `'treasury'` would silently always-deactivate (the
         // FiscalEventProjectionRegistryTest pins this behaviour).
         $this->assertSame(

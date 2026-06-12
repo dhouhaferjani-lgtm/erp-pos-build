@@ -27,7 +27,8 @@ use App\Modules\Fiscal\Domain\Models\FiscalEvent;
  *      against the EVENT's tenant/company — not request/user context.
  *
  * **Token contract.** `requiresModule()` returns the **exact** PascalCase
- * identifier used by `Vertical::defaultModules()`; `CompanyConfig::hasModule()`
+ * identifier used by the `config/verticals.php` `default_modules` lists
+ * (read via `VerticalConfigService`); `CompanyConfig::hasModule()`
  * strict-compares (`in_array(..., true)`), so a lowercase `'treasury'`
  * would be unreachable. Spec §7.3 P1 lock — tested by
  * `ModuleActivationResolverTest` (Task 17) + this registry's
