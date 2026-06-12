@@ -67,6 +67,42 @@ final class TaxResolutionServiceDefaultTest extends TestCase
         $this->assertSame(0, bccomp($service->getDefaultTaxForNewProduct($company, null), '0.00', 2));
     }
 
+    /**
+     * Cross-company isolation: a category belonging to Company B must NOT
+     * supply its default_tax_rate when resolving for Company A.
+     * Company A has a 19.00 default; Company B's category has 5.00.
+     * Resolver must return 19.00 (Company A's default), not 5.00.
+     */
+    public function test_category_from_different_company_is_ignored(): void
+    {
+        $service = new TaxResolutionService;
+
+        $companyA = $this->makeCompany('FR');
+        $companyA->update(['default_tax_rate' => '19.00']);
+        $companyA->refresh();
+
+        $companyB = $this->makeCompany('FR');
+        $companyB->update(['default_tax_rate' => '5.00']);
+        $companyB->refresh();
+
+        // Create a category that belongs to Company B with a 5.00 rate
+        $categoryB = Category::create([
+            'company_id' => $companyB->id,
+            'name' => 'Catégorie Société B',
+        ]);
+        \DB::table('categories')->where('id', $categoryB->id)->update(['default_tax_rate' => '5.00']);
+
+        // When resolving for Company A using Company B's category id,
+        // the resolver must NOT return 5.00 — it must fall back to Company A's default (19.00).
+        $result = $service->getDefaultTaxForNewProduct($companyA, (int) $categoryB->id);
+
+        $this->assertSame(
+            0,
+            bccomp($result, '19.00', 2),
+            "Expected Company A default rate 19.00, got {$result} — category from Company B leaked across company boundary",
+        );
+    }
+
     private function makeCompany(string $countryCode): Company
     {
         $tenant = Tenant::create([

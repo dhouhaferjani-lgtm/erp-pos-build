@@ -16,6 +16,7 @@ use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
 use App\Modules\Product\Domain\Enums\PlatformLinkStatus;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Enums\VehicleTypeRef;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
@@ -57,6 +58,7 @@ class UpdateProductRequest extends FormRequest
                     ->ignore($productId),
             ],
             'type' => ['sometimes', 'nullable', new Enum(ProductType::class)],
+            'category_id' => ['sometimes', 'nullable', 'integer', ScopedExists::company('categories', $company->id)],
             'is_physical' => ['sometimes', 'boolean'],
             'description' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'sale_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],

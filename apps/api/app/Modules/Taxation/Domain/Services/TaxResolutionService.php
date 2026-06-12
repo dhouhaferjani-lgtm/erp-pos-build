@@ -6,6 +6,7 @@ namespace App\Modules\Taxation\Domain\Services;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Product;
+use Illuminate\Support\Facades\DB;
 
 class TaxResolutionService
 {
@@ -75,8 +76,9 @@ class TaxResolutionService
     public function getDefaultTaxForNewProduct(Company $company, int|string|null $categoryId = null): string
     {
         if ($categoryId !== null) {
-            $rate = \DB::table('categories')
+            $rate = DB::table('categories')
                 ->where('id', $categoryId)
+                ->where('company_id', $company->id)
                 ->value('default_tax_rate');
 
             if ($rate !== null) {
