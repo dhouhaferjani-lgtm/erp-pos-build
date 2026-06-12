@@ -18,8 +18,7 @@
  *      is treated as physical (fail toward enforcement, not silent exemption).
  *
  * The `is_physical` flag is persisted via SQLite migration v51 and sourced
- * from `ProductData.is_physical` on the server. The gap documented in earlier
- * versions of this file is now closed.
+ * from `ProductData.is_physical` on the server.
  *
  * Snapshot changes never evict cart lines — this selector only gates FURTHER
  * adds (Tasks 11/12 consume it).
@@ -50,14 +49,35 @@ const ZERO = '0.0000';
 // Pure core
 // ──────────────────────────────────────────────────────────────────────────────
 
+/** The product slice the exemption rules need. */
+type ExemptionProduct = Pick<POSProduct, 'sellableType' | 'is_physical'>;
+
+/**
+ * Exemption rules (shared by the pure core and the assembler's pre-DB
+ * short-circuit — keep them in ONE place):
+ * 1. non-product sellables (Menu/composite) are not stock-managed; an absent
+ *    sellableType means a standard product row (stock-managed).
+ * 2. non-physical products (services, labour lines) are exempt;
+ *    absent/undefined is treated as physical — fail toward enforcement.
+ */
+function isStockExempt(product: ExemptionProduct): boolean {
+  if (product.sellableType !== undefined && product.sellableType !== 'product') {
+    return true;
+  }
+
+  return product.is_physical === false;
+}
+
 export interface AvailabilityInputs {
   /**
    * `sellableType` drives the composite/Menu exemption; `is_physical` drives
    * the service-product exemption. Both are evaluated before any stock lookup.
    * An absent `is_physical` (undefined) is treated as physical (stock-checked).
+   *
+   * NOTE: the core does NO variant filtering — (product, variant) matching
+   * happens in the assembler, which feeds variant-scoped sums in here.
    */
-  product: Pick<POSProduct, 'sellableType' | 'is_physical'>;
-  variantId: string | null;
+  product: ExemptionProduct;
   /** Local `location_stock` row; `null` when the location has no row. */
   stockRow: { available: string } | null;
   /** Σ unsynced offline-receipt sale quantities for (product, variant). */
@@ -71,15 +91,7 @@ export interface AvailabilityInputs {
  * when the product is not stock-managed (exempt).
  */
 export function effectiveAvailable(input: AvailabilityInputs): string | null {
-  // Exemption 1: non-product sellables (Menu/composite) are not stock-managed.
-  // An absent sellableType means a standard product row (stock-managed).
-  if (input.product.sellableType !== undefined && input.product.sellableType !== 'product') {
-    return null;
-  }
-
-  // Exemption 2: non-physical products (services, labour lines) are exempt.
-  // Absent/undefined is treated as physical — fail toward enforcement.
-  if (input.product.is_physical === false) {
+  if (isStockExempt(input.product)) {
     return null;
   }
 
@@ -174,12 +186,8 @@ export async function getEffectiveAvailable(
   variantId: string | null,
   cartLines: ReadonlyArray<AvailabilityCartLine>,
 ): Promise<string | null> {
-  // Exempt sellables short-circuit before any DB read.
-  if (product.sellableType !== undefined && product.sellableType !== 'product') {
-    return null;
-  }
-  // Non-physical products (services) are also exempt — no DB read needed.
-  if (product.is_physical === false) {
+  // Exempt products short-circuit before any DB read.
+  if (isStockExempt(product)) {
     return null;
   }
 
@@ -218,7 +226,6 @@ export async function getEffectiveAvailable(
 
   return effectiveAvailable({
     product,
-    variantId: variantKey === '' ? null : variantKey,
     stockRow: stockRow ? { available: stockRow.available } : null,
     pendingSaleQty,
     cartQty,

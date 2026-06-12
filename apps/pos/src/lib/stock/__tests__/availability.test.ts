@@ -37,7 +37,6 @@ describe('effectiveAvailable (pure core)', () => {
     expect(
       effectiveAvailable({
         product: PRODUCT,
-        variantId: null,
         stockRow: { available: '10.0000' },
         pendingSaleQty: '0',
         cartQty: '0',
@@ -49,7 +48,6 @@ describe('effectiveAvailable (pure core)', () => {
     expect(
       effectiveAvailable({
         product: PRODUCT,
-        variantId: null,
         stockRow: { available: '10.0000' },
         pendingSaleQty: '3.0000',
         cartQty: '2.0000',
@@ -61,7 +59,6 @@ describe('effectiveAvailable (pure core)', () => {
     expect(
       effectiveAvailable({
         product: PRODUCT,
-        variantId: null,
         stockRow: { available: '2.0000' },
         pendingSaleQty: '5.0000',
         cartQty: '1.0000',
@@ -73,7 +70,6 @@ describe('effectiveAvailable (pure core)', () => {
     expect(
       effectiveAvailable({
         product: PRODUCT,
-        variantId: null,
         stockRow: null,
         pendingSaleQty: '0',
         cartQty: '0',
@@ -84,7 +80,6 @@ describe('effectiveAvailable (pure core)', () => {
     expect(
       effectiveAvailable({
         product: PRODUCT,
-        variantId: null,
         stockRow: null,
         pendingSaleQty: '3.0000',
         cartQty: '0',
@@ -96,7 +91,6 @@ describe('effectiveAvailable (pure core)', () => {
     expect(
       effectiveAvailable({
         product: { sellableType: 'composite_item' },
-        variantId: null,
         stockRow: { available: '10.0000' },
         pendingSaleQty: '0',
         cartQty: '0',
@@ -108,7 +102,6 @@ describe('effectiveAvailable (pure core)', () => {
     expect(
       effectiveAvailable({
         product: {},
-        variantId: null,
         stockRow: { available: '4.0000' },
         pendingSaleQty: '1.0000',
         cartQty: '0',
@@ -120,7 +113,6 @@ describe('effectiveAvailable (pure core)', () => {
     expect(
       effectiveAvailable({
         product: PRODUCT,
-        variantId: null,
         stockRow: { available: '10.0000' },
         pendingSaleQty: '3',
         cartQty: '0',
@@ -132,7 +124,6 @@ describe('effectiveAvailable (pure core)', () => {
     expect(
       effectiveAvailable({
         product: { sellableType: 'product', is_physical: false },
-        variantId: null,
         stockRow: { available: '10.0000' },
         pendingSaleQty: '0',
         cartQty: '0',
@@ -145,7 +136,6 @@ describe('effectiveAvailable (pure core)', () => {
     expect(
       effectiveAvailable({
         product: { sellableType: 'product' },
-        variantId: null,
         stockRow: { available: '5.0000' },
         pendingSaleQty: '0',
         cartQty: '0',
@@ -157,7 +147,6 @@ describe('effectiveAvailable (pure core)', () => {
     expect(
       effectiveAvailable({
         product: { sellableType: 'product', is_physical: true },
-        variantId: null,
         stockRow: { available: '3.0000' },
         pendingSaleQty: '1.0000',
         cartQty: '0',

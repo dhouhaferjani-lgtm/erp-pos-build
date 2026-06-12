@@ -44,7 +44,7 @@ function rowToProduct(row: ProductRow): POSProduct {
     ...(row.menu_category_id !== null ? { menu_category_id: row.menu_category_id } : {}),
     // Task 10 — physicality flag. Column defaults to 1 (physical) in SQLite;
     // we map 0 → false, any other value → true (absent/1/null all stay physical).
-    is_physical: row.is_physical === 0 ? false : true,
+    is_physical: row.is_physical !== 0,
   };
 }
 
