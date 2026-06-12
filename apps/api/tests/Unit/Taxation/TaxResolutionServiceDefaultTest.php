@@ -37,6 +37,9 @@ final class TaxResolutionServiceDefaultTest extends TestCase
         \DB::table('categories')->where('id', $category->id)->update(['default_tax_rate' => '10.00']);
 
         $this->assertSame(0, bccomp($service->getDefaultTaxForNewProduct($company, (string) $category->id), '10.00', 2));
+
+        // Integer PK passed directly (as ProductService::upsert does via $category->id) must also resolve
+        $this->assertSame(0, bccomp($service->getDefaultTaxForNewProduct($company, (int) $category->id), '10.00', 2));
     }
 
     public function test_falls_back_to_company_when_category_has_no_tax_rate(): void

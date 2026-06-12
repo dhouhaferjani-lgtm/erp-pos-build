@@ -67,10 +67,12 @@ class TaxResolutionService
      * 2. Company default_tax_rate
      * 3. '0.00' (hard fallback when neither is configured)
      *
-     * @param  string|null  $categoryId  Category primary-key value (string to accommodate both
-     *                                   integer and UUID primary keys passed from HTTP requests)
+     * @param  int|string|null  $categoryId  Category primary-key value. The product `categories`
+     *                                       table uses an integer auto-increment PK, but callers
+     *                                       may pass it as a string from HTTP request payloads, so
+     *                                       both are accepted; the query coerces either.
      */
-    public function getDefaultTaxForNewProduct(Company $company, ?string $categoryId = null): string
+    public function getDefaultTaxForNewProduct(Company $company, int|string|null $categoryId = null): string
     {
         if ($categoryId !== null) {
             $rate = \DB::table('categories')
