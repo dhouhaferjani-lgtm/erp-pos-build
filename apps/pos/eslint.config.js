@@ -62,9 +62,9 @@ export default tseslint.config(
       local: localPlugin,
     },
     rules: {
-      // i18n guard — WARN on the legacy surface (ratcheted). Cleaned dirs
-      // promote to ERROR via an i18n-clean override block.
-      'local/no-untranslated-literal': 'warn',
+      // i18n guard — promoted to ERROR for apps/pos (all 7 flagged files
+      // translated in the EN/FR sweep). No legacy surface remains.
+      'local/no-untranslated-literal': 'error',
       // React Hooks — recommended preset, demoted to warn for the
       // legacy surface (apps/pos has accumulated violations across
       // many files predating this config). New code lands clean

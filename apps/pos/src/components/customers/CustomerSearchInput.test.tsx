@@ -1,6 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getDatabase } from '@/lib/db';
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) => key,
+  }),
+}));
 import { migrations } from '@/lib/db/migrations';
 import { upsertCustomer } from '@/lib/db/repositories/customerRepository';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
@@ -83,7 +89,7 @@ describe('CustomerSearchInput', () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText('Customer search'), { target: { value: 'mariam' } });
+    fireEvent.change(screen.getByLabelText('customerSearch.label'), { target: { value: 'mariam' } });
 
     await screen.findByText('Mariam Ben Ali');
     expect(screen.queryByText('Mariam Other')).not.toBeInTheDocument();
@@ -108,10 +114,10 @@ describe('CustomerSearchInput', () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText('Customer search'), { target: { value: 'mariam' } });
+    fireEvent.change(screen.getByLabelText('customerSearch.label'), { target: { value: 'mariam' } });
 
     await waitFor(() => {
-      expect(screen.getByText('Tenant and company are required to attach a customer.')).toBeInTheDocument();
+      expect(screen.getByText('customerAttach.scopeError')).toBeInTheDocument();
     });
     expect(onSelect).not.toHaveBeenCalled();
     expect(getDatabase).not.toHaveBeenCalled();

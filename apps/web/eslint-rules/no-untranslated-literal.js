@@ -73,6 +73,12 @@ export default {
   },
 
   create(context) {
+    // Skip test/story files — their JSX string literals are render assertions
+    // and fixtures, not user-facing copy.
+    const filename = context.filename ?? context.getFilename();
+    if (/(\.test\.|\.spec\.|\.stories\.|__tests__|\/test\/)/.test(filename)) {
+      return {};
+    }
     return {
       JSXText(node) {
         const parent = node.parent;

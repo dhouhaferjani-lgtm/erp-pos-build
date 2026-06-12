@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Search } from 'lucide-react';
 import { getDatabase } from '@/lib/db';
 import { searchCustomers } from '@/lib/db/repositories/customerRepository';
 import type { CustomerMirrorRow } from '@/lib/customer/customerTypes';
-import { CUSTOMER_ATTACH_SCOPE_ERROR } from './customerAttachUtils';
 
 export interface CustomerSearchInputProps {
   tenantId: string | null | undefined;
@@ -18,6 +18,7 @@ export function CustomerSearchInput({
   onSelect,
   limit = 8,
 }: CustomerSearchInputProps) {
+  const { t } = useTranslation('pos');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CustomerMirrorRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +51,7 @@ export function CustomerSearchInput({
       } catch (searchError) {
         if (!cancelled) {
           setResults([]);
-          setError(searchError instanceof Error ? searchError.message : 'Customer search failed.');
+          setError(searchError instanceof Error ? searchError.message : t('customerAttach.errorSearchFailed'));
           setLoading(false);
         }
       }
@@ -80,13 +81,13 @@ export function CustomerSearchInput({
     setLoading(true);
   };
 
-  const displayError = scopeMissing ? CUSTOMER_ATTACH_SCOPE_ERROR : error;
+  const displayError = scopeMissing ? t('customerAttach.scopeError') : error;
   const displayResults = scopeMissing ? [] : results;
 
   return (
     <div className="space-y-2">
       <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500" htmlFor="customer-search">
-        Customer search
+        {t('customerSearch.label')}
       </label>
       <div className="relative">
         <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-gray-400" aria-hidden="true" />
@@ -94,11 +95,11 @@ export function CustomerSearchInput({
           id="customer-search"
           value={query}
           onChange={(event) => handleQueryChange(event.target.value)}
-          placeholder="Name, phone, tax number"
+          placeholder={t('customerSearch.placeholder')}
           className="w-full rounded-md border border-gray-300 bg-white py-2 pl-8 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
       </div>
-      {loading && !scopeMissing && <div className="text-xs text-gray-500">Searching...</div>}
+      {loading && !scopeMissing && <div className="text-xs text-gray-500">{t('customerSearch.searching')}</div>}
       {displayError && <div className="text-xs font-medium text-red-700">{displayError}</div>}
       {displayResults.length > 0 && (
         <div className="max-h-40 overflow-y-auto rounded-md border border-gray-200 bg-white">

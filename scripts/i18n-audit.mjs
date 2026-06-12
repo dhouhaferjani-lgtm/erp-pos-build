@@ -29,6 +29,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ESLint } from 'eslint';
+import tseslint from 'typescript-eslint';
+import noUntranslatedLiteral from '../apps/web/eslint-rules/no-untranslated-literal.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APPS = ['web', 'pos'];
@@ -113,37 +116,6 @@ function parityForApp(app) {
 // HARDCODED SCAN
 // ---------------------------------------------------------------------------
 
-const EXCLUDE = /(__tests__|\/test\/|\.test\.|\.spec\.|\/locales\/|\/node_modules\/|\.stories\.)/;
-
-function walkTsx(dir, out = []) {
-  if (!fs.existsSync(dir)) return out;
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) {
-      if (!/node_modules/.test(p)) walkTsx(p, out);
-    } else if (/\.tsx$/.test(p)) out.push(p);
-  }
-  return out;
-}
-
-const USER_ATTRS = '(placeholder|title|aria-label|alt|label)';
-const jsxTextRe = />([^<>{}]*[A-Za-z]{2,}[^<>{}]*)</g;
-const attrRe = new RegExp(`\\b${USER_ATTRS}\\s*=\\s*"([^"]*[A-Za-z]{2,}[^"]*)"`, 'g');
-
-function isCodey(raw) {
-  const s = raw.trim();
-  if (!s) return true;
-  if (!/[A-Za-z]{2,}/.test(s)) return true;
-  if (!/\s/.test(s)) {
-    if (/[._/]/.test(s)) return true; // path / key
-    if (/^[a-z][a-zA-Z0-9]*$/.test(s) && /[A-Z]/.test(s)) return true; // camelCase ident
-    if (/^[a-z0-9]+(-[a-z0-9]+)+$/.test(s)) return true; // kebab token
-    if (/^[A-Z0-9_]+$/.test(s) && s.length <= 4) return true; // short ACRONYM/CONST
-    if (/^(px|py|mt|mb|ms|me|ps|pe|flex|grid|true|false|null|undefined)$/.test(s)) return true;
-  }
-  return false;
-}
-
 // Map an absolute tsx path to a cluster id.
 function clusterOf(file) {
   const rel = path.relative(repoRoot, file).replace(/\\/g, '/');
@@ -156,27 +128,37 @@ function clusterOf(file) {
   return 'web:other';
 }
 
-function scanHardcoded() {
+// Authoritative hardcoded-literal scan: drives the SAME ESLint rule that
+// enforces regressions (local/no-untranslated-literal), via an isolated
+// single-rule flat config (parser only, no type-checking → fast). This keeps
+// the tracker's counts identical to what CI gates on, and inherits the rule's
+// test-file exclusion and heuristics.
+async function scanHardcoded() {
   const clusters = new Map(); // id -> { files: Map<rel,count>, total }
   for (const app of APPS) {
-    for (const file of walkTsx(path.join(repoRoot, 'apps', app, 'src'))) {
-      if (EXCLUDE.test(file)) continue;
-      const src = fs.readFileSync(file, 'utf8');
-      let count = 0;
-      let m;
-      jsxTextRe.lastIndex = 0;
-      while ((m = jsxTextRe.exec(src))) {
-        if (!isCodey(m[1])) count++;
-      }
-      attrRe.lastIndex = 0;
-      while ((m = attrRe.exec(src))) {
-        if (!isCodey(m[2])) count++;
-      }
+    const appDir = path.join(repoRoot, 'apps', app);
+    if (!fs.existsSync(path.join(appDir, 'src'))) continue;
+    const eslint = new ESLint({
+      cwd: appDir,
+      overrideConfigFile: true,
+      overrideConfig: {
+        files: ['**/*.tsx'],
+        languageOptions: {
+          parser: tseslint.parser,
+          parserOptions: { ecmaFeatures: { jsx: true }, sourceType: 'module' },
+        },
+        plugins: { local: { rules: { 'no-untranslated-literal': noUntranslatedLiteral } } },
+        rules: { 'local/no-untranslated-literal': 'warn' },
+      },
+    });
+    const results = await eslint.lintFiles([path.join(appDir, 'src/**/*.tsx')]);
+    for (const r of results) {
+      const count = r.messages.filter((m) => m.ruleId === 'local/no-untranslated-literal').length;
       if (count === 0) continue;
-      const id = clusterOf(file);
+      const id = clusterOf(r.filePath);
       if (!clusters.has(id)) clusters.set(id, { files: new Map(), total: 0 });
       const c = clusters.get(id);
-      const rel = path.relative(repoRoot, file).replace(/\\/g, '/');
+      const rel = path.relative(repoRoot, r.filePath).replace(/\\/g, '/');
       c.files.set(rel, count);
       c.total += count;
     }
@@ -273,7 +255,7 @@ function readExistingStatus(trackerPath) {
 
 const parity = {};
 for (const app of APPS) parity[app] = parityForApp(app);
-const clusters = scanHardcoded();
+const clusters = await scanHardcoded();
 
 const trackerPath = path.join(repoRoot, 'docs', 'i18n', 'i18n-tracker.yaml');
 const existingStatus = readExistingStatus(trackerPath);

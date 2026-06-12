@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Delete } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getCurrencyDecimals } from '@/lib/currency';
@@ -22,6 +23,7 @@ export function CurrencyNumpad({
   'aria-label': ariaLabel,
   className,
 }: CurrencyNumpadProps) {
+  const { t } = useTranslation('pos');
   const maxDecimals = getCurrencyDecimals(currencyCode);
 
   const appendDigit = useCallback(
@@ -105,7 +107,7 @@ export function CurrencyNumpad({
         disabled={disabled}
         onClick={backspace}
         data-testid="numpad-backspace"
-        aria-label="backspace"
+        aria-label={t('numpad.backspace')}
       >
         <Delete className="h-5 w-5" />
       </button>
