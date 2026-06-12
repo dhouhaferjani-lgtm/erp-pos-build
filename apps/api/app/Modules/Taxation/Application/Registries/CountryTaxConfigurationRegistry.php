@@ -6,7 +6,6 @@ namespace App\Modules\Taxation\Application\Registries;
 
 use Database\Seeders\FranceTaxConfigurationSeeder;
 use Database\Seeders\TunisiaTaxConfigurationSeeder;
-use Illuminate\Database\Seeder;
 
 /**
  * Maps an ISO 3166-1 alpha-2 country code to the seeder that loads that
