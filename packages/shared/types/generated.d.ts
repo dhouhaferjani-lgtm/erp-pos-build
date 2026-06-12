@@ -429,6 +429,7 @@ export type LocationType = 'shop' | 'warehouse' | 'office' | 'mobile';
 export type MembershipRole = 'owner' | 'admin' | 'manager' | 'accountant' | 'cashier' | 'technician' | 'viewer';
 export type MembershipStatus = 'active' | 'pending' | 'suspended' | 'revoked';
 export type PeriodStatus = 'open' | 'closed' | 'locked';
+export type PosStockPolicy = 'block' | 'warn' | 'off';
 export type SequenceType = 'invoice' | 'credit_note' | 'quote' | 'sales_order' | 'purchase_order' | 'delivery_note' | 'receipt' | 'journal_entry';
 export type VerificationStatus = 'pending' | 'submitted' | 'in_review' | 'verified' | 'rejected';
 export type VerificationTier = 'basic' | 'standard' | 'enhanced' | 'certified';

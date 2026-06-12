@@ -26,21 +26,21 @@ Source: review trail from the `feat/pos-location-aware-stock` implementation.
 
 ## FU-3: `resolveSellerIdentity` `source` discriminant + `buildEscPosReceiptData` options-object signature
 
-**Context:** `resolveSellerIdentity` returns a plain `SellerIdentity` object with no discriminant indicating whether the identity came from the location or the company. Display callers (`Header.tsx:346`, `buildReceiptData.ts:151`) re-derive completeness independently — if the resolver's logic ever drifts from the re-derivation, the display and the signed payload will disagree.
+**Context:** `resolveSellerIdentity` returns a plain `SellerIdentity` object with no discriminant indicating whether the identity came from the location or the company. Display callers (`Header.tsx` handlePrintZReport, `buildReceiptData.ts` header block) re-derive completeness independently — if the resolver's logic ever drifts from the re-derivation, the display and the signed payload will disagree.
 
 **What:** (a) consider adding a `source: 'location' | 'company'` discriminant to `SellerIdentity` so display callers consume the same decision; (b) `buildEscPosReceiptData` options object signature should be reviewed for the same drift risk.
 
-**Where:** `apps/pos/src/lib/fiscal/sellerIdentity.ts`, `apps/pos/src/components/Header.tsx:346`, `apps/pos/src/lib/fiscal/buildReceiptData.ts:151`.
+**Where:** `apps/pos/src/lib/fiscal/sellerIdentity.ts`, `apps/pos/src/components/Header.tsx` (handlePrintZReport), `apps/pos/src/lib/buildReceiptData.ts` (header identity block).
 
 ---
 
 ## FU-4: `cleanupStuckReceipts` (>90d) deletion resurrects phantom availability
 
-**Context:** `offlineReceiptRepository.cleanupStuckReceipts()` deletes receipts older than 90 days that never synced. These receipts held pessimistic availability deductions (via `useLocationStockStore.pendingDeductions`). Deletion without a corresponding stock re-pull can transiently resurrect `effectiveAvailable` — showing stock as available that was sold but never confirmed to the server.
+**Context:** `offlineReceiptRepository.cleanupStuckReceipts()` deletes receipts older than 90 days that never synced. These receipts subtract from `effectiveAvailable` (the selector reads unsynced receipts directly — there is no separate deductions store). Deletion without a corresponding stock re-pull can transiently resurrect `effectiveAvailable` — showing stock as available that was sold but never confirmed to the server.
 
 **What:** this is an accepted residual; document the known bound (90-day receipts are already an edge case; the server does not reflect the sale anyway). If a stock re-pull gate is added to `cleanupStuckReceipts`, the deductions should be cleared atomically with the pull completing.
 
-**Where:** `apps/pos/src/lib/db/repositories/offlineReceiptRepository.ts`, `apps/pos/src/stores/locationStockStore.ts` (pendingDeductions).
+**Where:** `apps/pos/src/lib/db/repositories/offlineReceiptRepository.ts` (`cleanupStuckReceipts`, `getUnsyncedReceiptLineBlobs`), `apps/pos/src/lib/stock/availability.ts`.
 
 ---
 
@@ -70,7 +70,7 @@ Source: review trail from the `feat/pos-location-aware-stock` implementation.
 
 **What:** decide: document the tolerance (bcmath-aware code is fine with either) or normalize at the API boundary to always emit `'0.0000'`. Not a precision bug — cosmetic, but creates a false test-failure risk if display code is written with string equality.
 
-**Where:** `apps/api/app/Modules/Inventory/Presentation/Http/Resources/LocationStockResource.php` (if it exists) or the DTO formatter.
+**Where:** `apps/api/app/Modules/Inventory/Application/Services/LocationStockQueryService.php` (DTO mapping) + `apps/pos/src/lib/db/repositories/locationStockRepository.ts` ('0' defaults; interface doc already warns against string equality).
 
 ---
 
@@ -80,7 +80,7 @@ Source: review trail from the `feat/pos-location-aware-stock` implementation.
 
 **What:** track this as a drift risk. When the endpoint is next touched, extract the page size to a config constant or expose it in the response `meta` so the client can self-configure.
 
-**Where:** `apps/api/app/Modules/POS/Presentation/Http/Controllers/PosStockController.php` + `apps/pos/src/stores/locationStockStore.ts` / sync path.
+**Where:** `apps/api/app/Modules/POS/Presentation/Controllers/PosStockLevelController.php` (`PER_PAGE`) + `apps/pos/src/lib/sync/syncService.ts` (`pullLocationStock` page loop — paginates by `meta.pagination.last_page`, so a server page-size change is actually self-adapting; the drift risk is only payload-size expectations).
 
 ---
 
@@ -90,7 +90,7 @@ Source: review trail from the `feat/pos-location-aware-stock` implementation.
 
 **What:** flag for review if approval flows need instant stock refresh (e.g. high-volume quick-service). Current cadence is acceptable for the Tier-A parapharmacy and coffee-shop profiles. If a faster refresh is needed, `pullLocationStock` can be called inline after the drain completes.
 
-**Where:** `apps/pos/src/stores/syncStore.ts` (approvalFiscalSync) + `apps/pos/src/stores/locationStockStore.ts` (pullLocationStock entry point).
+**Where:** `apps/pos/src/lib/operatorApproval/approvalFiscalSync.ts` + `apps/pos/src/lib/sync/syncService.ts` (`pullLocationStock`).
 
 ---
 
@@ -100,4 +100,4 @@ Source: review trail from the `feat/pos-location-aware-stock` implementation.
 
 **What:** decide whether "fail toward hiding" (current: shows last-good timestamp, which at least communicates staleness via increasing age) or "fail toward warning" (show an explicit "stock data unavailable" state on error) is the correct UX. Current behavior is conservative and acceptable for launch.
 
-**Where:** `apps/pos/src/components/atoms/StockFreshness/StockFreshness.tsx` + `apps/pos/src/stores/locationStockStore.ts` (error path).
+**Where:** `apps/pos/src/components/atoms/StockFreshness/StockFreshness.tsx` (catch keeps previous timestamp) + `apps/pos/src/lib/sync/syncService.ts` (`STOCK_LAST_SYNC_KEY` write path).
