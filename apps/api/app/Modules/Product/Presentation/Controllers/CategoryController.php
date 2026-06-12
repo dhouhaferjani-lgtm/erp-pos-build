@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Product\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Catalog\Presentation\Rules\TaxConfigurationCountryCoherent;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Product\Application\DTOs\CategoryData;
 use App\Modules\Product\Domain\Category;
@@ -111,7 +112,8 @@ class CategoryController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $companyId = $company->id;
 
         $validated = $request->validate([
             'parent_id' => ['nullable', ScopedExists::company('categories', $companyId)],
@@ -120,6 +122,16 @@ class CategoryController extends Controller
             'description' => 'nullable|string|max:1000',
             'sort_order' => 'nullable|integer|min:0',
             'is_active' => 'nullable|boolean',
+            // api.product.tax-cat: Defense-in-depth coherence — mirrors composite-item
+            // pattern (StoreCompositeItemRequest). A mismatched country_code on
+            // default_tax_configuration_id is silently ignored by TaxCalculationService
+            // (it selects by company.country_code at runtime), but storing incoherent
+            // data is rejected here as a guard.
+            'default_tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'default_tax_configuration_id' => [
+                'nullable', 'uuid', 'exists:tax_configurations,id',
+                new TaxConfigurationCountryCoherent($company->country_code),
+            ],
         ]);
 
         // Verify parent belongs to same company
@@ -148,6 +160,8 @@ class CategoryController extends Controller
             'description' => $validated['description'] ?? null,
             'sort_order' => $validated['sort_order'] ?? 0,
             'is_active' => $validated['is_active'] ?? true,
+            'default_tax_rate' => $validated['default_tax_rate'] ?? null,
+            'default_tax_configuration_id' => $validated['default_tax_configuration_id'] ?? null,
         ]);
 
         $category->refresh();
@@ -159,7 +173,8 @@ class CategoryController extends Controller
 
     public function update(Request $request, int $id): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $companyId = $company->id;
 
         $category = Category::query()
             ->where('company_id', $companyId)
@@ -172,6 +187,13 @@ class CategoryController extends Controller
             'description' => 'nullable|string|max:1000',
             'sort_order' => 'nullable|integer|min:0',
             'is_active' => 'nullable|boolean',
+            // api.product.tax-cat: mirrors store() — same defense-in-depth country
+            // coherence check on both create and update paths.
+            'default_tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'default_tax_configuration_id' => [
+                'nullable', 'uuid', 'exists:tax_configurations,id',
+                new TaxConfigurationCountryCoherent($company->country_code),
+            ],
         ]);
 
         // Prevent circular reference
