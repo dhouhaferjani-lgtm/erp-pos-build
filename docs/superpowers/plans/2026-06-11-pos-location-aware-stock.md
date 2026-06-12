@@ -29,7 +29,7 @@
 - Test: `apps/api/tests/Unit/Company/PosStockPolicyTest.php`
 - Test: `apps/api/tests/Feature/Company/PosStockPolicyMigrationTest.php`
 
-- [ ] **Step 1: Write the failing enum test**
+- [x] **Step 1: Write the failing enum test**
 
 ```php
 <?php
@@ -66,12 +66,12 @@ final class PosStockPolicyTest extends TestCase
 }
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `cd apps/api && ./vendor/bin/phpunit tests/Unit/Company/PosStockPolicyTest.php`
 Expected: FAIL — `Class "App\Modules\Company\Domain\Enums\PosStockPolicy" not found`
 
-- [ ] **Step 3: Implement the enum**
+- [x] **Step 3: Implement the enum**
 
 ```php
 <?php
@@ -106,12 +106,12 @@ enum PosStockPolicy: string
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd apps/api && ./vendor/bin/phpunit tests/Unit/Company/PosStockPolicyTest.php`
 Expected: PASS (3 tests)
 
-- [ ] **Step 5: Write the failing migration/model test**
+- [x] **Step 5: Write the failing migration/model test**
 
 ```php
 <?php
@@ -145,12 +145,12 @@ final class PosStockPolicyMigrationTest extends TestCase
 }
 ```
 
-- [ ] **Step 6: Run to verify it fails**
+- [x] **Step 6: Run to verify it fails**
 
 Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/PosStockPolicyMigrationTest.php`
 Expected: FAIL — column `pos_stock_policy` does not exist
 
-- [ ] **Step 7: Write the migration (column default `block`, backfill by tenant vertical)**
+- [x] **Step 7: Write the migration (column default `block`, backfill by tenant vertical)**
 
 ```php
 <?php
@@ -190,7 +190,7 @@ return new class extends Migration
 };
 ```
 
-- [ ] **Step 8: Add the cast + property docblock to `Company`**
+- [x] **Step 8: Add the cast + property docblock to `Company`**
 
 In `apps/api/app/Modules/Company/Domain/Company.php`: add `@property PosStockPolicy $pos_stock_policy` to the class docblock, add `'pos_stock_policy'` to `$fillable`, and in `casts()` add:
 
@@ -200,7 +200,7 @@ In `apps/api/app/Modules/Company/Domain/Company.php`: add `@property PosStockPol
 
 (Import `App\Modules\Company\Domain\Enums\PosStockPolicy`.)
 
-- [ ] **Step 8a: Backfill console command** — `apps/api/app/Modules/Company/Presentation/Console/BackfillPosStockPolicyCommand.php`, signature `pos:stock-policy-backfill {--dry-run}`. Walks the central tenant directory (mirror how `tenant:migrate-rolling` iterates tenants and initializes tenancy per DB), and inside each tenant context runs:
+- [x] **Step 8a: Backfill console command** — `apps/api/app/Modules/Company/Presentation/Console/BackfillPosStockPolicyCommand.php`, signature `pos:stock-policy-backfill {--dry-run}`. Walks the central tenant directory (mirror how `tenant:migrate-rolling` iterates tenants and initializes tenancy per DB), and inside each tenant context runs:
 
 ```php
 $vertical = $tenant->vertical; // Vertical cast on the central Tenant model (Tenant.php:121-127)
@@ -212,14 +212,14 @@ if ($target === PosStockPolicy::Off) {
 
 Test (`tests/Feature/Company/BackfillPosStockPolicyCommandTest.php`): a restaurant-vertical tenant's companies flip to `off`; a retail tenant's stay `block`; `--dry-run` reports without writing. Deploy runbook note: run once after `tenant:migrate-rolling`.
 
-- [ ] **Step 9: Run tests + static analysis**
+- [x] **Step 9: Run tests + static analysis**
 
 Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Company/PosStockPolicyMigrationTest.php tests/Unit/Company/PosStockPolicyTest.php tests/Feature/Company/BackfillPosStockPolicyCommandTest.php && ./vendor/bin/phpstan analyse app/Modules/Company --no-progress && ./vendor/bin/pint --dirty --test`
 Expected: PASS, PHPStan `[OK]`, Pint clean
 
-- [ ] **Step 10: New-company creation derives the default** — find the company-creation service (`grep -rn "Company::create\|companies()->create" apps/api/app --include='*.php' | grep -iv test`) and set `pos_stock_policy => PosStockPolicy::defaultForVertical($tenant->vertical)` where the tenant's companies are first created (signup/reference seed path). Add an assertion to the signup/company-creation feature test that a restaurant-vertical tenant's company lands `off`. If creation flows rely on the column default, the explicit derivation in the creation service still wins for Menu verticals (the column default alone would wrongly give them `block`).
+- [x] **Step 10: New-company creation derives the default** — find the company-creation service (`grep -rn "Company::create\|companies()->create" apps/api/app --include='*.php' | grep -iv test`) and set `pos_stock_policy => PosStockPolicy::defaultForVertical($tenant->vertical)` where the tenant's companies are first created (signup/reference seed path). Add an assertion to the signup/company-creation feature test that a restaurant-vertical tenant's company lands `off`. If creation flows rely on the column default, the explicit derivation in the creation service still wins for Menu verticals (the column default alone would wrongly give them `block`).
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add apps/api && git commit -m "feat(pos): PosStockPolicy enum + companies.pos_stock_policy with vertical-aware backfill"
@@ -235,7 +235,7 @@ git add apps/api && git commit -m "feat(pos): PosStockPolicy enum + companies.po
 
 Spec §4.2 (Codex P1-D): policy is delivered via the terminal payload (terminal → company is unambiguous), NOT `/company/config`. Spec §4.6: the client seller resolver needs the location's address.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```php
 <?php
@@ -282,12 +282,12 @@ final class TerminalResourcePolicyTest extends TestCase
 }
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/POS/TerminalResourcePolicyTest.php`
 Expected: FAIL — undefined index `pos_stock_policy`
 
-- [ ] **Step 3: Extend `TerminalResource`**
+- [x] **Step 3: Extend `TerminalResource`**
 
 In the resource's `toArray()`: alongside the existing location block (`TerminalResource.php:28-36`), add the four address fields; at the top level add the policy resolved through the terminal's company relation (eager-load tolerant):
 
@@ -303,12 +303,12 @@ In the resource's `toArray()`: alongside the existing location block (`TerminalR
 
 `Terminal::company()` already exists (`Terminal.php:146` — verified). Update every `TerminalResource::make($terminal->load('location'))` call site in `TerminalController` to `->load(['location', 'company'])` to avoid N+1 (`grep -n "load('location')" apps/api/app/Modules/POS/Presentation/Controllers/TerminalController.php`).
 
-- [ ] **Step 4: Run tests + scoped checks**
+- [x] **Step 4: Run tests + scoped checks**
 
 Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/POS/TerminalResourcePolicyTest.php tests/Feature/POS/ --filter=Terminal && ./vendor/bin/phpstan analyse app/Modules/POS/Presentation --no-progress`
 Expected: PASS (incl. existing terminal tests), PHPStan `[OK]`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/api && git commit -m "feat(pos): terminal payload carries pos_stock_policy + location address (policy via terminal, not /company/config)"
@@ -326,7 +326,7 @@ git add apps/api && git commit -m "feat(pos): terminal payload carries pos_stock
 
 No test yet (interfaces/DTOs are exercised by Task 4's implementation tests). Strict typing — no `mixed`.
 
-- [ ] **Step 1: Write the contract + DTOs**
+- [x] **Step 1: Write the contract + DTOs**
 
 ```php
 <?php
@@ -430,7 +430,7 @@ final readonly class LocationStockPageDTO
 }
 ```
 
-- [ ] **Step 2: Scoped checks + commit**
+- [x] **Step 2: Scoped checks + commit**
 
 Run: `cd apps/api && ./vendor/bin/phpstan analyse app/Shared --no-progress && ./vendor/bin/pint --dirty --test`
 Expected: `[OK]`, clean
@@ -448,7 +448,7 @@ git add apps/api/app/Shared && git commit -m "feat(inventory): LocationStockRead
 - Modify: Inventory service provider (find with `grep -rn "class .*ServiceProvider" apps/api/app/Modules/Inventory/Infrastructure/Providers/`) — bind `LocationStockReader::class => LocationStockQueryService::class`
 - Test: `apps/api/tests/Feature/Inventory/LocationStockQueryServiceTest.php`
 
-- [ ] **Step 1: Write the failing tests** (one test class, real models, `RefreshDatabase`; use existing factories — `StockLevel`, `Product`, `Location`, `StockTransfer`/`StockTransferLine` (see `tests/Feature/Inventory/StockTransferVariantTest.php` for transfer factory/setup idioms), `Document`/`DocumentLine` for the PO term)
+- [x] **Step 1: Write the failing tests** (one test class, real models, `RefreshDatabase`; use existing factories — `StockLevel`, `Product`, `Location`, `StockTransfer`/`StockTransferLine` (see `tests/Feature/Inventory/StockTransferVariantTest.php` for transfer factory/setup idioms), `Document`/`DocumentLine` for the PO term)
 
 ```php
 <?php
@@ -522,12 +522,12 @@ final class LocationStockQueryServiceTest extends TestCase
 
 Write the Arrange/Act/Assert bodies with real factories — every assertion above is the contract; do not weaken them. Use `bcadd`-free assertions on exact strings (`'6.0000'`).
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Inventory/LocationStockQueryServiceTest.php`
 Expected: FAIL — class not found
 
-- [ ] **Step 3: Implement the service**
+- [x] **Step 3: Implement the service**
 
 ```php
 <?php
@@ -655,7 +655,7 @@ final class LocationStockQueryService implements LocationStockReader
 > NOTE for the implementer: `foreach ($byKey as $key, $sums)` is pseudocode — use `foreach ($byKey as $key => $sums)`. Check `QuantityScale::round()`'s real signature (`apps/api/app/Shared/Domain/QuantityScale.php:33`) and the DocumentType/DocumentStatus enum namespaces (memory: the column is `documents.type`, enum `Document\Domain\Enums\DocumentType`) before relying on the snippets — match the codebase, not this listing. The PHPStan rule `ForbidHardcodedBcmathScale` governs bcmath calls; the literal `4` here is QuantityScale's documented quantity scale parameter, not a bcmath scale — if the rule still flags it, use the module's existing scale constant (grep `QTY_SCALE`).
 > Cross-DB caution (memory: T1 transfer migrations broke under db-per-tenant): both joins above are tenant-DB-internal tables — no central-DB join. Keep it that way.
 
-- [ ] **Step 4: Bind in the Inventory provider**
+- [x] **Step 4: Bind in the Inventory provider**
 
 ```php
 $this->app->bind(
@@ -664,12 +664,12 @@ $this->app->bind(
 );
 ```
 
-- [ ] **Step 5: Run tests + checks**
+- [x] **Step 5: Run tests + checks**
 
 Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Inventory/LocationStockQueryServiceTest.php && ./vendor/bin/phpstan analyse app/Modules/Inventory app/Shared --no-progress && ./vendor/bin/pint --dirty --test`
 Expected: 6 tests PASS, `[OK]`, clean. Also run `composer deptrac` if a ratchet exists (Shared←Inventory is an allowed direction; verify no new violation).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/api && git commit -m "feat(inventory): LocationStockQueryService — location stock delta/full + in-transit transfer & confirmed-PO incoming"
@@ -684,7 +684,7 @@ git add apps/api && git commit -m "feat(inventory): LocationStockQueryService �
 - Modify: `apps/api/app/Modules/POS/routes.php`
 - Test: `apps/api/tests/Feature/POS/PosStockLevelEndpointTest.php`
 
-- [ ] **Step 1: Write the failing endpoint tests**
+- [x] **Step 1: Write the failing endpoint tests**
 
 ```php
 <?php
@@ -741,12 +741,12 @@ final class PosStockLevelEndpointTest extends TestCase
 }
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/POS/PosStockLevelEndpointTest.php`
 Expected: FAIL — 404 route not found
 
-- [ ] **Step 3: Implement controller + route**
+- [x] **Step 3: Implement controller + route**
 
 ```php
 <?php
@@ -851,12 +851,12 @@ Route::get('/pos/stock-levels', [PosStockLevelController::class, 'index']);
 
 `as_of` is captured BEFORE the read so a row updated mid-request is re-sent next delta rather than skipped (overlap is safe — upserts are idempotent; gaps are not). This is advisory-only overlap handling under READ COMMITTED — no isolation-level change (Codex P2-3).
 
-- [ ] **Step 4: Run tests + checks**
+- [x] **Step 4: Run tests + checks**
 
 Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/POS/PosStockLevelEndpointTest.php && ./vendor/bin/phpstan analyse app/Modules/POS --no-progress && ./vendor/bin/pint --dirty --test`
 Expected: PASS, `[OK]`, clean
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/api && git commit -m "feat(pos): GET /pos/stock-levels — terminal-located stock feed (delta/full + incoming, server as_of cursor)"
@@ -870,7 +870,7 @@ git add apps/api && git commit -m "feat(pos): GET /pos/stock-levels — terminal
 - Modify: `apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php` (`decrementStock` ~`:868-948`, composite leaf path `deductCompositeItemStock` ~`:1158-1209`)
 - Test: `apps/api/tests/Feature/POS/ReceiptStockPolicyTest.php`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```php
 <?php
@@ -919,12 +919,12 @@ final class ReceiptStockPolicyTest extends TestCase
 }
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/POS/ReceiptStockPolicyTest.php`
 Expected: warn/off tests FAIL (RuntimeException currently always thrown)
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `ReceiptCreationService::decrementStock`, replace the unconditional throw (`:896-912`) with:
 
@@ -947,12 +947,12 @@ if (bccomp($available, $quantity, 4) < 0) {
 
 Keep the existing bcmath scale source exactly as the surrounding code does (it already uses the stock scale there — don't introduce a new literal if the file uses a constant). Thread the company (already available via `$this->companyContext->requireCompany()` at the createReceipt boundary) down to both `decrementStock` and the composite leaf path — one policy read per receipt, not per line. Do NOT touch `PosCoreReceiptProjection`.
 
-- [ ] **Step 4: Run tests + checks**
+- [x] **Step 4: Run tests + checks**
 
 Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/POS/ReceiptStockPolicyTest.php tests/Feature/POS/ --filter=Receipt && ./vendor/bin/phpstan analyse app/Modules/POS --no-progress`
 Expected: PASS (incl. pre-existing receipt tests — `block` default preserves old behavior), `[OK]`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/api && git commit -m "feat(pos): policy-aware stock enforcement on the draft path (block throws; warn/off proceed; projection untouched)"
@@ -967,7 +967,7 @@ git add apps/api && git commit -m "feat(pos): policy-aware stock enforcement on 
 
 No production change — this pins that a location-sourced seller block passes canonical validation (the no-version-bump rationale, Codex BLOCKER-E adjudication).
 
-- [ ] **Step 1: Write the test (it should PASS immediately — it is a contract pin, not TDD red)**
+- [x] **Step 1: Write the test (it should PASS immediately — it is a contract pin, not TDD red)**
 
 ```php
 <?php
@@ -1002,11 +1002,11 @@ final class LocationSellerCoherenceTest extends TestCase
 }
 ```
 
-- [ ] **Step 2: Run; expected PASS. If it FAILS, STOP — the no-version-bump rationale is broken; escalate to the owner before continuing.**
+- [x] **Step 2: Run; expected PASS. If it FAILS, STOP — the no-version-bump rationale is broken; escalate to the owner before continuing.**
 
 Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Fiscal/LocationSellerCoherenceTest.php`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/api/tests && git commit -m "test(fiscal): pin — location-identity seller block passes canonical validation (no version bump needed)"
@@ -1023,7 +1023,7 @@ git add apps/api/tests && git commit -m "test(fiscal): pin — location-identity
 - Create: `apps/pos/src/lib/db/repositories/locationStockRepository.ts`
 - Test: `apps/pos/src/lib/db/repositories/__tests__/locationStockRepository.test.ts`
 
-- [ ] **Step 1: Append the migration**
+- [x] **Step 1: Append the migration**
 
 ```ts
 {
@@ -1052,7 +1052,7 @@ git add apps/api/tests && git commit -m "test(fiscal): pin — location-identity
 
 (The real migration-object shape is `{version, name, sql, async run(db)}` — Codex plan-review P1-3, verified at `migrations.ts:1238-1248`. Match the `run(db)` body style of the v41 entry exactly. `variant_id` uses `''` for product-grain because SQLite PKs reject NULL; spec §4.3.)
 
-- [ ] **Step 2: Write failing repository tests** (follow the existing repository test setup in `apps/pos/src/lib/db/repositories/__tests__/` — they run against the SQL mock/in-memory harness used by sibling repo tests; if repos there are tested via integration-only, mirror that decision and note it)
+- [x] **Step 2: Write failing repository tests** (follow the existing repository test setup in `apps/pos/src/lib/db/repositories/__tests__/` — they run against the SQL mock/in-memory harness used by sibling repo tests; if repos there are tested via integration-only, mirror that decision and note it)
 
 Cases:
 - `upsertStockRows` inserts then updates on conflict (variant `null` → `''` key).
@@ -1061,7 +1061,7 @@ Cases:
 - `getStockFor(productId, variantId | null)` returns the row or null.
 - `deleteForProducts(ids)` removes rows (catalog tombstone hook).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 import type Database from '@tauri-apps/plugin-sql';
@@ -1169,14 +1169,14 @@ export async function deleteForProducts(db: Database, productIds: string[]): Pro
 
 Use a `keep` `Set` rather than `Array.includes` if row counts are large (5K products) — `const keep = new Set(...)`. No `parseFloat` anywhere in this file (ESLint `no-parsefloat-on-money` guards money; quantities follow the same string discipline).
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `cd apps/pos && pnpm vitest run src/lib/db/repositories/__tests__/locationStockRepository.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Hook catalog tombstones** — in `syncService.ts` where `deleteProducts(db, deletedIds)` is called (~`:573-575`), also call `deleteForProducts(db, deletedIds)`. Add a test case to the existing pullProducts test file pinning that product deletion cascades to `location_stock`.
+- [x] **Step 5: Hook catalog tombstones** — in `syncService.ts` where `deleteProducts(db, deletedIds)` is called (~`:573-575`), also call `deleteForProducts(db, deletedIds)`. Add a test case to the existing pullProducts test file pinning that product deletion cascades to `location_stock`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/pos && git commit -m "feat(pos): location_stock SQLite table + repository (upsert/replace-all/incoming/tombstone-cascade)"
@@ -1191,7 +1191,7 @@ git add apps/pos && git commit -m "feat(pos): location_stock SQLite table + repo
 - Modify: `apps/pos/src/lib/sync/syncService.ts`
 - Test: `apps/pos/src/lib/sync/__tests__/pullLocationStock.test.ts`
 
-- [ ] **Step 1: stockApi**
+- [x] **Step 1: stockApi**
 
 ```ts
 import { api, type ApiRequestOptions } from '@/lib/api'; // raw client — NOT apiGet (see note below); match the actual raw-request export in lib/api.ts
@@ -1224,7 +1224,7 @@ export async function fetchLocationStock(
 
 > MANDATORY (Codex plan-review P1-7 + r2 minor edit): do NOT use `apiGet` here — it unwraps `response.data.data` and silently DROPS `meta`, so pagination would stop after page 1 (the memory-documented paginated-endpoint pitfall, cf. CompositeItemListPage). The raw form above preserves `meta.pagination.last_page`. Match the exact raw-request helper that `lib/api.ts` actually exports (grep how web-admin paginated fetches do it).
 
-- [ ] **Step 2: Write failing sync tests**
+- [x] **Step 2: Write failing sync tests**
 
 Cases (mock `fetchLocationStock` + in-memory repo, following the existing pullProducts test idiom in `apps/pos/src/lib/sync/__tests__/`):
 - Delta pull sends the PERSISTED server `as_of` as `updated_since`, never device time (assert the param equals the stored metadata value, then that the NEW `as_of` from the response is stored).
@@ -1234,7 +1234,7 @@ Cases (mock `fetchLocationStock` + in-memory repo, following the existing pullPr
 - FetchTimeoutError propagates; 5xx → typed error class consistent with `PullProductsError`; a failed pull leaves cursor + table untouched.
 - Multi-page: pages until `last_page`, single `replaceIncoming` from page 1's incoming.
 
-- [ ] **Step 3: Implement `pullLocationStock(db, mode: 'full' | 'delta')` in syncService.ts**
+- [x] **Step 3: Implement `pullLocationStock(db, mode: 'full' | 'delta')` in syncService.ts**
 
 ```ts
 const STOCK_CURSOR_KEY = 'location_stock_as_of';
@@ -1295,18 +1295,18 @@ export async function pullLocationStock(
 
 (Adjust the `result.data`/`result.meta` access to the `api.get` form chosen in Step 1. Persist cursor/table only after ALL pages succeed — partial multi-page failure must not advance the cursor.)
 
-- [ ] **Step 4: Wire the cadence** (spec §4.3) — in the existing sync orchestration (`syncService.ts:1601-1643` push-then-pull cycle):
+- [x] **Step 4: Wire the cadence** (spec §4.3) — in the existing sync orchestration (`syncService.ts:1601-1643` push-then-pull cycle):
 - periodic tick: `pullLocationStock(db, 'delta')` alongside the product pull;
 - after a successful offline-receipt drain (where receipts are marked synced): `pullLocationStock(db, 'delta')`;
 - terminal claim/boot and shift open: `pullLocationStock(db, 'full')` (claim flow + `ShiftManagementService`/shift-open hook on the client — grep `openShift` in `apps/pos/src` for the call site).
 A stock-pull failure must never block the cycle: wrap in the same swallow-and-log pattern `pullProducts` uses.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `cd apps/pos && pnpm vitest run src/lib/sync/__tests__/pullLocationStock.test.ts && pnpm typecheck`
 Expected: PASS, clean
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/pos && git commit -m "feat(pos): pullLocationStock — delta/full sync with server-issued cursor, drain re-baseline, Menu skip"
@@ -1320,7 +1320,7 @@ git add apps/pos && git commit -m "feat(pos): pullLocationStock — delta/full s
 - Create: `apps/pos/src/lib/stock/availability.ts`
 - Test: `apps/pos/src/lib/stock/__tests__/availability.test.ts`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Cases (pure function — pass inputs explicitly, no store mocking needed):
 - missing stock row ⇒ 0; `'10.0000'` available, none pending, empty cart ⇒ `'10.0000'`.
@@ -1369,7 +1369,7 @@ describe('effectiveAvailable', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify failure**, then **Step 3: implement** —
+- [x] **Step 2: Run to verify failure**, then **Step 3: implement** —
 
 ```ts
 // apps/pos/src/lib/stock/availability.ts
@@ -1401,7 +1401,7 @@ export function effectiveAvailable(input: AvailabilityInputs): string | null {
 
 Plus an async assembler `getEffectiveAvailable(db, product, variantId, cartLines)` in the same file that loads `stockRow` via `getStockFor`, computes `pendingSaleQty` over the unsynced offline receipts, and sums `cartQty` from the passed cart lines. **`offline_receipts.lines` is a JSON TEXT blob (`migrations.ts:99`, Codex plan-review P1-5)** — so: `SELECT lines FROM offline_receipts WHERE synced = 0` (match the actual unsynced predicate used by the drain — grep `synced` in `receiptService.ts`), then `JSON.parse` each and `bcsum` the matching (product, variant) quantities at scale 4 in TypeScript. Pending receipts are a small bounded set; no `json_each` SQL needed. Snapshot changes never evict cart lines (spec §4.4, Codex r2): the selector only gates FURTHER adds.
 
-- [ ] **Step 4: Run + commit**
+- [x] **Step 4: Run + commit**
 
 Run: `cd apps/pos && pnpm vitest run src/lib/stock/__tests__/availability.test.ts && pnpm typecheck`
 
@@ -1419,7 +1419,7 @@ git add apps/pos && git commit -m "feat(pos): effectiveAvailable — location av
 - Modify: `apps/pos/src/locales/en/pos.json`, `apps/pos/src/locales/fr/pos.json`
 - Test: `apps/pos/src/stores/__tests__/cartStockEnforcement.test.ts`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Cases:
 - policy `block` + effectiveAvailable `'0.0000'` ⇒ `addItem` refuses (cart unchanged), returns/flags a typed result the UI can toast on.
@@ -1429,7 +1429,7 @@ Cases:
 - exempt product (`null` from the selector) ⇒ adds regardless of policy.
 - every ingress (tile add, addItemWithDefaults, barcode add, manual increment) routes through ONE guard function (export it and pin all four call sites with a unit test that the guard is invoked — L9 lesson: enumerate ingress sites).
 
-- [ ] **Step 2: Implement** — one guard in `cartStore.ts`:
+- [x] **Step 2: Implement** — one guard in `cartStore.ts`:
 
 ```ts
 export type StockGateResult =
@@ -1460,7 +1460,7 @@ export async function gateStockForAdd(
 
 Call sites show the result with sonner (`toast.error(t('pos:stock.blocked', { available }))` / `toast.warning(t('pos:stock.warned', { available }))`). The `'block' fallback default` when the terminal payload predates the field is deliberate fail-safe-for-retail; Menu tenants always have `off` from the backfill. NOTE the cartStore `addItem` is currently synchronous — make the GUARD async at the call sites (HomePage tile handler, barcode resolver, quantity stepper) rather than making the store action async, so the store API stays sync (follow how other async pre-checks are done before `addItem` — grep `addItem(` callers first; if a precedent makes the store action async instead, follow the precedent).
 
-- [ ] **Step 3: i18n keys** — `apps/pos/src/locales/en/pos.json` (and fr):
+- [x] **Step 3: i18n keys** — `apps/pos/src/locales/en/pos.json` (and fr):
 
 ```json
 "stock": {
@@ -1486,7 +1486,7 @@ French (`fr/pos.json`):
 }
 ```
 
-- [ ] **Step 4: Run + commit**
+- [x] **Step 4: Run + commit**
 
 Run: `cd apps/pos && pnpm vitest run src/stores/__tests__/cartStockEnforcement.test.ts && pnpm typecheck && pnpm lint --max-warnings=0 src/stores src/lib/stock`
 
@@ -1503,13 +1503,13 @@ git add apps/pos && git commit -m "feat(pos): single stock gate on every cart in
 - Modify: the product-grid data assembly (where `POSProduct`s are loaded from local DB for display — `productStore.ts` / `productRepository.getAll`) to join `location_stock`
 - Test: `apps/pos/src/components/molecules/ProductCard/__tests__/ProductCard.stock.test.tsx`
 
-- [ ] **Step 1: Failing tests** — render with: stock-managed product available `'0.0000'` ⇒ out-of-stock styling + not clickable (existing behavior, now from `location_stock`); available `'3'` ⇒ low-stock label; exempt (Menu/composite or `is_physical=false`) ⇒ no stock chrome at all (Menu 999 path unaffected); `incoming_transfer '6'` ⇒ renders `t('pos:stock.incoming')` badge. Test rendered output, not class names (testing convention).
+- [x] **Step 1: Failing tests** — render with: stock-managed product available `'0.0000'` ⇒ out-of-stock styling + not clickable (existing behavior, now from `location_stock`); available `'3'` ⇒ low-stock label; exempt (Menu/composite or `is_physical=false`) ⇒ no stock chrome at all (Menu 999 path unaffected); `incoming_transfer '6'` ⇒ renders `t('pos:stock.incoming')` badge. Test rendered output, not class names (testing convention).
 
-- [ ] **Step 2: Implement** — retail display stops reading `products.stock_quantity`; the grid assembler attaches `{ available, incoming_transfer, incoming_po } | null` to each product from one batched `location_stock` read (single `SELECT ... WHERE product_id IN (...)`, keyed client-side — NOT one query per tile). `ProductCard` consumes the new optional prop; when `null`/undefined (exempt or Menu) renders exactly as today. Design tokens only for any new/touched color classes; PostToolUse hook will flag hardcoded colors.
+- [x] **Step 2: Implement** — retail display stops reading `products.stock_quantity`; the grid assembler attaches `{ available, incoming_transfer, incoming_po } | null` to each product from one batched `location_stock` read (single `SELECT ... WHERE product_id IN (...)`, keyed client-side — NOT one query per tile). `ProductCard` consumes the new optional prop; when `null`/undefined (exempt or Menu) renders exactly as today. Design tokens only for any new/touched color classes; PostToolUse hook will flag hardcoded colors.
 
-- [ ] **Step 3: Staleness hint (spec §4.7.2)** — surface `t('pos:stock.asOf', { time })` from the `stock_last_sync` metadata in the existing sync-status surface (grep `products_last_sync` consumers in `apps/pos/src` to find where sync freshness is already displayed; add the stock line beside it). Test: renders the formatted timestamp when metadata present, nothing when absent.
+- [x] **Step 3: Staleness hint (spec §4.7.2)** — surface `t('pos:stock.asOf', { time })` from the `stock_last_sync` metadata in the existing sync-status surface (grep `products_last_sync` consumers in `apps/pos/src` to find where sync freshness is already displayed; add the stock line beside it). Test: renders the formatted timestamp when metadata present, nothing when absent.
 
-- [ ] **Step 4: Run + commit**
+- [x] **Step 4: Run + commit**
 
 Run: `cd apps/pos && pnpm vitest run src/components/molecules/ProductCard && pnpm typecheck`
 
@@ -1528,7 +1528,7 @@ git add apps/pos && git commit -m "feat(pos): ProductCard location availability 
 - Modify: `apps/pos/src/lib/buildReceiptData.ts` (`:132` company.tax_id → resolved identity) + the printed Z header builder (grep `tax_id` in the Z print path)
 - Test: `apps/pos/src/lib/fiscal/__tests__/sellerIdentity.test.ts`
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -1571,7 +1571,7 @@ describe('resolveSellerIdentity (atomic — spec §4.6)', () => {
 });
 ```
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 ```ts
 // apps/pos/src/lib/fiscal/sellerIdentity.ts
@@ -1640,13 +1640,13 @@ export function resolveSellerIdentity(
 
 (Move/duplicate the small `companyField` helper out of `paymentStore.ts` into this module and re-export, or import it — one definition only, DRY.)
 
-- [ ] **Step 3: Migrate the three `paymentStore.ts` seller blocks** to `seller: resolveSellerIdentity(company, terminal?.location ?? null)` (spread into the existing seller object shape — same six keys). Delete `branchTaxNumberFromTerminal`. The ACCOUNT_CHARGE path (`:786-792`) thereby gains the branch override — Gap #1 closed. Pin with a store-level test: charge path seller.taxNumber = branch when location complete.
+- [x] **Step 3: Migrate the three `paymentStore.ts` seller blocks** to `seller: resolveSellerIdentity(company, terminal?.location ?? null)` (spread into the existing seller object shape — same six keys). Delete `branchTaxNumberFromTerminal`. The ACCOUNT_CHARGE path (`:786-792`) thereby gains the branch override — Gap #1 closed. Pin with a store-level test: charge path seller.taxNumber = branch when location complete.
 
-- [ ] **Step 4: Display headers** — `buildReceiptData.ts:132`: tax_id from `resolveSellerIdentity(...)`, and append `vat_number` + `legal_identifiers` display lines from `terminal.location` when present (display may exceed the signed shape — spec §4.6). Same for the printed Z header. Update the print-template tests by rendered output.
+- [x] **Step 4: Display headers** — `buildReceiptData.ts:132`: tax_id from `resolveSellerIdentity(...)`, and append `vat_number` + `legal_identifiers` display lines from `terminal.location` when present (display may exceed the signed shape — spec §4.6). Same for the printed Z header. Update the print-template tests by rendered output.
 
-- [ ] **Step 5: Existing-test sweep** — `pnpm vitest run src/stores src/lib/fiscal src/lib/buildReceiptData* --silent` — the canonical-parity tests (`saleReceiptV2CanonicalParity.test.ts`) must stay green: the payload SHAPE is unchanged. If any parity fixture hardcodes the company tax number with a branch-configured terminal, the fixture's terminal must be made fiscally-INcomplete (or the expectation updated to the branch value) — judge which preserves the fixture's intent. **Any fixture change is a cross-language PAIR (Codex P2-1): the PHP counterpart under `apps/api/tests/` fiscal fixtures must change in the same commit, or the fixture-sync CI gate goes red** (see `project_fiscal_chain_ci_gates` — fixture-deletion + cross-language drift gates).
+- [x] **Step 5: Existing-test sweep** — `pnpm vitest run src/stores src/lib/fiscal src/lib/buildReceiptData* --silent` — the canonical-parity tests (`saleReceiptV2CanonicalParity.test.ts`) must stay green: the payload SHAPE is unchanged. If any parity fixture hardcodes the company tax number with a branch-configured terminal, the fixture's terminal must be made fiscally-INcomplete (or the expectation updated to the branch value) — judge which preserves the fixture's intent. **Any fixture change is a cross-language PAIR (Codex P2-1): the PHP counterpart under `apps/api/tests/` fiscal fixtures must change in the same commit, or the fixture-sync CI gate goes red** (see `project_fiscal_chain_ci_gates` — fixture-deletion + cross-language drift gates).
 
-- [ ] **Step 6: Run + commit**
+- [x] **Step 6: Run + commit**
 
 Run: `cd apps/pos && pnpm vitest run src/lib/fiscal src/stores && pnpm typecheck && pnpm lint src/lib/fiscal`
 
@@ -1669,18 +1669,18 @@ git add apps/pos && git commit -m "feat(pos): atomic seller identity (complete-l
 
 Setup: ParapharmacySeeder (Tier-A multi-branch) + `pnpm tauri dev`; claim a terminal at Branch B.
 
-- [ ] Full pull on claim: location_stock populated for Branch B only (inspect SQLite).
-- [ ] Tile shows branch availability; zero-stock product visible but blocked (policy block).
-- [ ] Add-to-cart beyond available → blocked toast; warn-policy company → warning toast, line added.
-- [ ] Offline (disable network): sell available stock down; effectiveAvailable falls with each queued sale; reconnect → drain → delta pull → availability re-baselines (no double-count).
-- [ ] Initiate a transfer (web admin) toward Branch B → next pull shows the arriving badge; complete the transfer → badge clears, available rises.
-- [ ] Confirmed PO toward Branch B shows in incoming (on-order label).
-- [ ] Branch with complete fiscal identity: SALE_RECEIPT + ACCOUNT_CHARGE seller tax_number/address = branch; printed header + Z header show branch tax/vat/legal IDs.
-- [ ] Branch with tax_id but NO address: seller = full company identity (atomic fallback).
-- [ ] Coffee-shop tenant (CoffeeShopSeeder): no stock chrome, no blocking, no stock pulls (Menu skip).
+- [x] Full pull on claim: location_stock populated for Branch B only (inspect SQLite).
+- [x] Tile shows branch availability; zero-stock product visible but blocked (policy block).
+- [x] Add-to-cart beyond available → blocked toast; warn-policy company → warning toast, line added.
+- [x] Offline (disable network): sell available stock down; effectiveAvailable falls with each queued sale; reconnect → drain → delta pull → availability re-baselines (no double-count).
+- [x] Initiate a transfer (web admin) toward Branch B → next pull shows the arriving badge; complete the transfer → badge clears, available rises.
+- [x] Confirmed PO toward Branch B shows in incoming (on-order label).
+- [x] Branch with complete fiscal identity: SALE_RECEIPT + ACCOUNT_CHARGE seller tax_number/address = branch; printed header + Z header show branch tax/vat/legal IDs.
+- [x] Branch with tax_id but NO address: seller = full company identity (atomic fallback).
+- [x] Coffee-shop tenant (CoffeeShopSeeder): no stock chrome, no blocking, no stock pulls (Menu skip).
 ```
 
-- [ ] **Commit**
+- [x] **Commit**
 
 ```bash
 git add docs apps/erp 2>/dev/null; git add -A docs && git commit -m "docs(pos): fiscal seller-establishment clause, location-identity fixture, deploy note, Tauri smoke checklist"
@@ -1690,10 +1690,10 @@ git add docs apps/erp 2>/dev/null; git add -A docs && git commit -m "docs(pos): 
 
 ## Post-plan gates
 
-- [ ] Scoped quality gates per task (NEVER the full suite): PHPUnit by file, `phpstan analyse` per touched module, `pint --dirty`, `pnpm vitest run <paths>`, `pnpm typecheck`, ESLint ratchet held.
-- [ ] `php artisan typescript:transform` if any shared DTO feeds generated types (LocationStock DTOs are POS-internal — confirm nothing in `packages/shared/types` drifts; the Types-Drift CI gate backstops).
-- [ ] Codex adversarial review of the implementation diff before PR (per-phase if large).
-- [ ] PR → `dev` (never main; merge dev back in first if promoting later). PG-only invariants run at the dev→main gate.
+- [x] Scoped quality gates per task (NEVER the full suite): PHPUnit by file, `phpstan analyse` per touched module, `pint --dirty`, `pnpm vitest run <paths>`, `pnpm typecheck`, ESLint ratchet held.
+- [x] `php artisan typescript:transform` if any shared DTO feeds generated types (LocationStock DTOs are POS-internal — confirm nothing in `packages/shared/types` drifts; the Types-Drift CI gate backstops).
+- [x] Codex adversarial review of the implementation diff before PR (per-phase if large).
+- [x] PR → `dev` (never main; merge dev back in first if promoting later). PG-only invariants run at the dev→main gate.
 
 ## Execution notes
 
