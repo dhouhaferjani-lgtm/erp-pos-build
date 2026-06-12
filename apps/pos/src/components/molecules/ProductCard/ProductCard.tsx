@@ -41,6 +41,13 @@ export interface ProductCardProps {
    *                 chrome (the 999 path) UNCHANGED.
    */
   locationStock?: LocationStockDisplay | null;
+  /**
+   * Whether an out-of-stock tile refuses activation. True only under the
+   * 'block' policy — under 'warn'/'off' the tile stays tappable (the stock
+   * gate surfaces the warning); the out-of-stock STYLING shows regardless.
+   * Defaults to true (fail-safe for retail).
+   */
+  hardBlockOutOfStock?: boolean;
 }
 
 function ProductCardInner({
@@ -50,6 +57,7 @@ function ProductCardInner({
   isInCart = false,
   displayMode = 'grid',
   locationStock,
+  hardBlockOutOfStock = true,
 }: ProductCardProps) {
   const { t } = useTranslation('pos');
   const { format } = useCurrency();
@@ -117,9 +125,14 @@ function ProductCardInner({
 
   const minHClass = displayMode === 'grid' ? CARD_MIN_H_CLASS_GRID : CARD_MIN_H_CLASS_VISUAL;
 
+  // Activation refuses only under 'block' policy (Codex final-review P1):
+  // under 'warn'/'off' the tap must reach the stock gate, which allows the
+  // add and surfaces the warning toast.
+  const isActivationBlocked = isOutOfStock && hardBlockOutOfStock;
+
   const activate = useCallback(() => {
-    if (!isOutOfStock) onAddToCart(product);
-  }, [isOutOfStock, onAddToCart, product]);
+    if (!isActivationBlocked) onAddToCart(product);
+  }, [isActivationBlocked, onAddToCart, product]);
 
   const onKeyDown = useCallback(
     (e: KeyboardEvent<HTMLDivElement>) => {
@@ -134,8 +147,8 @@ function ProductCardInner({
   return (
     <div
       role="button"
-      tabIndex={isOutOfStock ? -1 : 0}
-      aria-disabled={isOutOfStock}
+      tabIndex={isActivationBlocked ? -1 : 0}
+      aria-disabled={isActivationBlocked}
       aria-label={product.name}
       onClick={activate}
       onKeyDown={onKeyDown}
@@ -144,7 +157,7 @@ function ProductCardInner({
         minHClass,
         'transition-all duration-150 active:scale-[0.95] focus-visible:ring-2 focus-visible:ring-primary-500',
         displayMode === 'visual' ? 'items-center text-center' : 'items-start',
-        isOutOfStock
+        isActivationBlocked
           ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-60'
           : isInCart
             ? 'border-l-4 border-l-primary-500 border-t-gray-200 border-r-gray-200 border-b-gray-200 bg-white shadow-sm'

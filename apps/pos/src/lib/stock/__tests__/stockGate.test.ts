@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   getDatabase: vi.fn(),
   terminalGetState: vi.fn(),
   authGetState: vi.fn(),
+  productGetState: vi.fn(),
 }));
 
 vi.mock('../availability', async (importOriginal) => {
@@ -28,6 +29,14 @@ vi.mock('@/stores/terminalStore', () => ({
 }));
 vi.mock('@/stores/authStore', () => ({
   useAuthStore: { getState: mocks.authGetState },
+}));
+vi.mock('@/stores/productStore', () => ({
+  useProductStore: { getState: mocks.productGetState },
+  // Real predicate shape: null config → false (non-Menu default in tests).
+  hasModule: (
+    config: { all_enabled_modules?: string[] } | null,
+    moduleName: string,
+  ): boolean => config?.all_enabled_modules?.includes(moduleName) ?? false,
 }));
 
 import { gateStockForAdd, formatAvailableQty } from '../stockGate';
@@ -58,9 +67,30 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.authGetState.mockReturnValue({ companyId: 'co-1' });
   mocks.getDatabase.mockResolvedValue(FAKE_DB);
+  mocks.productGetState.mockReturnValue({ companyConfig: null });
 });
 
 describe('gateStockForAdd', () => {
+  it('Menu-module tenant → PASS even with a stale terminal payload lacking the policy field (never consults availability)', async () => {
+    // Codex final-review P1: a cached pre-deploy terminal payload has no
+    // pos_stock_policy → '?? block' fallback — which must NEVER freeze a
+    // made-to-order tenant. The Menu-module check wins before the policy read.
+    setPolicy(undefined);
+    mocks.productGetState.mockReturnValue({
+      companyConfig: { company_id: 'co-1', all_enabled_modules: ['POS', 'Menu'] },
+    });
+    mocks.getEffectiveAvailable.mockImplementation(() => {
+      throw new Error('availability must not be consulted for Menu tenants');
+    });
+    mocks.getDatabase.mockImplementation(() => {
+      throw new Error('db must not be opened for Menu tenants');
+    });
+
+    const result = await gateStockForAdd(product(), null, '1', []);
+
+    expect(result).toEqual({ ok: true, warn: false });
+  });
+
   it('block + insufficient → {ok:false, available}; gate is pure wrt cart', async () => {
     setPolicy('block');
     mocks.getEffectiveAvailable.mockResolvedValue('2.0000');

@@ -49,6 +49,8 @@ export interface ProductGridProps {
    * rendering verbatim.
    */
   locationStock?: GridLocationStockMap;
+  /** Threads to every ProductCard — see its prop doc. Default true. */
+  hardBlockOutOfStock?: boolean;
 }
 
 /** Column counts per display mode. */
@@ -79,6 +81,7 @@ export function ProductGrid({
   isLoading = false,
   consumptionModeToggle,
   locationStock = EMPTY_LOCATION_STOCK,
+  hardBlockOutOfStock = true,
 }: ProductGridProps) {
   const { t } = useTranslation('pos');
   const [searchQuery, setSearchQuery] = useState('');
@@ -445,6 +448,7 @@ export function ProductGrid({
                       isInCart={cartProductIds.includes(product.id)}
                       displayMode={displayMode}
                       locationStock={locationStock[product.id]}
+                      hardBlockOutOfStock={hardBlockOutOfStock}
                     />
                   ))}
                 </div>

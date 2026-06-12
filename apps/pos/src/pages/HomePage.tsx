@@ -108,6 +108,9 @@ export function HomePage() {
   const fetchProducts = useProductStore((s) => s.fetchProducts);
   // Task 12 — per-tile location-stock display map ({} for Menu tenants).
   const locationStock = useProductStore((s) => s.locationStock);
+  // Out-of-stock tiles refuse activation only under 'block' (Codex P1):
+  // 'warn' must let the tap reach the stock gate so the warning toast fires.
+  const posStockPolicy = useTerminalStore((s) => s.terminal?.pos_stock_policy ?? 'block');
 
   // Cart store
   const cartItems = useCartStore((s) => s.items);
@@ -1434,6 +1437,7 @@ export function HomePage() {
           cartProductIds={cartProductIds}
           isLoading={productsLoading}
           locationStock={locationStock}
+          hardBlockOutOfStock={posStockPolicy === 'block'}
           consumptionModeToggle={isFnB ? (
             <ConsumptionModeToggle
               value={consumptionMode}

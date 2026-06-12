@@ -26,6 +26,7 @@ import { bccomp } from '@/lib/decimal';
 import { getDatabase } from '@/lib/db';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useAuthStore } from '@/stores/authStore';
+import { hasModule, useProductStore } from '@/stores/productStore';
 import { getEffectiveAvailable, type AvailabilityCartLine } from './availability';
 
 export type StockGateResult =
@@ -49,6 +50,15 @@ export async function gateStockForAdd(
   requestedQty: string,
   cartLines: ReadonlyArray<AvailabilityCartLine>,
 ): Promise<StockGateResult> {
+  // Menu-module tenants are ALWAYS 'off' regardless of the terminal payload:
+  // their stock pull is skipped entirely (no location_stock rows), and a
+  // cached pre-deploy terminal payload lacking pos_stock_policy would
+  // otherwise fall back to 'block' and freeze made-to-order sales — the one
+  // failure mode this design must never produce (spec §4.2).
+  if (hasModule(useProductStore.getState().companyConfig, 'Menu')) {
+    return PASS;
+  }
+
   const policy = useTerminalStore.getState().terminal?.pos_stock_policy ?? 'block';
   if (policy === 'off') {
     return PASS;

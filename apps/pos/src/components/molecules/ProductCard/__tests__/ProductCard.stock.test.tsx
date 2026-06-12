@@ -68,6 +68,26 @@ describe('ProductCard location stock display', () => {
     expect(onAddToCart).not.toHaveBeenCalled();
   });
 
+  it('keeps an out-of-stock tile TAPPABLE under warn/off policy (hardBlockOutOfStock=false)', () => {
+    // Codex final-review P1: under 'warn' the tap must reach the stock gate
+    // (which allows + toasts) — only 'block' policy hard-disables the tile.
+    // The out-of-stock STYLING still shows.
+    const onAddToCart = vi.fn();
+    renderCard({
+      product: makeProduct(),
+      locationStock: ZERO_SLICE,
+      onAddToCart,
+      hardBlockOutOfStock: false,
+    });
+
+    expect(screen.getByText('products.outOfStock')).toBeInTheDocument();
+    const card = screen.getByRole('button');
+    expect(card).toHaveAttribute('aria-disabled', 'false');
+    expect(card).toHaveAttribute('tabindex', '0');
+    fireEvent.click(card);
+    expect(onAddToCart).toHaveBeenCalledTimes(1);
+  });
+
   it('renders low-stock when available is 3.0000', () => {
     renderCard({
       locationStock: { available: '3.0000', incoming_transfer: '0', incoming_po: '0' },

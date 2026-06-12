@@ -134,7 +134,11 @@ export async function replaceAllStock(
   db: Database,
   rows: ServerStockRow[],
 ): Promise<void> {
-  // Upsert the full set first.
+  // Upsert FIRST, delete-absent AFTER — the table is never empty mid-replace,
+  // so a concurrent reader (boot full pull racing the scheduler's first tick)
+  // sees at worst a transient mix of old+new rows, which the next pull
+  // self-heals. Not transactional by design (single-writer device DB; sibling
+  // repositories follow the same convention).
   await upsertStockRows(db, rows);
 
   // Build a fast lookup of keys that should survive.
