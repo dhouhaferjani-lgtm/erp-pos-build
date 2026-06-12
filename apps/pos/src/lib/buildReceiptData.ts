@@ -18,8 +18,7 @@ import type {
 } from '@/lib/refundFlow/refundSettlementService';
 import {
   formatLegalIdentifierLines,
-  locationIsFiscallyComplete,
-  resolveSellerIdentity,
+  resolveSellerIdentityWithSource,
   type LocationFiscalFields,
 } from '@/lib/fiscal/sellerIdentity';
 
@@ -100,6 +99,22 @@ export interface SellerDisplayLocation extends LocationFiscalFields {
 }
 
 /**
+ * Options for {@link buildEscPosReceiptData}. Folds what were four trailing
+ * positional params (FU-3) into one bag, so callers no longer thread
+ * `undefined` placeholders.
+ */
+export interface BuildEscPosReceiptOptions {
+  /** Visibility flags from company receipt settings. */
+  visibilitySettings?: ReceiptVisibilitySettings;
+  /** True if this is a duplicata of an already-issued receipt. */
+  isReprint?: boolean;
+  /** QR token + refund cross-references. */
+  extras?: ReceiptExtras;
+  /** Terminal location for the atomic header identity (spec §4.6). */
+  sellerLocation?: SellerDisplayLocation | null;
+}
+
+/**
  * Transforms a full receipt API response into the ESC/POS ReceiptData
  * structure expected by the Tauri thermal printing backend.
  *
@@ -109,18 +124,13 @@ export interface SellerDisplayLocation extends LocationFiscalFields {
  * header is wholesale the receipt's company block — never mixed.
  *
  * @param receipt Full receipt response from the API
- * @param visibilitySettings Optional visibility flags from company receipt settings
- * @param isReprint True if this is a duplicata of an already-issued receipt
- * @param extras Optional QR token + refund cross-references
- * @param sellerLocation Terminal location for the atomic header identity
+ * @param options Display options — see {@link BuildEscPosReceiptOptions}.
  */
 export function buildEscPosReceiptData(
   receipt: FullReceiptResponse,
-  visibilitySettings?: ReceiptVisibilitySettings,
-  isReprint?: boolean,
-  extras?: ReceiptExtras,
-  sellerLocation?: SellerDisplayLocation | null,
+  options: BuildEscPosReceiptOptions = {},
 ): ReceiptData {
+  const { visibilitySettings, isReprint, extras, sellerLocation } = options;
   const currencySymbol = getCurrencySymbol(receipt.currency);
   const decimals = getCurrencyDecimals(receipt.currency);
   const totalPayments = receipt.payments.reduce(
@@ -146,10 +156,12 @@ export function buildEscPosReceiptData(
     extras?.receiptKind ?? (receipt.receipt_type === 'return' ? 'refund' : 'sale');
 
   // Atomic header identity (spec 2026-06-11 §4.6): complete location →
-  // location tax id + address; otherwise wholesale company. The resolver's
-  // company branch reads the snake_case receipt.company fields directly.
-  const locationComplete = locationIsFiscallyComplete(sellerLocation);
-  const identity = resolveSellerIdentity(receipt.company, sellerLocation);
+  // location tax id + address; otherwise wholesale company. The resolver
+  // reports which source it used (FU-3) so the vat/legal-identifier display
+  // below can't drift from the resolved identity. The company branch reads the
+  // snake_case receipt.company fields directly.
+  const { identity, source } = resolveSellerIdentityWithSource(receipt.company, sellerLocation);
+  const locationComplete = source === 'location';
 
   return {
     company: {

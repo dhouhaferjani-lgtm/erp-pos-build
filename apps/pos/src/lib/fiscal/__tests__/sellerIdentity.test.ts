@@ -4,6 +4,7 @@ import {
   formatLegalIdentifierLines,
   locationIsFiscallyComplete,
   resolveSellerIdentity,
+  resolveSellerIdentityWithSource,
   type LocationFiscalFields,
 } from '@/lib/fiscal/sellerIdentity';
 
@@ -157,6 +158,53 @@ describe('resolveSellerIdentity', () => {
       city: null,
       postalCode: null,
     });
+  });
+});
+
+describe('resolveSellerIdentityWithSource (FU-3)', () => {
+  it("reports source 'location' and the location identity when fiscally complete", () => {
+    const { identity, source } = resolveSellerIdentityWithSource(camelCompany, completeLocation);
+    expect(source).toBe('location');
+    expect(identity).toEqual(resolveSellerIdentity(camelCompany, completeLocation));
+  });
+
+  it("reports source 'company' and the company identity when the location is incomplete", () => {
+    const { identity, source } = resolveSellerIdentityWithSource(camelCompany, {
+      ...completeLocation,
+      tax_id: null,
+    });
+    expect(source).toBe('company');
+    expect(identity).toEqual(companyIdentity);
+  });
+
+  it("reports source 'company' for a null or undefined location", () => {
+    expect(resolveSellerIdentityWithSource(camelCompany, null).source).toBe('company');
+    expect(resolveSellerIdentityWithSource(camelCompany, undefined).source).toBe('company');
+  });
+
+  it('its identity matches resolveSellerIdentity across the completeness boundary (the decision is shared, not re-derived)', () => {
+    const locations: (LocationFiscalFields | null)[] = [
+      completeLocation,
+      { ...completeLocation, address_city: '' },
+      null,
+    ];
+    for (const loc of locations) {
+      expect(resolveSellerIdentityWithSource(camelCompany, loc).identity).toEqual(
+        resolveSellerIdentity(camelCompany, loc),
+      );
+    }
+  });
+});
+
+describe('resolveSellerIdentity fiscal no-leak guard (FU-3)', () => {
+  it('returns EXACTLY the signed SellerIdentity keys — the source discriminant must NEVER leak into the seller input', () => {
+    // The 3 paymentStore sites assign resolveSellerIdentity(...) DIRECTLY as the
+    // signed `seller` block. A stray `source` key would change the signed shape.
+    const identity = resolveSellerIdentity(camelCompany, completeLocation);
+    expect(Object.keys(identity).sort()).toEqual(
+      ['city', 'countryCode', 'name', 'postalCode', 'street', 'taxNumber'].sort(),
+    );
+    expect('source' in identity).toBe(false);
   });
 });
 

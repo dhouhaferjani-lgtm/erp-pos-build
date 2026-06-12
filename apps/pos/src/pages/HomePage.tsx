@@ -720,9 +720,11 @@ export function HomePage() {
           const qrToken = await lookupQrToken(fullReceipt.receipt_number, companyId);
           if (!cancelled) {
             setEscPosData(
-              buildEscPosReceiptData(fullReceipt, receiptVisibility, undefined, {
-                qrToken,
-              }, sellerLocation),
+              buildEscPosReceiptData(fullReceipt, {
+                visibilitySettings: receiptVisibility,
+                extras: { qrToken },
+                sellerLocation,
+              }),
             );
             setEscPosSource('server');
           }
@@ -734,9 +736,11 @@ export function HomePage() {
           const qrToken = await lookupQrToken(localReceipt.receipt_number, companyId);
           if (!cancelled) {
             setEscPosData(
-              buildEscPosReceiptData(localReceipt, receiptVisibility, undefined, {
-                qrToken,
-              }, sellerLocation),
+              buildEscPosReceiptData(localReceipt, {
+                visibilitySettings: receiptVisibility,
+                extras: { qrToken },
+                sellerLocation,
+              }),
             );
             setEscPosSource('local');
           }

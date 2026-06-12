@@ -7,7 +7,8 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
-import { migrations } from '@/lib/db/migrations';
+import { applyAllMigrations } from '@/lib/db/__tests__/helpers/migrationTestHelpers';
+import { bccomp } from '@/lib/decimal';
 import type { ServerStockRow, ServerIncomingRow, LocationStockRow } from '../locationStockRepository';
 import {
   upsertStockRows,
@@ -17,16 +18,6 @@ import {
   getStockForProducts,
   deleteForProducts,
 } from '../locationStockRepository';
-
-async function applyAllMigrations(adapter: SqliteTestAdapter): Promise<void> {
-  for (const migration of migrations) {
-    if (migration.run) {
-      await migration.run(adapter.asDatabase());
-    } else if (migration.sql) {
-      await adapter.execute(migration.sql);
-    }
-  }
-}
 
 /** Helper — build a minimal ServerStockRow. */
 function stockRow(overrides: Partial<ServerStockRow> & { product_id: string }): ServerStockRow {
@@ -322,6 +313,50 @@ describe('locationStockRepository', () => {
 
       const survivors = await getStockForProducts(db, allIds);
       expect(survivors).toHaveLength(0);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  // FU-7 — zero-scale tolerance contract ('0' vs '0.0000')
+  //
+  // The SQLite schema default (migration v50) stores zero as the literal
+  // '0', while server-supplied values arrive scale-4 ('0.0000'). Both
+  // representations are accepted: every consumer compares quantities with
+  // the scale-agnostic bcmath helpers (bccomp), NEVER string equality.
+  // These tests pin that tolerance so a future migration change or a
+  // string-equality consumer is caught.
+  // ──────────────────────────────────────────────────────────────
+  describe('zero-scale tolerance (FU-7)', () => {
+    it('rows created via the incoming-only insert path default stock to the literal "0"', async () => {
+      // replaceIncoming inserts a row carrying ONLY incoming columns; the
+      // stock columns fall back to the schema DEFAULT '0' (not '0.0000').
+      await replaceIncoming(db, [incomingRow({ product_id: 'inc-only' })]);
+
+      const row = await getStockFor(db, 'inc-only', null);
+      expect(row).not.toBeNull();
+      expect(row!.available).toBe('0'); // schema default representation
+    });
+
+    it('server-supplied zero round-trips as the scale-4 string "0.0000"', async () => {
+      await upsertStockRows(db, [stockRow({ product_id: 'srv-zero', available: '0.0000' })]);
+
+      const row = await getStockFor(db, 'srv-zero', null);
+      expect(row!.available).toBe('0.0000');
+    });
+
+    it('the two zero representations compare EQUAL via bccomp (the tolerance consumers rely on)', async () => {
+      await replaceIncoming(db, [incomingRow({ product_id: 'inc-only' })]);
+      await upsertStockRows(db, [stockRow({ product_id: 'srv-zero', available: '0.0000' })]);
+
+      const defaultRow = await getStockFor(db, 'inc-only', null);
+      const serverRow = await getStockFor(db, 'srv-zero', null);
+
+      // Raw strings differ…
+      expect(defaultRow!.available).not.toBe(serverRow!.available);
+      // …but the decimal comparison the selector uses treats them identically.
+      expect(bccomp(defaultRow!.available, serverRow!.available)).toBe(0);
+      expect(bccomp(defaultRow!.available, '0')).toBe(0);
+      expect(bccomp(serverRow!.available, '0')).toBe(0);
     });
   });
 });

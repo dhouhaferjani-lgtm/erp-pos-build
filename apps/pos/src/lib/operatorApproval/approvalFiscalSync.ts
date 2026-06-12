@@ -1,6 +1,6 @@
 import { ApiRequestError } from '@/lib/api';
 import { getDatabase, queryAll } from '@/lib/db';
-import { pushOfflineReceipts } from '@/lib/sync/syncService';
+import { pushOfflineReceipts, pullLocationStock } from '@/lib/sync/syncService';
 
 interface FiscalSyncRow {
   id: string;
@@ -30,6 +30,17 @@ export async function ensureApprovalFiscalEventsSynced(
   const uniqueIds = [...new Set(eventIds)];
   const db = await getDatabase(companyId);
   await pushOfflineReceipts(db);
+
+  // FU-9: re-baseline location stock immediately after the drain rather than
+  // waiting up to 60s for the periodic tick. The server snapshot now includes
+  // the receipts we just pushed, so pulling now collapses the local pending
+  // adjustment. Fire-and-forget + swallowed: the approval flow must NEVER
+  // block on a stock pull, and a stock-pull failure is non-fatal (offline-first
+  // — the next tick retries). pullLocationStock self-skips for Menu tenants and
+  // resolves the terminal id internally.
+  void pullLocationStock(db, 'delta').catch((error: unknown) => {
+    console.warn('[POS][approval] post-drain stock pull failed (non-fatal)', error);
+  });
 
   const placeholders = uniqueIds.map((_, index) => `$${String(index + 1)}`).join(', ');
   const rows = await queryAll<FiscalSyncRow>(

@@ -290,6 +290,27 @@ export async function cleanupSyncedReceipts(db: Database): Promise<void> {
   );
 }
 
+/**
+ * Garbage-collect terminally-stuck offline receipts (failed, retries
+ * exhausted, older than 90 days).
+ *
+ * KNOWN RESIDUAL (FU-4) — phantom availability: the location-stock
+ * availability selector subtracts unsynced offline-receipt lines directly
+ * (via {@see getUnsyncedReceiptLineBlobs}); there is no separate deductions
+ * store. Deleting a stuck receipt here therefore REMOVES its deduction, which
+ * can transiently resurrect `effectiveAvailable` — showing as available stock
+ * that was sold locally but never confirmed to the server.
+ *
+ * This is an ACCEPTED residual, bounded by design:
+ *   - it only affects receipts that failed to sync for 90 days AND exhausted
+ *     retries — a deep edge case;
+ *   - the server never ingested the sale, so its own stock never reflected the
+ *     deduction either; the local figure simply re-aligns to the server's.
+ *
+ * If a stock re-pull gate is ever added to this cleanup, the deductions must be
+ * cleared ATOMICALLY with the pull completing (pull, then delete — never the
+ * reverse) so the window above never opens.
+ */
 export async function cleanupStuckReceipts(db: Database): Promise<void> {
   await execute(
     db,

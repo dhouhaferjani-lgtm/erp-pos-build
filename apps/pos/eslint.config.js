@@ -120,4 +120,54 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-function-type': 'warn',
     },
   },
+  // FU-2 — cart-mutator guard. The raw cartStore actions (`addItem` /
+  // `updateQuantity`) must only be invoked through the gated funnel in
+  // `lib/stock/cartIngress.ts` (`addItemGated` / `updateQuantityGated`) so the
+  // location-stock availability gate always runs (lesson L9: one cart ingress).
+  // A future caller that reaches the store directly would silently bypass the
+  // gate. ERROR severity: the production surface is clean today (every ingress
+  // already routes through the funnel), so this is a pure ratchet. Precedent:
+  // the `no-parsefloat-on-money` precision-guard in apps/web. Complements — and
+  // is intended to eventually replace — the HomePage source-pin
+  // (`lib/stock/__tests__/homePageIngressPin.test.ts`), which additionally
+  // covers the bare-destructured `addItem`/`updateQuantity` form.
+  //
+  // Exemptions (this block's `ignores`):
+  //   - `lib/stock/**`          — the gated funnel itself calls the raw actions;
+  //   - `stores/cartStore.ts`   — the store composes its own actions;
+  //   - test files              — set cart state directly via the store.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/lib/stock/**',
+      'src/stores/cartStore.ts',
+      '**/*.test.{ts,tsx}',
+      'src/**/__tests__/**',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.property.name='addItem']",
+          message:
+            'Do not call cartStore.addItem directly — route cart adds through addItemGated() in lib/stock/cartIngress.ts so the availability gate runs.',
+        },
+        {
+          selector: "CallExpression[callee.property.name='updateQuantity']",
+          message:
+            'Do not call cartStore.updateQuantity directly — route quantity changes through updateQuantityGated() in lib/stock/cartIngress.ts so the availability gate runs.',
+        },
+        {
+          selector: "CallExpression[callee.type='Identifier'][callee.name='addItem']",
+          message:
+            'Do not call the raw addItem action directly — route cart adds through addItemGated() in lib/stock/cartIngress.ts so the availability gate runs.',
+        },
+        {
+          selector: "CallExpression[callee.type='Identifier'][callee.name='updateQuantity']",
+          message:
+            'Do not call the raw updateQuantity action directly — route quantity changes through updateQuantityGated() in lib/stock/cartIngress.ts so the availability gate runs.',
+        },
+      ],
+    },
+  },
 );

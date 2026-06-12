@@ -7,19 +7,9 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
-import { migrations } from '@/lib/db/migrations';
+import { applyAllMigrations } from '@/lib/db/__tests__/helpers/migrationTestHelpers';
 import type { POSProduct } from '@/types/product';
 import { upsertProducts, getAllProducts } from '../productRepository';
-
-async function applyAllMigrations(adapter: SqliteTestAdapter): Promise<void> {
-  for (const migration of migrations) {
-    if (migration.run) {
-      await migration.run(adapter.asDatabase());
-    } else if (migration.sql) {
-      await adapter.execute(migration.sql);
-    }
-  }
-}
 
 /** Minimal valid POSProduct for upsert. */
 function makeProduct(overrides: Partial<POSProduct> & { id: string }): POSProduct {

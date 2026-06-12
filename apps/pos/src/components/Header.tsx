@@ -29,8 +29,7 @@ import type { ZReceiptCashCountRow } from '@/lib/printing';
 import { buildReceiptLabels } from '@/lib/buildReceiptData';
 import {
   formatLegalIdentifierLines,
-  locationIsFiscallyComplete,
-  resolveSellerIdentity,
+  resolveSellerIdentityWithSource,
 } from '@/lib/fiscal/sellerIdentity';
 import type { ZReportCountEntry } from '@/lib/offline/types';
 import type { PaymentMethodItem } from '@/lib/offline/endOfDayPreview';
@@ -343,8 +342,14 @@ export function Header() {
     // location is fiscally complete, otherwise the company tax id. The SIGNED
     // Z-report seller stays null — this is display-only.
     const zLocation = terminal?.location ?? null;
-    const zIdentity = resolveSellerIdentity(company, zLocation);
-    const zLocationComplete = locationIsFiscallyComplete(zLocation);
+    // Single decision point (FU-3): the resolver reports whether it used the
+    // location or the company, so the vat/legal-identifier display below can't
+    // drift from the identity it actually resolved.
+    const { identity: zIdentity, source: zSource } = resolveSellerIdentityWithSource(
+      company,
+      zLocation,
+    );
+    const zLocationComplete = zSource === 'location';
 
     const receiptData = buildZReceiptData({
       companyName: company?.name ?? '',

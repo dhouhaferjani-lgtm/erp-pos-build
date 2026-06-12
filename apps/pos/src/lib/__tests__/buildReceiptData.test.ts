@@ -252,7 +252,7 @@ describe('buildEscPosReceiptData', () => {
 
   it('sets is_reprint=true when isReprint flag is passed', () => {
     const receipt = makeReceipt();
-    const result = buildEscPosReceiptData(receipt, undefined, true);
+    const result = buildEscPosReceiptData(receipt, { isReprint: true });
     expect(result.is_reprint).toBe(true);
   });
 
@@ -303,7 +303,7 @@ describe('buildEscPosReceiptData — branch identity header', () => {
   it('prints the FULL branch identity (tax_id + address + vat_number + legal identifiers) when the location is fiscally complete', () => {
     const receipt = makeReceipt({ company: companyBlock });
 
-    const result = buildEscPosReceiptData(receipt, undefined, undefined, undefined, completeLocation);
+    const result = buildEscPosReceiptData(receipt, { sellerLocation: completeLocation });
 
     expect(result.company.tax_id).toBe('BRANCH-FR-TAX');
     expect(result.company.address_line1).toBe('9 Rue Succursale');
@@ -320,12 +320,14 @@ describe('buildEscPosReceiptData — branch identity header', () => {
   it('prints the WHOLESALE company header when the location has a tax_id but no address (atomic — no mixing)', () => {
     const receipt = makeReceipt({ company: companyBlock });
 
-    const result = buildEscPosReceiptData(receipt, undefined, undefined, undefined, {
-      ...completeLocation,
-      address_street: null,
-      address_city: null,
-      address_postal_code: null,
-      address_country: null,
+    const result = buildEscPosReceiptData(receipt, {
+      sellerLocation: {
+        ...completeLocation,
+        address_street: null,
+        address_city: null,
+        address_postal_code: null,
+        address_country: null,
+      },
     });
 
     expect(result.company.tax_id).toBe('COMPANY-FR-TAX');
@@ -358,9 +360,7 @@ describe('buildEscPosReceiptData — Phase H Block 2 (sale QR / refund header / 
     const token =
       'v:k1:c0ffee00-1111-2222-3333-444455556666:f00dbeefcafe1234abcd5678fedcba98';
 
-    const result = buildEscPosReceiptData(receipt, undefined, false, {
-      qrToken: token,
-    });
+    const result = buildEscPosReceiptData(receipt, { extras: { qrToken: token } });
 
     expect(result.qr_token).toBe(token);
     expect(result.receipt_kind).toBe('sale');
@@ -388,10 +388,12 @@ describe('buildEscPosReceiptData — Phase H Block 2 (sale QR / refund header / 
       subtotal: '-10.00',
     });
 
-    const result = buildEscPosReceiptData(receipt, undefined, false, {
-      qrToken: refundToken,
-      originalReceiptNumber: 'R-T1-2026-00000123',
-      originalReceiptQrToken: originalToken,
+    const result = buildEscPosReceiptData(receipt, {
+      extras: {
+        qrToken: refundToken,
+        originalReceiptNumber: 'R-T1-2026-00000123',
+        originalReceiptQrToken: originalToken,
+      },
     });
 
     expect(result.receipt_kind).toBe('refund');
@@ -403,9 +405,11 @@ describe('buildEscPosReceiptData — Phase H Block 2 (sale QR / refund header / 
   it('honours an explicit receiptKind override even when receipt_type says "sale"', () => {
     const receipt = makeReceipt({ receipt_type: 'sale' });
 
-    const result = buildEscPosReceiptData(receipt, undefined, false, {
-      receiptKind: 'refund',
-      originalReceiptNumber: 'R-T1-2026-00000999',
+    const result = buildEscPosReceiptData(receipt, {
+      extras: {
+        receiptKind: 'refund',
+        originalReceiptNumber: 'R-T1-2026-00000999',
+      },
     });
 
     expect(result.receipt_kind).toBe('refund');
@@ -423,9 +427,7 @@ describe('buildEscPosReceiptData — Phase H Block 2 (sale QR / refund header / 
     const token = `v:k1:${uuid}:f00dbeefcafe1234abcd5678fedcba98`;
 
     const receipt = makeReceipt();
-    const result = buildEscPosReceiptData(receipt, undefined, false, {
-      qrToken: token,
-    });
+    const result = buildEscPosReceiptData(receipt, { extras: { qrToken: token } });
 
     expect(result.qr_token).toBe(token);
     expect(parseReceiptUuidFromQrToken(token)).toBe(uuid);

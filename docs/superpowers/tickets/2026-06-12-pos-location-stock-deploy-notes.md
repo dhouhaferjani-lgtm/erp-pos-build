@@ -47,6 +47,12 @@ Cached terminal payloads from before this feature do not include `pos_stock_poli
 
 **Operational step for immediate rollout:** if you need the fields before the next automatic tick, have the operator log out and re-claim the terminal. The claim flow calls `terminalStore.initialize()` which fetches the terminal fresh. Re-claim is also the correct procedure after admin changes to `pos_stock_policy` or location address on a live terminal.
 
+### (e) Known residual: 90-day stuck-receipt cleanup can transiently resurrect availability (FU-4)
+
+The availability selector subtracts unsynced offline-receipt lines directly (there is no separate deductions store). `offlineReceiptRepository.cleanupStuckReceipts()` deletes receipts that failed to sync for 90 days with retries exhausted; deleting one removes its deduction, so `effectiveAvailable` can briefly tick back up — showing stock that was sold locally but never confirmed to the server.
+
+This is an **accepted residual**, not a launch blocker: it only affects a deep edge case (failed + retry-exhausted + 90 days old), and the server never ingested the sale either, so the local figure simply re-aligns to the server's. No operator action required. If a stock re-pull gate is ever added to `cleanupStuckReceipts`, it must pull THEN delete (atomic) so the window never opens. Documented at the function in `apps/pos/src/lib/db/repositories/offlineReceiptRepository.ts`.
+
 ---
 
 ## No destructive schema changes

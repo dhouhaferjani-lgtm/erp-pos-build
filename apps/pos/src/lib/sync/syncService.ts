@@ -925,6 +925,9 @@ export async function pullLocationStock(
       incoming = result.data.incoming;
       asOf = result.data.as_of;
     }
+    // FU-8: page size is server-owned (PosStockLevelController::PER_PAGE = 500).
+    // We never hardcode it — looping on `last_page` self-adapts to whatever the
+    // server returns, so a server page-size change needs no client change.
     lastPage = result.meta.pagination.last_page;
     page++;
   } while (page <= lastPage);

@@ -14,7 +14,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
-import { migrations } from '@/lib/db/migrations';
+import { applyAllMigrations } from '@/lib/db/__tests__/helpers/migrationTestHelpers';
 import { upsertStockRows } from '@/lib/db/repositories/locationStockRepository';
 import type { POSProduct } from '@/types/product';
 import {
@@ -158,16 +158,6 @@ describe('effectiveAvailable (pure core)', () => {
 // ──────────────────────────────────────────────────────────────────────────────
 // Assembler — real SQLite
 // ──────────────────────────────────────────────────────────────────────────────
-
-async function applyAllMigrations(adapter: SqliteTestAdapter): Promise<void> {
-  for (const migration of migrations) {
-    if (migration.run) {
-      await migration.run(adapter.asDatabase());
-    } else if (migration.sql) {
-      await adapter.execute(migration.sql);
-    }
-  }
-}
 
 interface PersistedLineFixture {
   product_id?: string;

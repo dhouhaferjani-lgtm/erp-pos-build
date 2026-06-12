@@ -51,6 +51,28 @@ describe('StockFreshness', () => {
     expect(getSyncMetadataMock).toHaveBeenCalledWith(expect.anything(), 'stock_last_sync');
   });
 
+  it('uses the normal gray tint (no stale title) within the 15-minute window (FU-10)', async () => {
+    getSyncMetadataMock.mockResolvedValue(new Date(Date.now() - 5 * 60_000).toISOString());
+
+    render(<StockFreshness />);
+
+    const el = await screen.findByTestId('stock-freshness');
+    expect(el.className).toContain('text-gray-500');
+    expect(el.className).not.toContain('text-amber-600');
+    expect(el).not.toHaveAttribute('title');
+  });
+
+  it('switches to an amber tint with a stale title beyond 15 minutes (FU-10)', async () => {
+    getSyncMetadataMock.mockResolvedValue(new Date(Date.now() - 20 * 60_000).toISOString());
+
+    render(<StockFreshness />);
+
+    const el = await screen.findByTestId('stock-freshness');
+    expect(el.className).toContain('text-amber-600');
+    expect(el.className).not.toContain('text-gray-500');
+    expect(el).toHaveAttribute('title', 'stock.staleTitle');
+  });
+
   it('renders nothing when the metadata is absent', async () => {
     getSyncMetadataMock.mockResolvedValue(null);
 
