@@ -15,9 +15,21 @@ import { queryAll, queryOne, execute } from '@/lib/db';
 // ──────────────────────────────────────────────────────────────────────────────
 
 /**
- * Quantities are decimal STRINGS. Zeroed/default values are stored as '0',
- * while server-supplied values arrive at scale 4 ('10.0000') — never compare
- * with string equality; use the decimal helpers (bccomp) for any comparison.
+ * Quantities are decimal STRINGS.
+ *
+ * ZERO-SCALE TOLERANCE CONTRACT (FU-7) — two representations of zero coexist
+ * by design and are both valid:
+ *   - the SQLite schema default (migration v50) stores zero as the literal
+ *     '0' (e.g. the stock columns of a row created via the incoming-only
+ *     insert path in `replaceIncoming`);
+ *   - server-supplied values arrive at scale 4, so server zero is '0.0000'.
+ *
+ * This is intentional and harmless: EVERY consumer compares quantities with
+ * the scale-agnostic bcmath helpers (`bccomp` / `bcsub` in `@/lib/decimal`),
+ * which treat '0' and '0.0000' as equal, and the UI always runs values
+ * through `formatQuantity` before display. NEVER compare these columns with
+ * string equality (`=== '0'`) — that is the one way the tolerance bites.
+ * Pinned by the `zero-scale tolerance (FU-7)` tests in the repository spec.
  */
 export interface LocationStockRow {
   product_id: string;
