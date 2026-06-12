@@ -16,8 +16,13 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Service for enforcing plan limits and feature access.
+ *
+ * Not marked final so that feature tests can bind a named subclass stub via
+ * the container to simulate an unreachable tenant DB without Mockery needing
+ * to proxy the class. An interface extraction (PlanEnforcementServiceInterface)
+ * is the longer-term solution if more test doubles are needed.
  */
-final class PlanEnforcementService
+class PlanEnforcementService
 {
     /**
      * Result of a limit check.
@@ -103,6 +108,8 @@ final class PlanEnforcementService
 
     /**
      * Check if tenant can create another company.
+     *
+     * TENANT-CONTEXT ONLY — queries per-tenant tables on the current connection; from central context wrap in $tenant->run() or use getUsageStats().
      */
     public function canCreateCompany(Tenant $tenant): bool
     {
@@ -123,6 +130,8 @@ final class PlanEnforcementService
 
     /**
      * Check if tenant can create another location.
+     *
+     * TENANT-CONTEXT ONLY — queries per-tenant tables on the current connection; from central context wrap in $tenant->run() or use getUsageStats().
      */
     public function canCreateLocation(Tenant $tenant): bool
     {
@@ -146,6 +155,8 @@ final class PlanEnforcementService
 
     /**
      * Check if tenant can add another user.
+     *
+     * TENANT-CONTEXT ONLY — queries per-tenant tables on the current connection; from central context wrap in $tenant->run() or use getUsageStats().
      */
     public function canAddUser(Tenant $tenant): bool
     {
@@ -166,6 +177,8 @@ final class PlanEnforcementService
 
     /**
      * Check if tenant can create another product.
+     *
+     * TENANT-CONTEXT ONLY — queries per-tenant tables on the current connection; from central context wrap in $tenant->run() or use getUsageStats().
      */
     public function canCreateProduct(Tenant $tenant): bool
     {
@@ -186,6 +199,8 @@ final class PlanEnforcementService
 
     /**
      * Check if tenant can create another partner.
+     *
+     * TENANT-CONTEXT ONLY — queries per-tenant tables on the current connection; from central context wrap in $tenant->run() or use getUsageStats().
      */
     public function canCreatePartner(Tenant $tenant): bool
     {
@@ -206,6 +221,8 @@ final class PlanEnforcementService
 
     /**
      * Check if tenant can create more documents this month.
+     *
+     * TENANT-CONTEXT ONLY — queries per-tenant tables on the current connection; from central context wrap in $tenant->run() or use getUsageStats().
      */
     public function canCreateDocument(Tenant $tenant): bool
     {

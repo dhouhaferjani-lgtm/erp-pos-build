@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { apiPost, ensureCsrfCookie } from '@/lib/api'
-import { adminApiGet, adminApiGetPaginated, adminApiPost, adminApiPatch, adminApiPut } from '../lib/adminApi'
+import { adminApi, adminApiGet, adminApiGetPaginated, adminApiPost, adminApiPatch, adminApiPut } from '../lib/adminApi'
 import type {
   AdminAuthResponse,
   AdminDashboardStats,
@@ -264,8 +264,22 @@ export async function createInvoice(data: CreateInvoiceRequest): Promise<Invoice
   return adminApiPost<Invoice>('/admin/billing/invoices', data)
 }
 
-export function getInvoiceDownloadUrl(id: string): string {
-  return `/api/v1/admin/billing/invoices/${id}/download`
+/**
+ * Download an invoice PDF via the authenticated admin client (the Bearer
+ * header cannot ride on a plain <a href> navigation on Bearer-only deploys).
+ */
+export async function downloadInvoicePdf(id: string): Promise<void> {
+  const response = await adminApi.get<Blob>(`/admin/billing/invoices/${id}/download`, {
+    responseType: 'blob',
+  })
+  const url = URL.createObjectURL(response.data)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `invoice-${id}.pdf`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
 
 // Payments - billing endpoints return paginated data directly

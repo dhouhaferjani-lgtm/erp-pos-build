@@ -105,8 +105,21 @@ class SuperAdminController extends Controller
             $statsAvailable = false;
         }
 
-        // Get plan limits and usage from PlanEnforcementService
-        $planSummary = $this->planEnforcementService->getPlanSummary($tenant);
+        // Get plan limits and usage from PlanEnforcementService.
+        // getPlanSummary calls getUsageStats/calculateUserOverage which both
+        // run $tenant->run() internally — a broken tenant DB would 500 here
+        // even though the stats block above already caught the first run().
+        // Wrap independently so a degraded tenant DB degrades the summary too.
+        try {
+            $planSummary = $this->planEnforcementService->getPlanSummary($tenant);
+        } catch (Throwable $e) {
+            Log::warning('Admin tenant detail: plan summary unavailable', [
+                'tenant_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+            $planSummary = null;
+            $statsAvailable = false;
+        }
 
         /** @var Vertical|null $vertical */
         $vertical = $tenant->vertical;
