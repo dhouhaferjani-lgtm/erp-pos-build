@@ -259,7 +259,8 @@
     "incoming": "{{count}} arriving",
     "incomingFromTransfer": "Incoming from branch transfer",
     "incomingOnOrder": "On order (purchase)",
-    "asOf": "Stock as of {{time}}"
+    "asOf": "Stock as of {{time}}",
+    "staleTitle": "Stock data may be out of date — last successful sync shown"
   },
   "sync": {
     "online": "Online",

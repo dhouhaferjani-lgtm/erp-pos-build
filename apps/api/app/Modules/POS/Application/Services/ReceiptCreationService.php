@@ -1354,6 +1354,18 @@ final class ReceiptCreationService
      * even though no batch could be drawn down (a real concurrency hole when two
      * cashiers received identical read-only FEFO suggestions).
      *
+     * POLICY ASYMMETRY (FU-1, owner decision 2026-06-12): unlike the retail
+     * location-stock path — where {@see self::decrementStock()} honors the
+     * company's `pos_stock_policy` (Block keeps the throw; Warn / Off log and
+     * proceed) — batch-tracked FEFO deduction ALWAYS hard-blocks on exhaustion,
+     * regardless of policy. This is intentional: batch tracking exists for
+     * perishable / lot traceability (the F&B vertical defaults
+     * `requires_batch_tracking = true`), and overselling a lot would both
+     * destroy that traceability and reopen the concurrency hole above. A Warn /
+     * Off policy therefore relaxes only the aggregate location-stock check,
+     * never FEFO lot fulfillment. Revisit only if a batch-tracked tenant needs
+     * policy-driven oversell — it would require a separate, explicit decision.
+     *
      * `$variantId` is threaded into `consumeBatchesAtomically` so that
      * variant-bearing batch sales consume only variant-scoped batches
      * (Task 18 — closes the null gap Task 16b left). When null, only

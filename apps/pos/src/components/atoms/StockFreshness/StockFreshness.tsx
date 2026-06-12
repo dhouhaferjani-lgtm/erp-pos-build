@@ -16,6 +16,12 @@
  * same cycle that runs pullLocationStock, so the hint tracks tick cadence
  * without its own timer (parity with the SyncButton, which also only
  * re-formats on re-render).
+ *
+ * FU-10 — fail toward warning on prolonged staleness: the timestamp keeps
+ * showing the last SUCCESSFUL pull (a stock-pull error never overwrites it),
+ * but once that age exceeds 15 minutes the hint turns amber and gains a
+ * "stock may be stale" title, so a long server outage reads as degraded
+ * rather than silently ageing in the neutral gray.
  */
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -26,6 +32,9 @@ import { getSyncMetadata } from '@/lib/db/repositories/syncLogRepository';
 import { formatRelativeTime } from '@/lib/relativeTime';
 
 const STOCK_LAST_SYNC_KEY = 'stock_last_sync';
+
+/** Age beyond which the freshness hint turns amber (FU-10). */
+const STALE_THRESHOLD_MS = 15 * 60_000;
 
 export function StockFreshness() {
   const { t } = useTranslation('pos');
@@ -59,10 +68,15 @@ export function StockFreshness() {
   const time = formatRelativeTime(stockSyncAt);
   if (time === null) return null;
 
+  // FU-10: amber once the last-good pull is older than 15 minutes.
+  const isStale =
+    stockSyncAt !== null && Date.now() - stockSyncAt > STALE_THRESHOLD_MS;
+
   return (
     <span
       data-testid="stock-freshness"
-      className="hidden text-xs text-gray-500 sm:inline"
+      title={isStale ? t('stock.staleTitle') : undefined}
+      className={`hidden text-xs sm:inline ${isStale ? 'text-amber-600' : 'text-gray-500'}`}
     >
       {t('stock.asOf', { time })}
     </span>
