@@ -18,12 +18,6 @@ interface SuperAdmin {
  */
 interface AdminAuthState {
   admin: SuperAdmin | null
-  /**
-   * Sanctum Bearer token, held in MEMORY ONLY (never persisted).
-   * Bearer-only deploys (SANCTUM_STATEFUL_DOMAINS="") have no session
-   * cookie, so this is the only credential; a page refresh therefore
-   * requires re-login by design.
-   */
   token: string | null
   isAuthenticated: boolean
   setAuth: (admin: SuperAdmin, token: string) => void
