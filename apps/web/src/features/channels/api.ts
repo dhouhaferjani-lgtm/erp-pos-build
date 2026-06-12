@@ -48,7 +48,7 @@ export function promoteChannelOrder(channelId: string, orderId: string) {
  * returns `response.data` — do NOT switch to `apiGet`, which unwraps
  * `data.data` and silently drops the pagination `meta`.
  */
-export async function getAggregateChannelOrders(
+export async function fetchAggregateChannelOrders(
   params: AggregateChannelOrdersParams = {},
 ): Promise<AggregateChannelOrdersResponse> {
   const search = new URLSearchParams()

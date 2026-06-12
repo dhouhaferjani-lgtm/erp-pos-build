@@ -75,7 +75,7 @@ export interface AggregateChannelOrdersResponse {
 }
 
 export interface AggregateChannelOrdersParams {
-  status?: string | undefined
+  status?: ChannelOrderStatus | undefined
   channel_id?: string | undefined
   page?: number | undefined
   per_page?: number | undefined

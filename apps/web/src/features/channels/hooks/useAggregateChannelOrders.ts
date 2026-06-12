@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
-import { getAggregateChannelOrders } from '../api'
+import { fetchAggregateChannelOrders } from '../api'
 import type { AggregateChannelOrdersParams } from '../types'
 
 /**
@@ -18,7 +18,7 @@ export function useAggregateChannelOrders(params: AggregateChannelOrdersParams =
 
   return useQuery({
     queryKey: tenantScopedKey(['channels', 'orders', 'aggregate', params]),
-    queryFn: () => getAggregateChannelOrders(params),
+    queryFn: () => fetchAggregateChannelOrders(params),
     enabled: tenantId !== null && companyId !== null,
   })
 }

@@ -73,6 +73,27 @@ describe('EcommerceOrdersPage', () => {
     expect(within(table).getByText('Processed')).toBeInTheDocument()
   })
 
+  it('falls back to nested customer.name and grand_total payload heuristics', () => {
+    mockUseAggregateChannelOrders.mockReturnValue(
+      queryResult({
+        data: [
+          makeRow({
+            external_order_id: 'EXT-3003',
+            payload: { customer: { name: 'Youssef Trabelsi' }, grand_total: '89.999' },
+          }),
+        ],
+        meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 },
+      }),
+    )
+
+    render(<EcommerceOrdersPage />)
+
+    // Nested customer.name fallback (no top-level customer_name key)
+    expect(screen.getByText('Youssef Trabelsi')).toBeInTheDocument()
+    // grand_total fallback rendered verbatim — never parsed/reformatted
+    expect(screen.getByText('89.999')).toBeInTheDocument()
+  })
+
   it('passes the selected status filter to the hook and resets to page 1', () => {
     render(<EcommerceOrdersPage />)
 
