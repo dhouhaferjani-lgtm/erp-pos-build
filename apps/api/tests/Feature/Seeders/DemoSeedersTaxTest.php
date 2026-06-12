@@ -7,6 +7,7 @@ namespace Tests\Feature\Seeders;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use Database\Seeders\CoffeeShopSeeder;
+use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\ParapharmacyMultiBranchSeeder;
 use Database\Seeders\ParapharmacySeeder;
 use Database\Seeders\TunisianParapharmacySeeder;
@@ -110,7 +111,7 @@ final class DemoSeedersTaxTest extends TestCase
     {
         // TunisianParapharmacySeeder attaches to the first active tenant, which
         // DatabaseSeeder creates (with countries already seeded).
-        $this->artisan('db:seed', ['--class' => \Database\Seeders\DatabaseSeeder::class, '--force' => true])
+        $this->artisan('db:seed', ['--class' => DatabaseSeeder::class, '--force' => true])
             ->assertExitCode(0);
 
         $this->artisan('db:seed', ['--class' => TunisianParapharmacySeeder::class, '--force' => true])

@@ -28,6 +28,7 @@ use App\Modules\Product\Domain\HealthClaim;
 use App\Modules\Product\Domain\Ingredient;
 use App\Modules\Product\Domain\KeyComponent;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -133,7 +134,7 @@ final class ParapharmacyMultiBranchSeeder extends ParapharmacySeeder
 
         // 4b. Provision country tax configurations (FR TVA + company default).
         //     Countries are seeded at step 2 via seedReferenceDataIfMissing().
-        $companyTaxProvisioning = new \App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService(
+        $companyTaxProvisioning = new CompanyTaxProvisioningService(
             failLoudOnMissingCountry: true,
         );
         $companyTaxProvisioning->provisionForCompany($this->company);

@@ -14,8 +14,8 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Application\Services\ProductService;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
-use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -46,25 +46,25 @@ final class EndToEndTaxResolutionTest extends TestCase
         (new CountriesSeeder)->run();
 
         $tenant = Tenant::create([
-            'name'          => 'Demo Tunisia',
-            'slug'          => 'demo-tn-e2e-'.Str::random(6),
-            'status'        => TenantStatus::Active,
-            'plan'          => SubscriptionPlan::Trial,
-            'country_code'  => 'TN',
+            'name' => 'Demo Tunisia',
+            'slug' => 'demo-tn-e2e-'.Str::random(6),
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Trial,
+            'country_code' => 'TN',
             'currency_code' => 'TND',
         ]);
 
         $company = Company::create([
-            'tenant_id'             => $tenant->id,
-            'name'                  => 'E2E Tunisia Co',
-            'country_code'          => 'TN',
-            'currency'              => 'TND',
-            'locale'                => 'fr',
-            'timezone'              => 'Africa/Tunis',
-            'date_format'           => 'd/m/Y',
+            'tenant_id' => $tenant->id,
+            'name' => 'E2E Tunisia Co',
+            'country_code' => 'TN',
+            'currency' => 'TND',
+            'locale' => 'fr',
+            'timezone' => 'Africa/Tunis',
+            'date_format' => 'd/m/Y',
             'fiscal_year_start_month' => 1,
-            'status'                => CompanyStatus::Active,
-            'is_headquarters'       => true,
+            'status' => CompanyStatus::Active,
+            'is_headquarters' => true,
         ]);
 
         // ---- Step 2: provision tax ------------------------------------------
@@ -90,11 +90,11 @@ final class EndToEndTaxResolutionTest extends TestCase
 
         $productId = $productService->upsert($tenant->id, $company->id, [
             'name' => 'Crème hydratante',
-            'sku'  => 'CR1',
+            'sku' => 'CR1',
             // No tax_rate key → service must resolve from company default
         ]);
 
-        $product = \App\Modules\Product\Domain\Product::findOrFail($productId);
+        $product = Product::findOrFail($productId);
 
         // Guard: writer must have resolved the company default (19.00).
         // bccomp is driver-agnostic: '19' (SQLite) == '19.00' (PG) both pass.
@@ -106,42 +106,42 @@ final class EndToEndTaxResolutionTest extends TestCase
 
         // ---- Step 4: tax calculation on a document line with that rate -------
         $partner = Partner::create([
-            'id'         => Str::uuid()->toString(),
-            'tenant_id'  => $tenant->id,
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $tenant->id,
             'company_id' => $company->id,
-            'type'       => 'customer',
-            'code'       => 'CUST-E2E',
-            'name'       => 'Test Customer E2E',
+            'type' => 'customer',
+            'code' => 'CUST-E2E',
+            'name' => 'Test Customer E2E',
         ]);
 
         $document = Document::create([
-            'id'              => Str::uuid()->toString(),
-            'tenant_id'       => $tenant->id,
-            'company_id'      => $company->id,
-            'partner_id'      => $partner->id,
-            'type'            => DocumentType::Invoice,
-            'status'          => DocumentStatus::Posted,
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'partner_id' => $partner->id,
+            'type' => DocumentType::Invoice,
+            'status' => DocumentStatus::Posted,
             'fiscal_category' => FiscalCategory::TaxInvoice,
-            'document_date'   => now(),
+            'document_date' => now(),
             'document_number' => 'INV-E2E-001',
-            'currency'        => 'TND',
-            'subtotal'        => '100.00',
-            'tax_amount'      => '19.00',
-            'total'           => '120.000',
+            'currency' => 'TND',
+            'subtotal' => '100.00',
+            'tax_amount' => '19.00',
+            'total' => '120.000',
         ]);
 
         DocumentLine::create([
-            'id'          => Str::uuid()->toString(),
-            'tenant_id'   => $tenant->id,
-            'company_id'  => $company->id,
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
             'document_id' => $document->id,
             'description' => $product->name,
-            'quantity'    => '1',
-            'unit_price'  => '100.00',
+            'quantity' => '1',
+            'unit_price' => '100.00',
             // Use the rate that was resolved and persisted on the product —
             // proving the resolved value flows through to the tax calculation.
-            'tax_rate'    => $product->tax_rate,
-            'line_total'  => '100.00',
+            'tax_rate' => $product->tax_rate,
+            'line_total' => '100.00',
             'line_number' => 1,
         ]);
 
@@ -152,7 +152,7 @@ final class EndToEndTaxResolutionTest extends TestCase
 
         /** @var TaxCalculationService $taxService */
         $taxService = $this->app->make(TaxCalculationService::class);
-        $result     = $taxService->calculateDocumentTaxes($document);
+        $result = $taxService->calculateDocumentTaxes($document);
 
         // ---- Core assertion: tax must be non-zero ---------------------------
         $this->assertGreaterThan(

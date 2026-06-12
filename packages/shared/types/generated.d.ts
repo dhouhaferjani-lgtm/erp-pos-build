@@ -1285,6 +1285,8 @@ is_active: boolean;
 products_count: number | null;
 breadcrumb: Array<any> | null;
 children: Array<App.Modules.Product.Application.DTOs.CategoryData> | null;
+default_tax_rate: string | null;
+default_tax_configuration_id: string | null;
 };
 export type CertificationData = {
 id: string;

@@ -31,6 +31,7 @@ use App\Modules\Scheduling\Domain\Enums\WaitType;
 use App\Modules\Scheduling\Domain\ScheduleConfig;
 use App\Modules\Service\Domain\Enums\PricingType;
 use App\Modules\Service\Domain\Service;
+use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -2067,7 +2068,7 @@ class DemoTenantSeeder extends Seeder
      */
     private function provisionCompanyTax(Company $company): void
     {
-        $provisioning = new \App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService(
+        $provisioning = new CompanyTaxProvisioningService(
             failLoudOnMissingCountry: false,
         );
         $provisioning->provisionForCompany($company);

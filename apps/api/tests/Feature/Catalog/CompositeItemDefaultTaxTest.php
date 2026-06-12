@@ -15,6 +15,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -76,9 +77,9 @@ final class CompositeItemDefaultTaxTest extends TestCase
         ]);
 
         UserCompanyMembership::create([
-            'user_id'    => $this->user->id,
+            'user_id' => $this->user->id,
             'company_id' => $this->company->id,
-            'role'       => 'admin',
+            'role' => 'admin',
         ]);
 
         $this->actingAs($this->user);
@@ -92,10 +93,10 @@ final class CompositeItemDefaultTaxTest extends TestCase
     public function create_with_no_tax_rate_inherits_company_default(): void
     {
         $response = $this->postJson('/api/v1/composite-items', [
-            'code'            => 'COMBO-NO-TAX',
-            'name'            => 'Combo No Tax',
-            'base_price'      => '5.00',
-            'vertical_type'   => 'fnb',
+            'code' => 'COMBO-NO-TAX',
+            'name' => 'Combo No Tax',
+            'base_price' => '5.00',
+            'vertical_type' => 'fnb',
             'production_type' => 'made_to_order',
         ]);
 
@@ -114,12 +115,12 @@ final class CompositeItemDefaultTaxTest extends TestCase
     public function create_with_explicit_tax_rate_preserves_it(): void
     {
         $response = $this->postJson('/api/v1/composite-items', [
-            'code'            => 'COMBO-EXPLICIT-TAX',
-            'name'            => 'Combo Explicit Tax',
-            'base_price'      => '5.00',
-            'vertical_type'   => 'fnb',
+            'code' => 'COMBO-EXPLICIT-TAX',
+            'name' => 'Combo Explicit Tax',
+            'base_price' => '5.00',
+            'vertical_type' => 'fnb',
             'production_type' => 'made_to_order',
-            'tax_rate'        => '7.00',
+            'tax_rate' => '7.00',
         ]);
 
         $response->assertStatus(201);
@@ -144,8 +145,8 @@ final class CompositeItemDefaultTaxTest extends TestCase
         $service = $this->app->make(CompositeItemImportService::class);
 
         $id = $service->upsert($this->tenant->id, $this->company->id, [
-            'code'       => 'IMP-COMBO-NO-TAX',
-            'name'       => 'Imported Combo No Tax',
+            'code' => 'IMP-COMBO-NO-TAX',
+            'name' => 'Imported Combo No Tax',
             'base_price' => '8.00',
         ]);
 
@@ -166,16 +167,16 @@ final class CompositeItemDefaultTaxTest extends TestCase
 
         // First import with an explicit rate of 7.00.
         $service->upsert($this->tenant->id, $this->company->id, [
-            'code'       => 'IMP-COMBO-PRESERVE',
-            'name'       => 'Imported Combo',
+            'code' => 'IMP-COMBO-PRESERVE',
+            'name' => 'Imported Combo',
             'base_price' => '8.00',
-            'tax_rate'   => '7.00',
+            'tax_rate' => '7.00',
         ]);
 
         // Second import: same code, no tax_rate → must NOT clobber 7.00 with company default 19.00.
         $id = $service->upsert($this->tenant->id, $this->company->id, [
-            'code'       => 'IMP-COMBO-PRESERVE',
-            'name'       => 'Imported Combo (updated)',
+            'code' => 'IMP-COMBO-PRESERVE',
+            'name' => 'Imported Combo (updated)',
             'base_price' => '9.00',
         ]);
 
@@ -196,17 +197,17 @@ final class CompositeItemDefaultTaxTest extends TestCase
     public function duplicate_copies_source_tax_rate_and_configuration_id(): void
     {
         // Create a source composite with a non-default rate and a dummy config UUID.
-        $sourceConfigId = (string) \Illuminate\Support\Str::uuid();
+        $sourceConfigId = (string) Str::uuid();
 
         // Insert a fake tax_configuration so the FK doesn't fail — skip FK for simpler test
         // by creating the composite directly without the FK column populated.
         $source = CompositeItem::create([
-            'tenant_id'  => $this->tenant->id,
+            'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'code'       => 'DUP-SRC',
-            'name'       => 'Duplicate Source',
+            'code' => 'DUP-SRC',
+            'name' => 'Duplicate Source',
             'base_price' => '10.00',
-            'tax_rate'   => '7.00',
+            'tax_rate' => '7.00',
             // Intentionally omit default_tax_configuration_id to avoid FK constraint.
         ]);
 

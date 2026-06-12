@@ -43,6 +43,7 @@ use App\Modules\Promotion\Domain\Enums\DiscountAppliesTo;
 use App\Modules\Promotion\Domain\Enums\DiscountType;
 use App\Modules\Promotion\Domain\Enums\PromotionStatus;
 use App\Modules\Promotion\Domain\Enums\PromotionType;
+use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Domain\CurrencyScale;
@@ -126,7 +127,7 @@ class CoffeeShopSeeder extends Seeder
 
         // 4b. Provision country tax configurations (TN: VAT bands + stamp duty + company default).
         //     Countries are seeded at step 2 above; CoA is now in place.
-        $companyTaxProvisioning = new \App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService(
+        $companyTaxProvisioning = new CompanyTaxProvisioningService(
             failLoudOnMissingCountry: true,
         );
         $companyTaxProvisioning->provisionForCompany($this->company);

@@ -13,6 +13,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -86,7 +87,7 @@ class DatabaseSeeder extends Seeder
         $this->call(PaymentRepositorySeeder::class, false, ['company' => $frCompany]);
 
         $this->command->info('Provisioning tax configurations for French company...');
-        (new \App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService(
+        (new CompanyTaxProvisioningService(
             failLoudOnMissingCountry: true,
         ))->provisionForCompany($frCompany);
 
@@ -120,7 +121,7 @@ class DatabaseSeeder extends Seeder
         $this->call(PaymentRepositorySeeder::class, false, ['company' => $tnCompany]);
 
         $this->command->info('Provisioning tax configurations for Tunisian company...');
-        (new \App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService(
+        (new CompanyTaxProvisioningService(
             failLoudOnMissingCountry: true,
         ))->provisionForCompany($tnCompany);
 

@@ -16,9 +16,9 @@ final class FranceTaxConfigurationSeederTest extends TestCase
 
     public function test_seeds_five_french_vat_configs_with_20pct_default(): void
     {
-        (new CountriesSeeder())->run();
+        (new CountriesSeeder)->run();
 
-        (new FranceTaxConfigurationSeeder())->run();
+        (new FranceTaxConfigurationSeeder)->run();
 
         $configs = TaxConfiguration::where('country_code', 'FR')->get();
         $this->assertCount(5, $configs);
@@ -30,14 +30,14 @@ final class FranceTaxConfigurationSeederTest extends TestCase
         $this->assertSame('TVA_FR_20', $default->code);
 
         // Idempotent
-        (new FranceTaxConfigurationSeeder())->run();
+        (new FranceTaxConfigurationSeeder)->run();
         $this->assertSame(5, TaxConfiguration::where('country_code', 'FR')->count());
     }
 
     public function test_all_five_rates_are_present_and_active(): void
     {
-        (new CountriesSeeder())->run();
-        (new FranceTaxConfigurationSeeder())->run();
+        (new CountriesSeeder)->run();
+        (new FranceTaxConfigurationSeeder)->run();
 
         $codes = TaxConfiguration::where('country_code', 'FR')
             ->pluck('code')
@@ -58,8 +58,8 @@ final class FranceTaxConfigurationSeederTest extends TestCase
 
     public function test_exactly_one_default_rate(): void
     {
-        (new CountriesSeeder())->run();
-        (new FranceTaxConfigurationSeeder())->run();
+        (new CountriesSeeder)->run();
+        (new FranceTaxConfigurationSeeder)->run();
 
         $defaultCount = TaxConfiguration::where('country_code', 'FR')
             ->where('is_default', true)
@@ -70,8 +70,8 @@ final class FranceTaxConfigurationSeederTest extends TestCase
 
     public function test_no_stamp_duty_rows_for_france(): void
     {
-        (new CountriesSeeder())->run();
-        (new FranceTaxConfigurationSeeder())->run();
+        (new CountriesSeeder)->run();
+        (new FranceTaxConfigurationSeeder)->run();
 
         $stampCount = TaxConfiguration::where('country_code', 'FR')
             ->where('is_stamp_duty', true)
