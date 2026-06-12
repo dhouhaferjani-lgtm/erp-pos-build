@@ -700,6 +700,7 @@
     "taxCol": "Tax",
     "thankYou": "Thank you for your purchase!",
     "taxId": "Tax ID:",
+    "vatNumber": "VAT No:",
     "tel": "Tel:",
     "refundHeader": "REFUND",
     "originalTicket": "Original ticket:",

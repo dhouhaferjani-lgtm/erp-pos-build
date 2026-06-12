@@ -700,6 +700,7 @@
     "taxCol": "TVA",
     "thankYou": "Merci pour votre achat !",
     "taxId": "MF :",
+    "vatNumber": "N° TVA :",
     "tel": "Tél :",
     "refundHeader": "REMBOURSEMENT",
     "originalTicket": "Ticket original :",

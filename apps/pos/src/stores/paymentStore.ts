@@ -21,6 +21,7 @@ import { isBalanceStale } from '@/lib/db/repositories/customerRepository';
 import { useCartStore } from '@/stores/cartStore';
 import { lockTerminal } from '@/lib/offline/terminalMutex';
 import { ConcurrentChainAdvanceError } from '@/lib/fiscal/FiscalEventEngine';
+import { resolveSellerIdentity } from '@/lib/fiscal/sellerIdentity';
 import { useSyncStore } from '@/stores/syncStore';
 import { serializeErrorForLog } from '@/lib/errorLogging';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
@@ -467,22 +468,6 @@ interface LocalFirstPaymentLine {
   instrumentSerial?: string;
 }
 
-function companyField(company: unknown, camel: string, snake: string): string | null {
-  if (typeof company !== 'object' || company === null) return null;
-  const record = company as Record<string, unknown>;
-  const value = record[camel] ?? record[snake];
-  return typeof value === 'string' && value.trim() !== '' ? value : null;
-}
-
-function branchTaxNumberFromTerminal(
-  terminal: { location?: { tax_id?: string | null } | null },
-): string | null {
-  // A terminal may have no location/branch-tax configured — fall back to the
-  // company tax id downstream (per-branch tax IDs are optional, company is the
-  // baseline). Guard the optional chain so the account-payment path can't crash.
-  return terminal.location?.tax_id ?? null;
-}
-
 async function createOfflineReceiptWithChainRetry(
   terminalId: string,
   operation: () => Promise<OfflineReceiptResult>,
@@ -568,7 +553,6 @@ async function createReceiptLocalFirst(
     throw new ActiveTerminalRequiredError();
   }
   const isTraining = terminal?.is_training_mode === true;
-  const branchTaxNumber = branchTaxNumberFromTerminal(terminal);
 
   const result = await lockTerminal(tenantId, terminalId, () =>
     createOfflineReceiptWithChainRetry(terminalId, () =>
@@ -581,14 +565,9 @@ async function createReceiptLocalFirst(
         shiftId: shift.id,
         cartItems,
         currency,
-        seller: {
-          name: companyField(company, 'legalName', 'legal_name') ?? company?.name ?? null,
-          taxNumber: branchTaxNumber ?? companyField(company, 'taxId', 'tax_id'),
-          countryCode: companyField(company, 'countryCode', 'country_code'),
-          street: companyField(company, 'addressStreet', 'address_street'),
-          city: companyField(company, 'addressCity', 'address_city'),
-          postalCode: companyField(company, 'addressPostalCode', 'address_postal_code'),
-        },
+        // Atomic seller identity (spec 2026-06-11 §4.6): complete location
+        // identity wholesale, otherwise company wholesale — never mixed.
+        seller: { ...resolveSellerIdentity(company, terminal?.location ?? null) },
         paymentMethodId: primary.paymentMethodId,
         paymentRepositoryId: primary.repositoryId,
         tenderedAmount,
@@ -679,8 +658,6 @@ async function createAccountPaymentLocalFirst(
   if (!terminal || terminal.id !== terminalId || !shift) {
     throw new ActiveTerminalRequiredError();
   }
-  const branchTaxNumber = branchTaxNumberFromTerminal(terminal);
-
   const db = await getDatabase(companyId);
 
   return lockTerminal(tenantId, terminalId, () =>
@@ -693,14 +670,9 @@ async function createAccountPaymentLocalFirst(
       operatorName,
       shiftId: shift.id,
       currency,
-      seller: {
-        name: companyField(company, 'legalName', 'legal_name') ?? company?.name ?? null,
-        taxNumber: branchTaxNumber ?? companyField(company, 'taxId', 'tax_id'),
-        countryCode: companyField(company, 'countryCode', 'country_code'),
-        street: companyField(company, 'addressStreet', 'address_street'),
-        city: companyField(company, 'addressCity', 'address_city'),
-        postalCode: companyField(company, 'addressPostalCode', 'address_postal_code'),
-      },
+      // Atomic seller identity (spec 2026-06-11 §4.6) — same resolver as the
+      // SALE_RECEIPT path; never a branch tax number with a company address.
+      seller: { ...resolveSellerIdentity(company, terminal?.location ?? null) },
       customer: selectedCustomer,
       payment: {
         amount,
@@ -783,14 +755,10 @@ async function createAccountChargeLocalFirst(
       operatorName,
       shiftId: shift.id,
       currency,
-      seller: {
-        name: companyField(company, 'legalName', 'legal_name') ?? company?.name ?? null,
-        taxNumber: companyField(company, 'taxId', 'tax_id'),
-        countryCode: companyField(company, 'countryCode', 'country_code'),
-        street: companyField(company, 'addressStreet', 'address_street'),
-        city: companyField(company, 'addressCity', 'address_city'),
-        postalCode: companyField(company, 'addressPostalCode', 'address_postal_code'),
-      },
+      // Atomic seller identity (spec 2026-06-11 §4.6). This closes the
+      // ACCOUNT_CHARGE gap: charges now carry the branch identity when the
+      // terminal's location is fiscally complete (previously company-only).
+      seller: { ...resolveSellerIdentity(company, terminal?.location ?? null) },
       customer: selectedCustomer,
       lines: cart.lines,
       vatBreakdown: cart.vatBreakdown,

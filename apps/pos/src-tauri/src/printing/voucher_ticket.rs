@@ -227,6 +227,8 @@ mod tests {
                 country: "FR".to_string(),
                 tax_id: "FR12345".to_string(),
                 phone: None,
+                vat_number: None,
+                legal_identifier_lines: None,
             },
             code: "VCH-ABC-123".to_string(),
             initial_balance: "25.00".to_string(),

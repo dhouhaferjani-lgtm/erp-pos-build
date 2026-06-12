@@ -46,6 +46,49 @@ vi.mock('@/lib/offline/accountPaymentService', () => ({
   })),
 }));
 
+vi.mock('@/lib/accountCharge/accountChargeService', () => ({
+  authorAccountCharge: vi.fn(async () => ({
+    accountChargeUuid: 'account-charge-1',
+    fiscalEventId: 'fiscal-event-account-charge-1',
+    total: '50.00',
+    currency: 'EUR',
+    payload: {
+      event_time_device: '2026-06-12T00:00:00.000Z',
+      local_balance_snapshot: {
+        projected_receivable_balance_after: '92.50',
+        projected_credit_balance_after: '0.00',
+        projected_net_balance_after: '92.50',
+      },
+    },
+    printable: {
+      sellerName: 'Test SA',
+      sellerAddress: '9 Rue Succursale, 69001 Lyon',
+      sellerTaxNumber: 'BRANCH-FR-TAX',
+      accountChargeUuid: 'account-charge-1',
+      eventTimeDevice: '2026-06-12T00:00:00.000Z',
+      terminalName: 'Counter 1',
+      cashierName: 'Cashier Alice',
+      lines: [],
+      subtotal: '50.00',
+      vatTotal: '0.00',
+      amountChargedToAccount: '50.00',
+      vatBreakdown: [],
+      fiscalHash: 'mock-charge-hash',
+      customerName: 'Mariam Ben Ali',
+      balanceBefore: '42.50',
+      balanceAfter: '92.50',
+      customerSnapshotStale: false,
+      balanceSnapshotStale: false,
+      businessDate: '2026-06-12',
+      terminalId: 'term-1',
+      shiftId: 'shift-1',
+      trainingFlag: false,
+      accountIdentifier: 'CUST-0001',
+      customerPhone: '+216 20 100 200',
+    },
+  })),
+}));
+
 vi.mock('@/lib/db', () => ({
   getDatabase: vi.fn(async () => ({ execute: vi.fn(), select: vi.fn() })),
 }));
@@ -71,6 +114,12 @@ vi.mock('@/stores/syncStore', () => ({
   },
 }));
 
+/**
+ * Fiscally COMPLETE branch location (tax_id + full address) — under the
+ * atomic seller resolver (spec 2026-06-11 §4.6) this is the ONLY shape that
+ * authors branch identity. A location with tax_id but no address sources the
+ * seller wholesale from the company (pinned below).
+ */
 const terminalWithBranchSeller = {
   id: 'term-1',
   code: 'T001',
@@ -87,8 +136,32 @@ const terminalWithBranchSeller = {
     tax_id: 'BRANCH-FR-TAX',
     vat_number: 'FRBRANCHVAT',
     legal_identifiers: { siret: '55210055400014' },
+    address_street: '9 Rue Succursale',
+    address_city: 'Lyon',
+    address_postal_code: '69001',
+    address_country: 'FR',
   },
 } satisfies Terminal;
+
+/** The full company-sourced seller block (the wholesale fallback). */
+const companySeller = {
+  name: 'Test SA',
+  taxNumber: 'COMPANY-FR-TAX',
+  countryCode: 'FR',
+  street: '1 Rue Test',
+  city: 'Paris',
+  postalCode: '75001',
+};
+
+/** The full branch-sourced seller block (name stays the company legal name). */
+const branchSeller = {
+  name: 'Test SA',
+  taxNumber: 'BRANCH-FR-TAX',
+  countryCode: 'FR',
+  street: '9 Rue Succursale',
+  city: 'Lyon',
+  postalCode: '69001',
+};
 
 function attachedCustomer(overrides: Partial<AttachedCheckoutCustomer> = {}): AttachedCheckoutCustomer {
   return {
@@ -194,7 +267,7 @@ describe('paymentStore branch seller tax source', () => {
     });
   });
 
-  it('uses the branch tax id in SALE_RECEIPT seller payloads before company fallback', async () => {
+  it('authors the FULL branch identity in SALE_RECEIPT seller payloads when the location is fiscally complete', async () => {
     const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
 
     await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 50);
@@ -202,14 +275,40 @@ describe('paymentStore branch seller tax source', () => {
     expect(createOfflineReceipt).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        seller: expect.objectContaining({
-          taxNumber: 'BRANCH-FR-TAX',
-        }),
+        seller: branchSeller,
       }),
     );
   });
 
-  it('falls back to the company tax id for SALE_RECEIPT seller payloads when branch tax id is null', async () => {
+  it('sources the SALE_RECEIPT seller WHOLESALE from the company when the branch has a tax id but no address (atomic — no mixing)', async () => {
+    // Contract change vs the shipped per-field pattern: this exact shape
+    // (tax_id set, address absent) used to author the branch tax number with
+    // the company address. Under §4.6 it reverts to full company identity.
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+    useTerminalStore.setState({
+      terminal: {
+        ...terminalWithBranchSeller,
+        location: {
+          ...terminalWithBranchSeller.location,
+          address_street: null,
+          address_city: null,
+          address_postal_code: null,
+          address_country: null,
+        },
+      },
+    });
+
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 50);
+
+    expect(createOfflineReceipt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        seller: companySeller,
+      }),
+    );
+  });
+
+  it('falls back to the company identity for SALE_RECEIPT seller payloads when branch tax id is null', async () => {
     const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
     useTerminalStore.setState({
       terminal: {
@@ -226,14 +325,12 @@ describe('paymentStore branch seller tax source', () => {
     expect(createOfflineReceipt).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        seller: expect.objectContaining({
-          taxNumber: 'COMPANY-FR-TAX',
-        }),
+        seller: companySeller,
       }),
     );
   });
 
-  it('uses the branch tax id in ACCOUNT_PAYMENT seller payloads before company fallback', async () => {
+  it('authors the FULL branch identity in ACCOUNT_PAYMENT seller payloads when the location is fiscally complete', async () => {
     const { createAccountPayment } = await import('@/lib/offline/accountPaymentService');
 
     usePaymentStore.getState().attachCustomer(attachedCustomer());
@@ -243,14 +340,12 @@ describe('paymentStore branch seller tax source', () => {
     expect(createAccountPayment).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        seller: expect.objectContaining({
-          taxNumber: 'BRANCH-FR-TAX',
-        }),
+        seller: branchSeller,
       }),
     );
   });
 
-  it('falls back to the company tax id for ACCOUNT_PAYMENT seller payloads when branch tax id is null', async () => {
+  it('falls back to the company identity for ACCOUNT_PAYMENT seller payloads when branch tax id is null', async () => {
     const { createAccountPayment } = await import('@/lib/offline/accountPaymentService');
     useTerminalStore.setState({
       terminal: {
@@ -268,9 +363,45 @@ describe('paymentStore branch seller tax source', () => {
     expect(createAccountPayment).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        seller: expect.objectContaining({
-          taxNumber: 'COMPANY-FR-TAX',
-        }),
+        seller: companySeller,
+      }),
+    );
+  });
+
+  it('authors the FULL branch identity in ACCOUNT_CHARGE seller payloads when the location is fiscally complete (gap closed — was company-only)', async () => {
+    const { authorAccountCharge } = await import('@/lib/accountCharge/accountChargeService');
+
+    usePaymentStore.getState().attachCustomer(attachedCustomer());
+
+    await usePaymentStore.getState().processAccountCharge('term-1');
+
+    expect(authorAccountCharge).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        seller: branchSeller,
+      }),
+    );
+  });
+
+  it('sources the ACCOUNT_CHARGE seller WHOLESALE from the company when the location is incomplete', async () => {
+    const { authorAccountCharge } = await import('@/lib/accountCharge/accountChargeService');
+    useTerminalStore.setState({
+      terminal: {
+        ...terminalWithBranchSeller,
+        location: {
+          ...terminalWithBranchSeller.location,
+          address_postal_code: null,
+        },
+      },
+    });
+    usePaymentStore.getState().attachCustomer(attachedCustomer());
+
+    await usePaymentStore.getState().processAccountCharge('term-1');
+
+    expect(authorAccountCharge).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        seller: companySeller,
       }),
     );
   });

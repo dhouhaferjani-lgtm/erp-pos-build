@@ -67,6 +67,16 @@ export interface Terminal {
     tax_id: string | null;
     vat_number: string | null;
     legal_identifiers: Record<string, unknown> | null;
+    /**
+     * Establishment address (spec 2026-06-11 §4.6) — serialized by
+     * TerminalResource. Optional because cached pre-§4.6 terminal payloads
+     * lack the fields; the atomic seller resolver treats absent values as an
+     * incomplete location (wholesale company identity).
+     */
+    address_street?: string | null;
+    address_city?: string | null;
+    address_postal_code?: string | null;
+    address_country?: string | null;
   };
 }
 

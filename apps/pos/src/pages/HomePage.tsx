@@ -698,6 +698,11 @@ export function HomePage() {
     const loader = async () => {
       try {
         const companyId = useAuthStore.getState().companyId;
+        // Atomic header identity (spec 2026-06-11 §4.6) — the printed header
+        // shows the branch identity when the terminal's location is fiscally
+        // complete; sourced from the terminal store like the other header
+        // context (terminal name, operator, …).
+        const sellerLocation = useTerminalStore.getState().terminal?.location ?? null;
 
         if (lastReceiptPrintData) {
           if (!cancelled) {
@@ -714,7 +719,7 @@ export function HomePage() {
             setEscPosData(
               buildEscPosReceiptData(fullReceipt, receiptVisibility, undefined, {
                 qrToken,
-              }),
+              }, sellerLocation),
             );
             setEscPosSource('server');
           }
@@ -728,7 +733,7 @@ export function HomePage() {
             setEscPosData(
               buildEscPosReceiptData(localReceipt, receiptVisibility, undefined, {
                 qrToken,
-              }),
+              }, sellerLocation),
             );
             setEscPosSource('local');
           }
