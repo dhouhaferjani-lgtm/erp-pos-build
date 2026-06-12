@@ -172,15 +172,22 @@ describe('BundleComponentFormModal', () => {
     // critical here: the modal also contains a native <select> whose
     // <option> children expose role="option", which would satisfy a
     // root-level getAllByRole('option') check before the picker had
-    // resolved.
+    // resolved. The listbox is portaled to document.body (so table/modal
+    // overflow can't clip it), so resolve it through the combobox's
+    // aria-controls wiring rather than as a descendant of the picker.
+    const resolveListbox = (): HTMLElement | null => {
+      const listboxId = searchInput.getAttribute('aria-controls')
+      if (listboxId === null) return null
+      return document.getElementById(listboxId)
+    }
     await waitFor(() => {
-      const lb = productPicker.querySelector('[role="listbox"]')
-      expect(lb !== null && within(lb as HTMLElement).queryAllByRole('option').length > 0).toBe(true)
+      const lb = resolveListbox()
+      expect(lb !== null && within(lb).queryAllByRole('option').length > 0).toBe(true)
     })
     // The native <select> for component_type ALSO exposes role="option" on
-    // its <option> children. Scope the query to the listbox inside the
-    // product picker's combobox so we don't accidentally click "Part".
-    const listbox = productPicker.querySelector('[role="listbox"]') as HTMLElement
+    // its <option> children. Scope the query to the picker's own listbox so
+    // we don't accidentally click "Part".
+    const listbox = resolveListbox() as HTMLElement
     const options = within(listbox).getAllByRole('option')
     fireEvent.click(options[0])
 

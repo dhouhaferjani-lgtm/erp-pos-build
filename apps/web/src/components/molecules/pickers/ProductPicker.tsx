@@ -1,4 +1,5 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
@@ -89,13 +90,47 @@ export function ProductPicker({
   const { t } = useTranslation('pickers')
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
   const listboxId = useId()
   const inputId = useId()
 
   const [query, setQuery] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
+  // The dropdown is portaled to document.body with fixed positioning so that
+  // overflow-hidden / overflow-x-auto ancestors (e.g. LineItemsTable's card
+  // and scroll wrappers) cannot clip it.
+  const [dropdownRect, setDropdownRect] = useState<{
+    top: number
+    left: number
+    width: number
+  } | null>(null)
   const debouncedQuery = useDebouncedValue(query, 250)
+
+  const updateDropdownRect = useCallback(() => {
+    const input = inputRef.current
+    if (input === null) {
+      return
+    }
+    const rect = input.getBoundingClientRect()
+    setDropdownRect({ top: rect.bottom + 4, left: rect.left, width: rect.width })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      setDropdownRect(null)
+      return
+    }
+    updateDropdownRect()
+    // Capture-phase scroll listener tracks scrolling of any ancestor
+    // (page, modal body, table wrapper), not just the window.
+    window.addEventListener('scroll', updateDropdownRect, true)
+    window.addEventListener('resize', updateDropdownRect)
+    return () => {
+      window.removeEventListener('scroll', updateDropdownRect, true)
+      window.removeEventListener('resize', updateDropdownRect)
+    }
+  }, [isOpen, updateDropdownRect])
 
   // Fetch whenever the dropdown is open so the user sees products immediately,
   // before typing — matching the document line editor / product search select.
@@ -127,7 +162,8 @@ export function ProductPicker({
       if (
         target instanceof Node &&
         containerRef.current !== null &&
-        !containerRef.current.contains(target)
+        !containerRef.current.contains(target) &&
+        (listRef.current === null || !listRef.current.contains(target))
       ) {
         setIsOpen(false)
       }
@@ -242,11 +278,14 @@ export function ProductPicker({
         }}
         onKeyDown={handleKeyDown}
       />
-      {isOpen ? (
+      {isOpen && dropdownRect !== null ? (
+        createPortal(
         <div
+          ref={listRef}
           id={listboxId}
           role="listbox"
-          className={`absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border ${borderColors.light} bg-white py-1 shadow-lg`}
+          style={{ top: dropdownRect.top, left: dropdownRect.left, width: dropdownRect.width }}
+          className={`fixed z-50 max-h-72 overflow-auto rounded-md border ${borderColors.light} bg-white py-1 shadow-lg`}
         >
           {isLoading ? (
             <div className={`px-3 py-2 text-sm ${textColors.tertiary}`}>{t('common.loading')}</div>
@@ -293,7 +332,9 @@ export function ProductPicker({
               )
             })
           )}
-        </div>
+        </div>,
+        document.body,
+        )
       ) : null}
     </div>
   )

@@ -236,6 +236,98 @@ describe('ProductPicker', () => {
     )
   })
 
+  it('renders the open dropdown in a portal so overflow-hidden ancestors cannot clip it', async () => {
+    mockApiGet.mockResolvedValue(response([oilFilter]))
+    const user = userEvent.setup()
+    const { container } = renderWithProviders(
+      <div className="overflow-hidden" data-testid="clipping-wrapper">
+        <ProductPicker value={null} onChange={() => undefined} />
+      </div>,
+    )
+
+    await user.click(screen.getByRole('combobox'))
+    const listbox = await screen.findByRole('listbox')
+
+    // The listbox must escape the React subtree (portal to document.body);
+    // otherwise overflow-hidden/overflow-x-auto table wrappers clip it.
+    expect(container.contains(listbox)).toBe(false)
+    expect(document.body.contains(listbox)).toBe(true)
+  })
+
+  it('closes the portaled dropdown on outside click but not on dropdown click', async () => {
+    mockApiGet.mockResolvedValue(response([oilFilter, brakePad]))
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    renderWithProviders(<ProductPicker value={null} onChange={onChange} />)
+
+    await user.click(screen.getByRole('combobox'))
+    await screen.findByRole('listbox')
+
+    // Clicking an option (inside the portal, outside the container) must
+    // select it, not be treated as an outside click.
+    await user.click(screen.getByRole('option', { name: /FILT-OIL-STD/ }))
+    expect(onChange).toHaveBeenCalledWith(oilFilter)
+
+    mockApiGet.mockResolvedValue(response([oilFilter, brakePad]))
+    await user.click(screen.getByRole('combobox'))
+    await screen.findByRole('listbox')
+    await user.click(document.body)
+    await waitFor(() => {
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    })
+  })
+
+  it('anchors the portaled dropdown to the input rect and repositions on scroll', async () => {
+    mockApiGet.mockResolvedValue(response([oilFilter]))
+    const user = userEvent.setup()
+    renderWithProviders(<ProductPicker value={null} onChange={() => undefined} />)
+
+    const combo = screen.getByRole('combobox')
+    // jsdom returns zero rects by default, which would let positioning bugs
+    // pass silently — mock a realistic input rect instead.
+    const rect = { top: 100, bottom: 132, left: 40, right: 360, width: 320, height: 32, x: 40, y: 100, toJSON: () => ({}) }
+    vi.spyOn(combo, 'getBoundingClientRect').mockReturnValue(rect as DOMRect)
+
+    await user.click(combo)
+    const listbox = await screen.findByRole('listbox')
+
+    expect(listbox).toHaveStyle({ top: '136px', left: '40px', width: '320px' })
+
+    // Simulate an ancestor scrolling the input 50px up — the capture-phase
+    // scroll listener must re-anchor the dropdown.
+    vi.spyOn(combo, 'getBoundingClientRect').mockReturnValue({ ...rect, top: 50, bottom: 82, y: 50 } as DOMRect)
+    act(() => {
+      window.dispatchEvent(new Event('scroll'))
+    })
+    await waitFor(() => {
+      expect(listbox).toHaveStyle({ top: '86px' })
+    })
+  })
+
+  it('removes scroll and resize listeners when the dropdown closes', async () => {
+    mockApiGet.mockResolvedValue(response([oilFilter]))
+    const user = userEvent.setup()
+    const addSpy = vi.spyOn(window, 'addEventListener')
+    const removeSpy = vi.spyOn(window, 'removeEventListener')
+    renderWithProviders(<ProductPicker value={null} onChange={() => undefined} />)
+
+    await user.click(screen.getByRole('combobox'))
+    await screen.findByRole('listbox')
+
+    expect(addSpy).toHaveBeenCalledWith('scroll', expect.any(Function), true)
+    expect(addSpy).toHaveBeenCalledWith('resize', expect.any(Function))
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    })
+
+    expect(removeSpy).toHaveBeenCalledWith('scroll', expect.any(Function), true)
+    expect(removeSpy).toHaveBeenCalledWith('resize', expect.any(Function))
+    addSpy.mockRestore()
+    removeSpy.mockRestore()
+  })
+
   it('refetches open results when the active company changes', async () => {
     mockApiGet.mockResolvedValue(response([pieceProduct]))
     const user = userEvent.setup()
