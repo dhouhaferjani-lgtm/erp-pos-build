@@ -39,6 +39,16 @@ export interface Terminal {
    * the cashier never confuses training and production at a glance.
    */
   is_training_mode: boolean;
+  /**
+   * Task 11 — company-level POS stock enforcement policy, serialized onto the
+   * terminal payload by TerminalResource (Task 2):
+   *   'block' → over-stock adds are rejected at the cart gate
+   *   'warn'  → over-stock adds are allowed but surfaced to the cashier
+   *   'off'   → availability is never consulted (Menu tenants, backfilled)
+   * Optional because cached pre-Task-2 terminal payloads lack the field —
+   * the stock gate treats an absent value as 'block' (fail-safe for retail).
+   */
+  pos_stock_policy?: 'block' | 'warn' | 'off';
   max_discount_percent?: number;
   allow_line_discounts?: boolean;
   allow_transaction_discounts?: boolean;
@@ -819,6 +829,7 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
         && stillCurrent.max_discount_percent === fresh.max_discount_percent
         && stillCurrent.allow_line_discounts === fresh.allow_line_discounts
         && stillCurrent.allow_transaction_discounts === fresh.allow_transaction_discounts
+        && stillCurrent.pos_stock_policy === fresh.pos_stock_policy
       ) {
         return;
       }

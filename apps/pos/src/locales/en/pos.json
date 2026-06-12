@@ -253,6 +253,14 @@
     "settings": "Settings",
     "pendingSyncWarning": "You have receipts that haven't been synced yet. Sync before closing to avoid data loss."
   },
+  "stock": {
+    "blocked": "Not enough stock at this branch (available: {{available}})",
+    "warned": "Selling beyond branch stock (available: {{available}})",
+    "incoming": "{{count}} arriving",
+    "incomingFromTransfer": "Incoming from branch transfer",
+    "incomingOnOrder": "On order (purchase)",
+    "asOf": "Stock as of {{time}}"
+  },
   "sync": {
     "online": "Online",
     "offline": "Offline",

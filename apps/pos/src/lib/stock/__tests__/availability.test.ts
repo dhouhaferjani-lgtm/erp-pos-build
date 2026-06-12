@@ -386,6 +386,31 @@ describe('getEffectiveAvailable (assembler — real SQLite)', () => {
     expect(await getEffectiveAvailable(db, product, 'vA', [])).toBe('5.0000');
   });
 
+  it("subtracts receipts stuck at status 'syncing' (in-flight ≠ synced)", async () => {
+    // Task 10 review item — a receipt mid-push (status 'syncing') has NOT
+    // been confirmed by the server, so the local snapshot cannot reflect it
+    // yet: it must keep subtracting from availability exactly like 'pending'.
+    await upsertStockRows(db, [
+      {
+        product_id: 'p-sync',
+        variant_id: null,
+        quantity: '10.0000',
+        reserved: '0',
+        available: '10.0000',
+        updated_at: null,
+      },
+    ]);
+
+    await insertReceiptFixture(adapter, {
+      id: 'r-syncing',
+      status: 'syncing',
+      lines: [{ product_id: 'p-sync', quantity: 4 }],
+    });
+
+    const result = await getEffectiveAvailable(db, posProduct({ id: 'p-sync' }), null, []);
+    expect(result).toBe('6.0000');
+  });
+
   it('returns 0.0000 when no stock row exists locally', async () => {
     const result = await getEffectiveAvailable(db, posProduct({ id: 'p-unknown' }), null, []);
     expect(result).toBe('0.0000');
