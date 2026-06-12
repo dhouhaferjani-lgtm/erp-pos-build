@@ -15,13 +15,17 @@ export function AdminLoginPage() {
   const loginMutation = useMutation({
     mutationFn: () => loginSuperAdmin(email, password),
     onSuccess: (data) => {
-      // Cookie is set automatically by Sanctum - just update UI state
-      setAuth({
-        id: data.id,
-        email: data.email,
-        name: data.name,
-        role: data.role,
-      })
+      // Memory-only Bearer token; also works alongside the session cookie
+      // on cookie-capable deploys.
+      setAuth(
+        {
+          id: data.admin.id,
+          email: data.admin.email,
+          name: data.admin.name,
+          role: data.admin.role,
+        },
+        data.token
+      )
       navigate('/admin/dashboard')
     },
     onError: (err: Error) => {

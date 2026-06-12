@@ -24,19 +24,28 @@ import type {
   UpdateVerticalConfigRequest,
 } from '../types'
 
+export interface AdminLoginResult {
+  admin: AdminAuthResponse
+  token: string
+}
+
 // Authentication (uses regular API since not authenticated yet)
 export async function loginSuperAdmin(
   email: string,
   password: string
-): Promise<AdminAuthResponse> {
-  // Ensure CSRF cookie is set before login (required for Sanctum SPA auth)
-  await ensureCsrfCookie()
-  const response = await apiPost<{ admin: AdminAuthResponse }>(
-    '/admin/auth/login',
-    { email, password }
-  )
-  // Cookie is set automatically by Sanctum - just return admin data
-  return response.admin
+): Promise<AdminLoginResult> {
+  // Cookie-capable deploys need the CSRF cookie before login; Bearer-only
+  // deploys may not serve a usable session — never let this block login.
+  try {
+    await ensureCsrfCookie()
+  } catch {
+    // Bearer-only deploy: proceed without a session cookie.
+  }
+  const response = await apiPost<AdminLoginResult>('/admin/auth/login', {
+    email,
+    password,
+  })
+  return response
 }
 
 export async function logoutSuperAdmin(): Promise<void> {
