@@ -6,7 +6,15 @@ import {
   deleteProducts,
   reconcileMenuProducts,
 } from '@/lib/db/repositories/productRepository';
-import { deleteForProducts as deleteLocationStockForProducts } from '@/lib/db/repositories/locationStockRepository';
+import {
+  deleteForProducts as deleteLocationStockForProducts,
+  upsertStockRows,
+  replaceAllStock,
+  replaceIncoming,
+  type ServerIncomingRow,
+  type ServerStockRow,
+} from '@/lib/db/repositories/locationStockRepository';
+import { fetchLocationStock, type LocationStockPage } from '@/api/stockApi';
 import { flattenMenuToProducts } from '@/api/productApi';
 import {
   upsertPaymentMethods,
@@ -625,10 +633,23 @@ export async function pullProductsCore(
  * already imports `pullProductsForeground` from this module, so a
  * static import would create a circular dependency.
  */
-export async function pullProducts(db: Database): Promise<number> {
-  let isMenuTenant = false;
-  let configKnown = false;
+type CatalogTenantGate =
+  | { decision: 'menu' | 'standard' }
+  | { decision: 'defer'; cause: 'config_fetch_failed' | 'module_import_failed' };
 
+/**
+ * Task 9 — shared Menu-tenant routing gate, extracted verbatim from
+ * `pullProducts` so `pullLocationStock` applies the IDENTICAL decision
+ * (Menu tenants source their catalog from /active-menu and must not pull
+ * flat /products NOR /pos/stock-levels; an unknown config defers the tick
+ * rather than guessing — see the pullProducts docblock for the C2 Day 1 /
+ * Codex r2 P2 history).
+ *
+ * The dynamic import of `productStore` is intentional — `productStore`
+ * already imports from this module, so a static import would create a
+ * circular dependency.
+ */
+async function resolveCatalogTenantGate(): Promise<CatalogTenantGate> {
   try {
     const { useProductStore, hasModule } = await import('@/stores/productStore');
     let config = useProductStore.getState().companyConfig;
@@ -644,6 +665,26 @@ export async function pullProducts(db: Database): Promise<number> {
         // this tick rather than guess: a subsequent runFullSync will
         // retry. Skipping is safer than risking bare-row pollution
         // for a yet-unknown Menu tenant.
+        return { decision: 'defer', cause: 'config_fetch_failed' };
+      }
+    }
+
+    return { decision: hasModule(config, 'Menu') ? 'menu' : 'standard' };
+  } catch {
+    // Defensive: dynamic-import failure (test harness boot, module
+    // resolution edge case). Without a known config we cannot make a
+    // routing decision; defer to the next tick rather than risk
+    // pollution.
+    return { decision: 'defer', cause: 'module_import_failed' };
+  }
+}
+
+export async function pullProducts(db: Database): Promise<number> {
+  const gate = await resolveCatalogTenantGate();
+
+  if (gate.decision === 'defer') {
+    if (gate.cause === 'config_fetch_failed') {
+      try {
         await logSyncOperation(
           db,
           'pull',
@@ -652,21 +693,12 @@ export async function pullProducts(db: Database): Promise<number> {
           'error',
           'companyConfig unknown — deferring /products until next tick',
         );
-        return 0;
-      }
+      } catch { /* logging must never throw out of the scheduler wrapper */ }
     }
-
-    configKnown = true;
-    isMenuTenant = hasModule(config, 'Menu');
-  } catch {
-    // Defensive: dynamic-import failure (test harness boot, module
-    // resolution edge case). Without a known config we cannot make a
-    // routing decision; defer to the next tick rather than risk
-    // pollution.
     return 0;
   }
 
-  if (configKnown && isMenuTenant) {
+  if (gate.decision === 'menu') {
     return 0;
   }
 
@@ -749,6 +781,173 @@ export async function pullProductsForeground(
   };
   promise.then(cleanup, cleanup);
   return promise;
+}
+
+/**
+ * Task 9 — sync_metadata keys for the location-stock pull.
+ *
+ * `location_stock_as_of` stores the SERVER-ISSUED `as_of` watermark from
+ * the last successful pull — sent verbatim as `updated_since` on the next
+ * delta pull. NEVER device time (clock skew would drop or replay rows).
+ */
+const STOCK_CURSOR_KEY = 'location_stock_as_of';
+const STOCK_LAST_SYNC_KEY = 'stock_last_sync';
+
+/**
+ * Typed error for `pullLocationStock` — same taxonomy as
+ * `PullProductsError` (which hardcodes its name + `pullProducts` message
+ * prefix, so it is not reusable here without lying in logs/instanceof
+ * checks).
+ */
+export class PullLocationStockError extends Error {
+  constructor(
+    public readonly kind: 'http_5xx' | 'network' | 'parse',
+    public readonly cause: unknown,
+    public readonly status?: number,
+  ) {
+    const causeMsg = cause instanceof Error ? cause.message : String(cause);
+    super(`pullLocationStock ${kind}${status !== undefined ? ` (${String(status)})` : ''}: ${causeMsg}`);
+    this.name = 'PullLocationStockError';
+  }
+}
+
+/**
+ * Task 9 — pull the terminal's own location stock from
+ * GET /pos/stock-levels into the local `location_stock` table.
+ *
+ * Modes:
+ *   - 'full'  → replaceAllStock (deletes local rows absent server-side).
+ *     Used at terminal claim/boot and shift open (re-baseline).
+ *   - 'delta' → upsertStockRows with `updated_since=<stored cursor>`.
+ *     Used on the 60s sync tick. A MISSING cursor (first pull after the
+ *     v50 migration) silently degrades to a full pull.
+ *
+ * Atomicity contract (differs from pullProductsCore's per-page commits):
+ *   ALL pages are accumulated in memory before ANY DB write. Stock pages
+ *   are point-in-time consistent only as a set — a partially-applied
+ *   multi-page pull could pair page-1 quantities with a cursor that was
+ *   never written, or worse, advance the cursor past unfetched rows. A
+ *   mid-loop failure therefore writes NOTHING and the next tick retries
+ *   from the same cursor. (~10 pages × 500 rows of small objects — memory
+ *   is a non-issue.)
+ *
+ * `incoming` arrives COMPLETE on page 1 ([] on later pages) and is
+ * replaced wholesale on EVERY pull. The cursor is page 1's `as_of`.
+ *
+ * Gating: Menu tenants skip (identical decision to pullProducts — see
+ * resolveCatalogTenantGate); no claimed terminal skips. Both return
+ * {count: 0} without an API call.
+ *
+ * `opts.terminalId` exists because several boot/claim call sites run
+ * BEFORE `useTerminalStore.set({ terminal })` publishes the terminal
+ * (claimTerminal, initialize paths 2/3) — reading the store there would
+ * silently no-op. When omitted, falls back to the claimed terminal in
+ * the store.
+ *
+ * Errors are TYPED and THROWN (FetchTimeoutError verbatim, otherwise
+ * PullLocationStockError) — callers in the sync cycle / boot flows wrap
+ * with swallow-and-log. A stock-pull failure must NEVER block selling or
+ * the rest of the sync cycle.
+ */
+export async function pullLocationStock(
+  db: Database,
+  mode: 'full' | 'delta',
+  opts: { signal?: AbortSignal; timeoutMs?: number; terminalId?: string } = {},
+): Promise<{ count: number }> {
+  const gate = await resolveCatalogTenantGate();
+  if (gate.decision !== 'standard') {
+    return { count: 0 };
+  }
+
+  let terminalId = opts.terminalId ?? null;
+  if (terminalId === null) {
+    try {
+      // Dynamic import — terminalStore statically imports pullLocationStock
+      // from this module (shift-open hook), so a static import back would
+      // be circular.
+      const { useTerminalStore } = await import('@/stores/terminalStore');
+      terminalId = useTerminalStore.getState().terminal?.id ?? null;
+    } catch {
+      terminalId = null;
+    }
+  }
+  if (terminalId === null) {
+    return { count: 0 };
+  }
+
+  const cursor = mode === 'delta' ? await getSyncMetadata(db, STOCK_CURSOR_KEY) : null;
+  // Delta without a persisted cursor = first pull after migration → FULL.
+  const effectiveMode: 'full' | 'delta' = cursor !== null ? 'delta' : 'full';
+
+  const allStock: ServerStockRow[] = [];
+  let incoming: ServerIncomingRow[] = [];
+  let asOf: string | null = null;
+
+  let page = 1;
+  let lastPage = 1;
+  do {
+    const params: { updated_since?: string; page?: string } = { page: String(page) };
+    if (cursor !== null) {
+      params.updated_since = cursor;
+    }
+
+    let result: LocationStockPage;
+    try {
+      result = await fetchLocationStock(terminalId, params, {
+        signal: opts.signal,
+        timeoutMs: opts.timeoutMs,
+      });
+    } catch (err) {
+      // Mirror pullProductsCore's classification exactly.
+      // FetchTimeoutError propagates verbatim — callers discriminate it
+      // via `instanceof` (T0.3 contract).
+      if (err instanceof FetchTimeoutError) throw err;
+      if (err instanceof ApiRequestError) {
+        if (err.status >= 500 && err.status < 600) {
+          throw new PullLocationStockError('http_5xx', err, err.status);
+        }
+        throw new PullLocationStockError('network', err, err.status);
+      }
+      if (err instanceof SyntaxError) {
+        throw new PullLocationStockError('parse', err);
+      }
+      throw new PullLocationStockError('network', err);
+    }
+
+    allStock.push(...result.data.stock);
+    if (page === 1) {
+      // `incoming` is complete on page 1; `as_of` is the cursor for the
+      // NEXT pull — take page 1's value so rows updated between page
+      // fetches are re-sent next delta rather than skipped.
+      incoming = result.data.incoming;
+      asOf = result.data.as_of;
+    }
+    lastPage = result.meta.pagination.last_page;
+    page++;
+  } while (page <= lastPage);
+
+  // Every page fetched — NOW write (see atomicity contract above).
+  if (effectiveMode === 'full') {
+    await replaceAllStock(db, allStock);
+  } else {
+    await upsertStockRows(db, allStock);
+  }
+  await replaceIncoming(db, incoming);
+
+  if (asOf !== null) {
+    await setSyncMetadata(db, STOCK_CURSOR_KEY, asOf);
+  }
+  await setSyncMetadata(db, STOCK_LAST_SYNC_KEY, new Date().toISOString());
+  await logSyncOperation(
+    db,
+    'pull',
+    'location_stock',
+    null,
+    'success',
+    `${String(allStock.length)} rows (${effectiveMode})`,
+  );
+
+  return { count: allStock.length };
 }
 
 /**
@@ -1645,6 +1844,21 @@ export async function runFullSync(
   const vouchersPulled = await pullVouchers(db, terminalId);
   const voucherLedgerPulled = await pullVoucherLedger(db, terminalId);
   const receiptQrIndexPulled = await pullReceiptQrIndex(db, terminalId);
+
+  // Task 9 — location-stock delta pull. Runs in the pull phase, which
+  // ALWAYS follows the push phase above, so this single call also serves
+  // as the post-receipt-drain re-baseline (spec §4.3): any receipts the
+  // server just ingested are reflected in the stock the server returns
+  // here. Swallow-and-log like pullProducts — a stock-pull failure must
+  // never block selling or the rest of the cycle.
+  try {
+    await pullLocationStock(db, 'delta', { terminalId });
+  } catch (error) {
+    const message = coerceSyncError(error);
+    try {
+      await logSyncOperation(db, 'pull', 'location_stock', null, 'error', message);
+    } catch { /* non-critical */ }
+  }
 
   // Refresh company config (locale, modules) — graceful on failure.
   try {

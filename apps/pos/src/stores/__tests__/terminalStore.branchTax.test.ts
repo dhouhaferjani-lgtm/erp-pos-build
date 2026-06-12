@@ -33,6 +33,9 @@ vi.mock('@/lib/sync/syncScheduler', () => ({
 vi.mock('@/lib/sync/syncService', () => ({
   pullTerminalState: vi.fn().mockResolvedValue(undefined),
   pullZChainState: vi.fn().mockResolvedValue(undefined),
+  // Task 9 — terminalStore now also imports pullLocationStock (boot/claim
+  // + shift-open full-pull hooks).
+  pullLocationStock: vi.fn().mockResolvedValue({ count: 0 }),
 }));
 
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({

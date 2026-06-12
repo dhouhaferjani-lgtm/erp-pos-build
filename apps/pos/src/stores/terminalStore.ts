@@ -3,7 +3,7 @@ import { apiGet, apiPost } from '@/lib/api';
 import { getDeviceId } from '@/lib/device';
 import { getStoredValue, setStoredValue, removeStoredValue, StorageKeys } from '@/lib/storage';
 import { getDatabase } from '@/lib/db';
-import { pullTerminalState, pullZChainState } from '@/lib/sync/syncService';
+import { pullTerminalState, pullZChainState, pullLocationStock } from '@/lib/sync/syncService';
 import { SyncScheduler } from '@/lib/sync/syncScheduler';
 import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
@@ -366,6 +366,22 @@ export async function seedOfflineHashChain(terminalId: string): Promise<void> {
     useSyncStore.getState().setScheduler(scheduler);
     scheduler.start();
 
+    // Task 9 — full location-stock baseline on terminal claim / boot /
+    // activation (spec §4.3). seedOfflineHashChain is the single funnel
+    // every activation path goes through (initialize cached/pending/
+    // by-device, claimTerminal, checkTerminalStatus), so wiring here
+    // covers them all. `terminalId` is passed EXPLICITLY because most of
+    // those callers run before `set({ terminal })` publishes the terminal
+    // into the store. Fire-and-forget: a stock-pull failure must never
+    // block activation or selling — the scheduler's 60s delta tick
+    // self-heals (and degrades to full while the cursor is unset).
+    void pullLocationStock(db, 'full', { terminalId }).catch((err: unknown) => {
+      console.error(
+        '[POS][terminalStore][seed] location-stock full pull failed (non-fatal)',
+        serializeErrorForLog(err),
+      );
+    });
+
     // T1.2 Step 2.4: pre-warm payment config so the cashier's first
     // visit to PaymentSummary's gate (Step 2.3) finds paymentMethods +
     // paymentRepositories already populated. Fire-and-forget so the
@@ -681,6 +697,23 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
         },
       };
     }
+
+    // Task 9 — full location-stock re-baseline on shift open (spec §4.3):
+    // the opening cashier starts the shift against fresh availability.
+    // Fire-and-forget + swallow-and-log: an offline shift open (the catch
+    // branch above) will time out here, and that must never block the
+    // shift from opening or selling from starting.
+    void (async () => {
+      const companyId = useAuthStore.getState().companyId;
+      if (!companyId) return;
+      const db = await getDatabase(companyId);
+      await pullLocationStock(db, 'full', { terminalId: terminal.id });
+    })().catch((err: unknown) => {
+      console.error(
+        '[POS][terminalStore][openShift] location-stock full pull failed (non-fatal)',
+        serializeErrorForLog(err),
+      );
+    });
 
     if (terminal.fiscal_schema_version === 3) {
       try {
