@@ -254,69 +254,82 @@ final class PlanEnforcementService
     {
         $limits = $this->getLimitsForTenant($tenant);
 
+        // users/companies/locations/products/partners/documents live in the
+        // PER-TENANT database (T6 Phase 0b) — counts must execute inside
+        // $tenant->run(). tenant_id scoping is kept: harmless in prod,
+        // required in the shared-schema test env (run() doesn't swap DBs
+        // there). Safe when already in this tenant's context (run()
+        // re-initializes and restores).
+        /** @var array{companies: int, locations: int, users: int, products: int, partners: int, documents: int} $counts */
+        $counts = $tenant->run(static function () use ($tenant): array {
+            $companyIds = Company::where('tenant_id', $tenant->id)->pluck('id');
+
+            return [
+                'companies' => $companyIds->count(),
+                'locations' => Location::whereIn('company_id', $companyIds)->count(),
+                'users' => DB::table('users')->where('tenant_id', $tenant->id)->count(),
+                'products' => Product::where('tenant_id', $tenant->id)->count(),
+                'partners' => Partner::where('tenant_id', $tenant->id)->count(),
+                'documents' => DB::table('documents')
+                    ->where('tenant_id', $tenant->id)
+                    ->where('created_at', '>=', now()->startOfMonth())
+                    ->count(),
+            ];
+        });
+
         $stats = [];
 
         // Companies
         $companiesLimit = (int) ($limits[PlanLimits::MAX_COMPANIES] ?? 1);
-        $companiesCurrent = Company::where('tenant_id', $tenant->id)->count();
         $stats['companies'] = [
-            'current' => $companiesCurrent,
+            'current' => $counts['companies'],
             'limit' => $companiesLimit,
-            'percent' => $companiesLimit > 0 ? min(100, ($companiesCurrent / $companiesLimit) * 100) : 0,
+            'percent' => $companiesLimit > 0 ? min(100, ($counts['companies'] / $companiesLimit) * 100) : 0,
         ];
 
         // Locations (through companies)
         $locationsLimit = (int) ($limits[PlanLimits::MAX_LOCATIONS] ?? 1);
-        $companyIds = Company::where('tenant_id', $tenant->id)->pluck('id');
-        $locationsCurrent = Location::whereIn('company_id', $companyIds)->count();
         $stats['locations'] = [
-            'current' => $locationsCurrent,
+            'current' => $counts['locations'],
             'limit' => $locationsLimit,
-            'percent' => $locationsLimit > 0 ? min(100, ($locationsCurrent / $locationsLimit) * 100) : 0,
+            'percent' => $locationsLimit > 0 ? min(100, ($counts['locations'] / $locationsLimit) * 100) : 0,
         ];
 
         // Users
         $usersLimit = (int) ($limits[PlanLimits::MAX_USERS] ?? 2);
-        $usersCurrent = DB::table('users')->where('tenant_id', $tenant->id)->count();
         $stats['users'] = [
-            'current' => $usersCurrent,
+            'current' => $counts['users'],
             'limit' => $usersLimit,
-            'percent' => $usersLimit > 0 ? min(100, ($usersCurrent / $usersLimit) * 100) : 0,
+            'percent' => $usersLimit > 0 ? min(100, ($counts['users'] / $usersLimit) * 100) : 0,
         ];
 
         // Products
         $productsLimit = (int) ($limits[PlanLimits::MAX_PRODUCTS] ?? 50);
-        $productsCurrent = Product::where('tenant_id', $tenant->id)->count();
         $stats['products'] = [
-            'current' => $productsCurrent,
+            'current' => $counts['products'],
             'limit' => $productsLimit,
             'percent' => $productsLimit > 0 && $productsLimit < PHP_INT_MAX
-                ? min(100, ($productsCurrent / $productsLimit) * 100)
+                ? min(100, ($counts['products'] / $productsLimit) * 100)
                 : 0,
         ];
 
         // Partners
         $partnersLimit = (int) ($limits[PlanLimits::MAX_PARTNERS] ?? 20);
-        $partnersCurrent = Partner::where('tenant_id', $tenant->id)->count();
         $stats['partners'] = [
-            'current' => $partnersCurrent,
+            'current' => $counts['partners'],
             'limit' => $partnersLimit,
             'percent' => $partnersLimit > 0 && $partnersLimit < PHP_INT_MAX
-                ? min(100, ($partnersCurrent / $partnersLimit) * 100)
+                ? min(100, ($counts['partners'] / $partnersLimit) * 100)
                 : 0,
         ];
 
         // Documents this month
         $docsLimit = (int) ($limits[PlanLimits::MAX_DOCUMENTS_PER_MONTH] ?? 30);
-        $docsCurrent = DB::table('documents')
-            ->where('tenant_id', $tenant->id)
-            ->where('created_at', '>=', now()->startOfMonth())
-            ->count();
         $stats['documents_this_month'] = [
-            'current' => $docsCurrent,
+            'current' => $counts['documents'],
             'limit' => $docsLimit,
             'percent' => $docsLimit > 0 && $docsLimit < PHP_INT_MAX
-                ? min(100, ($docsCurrent / $docsLimit) * 100)
+                ? min(100, ($counts['documents'] / $docsLimit) * 100)
                 : 0,
         ];
 
@@ -390,7 +403,10 @@ final class PlanEnforcementService
         $includedUsers = (int) ($limits[PlanLimits::INCLUDED_USERS] ?? 0);
         $pricePerExtraUser = (float) ($limits[PlanLimits::PRICE_PER_EXTRA_USER] ?? 0);
 
-        $currentUsers = DB::table('users')->where('tenant_id', $tenant->id)->count();
+        /** @var int $currentUsers */
+        $currentUsers = $tenant->run(
+            static fn (): int => DB::table('users')->where('tenant_id', $tenant->id)->count()
+        );
         $extraUsers = max(0, $currentUsers - $includedUsers);
 
         return [
