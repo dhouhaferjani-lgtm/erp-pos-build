@@ -74,6 +74,7 @@ import {
 } from '@/lib/db/repositories/cashDrawerRepository';
 import { logSyncOperation, getSyncMetadata, setSyncMetadata, cleanupOldSyncLogs } from '@/lib/db/repositories/syncLogRepository';
 import { coerceSyncError } from '@/lib/sync/coerceSyncError';
+import { withWriteTransaction } from '@/lib/db/writeGate';
 import {
   upsertVouchers,
   upsertVoucherLedgerEntries,
@@ -938,7 +939,13 @@ export async function pullLocationStock(
   } else {
     await upsertStockRows(db, allStock);
   }
-  await replaceIncoming(db, incoming);
+  // `replaceIncoming` zeroes ALL incoming columns then re-upserts — atomic on
+  // the single writer so concurrent stock reads never observe the zeroed
+  // window. NOTE: pass `tx` (the raw writer), never the gated wrapper — a
+  // gated execute inside a gate job would deadlock the queue.
+  await withWriteTransaction('sync', (tx) =>
+    replaceIncoming(tx as unknown as Database, incoming),
+  );
 
   if (asOf !== null) {
     await setSyncMetadata(db, STOCK_CURSOR_KEY, asOf);

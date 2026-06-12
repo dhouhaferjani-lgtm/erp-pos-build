@@ -2,7 +2,7 @@ import Database from '@tauri-apps/plugin-sql';
 import { migrations } from './db/migrations';
 import { wrapDatabaseWithBusyRetry } from './db/busyRetry';
 import { closeWriter, createWriterSurface, openWriter } from './db/dbWriter';
-import { enqueueWrite, setWriter } from './db/writeGate';
+import { enqueueWrite, setWriter, wrapDatabaseWithSyncGate } from './db/writeGate';
 import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
 
 let db: Database | null = null;
@@ -46,6 +46,12 @@ export async function getDatabase(companyId: string): Promise<Database> {
   db = await Database.load(`sqlite:${dbName}`);
   currentDbName = dbName;
   wrapDatabaseWithBusyRetry(db);
+  // Every write still issued through the pooled handle (sync pulls, queued
+  // events, image cache, stragglers) serializes per-statement through the
+  // sync lane — a queued fiscal tx waits at most ONE statement, and no two
+  // app writes ever contend. Order matters: busyRetry wraps INSIDE the gate
+  // (retries happen within the job).
+  wrapDatabaseWithSyncGate(db);
 
   // Migrations + recovery are writes → run on the writer through the gate
   // (migrations include multi-statement blocks and BEGIN-using data

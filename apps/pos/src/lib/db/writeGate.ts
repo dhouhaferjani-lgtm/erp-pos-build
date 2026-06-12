@@ -110,25 +110,31 @@ export function withWriteTransaction<T>(
   });
 }
 
-const syncWrapped = new WeakSet<object>();
+interface GateableDatabase {
+  execute: (sql: string, params?: unknown[]) => Promise<unknown>;
+}
 
 /**
- * Wrap a DB handle so every `execute` is serialized through the sync lane
- * (per-statement granularity — a queued fiscal tx waits at most ONE
- * statement). `select` passes through (reads never block under WAL).
- * Idempotent: re-wrapping a wrapper returns it unchanged (a double wrap
- * would nest enqueues and deadlock the gate).
+ * Wrap a Database instance's `execute` IN PLACE (mirroring
+ * `wrapDatabaseWithBusyRetry`) so every write issued through the pooled
+ * plugin handle — sync pulls, queued-event inserts, image cache, any
+ * straggler — is serialized through the sync lane, per statement. A queued
+ * fiscal transaction therefore waits at most ONE statement. `select` is
+ * untouched (reads never block under WAL).
+ *
+ * Single autocommit statements on the pool are sound once the gate
+ * guarantees no concurrent fiscal transaction holds the write lock; only
+ * multi-statement transactions must use the Rust writer (withWriteTransaction).
+ *
+ * DEADLOCK RULE: code running INSIDE a gate job (a withWriteTransaction
+ * body, a migration) must never touch the pooled handle's execute — it
+ * would enqueue behind itself. Tx bodies use their `tx` handle only.
  */
-export function gatedSyncDb(db: Database): Database {
-  if (syncWrapped.has(db as unknown as object)) return db;
-  const surface = db as unknown as SqlSurface;
-  const wrapped: SqlSurface = {
-    execute: (sql: string, params?: unknown[]) =>
-      enqueueWrite('sync', () => surface.execute(sql, params)),
-    select: <T>(sql: string, params?: unknown[]) => surface.select<T>(sql, params),
-  };
-  syncWrapped.add(wrapped);
-  return wrapped as unknown as Database;
+export function wrapDatabaseWithSyncGate(database: Database): void {
+  const gateable = database as unknown as GateableDatabase;
+  const originalExecute = gateable.execute.bind(database);
+  gateable.execute = (sql: string, params?: unknown[]) =>
+    enqueueWrite('sync', () => originalExecute(sql, params));
 }
 
 export function __resetWriteGateForTesting(): void {

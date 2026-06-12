@@ -3,7 +3,7 @@ import {
   enqueueWrite,
   withWriteTransaction,
   setWriter,
-  gatedSyncDb,
+  wrapDatabaseWithSyncGate,
   __resetWriteGateForTesting,
 } from '@/lib/db/writeGate';
 import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
@@ -117,24 +117,20 @@ describe('withWriteTransaction', () => {
   });
 });
 
-describe('gatedSyncDb', () => {
-  it('routes execute through the sync lane against the ORIGINAL handle, select passthrough', async () => {
+describe('wrapDatabaseWithSyncGate', () => {
+  it('routes execute through the sync lane IN PLACE (same handle identity), select untouched', async () => {
     const calls: string[] = [];
     const db = {
       execute: async (sql: string) => { calls.push(`exec:${sql}`); return { rowsAffected: 1 }; },
       select: async <T>(sql: string) => { calls.push(`select:${sql}`); return [] as unknown as T; },
     };
-    const sdb = gatedSyncDb(db as never);
-    await (sdb as unknown as SqlSurface).select('SELECT 1');
-    const res = await (sdb as unknown as SqlSurface).execute('INSERT 1');
+    const originalSelect = db.select;
+    wrapDatabaseWithSyncGate(db as never);
+    await db.select('SELECT 1');
+    const res = await db.execute('INSERT 1') as { rowsAffected: number };
     expect(res.rowsAffected).toBe(1);
+    expect(db.select).toBe(originalSelect); // reads untouched
     expect(calls).toEqual(['select:SELECT 1', 'exec:INSERT 1']);
-  });
-
-  it('is idempotent — wrapping twice returns the same wrapper (no nested-enqueue deadlock)', () => {
-    const db = { execute: async () => ({ rowsAffected: 0 }), select: async <T>() => [] as unknown as T };
-    const once = gatedSyncDb(db as never);
-    expect(gatedSyncDb(once)).toBe(once);
   });
 
   it('gated execute waits behind a running fiscal transaction', async () => {
@@ -143,8 +139,8 @@ describe('gatedSyncDb', () => {
     const gate = deferred();
     const tx = withWriteTransaction('fiscal', async (w) => { await w.execute('TX'); await gate.promise; });
     const db = { execute: async (sql: string) => { order.push(sql); return { rowsAffected: 0 }; }, select: async <T>() => [] as unknown as T };
-    const sdb = gatedSyncDb(db as never);
-    const write = (sdb as unknown as SqlSurface).execute('SYNC-WRITE');
+    wrapDatabaseWithSyncGate(db as never);
+    const write = db.execute('SYNC-WRITE');
     await new Promise((r) => setTimeout(r, 10));
     expect(order).not.toContain('SYNC-WRITE');
     gate.resolve();
