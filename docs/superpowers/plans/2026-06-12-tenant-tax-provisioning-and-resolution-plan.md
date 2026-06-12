@@ -24,7 +24,7 @@
 - Test files mirrored under `tests/Feature/Taxation/` and `tests/Unit/Taxation/`.
 
 **Modified (responsibility):**
-- `TaxResolutionService.php` — repair `getDefaultTaxForNewProduct` (UUID category id); becomes the canonical default resolver.
+- `TaxResolutionService.php` — repair `getDefaultTaxForNewProduct` (accept `int|string` category id; product `categories` use an integer PK); becomes the canonical default resolver.
 - `TenantInitializationService.php` — delegate to `CompanyTaxProvisioningService`.
 - `CompanyController.php` — call provisioning on add-company.
 - Demo seeders — call provisioning per company; `CoffeeShopSeeder` ordering fix.
@@ -419,13 +419,13 @@ git commit -m "feat(taxation): shared company tax provisioning service (fail-lou
 
 ---
 
-### Task 4: Repair `TaxResolutionService::getDefaultTaxForNewProduct` for UUID categories
+### Task 4: Repair `TaxResolutionService::getDefaultTaxForNewProduct` (category id type)
 
 **Files:**
 - Modify: `app/Modules/Taxation/Domain/Services/TaxResolutionService.php:67-80`
 - Test: `tests/Unit/Taxation/TaxResolutionServiceDefaultTest.php`
 
-**Why:** the method is typed `?int $categoryId` and uses `DB::table('categories')->find($categoryId)`, but categories use UUID ids. It silently never matches a category.
+**Why:** the method is typed `?int $categoryId` and was unused. The product `categories` table uses an **integer** auto-increment PK (`$table->id()`), so `find()` worked for ints — but the strict `?int` signature would `TypeError` on a string category id arriving from an HTTP payload, and downstream callers (e.g. `ProductService::upsert` passing the raw integer `$category->id`) need a robust signature. Fix: accept `int|string|null` and query with `where('id', …)->value('default_tax_rate')` (coerces either). NOTE: an earlier draft of this plan wrongly stated categories use UUID ids — they do not; only other category tables (service/expense/unit/menu categories) are UUID.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -470,7 +470,7 @@ final class TaxResolutionServiceDefaultTest extends TestCase
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `php artisan test --filter=TaxResolutionServiceDefaultTest`
-Expected: FAIL (category branch returns company default because `find()` by UUID against `?int` mismatches, or Category not fillable for `default_tax_rate` — note Task 6 makes it fillable; if Task 6 not yet done, this test also drives that).
+Expected: FAIL (passing a string/typed category id `TypeError`s the `?int` param). Set the category's `default_tax_rate` via a raw `DB::table('categories')->...->update()` in the test, since Category mass-assignment of that field is only enabled in Task 9.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -508,7 +508,7 @@ Expected: PASS. PHPStan + Pint.
 
 ```bash
 git add app/Modules/Taxation/Domain/Services/TaxResolutionService.php tests/Unit/Taxation/TaxResolutionServiceDefaultTest.php
-git commit -m "fix(taxation): resolve new-product default tax by UUID category id"
+git commit -m "fix(taxation): resolve new-product default tax (int|string category id)"
 ```
 
 ---
