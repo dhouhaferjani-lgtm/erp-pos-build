@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Application\Services;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Category;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Domain\Services\TaxResolutionService;
 use App\Shared\Contracts\ProductServiceInterface;
 
 /**
@@ -16,6 +18,10 @@ use App\Shared\Contracts\ProductServiceInterface;
  */
 final class ProductService implements ProductServiceInterface
 {
+    public function __construct(
+        private readonly TaxResolutionService $taxResolution,
+    ) {}
+
     /**
      * Find a product by SKU.
      *
@@ -71,6 +77,17 @@ final class ProductService implements ProductServiceInterface
             if ($category !== null) {
                 $attributes['category_id'] = $category->id;
             }
+        }
+
+        if (($attributes['tax_rate'] ?? null) === null) {
+            $company = Company::where('tenant_id', $tenantId)
+                ->where('id', $companyId)
+                ->firstOrFail();
+
+            $attributes['tax_rate'] = $this->taxResolution->getDefaultTaxForNewProduct(
+                $company,
+                $attributes['category_id'] ?? null,
+            );
         }
 
         $product = Product::updateOrCreate(
