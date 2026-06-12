@@ -16,6 +16,8 @@ use App\Services\VerticalConfigService;
 use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -367,79 +369,156 @@ class SuperAdminController extends Controller
 
     /**
      * List all users with optional search and filter.
+     * Fans out over every tenant database (users are per-tenant post-T6).
      */
-    #[CrossTenantRoute(reason: 'Super-admin user directory: lists users across all tenants with optional name/email search, tenant_id filter, email_verified filter, and status filter for support, account verification, and incident response; super_admin middleware gated.')]
+    #[CrossTenantRoute(reason: 'Super-admin user directory: fans out over every tenant database (users are per-tenant post-T6) applying name/email search, tenant_id, email_verified, and status filters inside each tenant DB; merged + paginated in-memory; super_admin middleware gated.')]
     public function users(Request $request): JsonResponse
     {
-        $query = User::with(['tenant']);
+        $perPage = 20;
+        $page = max(1, (int) $request->input('page', 1));
 
-        if ($search = $request->input('search')) {
-            $query->where(function ($q) use ($search): void {
-                $q->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('email', 'LIKE', "%{$search}%");
-            });
-        }
-
+        $tenantQuery = Tenant::query();
         if ($tenantId = $request->input('tenant_id')) {
-            $query->where('tenant_id', $tenantId);
+            $tenantQuery->where('id', $tenantId);
         }
 
-        if ($request->has('email_verified')) {
-            $emailVerified = filter_var($request->input('email_verified'), FILTER_VALIDATE_BOOLEAN);
-            if ($emailVerified) {
-                $query->whereNotNull('email_verified_at');
-            } else {
-                $query->whereNull('email_verified_at');
+        /** @var Collection<int, array<string, mixed>> $rows */
+        $rows = collect();
+
+        foreach ($tenantQuery->cursor() as $tenant) {
+            try {
+                /** @var array<int, array<string, mixed>> $tenantUsers */
+                $tenantUsers = $tenant->run(static function () use ($request, $tenant): array {
+                    $query = User::query()->where('tenant_id', $tenant->id);
+
+                    if ($search = $request->input('search')) {
+                        $query->where(function ($q) use ($search): void {
+                            $q->where('name', 'LIKE', "%{$search}%")
+                                ->orWhere('email', 'LIKE', "%{$search}%");
+                        });
+                    }
+
+                    if ($request->has('email_verified')) {
+                        $emailVerified = filter_var($request->input('email_verified'), FILTER_VALIDATE_BOOLEAN);
+                        if ($emailVerified) {
+                            $query->whereNotNull('email_verified_at');
+                        } else {
+                            $query->whereNull('email_verified_at');
+                        }
+                    }
+
+                    if ($status = $request->input('status')) {
+                        $query->where('status', $status);
+                    }
+
+                    return $query->orderBy('created_at', 'desc')->get()->toArray();
+                });
+            } catch (Throwable $e) {
+                Log::warning('Admin user directory: tenant database unreachable, skipping', [
+                    'tenant_id' => $tenant->id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                continue;
+            }
+
+            $tenantInfo = ['id' => $tenant->id, 'name' => $tenant->name];
+            foreach ($tenantUsers as $userRow) {
+                $userRow['tenant'] = $tenantInfo;
+                $rows->push($userRow);
             }
         }
 
-        if ($status = $request->input('status')) {
-            $query->where('status', $status);
-        }
+        $sorted = $rows->sortByDesc('created_at')->values();
+        $paginator = new LengthAwarePaginator(
+            $sorted->forPage($page, $perPage)->values(),
+            $sorted->count(),
+            $perPage,
+            $page,
+            ['path' => $request->url()]
+        );
 
-        $users = $query->orderBy('created_at', 'desc')->paginate(20);
-
-        return response()->json(['data' => $users]);
+        return response()->json(['data' => $paginator]);
     }
 
     /**
      * Show a specific user's details.
+     * Requires tenant_id query param; resolves user inside that tenant DB.
      */
-    #[CrossTenantRoute(reason: 'Super-admin user detail view: reads any user by id with their tenant relation and a cross-tenant join on user_company_memberships + companies for support and audit; super_admin middleware gated.')]
-    public function showUser(string $id): JsonResponse
+    #[CrossTenantRoute(reason: 'Super-admin user detail view: resolves the user INSIDE the addressed tenant database (tenant_id query param required — user rows are per-tenant post-T6) with company memberships; super_admin middleware gated.')]
+    public function showUser(Request $request, string $id): JsonResponse
     {
-        $user = User::with(['tenant'])->findOrFail($id);
-
-        $memberships = DB::table('user_company_memberships')
-            ->join('companies', 'user_company_memberships.company_id', '=', 'companies.id')
-            ->where('user_company_memberships.user_id', $id)
-            ->select([
-                'user_company_memberships.*',
-                'companies.name as company_name',
-            ])
-            ->get();
-
-        return response()->json([
-            'data' => [
-                'user' => $user,
-                'memberships' => $memberships,
-            ],
+        $request->validate([
+            'tenant_id' => 'required|uuid',
         ]);
+
+        /** @var Tenant $tenant */
+        $tenant = Tenant::findOrFail((string) $request->input('tenant_id'));
+
+        /** @var array{user: array<string, mixed>, memberships: array<int, mixed>}|null $data */
+        $data = $tenant->run(static function () use ($id, $tenant): ?array {
+            $user = User::where('tenant_id', $tenant->id)->find($id);
+            if ($user === null) {
+                return null;
+            }
+
+            $memberships = DB::table('user_company_memberships')
+                ->join('companies', 'user_company_memberships.company_id', '=', 'companies.id')
+                ->where('user_company_memberships.user_id', $id)
+                ->select([
+                    'user_company_memberships.*',
+                    'companies.name as company_name',
+                ])
+                ->get();
+
+            return ['user' => $user->toArray(), 'memberships' => $memberships->all()];
+        });
+
+        if ($data === null) {
+            return response()->json(['error' => 'User not found in this tenant'], 404);
+        }
+
+        $data['user']['tenant'] = ['id' => $tenant->id, 'name' => $tenant->name];
+
+        return response()->json(['data' => $data]);
     }
 
     /**
      * Manually verify a user's email address (super admin override).
+     * Requires tenant_id in body; resolves + updates inside that tenant DB.
+     * Audit log written centrally AFTER run() releases the tenant context.
      */
-    #[CrossTenantRoute(reason: 'Super-admin email-verification override: manually stamps email_verified_at on any user (cross-tenant); logged to AdminAuditLog via AdminAuditService::log with entityType=user, entityId, oldValues+newValues, and the operator-provided notes.')]
+    #[CrossTenantRoute(reason: 'Super-admin email-verification override: stamps email_verified_at on a user INSIDE the addressed tenant database (tenant_id required post-T6); logged to AdminAuditLog (central) after the tenant context is released.')]
     public function verifyUserEmail(Request $request, string $id): JsonResponse
     {
         $request->validate([
+            'tenant_id' => 'required|uuid',
             'notes' => 'nullable|string|max:500',
         ]);
 
-        $user = User::findOrFail($id);
+        /** @var Tenant $tenant */
+        $tenant = Tenant::findOrFail((string) $request->input('tenant_id'));
 
-        if ($user->email_verified_at !== null) {
+        /** @var array{user: array<string, mixed>, already_verified: bool}|null $result */
+        $result = $tenant->run(static function () use ($id, $tenant): ?array {
+            $user = User::where('tenant_id', $tenant->id)->find($id);
+            if ($user === null) {
+                return null;
+            }
+            if ($user->email_verified_at !== null) {
+                return ['user' => $user->toArray(), 'already_verified' => true];
+            }
+
+            $user->update(['email_verified_at' => now()]);
+
+            return ['user' => $user->fresh()?->toArray() ?? [], 'already_verified' => false];
+        });
+
+        if ($result === null) {
+            return response()->json(['error' => 'User not found in this tenant'], 404);
+        }
+
+        if ($result['already_verified']) {
             return response()->json([
                 'error' => [
                     'code' => 'ALREADY_VERIFIED',
@@ -448,30 +527,24 @@ class SuperAdminController extends Controller
             ], 400);
         }
 
-        $user->update([
-            'email_verified_at' => now(),
-        ]);
-
-        // Get the tenant for audit logging
-        $tenant = Tenant::find($user->tenant_id);
-
-        // Type assertion - middleware guarantees this is a SuperAdmin
         /** @var SuperAdmin $admin */
         $admin = $request->user();
 
+        // AdminAuditLog is central-pinned — logged after run() releases the
+        // tenant context, so the write lands centrally either way.
         $this->auditService->log(
             admin: $admin,
             action: 'verify_user_email',
             tenant: $tenant,
             entityType: 'user',
-            entityId: $user->id,
+            entityId: $id,
             oldValues: ['email_verified_at' => null],
             newValues: ['email_verified_at' => now()->toDateTimeString()],
             notes: $request->input('notes') ?? 'Email manually verified by admin'
         );
 
         return response()->json([
-            'data' => $user->fresh(),
+            'data' => $result['user'],
             'message' => 'User email verified successfully.',
         ]);
     }

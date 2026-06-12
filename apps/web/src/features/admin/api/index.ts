@@ -553,6 +553,13 @@ export async function getAdminUsers(params?: {
   return { data: response.data.data }
 }
 
-export async function verifyUserEmail(userId: string, notes?: string): Promise<AdminUser> {
-  return adminApiPost<AdminUser>(`/admin/users/${userId}/verify-email`, { notes })
+export async function verifyUserEmail(
+  userId: string,
+  tenantId: string,
+  notes?: string
+): Promise<AdminUser> {
+  return adminApiPost<AdminUser>(`/admin/users/${userId}/verify-email`, {
+    tenant_id: tenantId,
+    notes,
+  })
 }
