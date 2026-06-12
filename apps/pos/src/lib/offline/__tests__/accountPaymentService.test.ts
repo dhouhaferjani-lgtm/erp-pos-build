@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { setWriter, __resetWriteGateForTesting } from '@/lib/db/writeGate';
+import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
 
 vi.mock('@/lib/fiscal/instance', () => ({
   getFiscalEventEngine: vi.fn(),
@@ -33,11 +35,16 @@ import {
 } from '../accountPaymentService';
 
 function makeMockDb() {
-  return {
+  const db = {
     execute: vi.fn().mockResolvedValue({ rowsAffected: 1 }),
     select: vi.fn().mockResolvedValue([]),
     close: vi.fn().mockResolvedValue(undefined),
   } as unknown as import('@tauri-apps/plugin-sql').default;
+  // Single-writer architecture: register the same mock as the gate writer so
+  // BEGIN/COMMIT + tx statements land on this mock's assertion surface.
+  __resetWriteGateForTesting();
+  setWriter(db as unknown as SqlSurface);
+  return db;
 }
 
 const appendResult = {
@@ -152,7 +159,7 @@ describe('accountPaymentService', () => {
         projected_net_balance_after: '200.000',
       },
     });
-    expect(db.execute).toHaveBeenNthCalledWith(1, 'BEGIN TRANSACTION');
+    expect(db.execute).toHaveBeenNthCalledWith(1, 'BEGIN IMMEDIATE TRANSACTION');
     // H2: the account payment is mirrored into local_account_payment_records
     // INSIDE the transaction (before COMMIT) so the device Z can fold CASH
     // account collections into expected_cash.
