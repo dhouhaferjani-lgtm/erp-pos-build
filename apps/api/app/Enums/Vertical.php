@@ -100,7 +100,7 @@ enum Vertical: string
     {
         return match ($this) {
             self::Mechanic => ['Appointments', 'Fleet'],
-            self::Pharmacy => ['BatchExpiry', 'Prescription'],
+            self::Pharmacy => ['BatchExpiry', 'Prescription', 'Ecommerce'],
             self::Restaurant => ['Tables', 'Reservation'],
             self::CoffeeShop => ['Tables', 'Loyalty'],
             self::Retail => ['Loyalty', 'Ecommerce'],
@@ -110,7 +110,7 @@ enum Vertical: string
             self::CarGlass => ['Appointments', 'Fleet'],
             self::TireShop => ['Appointments'],
             self::ServiceStation => [],
-            self::Parapharmacy => ['BatchExpiry', 'Loyalty'],
+            self::Parapharmacy => ['BatchExpiry', 'Loyalty', 'Ecommerce'],
         };
     }
 

@@ -201,12 +201,15 @@ class CoffeeShopSeeder extends Seeder
             'tax_id' => '1234567A',
             'country_code' => 'TN',
             'currency_code' => 'TND',
+            // Top-level column — what CompanyConfigService reads (was nested
+            // in `settings`, which nothing reads). Demo tenant gets every
+            // compatible extra so testers can see all gated surfaces.
+            'enabled_extras' => ['Tables', 'Loyalty', 'Inventory'],
             'settings' => [
                 'timezone' => 'Africa/Tunis',
                 'locale' => 'fr',
                 'date_format' => 'd/m/Y',
                 'fiscal_year_start' => '01-01',
-                'enabled_extras' => ['Loyalty'],
             ],
             'trial_ends_at' => null,
             'subscription_ends_at' => now()->addYear(),

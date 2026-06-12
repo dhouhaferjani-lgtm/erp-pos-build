@@ -290,12 +290,17 @@ class ParapharmacySeeder extends Seeder
             'tax_id' => 'FR12345678901',
             'country_code' => 'FR',
             'currency_code' => 'EUR',
+            // Top-level column — this is what CompanyConfigService reads.
+            // (It previously sat inside `settings`, which nothing reads, so
+            // the demo tenant silently ran with zero extras.)
+            // Demo tenant gets EVERY compatible extra so testers can see all
+            // gated surfaces (owner decision 2026-06-12).
+            'enabled_extras' => ['BatchExpiry', 'Loyalty', 'Ecommerce'],
             'settings' => [
                 'timezone' => 'Europe/Paris',
                 'locale' => 'fr',
                 'date_format' => 'd/m/Y',
                 'fiscal_year_start' => '01-01',
-                'enabled_extras' => ['BatchExpiry', 'Loyalty'],
             ],
             'trial_ends_at' => null,
             'subscription_ends_at' => now()->addYear(),
