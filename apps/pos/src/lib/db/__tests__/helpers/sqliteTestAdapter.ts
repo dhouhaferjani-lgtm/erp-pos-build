@@ -68,8 +68,8 @@ function isMultiStatement(sql: string): boolean {
 export class SqliteTestAdapter {
   readonly inner: BetterSqliteDatabase;
 
-  constructor() {
-    this.inner = new BetterSqlite3(':memory:');
+  constructor(filename: string = ':memory:') {
+    this.inner = new BetterSqlite3(filename);
   }
 
   async execute(sql: string, params?: unknown[]): Promise<ExecResult> {
