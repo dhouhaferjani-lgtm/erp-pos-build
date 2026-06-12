@@ -39,7 +39,7 @@
 **Created — `apps/api/app/Shared/Contracts/CatalogMediaQueryInterface.php`**
 
 **Modified:**
-- `app/Modules/Catalog/CatalogServiceProvider.php` (bind interfaces) — or the existing provider for this module
+- `app/Modules/Catalog/Providers/CatalogServiceProvider.php` (bind interfaces; existing provider, `register()` ~line 24-33)
 - `app/Modules/Product/Application/DTOs/ProductData.php` (accept `ProductMediaData`)
 - `app/Modules/Product/Presentation/Controllers/ProductController.php` (inject query, compose media)
 - `app/Modules/Product/Domain/Product.php` (remove `images()`/`primaryImage()`)
@@ -696,6 +696,42 @@ final class ProductMediaData extends Data
 
 ---
 
+### Task 5b: `MediaUrlResolver` (pure URL builder — created BEFORE the query that injects it)
+
+> **Ordering fix (Codex plan review r2, HIGH):** `CatalogMediaQuery` (Task 6) constructor-injects
+> `MediaUrlResolver`, so the resolver must exist first. It is a pure builder (no storage adapter
+> dependency); the storage *serve* adapter follows in Task 7.
+
+**Files:**
+- Create: `app/Modules/Catalog/Application/Services/MediaUrlResolver.php`
+- Test: `tests/Unit/Modules/Catalog/Media/MediaUrlResolverTest.php`
+
+- [ ] **Step 1: Write the failing test**
+
+```php
+public function test_resolves_rendition_for_upload_and_external_url_for_link(): void
+{
+    $resolver = new MediaUrlResolver();
+    // UPLOAD attachment: forAttachment($a, 'sm') -> route('products.images.download',
+    //   ['product'=>productId, 'image'=>$a->id, 'variant'=>'sm']) ; unknown variant -> original (no variant).
+    // EXTERNAL_URL attachment: forAttachment($a, 'sm') -> $a->mediaAsset->external_url (no rendition).
+    self::assertStringContainsString('/images/'.$a->id.'/download', $resolver->forAttachment($a, 'sm'));
+    self::assertStringContainsString('variant=sm', $resolver->forAttachment($a, 'sm'));
+    self::assertSame('https://x/y.jpg', $resolver->forAttachment($ext, 'sm'));
+}
+```
+
+- [ ] **Step 2: Run** → `cd apps/api && ./vendor/bin/phpunit tests/Unit/Modules/Catalog/Media/MediaUrlResolverTest.php` → FAIL (class missing).
+
+- [ ] **Step 3: Implement** — `MediaUrlResolver::forAttachment(MediaAttachment $a, ?string $variant): ?string`:
+  - if `$a->mediaAsset->source === MediaSource::ExternalUrl` → return `$a->mediaAsset->external_url`;
+  - else → `route('products.images.download', ['product' => $a->owner_id, 'image' => $a->id, 'variant' => $variant])` (the route name already exists; preserves the legacy `variant=sm|md` URL shape — `sm`→THUMBNAIL, `md`→SMALL, unknown→original handled in the serve adapter, Task 7). Pure: no `app()`, no storage I/O.
+
+- [ ] **Step 4: Run** → PASS.
+- [ ] **Step 5: Commit** — `git commit -m "feat(catalog-media): MediaUrlResolver (pure URL builder)"`.
+
+---
+
 ### Task 6: `CatalogMediaQueryInterface` (Shared) + `CatalogMediaQuery`
 
 **Files:**
@@ -789,13 +825,14 @@ Bind `CatalogMediaQueryInterface::class => CatalogMediaQuery::class` in the Cata
 
 ## Phase C — Storage, rendition, upload, attach
 
-### Task 7: `MediaStorageInterface` + `MediaStorageAdapter` + `MediaUrlResolver`
+### Task 7: `MediaStorageInterface` + `MediaStorageAdapter` (disk-aware serve)
+
+> `MediaUrlResolver` was created in **Task 5b** — this task is the serve adapter only.
 
 **Files:**
 - Create: `app/Modules/Catalog/Domain/Contracts/MediaStorageInterface.php`
 - Create: `app/Modules/Catalog/Infrastructure/Storage/MediaStorageAdapter.php`
-- Create: `app/Modules/Catalog/Application/Services/MediaUrlResolver.php`
-- Test: `tests/Feature/Modules/Catalog/Media/MediaServeAndUrlTest.php`
+- Test: `tests/Feature/Modules/Catalog/Media/MediaServeTest.php`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -803,20 +840,15 @@ Bind `CatalogMediaQueryInterface::class => CatalogMediaQuery::class` in the Cata
 public function test_serve_streams_uploaded_and_redirects_url_disk(): void
 {
     Storage::fake('s3');
-    // UPLOAD asset with a fake rendition file → serve returns a streamed/binary response (200).
+    // UPLOAD asset with a fake rendition file (?variant=sm → THUMBNAIL; unknown → original) →
+    //   serve returns a streamed/binary response (200).
     // EXTERNAL_URL asset → serve returns a redirect (302) to external_url.
-}
-
-public function test_url_resolver_prefers_requested_rendition_then_falls_back(): void
-{
-    // UPLOAD asset: resolve('sm') -> THUMBNAIL url; unknown variant -> original.
-    // EXTERNAL_URL asset: resolve(any) -> external_url.
 }
 ```
 
 - [ ] **Step 2: Run** → FAIL.
 
-- [ ] **Step 3: Implement** — `MediaStorageInterface` exposes `response(MediaAsset|MediaRendition): StreamedResponse|RedirectResponse` and `put/get/delete`. `MediaStorageAdapter` wraps `Storage::disk($disk)`: for `url` disk → `redirect()->away($asset->external_url)`; else `Storage::disk($disk)->response($path)`. `MediaUrlResolver::forAttachment(MediaAttachment, ?string $variant)` returns: EXTERNAL_URL → `external_url`; UPLOAD → the matching rendition's serve URL (`route('products.images.download', ['product'=>..., 'image'=>attachmentId, 'variant'=>$variant])`) preserving today's URL contract; unknown variant → original. Map legacy `sm→THUMBNAIL`, `md→SMALL`.
+- [ ] **Step 3: Implement** — `MediaStorageInterface` exposes `serve(MediaAttachment $a, ?string $variant): StreamedResponse|RedirectResponse` and `put/get/delete`. `MediaStorageAdapter` wraps `Storage::disk($disk)`: for an EXTERNAL_URL asset (`url` disk) → `redirect()->away($asset->external_url)`; else resolve the rendition for `$variant` (legacy `sm→THUMBNAIL`, `md→SMALL`, unknown→original) and `Storage::disk($disk)->response($renditionOrOriginalPath)`. (URL *building* lives in `MediaUrlResolver`, Task 5b; this adapter does the byte *serving*.)
 
 - [ ] **Step 4: Run** → PASS. **Step 5: Commit** — `git commit -m "feat(catalog-media): disk-aware storage adapter + URL resolver"`.
 
@@ -1177,8 +1209,11 @@ public function down(): void { /* no-op: table replaced by media_* model; restor
 Run (the historical create-migration and the new drop-migration legitimately contain `product_images`, so exclude them; search ALL code surfaces, not just `app/ database/`):
 ```bash
 cd ../..   # repo root
+# NOTE: apps/pos is intentionally EXCLUDED — it has its own local SQLite `product_images` cache table
+# (apps/pos/src/lib/db/migrations.ts) that legitimately stays. The POS *sync URL contract* is the
+# real cross-app coupling and is regression-guarded by SyncImageContractTest (Task 14), not by this grep.
 rg -n "ProductImage\b|ProductImageService|ImageVariantService|GenerateImageVariants|primaryImage|product_images" \
-  apps/api/app apps/api/tests apps/api/database/seeders packages/shared apps/web apps/pos \
+  apps/api/app apps/api/tests apps/api/database/seeders packages/shared apps/web \
   -g '!apps/api/database/migrations/tenant/2025_12_29_155412_create_product_images_table.php' \
   -g '!apps/api/database/migrations/tenant/2026_06_12_100004_drop_product_images_table.php' \
   && echo "STILL REFERENCED — fix before commit" || echo "clean"
@@ -1188,7 +1223,7 @@ cd apps/api
 ./vendor/bin/deptrac
 php artisan typescript:transform
 ```
-Expected: `clean` (the only acceptable remaining hits are intentional POS local-cache identifiers, if any — confirm each by eye), PHPStan 0 errors on new code, Pint clean, Deptrac green. **Note:** `apps/pos` has its own image cache using the word `image`/`product_id` — those are NOT references to the backend `product_images` table and are expected to remain; the regex above targets the specific symbol names, so spot-check any pos hits.
+Expected: `clean` (no matches in the searched scope), PHPStan 0 errors on new code, Pint clean, Deptrac green. The POS cache + its `product_images` SQLite table remain untouched (verified separately via the Task 14 sync-contract test).
 
 - [ ] **Step 6: Run the full set of media/product feature tests added in this plan (scoped)**
 

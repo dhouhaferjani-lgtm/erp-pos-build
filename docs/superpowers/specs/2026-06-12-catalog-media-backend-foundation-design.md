@@ -122,9 +122,9 @@ only via §4.
 ```php
 // Shared/Contracts/
 interface CatalogMediaQueryInterface {
-    public function forProduct(string $productId): ProductMediaData;             // primary + gallery, READY only
+    public function forProduct(string $productId, string $tenantId): ProductMediaData;   // primary + gallery, READY only
     /** @param array<string> $ids @return array<string,ProductMediaData> keyed by product_id (no N+1) */
-    public function forProducts(array $ids): array;
+    public function forProducts(array $ids, string $tenantId): array;                     // tenantId required (db-per-tenant defense-in-depth)
 }
 ```
 
