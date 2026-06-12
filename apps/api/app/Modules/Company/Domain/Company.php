@@ -92,6 +92,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $parent_company_id UUID of parent company (for chains)
  * @property bool $is_headquarters Whether this is headquarters
  * @property CompanyTaxStatus $tax_status Tax registration status
+ * @property string $default_tax_rate Company-level fallback tax rate (decimal 5,2 stored as string)
+ * @property string|null $default_tax_configuration_id FK to the company's default TaxConfiguration
  * @property CompanyStatus $status Company status
  * @property Carbon|null $closed_at When company was closed
  * @property string $inventory_costing_method Inventory costing method (weighted_average)

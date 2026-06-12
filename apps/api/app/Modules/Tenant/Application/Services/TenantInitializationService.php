@@ -10,6 +10,7 @@ use App\Modules\Billing\Domain\Plan;
 use App\Modules\Billing\Domain\TenantSubscription;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\CountryTaxRatesSeeder;
@@ -19,7 +20,6 @@ use Database\Seeders\PaymentMethodSeeder;
 use Database\Seeders\PaymentRepositorySeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
-use Database\Seeders\TunisiaTaxConfigurationSeeder;
 use Illuminate\Support\Facades\Artisan;
 
 /**
@@ -30,6 +30,10 @@ use Illuminate\Support\Facades\Artisan;
  */
 class TenantInitializationService
 {
+    public function __construct(
+        private readonly CompanyTaxProvisioningService $companyTaxProvisioning,
+    ) {}
+
     /**
      * Initialize a new registration with all required data.
      *
@@ -244,30 +248,24 @@ class TenantInitializationService
     }
 
     /**
-     * Seed country-specific tax configurations (VAT rates, stamp duties).
+     * Seed country-specific tax configurations (VAT rates, stamp duties) and
+     * set company.default_tax_configuration_id + company.default_tax_rate from
+     * the country's is_default config row.
      *
-     * These are global (per-country, not per-company) and idempotent.
-     * Uses updateOrCreate internally so safe to call multiple times.
+     * Delegates entirely to CompanyTaxProvisioningService, which is the single
+     * authoritative entry point for country tax provisioning across all writers
+     * (registration, company creation, seeders). Idempotent (seeders use
+     * updateOrCreate internally). Silently skips unsupported countries.
+     *
+     * For supported countries (TN/FR) this overwrites the default_tax_rate that
+     * setDefaultTaxRate() wrote with the same value, and additionally sets the FK.
+     * For unsupported countries setDefaultTaxRate() sets the correct fallback rate
+     * and this call is a no-op (no FK set).
      */
     private function seedTaxConfigurations(Company $company): void
     {
-        // Guard: tax_configurations has FK to countries table
-        $countryExists = \DB::table('countries')
-            ->where('code', strtoupper($company->country_code))
-            ->exists();
-
-        if (! $countryExists) {
-            return;
-        }
-
-        $countryCode = strtoupper($company->country_code);
-
-        $seeder = match ($countryCode) {
-            'TN' => new TunisiaTaxConfigurationSeeder,
-            default => null,
-        };
-
-        $seeder?->run();
+        // Seeds the country configs AND sets company.default_tax_configuration_id + default_tax_rate.
+        $this->companyTaxProvisioning->provisionForCompany($company);
     }
 
     /**
