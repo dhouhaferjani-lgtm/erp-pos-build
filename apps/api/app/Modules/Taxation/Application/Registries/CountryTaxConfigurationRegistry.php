@@ -18,6 +18,9 @@ final class CountryTaxConfigurationRegistry
         'FR' => FranceTaxConfigurationSeeder::class,
     ];
 
+    /**
+     * @return class-string<TunisiaTaxConfigurationSeeder>|class-string<FranceTaxConfigurationSeeder>|null
+     */
     public function seederFor(string $countryCode): ?string
     {
         return self::MAP[strtoupper($countryCode)] ?? null;
