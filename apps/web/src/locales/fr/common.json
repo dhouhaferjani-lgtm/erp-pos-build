@@ -228,7 +228,10 @@
     "pos": "Point de vente",
     "catalog": "Catalogue",
     "crm": "CRM",
-    "compliance": "Export de Conformité"
+    "compliance": "Export de Conformité",
+    "ecommerce": "E-commerce",
+    "customersAndMarketing": "Clients & Marketing",
+    "stockTransfers": "Transferts de stock"
   },
   "fields": {
     "totalReceivable": "Total à recevoir",

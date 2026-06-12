@@ -37,6 +37,14 @@
     "pos": {
       "title": "Point of Sale",
       "description": "Manage POS terminals, receipt settings, and cash drawers"
+    },
+    "posRefundPolicies": {
+      "title": "POS Refund Policies",
+      "description": "Configure return windows, manager overrides, and voucher rules for POS refunds"
+    },
+    "customerHistoryAudit": {
+      "title": "Customer History Audit",
+      "description": "Review who looked up full customer purchase history at the POS"
     }
   },
   "company": {

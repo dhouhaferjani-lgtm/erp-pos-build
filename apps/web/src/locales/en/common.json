@@ -275,7 +275,10 @@
     "pos": "Point of Sale",
     "catalog": "Catalog",
     "crm": "CRM",
-    "compliance": "Compliance Export"
+    "compliance": "Compliance Export",
+    "ecommerce": "E-commerce",
+    "customersAndMarketing": "Customers & Marketing",
+    "stockTransfers": "Stock Transfers"
   },
   "locations": {
     "title": "Location Management",

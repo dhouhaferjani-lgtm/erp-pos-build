@@ -58,9 +58,11 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       JSON.stringify([
         'sales',
         'purchases',
-        'inventoryAndCatalog',
+        'catalog',
+        'inventory',
         'pointOfSale',
-        'marketing',
+        'ecommerce',
+        'customersAndMarketing',
         'bankingAndPayments',
         'accountingAndReports',
         'automotive',
@@ -398,16 +400,143 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       expect(settingsLink).toHaveAttribute('href', '/settings')
     })
 
-    // Reports was folded into accountingAndReports + POS-local z-reports;
-    // the top-level `/reports` link no longer exists. Assert instead that
-    // the Accounting group (which surfaces financial reports) is visible.
-    it('always shows Accounting & Reports regardless of vertical', async () => {
+    // Accounting & Reports is module-gated (fail-closed) since the
+    // production-hardening pass: visible only when the Accounting module is
+    // enabled. Every real vertical ships it in defaultModules; this synthetic
+    // minimal config does not, so the group must be hidden.
+    it('hides Accounting & Reports when the Accounting module is absent', async () => {
       renderSidebar(minimalConfig)
+
+      await screen.findByRole('button', { name: /navigation\.sales/i })
+
+      const accountingButton = screen.queryByRole('button', {
+        name: /navigation\.accountingAndReports/i,
+      })
+      expect(accountingButton).not.toBeInTheDocument()
+    })
+
+    it('shows Accounting & Reports when the Accounting module is enabled', async () => {
+      renderSidebar({
+        ...minimalConfig,
+        all_enabled_modules: [...minimalConfig.all_enabled_modules, 'Accounting'],
+      })
 
       const accountingButton = await screen.findByRole('button', {
         name: /navigation\.accountingAndReports/i,
       })
       expect(accountingButton).toBeInTheDocument()
+    })
+  })
+
+  describe('Fail-Closed Module Gating (production hardening)', () => {
+    // Nav items now declare backend module names directly (PascalCase,
+    // typed). An item whose module is not in `all_enabled_modules` must be
+    // hidden — there is no fall-through to "always visible".
+    const retailConfig: TestCompanyConfig = {
+      vertical: 'retail',
+      default_modules: ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
+      enabled_extras: [],
+      all_enabled_modules: ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
+      currency: 'EUR',
+      locale: 'fr_FR',
+      country_code: 'FR',
+      smart_prompts_enabled: false,
+      smart_prompts_variant: 'off',
+      line_designation_override_enabled: false,
+    }
+
+    const restaurantConfig: TestCompanyConfig = {
+      ...retailConfig,
+      vertical: 'restaurant',
+      all_enabled_modules: [...retailConfig.all_enabled_modules, 'Menu', 'Tables'],
+    }
+
+    it('hides Tables and Kitchen for a retail vertical (no Tables/Menu modules)', async () => {
+      renderSidebar(retailConfig)
+
+      await screen.findByRole('button', { name: /navigation\.sales/i })
+
+      expect(screen.queryByRole('link', { name: /navigation\.tables/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: /navigation\.kitchen/i })).not.toBeInTheDocument()
+    })
+
+    it('shows Tables and Kitchen for a restaurant vertical', async () => {
+      renderSidebar(restaurantConfig)
+
+      expect(await screen.findByRole('link', { name: /navigation\.tables/i })).toBeInTheDocument()
+      expect(await screen.findByRole('link', { name: /navigation\.kitchen/i })).toBeInTheDocument()
+    })
+
+    // Note: compositeItems / modifierGroups resolve through the vertical
+    // label map (catalog:vertical.<vertical>.<key>) for non-generic
+    // verticals, so match on the key fragment rather than the namespace.
+    it('shows Composite Items, Menus, and Modifier Groups when Menu module is enabled', async () => {
+      renderSidebar(restaurantConfig)
+
+      expect(await screen.findByRole('link', { name: /compositeItems/i })).toBeInTheDocument()
+      expect(await screen.findByRole('link', { name: /navigation\.menus/i })).toBeInTheDocument()
+      expect(await screen.findByRole('link', { name: /modifierGroup/i })).toBeInTheDocument()
+    })
+
+    it('hides Composite Items, Menus, and Modifier Groups for retail (no Menu module)', async () => {
+      renderSidebar(retailConfig)
+
+      await screen.findByRole('button', { name: /navigation\.sales/i })
+
+      expect(screen.queryByRole('link', { name: /compositeItems/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: /navigation\.menus/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: /modifierGroup/i })).not.toBeInTheDocument()
+    })
+
+    it('shows the E-commerce group only when the Ecommerce module is enabled', async () => {
+      renderSidebar(retailConfig)
+      await screen.findByRole('button', { name: /navigation\.sales/i })
+      expect(screen.queryByRole('button', { name: /navigation\.ecommerce/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: /navigation\.channels/i })).not.toBeInTheDocument()
+    })
+
+    it('shows Channels under E-commerce when the Ecommerce module is enabled', async () => {
+      renderSidebar({
+        ...retailConfig,
+        enabled_extras: ['Ecommerce'],
+        all_enabled_modules: [...retailConfig.all_enabled_modules, 'Ecommerce'],
+      })
+
+      expect(await screen.findByRole('button', { name: /navigation\.ecommerce/i })).toBeInTheDocument()
+      const channelsLink = await screen.findByRole('link', { name: /navigation\.channels/i })
+      expect(channelsLink).toHaveAttribute('href', '/channels')
+    })
+
+    it('shows Batches only when BatchExpiry or Parapharmacy is enabled', async () => {
+      renderSidebar(retailConfig)
+      await screen.findByRole('button', { name: /navigation\.sales/i })
+      expect(screen.queryByRole('link', { name: /navigation\.batches/i })).not.toBeInTheDocument()
+    })
+
+    it('shows Stock Transfers under Inventory', async () => {
+      renderSidebar(retailConfig)
+
+      const transfersLink = await screen.findByRole('link', { name: /navigation\.stockTransfers/i })
+      expect(transfersLink).toHaveAttribute('href', '/inventory/stock-transfers')
+    })
+
+    it('splits Catalog and Inventory into separate groups', async () => {
+      renderSidebar(retailConfig)
+
+      expect(await screen.findByRole('button', { name: /navigation\.catalog/i })).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: /navigation\.inventory\b/i })).toBeInTheDocument()
+    })
+  })
+
+  describe('Bottom Navigation', () => {
+    it('pins only Settings to the bottom — refund policies and customer history audit moved into the Settings hub', async () => {
+      renderSidebar(mechanicFullConfig)
+
+      const settingsLink = await screen.findByRole('link', { name: /navigation\.settings/i })
+      expect(settingsLink).toHaveAttribute('href', '/settings')
+
+      expect(screen.queryByRole('link', { name: /navigation\.posRefundPolicies/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: /navigation\.customerHistoryAudit/i })).not.toBeInTheDocument()
     })
   })
 })

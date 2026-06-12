@@ -37,6 +37,14 @@
     "pos": {
       "title": "Point de vente",
       "description": "Gérer les terminaux POS, les paramètres de tickets et les caisses"
+    },
+    "posRefundPolicies": {
+      "title": "Politiques de remboursement POS",
+      "description": "Configurer les délais de retour, les validations responsable et les règles de bons d'achat"
+    },
+    "customerHistoryAudit": {
+      "title": "Audit historique client",
+      "description": "Consulter qui a recherché l'historique d'achat complet des clients au POS"
     }
   },
   "company": {

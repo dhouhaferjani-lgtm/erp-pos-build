@@ -54,10 +54,12 @@ import {
   Package2,
   Calendar,
   Download,
-  ShieldAlert,
   Cable,
   Tags,
+  Repeat,
+  Globe,
 } from 'lucide-react'
+import type { BackendModule } from '../../../lib/modules'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts'
 import { useProductConfig } from '../../../contexts/ProductConfigContext'
@@ -83,44 +85,21 @@ const AUTOMOTIVE_VERTICALS = new Set<string>([
 ])
 
 /**
- * Maps sidebar navigation keys to backend module names.
+ * Navigation items carry two independent gates, both fail-closed:
  *
- * Modules not in this map are considered "always visible" (core modules)
- * and will be shown regardless of vertical configuration.
- *
- * For groups that aggregate multiple modules, the value is an array —
- * the group is visible if ANY of the listed modules are enabled.
+ * - `module`  — backend module name(s) from `all_enabled_modules`
+ *               (PascalCase, typed `BackendModule` so unknown names are a
+ *               compile error). Visible iff ANY listed module is enabled.
+ *               Omitted = core item, always vertical-visible.
+ * - `permission` — key into `MODULE_PERMISSIONS` (role gating). Omitted =
+ *               no role restriction at the nav level (routes still enforce).
  */
-const MODULE_NAME_MAP: Record<string, string | string[]> = {
-  vehicles: 'Vehicle',
-  services: 'Workshop',
-  'workshop-bundles': 'Workshop',
-  'workshop-work-orders': 'Workshop',
-  'workshop-technicians': 'Workshop',
-  'workshop-payroll': 'Workshop',
-  scheduling: 'Workshop',
-  'composite-items': 'CompositeItems',
-  parapharmacy: 'Parapharmacy',
-  'parts-catalog': 'PlatformIntegration',
-  automotive: ['Vehicle', 'Workshop', 'PlatformIntegration'],
-  marketing: ['Promotions', 'Coupons', 'Loyalty'],
-  // Inventory module mappings
-  inventory: 'Inventory',
-  inventoryAndCatalog: ['Inventory', 'CompositeItems'],
-  products: 'Inventory',
-  channels: 'Inventory',
-  categories: ['Inventory', 'CompositeItems'],
-  stockLevels: 'Inventory',
-  stockMovements: 'Inventory',
-  counting: 'Inventory',
-  purchaseOrders: 'Inventory',
-}
-
 interface NavChild {
   key: string
   href: string
   icon: React.ComponentType<{ className?: string }>
-  module?: string
+  module?: BackendModule | BackendModule[]
+  permission?: string
 }
 
 interface NavModule {
@@ -128,7 +107,8 @@ interface NavModule {
   icon: React.ComponentType<{ className?: string }>
   href?: string
   children?: NavChild[]
-  module?: string | string[]
+  module?: BackendModule | BackendModule[]
+  permission?: string
   section?: 'main' | 'bottom'
 }
 
@@ -137,9 +117,10 @@ interface SidebarProps {
   onClose?: () => void
 }
 
-// Navigation keys that should adapt based on company vertical
+// Navigation keys that should adapt based on company vertical.
+// NOTE: the top-level `catalog` group deliberately does NOT adapt — it is
+// the whole what-you-sell group, not the composite-items entry.
 const VERTICAL_NAV_KEYS: Record<string, string> = {
-  catalog: 'compositeItems',
   compositeItems: 'compositeItems',
   modifierGroups: 'modifierGroup',
 }
@@ -154,27 +135,8 @@ const VERTICAL_NAV_KEYS: Record<string, string> = {
  */
 function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
   const servicesChildren: NavChild[] = [
-    { key: 'allServices', href: '/services', icon: Wrench, module: 'services' },
-    { key: 'serviceCategories', href: '/services/categories', icon: FolderTree, module: 'services' },
-  ]
-
-  const inventoryChildren: NavChild[] = [
-    { key: 'products', href: '/inventory/products', icon: Package },
-    { key: 'categories', href: '/inventory/categories', icon: FolderTree },
-    // Services placed here for non-automotive verticals (for automotive verticals
-    // they live under the Automotive group below).
-    ...(!isAutomotiveVertical ? servicesChildren : []),
-    { key: 'batches', href: '/inventory/batches', icon: Pill, module: 'parapharmacy' },
-    { key: 'stockLevels', href: '/inventory/stock', icon: Layers },
-    { key: 'stockMovements', href: '/inventory/movements', icon: ArrowLeftRight },
-    { key: 'counting', href: '/inventory/counting', icon: ClipboardCheck },
-    { key: 'enrichmentQueue', href: '/inventory/enrichment-results', icon: Sparkles },
-    { key: 'channels', href: '/channels', icon: Cable, module: 'channels' },
-    { key: 'priceLists', href: '/pricing/price-lists', icon: Tag, module: 'pricing' },
-    { key: 'compositeItems', href: '/catalog/composite-items', icon: Combine, module: 'composite-items' },
-    { key: 'modifierGroups', href: '/catalog/modifier-groups', icon: Layers, module: 'modifier-groups' },
-    { key: 'menus', href: '/catalog/menus', icon: BookOpen, module: 'composite-items' },
-    { key: 'productAttributes', href: '/catalog/attributes', icon: Tags, module: 'composite-items' },
+    { key: 'allServices', href: '/services', icon: Wrench, module: 'Workshop', permission: 'services' },
+    { key: 'serviceCategories', href: '/services/categories', icon: FolderTree, module: 'Workshop', permission: 'services' },
   ]
 
   const nav: NavModule[] = [
@@ -182,10 +144,13 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       key: 'dashboard',
       href: '/dashboard',
       icon: LayoutDashboard,
+      permission: 'dashboard',
     },
     {
       key: 'sales',
       icon: ShoppingCart,
+      module: 'Sales',
+      permission: 'sales',
       children: [
         { key: 'customers', href: '/sales/customers', icon: Users },
         { key: 'quotes', href: '/sales/quotes', icon: FileText },
@@ -198,6 +163,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
     {
       key: 'purchases',
       icon: Truck,
+      permission: 'purchases',
       children: [
         { key: 'suppliers', href: '/purchases/suppliers', icon: Users },
         { key: 'purchaseOrders', href: '/purchases/orders', icon: ClipboardList },
@@ -205,132 +171,151 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         { key: 'returnNotes', href: '/inventory/return-notes', icon: RotateCcw },
       ],
     },
+    // Catalog — "what you sell": product definitions, categorisation, pricing.
     {
-      key: 'inventoryAndCatalog',
+      key: 'catalog',
+      icon: BookOpen,
+      module: 'Catalog',
+      permission: 'inventory',
+      children: [
+        { key: 'products', href: '/inventory/products', icon: Package },
+        { key: 'categories', href: '/inventory/categories', icon: FolderTree },
+        // Services placed here for non-automotive verticals (for automotive
+        // verticals they live under the Automotive group below).
+        ...(!isAutomotiveVertical ? servicesChildren : []),
+        { key: 'productAttributes', href: '/catalog/attributes', icon: Tags },
+        { key: 'compositeItems', href: '/catalog/composite-items', icon: Combine, module: ['Menu', 'CompositeItems'], permission: 'composite-items' },
+        { key: 'menus', href: '/catalog/menus', icon: BookOpen, module: ['Menu', 'CompositeItems'], permission: 'composite-items' },
+        { key: 'modifierGroups', href: '/catalog/modifier-groups', icon: Layers, module: ['Menu', 'CompositeItems'], permission: 'modifier-groups' },
+        { key: 'priceLists', href: '/pricing/price-lists', icon: Tag, permission: 'pricing' },
+      ],
+    },
+    // Inventory — "what you have": stock quantities and their movements.
+    {
+      key: 'inventory',
       icon: Package,
-      module: 'inventory',
-      children: inventoryChildren,
+      module: 'Inventory',
+      permission: 'inventory',
+      children: [
+        { key: 'stockLevels', href: '/inventory/stock', icon: Layers },
+        { key: 'stockMovements', href: '/inventory/movements', icon: ArrowLeftRight },
+        { key: 'stockTransfers', href: '/inventory/stock-transfers', icon: Repeat },
+        { key: 'counting', href: '/inventory/counting', icon: ClipboardCheck },
+        { key: 'batches', href: '/inventory/batches', icon: Pill, module: ['BatchExpiry', 'Parapharmacy'] },
+        { key: 'enrichmentQueue', href: '/inventory/enrichment-results', icon: Sparkles },
+      ],
     },
     {
       key: 'pointOfSale',
       icon: Store,
-      module: 'pos',
+      permission: 'pos',
       children: [
-        { key: 'openPos', href: '/pos/transactions', icon: Store, module: 'pos' },
-        { key: 'posOrders', href: '/pos/orders', icon: ClipboardList, module: 'pos' },
-        { key: 'tables', href: '/pos/tables', icon: LayoutGrid, module: 'pos' },
-        { key: 'kitchen', href: '/pos/kitchen', icon: ChefHat, module: 'pos' },
-        { key: 'terminals', href: '/pos/terminals', icon: Monitor, module: 'pos' },
-        { key: 'shiftHistory', href: '/pos/shift-history', icon: History, module: 'pos' },
-        { key: 'analytics', href: '/pos/analytics', icon: BarChart3, module: 'pos' },
-        { key: 'zReports', href: '/pos/z-reports', icon: FileCheck, module: 'pos' },
-        { key: 'vouchers', href: '/pos/vouchers', icon: Ticket, module: 'pos' },
+        { key: 'openPos', href: '/pos/transactions', icon: Store, permission: 'pos' },
+        { key: 'posOrders', href: '/pos/orders', icon: ClipboardList, permission: 'pos' },
+        { key: 'tables', href: '/pos/tables', icon: LayoutGrid, module: 'Tables', permission: 'pos' },
+        { key: 'kitchen', href: '/pos/kitchen', icon: ChefHat, module: 'Menu', permission: 'pos' },
+        { key: 'terminals', href: '/pos/terminals', icon: Monitor, permission: 'pos' },
+        { key: 'shiftHistory', href: '/pos/shift-history', icon: History, permission: 'pos' },
+        { key: 'zReports', href: '/pos/z-reports', icon: FileCheck, permission: 'pos' },
+        { key: 'vouchers', href: '/pos/vouchers', icon: Ticket, permission: 'pos' },
+        { key: 'analytics', href: '/pos/analytics', icon: BarChart3, permission: 'pos' },
+      ],
+    },
+    // E-commerce — external sales channels. Gated on the Ecommerce extra;
+    // channel orders live inside each channel today (an aggregate orders
+    // page is planned to land here).
+    {
+      key: 'ecommerce',
+      icon: Globe,
+      module: 'Ecommerce',
+      permission: 'inventory',
+      children: [
+        { key: 'channels', href: '/channels', icon: Cable },
       ],
     },
     {
-      key: 'marketing',
+      key: 'customersAndMarketing',
       icon: Tag,
-      module: ['promotions', 'coupons', 'loyalty', 'contacts'],
       children: [
-        { key: 'promotions', href: '/pos/promotions', icon: Tag, module: 'promotions' },
-        { key: 'coupons', href: '/pos/coupons', icon: Ticket, module: 'coupons' },
-        { key: 'loyaltyPrograms', href: '/pos/loyalty/programs', icon: Award, module: 'loyalty' },
-        { key: 'loyaltyMembers', href: '/pos/loyalty/members', icon: Users, module: 'loyalty' },
-        { key: 'companies', href: '/crm/companies', icon: Building2, module: 'contacts' },
-        { key: 'contacts', href: '/crm/contacts', icon: Users, module: 'contacts' },
+        { key: 'companies', href: '/crm/companies', icon: Building2, permission: 'contacts' },
+        { key: 'contacts', href: '/crm/contacts', icon: Users, permission: 'contacts' },
+        { key: 'loyaltyPrograms', href: '/pos/loyalty/programs', icon: Award, module: 'Loyalty', permission: 'loyalty' },
+        { key: 'loyaltyMembers', href: '/pos/loyalty/members', icon: Users, module: 'Loyalty', permission: 'loyalty' },
+        { key: 'promotions', href: '/pos/promotions', icon: Tag, permission: 'promotions' },
+        { key: 'coupons', href: '/pos/coupons', icon: Ticket, permission: 'coupons' },
       ],
     },
     {
       key: 'bankingAndPayments',
       icon: Wallet,
-      module: ['treasury', 'withholding'],
+      module: 'Treasury',
       children: [
-        { key: 'payments', href: '/treasury/payments', icon: Wallet, module: 'treasury' },
-        { key: 'repositories', href: '/treasury/repositories', icon: Landmark, module: 'treasury' },
-        { key: 'instruments', href: '/treasury/instruments', icon: FileText, module: 'treasury' },
-        { key: 'bankReconciliation', href: '/treasury/reconciliation', icon: ArrowLeftRight, module: 'treasury' },
-        { key: 'expenses', href: '/expenses', icon: Receipt, module: 'treasury' },
-        { key: 'withholdingCertificates', href: '/treasury/withholding-certificates', icon: FileCheck, module: 'withholding' },
+        { key: 'payments', href: '/treasury/payments', icon: Wallet, permission: 'treasury' },
+        { key: 'repositories', href: '/treasury/repositories', icon: Landmark, permission: 'treasury' },
+        { key: 'instruments', href: '/treasury/instruments', icon: FileText, permission: 'treasury' },
+        { key: 'bankReconciliation', href: '/treasury/reconciliation', icon: ArrowLeftRight, permission: 'treasury' },
+        { key: 'expenses', href: '/expenses', icon: Receipt, permission: 'treasury' },
+        { key: 'withholdingCertificates', href: '/treasury/withholding-certificates', icon: FileCheck, permission: 'withholding' },
       ],
     },
     {
       key: 'accountingAndReports',
       icon: Calculator,
-      module: ['accounts'],
+      module: 'Accounting',
+      permission: 'accounts',
       children: [
-        { key: 'chartOfAccounts', href: '/finance/chart-of-accounts', icon: BookOpen, module: 'accounts' },
-        { key: 'generalLedger', href: '/finance/ledger', icon: FileSpreadsheet, module: 'accounts' },
-        { key: 'journalEntries', href: '/finance/journal-entries', icon: FileSpreadsheet, module: 'accounts' },
-        { key: 'trialBalance', href: '/finance/trial-balance', icon: Scale, module: 'accounts' },
-        { key: 'profitLoss', href: '/finance/profit-loss', icon: TrendingUp, module: 'accounts' },
-        { key: 'balanceSheet', href: '/finance/balance-sheet', icon: PieChart, module: 'accounts' },
-        { key: 'agedReceivables', href: '/finance/aged-receivables', icon: Clock, module: 'accounts' },
-        { key: 'agedPayables', href: '/finance/aged-payables', icon: Clock, module: 'accounts' },
-        { key: 'vatReporting', href: '/finance/vat-periods', icon: Receipt, module: 'reports' },
+        { key: 'chartOfAccounts', href: '/finance/chart-of-accounts', icon: BookOpen, permission: 'accounts' },
+        { key: 'generalLedger', href: '/finance/ledger', icon: FileSpreadsheet, permission: 'accounts' },
+        { key: 'journalEntries', href: '/finance/journal-entries', icon: FileSpreadsheet, permission: 'accounts' },
+        { key: 'trialBalance', href: '/finance/trial-balance', icon: Scale, permission: 'accounts' },
+        { key: 'profitLoss', href: '/finance/profit-loss', icon: TrendingUp, permission: 'accounts' },
+        { key: 'balanceSheet', href: '/finance/balance-sheet', icon: PieChart, permission: 'accounts' },
+        { key: 'agedReceivables', href: '/finance/aged-receivables', icon: Clock, permission: 'accounts' },
+        { key: 'agedPayables', href: '/finance/aged-payables', icon: Clock, permission: 'accounts' },
+        { key: 'vatReporting', href: '/finance/vat-periods', icon: Receipt, permission: 'reports' },
       ],
     },
+    // Automotive — shown whenever the tenant's vertical enables at least one
+    // automotive module (Vehicle, Workshop, or PlatformIntegration).
+    {
+      key: 'automotive',
+      icon: Car,
+      module: ['Vehicle', 'Workshop', 'PlatformIntegration'],
+      children: [
+        { key: 'vehicles', href: '/vehicles', icon: Car, module: 'Vehicle', permission: 'vehicles' },
+        // Only duplicate services into the Automotive group when the tenant's
+        // vertical is automotive — otherwise services live under Catalog.
+        ...(isAutomotiveVertical ? servicesChildren : []),
+        { key: 'scheduling', href: '/scheduling', icon: Calendar, module: 'Workshop', permission: 'scheduling' },
+        { key: 'workshopWorkOrders', href: '/workshop/work-orders', icon: ClipboardList, module: 'Workshop', permission: 'workshop-work-orders' },
+        { key: 'workshopBundles', href: '/workshop/bundles', icon: Package2, module: 'Workshop', permission: 'workshop-bundles' },
+        { key: 'workshopTechnicians', href: '/workshop/technicians', icon: Users, module: 'Workshop', permission: 'workshop-technicians' },
+        { key: 'workshopPayrollExports', href: '/workshop/payroll-exports', icon: Download, module: 'Workshop', permission: 'workshop-payroll' },
+        { key: 'partsCatalog', href: '/parts-catalog', icon: Search, module: 'PlatformIntegration' },
+      ],
+    },
+    // Parapharmacy — vertical-specific
+    {
+      key: 'parapharmacy',
+      icon: Pill,
+      module: 'Parapharmacy',
+      children: [
+        { key: 'ingredients', href: '/parapharmacy/ingredients', icon: Layers3 },
+        { key: 'certifications', href: '/parapharmacy/certifications', icon: Award },
+        { key: 'healthClaims', href: '/parapharmacy/health-claims', icon: ListChecks },
+        { key: 'keyComponents', href: '/parapharmacy/key-components', icon: Package },
+      ],
+    },
+    // Settings — the only bottom item. Its sub-pages (refund policies,
+    // customer-history audit, …) are reached from the Settings hub page.
+    {
+      key: 'settings',
+      href: '/settings',
+      icon: Settings,
+      permission: 'settings',
+      section: 'bottom',
+    },
   ]
-
-  // Automotive group — shown whenever the tenant's vertical enables at least one
-  // automotive module (Vehicle, Workshop, or PlatformIntegration). The
-  // `isModuleEnabledForVertical('automotive')` filter downstream handles the
-  // actual gate via `MODULE_NAME_MAP.automotive`, so we push it unconditionally
-  // here and let the vertical-aware filter hide it for non-automotive tenants.
-  nav.push({
-    key: 'automotive',
-    icon: Car,
-    module: 'automotive',
-    children: [
-      { key: 'vehicles', href: '/vehicles', icon: Car, module: 'vehicles' },
-      // Only duplicate services into the Automotive group when the tenant's
-      // vertical is automotive — otherwise services live under Inventory.
-      ...(isAutomotiveVertical ? servicesChildren : []),
-      { key: 'scheduling', href: '/scheduling', icon: Calendar, module: 'scheduling' },
-      { key: 'workshopWorkOrders', href: '/workshop/work-orders', icon: ClipboardList, module: 'workshop-work-orders' },
-      { key: 'workshopBundles', href: '/workshop/bundles', icon: Package2, module: 'workshop-bundles' },
-      { key: 'workshopTechnicians', href: '/workshop/technicians', icon: Users, module: 'workshop-technicians' },
-      { key: 'workshopPayrollExports', href: '/workshop/payroll-exports', icon: Download, module: 'workshop-payroll' },
-      { key: 'partsCatalog', href: '/parts-catalog', icon: Search, module: 'parts-catalog' },
-    ],
-  })
-
-  // Parapharmacy — vertical-specific
-  nav.push({
-    key: 'parapharmacy',
-    icon: Pill,
-    module: 'parapharmacy',
-    children: [
-      { key: 'ingredients', href: '/parapharmacy/ingredients', icon: Layers3, module: 'parapharmacy' },
-      { key: 'certifications', href: '/parapharmacy/certifications', icon: Award, module: 'parapharmacy' },
-      { key: 'healthClaims', href: '/parapharmacy/health-claims', icon: ListChecks, module: 'parapharmacy' },
-      { key: 'keyComponents', href: '/parapharmacy/key-components', icon: Package, module: 'parapharmacy' },
-    ],
-  })
-
-  // Settings — pinned to bottom
-  nav.push({
-    key: 'settings',
-    href: '/settings',
-    icon: Settings,
-    section: 'bottom',
-  })
-
-  // Settings sub-pages — pinned to bottom alongside Settings
-  nav.push({
-    key: 'posRefundPolicies',
-    href: '/settings/pos-refund-policies',
-    icon: RotateCcw,
-    module: 'settings',
-    section: 'bottom',
-  })
-
-  nav.push({
-    key: 'customerHistoryAudit',
-    href: '/settings/audit/customer-history',
-    icon: ShieldAlert,
-    module: 'settings',
-    section: 'bottom',
-  })
 
   return nav
 }
@@ -371,34 +356,26 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   }, [isCollapsed])
 
   /**
-   * Check if a module should be visible based on vertical configuration.
+   * Visibility gate for a nav item — fail-closed on both axes.
    *
-   * Supports both single string and string[] module keys.
-   * For arrays, returns true if ANY of the modules are enabled.
+   * - `module` declared → at least ONE of the backend modules must be in
+   *   the tenant's `all_enabled_modules` (no fallback to "visible").
+   * - `permission` declared → the user's role must grant it.
    */
-  const isModuleEnabledForVertical = useCallback(
-    (moduleKey: string | string[]): boolean => {
-      if (Array.isArray(moduleKey)) {
-        return moduleKey.some((key) => {
-          const backendName = MODULE_NAME_MAP[key]
-          if (!backendName) return true
-          if (Array.isArray(backendName)) {
-            return backendName.some((name) => hasModule(name))
-          }
-          return hasModule(backendName)
-        })
+  const isNavItemVisible = useCallback(
+    (module?: BackendModule | BackendModule[], permission?: string): boolean => {
+      if (module !== undefined) {
+        const names = Array.isArray(module) ? module : [module]
+        if (!names.some((name) => hasModule(name))) {
+          return false
+        }
       }
-
-      const backendModuleName = MODULE_NAME_MAP[moduleKey]
-      if (!backendModuleName) return true
-
-      if (Array.isArray(backendModuleName)) {
-        return backendModuleName.some((name) => hasModule(name))
+      if (permission !== undefined && !canAccessModule(permission)) {
+        return false
       }
-
-      return hasModule(backendModuleName)
+      return true
     },
-    [hasModule]
+    [hasModule, canAccessModule]
   )
 
   const navigation = useMemo(() => buildNavigation(isAutomotiveVertical), [isAutomotiveVertical])
@@ -406,40 +383,20 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   // Filter navigation based on BOTH vertical configuration AND user permissions
   const filteredNavigation = useMemo(() => {
     return navigation
-      .filter((module) => {
-        const moduleKey = module.module ?? module.key
-
-        // First check: Is this module enabled for the current vertical?
-        if (!isModuleEnabledForVertical(moduleKey)) {
-          return false
-        }
-
-        // Second check: Does the user have permission to access this module?
-        if (Array.isArray(moduleKey)) {
-          return moduleKey.some((key) => canAccessModule(key))
-        }
-        return canAccessModule(moduleKey)
-      })
+      .filter((module) => isNavItemVisible(module.module, module.permission))
       .map((module) => {
         if (!module.children) return module
-        // Filter children based on their module permissions
-        const filteredChildren = module.children.filter((child) => {
-          const childModuleKey = child.module ?? (Array.isArray(module.module) ? module.key : (module.module ?? module.key))
-
-          // Check vertical first
-          if (!isModuleEnabledForVertical(childModuleKey)) {
-            return false
-          }
-
-          return canAccessModule(childModuleKey)
-        })
+        const filteredChildren = module.children.filter((child) =>
+          isNavItemVisible(child.module, child.permission)
+        )
         return { ...module, children: filteredChildren }
       })
       .filter((module) => {
+        // A group whose children are all gated away has nothing to show.
         if (module.children && module.children.length === 0) return false
         return true
       })
-  }, [navigation, canAccessModule, isModuleEnabledForVertical])
+  }, [navigation, isNavItemVisible])
 
   // Split into main and bottom sections
   const mainNavigation = useMemo(
