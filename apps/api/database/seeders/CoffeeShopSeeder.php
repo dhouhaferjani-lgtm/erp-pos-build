@@ -47,10 +47,13 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
+use Stancl\Tenancy\Jobs\CreateDatabase;
+use Stancl\Tenancy\Jobs\MigrateDatabase;
 
 /**
  * CoffeeShopSeeder - Complete coffee shop with F&B composite items, recipes, and menus.
@@ -92,7 +95,17 @@ class CoffeeShopSeeder extends Seeder
         $this->command->info('Seeding Cafe Tunis - Coffee Shop with F&B');
         $this->command->newLine();
 
-        // 1. Reference data
+        // 1. Tenant — must be created (and its database provisioned + connection
+        //    initialized under db-per-tenant) BEFORE any reference data is seeded.
+        //    CountriesSeeder, UomSeeder, etc. target tenant-scoped tables; seeding
+        //    them before tenancy()->initialize() would write into the central DB
+        //    instead of the tenant DB under db-per-tenant mode.
+        $this->command->info('Creating tenant...');
+        $this->tenant = $this->createTenant();
+        $this->command->info("Tenant: {$this->tenant->name}");
+
+        // 2. Reference data — seeded AFTER the tenant database is initialized so
+        //    these rows land in the correct tenant-scoped connection.
         $this->command->info('Checking reference data...');
         $this->call(RolesAndPermissionsSeeder::class);
         if (DB::table('countries')->count() === 0) {
@@ -101,18 +114,13 @@ class CoffeeShopSeeder extends Seeder
         $this->call(UomSeeder::class);
         $this->command->info('Reference data ready');
 
-        // 2. Tenant
-        $this->command->info('Creating tenant...');
-        $this->tenant = $this->createTenant();
-        $this->command->info("Tenant: {$this->tenant->name}");
-
         // 3. Company + Location
         $this->command->info('Creating company...');
         [$this->company, $this->location] = $this->createCompanyWithLocation();
         $this->command->info("Company: {$this->company->name}");
         $this->command->info("Location: {$this->location->name} (POS enabled)");
 
-        // 4. Financial foundation
+        // 4. Financial foundation (Chart of Accounts, Payment Methods)
         $this->command->info('Setting up financial foundation...');
         $this->setupFinancialFoundation();
 
@@ -168,6 +176,52 @@ class CoffeeShopSeeder extends Seeder
         $this->command->info('   Owner:   owner@cafe-tunis.tn / password');
         $this->command->info('   Barista: barista@cafe-tunis.tn / password');
         $this->command->newLine();
+
+        // Revert the default connection back to central (no-op in single-DB mode).
+        $this->endTenancy();
+    }
+
+    /**
+     * Whether database-per-tenant mode is active. When true the seeder must
+     * provision + migrate a physical per-tenant database and run tenant-scoped
+     * writes inside tenancy()->initialize(); central rows (tenant, subscription)
+     * still land in the central database.
+     */
+    private function databasePerTenantEnabled(): bool
+    {
+        return (bool) config('tenancy_resolver.db_per_tenant', false);
+    }
+
+    /**
+     * Provision + migrate the per-tenant database and enter tenant context.
+     * No-op in single-DB mode: the default connection already serves every table.
+     */
+    private function provisionTenantDatabase(Tenant $tenant): void
+    {
+        if (! $this->databasePerTenantEnabled()) {
+            return;
+        }
+
+        Bus::dispatchSync(new CreateDatabase($tenant));
+        Bus::dispatchSync(new MigrateDatabase($tenant));
+
+        // Swap the default connection to the freshly migrated tenant database so
+        // all subsequent tenant-scoped writes (reference data, company, products)
+        // land in the tenant DB rather than the central one.
+        tenancy()->initialize($tenant);
+
+        $this->command->info("Provisioned tenant database: {$tenant->database()->getName()}");
+    }
+
+    /**
+     * Revert the default connection to central. No-op in single-DB mode and
+     * when tenancy was never initialized.
+     */
+    private function endTenancy(): void
+    {
+        if (tenancy()->initialized) {
+            tenancy()->end();
+        }
     }
 
     private function createTenant(): Tenant
@@ -224,6 +278,13 @@ class CoffeeShopSeeder extends Seeder
                 'current_period_end' => now()->addYear(),
             ]);
         }
+
+        // db-per-tenant: provision + migrate the physical tenant database and swap
+        // the default connection into it. Central rows (tenant, subscription) above
+        // have already been written to the central database. From this point on,
+        // every tenant-scoped write (reference data, company, products) lands in
+        // the tenant database. No-op in single-DB mode.
+        $this->provisionTenantDatabase($tenant);
 
         return $tenant;
     }
