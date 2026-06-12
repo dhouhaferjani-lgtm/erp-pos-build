@@ -253,6 +253,15 @@
     "settings": "Paramètres",
     "pendingSyncWarning": "Des tickets n'ont pas encore été synchronisés. Synchronisez avant de fermer pour éviter toute perte de données."
   },
+  "stock": {
+    "blocked": "Stock insuffisant dans cette agence (disponible : {{available}})",
+    "warned": "Vente au-delà du stock de l'agence (disponible : {{available}})",
+    "incoming": "{{count}} en arrivage",
+    "incomingFromTransfer": "En transfert depuis une agence",
+    "incomingOnOrder": "En commande (achat)",
+    "asOf": "Stock au {{time}}",
+    "staleTitle": "Données de stock possiblement obsolètes — dernière synchro réussie affichée"
+  },
   "sync": {
     "online": "En ligne",
     "offline": "Hors ligne",
@@ -692,6 +701,7 @@
     "taxCol": "TVA",
     "thankYou": "Merci pour votre achat !",
     "taxId": "MF :",
+    "vatNumber": "N° TVA :",
     "tel": "Tél :",
     "refundHeader": "REMBOURSEMENT",
     "originalTicket": "Ticket original :",

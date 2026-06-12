@@ -67,6 +67,9 @@ vi.mock('@/lib/db', () => ({
 vi.mock('@/lib/sync/syncService', () => ({
   pullTerminalState: vi.fn().mockResolvedValue(undefined),
   pullZChainState: vi.fn().mockResolvedValue(undefined),
+  // Task 9 — seedOfflineHashChain now fires a fire-and-forget full
+  // location-stock baseline after scheduler.start.
+  pullLocationStock: vi.fn().mockResolvedValue({ count: 0 }),
 }));
 
 vi.mock('@/lib/sync/syncScheduler', () => ({

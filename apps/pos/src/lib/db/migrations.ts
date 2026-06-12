@@ -5,6 +5,16 @@ export interface Migration {
   run?: (db: { execute: (sql: string, params?: unknown[]) => Promise<unknown> }) => Promise<void>;
 }
 
+export function isDuplicateColumnError(error: unknown): boolean {
+  // The Tauri SQL plugin (@tauri-apps/plugin-sql) rejects with a plain STRING,
+  // not an Error instance (unlike the better-sqlite3 test harness). Coerce to a
+  // string before matching, else `error instanceof Error` silently misses the
+  // production case and the (harmless, expected) duplicate-column re-throws and
+  // ABORTS the whole migration run. See migrations.tauri-string-errors.test.ts.
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('duplicate column');
+}
+
 export const migrations: Migration[] = [
   {
     version: 1,
@@ -209,8 +219,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -248,8 +257,7 @@ export const migrations: Migration[] = [
       try {
         await db.execute("ALTER TABLE terminal_state ADD COLUMN location_code TEXT NOT NULL DEFAULT 'MAIN'");
       } catch (error) {
-        const msg = error instanceof Error ? error.message : '';
-        if (!msg.includes('duplicate column')) {
+        if (!isDuplicateColumnError(error)) {
           throw error;
         }
       }
@@ -292,8 +300,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -315,8 +322,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -624,8 +630,7 @@ export const migrations: Migration[] = [
       try {
         await db.execute('ALTER TABLE receipt_qr_index ADD COLUMN partner_id TEXT NULL');
       } catch (error) {
-        const msg = error instanceof Error ? error.message : '';
-        if (!msg.includes('duplicate column')) {
+        if (!isDuplicateColumnError(error)) {
           throw error;
         }
       }
@@ -692,8 +697,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -718,8 +722,7 @@ export const migrations: Migration[] = [
           'ALTER TABLE offline_receipts ADD COLUMN is_training INTEGER NOT NULL DEFAULT 0',
         );
       } catch (error) {
-        const msg = error instanceof Error ? error.message : '';
-        if (!msg.includes('duplicate column')) {
+        if (!isDuplicateColumnError(error)) {
           throw error;
         }
       }
@@ -758,8 +761,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -828,8 +830,7 @@ export const migrations: Migration[] = [
       try {
         await db.execute('ALTER TABLE operator_pins ADD COLUMN discount_permissions_fetched_at TEXT');
       } catch (error) {
-        const msg = error instanceof Error ? error.message : '';
-        if (!msg.includes('duplicate column')) {
+        if (!isDuplicateColumnError(error)) {
           throw error;
         }
       }
@@ -843,8 +844,7 @@ export const migrations: Migration[] = [
       try {
         await db.execute("ALTER TABLE operator_pins ADD COLUMN discount_permissions_status TEXT DEFAULT 'unavailable'");
       } catch (error) {
-        const msg = error instanceof Error ? error.message : '';
-        if (!msg.includes('duplicate column')) {
+        if (!isDuplicateColumnError(error)) {
           throw error;
         }
       }
@@ -858,8 +858,7 @@ export const migrations: Migration[] = [
       try {
         await db.execute('ALTER TABLE operator_pins ADD COLUMN discount_permissions_terminal_code TEXT');
       } catch (error) {
-        const msg = error instanceof Error ? error.message : '';
-        if (!msg.includes('duplicate column')) {
+        if (!isDuplicateColumnError(error)) {
           throw error;
         }
       }
@@ -881,8 +880,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(statement);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -1074,8 +1072,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -1120,8 +1117,7 @@ export const migrations: Migration[] = [
       try {
         await db.execute('ALTER TABLE offline_receipts ADD COLUMN canonical_bytes TEXT');
       } catch (error) {
-        const msg = error instanceof Error ? error.message : '';
-        if (!msg.includes('duplicate column')) {
+        if (!isDuplicateColumnError(error)) {
           throw error;
         }
       }
@@ -1153,8 +1149,7 @@ export const migrations: Migration[] = [
           "ALTER TABLE terminal_state ADD COLUMN fiscal_chain_status TEXT NOT NULL DEFAULT 'healthy' CHECK (fiscal_chain_status IN ('healthy', 'degraded'))",
         );
       } catch (error) {
-        const msg = error instanceof Error ? error.message : '';
-        if (!msg.includes('duplicate column')) {
+        if (!isDuplicateColumnError(error)) {
           throw error;
         }
       }
@@ -1250,8 +1245,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -1275,8 +1269,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -1302,8 +1295,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -1328,8 +1320,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -1350,8 +1341,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -1373,8 +1363,7 @@ export const migrations: Migration[] = [
         try {
           await db.execute(stmt);
         } catch (error) {
-          const msg = error instanceof Error ? error.message : '';
-          if (!msg.includes('duplicate column')) {
+          if (!isDuplicateColumnError(error)) {
             throw error;
           }
         }
@@ -1576,5 +1565,43 @@ export const migrations: Migration[] = [
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
     `,
+  },
+  {
+    // Task 8 (2026-06-12 location-aware stock): cache the terminal's own
+    // location stock pulled from GET /pos/stock-levels. All quantities are
+    // TEXT decimal strings (scale-4) — never floats. `variant_id` uses ''
+    // for product-grain rows because SQLite PKs reject NULL.
+    //
+    // Columns:
+    //   product_id / variant_id — composite PK ('' = product-grain)
+    //   quantity / reserved / available — stock figures (scale-4 strings)
+    //   incoming_transfer / incoming_po — incoming figures (scale-4 strings)
+    //   updated_at — server-supplied ISO-8601 timestamp (nullable)
+    version: 50,
+    name: 'create_location_stock',
+    sql: `
+      CREATE TABLE IF NOT EXISTS location_stock (
+        product_id TEXT NOT NULL,
+        variant_id TEXT NOT NULL DEFAULT '',
+        quantity TEXT NOT NULL DEFAULT '0',
+        reserved TEXT NOT NULL DEFAULT '0',
+        available TEXT NOT NULL DEFAULT '0',
+        incoming_transfer TEXT NOT NULL DEFAULT '0',
+        incoming_po TEXT NOT NULL DEFAULT '0',
+        updated_at TEXT,
+        PRIMARY KEY (product_id, variant_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_location_stock_product ON location_stock(product_id);
+    `,
+  },
+  {
+    // Task 10 — persist `is_physical` from the server `/products` payload so
+    // the availability selector can exempt service/non-physical products from
+    // stock enforcement. Default 1 (= physical = stock-checked) is safe for
+    // existing rows: they stay stock-enforced until a re-sync writes the
+    // server-authoritative value.
+    version: 51,
+    name: 'add_is_physical_to_products',
+    sql: `ALTER TABLE products ADD COLUMN is_physical INTEGER NOT NULL DEFAULT 1`,
   },
 ];

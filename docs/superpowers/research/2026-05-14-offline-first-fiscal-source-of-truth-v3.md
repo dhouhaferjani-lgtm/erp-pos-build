@@ -333,3 +333,29 @@ Permanent. Any spec or plan that violates them is wrong.
 ---
 
 **End of source-of-truth document v3.**
+
+---
+
+## ADDENDUM — §4.6 Seller-block establishment clause (2026-06-12)
+
+**Additive only. Reopens no locked decision. Consistent with D1, D16, and the canonical-bytes-verbatim rule (§1.2).**
+
+### Seller block = fiscal identity of the selling ESTABLISHMENT (location)
+
+The `seller` block in `SALE_RECEIPT`, `ACCOUNT_PAYMENT`, and `ACCOUNT_CHARGE` canonical payloads names the **fiscal identity of the selling establishment (location)** when that location is fiscally complete, and the **company identity wholesale** otherwise. It is never a mixed-field identity (e.g. branch tax number + company address).
+
+**Rules:**
+
+1. **Fiscally complete location** — a terminal's location is fiscally complete when ALL of the following are present and non-empty: `tax_id`, `address_street`, `address_city`, `address_postal_code`, `address_country`. When complete, ALL seller fields (tax number, street, city, postal code, country code) source from the location. The legal name stays the company's registered name — an establishment shares the registered name.
+
+2. **Fallback to company** — when the location is absent or not fiscally complete (e.g. has `tax_id` but no address, or has a partial address), every seller field sources from the company, exactly preserving the pre-§4.6 behavior. No field-level blending.
+
+3. **No event-version bump** — the signed seller SHAPE (`name, taxNumber, countryCode, street, city, postalCode`) is unchanged. `FiscalEventPayloadConstraintValidator` validates structure (key set, tax-number format vs. country, full address object) and never compares seller values to company records — a location-sourced block with a valid tax number and address passes identically to a company-sourced block. This is a **value-sourcing semantic**, not a payload-contract change.
+
+4. **Resolver** — `apps/pos/src/lib/fiscal/sellerIdentity.ts` (`resolveSellerIdentity`). This is the single function used by all three seller-block builders in `paymentStore.ts`. No other code path may build a seller block.
+
+5. **Validation pin** — `apps/api/tests/Feature/Fiscal/LocationSellerCoherenceTest.php` pins that a location-identity seller block passes the server-side validator with a branch identity that matches no company record. If this test breaks, the value-sourcing semantic no longer holds without a contract review.
+
+6. **Historical events untouched** — this clause governs only newly authored canonical payloads. Historical events are stored verbatim (§1.2) and never re-authored.
+
+**Operator note:** a branch with `tax_id` set but an incomplete address authors **company** identity on receipts (pre-§4.6 it authored the branch tax number with the company address — a mixed, legally incoherent identity). Branches wanting their own fiscal identity on receipts must have a complete location record in the ERP.

@@ -253,6 +253,15 @@
     "settings": "Settings",
     "pendingSyncWarning": "You have receipts that haven't been synced yet. Sync before closing to avoid data loss."
   },
+  "stock": {
+    "blocked": "Not enough stock at this branch (available: {{available}})",
+    "warned": "Selling beyond branch stock (available: {{available}})",
+    "incoming": "{{count}} arriving",
+    "incomingFromTransfer": "Incoming from branch transfer",
+    "incomingOnOrder": "On order (purchase)",
+    "asOf": "Stock as of {{time}}",
+    "staleTitle": "Stock data may be out of date — last successful sync shown"
+  },
   "sync": {
     "online": "Online",
     "offline": "Offline",
@@ -692,6 +701,7 @@
     "taxCol": "Tax",
     "thankYou": "Thank you for your purchase!",
     "taxId": "Tax ID:",
+    "vatNumber": "VAT No:",
     "tel": "Tel:",
     "refundHeader": "REFUND",
     "originalTicket": "Original ticket:",

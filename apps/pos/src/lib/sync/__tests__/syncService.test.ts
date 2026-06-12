@@ -61,6 +61,26 @@ vi.mock('@/lib/db/repositories/productRepository', () => ({
   reconcileMenuProducts: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Task 8/9 — syncService now cascades catalog tombstones into
+// location_stock (pullProductsCore → deleteForProducts) and pulls
+// /pos/stock-levels in the runFullSync pull phase. Without these mocks
+// the REAL repository runs against the `{}` stub db and throws, flipping
+// pullProducts into its swallow-and-return-0 path (silent red caught
+// during Task 9).
+vi.mock('@/lib/db/repositories/locationStockRepository', () => ({
+  deleteForProducts: vi.fn().mockResolvedValue(undefined),
+  upsertStockRows: vi.fn().mockResolvedValue(undefined),
+  replaceAllStock: vi.fn().mockResolvedValue(undefined),
+  replaceIncoming: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('@/api/stockApi', () => ({
+  fetchLocationStock: vi.fn().mockResolvedValue({
+    data: { stock: [], incoming: [], as_of: '2026-01-01T00:00:00Z' },
+    meta: { pagination: { current_page: 1, last_page: 1, total: 0 } },
+  }),
+}));
+
 vi.mock('@/lib/db/repositories/paymentRepository', () => ({
   upsertPaymentMethods: vi.fn().mockResolvedValue(undefined),
   upsertPaymentRepositories: vi.fn().mockResolvedValue(undefined),

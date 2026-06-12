@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\PosStockPolicy;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
@@ -93,6 +94,7 @@ final class ReceiptStockDecrementScalingTest extends TestCase
             '0.0010', // canonical quantity scale 4 — would be lost at scale 2
             $receiptId,
             $this->cashier->id,
+            PosStockPolicy::Block, // Block = the throw-on-insufficient path this test pins
         );
 
         $this->assertNotNull($movement, 'decrementStock should return a movement when stock exists');

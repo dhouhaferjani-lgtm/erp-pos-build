@@ -7,6 +7,7 @@ namespace Tests\Feature\Fiscal;
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\PosStockPolicy;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
@@ -34,6 +35,7 @@ use App\Modules\Voucher\Domain\Voucher;
 use App\Modules\Voucher\Domain\VoucherLedger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
@@ -506,6 +508,67 @@ final class PosCoreReceiptProjectionTest extends TestCase
         // StockLevel decremented (10 - 2 = 8).
         $stockLevel->refresh();
         $this->assertSame('8.0000', $stockLevel->quantity);
+    }
+
+    public function test_projection_warns_and_continues_on_insufficient_stock_even_under_block_policy(): void
+    {
+        // Task 6 pin (spec §4.2) — the fiscal-event projection path is
+        // POLICY-INDEPENDENT: a signed fiscal event always lands. Even when
+        // the company's pos_stock_policy is Block (the draft path would
+        // reject), the projection warns and continues into negative stock.
+        Company::query()->whereKey($this->companyId)
+            ->update(['pos_stock_policy' => PosStockPolicy::Block->value]);
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+        ]);
+        $stockLevel = StockLevel::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'product_id' => $product->id,
+            'location_id' => $this->locationId,
+            'quantity' => '1.00',
+            'reserved' => '0.00',
+        ]);
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            lines: [
+                [
+                    'sku' => $product->sku,
+                    'product_id' => $product->id,
+                    'unit_price' => '10.00',
+                    'line_total' => '20.00',
+                    'quantity' => '2',
+                    'tax_rate' => '0',
+                    'tax_amount' => '0.00',
+                ],
+            ],
+            subtotal: '20.00',
+            total: '20.00',
+            vatBreakdown: [['rate' => '0', 'base' => '20.00', 'amount' => '0.00']],
+            paymentLinesOverride: [
+                ['payment_method_id' => $this->paymentMethodId, 'amount' => '20.00', 'method_code' => 'CASH'],
+            ],
+        );
+
+        Log::spy();
+
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        // Receipt projection row landed despite the shortfall.
+        $this->assertSame(1, DB::table('pos_receipts')->count());
+
+        // Stock went negative (1 - 2 = -1) — warn-and-continue, never throw.
+        $stockLevel->refresh();
+        $this->assertSame('-1.0000', $stockLevel->quantity);
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(function (string $message, array $context = []) use ($product): bool {
+                return str_contains($message, 'insufficient stock')
+                    && ($context['product_id'] ?? null) === $product->id;
+            });
     }
 
     public function test_v2_variant_line_writes_variant_id_on_pos_receipt_line(): void

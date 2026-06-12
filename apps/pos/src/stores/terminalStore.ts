@@ -3,7 +3,7 @@ import { apiGet, apiPost } from '@/lib/api';
 import { getDeviceId } from '@/lib/device';
 import { getStoredValue, setStoredValue, removeStoredValue, StorageKeys } from '@/lib/storage';
 import { getDatabase } from '@/lib/db';
-import { pullTerminalState, pullZChainState } from '@/lib/sync/syncService';
+import { pullTerminalState, pullZChainState, pullLocationStock } from '@/lib/sync/syncService';
 import { SyncScheduler } from '@/lib/sync/syncScheduler';
 import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
@@ -11,6 +11,13 @@ import { usePaymentStore } from '@/stores/paymentStore';
 import { serializeErrorForLog } from '@/lib/errorLogging';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { authorZSessionOpenWithOpeningFloat } from '@/lib/fiscal/zSessionAuthoring';
+
+/**
+ * Company-level stock-enforcement policy delivered on the terminal payload
+ * (spec 2026-06-11 §4.2). Absent on payloads predating the field — consumers
+ * default to 'block' (fail-safe for retail).
+ */
+export type PosStockPolicy = 'block' | 'warn' | 'off';
 
 export interface Location {
   id: string;
@@ -39,6 +46,16 @@ export interface Terminal {
    * the cashier never confuses training and production at a glance.
    */
   is_training_mode: boolean;
+  /**
+   * Task 11 — company-level POS stock enforcement policy, serialized onto the
+   * terminal payload by TerminalResource (Task 2):
+   *   'block' → over-stock adds are rejected at the cart gate
+   *   'warn'  → over-stock adds are allowed but surfaced to the cashier
+   *   'off'   → availability is never consulted (Menu tenants, backfilled)
+   * Optional because cached pre-Task-2 terminal payloads lack the field —
+   * the stock gate treats an absent value as 'block' (fail-safe for retail).
+   */
+  pos_stock_policy?: PosStockPolicy;
   max_discount_percent?: number;
   allow_line_discounts?: boolean;
   allow_transaction_discounts?: boolean;
@@ -50,6 +67,16 @@ export interface Terminal {
     tax_id: string | null;
     vat_number: string | null;
     legal_identifiers: Record<string, unknown> | null;
+    /**
+     * Establishment address (spec 2026-06-11 §4.6) — serialized by
+     * TerminalResource. Optional because cached pre-§4.6 terminal payloads
+     * lack the fields; the atomic seller resolver treats absent values as an
+     * incomplete location (wholesale company identity).
+     */
+    address_street?: string | null;
+    address_city?: string | null;
+    address_postal_code?: string | null;
+    address_country?: string | null;
   };
 }
 
@@ -365,6 +392,22 @@ export async function seedOfflineHashChain(terminalId: string): Promise<void> {
     const scheduler = new SyncScheduler(db, terminalId);
     useSyncStore.getState().setScheduler(scheduler);
     scheduler.start();
+
+    // Task 9 — full location-stock baseline on terminal claim / boot /
+    // activation (spec §4.3). seedOfflineHashChain is the single funnel
+    // every activation path goes through (initialize cached/pending/
+    // by-device, claimTerminal, checkTerminalStatus), so wiring here
+    // covers them all. `terminalId` is passed EXPLICITLY because most of
+    // those callers run before `set({ terminal })` publishes the terminal
+    // into the store. Fire-and-forget: a stock-pull failure must never
+    // block activation or selling — the scheduler's 60s delta tick
+    // self-heals (and degrades to full while the cursor is unset).
+    void pullLocationStock(db, 'full', { terminalId }).catch((err: unknown) => {
+      console.error(
+        '[POS][terminalStore][seed] location-stock full pull failed (non-fatal)',
+        serializeErrorForLog(err),
+      );
+    });
 
     // T1.2 Step 2.4: pre-warm payment config so the cashier's first
     // visit to PaymentSummary's gate (Step 2.3) finds paymentMethods +
@@ -682,6 +725,23 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
       };
     }
 
+    // Task 9 — full location-stock re-baseline on shift open (spec §4.3):
+    // the opening cashier starts the shift against fresh availability.
+    // Fire-and-forget + swallow-and-log: an offline shift open (the catch
+    // branch above) will time out here, and that must never block the
+    // shift from opening or selling from starting.
+    void (async () => {
+      const companyId = useAuthStore.getState().companyId;
+      if (!companyId) return;
+      const db = await getDatabase(companyId);
+      await pullLocationStock(db, 'full', { terminalId: terminal.id });
+    })().catch((err: unknown) => {
+      console.error(
+        '[POS][terminalStore][openShift] location-stock full pull failed (non-fatal)',
+        serializeErrorForLog(err),
+      );
+    });
+
     if (terminal.fiscal_schema_version === 3) {
       try {
         const fiscalShift = await authorShiftOpenFiscalEvents(terminal, shift, openingCash);
@@ -786,6 +846,7 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
         && stillCurrent.max_discount_percent === fresh.max_discount_percent
         && stillCurrent.allow_line_discounts === fresh.allow_line_discounts
         && stillCurrent.allow_transaction_discounts === fresh.allow_transaction_discounts
+        && stillCurrent.pos_stock_policy === fresh.pos_stock_policy
       ) {
         return;
       }

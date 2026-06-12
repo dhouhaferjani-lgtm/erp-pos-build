@@ -16,6 +16,7 @@ use App\Modules\POS\Presentation\Controllers\ManagerPinController;
 use App\Modules\POS\Presentation\Controllers\PosAuthController;
 use App\Modules\POS\Presentation\Controllers\PosCustomerSyncController;
 use App\Modules\POS\Presentation\Controllers\PosPendingCustomerController;
+use App\Modules\POS\Presentation\Controllers\PosStockLevelController;
 use App\Modules\POS\Presentation\Controllers\ReceiptController;
 use App\Modules\POS\Presentation\Controllers\ReportController;
 use App\Modules\POS\Presentation\Controllers\ShiftController;
@@ -91,6 +92,9 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/pos/sync/pull', [SyncController::class, 'pull']);
     Route::get('/pos/sync/menu', [SyncController::class, 'menu']);
     Route::post('/pos/shifts/{id}/sync-close', [SyncController::class, 'syncCloseShift']);
+
+    // Location stock feed for the device sync (spec 2026-06-11 §4.1)
+    Route::get('/pos/stock-levels', [PosStockLevelController::class, 'index']);
 
     // Voucher + receipt-QR-index sync (Session 1.5 — offline POS mirror)
     Route::get('/pos/vouchers/sync', [VoucherSyncController::class, 'pullVouchers']);

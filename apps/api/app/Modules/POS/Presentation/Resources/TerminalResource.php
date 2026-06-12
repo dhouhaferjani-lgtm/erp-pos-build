@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Resources;
 
+use App\Modules\Company\Domain\Enums\PosStockPolicy;
 use App\Modules\POS\Domain\Terminal;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -25,6 +26,11 @@ final class TerminalResource extends JsonResource
             'name' => $this->name,
             'description' => $this->description,
             'location_id' => $this->location_id,
+            'pos_stock_policy' => $this->whenLoaded(
+                'company',
+                fn () => $this->company->pos_stock_policy->value,
+                PosStockPolicy::Block->value,
+            ),
             'location' => $this->whenLoaded('location', function () {
                 return [
                     'id' => $this->location->id,
@@ -33,6 +39,10 @@ final class TerminalResource extends JsonResource
                     'tax_id' => $this->location->tax_id,
                     'vat_number' => $this->location->vat_number,
                     'legal_identifiers' => $this->location->legal_identifiers,
+                    'address_street' => $this->location->address_street,
+                    'address_city' => $this->location->address_city,
+                    'address_postal_code' => $this->location->address_postal_code,
+                    'address_country' => $this->location->address_country,
                 ];
             }),
             'hardware_identifier' => $this->hardware_identifier,

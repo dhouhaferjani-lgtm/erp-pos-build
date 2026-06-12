@@ -24,6 +24,17 @@ export interface CompanyInfo {
   country: string;
   tax_id: string;
   phone: string | null;
+  /**
+   * Establishment VAT number — printed under the tax id when the terminal's
+   * location carries a complete fiscal identity (spec 2026-06-11 §4.6).
+   * Display-only; never part of the signed seller block.
+   */
+  vat_number?: string | null;
+  /**
+   * Pre-formatted legal identifier lines (e.g. "SIRET: 552…"), printed
+   * verbatim after the tax id / VAT lines. Display-only.
+   */
+  legal_identifier_lines?: string[] | null;
 }
 
 export interface ModifierLine {
@@ -72,6 +83,8 @@ export interface ReceiptLabels {
   tax_col?: string;
   thank_you?: string;
   tax_id?: string;
+  /** Label for the establishment VAT-number header line (e.g. "VAT:" / "TVA :"). */
+  vat_number?: string;
   tel?: string;
   cash_count_section_title?: string;
   cash_count_total_variance?: string;
@@ -197,6 +210,16 @@ export interface ReceiptData {
 
 export interface BuildZReceiptDataInput {
   companyName: string;
+  /**
+   * Resolved fiscal identity for the printed Z header (spec 2026-06-11 §4.6):
+   * the terminal location's tax id when its identity is fiscally complete,
+   * otherwise the company tax id. vatNumber / legalIdentifierLines are only
+   * provided when the location identity applies. All display-only — the
+   * SIGNED Z-report seller stays null.
+   */
+  taxId?: string | null;
+  vatNumber?: string | null;
+  legalIdentifierLines?: string[] | null;
   formattedZNumber: string;
   dateTime: string;
   terminalName: string;
@@ -220,8 +243,10 @@ export function buildZReceiptData(input: BuildZReceiptDataInput): ReceiptData {
       city: '',
       postal_code: '',
       country: '',
-      tax_id: '',
+      tax_id: input.taxId ?? '',
       phone: null,
+      vat_number: input.vatNumber ?? null,
+      legal_identifier_lines: input.legalIdentifierLines ?? null,
     },
     receipt_number: input.formattedZNumber,
     date_time: input.dateTime,

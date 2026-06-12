@@ -208,6 +208,32 @@ export async function getPendingReceiptsForSync(db: Database): Promise<OfflineRe
   );
 }
 
+/**
+ * Task 10 (location-aware stock) — `lines` JSON blobs of every receipt the
+ * server has NOT yet acknowledged, for the availability selector's
+ * pending-sale subtraction (spec §4.4).
+ *
+ * Predicate notes:
+ * - `status != 'synced'` (NOT the drain's `IN ('pending','failed') AND
+ *   retry_count < MAX`): a `'syncing'` row and a stuck `'failed'` row are
+ *   both fiscally sealed sales the server snapshot cannot reflect yet, so
+ *   they must still subtract from availability.
+ * - `voided = 0`: a sealed-then-voided receipt's sale was reversed.
+ * - `is_training = 0`: training receipts never move real stock.
+ *
+ * Refund/return records live in the separate `local_refund_records` table
+ * and are deliberately NOT read here — refunds never alter availability.
+ */
+export async function getUnsyncedReceiptLineBlobs(db: Database): Promise<string[]> {
+  const rows = await queryAll<{ lines: string }>(
+    db,
+    `SELECT lines FROM offline_receipts
+     WHERE status != 'synced' AND voided = 0 AND is_training = 0
+     ORDER BY hash_sequence ASC`,
+  );
+  return rows.map((row) => row.lines);
+}
+
 export async function incrementRetryCount(db: Database, id: string): Promise<void> {
   await execute(
     db,
@@ -264,6 +290,27 @@ export async function cleanupSyncedReceipts(db: Database): Promise<void> {
   );
 }
 
+/**
+ * Garbage-collect terminally-stuck offline receipts (failed, retries
+ * exhausted, older than 90 days).
+ *
+ * KNOWN RESIDUAL (FU-4) — phantom availability: the location-stock
+ * availability selector subtracts unsynced offline-receipt lines directly
+ * (via {@see getUnsyncedReceiptLineBlobs}); there is no separate deductions
+ * store. Deleting a stuck receipt here therefore REMOVES its deduction, which
+ * can transiently resurrect `effectiveAvailable` — showing as available stock
+ * that was sold locally but never confirmed to the server.
+ *
+ * This is an ACCEPTED residual, bounded by design:
+ *   - it only affects receipts that failed to sync for 90 days AND exhausted
+ *     retries — a deep edge case;
+ *   - the server never ingested the sale, so its own stock never reflected the
+ *     deduction either; the local figure simply re-aligns to the server's.
+ *
+ * If a stock re-pull gate is ever added to this cleanup, the deductions must be
+ * cleared ATOMICALLY with the pull completing (pull, then delete — never the
+ * reverse) so the window above never opens.
+ */
 export async function cleanupStuckReceipts(db: Database): Promise<void> {
   await execute(
     db,

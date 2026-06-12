@@ -131,6 +131,9 @@ pub struct ReceiptLabels {
     pub tax_col: Option<String>,
     pub thank_you: Option<String>,
     pub tax_id: Option<String>,
+    /// Label for the establishment VAT-number header line.
+    #[serde(default)]
+    pub vat_number: Option<String>,
     pub tel: Option<String>,
     pub cash_count_section_title: Option<String>,
     pub cash_count_total_variance: Option<String>,
@@ -179,6 +182,15 @@ pub struct CompanyInfo {
     pub country: String,
     pub tax_id: String,
     pub phone: Option<String>,
+    /// Establishment VAT number (spec 2026-06-11 §4.6) — printed under the
+    /// tax id. Display-only; absent on pre-§4.6 payloads.
+    #[serde(default)]
+    pub vat_number: Option<String>,
+    /// Pre-formatted legal identifier lines (e.g. "SIRET: 552…") printed
+    /// verbatim after the tax id / VAT lines. The TS boundary formats them;
+    /// the Rust side never parses identifier structures.
+    #[serde(default)]
+    pub legal_identifier_lines: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -318,6 +330,24 @@ pub fn format_receipt_with_settings(
             data.label(|l| &l.tax_id, "Tax ID:"),
             tax_id
         ));
+    }
+    // Establishment identity extras (spec 2026-06-11 §4.6) — only sent when
+    // the terminal location's fiscal identity is complete. Display-only.
+    if let Some(ref vat_number) = data.company.vat_number {
+        if let Some(value) = non_empty_trimmed(vat_number) {
+            b.text_line(&format!(
+                "{} {}",
+                data.label(|l| &l.vat_number, "VAT No:"),
+                value
+            ));
+        }
+    }
+    if let Some(ref identifier_lines) = data.company.legal_identifier_lines {
+        for line in identifier_lines {
+            if let Some(value) = non_empty_trimmed(line) {
+                b.text_line(value);
+            }
+        }
     }
 
     b.align(Alignment::Left);
@@ -930,6 +960,8 @@ mod tests_z_cash_counts {
             country: "".to_string(),
             tax_id: "".to_string(),
             phone: None,
+            vat_number: None,
+            legal_identifier_lines: None,
         }
     }
 
@@ -1205,6 +1237,75 @@ mod tests_z_cash_counts {
         assert!(text.contains("75001 Paris"));
         assert!(text.contains("Tax ID: FR123"));
         assert!(text.contains("Tel: 0102030405"));
+    }
+
+    #[test]
+    fn receipt_header_prints_branch_vat_number_and_legal_identifier_lines() {
+        // Spec 2026-06-11 §4.6: when the terminal location's fiscal identity
+        // is complete, the TS boundary sends vat_number + pre-formatted legal
+        // identifier lines — they print after the tax id; blank lines are
+        // skipped.
+        let mut company = make_company();
+        company.tax_id = "BRANCH-FR-TAX".to_string();
+        company.vat_number = Some("FRBRANCHVAT".to_string());
+        company.legal_identifier_lines = Some(vec![
+            "SIRET: 55210055400014".to_string(),
+            "   ".to_string(),
+        ]);
+
+        let data = ReceiptData {
+            company,
+            receipt_number: "R001".to_string(),
+            date_time: "2026-06-12T10:00:00Z".to_string(),
+            terminal_name: "T1".to_string(),
+            operator_name: "Alice".to_string(),
+            lines: vec![],
+            subtotal: "0.00".to_string(),
+            discount_amount: "0.00".to_string(),
+            tax_amount: "0.00".to_string(),
+            total: "0.00".to_string(),
+            currency_symbol: "€".to_string(),
+            vat_breakdown: vec![],
+            payments: vec![],
+            change_due: "0.00".to_string(),
+            tolerance_writeoff: None,
+            has_tolerance: false,
+            fiscal_hash: None,
+            fiscal_signature: None,
+            customer_name: None,
+            notes: None,
+            labels: None,
+            show_vat_breakdown: Some(false),
+            show_fiscal_info: Some(false),
+            show_payment_details: Some(false),
+            show_customer: Some(false),
+            is_reprint: Some(false),
+            cash_counts: None,
+            manager_name: None,
+            variance_reason: None,
+            variance_severity: None,
+            aggregate_variance: None,
+            qr_token: None,
+            receipt_kind: None,
+            original_receipt_number: None,
+            original_receipt_qr_token: None,
+            account_balance_before: None,
+            account_balance_after: None,
+            account_snapshot_stale: false,
+            business_date: None,
+            terminal_id: None,
+            shift_id: None,
+            training_flag: false,
+            customer_account_id: None,
+            customer_phone: None,
+        };
+
+        let bytes = format_receipt_with_settings(&data, None);
+        let text = String::from_utf8_lossy(&bytes);
+
+        assert!(text.contains("Tax ID: BRANCH-FR-TAX"));
+        assert!(text.contains("VAT No: FRBRANCHVAT"));
+        assert!(text.contains("SIRET: 55210055400014"));
     }
 }
 

@@ -52,7 +52,7 @@ final class TerminalController extends Controller
         Gate::authorize('pos.manage_terminals');
 
         $terminals = Terminal::forCompany($this->companyContext->requireCompanyId())
-            ->with(['location'])
+            ->with(['location', 'company'])
             ->withCount(['receipts', 'shifts'])
             ->orderBy('created_at', 'desc')
             ->get();
@@ -74,7 +74,7 @@ final class TerminalController extends Controller
         }
 
         $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
-            ->with(['location'])
+            ->with(['location', 'company'])
             ->findOrFail($id);
 
         return response()->json([
@@ -116,7 +116,7 @@ final class TerminalController extends Controller
         ]);
 
         return response()->json([
-            'data' => TerminalResource::make($terminal->load('location')),
+            'data' => TerminalResource::make($terminal->load(['location', 'company'])),
         ], 201);
     }
 
@@ -149,7 +149,7 @@ final class TerminalController extends Controller
         }
 
         return response()->json([
-            'data' => TerminalResource::make($terminal->load('location')),
+            'data' => TerminalResource::make($terminal->load(['location', 'company'])),
         ]);
     }
 
@@ -245,7 +245,7 @@ final class TerminalController extends Controller
         ));
 
         return response()->json([
-            'data' => TerminalResource::make($terminal->load('location')),
+            'data' => TerminalResource::make($terminal->load(['location', 'company'])),
         ]);
     }
 
@@ -283,7 +283,7 @@ final class TerminalController extends Controller
         ));
 
         return response()->json([
-            'data' => TerminalResource::make($terminal->load('location')),
+            'data' => TerminalResource::make($terminal->load(['location', 'company'])),
         ]);
     }
 
@@ -300,7 +300,7 @@ final class TerminalController extends Controller
             ->physical()
             ->active()
             ->whereNull('hardware_identifier')
-            ->with(['location'])
+            ->with(['location', 'company'])
             ->orderBy('name')
             ->get();
 
@@ -356,7 +356,7 @@ final class TerminalController extends Controller
         ]);
 
         return response()->json([
-            'data' => TerminalResource::make($terminal->load('location')),
+            'data' => TerminalResource::make($terminal->load(['location', 'company'])),
         ]);
     }
 
@@ -387,7 +387,7 @@ final class TerminalController extends Controller
         ]);
 
         return response()->json([
-            'data' => TerminalResource::make($terminal->load('location')),
+            'data' => TerminalResource::make($terminal->load(['location', 'company'])),
         ], 201);
     }
 
@@ -422,7 +422,7 @@ final class TerminalController extends Controller
 
         if ($terminal) {
             return response()->json([
-                'data' => TerminalResource::make($terminal->load('location')),
+                'data' => TerminalResource::make($terminal->load(['location', 'company'])),
             ]);
         }
 
@@ -453,7 +453,7 @@ final class TerminalController extends Controller
         ]);
 
         return response()->json([
-            'data' => TerminalResource::make($terminal->load('location')),
+            'data' => TerminalResource::make($terminal->load(['location', 'company'])),
         ], 201);
     }
 
@@ -468,7 +468,7 @@ final class TerminalController extends Controller
 
         $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->where('hardware_identifier', $hardwareIdentifier)
-            ->with(['location'])
+            ->with(['location', 'company'])
             ->first();
 
         if (! $terminal) {
@@ -520,7 +520,7 @@ final class TerminalController extends Controller
         ));
 
         return response()->json([
-            'data' => TerminalResource::make($terminal->load('location')),
+            'data' => TerminalResource::make($terminal->load(['location', 'company'])),
         ]);
     }
 
