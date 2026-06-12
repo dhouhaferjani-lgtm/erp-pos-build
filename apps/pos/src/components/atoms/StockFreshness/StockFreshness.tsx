@@ -29,7 +29,7 @@ import { useSyncStore } from '@/stores/syncStore';
 import { useAuthStore } from '@/stores/authStore';
 import { getDatabase } from '@/lib/db';
 import { getSyncMetadata } from '@/lib/db/repositories/syncLogRepository';
-import { formatRelativeTime } from '@/lib/relativeTime';
+import { formatRelativeTime, isOlderThan } from '@/lib/relativeTime';
 
 const STOCK_LAST_SYNC_KEY = 'stock_last_sync';
 
@@ -68,9 +68,10 @@ export function StockFreshness() {
   const time = formatRelativeTime(stockSyncAt);
   if (time === null) return null;
 
-  // FU-10: amber once the last-good pull is older than 15 minutes.
-  const isStale =
-    stockSyncAt !== null && Date.now() - stockSyncAt > STALE_THRESHOLD_MS;
+  // FU-10: amber once the last-good pull is older than 15 minutes. The
+  // Date.now() read lives in isOlderThan (parity with formatRelativeTime) to
+  // keep the impure call out of the render body.
+  const isStale = isOlderThan(stockSyncAt, STALE_THRESHOLD_MS);
 
   return (
     <span

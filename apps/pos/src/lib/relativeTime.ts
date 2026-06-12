@@ -13,3 +13,14 @@ export function formatRelativeTime(timestamp: number | null): string | null {
   if (diffMin < 60) return `${diffMin}m`;
   return `${Math.floor(diffMin / 60)}h`;
 }
+
+/**
+ * Whether `timestamp` is older than `maxAgeMs` (FU-10 staleness check).
+ * Mirrors {@link formatRelativeTime}'s `Date.now()`-based, re-render-cadenced
+ * model — keeping the impure `Date.now()` read out of component render bodies
+ * (react-hooks/purity) just as the formatter does.
+ */
+export function isOlderThan(timestamp: number | null, maxAgeMs: number): boolean {
+  if (!timestamp) return false;
+  return Date.now() - timestamp > maxAgeMs;
+}
