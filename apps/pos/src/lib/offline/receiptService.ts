@@ -28,6 +28,7 @@ import {
 import type { CartItem } from '@/types/cart';
 import { serializeErrorForLog } from '@/lib/errorLogging';
 import { useSyncStore } from '@/stores/syncStore';
+import { withWriteTransaction } from '@/lib/db/writeGate';
 
 interface OfflineReceiptInput {
   tenantId: string;
@@ -388,156 +389,172 @@ export async function createOfflineReceipt(
   //     commit, or none do — this prevents the cashier from sealing a
   //     fiscal receipt that references a voucher whose local projection
   //     never moved.
-  await db.execute('BEGIN TRANSACTION');
-  let fiscalEventResult: FiscalEventAppendResult | null = null;
-  let receiptNumber = '';
+  //
+  //     Single-writer architecture (2026-06-12 design spec): the whole
+  //     transaction runs as ONE exclusive write-gate job on the Rust-owned
+  //     single connection — `fiscal` lane, so it preempts queued sync
+  //     chunks. The pooled `db` handle above is reads-only; issuing
+  //     BEGIN…COMMIT through the pool splits statements across physical
+  //     connections (self-deadlock + transaction poisoning). The gate's
+  //     BEGIN IMMEDIATE also serialises the chain read-modify-write.
+  const engine = await getFiscalEventEngine(input.companyId, db);
+  const txStartedAt = performance.now();
+  // Mutable log context — populated inside the tx body so the catch can
+  // report how far the transaction got (object-property mutation dodges
+  // TS closure-narrowing on plain lets).
+  const txLog: { sequence: number | null; previousHash: string | null; receiptNumber: string } = {
+    sequence: null,
+    previousHash: null,
+    receiptNumber: '',
+  };
+  let fiscalEventResult: FiscalEventAppendResult;
+  let receiptNumber: string;
   try {
-    const engine = await getFiscalEventEngine(input.companyId, db);
-    fiscalEventResult = await engine.append(db, {
-      event_type: 'SALE_RECEIPT',
-      tenant_id: input.tenantId,
-      company_id: input.companyId,
-      terminal_id: input.terminalId,
-      operator_id: input.operatorId,
-      event_time_device: isoSecondsUtc(postedAtDate),
-      business_date: businessDate,
-      payload: canonicalPayload,
-      reference_event_id: primaryApprovalReferenceEventId ?? undefined,
-      source_event_class: 'offline_receipts',
-      source_event_id: receiptId,
-    });
-    receiptNumber = generateReceiptNumber(
-      terminalState.location_code,
-      terminalState.terminal_code,
-      fiscalEventResult.sequence_number,
-    );
+    ({ fiscalEventResult, receiptNumber } = await withWriteTransaction('fiscal', async (tx) => {
+      const appended = await engine.append(tx, {
+        event_type: 'SALE_RECEIPT',
+        tenant_id: input.tenantId,
+        company_id: input.companyId,
+        terminal_id: input.terminalId,
+        operator_id: input.operatorId,
+        event_time_device: isoSecondsUtc(postedAtDate),
+        business_date: businessDate,
+        payload: canonicalPayload,
+        reference_event_id: primaryApprovalReferenceEventId ?? undefined,
+        source_event_class: 'offline_receipts',
+        source_event_id: receiptId,
+      });
+      txLog.sequence = appended.sequence_number;
+      txLog.previousHash = appended.previous_hash;
+      const number = generateReceiptNumber(
+        terminalState.location_code,
+        terminalState.terminal_code,
+        appended.sequence_number,
+      );
+      txLog.receiptNumber = number;
 
-    const offlineReceipt: Omit<OfflineReceipt, 'created_at' | 'synced_at' | 'sync_error' | 'retry_count' | 'server_receipt_id'> = {
-      id: receiptId,
-      idempotency_key: idempotencyKey,
-      receipt_number: receiptNumber,
-      terminal_id: input.terminalId,
-      terminal_code: terminalState.terminal_code,
-      operator_id: input.operatorId,
-      operator_name: input.operatorName,
-      lines: JSON.stringify(
-        input.cartItems.map((item) => ({
-          product_id: item.product.sellableType === 'composite_item' ? undefined : item.product.id,
-          composite_item_id: item.product.sellableType === 'composite_item' ? item.product.id : undefined,
-          // T2 — variant identity persisted alongside the line so the stored
-          // sale records exactly which variant was sold. Since M4
-          // (SaleReceiptV2) the variant identity ALSO travels in the signed
-          // canonical line items; this mirror stays for the local receipt
-          // store + Wave-2 sync.
-          variant_id: item.product.variant_id ?? undefined,
-          name: item.product.name,
-          sku: item.product.sku,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          line_total: item.line_total,
-          tax_rate: item.tax_rate,
-          tax_amount: item.tax_amount,
-          discount_type: item.discount_type ?? null,
-          discount_percent: item.discount_percent ?? null,
-          discount_amount: item.discount_amount ?? null,
-          discount_reason: item.discount_reason ?? null,
-          modifiers: item.product.selectedModifiers ?? [],
-        }))
-      ),
-      subtotal: bcformat(subtotal, decimals),
-      tax_amount: bcformat(taxAmount, decimals),
-      discount_amount: bcformat(transactionDiscountAmount, decimals),
-      total: totalFormatted,
-      currency: input.currency,
-      fiscal_hash: fiscalEventResult.current_hash,
-      previous_hash: fiscalEventResult.previous_hash,
-      hash_sequence: fiscalEventResult.sequence_number,
-      transaction_discount_amount: input.transactionDiscount
-        ? bcformat(transactionDiscountAmount, decimals)
-        : null,
-      transaction_discount_reason: input.transactionDiscount?.reason ?? null,
-      tendered_amount: bcformat(String(input.tenderedAmount), decimals),
-      change_due: changeDueFormatted,
-      payment_method_id: input.paymentMethodId,
-      payment_repository_id: input.paymentRepositoryId,
-      status: 'pending',
-      payments_json: paymentsJson,
-      consumption_mode: input.consumptionMode ?? null,
-      table_id: input.tableId ?? null,
-      fiscal_schema_version: fiscalSchemaVersion,
-      is_training: isTraining ? 1 : 0,
-      canonical_bytes: fiscalEventResult.canonical_bytes,
-    };
+      const offlineReceipt: Omit<OfflineReceipt, 'created_at' | 'synced_at' | 'sync_error' | 'retry_count' | 'server_receipt_id'> = {
+        id: receiptId,
+        idempotency_key: idempotencyKey,
+        receipt_number: number,
+        terminal_id: input.terminalId,
+        terminal_code: terminalState.terminal_code,
+        operator_id: input.operatorId,
+        operator_name: input.operatorName,
+        lines: JSON.stringify(
+          input.cartItems.map((item) => ({
+            product_id: item.product.sellableType === 'composite_item' ? undefined : item.product.id,
+            composite_item_id: item.product.sellableType === 'composite_item' ? item.product.id : undefined,
+            // T2 — variant identity persisted alongside the line so the stored
+            // sale records exactly which variant was sold. Since M4
+            // (SaleReceiptV2) the variant identity ALSO travels in the signed
+            // canonical line items; this mirror stays for the local receipt
+            // store + Wave-2 sync.
+            variant_id: item.product.variant_id ?? undefined,
+            name: item.product.name,
+            sku: item.product.sku,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            line_total: item.line_total,
+            tax_rate: item.tax_rate,
+            tax_amount: item.tax_amount,
+            discount_type: item.discount_type ?? null,
+            discount_percent: item.discount_percent ?? null,
+            discount_amount: item.discount_amount ?? null,
+            discount_reason: item.discount_reason ?? null,
+            modifiers: item.product.selectedModifiers ?? [],
+          }))
+        ),
+        subtotal: bcformat(subtotal, decimals),
+        tax_amount: bcformat(taxAmount, decimals),
+        discount_amount: bcformat(transactionDiscountAmount, decimals),
+        total: totalFormatted,
+        currency: input.currency,
+        fiscal_hash: appended.current_hash,
+        previous_hash: appended.previous_hash,
+        hash_sequence: appended.sequence_number,
+        transaction_discount_amount: input.transactionDiscount
+          ? bcformat(transactionDiscountAmount, decimals)
+          : null,
+        transaction_discount_reason: input.transactionDiscount?.reason ?? null,
+        tendered_amount: bcformat(String(input.tenderedAmount), decimals),
+        change_due: changeDueFormatted,
+        payment_method_id: input.paymentMethodId,
+        payment_repository_id: input.paymentRepositoryId,
+        status: 'pending',
+        payments_json: paymentsJson,
+        consumption_mode: input.consumptionMode ?? null,
+        table_id: input.tableId ?? null,
+        fiscal_schema_version: fiscalSchemaVersion,
+        is_training: isTraining ? 1 : 0,
+        canonical_bytes: appended.canonical_bytes,
+      };
 
-    await insertOfflineReceipt(db, offlineReceipt);
+      await insertOfflineReceipt(tx as unknown as Database, offlineReceipt);
 
-    // B5-fix audit decision Option B (2026-05-01): the offline path NO LONGER
-    // writes a local voucher_ledger Redeemed row. The canonical voucher_ledger
-    // entry is server-authored from the fiscal-event projection path and is
-    // tied to the synced receipt with a server-controlled UUID. The local
-    // mirror picks up that row on the next pullVoucherLedger.
-    //
-    // Why we keep the local balance update:
-    //   - The cashier sees the right voucher balance immediately on this
-    //     terminal (e.g. for stacked redemptions in the same session) until
-    //     sync reconciles the canonical state.
-    //   - The atomicity guarantee is unchanged: a balance-update failure
-    //     rolls back the receipt insert + chain advance.
-    //
-    // Why we removed the local voucher_ledger row:
-    //   - The previous write produced a row with `receipt_id = null` because
-    //     no server receipt id existed yet at offline-write time.
-    //   - `VoucherLedgerPushService::push()` rejects every such row with
-    //     `'receipt_id_required_for_redemption'`, and the audit found the
-    //     push client silently dropped the failure (Minor 2 — fixed in the
-    //     companion commit). Even with the silent-drop fixed, the server
-    //     cannot ingest this row shape because there is no canonical
-    //     receipt to bind the GL leg against.
-    //   - Removing the local write removes the bug at the root: the
-    //     server-side redemption during sync is now the single canonical
-    //     entry point. The push pipeline (`pushVoucherLedgerEntries`)
-    //     becomes reserved for future offline-issued voucher operations
-    //     not tied to a synced receipt (e.g., goodwill issuance from a
-    //     back-office screen), per the
-    //     `VoucherLedgerPushService` docblock contract.
-    for (let i = 0; i < voucherTenders.length; i++) {
-      const tender = voucherTenders[i]!;
-      const voucher = resolvedVouchers[i]!;
-      const newBalance = bcsub(voucher.current_balance, tender.amount, decimals);
-      // Defensive: never let local balance go negative. The B4 server-side
-      // validator catches over-redemption on the wire, but a stale local
-      // mirror could theoretically race; clamp to zero rather than persist
-      // a negative balance that would corrupt subsequent local reads.
-      const clampedBalance = bccomp(newBalance, '0') < 0
-        ? bcformat('0', decimals)
-        : bcformat(newBalance, decimals);
-      const newStatus: VoucherStatus = bccomp(clampedBalance, '0') === 0
-        ? 'FullyRedeemed'
-        : 'PartiallyRedeemed';
+      // B5-fix audit decision Option B (2026-05-01): the offline path NO LONGER
+      // writes a local voucher_ledger Redeemed row. The canonical voucher_ledger
+      // entry is server-authored from the fiscal-event projection path and is
+      // tied to the synced receipt with a server-controlled UUID. The local
+      // mirror picks up that row on the next pullVoucherLedger.
+      //
+      // Why we keep the local balance update:
+      //   - The cashier sees the right voucher balance immediately on this
+      //     terminal (e.g. for stacked redemptions in the same session) until
+      //     sync reconciles the canonical state.
+      //   - The atomicity guarantee is unchanged: a balance-update failure
+      //     rolls back the receipt insert + chain advance.
+      //
+      // Why we removed the local voucher_ledger row:
+      //   - The previous write produced a row with `receipt_id = null` because
+      //     no server receipt id existed yet at offline-write time.
+      //   - `VoucherLedgerPushService::push()` rejects every such row with
+      //     `'receipt_id_required_for_redemption'`, and the audit found the
+      //     push client silently dropped the failure (Minor 2 — fixed in the
+      //     companion commit). Even with the silent-drop fixed, the server
+      //     cannot ingest this row shape because there is no canonical
+      //     receipt to bind the GL leg against.
+      //   - Removing the local write removes the bug at the root: the
+      //     server-side redemption during sync is now the single canonical
+      //     entry point. The push pipeline (`pushVoucherLedgerEntries`)
+      //     becomes reserved for future offline-issued voucher operations
+      //     not tied to a synced receipt (e.g., goodwill issuance from a
+      //     back-office screen), per the
+      //     `VoucherLedgerPushService` docblock contract.
+      for (let i = 0; i < voucherTenders.length; i++) {
+        const tender = voucherTenders[i]!;
+        const voucher = resolvedVouchers[i]!;
+        const newBalance = bcsub(voucher.current_balance, tender.amount, decimals);
+        // Defensive: never let local balance go negative. The B4 server-side
+        // validator catches over-redemption on the wire, but a stale local
+        // mirror could theoretically race; clamp to zero rather than persist
+        // a negative balance that would corrupt subsequent local reads.
+        const clampedBalance = bccomp(newBalance, '0') < 0
+          ? bcformat('0', decimals)
+          : bcformat(newBalance, decimals);
+        const newStatus: VoucherStatus = bccomp(clampedBalance, '0') === 0
+          ? 'FullyRedeemed'
+          : 'PartiallyRedeemed';
 
-      await updateVoucherBalanceAndStatus(db, voucher.id, clampedBalance, newStatus);
-    }
+        await updateVoucherBalanceAndStatus(tx as unknown as Database, voucher.id, clampedBalance, newStatus);
+      }
 
-    await db.execute('COMMIT');
+      return { fiscalEventResult: appended, receiptNumber: number };
+    }));
   } catch (error) {
-    console.error('[POS][offline][receipt] tx body threw — rolling back', {
+    console.error('[POS][offline][receipt] tx failed — rolled back', {
       ...serializeErrorForLog(error),
-      receiptNumber,
-      hashSequence: fiscalEventResult?.sequence_number ?? null,
-      previousHash: fiscalEventResult?.previous_hash ?? null,
+      receiptNumber: txLog.receiptNumber,
+      hashSequence: txLog.sequence,
+      previousHash: txLog.previousHash,
       terminalId: input.terminalId,
     });
-    try {
-      await db.execute('ROLLBACK');
-    } catch (rollbackError) {
-      console.error('[POS][offline][receipt] ROLLBACK also threw — connection may be in bad state', {
-        ...serializeErrorForLog(rollbackError),
-        receiptNumber,
-        terminalId: input.terminalId,
-      });
-    }
     throw error;
   }
+  console.info('[POS][perf][receipt] fiscal tx committed', {
+    ms: Math.round(performance.now() - txStartedAt),
+    receiptNumber,
+  });
 
   // T2.2 Step 5.1: update sync UI state and fire the debounced sync trigger
   // AFTER the COMMIT has durably persisted. Pre-T2.2 the trigger lived inside
@@ -548,10 +565,6 @@ export async function createOfflineReceipt(
   // durably persisted.
   useSyncStore.getState().incrementPendingCount();
   scheduleDebouncedSync();
-
-  if (fiscalEventResult === null) {
-    throw new Error('Fiscal event append did not return a result.');
-  }
 
   return {
     receiptNumber,

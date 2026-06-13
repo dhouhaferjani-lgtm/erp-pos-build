@@ -1,6 +1,7 @@
 import { getDatabase } from '@/lib/db';
 import { FiscalEventCanonicalEncoder } from '@/lib/fiscal/FiscalEventCanonicalEncoder';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
+import { withWriteTransaction } from '@/lib/db/writeGate';
 import { lockTerminal } from '@/lib/offline/terminalMutex';
 import type { CashDrawerApprovalEvidence } from '@/api/cashDrawerApi';
 import type { PosOverrideContext, PosOverrideSupervisor } from './posOverrideAuthoring';
@@ -70,9 +71,10 @@ export async function authorCashDrawerApproval(
   return lockTerminal(input.context.tenantId, input.context.terminalId, async () => {
     const engine = await getFiscalEventEngine(input.context.companyId, db);
 
-    await db.execute('BEGIN TRANSACTION');
-    try {
-      const approvalEvent = await engine.append(db, {
+    // Single-writer architecture: the approval append runs as ONE exclusive
+    // write-gate transaction on the single connection (fiscal lane).
+    return withWriteTransaction('fiscal', async (tx) => {
+      const approvalEvent = await engine.append(tx, {
         event_type: 'OPERATOR_APPROVAL_GRANTED',
         tenant_id: input.context.tenantId,
         company_id: input.context.companyId,
@@ -109,8 +111,6 @@ export async function authorCashDrawerApproval(
         source_event_id: approvalId,
       });
 
-      await db.execute('COMMIT');
-
       return {
         approval_id: approvalId,
         approval_fiscal_event_id: approvalEvent.id,
@@ -118,9 +118,6 @@ export async function authorCashDrawerApproval(
         approval_supervisor_user_id: input.supervisor.id,
         approval_target_hash: targetHash,
       };
-    } catch (error) {
-      await db.execute('ROLLBACK');
-      throw error;
-    }
+    });
   });
 }

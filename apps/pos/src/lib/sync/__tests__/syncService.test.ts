@@ -15,6 +15,7 @@ vi.mock('@/lib/api', () => {
   return {
     apiGet: vi.fn(),
     apiPost: vi.fn(),
+    apiPostRaw: vi.fn(),
     ApiRequestError,
   };
 });
@@ -164,7 +165,7 @@ import {
   pullTerminalState,
   runFullSync,
 } from '../syncService';
-import { apiGet, apiPost, ApiRequestError } from '@/lib/api';
+import { apiGet, apiPost, apiPostRaw, ApiRequestError } from '@/lib/api';
 import { getUnsyncedZReports, markZReportSynced } from '@/lib/db/repositories/zReportRepository';
 import { updateReceiptStatus } from '@/lib/db/repositories/offlineReceiptRepository';
 import {
@@ -248,7 +249,7 @@ describe('syncService', () => {
         }),
       ];
       vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue(events);
-      vi.mocked(apiPost)
+      vi.mocked(apiPostRaw)
         .mockResolvedValueOnce(fiscalEventBatchResponse([{ fiscal_event_id: 'fe-1' }]))
         .mockResolvedValueOnce(fiscalEventBatchResponse([{ fiscal_event_id: 'fe-2' }]));
 
@@ -259,8 +260,8 @@ describe('syncService', () => {
       expect(result.errors).toHaveLength(0);
       expect(result.chainBreak).toBe(false);
 
-      expect(apiPost).toHaveBeenCalledTimes(2);
-      expect(apiPost).toHaveBeenNthCalledWith(
+      expect(apiPostRaw).toHaveBeenCalledTimes(2);
+      expect(apiPostRaw).toHaveBeenNthCalledWith(
         1,
         '/pos/sync/fiscal-events',
         {
@@ -280,8 +281,16 @@ describe('syncService', () => {
         },
         { timeoutMs: 30_000 },
       );
-      expect(apiPost).not.toHaveBeenCalledWith(
+      expect(apiPostRaw).not.toHaveBeenCalledWith(
         '/pos/receipts/sync',
+        expect.anything(),
+        expect.anything(),
+      );
+      // The enveloped helper must NOT be used for this endpoint — the server
+      // returns a TOP-LEVEL { results } (no { data } envelope), and apiPost's
+      // unwrap turns it into undefined → the historical response.results crash.
+      expect(apiPost).not.toHaveBeenCalledWith(
+        '/pos/sync/fiscal-events',
         expect.anything(),
         expect.anything(),
       );
@@ -307,7 +316,7 @@ describe('syncService', () => {
 
       const event = makeFiscalEvent({ id: 'fe-timeout', source_event_id: 'receipt-timeout' });
       vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([event]);
-      vi.mocked(apiPost).mockRejectedValueOnce(
+      vi.mocked(apiPostRaw).mockRejectedValueOnce(
         new FetchTimeoutError('https://x.test/pos/sync/fiscal-events', 30_000, 'POST'),
       );
 
@@ -330,7 +339,7 @@ describe('syncService', () => {
     it('treats server idempotent re-delivery as synced after a lost response retry', async () => {
       const event = makeFiscalEvent({ id: 'fe-idempotent', source_event_id: 'receipt-idempotent' });
       vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([event]);
-      vi.mocked(apiPost).mockResolvedValueOnce(
+      vi.mocked(apiPostRaw).mockResolvedValueOnce(
         fiscalEventBatchResponse([
           { fiscal_event_id: 'fe-idempotent', stored: false },
         ]),
@@ -352,7 +361,7 @@ describe('syncService', () => {
         makeFiscalEvent({ id: 'fe-ok', sequence_number: 2, source_event_id: 'receipt-ok' }),
       ];
       vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue(events);
-      vi.mocked(apiPost)
+      vi.mocked(apiPostRaw)
         .mockResolvedValueOnce(fiscalEventBatchResponse([
           { fiscal_event_id: 'fe-invalid', stored: false, exception_class: 'ValidationException' },
         ]))
@@ -374,7 +383,7 @@ describe('syncService', () => {
         makeFiscalEvent({ id: 'fe-later', sequence_number: 8 }),
       ];
       vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue(events);
-      vi.mocked(apiPost).mockResolvedValueOnce(
+      vi.mocked(apiPostRaw).mockResolvedValueOnce(
         fiscalEventBatchResponse([
           {
             fiscal_event_id: null,
@@ -391,7 +400,7 @@ describe('syncService', () => {
       expect(result.failed).toBe(1);
       expect(result.chainBreak).toBe(true);
       expect(result.errors).toEqual(['CHAIN_BREAK at fiscal event fe-conflict']);
-      expect(apiPost).toHaveBeenCalledTimes(1);
+      expect(apiPostRaw).toHaveBeenCalledTimes(1);
       expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(db, 'fe-conflict', 'failed', 'sequence_conflict');
       expect(updateFiscalEventSyncStatus).not.toHaveBeenCalledWith(db, 'fe-later', 'syncing');
     });
@@ -399,7 +408,7 @@ describe('syncService', () => {
     it('fails loudly when the server returns a null fiscal_event_id without a rejection reason', async () => {
       const event = makeFiscalEvent({ id: 'fe-null-success', source_event_id: 'receipt-null-success' });
       vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([event]);
-      vi.mocked(apiPost).mockResolvedValueOnce(
+      vi.mocked(apiPostRaw).mockResolvedValueOnce(
         fiscalEventBatchResponse([
           {
             fiscal_event_id: null,
@@ -431,7 +440,7 @@ describe('syncService', () => {
         makeFiscalEvent({ id: 'fe-later', sequence_number: 10 }),
       ];
       vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue(events);
-      vi.mocked(apiPost).mockResolvedValueOnce(
+      vi.mocked(apiPostRaw).mockResolvedValueOnce(
         fiscalEventBatchResponse([
           { fiscal_event_id: 'fe-hash-break', stored: false, exception_class: 'hash mismatch' },
         ]),
@@ -443,7 +452,7 @@ describe('syncService', () => {
       expect(result.failed).toBe(1);
       expect(result.pushed).toBe(0);
       expect(result.errors).toEqual(['CHAIN_BREAK at fiscal event fe-hash-break']);
-      expect(apiPost).toHaveBeenCalledTimes(1);
+      expect(apiPostRaw).toHaveBeenCalledTimes(1);
       expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(db, 'fe-hash-break', 'failed', 'hash mismatch');
       expect(updateFiscalEventSyncStatus).not.toHaveBeenCalledWith(db, 'fe-later', 'syncing');
     });
@@ -451,7 +460,7 @@ describe('syncService', () => {
     it('marks a fiscal event failed when the server omits its result item', async () => {
       const event = makeFiscalEvent({ id: 'fe-missing-result', source_event_id: 'receipt-missing' });
       vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([event]);
-      vi.mocked(apiPost).mockResolvedValueOnce(fiscalEventBatchResponse([]));
+      vi.mocked(apiPostRaw).mockResolvedValueOnce(fiscalEventBatchResponse([]));
 
       const result = await pushOfflineReceipts(db);
 
@@ -475,7 +484,7 @@ describe('syncService', () => {
         source_event_id: 'cash-op-1',
       });
       vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([event]);
-      vi.mocked(apiPost).mockResolvedValueOnce(fiscalEventBatchResponse([{ fiscal_event_id: 'fe-non-receipt' }]));
+      vi.mocked(apiPostRaw).mockResolvedValueOnce(fiscalEventBatchResponse([{ fiscal_event_id: 'fe-non-receipt' }]));
 
       const result = await pushOfflineReceipts(db);
 

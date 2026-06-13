@@ -1,5 +1,9 @@
 import Database from '@tauri-apps/plugin-sql';
 import { migrations } from './db/migrations';
+import { wrapDatabaseWithBusyRetry } from './db/busyRetry';
+import { closeWriter, createWriterSurface, openWriter } from './db/dbWriter';
+import { enqueueWrite, setWriter, wrapDatabaseWithSyncGate } from './db/writeGate';
+import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
 
 let db: Database | null = null;
 let currentDbName: string | null = null;
@@ -11,36 +15,48 @@ export async function getDatabase(companyId: string): Promise<Database> {
     return db;
   }
 
-  // Close previous connection if switching companies
+  // Close previous connections if switching companies
   if (db && currentDbName !== dbName) {
     await db.close();
+    if (currentDbName) await closeWriter(currentDbName);
+    setWriter(null);
     db = null;
   }
 
-  db = await Database.load(`sqlite:${dbName}`);
-  currentDbName = dbName;
-
-  // Bug 5 — enable WAL so concurrent readers (the sync scheduler's pending
-  // queue read) do not contend with the writer that the cashier-facing
-  // `createOfflineReceipt` transaction holds. Default `journal_mode=DELETE`
-  // serializes EVERYTHING through an exclusive lock; the Tauri plugin then
-  // surfaces `(code: 5) database is locked` as a raw string, the dead-letter
-  // cap saturates, and the next sealed receipt's `previous_hash` diverges
-  // from the server's `terminal.last_hash` — chain-broken cascade (Bug 4)
-  // plus the intermittent "Échec du paiement" the cashier sees (Bug 3).
-  //
-  // WAL mode is database-file-persistent — a single `PRAGMA journal_mode=WAL`
-  // before migrations is sufficient; subsequent connections from the SQLx
-  // pool inherit it. busy_timeout is intentionally NOT set in app code —
-  // SQLx 0.8.6 already defaults connections to 5s
-  // (sqlx-sqlite/src/options/mod.rs:194-201).
+  // Single-writer architecture (2026-06-12 design spec):
+  //   - ALL writes serialize through the writeGate; multi-statement
+  //     transactions run on the Rust-owned single connection opened below.
+  //     The plugin's SQLx POOL splits a JS BEGIN…COMMIT across physical
+  //     connections (sqlx returns in-tx connections to the idle queue
+  //     without rollback) → the receipt path self-deadlocked against its
+  //     own orphaned BEGIN and sync writes could join an open fiscal tx.
+  //   - The plugin pool below is the READ path only (WAL ⇒ readers never
+  //     block on the writer). busyRetry stays as read-side hardening for
+  //     rare checkpoint-edge BUSY.
+  // The writer's connect options own the WAL/synchronous/busy_timeout
+  // pragmas (WAL is file-persistent), so no pool-side PRAGMA is issued.
   //
   // Operational note: WAL creates `-wal` and `-shm` sidecar files next to
   // the main `.db` file. Any backup tooling must include them OR call
   // `PRAGMA wal_checkpoint(TRUNCATE)` and close the connection first.
-  await db.execute('PRAGMA journal_mode=WAL');
+  await openWriter(dbName);
+  const writerSurface: SqlSurface = createWriterSurface(dbName);
+  setWriter(writerSurface);
 
-  await runMigrations(db);
+  db = await Database.load(`sqlite:${dbName}`);
+  currentDbName = dbName;
+  wrapDatabaseWithBusyRetry(db);
+  // Every write still issued through the pooled handle (sync pulls, queued
+  // events, image cache, stragglers) serializes per-statement through the
+  // sync lane — a queued fiscal tx waits at most ONE statement, and no two
+  // app writes ever contend. Order matters: busyRetry wraps INSIDE the gate
+  // (retries happen within the job).
+  wrapDatabaseWithSyncGate(db);
+
+  // Migrations + recovery are writes → run on the writer through the gate
+  // (migrations include multi-statement blocks and BEGIN-using data
+  // migrations; the pool must never see transaction statements).
+  await enqueueWrite('fiscal', () => runMigrations(writerSurface));
 
   // Codex r1 P2 closure — migration v32 is a one-shot retroactive cleanup
   // (logged in `_migrations`), but lock-signature failures could in principle
@@ -49,7 +65,7 @@ export async function getDatabase(companyId: string): Promise<Database> {
   // idempotent startup hook every boot is the rerunnable safety net: empty
   // result when nothing is stuck, costless when there is. The migration row
   // remains as the audit-trail anchor for the initial retroactive sweep.
-  await runStuckReceiptRecovery(db);
+  await enqueueWrite('fiscal', () => runStuckReceiptRecovery(writerSurface));
 
   return db;
 }
@@ -63,7 +79,7 @@ export async function getDatabase(companyId: string): Promise<Database> {
  * Exported for unit testing only — production callers should rely on
  * `getDatabase` invoking it automatically after migrations.
  */
-export async function runStuckReceiptRecovery(database: Database): Promise<void> {
+export async function runStuckReceiptRecovery(database: SqlSurface): Promise<void> {
   await database.execute(
     `UPDATE offline_receipts
        SET status = 'pending',
@@ -77,12 +93,14 @@ export async function runStuckReceiptRecovery(database: Database): Promise<void>
 export async function closeDatabase(): Promise<void> {
   if (db) {
     await db.close();
+    if (currentDbName) await closeWriter(currentDbName);
+    setWriter(null);
     db = null;
     currentDbName = null;
   }
 }
 
-async function runMigrations(database: Database): Promise<void> {
+async function runMigrations(database: SqlSurface): Promise<void> {
   // Create migrations tracking table
   await database.execute(`
     CREATE TABLE IF NOT EXISTS _migrations (

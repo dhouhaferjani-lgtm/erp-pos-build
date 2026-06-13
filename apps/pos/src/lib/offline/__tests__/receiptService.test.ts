@@ -32,15 +32,24 @@ import { createOfflineReceipt } from '../receiptService';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
 import { getTerminalState } from '@/lib/db/repositories/terminalStateRepository';
 import { insertOfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
+import { setWriter, __resetWriteGateForTesting } from '@/lib/db/writeGate';
+import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
 import { makeCartItem } from '@/test/helpers';
 import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
 
 function makeMockDb() {
-  return {
+  const db = {
     execute: vi.fn().mockResolvedValue({ rowsAffected: 1 }),
     select: vi.fn().mockResolvedValue([]),
     close: vi.fn().mockResolvedValue(undefined),
   } as unknown as import('@tauri-apps/plugin-sql').default;
+  // Single-writer architecture: the receipt tx runs on the write gate's
+  // writer, not the pooled handle. Registering the same mock as the writer
+  // keeps the per-test assertion surface unified (BEGIN/COMMIT and tx
+  // statements all land on this mock).
+  __resetWriteGateForTesting();
+  setWriter(db as unknown as SqlSurface);
+  return db;
 }
 
 const terminalState = {
@@ -106,6 +115,66 @@ describe('receiptService — fiscal-event engine wiring', () => {
         created_at: '2026-05-20T10:00:00Z',
       }),
     } as never);
+  });
+
+  it('opens the receipt write with BEGIN IMMEDIATE (avoids SQLITE_BUSY_SNAPSHOT 517 under concurrent sync writes)', async () => {
+    const db = makeMockDb();
+
+    await createOfflineReceipt(db, {
+      tenantId: '11111111-1111-4111-8111-111111111111',
+      companyId: '22222222-2222-4222-8222-222222222222',
+      terminalId: terminalState.terminal_id,
+      operatorId: '33333333-3333-4333-8333-333333333333',
+      operatorName: 'Cashier',
+      shiftId: '55555555-5555-4555-8555-555555555555',
+      cartItems: [makeCartItem({ tax_rate: '0.00' })],
+      currency: 'EUR',
+      seller,
+      paymentMethodId: 'pm-1',
+      paymentRepositoryId: 'repo-1',
+      tenderedAmount: 10,
+      idempotencyKey: '66666666-6666-4666-8666-666666666666',
+      payments: [{ methodCode: 'CASH', amount: '10.00' }],
+    });
+
+    const beginStmt = vi
+      .mocked(db.execute)
+      .mock.calls.map((c) => String(c[0]))
+      .find((s) => /^BEGIN/i.test(s));
+    // Deferred BEGIN reads a snapshot then upgrades to write; a concurrent sync
+    // write invalidates that snapshot → SQLite 517 BUSY_SNAPSHOT → "Échec du
+    // paiement". IMMEDIATE takes the write lock up front (also serialising the
+    // fiscal-chain read-modify-write).
+    expect(beginStmt).toBe('BEGIN IMMEDIATE TRANSACTION');
+  });
+
+  it('ROLLBACKs (never COMMITs) and rethrows when a tx-body write fails with a Tauri STRING error', async () => {
+    const db = makeMockDb();
+    vi.mocked(insertOfflineReceipt).mockRejectedValueOnce(
+      'error returned from database: (code: 5) database is locked',
+    );
+
+    await expect(createOfflineReceipt(db, {
+      tenantId: '11111111-1111-4111-8111-111111111111',
+      companyId: '22222222-2222-4222-8222-222222222222',
+      terminalId: terminalState.terminal_id,
+      operatorId: '33333333-3333-4333-8333-333333333333',
+      operatorName: 'Cashier',
+      shiftId: '55555555-5555-4555-8555-555555555555',
+      cartItems: [makeCartItem({ tax_rate: '0.00' })],
+      currency: 'EUR',
+      seller,
+      paymentMethodId: 'pm-1',
+      paymentRepositoryId: 'repo-1',
+      tenderedAmount: 10,
+      idempotencyKey: '66666666-6666-4666-8666-666666666666',
+      payments: [{ methodCode: 'CASH', amount: '10.00' }],
+    })).rejects.toMatch('database is locked');
+
+    const statements = vi.mocked(db.execute).mock.calls.map((c) => String(c[0]));
+    expect(statements).toContain('ROLLBACK');
+    expect(statements).not.toContain('COMMIT');
+    expect(incrementPendingCountSpy).not.toHaveBeenCalled();
   });
 
   it('appends SALE_RECEIPT through FiscalEventEngine and mirrors canonical bytes', async () => {

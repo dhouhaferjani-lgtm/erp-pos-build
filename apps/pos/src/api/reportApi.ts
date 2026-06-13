@@ -2,6 +2,7 @@ import Big from 'big.js';
 import { apiGet, apiPost } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
 import { queryAll } from '@/lib/db';
+import { toSqliteUtc } from '@/lib/db/sqliteTime';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bcformat } from '@/lib/decimal';
 import { appendXReport } from '@/lib/fiscal/zSessionAuthoring';
@@ -370,12 +371,15 @@ async function generateLocalXReport(
   const shift = useTerminalStore.getState().shift;
   const shiftOpenedAt = shift?.opened_at ?? new Date(0).toISOString();
 
+  // created_at is `datetime('now')` format (space separator, UTC) — the ISO
+  // shift timestamp must be normalized or the TEXT comparison excludes every
+  // same-day receipt (' ' < 'T').
   const receipts = await queryAll<OfflineReceipt>(
     db,
     `SELECT * FROM offline_receipts
      WHERE terminal_id = $1 AND created_at >= $2
      ORDER BY hash_sequence ASC`,
-    [terminalId, shiftOpenedAt],
+    [terminalId, toSqliteUtc(shiftOpenedAt)],
   );
 
   // Build payment method lookup
@@ -520,7 +524,7 @@ async function fetchLocalShiftReceipts(): Promise<ShiftReceipt[]> {
     `SELECT * FROM offline_receipts
      WHERE terminal_id = $1 AND created_at >= $2
      ORDER BY created_at DESC`,
-    [terminal.id, shiftOpenedAt],
+    [terminal.id, toSqliteUtc(shiftOpenedAt)],
   );
 
   // Build payment method lookup for labels

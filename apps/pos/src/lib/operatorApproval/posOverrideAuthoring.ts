@@ -1,5 +1,6 @@
 import { getDatabase } from '@/lib/db';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
+import { withWriteTransaction } from '@/lib/db/writeGate';
 import type { FiscalEventAppendResult } from '@/lib/fiscal/FiscalEventEngine';
 import type { ApprovalScope } from './approvalVerifier';
 
@@ -74,9 +75,10 @@ export async function authorPosOverride(input: AuthorPosOverrideInput): Promise<
   const db = await getDatabase(input.context.companyId);
   const engine = await getFiscalEventEngine(input.context.companyId, db);
 
-  await db.execute('BEGIN TRANSACTION');
-  try {
-    const approvalEvent = await engine.append(db, {
+  // Single-writer architecture: both appends run as ONE exclusive write-gate
+  // transaction on the single connection (fiscal lane) — see writeGate.ts.
+  return withWriteTransaction('fiscal', async (tx) => {
+    const approvalEvent = await engine.append(tx, {
       event_type: 'OPERATOR_APPROVAL_GRANTED',
       tenant_id: input.context.tenantId,
       company_id: input.context.companyId,
@@ -111,7 +113,7 @@ export async function authorPosOverride(input: AuthorPosOverrideInput): Promise<
     });
 
     const overrideEventType = overrideEventTypeFor(input.approvalScope);
-    const overrideEvent = await engine.append(db, {
+    const overrideEvent = await engine.append(tx, {
       event_type: overrideEventType,
       tenant_id: input.context.tenantId,
       company_id: input.context.companyId,
@@ -143,8 +145,6 @@ export async function authorPosOverride(input: AuthorPosOverrideInput): Promise<
       source_event_id: `${input.targetReferenceId}:${input.approvalScope}`,
     });
 
-    await db.execute('COMMIT');
-
     return {
       approval_id: approvalId,
       approval_event_id: approvalEvent.id,
@@ -154,8 +154,5 @@ export async function authorPosOverride(input: AuthorPosOverrideInput): Promise<
       supervisor_user_id: input.supervisor.id,
       target_reference_id: input.targetReferenceId,
     };
-  } catch (error) {
-    await db.execute('ROLLBACK');
-    throw error;
-  }
+  });
 }

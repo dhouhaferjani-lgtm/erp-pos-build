@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { setWriter, __resetWriteGateForTesting } from '@/lib/db/writeGate';
+import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
 
 vi.mock('@/lib/fiscal/instance', () => ({
   getFiscalEventEngine: vi.fn(),
@@ -26,11 +28,16 @@ import {
 } from '../accountChargeService';
 
 function makeMockDb() {
-  return {
+  const db = {
     execute: vi.fn().mockResolvedValue({ rowsAffected: 1 }),
     select: vi.fn().mockResolvedValue([]),
     close: vi.fn().mockResolvedValue(undefined),
   } as unknown as import('@tauri-apps/plugin-sql').default;
+  // Single-writer architecture: register the same mock as the gate writer so
+  // BEGIN/COMMIT + tx statements land on this mock's assertion surface.
+  __resetWriteGateForTesting();
+  setWriter(db as unknown as SqlSurface);
+  return db;
 }
 
 const appendResult = {
@@ -186,7 +193,7 @@ describe('accountChargeService', () => {
     expect(result.printable.title).toBe('ACCOUNT CHARGE RECEIPT');
     expect(result.printable.amountChargedToAccount).toBe('119.000');
     expect(result.payload.credit_decision.credit_available_after).toBe('81.000');
-    expect(db.execute).toHaveBeenNthCalledWith(1, 'BEGIN TRANSACTION');
+    expect(db.execute).toHaveBeenNthCalledWith(1, 'BEGIN IMMEDIATE TRANSACTION');
     expect(db.execute).toHaveBeenNthCalledWith(2, 'COMMIT');
     expect(incrementPendingCountSpy).toHaveBeenCalledOnce();
     expect(triggerSyncSpy).toHaveBeenCalledOnce();
@@ -258,7 +265,7 @@ describe('accountChargeService', () => {
       },
     }));
 
-    expect(db.execute).toHaveBeenNthCalledWith(1, 'BEGIN TRANSACTION');
+    expect(db.execute).toHaveBeenNthCalledWith(1, 'BEGIN IMMEDIATE TRANSACTION');
     expect(db.execute).toHaveBeenNthCalledWith(2, 'COMMIT');
     expect(append).toHaveBeenCalledTimes(3);
     expect(append.mock.calls.map(([, request]) => request.event_type)).toEqual([

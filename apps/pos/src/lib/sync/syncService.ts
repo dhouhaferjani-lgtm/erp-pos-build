@@ -1,5 +1,5 @@
 import type Database from '@tauri-apps/plugin-sql';
-import { apiGet, apiPost, ApiRequestError } from '@/lib/api';
+import { apiGet, apiPost, apiPostRaw, ApiRequestError } from '@/lib/api';
 import { parseMenuCompositeId } from '@/lib/menu/compositeId';
 import {
   upsertProducts,
@@ -74,6 +74,7 @@ import {
 } from '@/lib/db/repositories/cashDrawerRepository';
 import { logSyncOperation, getSyncMetadata, setSyncMetadata, cleanupOldSyncLogs } from '@/lib/db/repositories/syncLogRepository';
 import { coerceSyncError } from '@/lib/sync/coerceSyncError';
+import { withWriteTransaction } from '@/lib/db/writeGate';
 import {
   upsertVouchers,
   upsertVoucherLedgerEntries,
@@ -243,7 +244,12 @@ export async function pushOfflineReceipts(db: Database): Promise<{
     try {
       await updateFiscalEventSyncStatus(db, event.id, 'syncing');
 
-      const response = await apiPost<FiscalEventSyncBatchResponse>(
+      // RAW post — the controller returns a TOP-LEVEL { results } with no
+      // { data, meta } envelope; apiPost's unwrap yields undefined and the
+      // historical `response.results` crash (receipts sealed but never
+      // synced). Error responses keep the { error } shape ApiRequestError
+      // parses, so only the success path needs the raw body.
+      const response = await apiPostRaw<FiscalEventSyncBatchResponse>(
         '/pos/sync/fiscal-events',
         { envelopes: [fiscalEventToWireEnvelope(event)] },
         { timeoutMs: 30_000 },
@@ -938,7 +944,13 @@ export async function pullLocationStock(
   } else {
     await upsertStockRows(db, allStock);
   }
-  await replaceIncoming(db, incoming);
+  // `replaceIncoming` zeroes ALL incoming columns then re-upserts — atomic on
+  // the single writer so concurrent stock reads never observe the zeroed
+  // window. NOTE: pass `tx` (the raw writer), never the gated wrapper — a
+  // gated execute inside a gate job would deadlock the queue.
+  await withWriteTransaction('sync', (tx) =>
+    replaceIncoming(tx as unknown as Database, incoming),
+  );
 
   if (asOf !== null) {
     await setSyncMetadata(db, STOCK_CURSOR_KEY, asOf);

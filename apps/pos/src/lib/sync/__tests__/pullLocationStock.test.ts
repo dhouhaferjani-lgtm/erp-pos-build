@@ -19,6 +19,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { setWriter, __resetWriteGateForTesting } from '@/lib/db/writeGate';
 import type Database from '@tauri-apps/plugin-sql';
 
 const terminalState = vi.hoisted(() => ({
@@ -165,6 +166,13 @@ beforeEach(() => {
   vi.mocked(getSyncMetadata).mockResolvedValue(null);
   terminalState.terminal = { id: 'term-1' };
   setStandardTenant();
+  // replaceIncoming now runs inside a write-gate transaction on the single
+  // writer — register a stub writer for the BEGIN/COMMIT statements.
+  __resetWriteGateForTesting();
+  setWriter({
+    execute: async () => ({ rowsAffected: 0 }),
+    select: async () => [] as never,
+  });
 });
 
 describe('pullLocationStock — cursor semantics', () => {
@@ -241,13 +249,13 @@ describe('pullLocationStock — incoming snapshot', () => {
       makePage({ stock: [stockRow('p1')], incoming: [incomingRow('p1')] }),
     );
     await pullLocationStock(db, 'full');
-    expect(replaceIncoming).toHaveBeenCalledWith(db, [incomingRow('p1')]);
+    expect(replaceIncoming).toHaveBeenCalledWith(expect.anything(), [incomingRow('p1')]);
 
     vi.mocked(fetchLocationStock).mockResolvedValueOnce(
       makePage({ stock: [stockRow('p1')], incoming: [] }),
     );
     await pullLocationStock(db, 'full');
-    expect(replaceIncoming).toHaveBeenLastCalledWith(db, []);
+    expect(replaceIncoming).toHaveBeenLastCalledWith(expect.anything(), []);
     expect(replaceIncoming).toHaveBeenCalledTimes(2);
   });
 });
@@ -414,7 +422,7 @@ describe('pullLocationStock — pagination', () => {
 
     // Single replaceIncoming sourced from page 1 (complete on page 1).
     expect(replaceIncoming).toHaveBeenCalledTimes(1);
-    expect(replaceIncoming).toHaveBeenCalledWith(db, [incomingRow('p1')]);
+    expect(replaceIncoming).toHaveBeenCalledWith(expect.anything(), [incomingRow('p1')]);
 
     // Cursor written ONCE, from PAGE 1's as_of.
     const cursorWrites = vi

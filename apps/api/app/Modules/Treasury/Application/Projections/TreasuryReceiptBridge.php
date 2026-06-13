@@ -429,7 +429,10 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         // so a missing user would have surfaced before reaching this
         // point (the POS-core projector that wrote the receipt row would
         // have thrown on the FK).
-        $this->generalLedgerService->postEntry($journalEntry, $receipt->cashier);
+        // Pass the receipt currency explicitly: this projector runs on a
+        // Horizon worker where no CompanyContext is bound, and the GL
+        // service's no-arg scale resolution fails loud there (F-RES-1).
+        $this->generalLedgerService->postEntry($journalEntry, $receipt->cashier, $receipt->currency);
 
         // Link the journal entry back onto the Payment for downstream
         // navigation. Single UPDATE — no immutability triggers exist on

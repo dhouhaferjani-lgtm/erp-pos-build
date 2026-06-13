@@ -112,6 +112,7 @@ vi.mock('@/lib/fiscal/instance', () => ({
 vi.mock('@/lib/api', () => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(),
+  apiPostRaw: vi.fn(),
 }));
 
 vi.mock('@/api/paymentApi', () => ({
@@ -130,7 +131,8 @@ vi.mock('@/api/receiptApi', () => ({
 // ─── Lazy imports (after mocks) ────────────────────────────────────────────────
 
 import { pushOfflineReceipts } from '@/lib/sync/syncService';
-import { apiPost } from '@/lib/api';
+import { apiPostRaw } from '@/lib/api';
+import { setWriter, __resetWriteGateForTesting } from '@/lib/db/writeGate';
 import {
   insertOfflineReceipt,
   updateReceiptStatus,
@@ -281,6 +283,12 @@ describe('offline-first POS lifecycle (integration)', () => {
     __resetTerminalLocksForTesting();
     usePaymentStore.getState().reset();
     seedCommonStores();
+    // Single-writer architecture: the checkout tx runs on the gate's writer.
+    __resetWriteGateForTesting();
+    setWriter({
+      execute: vi.fn().mockResolvedValue({ rowsAffected: 1, lastInsertId: 0 }),
+      select: vi.fn().mockResolvedValue([]),
+    } as never);
   });
 
   // ── Case 1 ──────────────────────────────────────────────────────────────────
@@ -343,7 +351,7 @@ describe('offline-first POS lifecycle (integration)', () => {
     });
 
     vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([pendingEvent]);
-    vi.mocked(apiPost).mockResolvedValueOnce({
+    vi.mocked(apiPostRaw).mockResolvedValueOnce({
       results: [{
         stored: true,
         fiscal_event_id: 'fiscal-event-sync-1',
@@ -387,7 +395,7 @@ describe('offline-first POS lifecycle (integration)', () => {
     });
 
     vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([pendingEvent]);
-    vi.mocked(apiPost).mockResolvedValueOnce({
+    vi.mocked(apiPostRaw).mockResolvedValueOnce({
       results: [{
         stored: false,
         fiscal_event_id: 'fiscal-event-chain-break',

@@ -251,4 +251,32 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // Single-writer architecture guard (2026-06-12 design spec): SQLite
+    // transactions MUST go through writeGate's withWriteTransaction on the
+    // Rust writer connection. A BEGIN/COMMIT/ROLLBACK issued through the
+    // pooled tauri-plugin-sql handle splits across physical connections
+    // (self-deadlock + transaction poisoning) — the root cause of the
+    // "database is locked" checkout failure. Exempt: writeGate.ts (owns the
+    // statements), migrations.ts (runs on the writer during the boot gate
+    // job), and tests (adapters/harnesses).
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/lib/db/writeGate.ts',
+      'src/lib/db/migrations.ts',
+      '**/*.test.{ts,tsx}',
+      'src/**/__tests__/**',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "CallExpression[callee.property.name='execute'] > Literal[value=/^\\s*(BEGIN|COMMIT|ROLLBACK)/i]",
+          message:
+            'Never issue BEGIN/COMMIT/ROLLBACK through a pooled DB handle — the tauri-plugin-sql pool splits a transaction across physical connections (self-deadlock + tx poisoning). Use withWriteTransaction() from @/lib/db/writeGate.',
+        },
+      ],
+    },
+  },
 );

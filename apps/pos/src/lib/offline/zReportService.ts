@@ -9,6 +9,7 @@
 import type Database from '@tauri-apps/plugin-sql';
 import Big from 'big.js';
 import { queryAll } from '@/lib/db';
+import { toSqliteUtc } from '@/lib/db/sqliteTime';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bcabs, bcsub, bcformat, bccomp } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
@@ -44,6 +45,7 @@ import {
   type CashCountThresholds,
 } from '@/lib/offline/cashCountValidation';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
+import { withWriteTransaction } from '@/lib/db/writeGate';
 import {
   appendZSessionCloseAndZReport,
   type AuthorZSessionCloseInput,
@@ -167,7 +169,10 @@ export async function generateZReport(
     `SELECT * FROM offline_receipts
      WHERE terminal_id = $1 AND created_at >= $2 AND is_training = 0
      ORDER BY hash_sequence ASC`,
-    [terminalId, shiftOpenedAt]
+    // created_at is `datetime('now')` format (space separator, UTC); the ISO
+    // shift timestamp must be normalized or the TEXT comparison excludes
+    // every same-day receipt (' ' < 'T').
+    [terminalId, toSqliteUtc(shiftOpenedAt)]
   );
 
   // 3b. Phase 4 (fiscal audit B2) — refunds settled AT THIS terminal during
@@ -421,14 +426,16 @@ export async function generateZReport(
   }
 
   // 12. Persist atomically: insert Z-report + (optionally) cash count rows + advance Z-chain + update grand totals
-  await db.execute('BEGIN TRANSACTION');
-  try {
-    await insertZReport(db, zReport);
+  // Single-writer architecture: the whole block is ONE exclusive write-gate
+  // job on the single connection (fiscal lane) — see writeGate.ts.
+  await withWriteTransaction('fiscal', async (tx) => {
+    const txDb = tx as unknown as Database;
+    await insertZReport(txDb, zReport);
     if (zReportCountRows !== null && zReportCountRows.length > 0) {
-      await insertZReportCounts(db, zReportCountRows);
+      await insertZReportCounts(txDb, zReportCountRows);
     }
-    await advanceZChain(db, terminalId, fiscalHash, newHashSequence, newZNumber);
-    await updateGrandTotals(db, terminalId, grossSalesStr, taxStr, refundsStr, salesCount);
+    await advanceZChain(txDb, terminalId, fiscalHash, newHashSequence, newZNumber);
+    await updateGrandTotals(txDb, terminalId, grossSalesStr, taxStr, refundsStr, salesCount);
 
     const closeInput = buildFiscalCloseInput({
       companyId,
@@ -451,14 +458,9 @@ export async function generateZReport(
     });
     if (closeInput !== null && companyId !== null) {
       const engine = await getFiscalEventEngine(companyId, db);
-      await appendZSessionCloseAndZReport(db, engine, closeInput);
+      await appendZSessionCloseAndZReport(tx, engine, closeInput);
     }
-
-    await db.execute('COMMIT');
-  } catch (error) {
-    await db.execute('ROLLBACK');
-    throw error;
-  }
+  });
 
   return zReport;
 }

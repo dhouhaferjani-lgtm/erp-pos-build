@@ -248,7 +248,7 @@ describe('paymentStore branch seller tax source', () => {
     useTerminalStore.setState({
       terminal: terminalWithBranchSeller,
       shift: {
-        id: 'shift-1',
+        id: '019eb000-0000-7000-8000-000000000001',
         terminal_id: 'term-1',
         shift_number: 1,
         status: 'OPEN',

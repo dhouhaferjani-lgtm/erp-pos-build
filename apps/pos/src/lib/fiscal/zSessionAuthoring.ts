@@ -8,6 +8,7 @@ import type {
   SqlSurface,
 } from '@/lib/fiscal/FiscalEventEngine';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
+import { withWriteTransaction } from '@/lib/db/writeGate';
 import { bcformat } from '@/lib/decimal';
 import { lockTerminal } from '@/lib/offline/terminalMutex';
 
@@ -487,7 +488,7 @@ export function buildZReportPayload(
 }
 
 export async function authorZSessionOpenWithOpeningFloatOnDb(
-  db: Database | SqlSurface,
+  _db: Database | SqlSurface,
   engine: ZSessionFiscalEventEngine,
   input: AuthorZSessionOpenInput,
 ): Promise<AuthorZSessionOpenResult> {
@@ -495,9 +496,12 @@ export async function authorZSessionOpenWithOpeningFloatOnDb(
   const movementId = input.openingFloatMovementId ?? crypto.randomUUID();
   const chainContext = zChainContext(input.isTraining);
 
-  await db.execute('BEGIN TRANSACTION');
-  try {
-    const sessionOpenEvent = await engine.append(db, {
+  // Single-writer architecture: the two appends run as ONE exclusive
+  // write-gate transaction on the single connection (fiscal lane). The `db`
+  // parameter remains for sibling read helpers; writes must not issue BEGIN
+  // through the pooled plugin (see writeGate.ts).
+  const result = await withWriteTransaction('fiscal', async (tx) => {
+    const sessionOpenEvent = await engine.append(tx, {
       event_type: 'SESSION_OPEN',
       tenant_id: input.tenantId,
       company_id: input.companyId,
@@ -511,7 +515,7 @@ export async function authorZSessionOpenWithOpeningFloatOnDb(
       source_event_id: input.sessionId,
     });
 
-    const openingFloatEvent = await engine.append(db, {
+    const openingFloatEvent = await engine.append(tx, {
       event_type: 'OPENING_FLOAT',
       tenant_id: input.tenantId,
       company_id: input.companyId,
@@ -526,17 +530,14 @@ export async function authorZSessionOpenWithOpeningFloatOnDb(
       source_event_id: movementId,
     });
 
-    await db.execute('COMMIT');
+    return { sessionOpenEvent, openingFloatEvent };
+  });
 
-    return {
-      sessionOpenEvent,
-      openingFloatEvent,
-      openingFloatMovementId: movementId,
-    };
-  } catch (error) {
-    await db.execute('ROLLBACK');
-    throw error;
-  }
+  return {
+    sessionOpenEvent: result.sessionOpenEvent,
+    openingFloatEvent: result.openingFloatEvent,
+    openingFloatMovementId: movementId,
+  };
 }
 
 export async function appendXReport(

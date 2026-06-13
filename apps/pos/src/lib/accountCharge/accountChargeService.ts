@@ -2,6 +2,7 @@ import type Database from '@tauri-apps/plugin-sql';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bccomp, bcformat, bcsub } from '@/lib/decimal';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
+import { withWriteTransaction } from '@/lib/db/writeGate';
 import type { FiscalEventAppendResult } from '@/lib/fiscal/FiscalEventEngine';
 import type {
   AccountChargeOverrideEvidence,
@@ -435,6 +436,9 @@ export async function authorAccountCharge(
 ): Promise<AccountChargeResult> {
   assertNoPaymentLines(input);
   assertCustomerSelected(input.customer);
+  // Captured post-assertion: TS property narrowing does not cross the
+  // write-gate closure boundary below.
+  const customer = input.customer;
 
   const accountChargeUuid = input.accountChargeUuid ?? crypto.randomUUID();
   const eventTimeDevice = input.eventTimeDevice ?? new Date();
@@ -457,16 +461,16 @@ export async function authorAccountCharge(
       businessDate,
     });
 
-  let appendResult: FiscalEventAppendResult | null = null;
-  let payload: AccountChargePayload | null = null;
-  await db.execute('BEGIN TRANSACTION');
-  try {
-    const engine = await getFiscalEventEngine(input.companyId, db);
+  // Single-writer architecture: the approval/override + charge appends run
+  // as ONE exclusive write-gate transaction on the single connection
+  // (fiscal lane) — see writeGate.ts.
+  const engine = await getFiscalEventEngine(input.companyId, db);
+  const { appendResult, payload } = await withWriteTransaction('fiscal', async (tx) => {
     let overrideEvidence = input.overrideEvidence ?? null;
     if (hasOverrideApproval && input.overrideApproval !== null && input.overrideApproval !== undefined) {
-      const policyVersion = requirePolicyVersion(input.customer);
+      const policyVersion = requirePolicyVersion(customer);
       const target = buildOverrideTarget({
-        customer: input.customer,
+        customer,
         policyVersion,
         total,
       });
@@ -489,7 +493,7 @@ export async function authorAccountCharge(
         terminal_id: input.terminalId,
         training_flag: input.isTraining === true,
       };
-      const approvalEvent = await engine.append(db, {
+      const approvalEvent = await engine.append(tx, {
         event_type: 'OPERATOR_APPROVAL_GRANTED',
         tenant_id: input.tenantId,
         company_id: input.companyId,
@@ -522,7 +526,7 @@ export async function authorAccountCharge(
         terminal_id: input.terminalId,
         training_flag: input.isTraining === true,
       };
-      const overrideEvent = await engine.append(db, {
+      const overrideEvent = await engine.append(tx, {
         event_type: overrideEventType,
         tenant_id: input.tenantId,
         company_id: input.companyId,
@@ -541,20 +545,20 @@ export async function authorAccountCharge(
         approval_scope: input.overrideApproval.approvalScope,
         override_event_id: overrideEvent.id,
         policy_version: policyVersion,
-        target_account_status: input.customer.account_status,
+        target_account_status: customer.account_status,
         target_amount: total,
-        target_customer_id: input.customer.id,
+        target_customer_id: customer.id,
       };
     }
 
-    payload = prebuiltPayload ?? buildAccountChargePayload({
+    const builtPayload = prebuiltPayload ?? buildAccountChargePayload({
       ...input,
       accountChargeUuid,
       businessDate,
       eventTimeDevice,
       overrideEvidence,
     });
-    appendResult = await engine.append(db, {
+    const appended = await engine.append(tx, {
       event_type: 'ACCOUNT_CHARGE',
       tenant_id: input.tenantId,
       company_id: input.companyId,
@@ -562,23 +566,13 @@ export async function authorAccountCharge(
       operator_id: input.operatorId,
       event_time_device: isoSecondsUtc(eventTimeDevice),
       business_date: businessDate,
-      payload,
+      payload: builtPayload,
       reference_event_id: overrideEvidence?.override_event_id,
       source_event_class: 'account_charge',
       source_event_id: accountChargeUuid,
     });
-    await db.execute('COMMIT');
-  } catch (error) {
-    await db.execute('ROLLBACK');
-    throw error;
-  }
-
-  if (appendResult === null) {
-    throw new Error('Fiscal event append did not return a result.');
-  }
-  if (payload === null) {
-    throw new Error('Account charge payload was not built.');
-  }
+    return { appendResult: appended, payload: builtPayload };
+  });
 
   useSyncStore.getState().incrementPendingCount();
   void useSyncStore.getState().triggerSync();

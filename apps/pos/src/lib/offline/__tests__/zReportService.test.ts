@@ -7,6 +7,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { setWriter, __resetWriteGateForTesting } from '@/lib/db/writeGate';
+import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
 
 // ─── Hoist mocks before any imports ──────────────────────────────────────────
 
@@ -242,9 +244,27 @@ describe('generateZReport', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     db = makeMockDb();
+    __resetWriteGateForTesting();
+    setWriter(db as unknown as SqlSurface);
   });
 
   describe('without cash counts (backwards-compatible)', () => {
+    it('normalizes an ISO shiftOpenedAt to SQLite UTC format in the created_at fallback query', async () => {
+      // No anchor row → generateZReport falls back to the created_at window.
+      // offline_receipts.created_at is `datetime('now')` format (space
+      // separator); binding the raw ISO string (T separator) would
+      // lexicographically exclude every same-day receipt.
+      mockQueryAll(db, makeReceiptRows());
+
+      await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      const receiptsCall = vi.mocked(queryAll).mock.calls.find(
+        ([, sql]) => (sql as string).includes('FROM offline_receipts'),
+      );
+      expect(receiptsCall).toBeDefined();
+      expect((receiptsCall![2] as unknown[])[1]).toBe('2026-04-23 08:00:00');
+    });
+
     it('generates a Z-report with schema_version absent (or 1) when no cashCounts provided', async () => {
       mockQueryAll(db, makeReceiptRows());
 
@@ -697,7 +717,8 @@ describe('generateZReport', () => {
       );
 
       const executeCalls = vi.mocked(db.execute).mock.calls.map((c) => c[0]);
-      expect(executeCalls).toContain('BEGIN TRANSACTION');
+      // Single-writer gate opens IMMEDIATE (takes the write lock up front).
+      expect(executeCalls).toContain('BEGIN IMMEDIATE TRANSACTION');
       expect(executeCalls).toContain('COMMIT');
       expect(insertZReport).toHaveBeenCalledOnce();
       expect(insertZReportCounts).toHaveBeenCalledOnce();

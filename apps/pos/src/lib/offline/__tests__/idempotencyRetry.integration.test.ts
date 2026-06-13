@@ -26,6 +26,8 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
+import { setWriter, __resetWriteGateForTesting } from '@/lib/db/writeGate';
+import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
 import { migrations } from '@/lib/db/migrations';
 import { createOfflineReceipt } from '@/lib/offline/receiptService';
 import { makeCartItem } from '@/test/helpers';
@@ -103,6 +105,8 @@ d('T0.2 integration: idempotency-key retry against real SQLite', () => {
     const { __resetFiscalEventEngineForTesting } = await import('@/lib/fiscal/instance');
     __resetFiscalEventEngineForTesting();
     adapter = new SqliteTestAdapter();
+    __resetWriteGateForTesting();
+    setWriter(adapter as unknown as SqlSurface);
     await runAllMigrations(adapter);
     await seedTerminalState(adapter);
   });

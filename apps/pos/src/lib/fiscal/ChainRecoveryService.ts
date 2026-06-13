@@ -68,6 +68,7 @@ import {
   type FiscalEventAppendResult,
   type SqlSurface,
 } from './FiscalEventEngine';
+import { withWriteTransaction } from '@/lib/db/writeGate';
 
 /**
  * Caller-supplied input describing the break + the restart authorization.
@@ -174,16 +175,17 @@ export class ChainRecoveryService {
    *         is missing, not an object, or an empty object.
    */
   async recordBreakAndRestart(
-    tx: Database | SqlSurface,
+    _tx: Database | SqlSurface,
     request: ChainBreakAndRestartRequest,
   ): Promise<ChainRecoveryResult> {
     assertOffendingReference(request.offending_reference);
 
-    const sql = tx as unknown as SqlSurface;
-
-    await sql.execute('BEGIN');
-    try {
-      const breakResult = await this.engine.append(tx, {
+    // Single-writer architecture: the two appends + the degraded flip run as
+    // ONE exclusive write-gate transaction on the single connection (fiscal
+    // lane). The `tx` parameter remains the caller's read handle; writes
+    // must not issue BEGIN through the pooled plugin (see writeGate.ts).
+    return withWriteTransaction('fiscal', async (txw) => {
+      const breakResult = await this.engine.append(txw, {
         event_type: 'CHAIN_BREAK_DETECTED',
         tenant_id: request.tenant_id,
         company_id: request.company_id,
@@ -194,7 +196,7 @@ export class ChainRecoveryService {
         payload: buildBreakPayload(request),
       });
 
-      const restartResult = await this.engine.append(tx, {
+      const restartResult = await this.engine.append(txw, {
         event_type: 'CHAIN_RESTART',
         tenant_id: request.tenant_id,
         company_id: request.company_id,
@@ -209,24 +211,15 @@ export class ChainRecoveryService {
       // Scoped per-(tenant, terminal) so a tenant-id collision on
       // terminal_id (defensive — terminal_id is PK) cannot
       // cross-pollute.
-      await sql.execute(
+      await txw.execute(
         `UPDATE terminal_state
             SET fiscal_chain_status = 'degraded'
           WHERE terminal_id = $1`,
         [request.terminal_id],
       );
 
-      await sql.execute('COMMIT');
       return { break: breakResult, restart: restartResult };
-    } catch (error) {
-      try {
-        await sql.execute('ROLLBACK');
-      } catch {
-        // Best-effort rollback. The outer error is the real signal;
-        // a rollback-on-rollback failure is logged via the throw.
-      }
-      throw error;
-    }
+    });
   }
 }
 

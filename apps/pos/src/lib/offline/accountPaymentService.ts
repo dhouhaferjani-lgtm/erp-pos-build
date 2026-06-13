@@ -2,7 +2,7 @@ import type Database from '@tauri-apps/plugin-sql';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bccomp, bcformat, bcsub } from '@/lib/decimal';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
-import type { FiscalEventAppendResult } from '@/lib/fiscal/FiscalEventEngine';
+import { withWriteTransaction } from '@/lib/db/writeGate';
 import type {
   AccountPaymentAddress,
   AccountPaymentPayload,
@@ -287,11 +287,11 @@ export async function createAccountPayment(
     businessDate,
   });
 
-  let appendResult: FiscalEventAppendResult | null = null;
-  await db.execute('BEGIN TRANSACTION');
-  try {
-    const engine = await getFiscalEventEngine(input.companyId, db);
-    appendResult = await engine.append(db, {
+  // Single-writer architecture: the append + drawer mirror run as ONE
+  // exclusive write-gate transaction on the single connection (fiscal lane).
+  const engine = await getFiscalEventEngine(input.companyId, db);
+  const appendResult = await withWriteTransaction('fiscal', async (tx) => {
+    const appended = await engine.append(tx, {
       event_type: 'ACCOUNT_PAYMENT',
       tenant_id: input.tenantId,
       company_id: input.companyId,
@@ -310,7 +310,7 @@ export async function createAccountPayment(
     // is the CASH-only positive drawer impact; card/voucher = '0'.
     if (input.isTraining !== true) {
       const mirrorAmount = bcformat(input.payment.amount, getCurrencyDecimals(input.currency));
-      await insertLocalAccountPaymentRecord(db, {
+      await insertLocalAccountPaymentRecord(tx as unknown as Database, {
         id: accountPaymentUuid,
         shift_id: input.shiftId,
         terminal_id: input.terminalId,
@@ -321,15 +321,8 @@ export async function createAccountPayment(
       });
     }
 
-    await db.execute('COMMIT');
-  } catch (error) {
-    await db.execute('ROLLBACK');
-    throw error;
-  }
-
-  if (appendResult === null) {
-    throw new Error('Fiscal event append did not return a result.');
-  }
+    return appended;
+  });
 
   useSyncStore.getState().incrementPendingCount();
   void useSyncStore.getState().triggerSync();

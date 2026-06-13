@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { setWriter, __resetWriteGateForTesting } from '@/lib/db/writeGate';
+import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
 
 vi.mock('@/lib/fiscal/instance', () => ({
   getFiscalEventEngine: vi.fn(),
@@ -22,11 +24,16 @@ import {
 } from '../accountChargeService';
 
 function makeMockDb() {
-  return {
+  const db = {
     execute: vi.fn().mockResolvedValue({ rowsAffected: 1 }),
     select: vi.fn().mockResolvedValue([]),
     close: vi.fn().mockResolvedValue(undefined),
   } as unknown as import('@tauri-apps/plugin-sql').default;
+  // Single-writer architecture: register the same mock as the gate writer so
+  // BEGIN/COMMIT + tx statements land on this mock's assertion surface.
+  __resetWriteGateForTesting();
+  setWriter(db as unknown as SqlSurface);
+  return db;
 }
 
 const appendResult = {
