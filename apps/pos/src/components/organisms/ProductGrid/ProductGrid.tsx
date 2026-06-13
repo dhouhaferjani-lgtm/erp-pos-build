@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { cn } from '@/lib/utils';
 import { Search, X, Package, LayoutGrid, Image, TrendingUp } from 'lucide-react';
+import { tokens } from '@/lib/designTokens';
 import { ProductCard } from '@/components/molecules/ProductCard';
 import type { POSProduct } from '@/types/product';
 import type { GridLocationStockMap } from '@/lib/stock/gridStock';
@@ -105,26 +106,61 @@ export function ProductGrid({
     localStorage.setItem(DISPLAY_MODE_STORAGE_KEY, mode);
   }, []);
 
-  // Products sorted by position/name or by most-sold
+  /**
+   * Sellable-first guard. Out-of-stock items (`stock_quantity <= 0`) must
+   * never sort above a sellable one, regardless of the active sort mode
+   * (incl. "most sold"). Returns a negative number when `a` should come
+   * first, positive when `b` should, or 0 when both share the same
+   * sellable bucket (delegating to the per-mode comparator). Uses the
+   * location-stock slice when present (Task 12 parity with `inStockOnly`);
+   * `null` slices (services) are always treated as sellable.
+   */
+  const isOutOfStock = useCallback(
+    (p: POSProduct): boolean => {
+      const slice = locationStock[p.id];
+      if (slice === null) return false;
+      if (slice !== undefined) return bccomp(slice.available, '0') <= 0;
+      return p.stock_quantity <= 0;
+    },
+    [locationStock],
+  );
+
+  // Products sorted by position/name or by most-sold, with out-of-stock
+  // items pushed to the end as a stable secondary sort.
   const sortedProducts = useMemo(() => {
     const base = [...products];
+    const sellableFirst = (
+      a: POSProduct,
+      b: POSProduct,
+      tiebreak: () => number,
+    ): number => {
+      const aOut = isOutOfStock(a);
+      const bOut = isOutOfStock(b);
+      if (aOut !== bOut) return aOut ? 1 : -1;
+      return tiebreak();
+    };
+
     if (sortMode === 'mostSold') {
-      return base.sort((a, b) => {
-        const ca = salesCounts.get(a.id) ?? 0;
-        const cb = salesCounts.get(b.id) ?? 0;
-        if (cb !== ca) return cb - ca;
-        return a.name.localeCompare(b.name);
-      });
+      return base.sort((a, b) =>
+        sellableFirst(a, b, () => {
+          const ca = salesCounts.get(a.id) ?? 0;
+          const cb = salesCounts.get(b.id) ?? 0;
+          if (cb !== ca) return cb - ca;
+          return a.name.localeCompare(b.name);
+        }),
+      );
     }
-    return base.sort((a, b) => {
-      if (a.position !== undefined && b.position !== undefined) {
-        return a.position - b.position;
-      }
-      if (a.position !== undefined) return -1;
-      if (b.position !== undefined) return 1;
-      return a.name.localeCompare(b.name);
-    });
-  }, [products, sortMode, salesCounts]);
+    return base.sort((a, b) =>
+      sellableFirst(a, b, () => {
+        if (a.position !== undefined && b.position !== undefined) {
+          return a.position - b.position;
+        }
+        if (a.position !== undefined) return -1;
+        if (b.position !== undefined) return 1;
+        return a.name.localeCompare(b.name);
+      }),
+    );
+  }, [products, sortMode, salesCounts, isOutOfStock]);
 
   // Category product counts
   const categoryCounts = useMemo(() => {
@@ -260,8 +296,8 @@ export function ProductGrid({
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-center">
-          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-primary-600" />
-          <p className="mt-4 text-gray-600">{t('products.loading')}</p>
+          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-action" />
+          <p className="mt-4 text-ink-muted">{t('products.loading')}</p>
         </div>
       </div>
     );
@@ -271,8 +307,8 @@ export function ProductGrid({
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-center">
-          <Package className="mx-auto mb-4 h-16 w-16 text-gray-400" />
-          <p className="text-lg text-gray-600">{t('products.empty')}</p>
+          <Package className="mx-auto mb-4 h-16 w-16 text-ink-faint" />
+          <p className="text-lg text-ink-muted">{t('products.empty')}</p>
         </div>
       </div>
     );
@@ -280,17 +316,17 @@ export function ProductGrid({
 
   return (
     <div className="flex h-full flex-col gap-2">
-      {/* Search bar + sort toggle + display mode toggle */}
+      {/* Search bar + sort toggle + display mode toggle — one control voice */}
       <div className="flex items-center gap-2">
         {consumptionModeToggle}
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+        <div className="relative min-w-0 flex-1">
+          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-faint" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('products.searchPlaceholder')}
-            className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-10 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full rounded-lg border border-border-subtle bg-surface-raised py-2 pl-10 pr-10 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-2 focus:ring-action"
           />
           {searchQuery && (
             <button
@@ -298,20 +334,22 @@ export function ProductGrid({
               className="absolute right-3 top-1/2 -translate-y-1/2"
               aria-label={t('products.clearSearch')}
             >
-              <X className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+              <X className="h-5 w-5 text-ink-faint hover:text-ink-muted" />
             </button>
           )}
         </div>
 
-        {/* Most-sold sort toggle: label stays constant; aria-pressed reflects state.
-            `title` gives a click-to-undo hint when pressed. */}
+        {/* Most-sold sort toggle. Styled as a secondary button (consistent
+            with the toolbar voice); the active/pressed state is signalled by
+            a soft action-subtle fill + action text, not a saturated block.
+            `aria-pressed` reflects state; `title` gives a click-to-undo hint. */}
         <button
           onClick={() => setSortMode((m) => (m === 'mostSold' ? 'default' : 'mostSold'))}
           className={cn(
-            'flex h-12 items-center gap-2 rounded-lg border px-4 text-sm font-medium transition-colors',
-            sortMode === 'mostSold'
-              ? 'border-primary-500 bg-primary-50 text-primary-700'
-              : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50',
+            tokens.button.secondary,
+            'h-12',
+            sortMode === 'mostSold' &&
+              'border-action bg-action-subtle text-action-strong hover:bg-action-subtle',
           )}
           title={sortMode === 'mostSold' ? t('products.sortDefault') : undefined}
           aria-pressed={sortMode === 'mostSold'}
@@ -320,29 +358,33 @@ export function ProductGrid({
           {t('products.sortByMostSold')}
         </button>
 
-        {/* Display mode toggle */}
-        <div className="flex rounded-lg border border-gray-300 bg-white">
+        {/* Display mode toggle — the ONE segmented-control voice. */}
+        <div className={tokens.segmented.root}>
           <button
             onClick={() => handleDisplayModeChange('grid')}
             className={cn(
-              'flex h-12 w-12 items-center justify-center rounded-l-lg transition-colors',
+              tokens.segmented.item,
+              'flex h-10 w-10 items-center justify-center',
               displayMode === 'grid'
-                ? 'bg-primary-600 text-white'
-                : 'text-gray-500 hover:bg-gray-100',
+                ? tokens.segmented.itemActive
+                : tokens.segmented.itemInactive,
             )}
             title={t('display.gridMode')}
+            aria-pressed={displayMode === 'grid'}
           >
             <LayoutGrid className="h-5 w-5" />
           </button>
           <button
             onClick={() => handleDisplayModeChange('visual')}
             className={cn(
-              'flex h-12 w-12 items-center justify-center rounded-r-lg transition-colors',
+              tokens.segmented.item,
+              'flex h-10 w-10 items-center justify-center',
               displayMode === 'visual'
-                ? 'bg-primary-600 text-white'
-                : 'text-gray-500 hover:bg-gray-100',
+                ? tokens.segmented.itemActive
+                : tokens.segmented.itemInactive,
             )}
             title={t('display.visualMode')}
+            aria-pressed={displayMode === 'visual'}
           >
             <Image className="h-5 w-5" />
           </button>
@@ -358,8 +400,8 @@ export function ProductGrid({
               'whitespace-nowrap rounded-full px-5 py-3 text-base font-medium transition-colors',
               'min-h-[48px]',
               selectedCategory === null
-                ? 'bg-primary-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200',
+                ? 'bg-action text-ink-inverse'
+                : 'bg-surface-sunken text-ink-muted hover:bg-surface-canvas',
             )}
           >
             {allCategoriesLabel}
@@ -373,8 +415,8 @@ export function ProductGrid({
                 'whitespace-nowrap rounded-full px-5 py-3 text-base font-medium transition-colors',
                 'min-h-[48px]',
                 selectedCategory === category
-                  ? 'bg-primary-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200',
+                  ? 'bg-action text-ink-inverse'
+                  : 'bg-surface-sunken text-ink-muted hover:bg-surface-canvas',
               )}
             >
               {category}
@@ -384,16 +426,19 @@ export function ProductGrid({
             </button>
           ))}
 
-          {/* In Stock Only toggle */}
+          {/* In Stock Only toggle — a filter (interactive), so it adopts the
+              action color when active, NOT success-green (green is reserved
+              for confirmed money/sync events). */}
           <button
             onClick={() => setInStockOnly((prev) => !prev)}
             className={cn(
               'ml-auto whitespace-nowrap rounded-full px-5 py-3 text-base font-medium transition-colors',
               'min-h-[48px]',
               inStockOnly
-                ? 'bg-green-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200',
+                ? 'bg-action text-ink-inverse'
+                : 'bg-surface-sunken text-ink-muted hover:bg-surface-canvas',
             )}
+            aria-pressed={inStockOnly}
           >
             {t('display.inStockOnly')}
           </button>
@@ -404,9 +449,9 @@ export function ProductGrid({
       {filteredProducts.length === 0 ? (
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center">
-            <Package className="mx-auto mb-4 h-16 w-16 text-gray-400" />
-            <p className="text-lg text-gray-600">{t('products.notFound')}</p>
-            <p className="mt-2 text-sm text-gray-600">
+            <Package className="mx-auto mb-4 h-16 w-16 text-ink-faint" />
+            <p className="text-lg text-ink-muted">{t('products.notFound')}</p>
+            <p className="mt-2 text-sm text-ink-faint">
               {t('products.tryAdjusting')}
             </p>
           </div>
