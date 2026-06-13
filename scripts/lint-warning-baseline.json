@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-06-12",
+  "generated_at": "2026-06-13",
   "note": "Regenerate with: node scripts/lint-ratchet.mjs --update-baseline",
-  "baseline_bump_justification": "2026-06-12 i18n EN/FR sweep: web baseline raised 11662 -> 12375 (+713) and pos 40 -> 101 (+61) by introducing the WARN-level local/no-untranslated-literal rule. It surfaces pre-existing untranslated user-facing string literals (JSX text + placeholder/title/alt/aria-label/label attributes) that bypass react-i18next t(). These are burned down cluster-by-cluster per docs/i18n/i18n-tracker.yaml; the count may only shrink from here, and cleaned feature dirs are promoted to ERROR via eslint.config.js overrides so they cannot regress. PRIOR bump (2026-05-30 Phase-11 precision-guard): web 11343 -> 11662 (+319 net) from precision/no-hardcoded-step + precision/no-parsefloat-on-money surfacing legacy float-precision debt.",
+  "baseline_bump_justification": "2026-06-13 EN/FR i18n sweep COMPLETE for all customer-facing surfaces. The local/no-untranslated-literal rule was promoted to ERROR for src/components, src/pages and 21 cleaned feature dirs (see the i18n-clean override block in apps/web/eslint.config.js); those dirs now carry ZERO untranslated user-facing literals and cannot regress. The internal super-admin panel (src/features/admin, ~335 literals) is DEFERRED and stays WARN-ratcheted. Net effect vs the prior i18n bump: web 12375 -> 11739 (-636) and pos 101 -> 40 (-61) as ~270 literals were translated to EN+FR and the rule stopped counting test files. PRIOR bumps: 2026-06-12 introduced the rule at WARN (web 11662->12375, pos 40->101); 2026-05-30 Phase-11 precision-guard (web 11343->11662).",
   "apps": {
     "@autoerp/web": {
       "errors": 0,
-      "warnings": 12375
+      "warnings": 11739
     },
     "@autoerp/pos": {
       "errors": 0,
-      "warnings": 101
+      "warnings": 40
     }
   }
 }

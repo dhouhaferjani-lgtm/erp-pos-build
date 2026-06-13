@@ -248,10 +248,37 @@ export default tseslint.config(
       ],
     },
   },
-  // i18n-clean dirs — fully EN/FR translated; no untranslated user-facing
-  // literal may regress here. Grows as the EN/FR sweep completes clusters.
+  // i18n-clean dirs — fully EN/FR translated in the 2026-06 sweep; no
+  // untranslated user-facing literal may regress here. The internal
+  // super-admin panel (src/features/admin) is intentionally NOT listed yet
+  // (deferred — staff-only surface), so it stays WARN-ratcheted.
+  // See docs/i18n/README.md + docs/i18n/i18n-tracker.yaml.
   {
-    files: ['src/components/**/*.{ts,tsx}'],
+    files: [
+      'src/components/**/*.{ts,tsx}',
+      'src/pages/**/*.{ts,tsx}',
+      'src/features/inventory/**/*.{ts,tsx}',
+      'src/features/documents/**/*.{ts,tsx}',
+      'src/features/finance/**/*.{ts,tsx}',
+      'src/features/settings/**/*.{ts,tsx}',
+      'src/features/vehicles/**/*.{ts,tsx}',
+      'src/features/pos/**/*.{ts,tsx}',
+      'src/features/compliance/**/*.{ts,tsx}',
+      'src/features/treasury/**/*.{ts,tsx}',
+      'src/features/pricing/**/*.{ts,tsx}',
+      'src/features/company/**/*.{ts,tsx}',
+      'src/features/parapharmacy/**/*.{ts,tsx}',
+      'src/features/services/**/*.{ts,tsx}',
+      'src/features/uom/**/*.{ts,tsx}',
+      'src/features/import/**/*.{ts,tsx}',
+      'src/features/loyalty/**/*.{ts,tsx}',
+      'src/features/products/**/*.{ts,tsx}',
+      'src/features/catalog/**/*.{ts,tsx}',
+      'src/features/partners/**/*.{ts,tsx}',
+      'src/features/parts-catalog/**/*.{ts,tsx}',
+      'src/features/withholding/**/*.{ts,tsx}',
+      'src/features/workshop-technicians/**/*.{ts,tsx}',
+    ],
     rules: { 'local/no-untranslated-literal': 'error' },
   },
 )

@@ -4,11 +4,11 @@
 
 summary:
   web:
-    en_keys: 6517
+    en_keys: 6892
     missing_fr: 54
-    identical_fr: 205
-    extra_fr: 22
-    hardcoded_candidates: 601
+    identical_fr: 227
+    extra_fr: 16
+    hardcoded_candidates: 335
   pos:
     en_keys: 833
     missing_fr: 0
@@ -17,167 +17,6 @@ summary:
     hardcoded_candidates: 0
 
 clusters:
-  - id: web:inventory
-    status: pending
-    candidates: 53
-    files:
-      - { count: 18, path: apps/web/src/features/inventory/ProductDetailPage.tsx }
-      - { count: 13, path: apps/web/src/features/inventory/StockMovementsPage.tsx }
-      - { count: 13, path: apps/web/src/features/inventory/components/pricing/ProductPricingCard.tsx }
-      - { count: 7, path: apps/web/src/features/inventory/components/pricing/PriceInputWithMargin.tsx }
-      - { count: 1, path: apps/web/src/features/inventory/StockLevelsPage.tsx }
-      - { count: 1, path: apps/web/src/features/inventory/components/ProductStockLevels.tsx }
-  - id: web:documents
-    status: pending
-    candidates: 41
-    files:
-      - { count: 15, path: apps/web/src/features/documents/components/costing/LandedCostBreakdown.tsx }
-      - { count: 9, path: apps/web/src/features/documents/components/costing/AdditionalCostsForm.tsx }
-      - { count: 6, path: apps/web/src/features/documents/DocumentForm.tsx }
-      - { count: 3, path: apps/web/src/features/documents/CreateCreditNotePage.tsx }
-      - { count: 2, path: apps/web/src/features/documents/components/CreditNoteList.tsx }
-      - { count: 2, path: apps/web/src/features/documents/components/DocumentLineRow/DocumentLineRow.tsx }
-      - { count: 1, path: apps/web/src/features/documents/components/DocumentPartnerInfo.tsx }
-      - { count: 1, path: apps/web/src/features/documents/credit-notes/CreditNoteDetailPage.tsx }
-      - { count: 1, path: apps/web/src/features/documents/delivery-notes/DeliveryNoteDetailPage.tsx }
-      - { count: 1, path: apps/web/src/features/documents/return-notes/ReturnNoteDetailPage.tsx }
-  - id: web:finance
-    status: pending
-    candidates: 36
-    files:
-      - { count: 13, path: apps/web/src/features/finance/components/AddAccountModal.tsx }
-      - { count: 9, path: apps/web/src/features/finance/components/EditAccountModal.tsx }
-      - { count: 9, path: apps/web/src/features/finance/components/FinanceWidget.tsx }
-      - { count: 4, path: apps/web/src/features/finance/pages/ChartOfAccountsPage.tsx }
-      - { count: 1, path: apps/web/src/features/finance/components/AccountTreeView.tsx }
-  - id: web:settings
-    status: pending
-    candidates: 23
-    files:
-      - { count: 22, path: apps/web/src/features/settings/CompanyPage.tsx }
-      - { count: 1, path: apps/web/src/features/settings/TaxSettingsPage.tsx }
-  - id: web:vehicles
-    status: pending
-    candidates: 21
-    files:
-      - { count: 21, path: apps/web/src/features/vehicles/VehicleForm.tsx }
-  - id: web:components
-    status: pending
-    candidates: 15
-    files:
-      - { count: 2, path: apps/web/src/components/ui/filters/DateRangeFilter.tsx }
-      - { count: 1, path: apps/web/src/components/catalog/CategoryTree.tsx }
-      - { count: 1, path: apps/web/src/components/molecules/Breadcrumb/Breadcrumb.tsx }
-      - { count: 1, path: apps/web/src/components/organisms/AdditionalCostsForm/AdditionalCostsForm.tsx }
-      - { count: 1, path: apps/web/src/components/organisms/LandedCostBreakdown/LandedCostBreakdown.tsx }
-      - { count: 1, path: apps/web/src/components/organisms/Modal/Modal.tsx }
-      - { count: 1, path: apps/web/src/components/organisms/ProductPricingCard/ProductPricingCard.tsx }
-      - { count: 1, path: apps/web/src/components/organisms/TopBar/TopBar.tsx }
-      - { count: 1, path: apps/web/src/components/ui/ConfirmDialog.tsx }
-      - { count: 1, path: apps/web/src/components/ui/DocumentSearchSelect.tsx }
-      - { count: 1, path: apps/web/src/components/ui/LocationSelector.tsx }
-      - { count: 1, path: apps/web/src/components/ui/PartnerSearchSelect.tsx }
-      - { count: 1, path: apps/web/src/components/ui/ProductSearchSelect.tsx }
-      - { count: 1, path: apps/web/src/components/ui/filters/SearchFilter.tsx }
-  - id: web:pos
-    status: pending
-    candidates: 15
-    files:
-      - { count: 4, path: apps/web/src/features/pos/molecules/CartLineItem/CartLineItem.tsx }
-      - { count: 4, path: apps/web/src/features/pos/organisms/ProductInfoModal/ProductInfoModal.tsx }
-      - { count: 3, path: apps/web/src/features/pos/molecules/ProductCard/ProductCard.tsx }
-      - { count: 2, path: apps/web/src/features/pos/smart-prompts/atoms/SmartPromptCard.tsx }
-      - { count: 1, path: apps/web/src/features/pos/components/TerminalForm.tsx }
-      - { count: 1, path: apps/web/src/features/pos/organisms/AdvancedPaymentsModal/AdvancedPaymentsModal.tsx }
-  - id: web:compliance
-    status: pending
-    candidates: 14
-    files:
-      - { count: 14, path: apps/web/src/features/compliance/pages/QuarantineResolveAssistPage.tsx }
-  - id: web:treasury
-    status: pending
-    candidates: 10
-    files:
-      - { count: 7, path: apps/web/src/features/treasury/components/AddPaymentMethodModal.tsx }
-      - { count: 1, path: apps/web/src/features/treasury/RepositoryDetailPage.tsx }
-      - { count: 1, path: apps/web/src/features/treasury/components/AllocationPreview.tsx }
-      - { count: 1, path: apps/web/src/features/treasury/components/OpenInvoicesList.tsx }
-  - id: web:pricing
-    status: pending
-    candidates: 8
-    files:
-      - { count: 5, path: apps/web/src/features/pricing/PriceListForm.tsx }
-      - { count: 3, path: apps/web/src/features/pricing/PriceListDetailPage.tsx }
-  - id: web:company
-    status: pending
-    candidates: 6
-    files:
-      - { count: 3, path: apps/web/src/features/company/CompanyOnboardingPage.tsx }
-      - { count: 3, path: apps/web/src/features/company/CompanyProvider.tsx }
-  - id: web:parapharmacy
-    status: pending
-    candidates: 5
-    files:
-      - { count: 3, path: apps/web/src/features/parapharmacy/pages/HealthClaimFormPage.tsx }
-      - { count: 2, path: apps/web/src/features/parapharmacy/pages/CertificationFormPage.tsx }
-  - id: web:services
-    status: pending
-    candidates: 4
-    files:
-      - { count: 4, path: apps/web/src/features/services/ServiceForm.tsx }
-  - id: web:uom
-    status: pending
-    candidates: 3
-    files:
-      - { count: 3, path: apps/web/src/features/uom/components/AddUnitModal.tsx }
-  - id: web:import
-    status: pending
-    candidates: 2
-    files:
-      - { count: 1, path: apps/web/src/features/import/components/ColumnMapper.tsx }
-      - { count: 1, path: apps/web/src/features/import/components/ImportProgress.tsx }
-  - id: web:loyalty
-    status: pending
-    candidates: 2
-    files:
-      - { count: 1, path: apps/web/src/features/loyalty/components/StampCardFormModal.tsx }
-      - { count: 1, path: apps/web/src/features/loyalty/components/TierFormModal.tsx }
-  - id: web:products
-    status: pending
-    candidates: 2
-    files:
-      - { count: 1, path: apps/web/src/features/products/components/ProductImageUpload.tsx }
-      - { count: 1, path: apps/web/src/features/products/components/ProductSelector.tsx }
-  - id: web:catalog
-    status: pending
-    candidates: 1
-    files:
-      - { count: 1, path: apps/web/src/features/catalog/components/CompositeItemSearchSelect.tsx }
-  - id: web:partners
-    status: pending
-    candidates: 1
-    files:
-      - { count: 1, path: apps/web/src/features/partners/PartnerDetailPage.tsx }
-  - id: web:parts-catalog
-    status: pending
-    candidates: 1
-    files:
-      - { count: 1, path: apps/web/src/features/parts-catalog/components/organisms/CrossReferenceList.tsx }
-  - id: web:withholding
-    status: pending
-    candidates: 1
-    files:
-      - { count: 1, path: apps/web/src/features/withholding/components/WithholdingRuleFormModal.tsx }
-  - id: web:workshop-technicians
-    status: pending
-    candidates: 1
-    files:
-      - { count: 1, path: apps/web/src/features/workshop-technicians/pages/TechnicianDetailPage.tsx }
-  - id: web:pages
-    status: pending
-    candidates: 1
-    files:
-      - { count: 1, path: apps/web/src/pages/legal/PrivacyPolicyPage.tsx }
   - id: web:admin
     status: deferred
     candidates: 335
@@ -290,6 +129,7 @@ parity:
         - locations.modal.cityPlaceholder
         - table.actionsColumn
         - pagination.page
+        - notifications
         - actionsLabel
         - reports.labels.totalDocuments
         - openingBalances.wizard.preview.arAp.documents
@@ -310,11 +150,15 @@ parity:
         - permissions.modules.contacts
         - commandPalette.navigation
         - commandPalette.actions
+        - legal.privacy.section1.title
+        - legal.privacy.section2.cookies.label
+        - legal.privacy.section5.rectification.label
       compliance:
         - chainVerification.terminal
         - reprintLog.terminal
         - reprintLog.original
         - reprintLog.escpos
+        - quarantine.correctionsSectionTitle
         - fraudAlerts.table.actions
       countries:
         - CA
@@ -336,6 +180,8 @@ parity:
         - contacts.mobile
       customer-history-audit:
         - columns.terminal
+      documents:
+        - costing.additionalCosts.costTypes.transport
       finance:
         - journalEntry.debit
         - journalEntry.credit
@@ -351,6 +197,7 @@ parity:
         - products.tabs.images
         - products.financialTab.columns.documentNumber
         - stock.reasons.correction
+        - stock.minQuantityLabel
         - landedCost.proportion
         - counting.list.mobileBadge
         - counting.reconciliation.final
@@ -372,6 +219,9 @@ parity:
       parapharmacy:
         - certifications
         - slug
+        - certifyingBodyPlaceholder
+        - efsaReferencePlaceholder
+        - fdaReferencePlaceholder
       parts-catalog:
         - vehicle.productionYears
         - category.articlesInCategory
@@ -398,11 +248,13 @@ parity:
         - hub.cards.tables.title
       pricing:
         - priceLists.fields.code
+        - priceLists.currencies.EUR
       products:
         - images.title
         - images.imageCount
         - images.imageCount_plural
         - parapharmacy.concentration
+        - parapharmacy.certifications
         - parapharmacy.dosageForms.capsule
         - parapharmacy.dosageForms.gel
         - parapharmacy.dosageForms.lotion
@@ -421,6 +273,7 @@ parity:
         - partners.paymentTerms.net_60
         - partners.paymentTerms.net_90
         - documents.title
+        - documents.mileageValue
         - fulfillment.notApplicable
       scheduling:
         - appointmentType.inspection
@@ -430,7 +283,15 @@ parity:
       settings:
         - company.modal.cityPlaceholder
         - company.modal.taxIdPlaceholder
+        - company.placeholders.taxId
+        - company.placeholders.registrationNumber
+        - company.placeholders.primaryColor
+        - company.currencies.EUR
+        - company.timezones.EuropeParis
+        - company.languages.fr
+        - company.languages.en
         - appInfo.version
+        - tax.configurations.profile.vatNumberPlaceholder
         - tax.configurations.table.code
         - tax.configurations.table.actions
       smart-prompts:
@@ -469,6 +330,7 @@ parity:
         - placeholders.vin
         - placeholders.brand
         - placeholders.model
+        - placeholders.engineCode
       vouchers:
         - fields.code
         - fields.source
@@ -500,12 +362,9 @@ parity:
     extra_fr:
       common:
         - more
-        - services.createService
         - services.details
         - services.pricing
         - services.metadata
-        - services.fields.defaultDuration
-        - services.fields.percentage
         - services.categories
         - services.addCategory
         - services.editCategory
@@ -517,9 +376,6 @@ parity:
         - services.sortOrder
         - services.categoryCount.singular
         - services.categoryCount.plural
-        - services.basicInfo
-        - services.noCategory
-        - services.namePlaceholder
         - services.categoryNamePlaceholder
   pos:
     missing_fr:
