@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Application\DTOs;
 
+use App\Modules\Catalog\Application\DTOs\MediaAttachmentData;
+use App\Modules\Catalog\Application\DTOs\ProductMediaData;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
-use Illuminate\Support\Facades\URL;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -16,6 +17,7 @@ class ProductData extends Data
     /**
      * @param  array<int, string>|null  $oem_numbers
      * @param  array<int, array{brand: string, reference: string}>|null  $cross_references
+     * @param  array<int, MediaAttachmentData>  $media
      */
     public function __construct(
         public string $id,
@@ -41,11 +43,12 @@ class ProductData extends Data
         public string $created_at,
         public ?string $updated_at,
         public ?string $primary_image_url = null,
+        public array $media = [],
         public ?ParapharmacyProductMetadataData $parapharmacy_metadata = null,
         public ?AutomotiveProductMetadataData $automotive_metadata = null,
     ) {}
 
-    public static function fromModel(Product $product): self
+    public static function fromModel(Product $product, ?ProductMediaData $media = null): self
     {
         return new self(
             id: $product->id,
@@ -70,15 +73,8 @@ class ProductData extends Data
             minimum_margin_override: $product->minimum_margin_override !== null ? (string) $product->minimum_margin_override : null,
             created_at: $product->created_at?->toIso8601String() ?? '',
             updated_at: $product->updated_at?->toIso8601String(),
-            primary_image_url: $product->relationLoaded('primaryImage') && $product->primaryImage !== null
-                ? ($product->primaryImage->storage_disk === 'url'
-                    ? $product->primaryImage->storage_path
-                    : URL::route('products.images.download', [
-                        'product' => $product->id,
-                        'image' => $product->primaryImage->id,
-                        'variant' => 'sm',
-                    ]))
-                : null,
+            primary_image_url: $media !== null ? $media->primary_image_url : null,
+            media: $media !== null ? $media->media : [],
             parapharmacy_metadata: $product->relationLoaded('parapharmacyMetadata') && $product->parapharmacyMetadata !== null
                 ? ParapharmacyProductMetadataData::fromModel($product->parapharmacyMetadata)
                 : null,

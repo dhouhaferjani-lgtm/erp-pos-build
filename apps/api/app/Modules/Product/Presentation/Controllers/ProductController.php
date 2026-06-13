@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Product\Presentation\Controllers;
 
 use App\Enums\Vertical;
+use App\Modules\Catalog\Application\DTOs\ProductMediaData;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -22,6 +23,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Presentation\Requests\CreateProductRequest;
 use App\Modules\Product\Presentation\Requests\UpdateProductRequest;
 use App\Modules\Uom\Domain\Entities\Unit;
+use App\Shared\Contracts\CatalogMediaQueryInterface;
 use App\Support\Traits\FiltersAndSorts;
 use App\Support\Traits\PaginatesResults;
 use Carbon\Carbon;
@@ -38,6 +40,7 @@ class ProductController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly ProductTombstoneService $tombstoneService,
+        private readonly CatalogMediaQueryInterface $catalogMedia,
     ) {}
 
     /**
@@ -65,7 +68,7 @@ class ProductController extends Controller
         $perPage = min((int) $request->input('per_page', 25), 2000);
 
         // Build query with conditional vertical-specific metadata loading
-        $with = ['category', 'primaryImage', 'unitOfMeasure'];
+        $with = ['category', 'unitOfMeasure'];
         if ($company->tenant->vertical === Vertical::Parapharmacy) {
             $with[] = 'parapharmacyMetadata.ingredients';
             $with[] = 'parapharmacyMetadata.keyComponents';
@@ -97,8 +100,35 @@ class ProductController extends Controller
         // Paginate
         $paginator = $query->paginate($perPage);
 
-        // Build base response
-        $payload = $this->formatOffsetPaginatedResponse($paginator, ProductData::class, $aggregates);
+        // Batch-resolve media for all products on this page in ONE query (no N+1).
+        /** @var array<string> $productIds */
+        $productIds = collect($paginator->items())->pluck('id')->all();
+        /** @var array<string, ProductMediaData> $mediaMap */
+        $mediaMap = $this->catalogMedia->forProducts($productIds, $company->tenant_id);
+
+        // Map each product model to its DTO with media injected.
+        /** @var array<int, ProductData> $data */
+        $data = array_map(
+            fn (Product $item): ProductData => ProductData::fromModel(
+                $item,
+                $mediaMap[$item->id] ?? ProductMediaData::makeEmpty(),
+            ),
+            $paginator->items(),
+        );
+
+        // Build base response — same outer shape as formatOffsetPaginatedResponse.
+        $payload = [
+            'data' => $data,
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+            ],
+            'aggregates' => $aggregates,
+        ];
 
         // Tombstone support: include deleted_ids when an updated_since cursor is provided
         $updatedSince = $request->input('updated_since');
@@ -231,7 +261,7 @@ class ProductController extends Controller
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->where('id', $product)
-            ->with(['primaryImage', 'unitOfMeasure'])
+            ->with(['unitOfMeasure'])
             ->first();
 
         if (! $productModel) {
@@ -265,8 +295,10 @@ class ProductController extends Controller
             ]);
         }
 
+        $media = $this->catalogMedia->forProduct($productModel->id, $company->tenant_id);
+
         return response()->json([
-            'data' => ProductData::fromModel($productModel),
+            'data' => ProductData::fromModel($productModel, $media),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
@@ -370,10 +402,12 @@ class ProductController extends Controller
             ]);
         }
 
-        $product->load(['primaryImage', 'unitOfMeasure']);
+        $product->load(['unitOfMeasure']);
+
+        $media = $this->catalogMedia->forProduct($product->id, $tenantId);
 
         return response()->json([
-            'data' => ProductData::fromModel($product),
+            'data' => ProductData::fromModel($product, $media),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
@@ -511,10 +545,12 @@ class ProductController extends Controller
             ]);
         }
 
-        $freshProduct->load(['primaryImage', 'unitOfMeasure']);
+        $freshProduct->load(['unitOfMeasure']);
+
+        $media = $this->catalogMedia->forProduct($freshProduct->id, $company->tenant_id);
 
         return response()->json([
-            'data' => ProductData::fromModel($freshProduct),
+            'data' => ProductData::fromModel($freshProduct, $media),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),

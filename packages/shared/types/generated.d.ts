@@ -1,5 +1,6 @@
 declare global {
 declare namespace App.Enums {
+export type ModuleName = 'Identity' | 'Tenant' | 'Catalog' | 'Vehicle' | 'Partner' | 'Workshop' | 'Sales' | 'Inventory' | 'Treasury' | 'Accounting' | 'PlatformIntegration' | 'BatchExpiry' | 'Menu' | 'Tables' | 'CompositeItems' | 'Parapharmacy' | 'Appointments' | 'Fleet' | 'Prescription' | 'Reservation' | 'Loyalty' | 'Ecommerce';
 export type Product = 'izipos' | 'otospex';
 export type Vertical = 'mechanic' | 'pharmacy' | 'restaurant' | 'coffee_shop' | 'retail' | 'fashion' | 'body_shop' | 'parts_retailer' | 'car_glass' | 'tire_shop' | 'service_station' | 'parapharmacy';
 }
@@ -301,6 +302,43 @@ is_default: boolean;
 is_active: boolean;
 display_order: number;
 };
+export type MediaAssetData = {
+id: string;
+tenant_id: string;
+type: string;
+source: string;
+status: string;
+storage_disk: string | null;
+storage_path: string | null;
+external_url: string | null;
+original_filename: string | null;
+mime_type: string | null;
+file_size: number | null;
+width: number | null;
+height: number | null;
+title: string | null;
+};
+export type MediaAttachmentData = {
+id: string;
+asset_id: string;
+type: string;
+role: string;
+sort_order: number;
+url: string | null;
+alt: string | null;
+caption: string | null;
+};
+export type MediaRenditionData = {
+id: string;
+media_asset_id: string;
+name: string;
+format: string;
+storage_disk: string | null;
+storage_path: string | null;
+width: number | null;
+height: number | null;
+file_size: number | null;
+};
 export type ModifierData = {
 id: string;
 modifier_group_id: string;
@@ -349,6 +387,10 @@ label: string;
 hex_color: string | null;
 image_url: string | null;
 display_order: number;
+};
+export type ProductMediaData = {
+primary_image_url: string | null;
+media: Array<App.Modules.Catalog.Application.DTOs.MediaAttachmentData>;
 };
 export type ProductVariantData = {
 id: string;
@@ -408,9 +450,16 @@ display_order: number;
 declare namespace App.Modules.Catalog.Domain.Enums {
 export type AttributeDataType = 'text' | 'numeric' | 'boolean' | 'date' | 'selection' | 'color' | 'image';
 export type ComponentType = 'product' | 'composite_item';
+export type MediaAssetType = 'IMAGE' | 'DOCUMENT' | 'VIDEO' | 'EXTERNAL_VIDEO' | 'SPIN_360';
+export type MediaOwnerType = 'PRODUCT' | 'PRODUCT_VARIANT' | 'CATEGORY';
+export type MediaRole = 'PRIMARY' | 'GALLERY' | 'DATASHEET' | 'MANUAL' | 'VIDEO_POSTER' | 'SPIN' | 'SWATCH';
+export type MediaSource = 'UPLOAD' | 'EXTERNAL_URL';
+export type MediaStatus = 'UPLOADED' | 'PROCESSING' | 'READY' | 'FAILED';
 export type PriceAdjustmentType = 'absolute' | 'percentage' | 'override';
 export type PricingMode = 'standard' | 'fixed_bundle';
 export type ProductionType = 'made_to_order' | 'batch' | 'stock';
+export type RenditionFormat = 'WEBP' | 'JPEG';
+export type RenditionName = 'THUMBNAIL' | 'SMALL' | 'WEB' | 'ZOOM';
 export type SelectionType = 'single' | 'multiple';
 export type VerticalType = 'fnb' | 'manufacturing' | 'sewing' | 'bakery' | 'generic';
 }
@@ -1421,6 +1470,7 @@ minimum_margin_override: string | null;
 created_at: string;
 updated_at: string | null;
 primary_image_url: string | null;
+media: Array<App.Modules.Catalog.Application.DTOs.MediaAttachmentData>;
 parapharmacy_metadata: App.Modules.Product.Application.DTOs.ParapharmacyProductMetadataData | null;
 automotive_metadata: App.Modules.Product.Application.DTOs.AutomotiveProductMetadataData | null;
 };
