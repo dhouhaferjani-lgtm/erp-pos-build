@@ -104,6 +104,8 @@
     "stampsRequired": "Stamps Required",
     "stampsPerItem": "Stamps Per Item",
     "rewardId": "Reward",
+    "rewardIdPlaceholder": "Reward UUID",
+    "color": "Color",
     "maxActiveCards": "Max Active Cards",
     "expiryDays": "Expiry (Days)",
     "currentBalance": "Balance",

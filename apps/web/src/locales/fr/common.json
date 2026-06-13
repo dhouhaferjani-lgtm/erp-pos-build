@@ -45,7 +45,8 @@
     "addVehicle": "Ajouter un véhicule",
     "import": "Importer",
     "export": "Exporter",
-    "actions": "Actions"
+    "actions": "Actions",
+    "newPurchaseOrder": "Nouvelle commande fournisseur"
   },
   "common": {
     "create": "Créer",
@@ -106,7 +107,9 @@
     "noPayments": "Aucun paiement",
     "noPaymentsDescription": "Aucun paiement n'a été enregistré pour ce client.",
     "noVehicles": "Aucun véhicule",
-    "noVehiclesDescription": "Aucun véhicule n'a été lié à ce client."
+    "noVehiclesDescription": "Aucun véhicule n'a été lié à ce client.",
+    "noPurchaseOrders": "Aucune commande fournisseur",
+    "noPurchaseOrdersDescription": "Commencez par créer une commande fournisseur pour ce fournisseur."
   },
   "errors": {
     "loadingFailed": "Échec du chargement des données. Veuillez réessayer.",
@@ -271,7 +274,15 @@
     "unallocatedBalance": "Solde non alloué",
     "unallocatedBalanceHint": "De {{count}} paiement(s) non alloué(s)",
     "creditAvailable": "Crédit disponible à appliquer aux factures",
-    "noBalance": "Aucun solde"
+    "noBalance": "Aucun solde",
+    "notFoundError": "{{entity}} introuvable ou une erreur s'est produite.",
+    "documentType": {
+      "quote": "Devis",
+      "sales_order": "Bon de commande",
+      "invoice": "Facture",
+      "credit_note": "Avoir",
+      "purchase_order": "Commande fournisseur"
+    }
   },
   "locations": {
     "title": "Gestion des emplacements",
@@ -440,7 +451,8 @@
     "overview": "Aperçu",
     "documents": "Documents",
     "payments": "Paiements",
-    "vehicles": "Véhicules"
+    "vehicles": "Véhicules",
+    "purchaseOrders": "Commandes fournisseurs"
   },
   "reports": {
     "description": "Aperçu de la performance de votre entreprise",
@@ -1250,6 +1262,77 @@
       "message": "Ce site utilise des cookies essentiels pour l'authentification et la sécurité.",
       "accept": "Accepter",
       "learnMore": "En savoir plus"
+    },
+    "privacy": {
+      "lastUpdated": "Dernière mise à jour",
+      "section1": {
+        "title": "Introduction",
+        "body": "AutoERP (« nous », « notre ») s'engage à protéger vos données personnelles. Cette politique de confidentialité explique comment nous collectons, utilisons et protégeons les informations lorsque vous utilisez notre plateforme de gestion d'entreprise."
+      },
+      "section2": {
+        "title": "Informations collectées",
+        "intro": "Nous collectons les informations que vous nous fournissez directement, notamment :",
+        "accountInfo": {
+          "label": "Informations de compte",
+          "detail": "Nom, adresse e-mail, numéro de téléphone et informations professionnelles"
+        },
+        "usageData": {
+          "label": "Données d'utilisation",
+          "detail": "Actions effectuées sur la plateforme, fonctionnalités utilisées et horodatages"
+        },
+        "businessData": {
+          "label": "Données métier",
+          "detail": "Clients, factures, produits et autres données ERP que vous saisissez"
+        },
+        "cookies": {
+          "detail": "Jetons de session et cookies de préférences pour l'authentification et les paramètres"
+        }
+      },
+      "section3": {
+        "title": "Utilisation de vos informations",
+        "purpose1": "Fournir, maintenir et améliorer la plateforme AutoERP",
+        "purpose2": "Traiter les transactions et envoyer les informations associées",
+        "purpose3": "Envoyer des avis techniques, des mises à jour et des messages d'assistance",
+        "purpose4": "Respecter les obligations légales et protéger les droits",
+        "legalBasis": "Nous traitons vos données sur la base de votre consentement, de la nécessité contractuelle et de nos intérêts légitimes à fournir le service."
+      },
+      "section4": {
+        "title": "Partage des données",
+        "body": "Nous ne vendons pas vos données personnelles. Nous pouvons partager des données avec des prestataires tiers de confiance qui nous aident à exploiter la plateforme, sous réserve d'accords de confidentialité. Nous pouvons divulguer des données lorsque la loi l'exige."
+      },
+      "section5": {
+        "title": "Vos droits",
+        "intro": "Selon votre juridiction, vous disposez des droits suivants concernant vos données personnelles :",
+        "access": {
+          "label": "Accès",
+          "detail": "Demander une copie des données personnelles que nous détenons sur vous"
+        },
+        "rectification": {
+          "label": "Rectification",
+          "detail": "Demander la correction de données inexactes ou incomplètes"
+        },
+        "erasure": {
+          "label": "Effacement",
+          "detail": "Demander la suppression de vos données personnelles sous certaines conditions"
+        },
+        "portability": {
+          "label": "Portabilité",
+          "detail": "Demander le transfert de vos données dans un format lisible par machine"
+        },
+        "objection": {
+          "label": "Opposition",
+          "detail": "Vous opposer au traitement de vos données pour des intérêts légitimes"
+        }
+      },
+      "section6": {
+        "title": "Conservation des données",
+        "body": "Nous conservons vos données aussi longtemps que votre compte est actif ou selon les besoins du service. Les documents comptables peuvent être conservés plus longtemps pour respecter les obligations légales et fiscales."
+      },
+      "section7": {
+        "title": "Contact",
+        "intro": "Pour toute question relative à la confidentialité ou pour exercer vos droits, contactez notre délégué à la protection des données à :",
+        "cnil": "Si vous êtes situé dans l'UE, vous avez le droit de déposer une réclamation auprès de votre autorité de contrôle locale (par exemple la CNIL en France)."
+      }
     }
   },
   "quickCreate": {
@@ -1274,6 +1357,7 @@
     "customer": "Client",
     "supplier": "Fournisseur",
     "partner": "Partenaire",
+    "both": "Les deux",
     "searchPlaceholder": "Rechercher par nom, e-mail ou téléphone...",
     "noSearchResults": "Aucun partenaire trouvé",
     "noPartners": "Aucun partenaire disponible",

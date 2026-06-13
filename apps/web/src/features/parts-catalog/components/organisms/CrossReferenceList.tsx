@@ -74,7 +74,7 @@ export function CrossReferenceList({ crossReferences, className }: CrossReferenc
                       type="button"
                       onClick={() => { handleCopy(ref.reference_number) }}
                       className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-all"
-                      title="Copy"
+                      title={t('parts-catalog:crossRef.copy')}
                     >
                       <Copy className="h-3.5 w-3.5" />
                     </button>

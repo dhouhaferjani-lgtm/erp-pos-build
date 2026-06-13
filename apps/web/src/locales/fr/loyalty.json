@@ -104,6 +104,8 @@
     "stampsRequired": "Tampons Requis",
     "stampsPerItem": "Tampons par Article",
     "rewardId": "R\u00e9compense",
+    "rewardIdPlaceholder": "UUID de la r\u00e9compense",
+    "color": "Couleur",
     "maxActiveCards": "Cartes Actives Max",
     "expiryDays": "Expiration (Jours)",
     "currentBalance": "Solde",

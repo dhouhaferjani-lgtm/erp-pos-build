@@ -32,7 +32,7 @@ export function CompositeItemSearchSelect({
   className,
   disabled = false,
 }: CompositeItemSearchSelectProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['catalog', 'common'])
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
@@ -127,7 +127,7 @@ export function CompositeItemSearchSelect({
                 e.stopPropagation()
                 handleClear()
               }}
-              aria-label="Clear selection"
+              aria-label={t('common:actions.clear')}
               className="rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
             >
               <X className="h-4 w-4" />
