@@ -95,6 +95,39 @@
     "actions": {
       "replaceLogo": "Replace"
     },
+    "placeholders": {
+      "taxId": "FR12345678901",
+      "registrationNumber": "123 456 789 RCS Paris",
+      "street": "123 Business Street",
+      "city": "City",
+      "primaryColor": "#2563EB"
+    },
+    "currencies": {
+      "EUR": "EUR - Euro",
+      "USD": "USD - US Dollar",
+      "GBP": "GBP - British Pound",
+      "TND": "TND - Tunisian Dinar",
+      "MAD": "MAD - Moroccan Dirham",
+      "DZD": "DZD - Algerian Dinar"
+    },
+    "timezones": {
+      "EuropeParis": "Europe/Paris (UTC+1)",
+      "EuropeLondon": "Europe/London (UTC+0)",
+      "AmericaNewYork": "America/New_York (UTC-5)",
+      "AfricaTunis": "Africa/Tunis (UTC+1)",
+      "AfricaCasablanca": "Africa/Casablanca (UTC+0)",
+      "AfricaAlgiers": "Africa/Algiers (UTC+1)"
+    },
+    "dateFormats": {
+      "DDMMYYYY": "DD/MM/YYYY (31/12/2025)",
+      "MMDDYYYY": "MM/DD/YYYY (12/31/2025)",
+      "YYYYMMDD": "YYYY-MM-DD (2025-12-31)"
+    },
+    "languages": {
+      "fr": "Français",
+      "en": "English",
+      "ar": "العربية"
+    },
     "messages": {
       "saved": "Company settings saved successfully.",
       "logoUploaded": "Logo uploaded successfully.",
@@ -191,7 +224,8 @@
         "registeredDescription": "You can recover VAT on purchases",
         "nonRegistered": "Not VAT Registered",
         "nonRegisteredDescription": "VAT on purchases is added to inventory cost",
-        "vatNumber": "VAT Registration Number"
+        "vatNumber": "VAT Registration Number",
+      "vatNumberPlaceholder": "TN123456789"
       },
       "table": {
         "name": "Name",
@@ -243,6 +277,20 @@
         "title": "Deactivate Tax?",
         "message": "This tax will be deactivated but not deleted. Existing documents will not be affected."
       }
+    },
+    "months": {
+      "1": "January",
+      "2": "February",
+      "3": "March",
+      "4": "April",
+      "5": "May",
+      "6": "June",
+      "7": "July",
+      "8": "August",
+      "9": "September",
+      "10": "October",
+      "11": "November",
+      "12": "December"
     }
   },
   "onboarding": {
