@@ -421,12 +421,12 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
                 htmlFor="issue_date"
                 className="block text-sm font-medium text-gray-700"
               >
-                Issue Date *
+                {t('sales:documents.issueDate')} *
               </label>
               <input
                 type="date"
                 id="issue_date"
-                {...register('issue_date', { required: 'Issue date is required' })}
+                {...register('issue_date', { required: t('validation.required') })}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
               {errors.issue_date && (
@@ -442,7 +442,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
                 htmlFor="due_date"
                 className="block text-sm font-medium text-gray-700"
               >
-                Due Date
+                {t('sales:documents.dueDate')}
               </label>
               <input
                 type="date"
@@ -494,14 +494,14 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
                 htmlFor="notes"
                 className="block text-sm font-medium text-gray-700"
               >
-                Notes
+                {t('sales:documents.notes')}
               </label>
               <textarea
                 id="notes"
                 rows={4}
                 {...register('notes')}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="Additional notes..."
+                placeholder={t('sales:documents.notesPlaceholder', 'Additional notes...')}
               />
             </div>
           </div>
@@ -530,7 +530,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  <span>Saving draft...</span>
+                  <span>{t('saving')}</span>
                 </>
               ) : lastSavedAt ? (
                 <>
@@ -538,7 +538,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                   <span>
-                    Draft saved {lastSavedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                    {t('sales:documents.draftSavedAt', { time: lastSavedAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) })}
                   </span>
                 </>
               ) : null}

@@ -221,7 +221,20 @@
       "goodsReceived": "Marchandises réceptionnées"
     },
     "taxExemptionMention": "Exonération fiscale applicable à {{partner}} - {{reason}}",
-    "vehicle": "Véhicule"
+    "vehicle": "Véhicule",
+    "mileage": "Kilométrage",
+    "items": "Articles",
+    "sealed": "Scellé",
+    "deliveryDate": "Date de livraison",
+    "returnDate": "Date de retour",
+    "notesPlaceholder": "Notes supplémentaires...",
+    "draftSavedAt": "Brouillon enregistré {{time}}",
+    "status": {
+      "draft": "Brouillon",
+      "confirmed": "Confirmé",
+      "posted": "Comptabilisé",
+      "cancelled": "Annulé"
+    }
   },
   "lineItems": {
     "title": "Lignes",
@@ -394,7 +407,12 @@
         "differentCurrencies": "Tous les bons de livraison sélectionnés doivent utiliser la même devise",
         "invalidSelection": "Veuillez sélectionner au moins un bon de livraison"
       }
-    }
+    },
+    "confirmed": "Bon de livraison confirmé",
+    "backToList": "Retour aux bons de livraison",
+    "emailSubject": "Bon de livraison",
+    "confirmTitle": "Confirmer le bon de livraison",
+    "confirmMessage": "Êtes-vous sûr de vouloir confirmer ce bon de livraison ? Le stock sera sorti de l'inventaire. Cette action est irréversible."
   },
   "relatedDocuments": {
     "title": "Documents liés",
@@ -454,6 +472,7 @@
       "creditPartial": "Crédit partiel",
       "creditPartialDesc": "Sélectionner des lignes et quantités spécifiques",
       "selectLinesRequired": "Veuillez sélectionner au moins une ligne à créditer",
+      "selectLinesTable": "Sélectionner les lignes de facture à créditer",
       "linesRequired": "Veuillez ajouter au moins une ligne",
       "create": "Créer l'avoir"
     },
@@ -499,7 +518,37 @@
         "message": "Cela créera un avoir pour le montant total de la facture. Êtes-vous sûr ?",
         "button": "Créer le remboursement complet"
       }
-    }
+    },
+    "empty": {
+      "title": "Aucun avoir",
+      "description": "Aucun avoir n'a encore été créé."
+    },
+    "reasons": {
+      "return": "Retour de produit",
+      "price_adjustment": "Ajustement de prix",
+      "billing_error": "Erreur de facturation",
+      "damaged_goods": "Marchandises endommagées",
+      "service_issue": "Problème de service",
+      "other": "Autre"
+    },
+    "number": "Numéro",
+    "date": "Date",
+    "statusLabel": "Statut",
+    "reasonLabel": "Motif",
+    "filterByReason": "Filtrer par motif",
+    "allReasons": "Tous les motifs",
+    "sortBy": "Trier par",
+    "sortByDate": "Date",
+    "sortByAmount": "Montant",
+    "sortByNumber": "Numéro",
+    "confirmed": "Avoir confirmé",
+    "posted": "Avoir comptabilisé",
+    "backToList": "Retour aux avoirs",
+    "emailSubject": "Avoir",
+    "confirmTitle": "Confirmer l'avoir",
+    "confirmMessage": "Êtes-vous sûr de vouloir confirmer cet avoir ? Une fois confirmé, il ne pourra plus être modifié.",
+    "postTitle": "Comptabiliser l'avoir",
+    "postMessage": "Êtes-vous sûr de vouloir comptabiliser cet avoir ? Cela créera des écritures comptables. Cette action est irréversible."
   },
   "returnNotes": {
     "title": "Bons de retour",
@@ -596,7 +645,16 @@
         "message": "Souhaitez-vous créer un avoir pour ce retour ?",
         "button": "Créer un avoir"
       }
-    }
+    },
+    "backToList": "Retour aux bons de retour",
+    "emailSubject": "Bon de retour",
+    "confirmTitle": "Confirmer le bon de retour",
+    "confirmMessage": "Cela réceptionnera les marchandises retournées dans l'inventaire. Continuer ?",
+    "returnedItems": "Articles retournés",
+    "returnedQty": "Qté retournée",
+    "returnValue": "Valeur du retour",
+    "sourceDocument": "Document source",
+    "create": "Créer le bon de retour"
   },
   "tax": {
     "breakdown": {

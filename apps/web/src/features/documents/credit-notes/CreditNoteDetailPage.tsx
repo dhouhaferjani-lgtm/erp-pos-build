@@ -113,7 +113,7 @@ export function CreditNoteDetailPage() {
     return (
       <div className="py-6">
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-          <p className="text-red-800">{t('common.error')}</p>
+          <p className="text-red-800">{t('common:error')}</p>
         </div>
       </div>
     )
@@ -225,6 +225,7 @@ export function CreditNoteDetailPage() {
             <p className="text-lg font-medium text-gray-900">{creditNote.vehicle_context.display}</p>
             {creditNote.vehicle_context.mileage && (
               <p className="text-sm text-gray-600 mt-1">
+                {/* eslint-disable-next-line local/no-untranslated-literal -- km is an ISO unit symbol */}
                 {creditNote.vehicle_context.mileage.toLocaleString()} km
               </p>
             )}
@@ -326,12 +327,12 @@ export function CreditNoteDetailPage() {
       <Modal
         isOpen={showEmailModal}
         onClose={() => { setShowEmailModal(false); }}
-        title={t('common.sendEmail')}
+        title={t('common:email.title')}
       >
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              {t('common.recipient')}
+              {t('common:email.recipientEmail')}
             </label>
             <input
               type="email"
@@ -342,7 +343,7 @@ export function CreditNoteDetailPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              {t('common.subject')}
+              {t('common:email.subject')}
             </label>
             <input
               type="text"
@@ -353,7 +354,7 @@ export function CreditNoteDetailPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              {t('common.message')}
+              {t('common:email.message', 'Message')}
             </label>
             <textarea
               value={emailForm.message}
@@ -374,7 +375,7 @@ export function CreditNoteDetailPage() {
               onClick={handleSendEmail}
               disabled={sendEmailMutation.isPending || !emailForm.recipientEmail}
             >
-              {sendEmailMutation.isPending ? t('common.sending') : t('common:send')}
+              {sendEmailMutation.isPending ? t('common:email.sending') : t('common:send')}
             </Button>
           </div>
         </div>

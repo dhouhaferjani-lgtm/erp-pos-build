@@ -75,7 +75,7 @@ export function DocumentPartnerInfo({
             <Car className="mt-0.5 h-5 w-5 text-gray-400" />
             <div className="flex-1">
               <dt className="text-sm font-medium text-gray-500">
-                {t('documents.vehicle', 'Vehicle')}
+                {t('documents.vehicle')}
               </dt>
               <dd>
                 {document.vehicle_context.vehicle_id ? (
@@ -93,7 +93,7 @@ export function DocumentPartnerInfo({
               </dd>
               {document.vehicle_context.mileage && (
                 <dd className="mt-1 text-sm text-gray-500">
-                  {t('documents.mileage', 'Mileage')}:{' '}
+                  {t('documents.mileage')}:{' '}
                   {document.vehicle_context.mileage.toLocaleString()} km
                 </dd>
               )}
