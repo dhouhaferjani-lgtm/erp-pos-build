@@ -73,6 +73,9 @@ successful sale**. Unknown yet whether this is pre-existing, demo-data-specific,
   you may inspect it read-only with `sqlite3` to see the actual rows the reports query.
 - Demo stack: `docker compose -f docker-compose.demo.yml up -d --wait`, http://localhost:8088,
   owner@pharmabio.tn/password; POS via `cd apps/pos && pnpm tauri dev`, POS01 @ Tunis.
+  (NOTE: `docker-compose.demo.yml` + the Tunisia demo seeders live on the standalone
+  `feat/parapharmacy-tunisia-demo` branch — they were intentionally excluded from the
+  dev consolidation, so this file is not present on `dev`.)
 - Tests: `pnpm exec vitest run <path>`, `pnpm exec tsc --noEmit`, `pnpm exec eslint <files>`.
   **NEVER run the full PHPUnit suite** (crashes the laptop) — scope any backend test with `--filter`.
 - The owner is testing live in parallel and will paste screenshots/console logs into the session —
