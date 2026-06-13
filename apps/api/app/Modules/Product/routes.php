@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Modules\Catalog\Presentation\Controllers\ProductMediaController;
+use App\Modules\Catalog\Presentation\Controllers\PublicProductMediaController;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Product\Presentation\Controllers\CategoryController;
@@ -11,9 +13,6 @@ use App\Modules\Product\Presentation\Controllers\HealthClaimController;
 use App\Modules\Product\Presentation\Controllers\IngredientController;
 use App\Modules\Product\Presentation\Controllers\KeyComponentController;
 use App\Modules\Product\Presentation\Controllers\ProductController;
-use App\Modules\Catalog\Presentation\Controllers\ProductMediaController;
-use App\Modules\Product\Presentation\Controllers\ProductImageController;
-use App\Modules\Product\Presentation\Controllers\PublicProductImageController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -145,9 +144,9 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
 // Public routes (rate-limited)
 Route::prefix('api/v1/public')->middleware(['api', 'throttle:public-product-images'])->group(function () {
-    Route::get('products/{product}/images', [PublicProductImageController::class, 'index'])
+    Route::get('products/{product}/images', [PublicProductMediaController::class, 'index'])
         ->name('public.products.images.index');
 
-    Route::get('products/{product}/images/{image}', [PublicProductImageController::class, 'show'])
+    Route::get('products/{product}/images/{image}', [PublicProductMediaController::class, 'show'])
         ->name('public.products.images.show');
 });
