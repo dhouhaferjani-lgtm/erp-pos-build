@@ -122,9 +122,22 @@ describe('CashPaymentScreen', () => {
     expect(screen.queryByText('Payment failed')).not.toBeInTheDocument();
   });
 
-  it('shows change due label', () => {
+  it('hides the change-due box until change is positive', () => {
     renderScreen({ total: 25 });
+    // No over-tender yet → change is 0 → box not rendered.
+    expect(screen.queryByText('cashPayment.changeDue')).not.toBeInTheDocument();
+  });
+
+  it('shows change due box once tendered exceeds total', () => {
+    // total=3, tender 50 via denomination → change 47 → box shown.
+    renderScreen({ total: 3 });
+    fireEvent.click(screen.getByText('50 EUR'));
     expect(screen.getByText('cashPayment.changeDue')).toBeInTheDocument();
+  });
+
+  it('shows the disabled reason when no valid amount is tendered', () => {
+    renderScreen({ total: 25 });
+    expect(screen.getByText('cashPayment.enterAmount')).toBeInTheDocument();
   });
 
   it('digit press after Exact overwrites the preset (does not append)', () => {

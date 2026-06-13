@@ -13,11 +13,15 @@ interface NumPadProps {
 /**
  * POS-standard numpad — calculator-style layout (7-8-9 top row).
  *
+ * Keys are all neutral surfaces; backspace and clear are differentiated by
+ * icon (Delete) and label ("C"), never by ad-hoc semantic color tints.
+ * A `000` key is provided because TND is 3-decimal and cashiers type thousands.
+ *
  * Layout:
  *   [ 7 ] [ 8 ] [ 9 ]  [ ⌫ ]
  *   [ 4 ] [ 5 ] [ 6 ]  [ C ]
- *   [ 1 ] [ 2 ] [ 3 ]  [ 00]
- *   [   0   ]   [ . ]  (or [C] when no decimal)
+ *   [ 1 ] [ 2 ] [ 3 ]  [ . ]   (decimal; blank when allowDecimal=false)
+ *   [ 0 ] [ 00] [000]
  */
 export function NumPad({
   value,
@@ -42,70 +46,59 @@ export function NumPad({
     [value, onChange, allowDecimal],
   );
 
-  const digitClass =
-    'flex items-center justify-center rounded-xl bg-gray-100 text-xl font-semibold text-gray-900 transition-colors active:bg-gray-300 active:scale-[0.97] select-none min-h-[56px]';
-
-  const actionClass =
-    'flex items-center justify-center rounded-xl text-base font-semibold transition-colors active:scale-[0.97] select-none min-h-[56px]';
+  // All keys share one neutral surface voice; meaning comes from glyph/label.
+  const keyClass =
+    'flex items-center justify-center rounded-xl bg-surface-sunken text-xl font-semibold text-ink transition-colors active:bg-border-subtle active:scale-[0.97] select-none min-h-[56px]';
 
   return (
     <div className={cn('grid grid-cols-4 gap-2', className)}>
       {/* Row 1: 7 8 9 ⌫ */}
-      <button type="button" onClick={() => handleKey('7')} className={digitClass}>7</button>
-      <button type="button" onClick={() => handleKey('8')} className={digitClass}>8</button>
-      <button type="button" onClick={() => handleKey('9')} className={digitClass}>9</button>
+      <button type="button" onClick={() => handleKey('7')} className={keyClass}>7</button>
+      <button type="button" onClick={() => handleKey('8')} className={keyClass}>8</button>
+      <button type="button" onClick={() => handleKey('9')} className={keyClass}>9</button>
       <button
         type="button"
+        aria-label="backspace"
         onClick={() => handleKey('backspace')}
-        className={cn(actionClass, 'bg-red-50 text-red-700 active:bg-red-100')}
+        className={keyClass}
       >
         <Delete className="h-5 w-5" />
       </button>
 
       {/* Row 2: 4 5 6 C */}
-      <button type="button" onClick={() => handleKey('4')} className={digitClass}>4</button>
-      <button type="button" onClick={() => handleKey('5')} className={digitClass}>5</button>
-      <button type="button" onClick={() => handleKey('6')} className={digitClass}>6</button>
+      <button type="button" onClick={() => handleKey('4')} className={keyClass}>4</button>
+      <button type="button" onClick={() => handleKey('5')} className={keyClass}>5</button>
+      <button type="button" onClick={() => handleKey('6')} className={keyClass}>6</button>
       <button
         type="button"
+        aria-label="clear"
         onClick={() => handleKey('clear')}
-        className={cn(actionClass, 'bg-orange-50 text-orange-700 active:bg-orange-100')}
+        className={keyClass}
       >
         C
       </button>
 
-      {/* Row 3: 1 2 3 00 */}
-      <button type="button" onClick={() => handleKey('1')} className={digitClass}>1</button>
-      <button type="button" onClick={() => handleKey('2')} className={digitClass}>2</button>
-      <button type="button" onClick={() => handleKey('3')} className={digitClass}>3</button>
-      <button type="button" onClick={() => handleKey('00')} className={digitClass}>00</button>
-
-      {/* Row 4: 0 (spans 2) + decimal (or C when no decimal) */}
-      <button
-        type="button"
-        onClick={() => handleKey('0')}
-        className={cn(digitClass, 'col-span-2')}
-      >
-        0
-      </button>
+      {/* Row 3: 1 2 3 . (decimal, or blank when not allowed) */}
+      <button type="button" onClick={() => handleKey('1')} className={keyClass}>1</button>
+      <button type="button" onClick={() => handleKey('2')} className={keyClass}>2</button>
+      <button type="button" onClick={() => handleKey('3')} className={keyClass}>3</button>
       {allowDecimal ? (
         <button
           type="button"
           onClick={() => handleKey('.')}
           disabled={value.includes('.')}
-          className={cn(digitClass, 'disabled:opacity-50')}
+          className={cn(keyClass, 'disabled:text-ink-faint disabled:cursor-not-allowed')}
         >
           .
         </button>
       ) : (
-        <button
-          type="button"
-          onClick={() => handleKey('clear')}
-          className={cn(actionClass, 'bg-orange-50 text-orange-700 active:bg-orange-100')}
-        >
-          C
-        </button>
+        <div />
       )}
+
+      {/* Row 4: 0 00 000 */}
+      <button type="button" onClick={() => handleKey('0')} className={keyClass}>0</button>
+      <button type="button" onClick={() => handleKey('00')} className={keyClass}>00</button>
+      <button type="button" onClick={() => handleKey('000')} className={keyClass}>000</button>
       {/* Empty cell to complete the 4-col grid */}
       <div />
     </div>
