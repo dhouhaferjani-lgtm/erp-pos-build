@@ -43,6 +43,7 @@ import { verifyManagerPin } from '@/api/managerPinApi';
 import { useRefundFlowStore } from '@/stores/refundFlowStore';
 import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { getTerminalState, setManagerPinThrottle, setManagerPinFailedAttempts } from '@/lib/db/repositories/terminalStateRepository';
+import { tokens } from '@/lib/designTokens';
 
 export function Header() {
   const { t } = useTranslation('pos');
@@ -396,120 +397,133 @@ export function Header() {
     clearOperator();
   }
 
+  // Single session-status signal (B3): one pill folds connectivity + sync +
+  // pending-receipt backlog into one healthy/warning/danger state, driven by
+  // the same stores the header already reads. The healthy "synced" signal now
+  // lives HERE (the full-width "everything synced" banner is exception-only —
+  // B4 returns null when healthy), so this pill must show the synced state.
+  const statusTone: 'healthy' | 'warning' | 'danger' = !isOnline
+    ? 'danger'
+    : pendingReceiptCount > 0 || isSyncing
+      ? 'warning'
+      : 'healthy';
+
+  const statusLabel = !isOnline
+    ? t('sync.offline')
+    : isSyncing
+      ? t('sync.syncing')
+      : pendingReceiptCount > 0
+        ? t('sync.pendingCount', { count: pendingReceiptCount })
+        : t('sync.online');
+
+  const statusDotColor =
+    statusTone === 'healthy' ? 'bg-success' : statusTone === 'warning' ? 'bg-warning' : 'bg-danger';
+
   return (
     <>
-      <header className="flex h-12 items-center justify-between border-b border-gray-200 bg-white px-4">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold text-gray-900">{t('auth.title')}</h1>
-          {terminal && (
-            <span className="rounded-md bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
-              {terminal.name}
-            </span>
-          )}
+      <header className="flex h-12 items-center justify-between gap-4 border-b border-subtle bg-surface-raised px-4">
+        {/* LEFT zone — identity (largest). Wordmark + terminal badge. */}
+        <div className="flex min-w-0 items-center gap-3">
+          <h1 className="truncate text-xl font-extrabold tracking-tight text-brand">{t('auth.title')}</h1>
+          {terminal && <span className={tokens.badge.neutral}>{terminal.name}</span>}
         </div>
 
-        <div className="flex items-center gap-1.5">
-          {/* Connectivity indicator */}
-          <div className="flex items-center gap-1.5" title={isOnline ? t('sync.online') : t('sync.offline')}>
+        {/* CENTER zone — ONE session-status pill (connectivity + sync + stock age). */}
+        <div className="flex min-w-0 items-center gap-2">
+          <div
+            className={cn(tokens.statusPill.base, tokens.statusPill[statusTone])}
+            title={statusLabel}
+            aria-label={statusLabel}
+          >
             <span
               className={cn(
-                'inline-block h-2.5 w-2.5 rounded-full',
-                isSyncing
-                  ? 'animate-pulse bg-yellow-500'
-                  : isOnline
-                    ? 'bg-green-500'
-                    : 'bg-red-500',
+                tokens.statusPill.dot,
+                statusDotColor,
+                isSyncing && 'animate-pulse',
               )}
             />
-            {!isOnline && (
-              <span className="rounded bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
-                {t('sync.offline')}
-              </span>
-            )}
-            {pendingReceiptCount > 0 && (
-              <span className="rounded bg-orange-50 px-1.5 py-0.5 text-xs font-medium text-orange-700">
-                {pendingReceiptCount}
-              </span>
-            )}
+            <span className="truncate">{statusLabel}</span>
+            <SyncButton />
           </div>
-
-          {/* Manual sync button */}
-          <SyncButton />
-
-          {/* Task 12 — stock staleness hint beside the sync freshness display */}
+          {/* Stock staleness hint — own freshness/age signal beside the pill. */}
           <StockFreshness />
+        </div>
 
-          {/* Shift badge — opens End of Day preview */}
+        {/* RIGHT zone — operator + icon-only actions (smallest). */}
+        <div className="flex min-w-0 items-center gap-1">
+          {/* Shift badge — opens End of Day preview. */}
           {shift ? (
             <button
               onClick={() => setShowEndOfDay(true)}
-              className="flex items-center gap-2 rounded-md bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
+              className={cn(tokens.badge.success, 'hover:bg-success-surface/80')}
+              title={t('shift.opening', { amount: shift.opening_cash })}
             >
               <span>{t('shift.number', { number: shift.shift_number })}</span>
-              <span className="text-green-600">|</span>
-              <span>{t('shift.opening', { amount: shift.opening_cash })}</span>
             </button>
           ) : (
-            <span className="text-sm text-gray-500">{t('header.noShift')}</span>
+            <span className="text-sm text-ink-faint">{t('header.noShift')}</span>
           )}
 
           {/* Operator name */}
           {operator && (
-            <span className="text-sm font-medium text-gray-700">{operator.name}</span>
+            <span className="mx-1 hidden truncate text-sm font-medium text-ink-muted sm:inline">
+              {operator.name}
+            </span>
           )}
 
-          {/* Switch operator */}
+          {/* Switch operator — icon-only */}
           <button
             onClick={handleSwitchOperator}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
+            className={cn(tokens.button.ghost, 'h-8 w-8 !px-0')}
             title={t('header.switch')}
+            aria-label={t('header.switch')}
           >
-            <ArrowLeftRight className="h-3.5 w-3.5" />
-            {t('header.switch')}
+            <ArrowLeftRight className="h-4 w-4" />
           </button>
 
-          {/* Lock */}
+          {/* Lock — icon-only */}
           <button
             onClick={lockScreen}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
+            className={cn(tokens.button.ghost, 'h-8 w-8 !px-0')}
             title={t('header.lock')}
+            aria-label={t('header.lock')}
           >
-            <Lock className="h-3.5 w-3.5" />
-            {t('header.lock')}
+            <Lock className="h-4 w-4" />
           </button>
 
-          {/* Reports */}
+          {/* Reports — icon-only (behavior/routing unchanged) */}
           {shift && (
             <button
               onClick={() => setShowReportsMenu(true)}
-              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
+              className={cn(tokens.button.ghost, 'h-8 w-8 !px-0')}
               title={t('quickActions.reports')}
+              aria-label={t('quickActions.reports')}
             >
-              <BarChart3 className="h-3.5 w-3.5" />
-              {t('quickActions.reports')}
+              <BarChart3 className="h-4 w-4" />
             </button>
           )}
 
-          {/* Exit fullscreen */}
+          {/* Exit fullscreen — icon-only */}
           {fullscreen && (
             <button
               onClick={() => void handleExitFullscreen()}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              className={cn(tokens.button.ghost, 'h-8 w-8 !px-0')}
               title={t('settings.exitFullscreen')}
+              aria-label={t('settings.exitFullscreen')}
             >
               <Minimize2 className="h-4 w-4" />
             </button>
           )}
 
-          {/* Settings */}
+          {/* Settings — icon-only */}
           <button
             onClick={() => navigate('/settings')}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+            className={cn(tokens.button.ghost, 'h-8 w-8 !px-0')}
             title={t('header.settings')}
+            aria-label={t('header.settings')}
           >
             <Settings className="h-4 w-4" />
           </button>
-
         </div>
       </header>
 
