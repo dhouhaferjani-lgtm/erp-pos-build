@@ -7,6 +7,7 @@
  *    the modal is opened (proxy: `customer.modalTitle` is absent initially).
  * 3. Clicking the trigger opens the CustomerSearchModal (`customer.modalTitle` appears).
  */
+import type { ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
@@ -117,7 +118,12 @@ vi.mock('@/components/organisms/ProductGrid', () => ({
 }));
 
 vi.mock('@/components/organisms/TransactionCart', () => ({
-  TransactionCart: () => <div data-testid="transaction-cart" />,
+  // The customer control is now rendered inside the cart header via the
+  // `customerControl` prop, so the stub must surface it for the trigger to
+  // be findable.
+  TransactionCart: ({ customerControl }: { customerControl?: ReactNode }) => (
+    <div data-testid="transaction-cart">{customerControl}</div>
+  ),
 }));
 
 vi.mock('@/components/organisms/CashPaymentScreen', () => ({

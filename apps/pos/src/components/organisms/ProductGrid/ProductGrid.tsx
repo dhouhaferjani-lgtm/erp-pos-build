@@ -481,6 +481,12 @@ export function ProductGrid({
                   )}
                   style={{
                     height: `${virtualRow.size}px`,
+                    // Pin the single grid track to exactly rowHeight so the
+                    // leftover space below each card equals GAP (12px) — the
+                    // same as the `gap-3` column gap. Without this, cards whose
+                    // content exceeds rowHeight shrink the vertical gutter and
+                    // it no longer matches the horizontal one.
+                    gridAutoRows: `${rowHeight}px`,
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >

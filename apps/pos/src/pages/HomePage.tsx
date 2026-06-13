@@ -1386,14 +1386,15 @@ export function HomePage() {
         </div>
       )}
 
-      {/* Cart - left panel (first in DOM) */}
-      <div className="flex min-w-[340px] flex-[4] flex-col border-r border-gray-200">
-        {/* Cart-header customer control — compact single-line row */}
-        <div className="flex items-center border-b border-gray-200 bg-white px-3 py-2">
-          <CartCustomerControl onOpen={() => setShowCustomerModal(true)} />
-        </div>
+      {/* Cart - left panel (first in DOM). The customer control is rendered
+          inside the cart header (customerControl prop) so the cart owns one
+          unified header zone — no separate floating customer band. */}
+      <div className="flex min-w-[340px] flex-[4] flex-col border-r border-subtle">
         <div className="min-h-0 flex-1">
           <TransactionCart
+            customerControl={
+              <CartCustomerControl onOpen={() => setShowCustomerModal(true)} />
+            }
             items={cartItems}
             subtotal={subtotal()}
             taxAmount={taxAmount()}

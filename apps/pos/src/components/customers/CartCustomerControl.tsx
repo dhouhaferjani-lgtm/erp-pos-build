@@ -13,12 +13,12 @@ export function CartCustomerControl({ onOpen }: CartCustomerControlProps) {
 
   if (selectedCustomer !== null) {
     return (
-      <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-2 py-1">
-        <User className="h-4 w-4 text-blue-700 shrink-0" aria-hidden />
+      <div className="flex min-w-0 items-center gap-2 rounded-md border border-action bg-action-subtle px-2 py-1">
+        <User className="h-4 w-4 shrink-0 text-action-strong" aria-hidden />
         <button
           type="button"
           onClick={onOpen}
-          className="truncate text-sm font-medium text-blue-900 hover:underline"
+          className="truncate text-sm font-medium text-action-strong hover:underline"
         >
           {selectedCustomer.name}
         </button>
@@ -26,7 +26,7 @@ export function CartCustomerControl({ onOpen }: CartCustomerControlProps) {
           type="button"
           onClick={detachCustomer}
           aria-label={t('customer.detach')}
-          className="ml-1 rounded p-0.5 text-blue-700 hover:bg-blue-200"
+          className="ml-1 shrink-0 rounded p-0.5 text-action-strong hover:bg-action-subtle"
         >
           <X className="h-4 w-4" />
         </button>
@@ -39,7 +39,7 @@ export function CartCustomerControl({ onOpen }: CartCustomerControlProps) {
       type="button"
       onClick={onOpen}
       aria-label={t('customer.attach')}
-      className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+      className="flex items-center gap-1.5 rounded-md border border-border-strong bg-surface-raised px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
     >
       <User className="h-4 w-4" aria-hidden />
       {t('customer.attach')}

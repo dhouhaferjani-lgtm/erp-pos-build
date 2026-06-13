@@ -1,9 +1,11 @@
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ShoppingCart, Trash2, RotateCcw } from 'lucide-react';
 import { CartLineItem } from '@/components/molecules/CartLineItem';
 import { PaymentSummary } from '@/components/organisms/PaymentSummary';
 import { QuickActions } from '@/components/molecules/QuickActions';
 import { useCurrency } from '@/lib/currency';
+import { tokens } from '@/lib/designTokens';
 import type { CartItem } from '@/types/cart';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 
@@ -33,6 +35,12 @@ export interface TransactionCartProps {
   paymentMethods?: PaymentMethod[];
   paymentRepositories?: PaymentRepository[];
   checkoutDisabled?: boolean;
+  /**
+   * Customer-assignment control rendered inline in the cart header (right of
+   * the title) as the sale's "who" context. Supplied by HomePage so the cart
+   * owns a single unified header zone instead of a separate floating band.
+   */
+  customerControl?: ReactNode;
   /**
    * Net amount for the refund/exchange flow (sale total minus return total).
    * When provided, the footer shows the net amount and the confirm button label
@@ -67,6 +75,7 @@ export function TransactionCart({
   paymentMethods,
   paymentRepositories,
   checkoutDisabled = false,
+  customerControl,
   netTotal,
 }: TransactionCartProps) {
   const { t } = useTranslation('pos');
@@ -75,6 +84,7 @@ export function TransactionCart({
   const returnItems = items.filter((i) => (i.kind ?? 'sale') === 'return');
   const saleItems = items.filter((i) => (i.kind ?? 'sale') === 'sale');
   const isRefundMode = returnItems.length > 0;
+  const hasQuickActions = Boolean(onDiscount && onHold && onRecall && onReturns);
 
   // Determine confirm button label when in refund/exchange mode
   function getNetLabel(): string {
@@ -86,65 +96,86 @@ export function TransactionCart({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white">
-      {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-3 py-2">
-        <div className="flex items-center gap-2">
-          <ShoppingCart className="h-5 w-5 text-gray-600" />
-          <h2 className="text-lg font-bold text-gray-900">{t('cart.title')}</h2>
-          {itemCount > 0 && (
-            <span className="flex h-7 min-w-[28px] items-center justify-center rounded-full bg-primary-500 px-2 text-sm font-medium text-white">
-              {itemCount}
-            </span>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-raised">
+      {/* ── Unified cart header zone ──────────────────────────────────────
+       * Row A = context (what + who): title + count on the left, the
+       * customer-assignment control inline on the right. Row B = operations
+       * toolbar. This replaces the previous two disconnected bands (a
+       * standalone customer row above the cart + a separate quick-actions
+       * strip) with one coherent header that reads who → what → operate. */}
+      <div className="shrink-0 border-b border-subtle">
+        {/* Row A — context */}
+        <div className="flex items-center justify-between gap-2 px-3 pt-2 pb-1.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <ShoppingCart className="h-5 w-5 shrink-0 text-ink-muted" />
+            <h2 className="text-lg font-bold text-ink">{t('cart.title')}</h2>
+            {itemCount > 0 && (
+              <span className="flex h-6 min-w-[24px] items-center justify-center rounded-full bg-action px-2 text-sm font-medium text-ink-inverse tabular-nums">
+                {itemCount}
+              </span>
+            )}
+          </div>
+          {customerControl != null && (
+            <div className="flex min-w-0 shrink-0 justify-end">{customerControl}</div>
           )}
         </div>
 
-        {items.length > 0 && (
-          <button
-            onClick={onClearCart}
-            className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 active:bg-red-100"
-          >
-            <Trash2 className="h-4 w-4" />
-            {t('cart.clear')}
-          </button>
+        {/* Row B — operations toolbar (Discount · Hold ⎮ Recall · Returns · Clear).
+         * Renders when quick actions are wired OR there are items to clear. */}
+        {(hasQuickActions || items.length > 0) && (
+          <div className="flex items-center gap-1.5 px-2 pb-2">
+            {hasQuickActions && (
+              <div className="min-w-0 flex-1">
+                <QuickActions
+                  onDiscount={onDiscount!}
+                  onHold={onHold!}
+                  onRecall={onRecall!}
+                  onReturns={onReturns!}
+                  hasItems={items.length > 0}
+                  hasDiscount={hasDiscount}
+                />
+              </div>
+            )}
+            {items.length > 0 && (
+              <>
+                {hasQuickActions && (
+                  <span className="h-6 w-px shrink-0 bg-border-subtle" aria-hidden="true" />
+                )}
+                <button
+                  onClick={onClearCart}
+                  aria-label={t('cart.clear')}
+                  title={t('cart.clear')}
+                  className="flex min-h-[36px] shrink-0 items-center justify-center rounded-md px-2 text-danger-strong transition-colors hover:bg-danger-surface ml-auto"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </>
+            )}
+          </div>
         )}
       </div>
-
-      {/* Quick actions */}
-      {onDiscount && onHold && onRecall && onReturns && (
-        <div className="shrink-0">
-          <QuickActions
-            onDiscount={onDiscount}
-            onHold={onHold}
-            onRecall={onRecall}
-            onReturns={onReturns}
-            hasItems={items.length > 0}
-            hasDiscount={hasDiscount}
-          />
-        </div>
-      )}
 
       {/* Cart items */}
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-0.5">
         {items.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center text-center text-gray-600">
-            <ShoppingCart className="mb-3 h-12 w-12" />
-            <p className="text-base font-medium">{t('cart.empty')}</p>
-            <p className="mt-1 text-sm">{t('cart.addProducts')}</p>
+          <div className="flex h-full flex-col items-center justify-center text-center text-ink-muted">
+            <ShoppingCart className="mb-3 h-12 w-12 text-ink-faint" />
+            <p className="text-base font-medium text-ink-muted">{t('cart.empty')}</p>
+            <p className="mt-1 text-sm text-ink-faint">{t('cart.addProducts')}</p>
           </div>
         ) : isRefundMode ? (
           // ── Refund / Exchange mode: two-section layout ──────────────────────
           <div>
             {/* ── Returning section ─────────────────────────────────────── */}
-            <div className="mb-1 flex items-center gap-1.5 border-b border-red-200 bg-red-50 px-2 py-1">
-              <RotateCcw className="h-4 w-4 text-red-600" aria-hidden="true" />
-              <span className="text-sm font-semibold text-red-700">
+            <div className="mb-1 flex items-center gap-1.5 border-b border-danger-subtle bg-danger-surface px-2 py-1">
+              <RotateCcw className="h-4 w-4 text-danger-strong" aria-hidden="true" />
+              <span className="text-sm font-semibold text-danger-strong">
                 {t('refundFlow.returningSection')}
               </span>
             </div>
-            <div className="divide-y divide-red-100">
+            <div className="divide-y divide-danger-subtle">
               {returnItems.map((item) => (
-                <div key={item.id} className="bg-red-50/50">
+                <div key={item.id} className="bg-danger-surface/50">
                   <ReturnLineItem
                     item={item}
                     onUpdateQuantity={onUpdateQuantity}
@@ -160,13 +191,13 @@ export function TransactionCart({
             {/* ── Buying new section (only when sale items exist) ────────── */}
             {saleItems.length > 0 && (
               <>
-                <div className="mb-1 mt-2 flex items-center gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-1">
-                  <ShoppingCart className="h-4 w-4 text-gray-600" aria-hidden="true" />
-                  <span className="text-sm font-semibold text-gray-700">
+                <div className="mb-1 mt-2 flex items-center gap-1.5 border-b border-subtle bg-surface-sunken px-2 py-1">
+                  <ShoppingCart className="h-4 w-4 text-ink-muted" aria-hidden="true" />
+                  <span className="text-sm font-semibold text-ink-muted">
                     {t('refundFlow.buyingNewSection')}
                   </span>
                 </div>
-                <div className="divide-y divide-gray-200">
+                <div className="divide-y divide-border-subtle">
                   {saleItems.map((item) => (
                     <CartLineItem
                       key={item.id}
@@ -185,7 +216,7 @@ export function TransactionCart({
           </div>
         ) : (
           // ── Normal sale mode ───────────────────────────────────────────────
-          <div className="divide-y divide-gray-200">
+          <div className="divide-y divide-border-subtle">
             {items.map((item) => (
               <CartLineItem
                 key={item.id}
@@ -220,12 +251,12 @@ export function TransactionCart({
               (paymentRepositories?.length ?? 0) > 0;
             const netButtonDisabled = checkoutDisabled || !paymentConfigReady;
             return (
-              <div className="space-y-1 border-t border-gray-200 pt-1.5">
-                <div className="rounded-lg bg-primary-600 px-3 py-2 text-white">
+              <div className="space-y-1 border-t border-subtle pt-1.5">
+                <div className="rounded-lg bg-action px-3 py-2 text-ink-inverse">
                   <div className="flex items-center justify-between">
                     <span className="text-lg font-medium">{t('common.total')}</span>
                     <span
-                      className={`text-2xl font-bold ${netTotal < -0.005 ? 'text-red-200' : ''}`}
+                      className={`text-2xl font-bold tabular-nums ${netTotal < -0.005 ? 'opacity-80' : ''}`}
                     >
                       {netTotal < -0.005 ? '−' : ''}{format(Math.abs(netTotal))}
                     </span>
@@ -240,7 +271,7 @@ export function TransactionCart({
                       ? t('payment.configNotLoaded')
                       : undefined
                   }
-                  className="w-full rounded-lg bg-green-600 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green-700 active:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  className={`w-full py-2.5 text-sm ${tokens.button.confirm}`}
                 >
                   {getNetLabel()}
                 </button>
@@ -310,19 +341,19 @@ function ReturnLineItem({
 
   return (
     <div className="px-1 py-1.5">
-      {/* Row 1: Name + Line Total (red with − prefix) */}
+      {/* Row 1: Name + Line Total (danger with − prefix) */}
       <div className="flex items-center justify-between gap-2">
-        <h4 className="truncate text-sm font-semibold text-red-800">
+        <h4 className="truncate text-sm font-semibold text-danger-strong">
           {item.product.variant_name ?? item.product.name}
         </h4>
-        <span className="shrink-0 text-sm font-bold text-red-700">
+        <span className="shrink-0 text-sm font-bold text-danger-strong tabular-nums">
           −{format(absTotal)}
         </span>
       </div>
 
       {/* Row 2: unit price × qty | controls */}
       <div className="mt-1 flex items-center justify-between">
-        <span className="text-xs text-red-600">
+        <span className="text-xs text-danger-strong tabular-nums">
           {format(item.unit_price)} × {absQty}
         </span>
 
@@ -330,7 +361,7 @@ function ReturnLineItem({
           {/* Decrement (reduce return qty or keep item) */}
           <button
             onClick={handleDecrement}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-red-300 bg-red-50 text-red-700 active:bg-red-200"
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-danger-subtle bg-danger-surface text-danger-strong active:opacity-80"
             aria-label={t('cart.decrementQty')}
           >
             <span className="text-base font-bold leading-none">−</span>
@@ -338,7 +369,7 @@ function ReturnLineItem({
 
           <button
             onClick={() => onQuantityTap?.(item.id)}
-            className="min-w-[1.5rem] text-center text-base font-bold text-red-800"
+            className="min-w-[1.5rem] text-center text-base font-bold text-danger-strong tabular-nums"
             type="button"
             aria-label={t('cart.editQty')}
           >
@@ -348,7 +379,7 @@ function ReturnLineItem({
           {/* Increment (return more) */}
           <button
             onClick={handleIncrement}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-red-300 bg-red-50 text-red-700 active:bg-red-200"
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-danger-subtle bg-danger-surface text-danger-strong active:opacity-80"
             aria-label={t('cart.incrementQty')}
           >
             <span className="text-base font-bold leading-none">+</span>
@@ -357,7 +388,7 @@ function ReturnLineItem({
           {/* Remove = keep item, don't refund */}
           <button
             onClick={() => onRemove(item.id)}
-            className="flex h-7 w-7 items-center justify-center rounded-md bg-red-50 text-red-700 active:bg-red-100"
+            className="flex h-7 w-7 items-center justify-center rounded-md bg-danger-surface text-danger-strong active:opacity-80"
             aria-label={t('cart.removeItem')}
           >
             <Trash2 className="h-4 w-4" />
