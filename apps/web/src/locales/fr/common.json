@@ -132,6 +132,7 @@
     "noRecentPayments": "Aucun paiement récent"
   },
   "navigation": {
+    "breadcrumb": "Fil d'Ariane",
     "dashboard": "Tableau de bord",
     "sales": "Ventes",
     "customers": "Clients",
@@ -372,6 +373,17 @@
   "noData": "Aucune donnée disponible",
   "error": "Erreur",
   "details": "Détails",
+  "dateFrom": "Du",
+  "dateTo": "Au",
+  "clearSearch": "Effacer la recherche",
+  "selectLanguage": "Choisir la langue",
+  "notifications": "Notifications",
+  "noLocation": "Aucun emplacement",
+  "centralInvoicing": "Facturation centrale",
+  "noLocationResults": "Aucun emplacement trouvé",
+  "noLocations": "Aucun emplacement disponible",
+  "searchLocation": "Rechercher des emplacements...",
+  "sku": "Référence",
   "cancel": "Annuler",
   "retry": "Réessayer",
   "save": "Enregistrer",
@@ -1029,7 +1041,10 @@
       "cannotDelete": "Impossible de supprimer une catégorie contenant des produits ou des sous-catégories",
       "selectCategory": "Sélectionner une catégorie...",
       "rootCategory": "Catégorie racine (Aucune parente)",
-      "productsCount": "{{count}} produits"
+      "productsCount": "{{count}} produits",
+      "noCategoriesFound": "Aucune catégorie trouvée",
+      "expand": "Développer",
+      "collapse": "Réduire"
     },
     "products": {
       "category": "Catégorie"
@@ -1240,5 +1255,14 @@
     "loadingError": "Échec du chargement — saisir le taux manuellement",
     "staleTaxWarning": "La taxe sélectionnée n'existe plus",
     "noTaxes": "Aucune taxe configurée"
+  },
+  "partners": {
+    "customer": "Client",
+    "supplier": "Fournisseur",
+    "partner": "Partenaire",
+    "searchPlaceholder": "Rechercher par nom, e-mail ou téléphone...",
+    "noSearchResults": "Aucun partenaire trouvé",
+    "noPartners": "Aucun partenaire disponible",
+    "addNew": "Ajouter"
   }
 }

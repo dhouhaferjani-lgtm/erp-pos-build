@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Search, X } from 'lucide-react'
 import { Input } from '../../atoms'
 
@@ -13,9 +14,11 @@ export function SearchFilter({
   label,
   value,
   onChange,
-  placeholder = 'Search...',
+  placeholder,
   className,
 }: SearchFilterProps) {
+  const { t } = useTranslation('common')
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value
     onChange(newValue === '' ? undefined : newValue)
@@ -32,7 +35,7 @@ export function SearchFilter({
         <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <Input
           type="text"
-          placeholder={placeholder}
+          placeholder={placeholder ?? t('actions.search')}
           value={value ?? ''}
           onChange={handleChange}
           className="ps-9 pe-9"
@@ -41,7 +44,7 @@ export function SearchFilter({
           <button
             onClick={handleClear}
             className="absolute end-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            aria-label="Clear search"
+            aria-label={t('clearSearch')}
           >
             <X className="w-4 h-4" />
           </button>

@@ -142,6 +142,8 @@
     },
     "created": "Created",
     "lastUpdated": "Last Updated",
+    "noSearchResults": "No products found",
+    "noProducts": "No products available",
     "empty": {
       "title": "No products yet",
       "description": "Get started by adding your first product."
@@ -265,7 +267,8 @@
     "purchasePrice": "Purchase Price",
     "additionalCosts": "Additional Costs",
     "proportion": "Proportion",
-    "noAdditionalCosts": "No additional costs allocated"
+    "noAdditionalCosts": "No additional costs allocated",
+    "total": "Total"
   },
   "additionalCosts": {
     "title": "Additional Costs",
@@ -281,6 +284,7 @@
       "other": "Other"
     },
     "total": "Total Additional Costs",
+    "removeCost": "Remove cost",
     "empty": "No additional costs added"
   },
   "pricing": {

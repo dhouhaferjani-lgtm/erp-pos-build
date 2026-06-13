@@ -110,9 +110,9 @@ export function PartnerSearchSelect({
   }
 
   const getPartnerLabel = () => {
-    if (partnerType === 'customer') return t('partners.customer', 'Customer')
-    if (partnerType === 'supplier') return t('partners.supplier', 'Supplier')
-    return t('partners.partner', 'Partner')
+    if (partnerType === 'customer') return t('common:partners.customer')
+    if (partnerType === 'supplier') return t('common:partners.supplier')
+    return t('common:partners.partner')
   }
 
   return (
@@ -148,7 +148,7 @@ export function PartnerSearchSelect({
                 e.stopPropagation()
                 handleClear()
               }}
-              aria-label="Clear selection"
+              aria-label={t('common:clearSearch')}
               className="rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
             >
               <X className="h-4 w-4" />
@@ -170,7 +170,7 @@ export function PartnerSearchSelect({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); }}
-                placeholder={t('partners.searchPlaceholder', 'Search by name, email, or phone...')}
+                placeholder={t('common:partners.searchPlaceholder')}
                 className="w-full rounded-lg border border-gray-300 py-2 pe-10 ps-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
               {searchQuery && (
@@ -189,15 +189,15 @@ export function PartnerSearchSelect({
           <div className="max-h-60 overflow-y-auto">
             {isLoading ? (
               <div className="p-4 text-center text-sm text-gray-500">
-                {t('status.loading', 'Loading...')}
+                {t('common:status.loading')}
               </div>
             ) : partners.length === 0 ? (
               <div className="p-4 text-center text-sm">
                 <User className="mx-auto h-8 w-8 text-gray-300" />
                 <p className="mt-2 text-gray-500">
                   {searchQuery
-                    ? t('partners.noSearchResults', 'No partners found')
-                    : t('partners.noPartners', 'No partners available')}
+                    ? t('common:partners.noSearchResults')
+                    : t('common:partners.noPartners')}
                 </p>
               </div>
             ) : (
@@ -248,7 +248,7 @@ export function PartnerSearchSelect({
                 className="w-full flex items-center justify-center gap-2 rounded px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors"
               >
                 <Plus className="h-4 w-4" />
-                {t('partners.addNew', 'Add new')} {getPartnerLabel().toLowerCase()}
+                {t('common:partners.addNew')} {getPartnerLabel().toLowerCase()}
               </button>
             </div>
           )}

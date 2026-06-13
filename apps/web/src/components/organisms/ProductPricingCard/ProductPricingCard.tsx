@@ -57,7 +57,7 @@ export function ProductPricingCard({
         </h3>
         {sku && (
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            SKU: {sku}
+            {t('inventory:products.sku')}: {sku}
           </p>
         )}
       </div>

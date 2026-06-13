@@ -248,4 +248,10 @@ export default tseslint.config(
       ],
     },
   },
+  // i18n-clean dirs — fully EN/FR translated; no untranslated user-facing
+  // literal may regress here. Grows as the EN/FR sweep completes clusters.
+  {
+    files: ['src/components/**/*.{ts,tsx}'],
+    rules: { 'local/no-untranslated-literal': 'error' },
+  },
 )

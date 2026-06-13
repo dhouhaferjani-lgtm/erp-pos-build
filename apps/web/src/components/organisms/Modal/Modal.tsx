@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { tokens } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
 
@@ -156,6 +157,7 @@ export function ModalHeader({
   children,
   className,
 }: ModalHeaderProps) {
+  const { t } = useTranslation()
   return (
     <div className={cn(tokens.modal.header, className)}>
       {children || <h2 className={tokens.modal.title}>{title}</h2>}
@@ -163,7 +165,7 @@ export function ModalHeader({
         type="button"
         onClick={onClose}
         className={tokens.modal.closeButton}
-        aria-label="Close"
+        aria-label={t('actions.close')}
       >
         <X className="h-5 w-5" />
       </button>

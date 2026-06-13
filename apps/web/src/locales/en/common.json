@@ -179,6 +179,7 @@
     "noRecentPayments": "No recent payments"
   },
   "navigation": {
+    "breadcrumb": "Breadcrumb",
     "dashboard": "Dashboard",
     "sales": "Sales",
     "customers": "Customers",
@@ -383,6 +384,17 @@
   "noData": "No data available",
   "error": "Error",
   "details": "Details",
+  "dateFrom": "From",
+  "dateTo": "To",
+  "clearSearch": "Clear search",
+  "selectLanguage": "Select language",
+  "notifications": "Notifications",
+  "noLocation": "No location",
+  "centralInvoicing": "Central invoicing",
+  "noLocationResults": "No locations found",
+  "noLocations": "No locations available",
+  "searchLocation": "Search locations...",
+  "sku": "SKU",
   "cancel": "Cancel",
   "retry": "Retry",
   "save": "Save",
@@ -1026,7 +1038,10 @@
       "cannotDelete": "Cannot delete category with products or subcategories",
       "selectCategory": "Select category...",
       "rootCategory": "Root Category (No Parent)",
-      "productsCount": "{{count}} products"
+      "productsCount": "{{count}} products",
+      "noCategoriesFound": "No categories found",
+      "expand": "Expand",
+      "collapse": "Collapse"
     },
     "products": {
       "category": "Category"
@@ -1273,5 +1288,14 @@
     "loadingError": "Tax load failed — enter rate manually",
     "staleTaxWarning": "Selected tax no longer exists",
     "noTaxes": "No taxes configured"
+  },
+  "partners": {
+    "customer": "Customer",
+    "supplier": "Supplier",
+    "partner": "Partner",
+    "searchPlaceholder": "Search by name, email, or phone...",
+    "noSearchResults": "No partners found",
+    "noPartners": "No partners available",
+    "addNew": "Add new"
   }
 }
