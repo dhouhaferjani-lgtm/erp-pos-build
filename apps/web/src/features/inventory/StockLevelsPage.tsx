@@ -273,7 +273,7 @@ export function StockLevelsPage() {
         <SearchInput
           value={searchQuery}
           onChange={setSearchQuery}
-          placeholder={`${t('actions.search')} products...`}
+          placeholder={t('inventory:products.searchPlaceholder')}
           className="w-full sm:w-72"
         />
       </div>
@@ -343,13 +343,13 @@ export function StockLevelsPage() {
                         to={`/inventory/products/${stock.product_id}`}
                         className="font-medium text-gray-900 hover:text-blue-600"
                       >
-                        {stock.product_name ?? 'Unknown Product'}
+                        {stock.product_name ?? t('inventory:stock.unknownProduct')}
                       </Link>
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                       <div className="flex items-center gap-1">
                         <MapPin className="h-3.5 w-3.5 text-gray-400" />
-                        {stock.location_name ?? 'Default'}
+                        {stock.location_name ?? t('inventory:stock.defaultLocation')}
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
@@ -364,7 +364,7 @@ export function StockLevelsPage() {
                       </span>
                       {stock.min_quantity != null && (
                         <span className="ml-1 text-xs text-gray-400">
-                          / min {stock.min_quantity}
+                          {t('inventory:stock.minQuantityLabel', { quantity: stock.min_quantity })}
                         </span>
                       )}
                     </td>

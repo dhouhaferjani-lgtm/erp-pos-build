@@ -90,6 +90,7 @@ export function ProductStockLevels({
               {formatAmount(stockValue.toFixed(decimals))}
             </div>
             <div className="mt-1 text-xs text-blue-600">
+              {/* eslint-disable-next-line local/no-untranslated-literal -- WAC is a canonical accounting acronym, not translatable prose */}
               {formatQuantity(totals.quantity)} × {formatAmount(costPrice)} (WAC)
             </div>
           </div>
