@@ -30,20 +30,20 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
   };
 
   return (
-    <div className="bg-white px-1 py-1.5 transition-all duration-150">
+    <div className="bg-surface-raised px-1 py-1.5 transition-all duration-150">
       {/* Row 1: Name + Line Total */}
       <div className="flex items-center justify-between gap-2">
-        <h4 className="truncate text-sm font-semibold text-gray-900">
+        <h4 className="truncate text-sm font-semibold text-ink">
           {item.product.variant_name ?? item.product.name}
         </h4>
-        <span className="shrink-0 text-sm font-bold text-gray-900">
+        <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
           {format(item.line_total)}
         </span>
       </div>
 
       {/* Modifiers */}
       {item.product.selectedModifiers && item.product.selectedModifiers.length > 0 && (
-        <p className="mt-0.5 text-xs text-gray-600">
+        <p className="mt-0.5 text-xs text-ink-muted">
           {item.product.selectedModifiers.map((m) => m.name).join(', ')}
         </p>
       )}
@@ -52,7 +52,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
       {item.product.comboComponents && item.product.comboComponents.length > 0 && (
         <div className="mt-1 space-y-0.5">
           {item.product.comboComponents.map((name, idx) => (
-            <p key={idx} className="text-xs text-gray-600 pl-2">
+            <p key={idx} className="text-xs text-ink-muted pl-2">
               &bull; {name}
             </p>
           ))}
@@ -62,7 +62,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
       {/* Line discount info */}
       {item.discount_amount && parseFloat(item.discount_amount) > 0 && (
         <div className="mt-0.5 flex items-center gap-1">
-          <p className="text-xs text-red-600">
+          <p className="text-xs tabular-nums text-danger-strong">
             {item.discount_type === 'percentage' && item.discount_percent
               ? `−${item.discount_percent}%`
               : `−${format(item.discount_amount)}`}
@@ -71,7 +71,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
           {onRemoveDiscount && (
             <button
               onClick={() => onRemoveDiscount(item.id)}
-              className="rounded-md bg-red-50 px-1.5 py-0.5 text-red-700 hover:bg-red-100 active:bg-red-200"
+              className="rounded-md bg-danger-surface px-1.5 py-0.5 text-danger-strong hover:opacity-90"
               aria-label={t('pos:discount.removeLineDiscount')}
             >
               <X className="h-3 w-3" />
@@ -82,7 +82,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
 
       {/* Row 2: Price x Qty | Controls | Discount | Delete */}
       <div className="mt-1 flex items-center justify-between">
-        <span className="text-xs text-gray-700">
+        <span className="text-xs tabular-nums text-ink-muted">
           {format(item.unit_price)} &times; {item.quantity}
         </span>
 
@@ -90,7 +90,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
           {/* Quantity controls */}
           <button
             onClick={handleDecrement}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-300 bg-gray-50 text-gray-700 active:bg-gray-200"
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-border-strong bg-surface-sunken text-ink-muted active:bg-surface-canvas"
             aria-label={t('cart.decrementQty')}
           >
             <Minus className="h-4 w-4" />
@@ -98,7 +98,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
 
           <button
             onClick={() => onQuantityTap?.(item.id)}
-            className="min-w-[1.5rem] text-center text-base font-bold text-gray-900"
+            className="min-w-[1.5rem] text-center text-base font-bold tabular-nums text-ink"
             type="button"
           >
             {item.quantity}
@@ -106,7 +106,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
 
           <button
             onClick={handleIncrement}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-300 bg-gray-50 text-gray-700 active:bg-gray-200"
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-border-strong bg-surface-sunken text-ink-muted active:bg-surface-canvas"
             aria-label={t('cart.incrementQty')}
           >
             <Plus className="h-4 w-4" />
@@ -116,7 +116,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
           {onEditModifiers && item.product.selectedModifiers && item.product.selectedModifiers.length > 0 && (
             <button
               onClick={() => onEditModifiers(item.id)}
-              className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-50 text-blue-700 active:bg-blue-100"
+              className="flex h-7 w-7 items-center justify-center rounded-md bg-action-subtle text-action-strong active:opacity-80"
               aria-label={t('cart.editModifiers')}
               title={t('cart.editModifiers')}
             >
@@ -128,7 +128,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
           {onDiscount && (
             <button
               onClick={() => onDiscount(item.id)}
-              className="flex h-7 w-7 items-center justify-center rounded-md bg-primary-50 text-primary-700 active:bg-primary-100"
+              className="flex h-7 w-7 items-center justify-center rounded-md bg-action-subtle text-action-strong active:opacity-80"
               aria-label={t('cart.lineDiscount')}
             >
               <Tag className="h-4 w-4" />
@@ -138,7 +138,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
           {/* Delete button */}
           <button
             onClick={() => onRemove(item.id)}
-            className="flex h-7 w-7 items-center justify-center rounded-md bg-red-50 text-red-700 active:bg-red-100"
+            className="flex h-7 w-7 items-center justify-center rounded-md bg-danger-surface text-danger-strong active:opacity-80"
             aria-label={t('cart.removeItem')}
           >
             <Trash2 className="h-4 w-4" />

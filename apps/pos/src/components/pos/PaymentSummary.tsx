@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
 import { Banknote, Wallet, X } from 'lucide-react';
+import { tokens } from '@/lib/designTokens';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 
 interface PaymentSummaryProps {
@@ -54,29 +55,29 @@ export function PaymentSummary({
     paymentConfigReady && hasMultipleMethods && Boolean(onAdvancedPayments);
 
   return (
-    <div className="space-y-1 border-t border-gray-200 pt-1.5">
+    <div className="space-y-1 border-t border-border-subtle pt-1.5">
       {/* Subtotal */}
-      <div className="flex justify-between text-xs text-gray-700">
+      <div className="flex justify-between text-xs text-ink-muted">
         <span>{t('common:subtotal')}</span>
-        <span>{format(subtotal)}</span>
+        <span className="tabular-nums text-ink">{format(subtotal)}</span>
       </div>
 
       {/* Tax */}
-      <div className="flex justify-between text-xs text-gray-700">
+      <div className="flex justify-between text-xs text-ink-muted">
         <span>{t('common:tax')}</span>
-        <span>{format(taxAmount)}</span>
+        <span className="tabular-nums text-ink">{format(taxAmount)}</span>
       </div>
 
       {/* Discount */}
       {hasDiscount && (
         <div className="flex items-center justify-between text-sm">
-          <span className="font-medium text-red-600">{t('common:discount')}</span>
+          <span className="font-medium text-danger-strong">{t('common:discount')}</span>
           <div className="flex items-center gap-2">
-            <span className="font-medium text-red-600">-{format(discountAmount)}</span>
+            <span className="font-medium tabular-nums text-danger-strong">-{format(discountAmount)}</span>
             {onRemoveDiscount && (
               <button
                 onClick={onRemoveDiscount}
-                className="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-100 active:bg-red-200"
+                className="rounded-md bg-danger-surface px-2 py-1 text-xs font-medium text-danger-strong hover:opacity-90"
                 title={t('pos:discount.remove')}
               >
                 <X className="h-3.5 w-3.5" />
@@ -87,10 +88,10 @@ export function PaymentSummary({
       )}
 
       {/* Total */}
-      <div className="rounded-lg bg-primary-600 px-3 py-2 text-white">
+      <div className="rounded-lg bg-action px-3 py-2 text-ink-inverse">
         <div className="flex items-center justify-between">
           <span className="text-lg font-medium">{t('common:total')}</span>
-          <span className="text-2xl font-bold">{format(total)}</span>
+          <span className="text-2xl font-bold tabular-nums">{format(total)}</span>
         </div>
       </div>
 
@@ -103,7 +104,7 @@ export function PaymentSummary({
           title={
             !paymentConfigReady ? t('pos:payment.configNotLoaded') : undefined
           }
-          className="flex flex-[3] items-center justify-center gap-2 rounded-lg bg-green-600 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green-700 active:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
+          className={`${tokens.button.confirm} flex-[3] py-2.5 text-sm`}
         >
           <Banknote className="h-5 w-5" />
           {t('pos:payment.cashPayment')}
@@ -113,7 +114,7 @@ export function PaymentSummary({
           <button
             onClick={onAdvancedPayments}
             disabled={disabled}
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary-600 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-700 active:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className={`${tokens.button.secondary} flex-1 py-2.5 text-sm`}
           >
             <Wallet className="h-5 w-5" />
             {t('pos:payment.advancedPayments')}
