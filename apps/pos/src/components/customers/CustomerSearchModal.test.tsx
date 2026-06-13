@@ -214,7 +214,7 @@ describe('CustomerSearchModal', () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText('Customer search'), { target: { value: 'mariam' } });
+    fireEvent.change(screen.getByLabelText('customer.searchLabel'), { target: { value: 'mariam' } });
     fireEvent.click(await screen.findByText('Mariam Ben Ali'));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());

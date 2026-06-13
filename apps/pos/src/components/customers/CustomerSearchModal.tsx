@@ -40,6 +40,7 @@ export function CustomerSearchModal({
           companyId={companyId}
           terminalId={terminalId}
           staleThresholdMinutes={staleThresholdMinutes}
+          showHeading={false}
           onProcessingChange={setIsProcessing}
           onSelected={onClose}
           onAccountPaymentComplete={() => {

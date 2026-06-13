@@ -7,6 +7,11 @@ import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter'
 import type { CustomerMirrorRow } from '@/lib/customer/customerTypes';
 import { CustomerSearchInput } from './CustomerSearchInput';
 
+vi.mock('react-i18next', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-i18next')>();
+  return { ...actual, useTranslation: () => ({ t: (k: string) => k }) };
+});
+
 vi.mock('@/lib/db', async () => {
   const actual = await vi.importActual<typeof import('@/lib/db')>('@/lib/db');
   return {
@@ -83,7 +88,7 @@ describe('CustomerSearchInput', () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText('Customer search'), { target: { value: 'mariam' } });
+    fireEvent.change(screen.getByLabelText('customer.searchLabel'), { target: { value: 'mariam' } });
 
     await screen.findByText('Mariam Ben Ali');
     expect(screen.queryByText('Mariam Other')).not.toBeInTheDocument();
@@ -108,10 +113,14 @@ describe('CustomerSearchInput', () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText('Customer search'), { target: { value: 'mariam' } });
+    // Measure only this test's behavior — a prior test's async search effect
+    // can settle across the test boundary and pollute the shared spy.
+    vi.mocked(getDatabase).mockClear();
+
+    fireEvent.change(screen.getByLabelText('customer.searchLabel'), { target: { value: 'mariam' } });
 
     await waitFor(() => {
-      expect(screen.getByText('Tenant and company are required to attach a customer.')).toBeInTheDocument();
+      expect(screen.getByText('customer.scopeError')).toBeInTheDocument();
     });
     expect(onSelect).not.toHaveBeenCalled();
     expect(getDatabase).not.toHaveBeenCalled();
