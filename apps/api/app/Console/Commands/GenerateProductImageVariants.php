@@ -4,66 +4,52 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Modules\Product\Application\Jobs\GenerateImageVariants;
-use App\Modules\Product\Application\Services\ImageVariantService;
-use App\Modules\Product\Domain\ProductImage;
+use App\Modules\Catalog\Application\Jobs\GenerateRenditions;
+use App\Modules\Catalog\Domain\Enums\MediaAssetType;
+use App\Modules\Catalog\Domain\Enums\MediaSource;
+use App\Modules\Catalog\Domain\Enums\MediaStatus;
+use App\Modules\Catalog\Domain\Media\MediaAsset;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Storage;
 
 /**
- * @cross-tenant-by-design Maintenance batch that walks ProductImage rows fleet-wide to dispatch per-image WebP variant jobs; jobs operate on storage paths only, not tenant data.
+ * @cross-tenant-by-design Maintenance batch that walks MediaAsset rows fleet-wide
+ * (source=UPLOAD, type=IMAGE) to dispatch GenerateRenditions per asset.
+ * The job carries an explicit tenantId so the worker rebinds tenant context
+ * before any DB access.
  */
 class GenerateProductImageVariants extends Command
 {
     protected $signature = 'products:generate-image-variants
-        {--force : Regenerate even if variants already exist}
+        {--force : Regenerate even if renditions already exist}
         {--product= : Process only images for a specific product ID}';
 
     protected $description = 'Generate WebP thumbnail variants for existing product images';
 
     public function handle(): int
     {
-        $query = ProductImage::query();
+        $query = MediaAsset::query()
+            ->where('source', MediaSource::Upload)
+            ->where('type', MediaAssetType::Image);
 
-        if ($this->option('product')) {
-            $query->where('product_id', $this->option('product'));
+        if ($this->option('force') !== true) {
+            // Without --force, skip assets that already have renditions (READY status).
+            $query->where('status', '!=', MediaStatus::Ready);
         }
 
         $total = $query->count();
         $dispatched = 0;
-        $skipped = 0;
 
-        $this->info("Processing {$total} product images...");
+        $this->info("Processing {$total} media assets...");
 
-        $query->chunkById(100, function ($images) use (&$dispatched, &$skipped): void {
-            /** @var ProductImage $image */
-            foreach ($images as $image) {
-                // Skip external URL images (seeded placeholders) — only process S3 uploads
-                if ($image->storage_disk === 'url') {
-                    $skipped++;
-
-                    continue;
-                }
-
-                if (! $this->option('force')) {
-                    $smPath = ImageVariantService::variantPath($image->storage_path, 'sm');
-                    if (Storage::disk($image->storage_disk)->exists($smPath)) {
-                        $skipped++;
-
-                        continue;
-                    }
-                }
-
-                GenerateImageVariants::dispatch(
-                    $image->id,
-                    $image->storage_path,
-                    $image->storage_disk,
-                );
+        $query->chunkById(100, function ($assets) use (&$dispatched): void {
+            /** @var MediaAsset $asset */
+            foreach ($assets as $asset) {
+                GenerateRenditions::dispatch($asset->tenant_id, $asset->id);
                 $dispatched++;
             }
         });
 
-        $this->info("Dispatched: {$dispatched} jobs. Skipped: {$skipped} (variants exist).");
+        $this->info("Dispatched: {$dispatched} jobs.");
 
         return self::SUCCESS;
     }
