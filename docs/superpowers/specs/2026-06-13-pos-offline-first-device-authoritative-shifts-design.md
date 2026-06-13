@@ -61,13 +61,15 @@ Performance target: shift open/close completes at device-local SQLite speed (tar
 
 ### 2.3 CRITICAL: how much of the SESSION_OPEN/CLOSE → `pos_shifts` projection already exists
 
-**Headline finding: ZERO of `pos_shifts` is projected from fiscal events today. The work is BUILD a new projector, not rewire an existing one — but every input it needs already exists in the synced payloads.**
+**Headline finding: ZERO of `pos_shifts` is projected from fiscal events today, and every input a projector needs already exists in the synced payloads. The cleanest delivery is to EXTEND the already-running `ZSessionLifecycleProjection` (registered as `pos_core_z_session_lifecycle`, which already handles `SESSION_OPEN`/`SESSION_CLOSE` and projects them `applied` on the live demo server today) so it ALSO upserts `pos_shifts` — not to add a separate projector. Extending the same projector means the `pos_shifts` row is created by the very projector that already fires first on `SESSION_OPEN`, which dissolves any cross-projector ordering question (see Review Reconciliation §12, F-5/F-11).**
+
+> **Empirical confirmation (2026-06-13):** on the live Tunisia demo tenant, device-authored `SESSION_OPEN`/`OPENING_FLOAT` events are `integrity_status = verified` and were projected `applied` by `pos_core_z_session_lifecycle`. In v3 **all** fiscal events are device-authored (server fiscal authoring is retired via `ServerFiscalAuthoringRetiredException`), so device-origin is the normal accepted case — there is no "server-must-author" gate to defeat.
 
 Precisely:
 - `ZSessionLifecycleProjection::apply()` handles `SESSION_OPEN`, `OPENING_FLOAT`, `CASH_IN/OUT`, `SAFE_DROP`, `CASH_CORRECTION`, `SESSION_CLOSE`, `X_REPORT` — and writes **only** to `pos_z_session_events` (one audit/mirror row per fiscal event, keyed on `fiscal_event_id`). It contains **zero** references to `Shift` / `pos_shifts`. `grep "pos_shifts|Shift::" app/Modules/POS/Application/Projections/` is empty.
 - `ZReportProjection::apply()` handles `Z_REPORT` → writes **only** `pos_z_reports`. No `pos_shifts` write.
 - **No fiscal-event ingest path writes `pos_shifts` at all.** Every `pos_shifts` mutation today is REST-driven (`ShiftController::open/close`, `SyncController::syncCloseShift`, `ZReportSyncController::sync`, `ReportController::generateZReport`).
-- Both projectors are registered via `$this->app->tag([...], FiscalEventProjector::class)` in `POSServiceProvider::register()` (`apps/api/app/Modules/POS/Providers/POSServiceProvider.php:50-58`) — the exact insertion point for a new `ShiftLifecycleProjection`.
+- Both projectors are registered via `$this->app->tag([...], FiscalEventProjector::class)` in `POSServiceProvider::register()` (`apps/api/app/Modules/POS/Providers/POSServiceProvider.php:50-58`). `ZSessionLifecycleProjection` is already in that tag set and already handles the shift lifecycle events — so the `pos_shifts` upsert is **added inside that existing projector**, requiring no new registration and no priority tuning.
 
 **What already exists to build on:**
 - `SESSION_OPEN` payload (`SessionOpenPayload.php`) carries `shift_id` (device UUID), `session_id`, `terminal_id`, `operator_id` (→ `cashier_id`), `operator_name`, `opening_float_amount` (→ `opening_cash`), `business_date`, `opened_at_device` (→ `opened_at`), `currency_code`. **Gap: no `shift_number`** (server assigns it today).
@@ -84,19 +86,20 @@ Precisely:
 The abstract pattern distilled from the receipt path, applied step-by-step to shift open:
 
 1. **Mint all identifiers device-side, unconditionally.** `shiftId` = UUIDv7 (machine id; FK target for all shift-scoped rows). `sessionId` = UUIDv7. `shift_number` = device-local per-terminal monotone counter (human id). No identifier the device depends on is ever assigned by the server. `fiscal_shift_id` collapses to **be** `shiftId` (one UUID, not two) — see §4.f.
-2. **Author the canonical fiscal event(s) via the single-writer transaction.** Inside `withWriteTransaction('fiscal', tx => …)`: `engine.append(tx, { event_type:'SESSION_OPEN', chain_context:'z_session', source_event_class:'local_shifts', source_event_id: shiftId, payload })` then `engine.append(tx, { event_type:'OPENING_FLOAT', … })`. `source_event_id = shiftId` makes the device-side idempotency probe dedupe retries before any mutation.
-3. **Write the local projection row in the SAME transaction.** Insert into a **new local SQLite `local_shifts` table** (the device-side mirror of `pos_shifts`) atomically with the two fiscal-event rows and the chain-head advance. Any failure → ROLLBACK → no orphaned shift, no orphaned event, no stale chain head.
+2. **Author the canonical fiscal event(s) via the single-writer transaction — by EXTENDING the existing `authorZSessionOpenWithOpeningFloatOnDb`, not by nesting wrappers.** That function (`zSessionAuthoring.ts:490`) already opens ONE `withWriteTransaction('fiscal', async (tx) => …)` and appends `SESSION_OPEN` + `OPENING_FLOAT` via `engine.append(tx, …)` — the exact proven pattern `receiptService.ts:413` uses. We add the `local_shifts` insert (step 3) and the receipt-anchor insert (step 3b) **inside that same `tx` block, via the `tx` handle**. **HARD CONSTRAINT (single-writer invariant, see [[project_pos_single_writer_sqlite]]):** never call a self-transacting wrapper (`authorZSessionOpenWithOpeningFloat`, `enqueueWrite`, pool-`execute`) from inside a gate job — it re-acquires the writer mutex and deadlocks. All writes in the open sequence use the one `tx` handle. (Codex F-2 flagged the deadlock footgun; it is real for nesting, but multi-write-in-one-gate is proven by the receipt path — see §12.)
+3. **Write the local projection row in the SAME transaction, via `tx`.** `insertLocalShift(tx, { id: shiftId, terminal_id, session_id: sessionId, shift_number, status:'OPEN', opening_cash, opened_at, cashier_id, cashier_name })` into the **new local SQLite `local_shifts` table** (device-side mirror of `pos_shifts`), atomically with the two fiscal-event rows and the chain-head advance. Any failure → ROLLBACK → no orphaned shift, no orphaned event, no stale chain head.
+3b. **Write the receipt anchor in the SAME transaction, via `tx`.** Today `insertShiftReceiptAnchor` runs as a **separate** `getDatabase()` write *before* authoring (`terminalStore.ts:228-238`) — outside the fiscal gate. Move it inside this `tx` so the anchor, the events, and the `local_shifts` row commit (or roll back) atomically, closing the window where a receipt could be rung against a half-open shift. The anchor keys on `shift_id` (string) — no integer FK to `local_shifts`, so there is no FK-ordering coupling (Codex F-3).
 4. **Post-commit: bump pending count + schedule debounced sync** — `useSyncStore.getState().incrementPendingCount()` + `scheduleDebouncedSync()`, after the tx resolves (never inside).
 5. **Sync** rides the existing `pushOfflineReceipts` rail (renamed conceptually to "push pending fiscal events" — it already pushes all event types in chain order).
 6. **Stranded-`syncing` recovery** already runs at the top of every push tick (`recoverStrandedSyncingFiscalEvents`) — unchanged.
 7. **Server ingests** via `OutboxIngestor` — unchanged. The `verifyZSessionLifecycle` check already enforces SESSION_OPEN-before-others and no-duplicate-SESSION_OPEN per session.
-8. **Server dispatches projection jobs** via `DB::afterCommit()` — unchanged plumbing; we add a new projector to the tagged set.
-9. **New `ShiftLifecycleProjection` creates/closes `pos_shifts`**, idempotent on `pos_shifts.id = shift_id` (device UUID becomes the PK, exactly as `pos_receipts` uses the device receipt UUID and `fiscal_event_id` uniqueness). `SESSION_OPEN` → insert OPEN row; `SESSION_CLOSE` → update to CLOSED with cash-count fields.
+8. **Server dispatches projection jobs** via `DB::afterCommit()` — unchanged plumbing; the already-tagged `ZSessionLifecycleProjection` already receives `SESSION_OPEN`/`SESSION_CLOSE`, so no new registration is needed.
+9. **The existing `ZSessionLifecycleProjection` is EXTENDED to upsert `pos_shifts`** (not a new projector), idempotent on `pos_shifts.id = shift_id` (device UUID becomes the PK, exactly as `pos_receipts` uses the device receipt UUID + `fiscal_event_id` uniqueness). `SESSION_OPEN` → `INSERT … ON CONFLICT (id) DO NOTHING` an OPEN row; `SESSION_CLOSE` → update to CLOSED with cash-count fields, idempotent (re-applying a `SESSION_CLOSE` for an already-CLOSED shift is a no-op — Codex F-12). The `pos_shifts_one_open_per_terminal` partial unique index already enforces one-open-per-terminal; the open upsert must treat a partial-index conflict as idempotent success, not an error (Codex F-15 — index already exists). Because the same projector creates the shift row on `SESSION_OPEN` before any later `Z_REPORT`/`SESSION_CLOSE`, the `pos_z_reports.shift_id` FK is always satisfied (Codex F-5 — `pos_receipts` has no shift FK at all, so receipts are never blocked).
 10. **Never block the business operation on network.** `withWriteTransaction` is pure SQLite; the UI returns immediately after commit. Sync is background.
 
 ### 3.2 Close lifecycle
 
-`SESSION_CLOSE` + `Z_REPORT` are already authored on-device (`appendZSessionCloseAndZReport`). The change is purely to **stop calling `POST /pos/shifts/{id}/close` as the gate** and let the `ShiftLifecycleProjection` close the `pos_shifts` row from the synced `SESSION_CLOSE` event. `Z_REPORT` continues to project to `pos_z_reports` via the existing `ZReportProjection`.
+`SESSION_CLOSE` + `Z_REPORT` are already authored on-device (`appendZSessionCloseAndZReport`). The change is purely to **stop calling `POST /pos/shifts/{id}/close` as the gate** and let the extended `ZSessionLifecycleProjection` close the `pos_shifts` row from the synced `SESSION_CLOSE` event. `Z_REPORT` continues to project to `pos_z_reports` via the existing `ZReportProjection`.
 
 ### 3.3 "Current open shift" is answered purely from local SQLite
 
@@ -126,6 +129,8 @@ Cross-app check (consumers findings): **`apps/web` DOES depend on these.** `apps
 | `GET /pos/shifts/current/{code}` | **Keep as read/reconcile** (returns the projected `pos_shifts` row). Device uses it only for background reconciliation, never as the open gate. | Web admin dashboard; device reconcile |
 | `GET /pos/shifts/{id}/receipts`, `GET /pos/cash-drawer/{id}/operations`, `/balance` | **Keep**, but `Shift::findOrFail` must resolve by the device UUID (which is now `pos_shifts.id`) — once shifts are projected with the device UUID as PK, the existing `offline-<uuid>` mismatch disappears. | Web admin + POS online Today-Sales |
 | Web admin cash deposit/payout (`CashDrawerController::deposit/payout`) | Out of scope for this spec; flagged as a follow-up (route web cash-drawer ops through a server-authored fiscal event, mirroring the back-office DEPOSIT_RECEIPT pattern). For now they keep working against projected v3 shift rows because the row exists once `SESSION_OPEN` projects. | — |
+
+**`apps/web` UI change is REQUIRED, not optional (Codex F-4).** `apps/web/src/features/pos/api/shiftApi.ts` exports `openShift` (`:87` → `POST /pos/shifts/open`) and `closeShift` (`:94` → `POST /pos/shifts/{id}/close`), and the web POS shift panel renders Open/Close controls that call them. If those endpoints start returning 409 for v3 terminals with no UI change, the operator clicks "Open/Close shift" and gets an unhandled 409. **Required:** the web POS shift panel must detect a v3 terminal (the terminal record already carries `fiscal_schema_version`) and **hide/disable the Open & Close controls**, showing "This terminal's shifts are opened and closed on the device." Read paths (`current`, `receipts`, `balance`, cash-drawer ops) are unchanged. The genuine remote-close need (lost/broken terminal) is the **deferred admin-recovery exception** (Resolved Decision 4 / §10), not this panel. This is a Phase-4 deliverable.
 
 ### (c) "Current open shift" answered purely from local SQLite — **RECOMMENDATION: SQLite-first, server reconcile is advisory + audited**
 
@@ -204,14 +209,14 @@ Legend: **R** = rewire required, **OK** = already device-UUID-compatible (no cha
 
 | Consumer (file:line) | Action |
 |---|---|
-| **NEW `ShiftLifecycleProjection`** (handles `SESSION_OPEN`→create OPEN row, `SESSION_CLOSE`→close row), tagged in `POSServiceProvider::register()` alongside the existing projectors (`:50-58`) | **S — BUILD (the core new piece)** |
+| **EXTEND `ZSessionLifecycleProjection`** to upsert `pos_shifts` (`SESSION_OPEN`→create OPEN row, `SESSION_CLOSE`→close row) — already tagged in `POSServiceProvider::register()` (`:50-58`) and already handling these events | **S — the core change (no new projector/registration)** |
 | `ShiftController::open` / `ShiftManagementService::openShift` | **S** — 409 `SHIFT_DEVICE_AUTHORITY_REQUIRED` for v3; legacy unchanged |
 | `ShiftController::close` / `closeShift` / `SyncController::syncCloseShift` | **S** — 409 for v3; close happens via projection |
 | `ShiftController::current/index/receipts` | **S (minor)** — work as-is once `pos_shifts.id` == device UUID; `receipts` already filters by cashier+time |
 | `ShiftResource` | **S** — echo `fiscal_shift_id`/`session_id` (now == id) for round-trip verification |
 | `ZSessionLifecycleProjection` | **OK** — keeps writing `pos_z_session_events`; unchanged |
 | `ZReportProjection` `:66` (`where shift_id`) | **OK** — keys on device UUID already; works once `pos_shifts.id` == that UUID |
-| `CashRegisterReportService` (queries `pos_shifts` for closed rows) | **OK once** `ShiftLifecycleProjection` closes the row with `actual_cash`/`variance` from `SESSION_CLOSE` |
+| `CashRegisterReportService` (queries `pos_shifts` for closed rows) | **OK once** the extended `ZSessionLifecycleProjection` closes the row with `actual_cash`/`variance` from `SESSION_CLOSE` |
 | `Nf525DataProvider` (`cash_drawer_operations.shift_id`, `z_session_events.shift_id`, `shift->cashier_id`) | **OK** — z_session path uses device UUID; cashier_id is in `SESSION_OPEN` payload |
 | `pos_shifts` migration | **S** — add `(terminal_id, shift_number)` unique; optional `session_id` column; allow device-UUID PK insert (already `uuid` PK) |
 
@@ -227,7 +232,7 @@ Legend: **R** = rewire required, **OK** = already device-UUID-compatible (no cha
 ## 6. Migration & rollout
 
 1. **Gated by `fiscal_schema_version`.** Everything device-authoritative applies only to `fiscal_schema_version === 3` terminals (the precedent already in `terminalStore.ts:846` and `ZReportSyncController:72`). v<3 terminals keep the REST path untouched — zero risk to legacy.
-2. **Server projector first, additively.** Ship `ShiftLifecycleProjection` registered in the tagged set **before** flipping the device. It only acts on synced `SESSION_OPEN`/`SESSION_CLOSE` events, which v3 terminals already emit — so the moment it ships, `pos_shifts` rows start being created/closed from fiscal events for shifts opened the old way too (the `SESSION_OPEN` already carries `shift_id`). Backfill: for already-open shifts that predate the projector, leave the existing REST-created `pos_shifts` row as-is (the projection's `ON CONFLICT (id) DO NOTHING` is a no-op if a row with that UUID exists; if the REST id differs from the device `shift_id`, the open shift is grandfathered and closes via its existing path).
+2. **Server projector first, additively.** Ship the `pos_shifts` upsert inside `ZSessionLifecycleProjection` **before** flipping the device. It only acts on synced `SESSION_OPEN`/`SESSION_CLOSE` events, which v3 terminals already emit — so the moment it ships, `pos_shifts` rows start being created/closed from fiscal events for shifts opened the old way too (the `SESSION_OPEN` already carries `shift_id`). Backfill: for already-open shifts that predate the change, leave the existing REST-created `pos_shifts` row as-is (the upsert's `ON CONFLICT (id) DO NOTHING` is a no-op if a row with that UUID exists; if the REST id differs from the device `shift_id`, the open shift is grandfathered and closes via its existing path).
 3. **In-flight shift safety.** A shift open at flip time (device-side) keeps its cached `Shift` object; `fetchCurrentShift` SQLite-first will find it in `local_shifts` once the device writes it (a one-time migration on first v3 boot copies the cached localStorage `SHIFT` into `local_shifts` if absent). Closing an in-flight pre-flip shift still works through whichever path created it.
 4. **`shift_number` seed migration.** On first v3 boot post-rollout, seed `local_shifts` counter from `GET /pos/shifts/current` (or last cached shift number) so numbering continues. Offline → seed from cached number; reconcile on next online tick.
 5. **Demo stack.** The Tunisia parapharmacy demo (`feat/parapharmacy-tunisia-demo`, port 8088) runs v3 terminals; validate the full open→sell→close→reopen cycle offline there before any merge.
@@ -250,32 +255,35 @@ Legend: **R** = rewire required, **OK** = already device-UUID-compatible (no cha
 - **Tests:** open offline produces a UUID id + non-zero number + 2 fiscal events + 1 `local_shifts` row, all-or-nothing on a mid-tx throw; `fetchCurrentShift` returns the local open shift with no network; B4 scenario no longer throws.
 - **Reuses:** `authorZSessionOpenWithOpeningFloat`, `engine.append`, `writeGate`, fiscal sync rail.
 
-### Phase 2 — server `ShiftLifecycleProjection` (SESSION_OPEN)
-- New projector creating `pos_shifts` OPEN row from `SESSION_OPEN` (PK = device `shift_id`; `shift_number` from payload; `cashier_id`/`opening_cash`/`opened_at` mapped). Idempotent `ON CONFLICT (id) DO NOTHING`. Tag in `POSServiceProvider::register()`.
-- `pos_shifts (terminal_id, shift_number)` unique constraint migration.
+### Phase 2 — EXTEND `ZSessionLifecycleProjection` for `pos_shifts` (SESSION_OPEN)
+- Add `pos_shifts` upsert to the **existing** `ZSessionLifecycleProjection` (already handles `SESSION_OPEN`, already tagged in `POSServiceProvider::register()` — no new projector, no registration, no priority tuning). `SESSION_OPEN` → `INSERT pos_shifts … ON CONFLICT (id) DO NOTHING`, PK = device `shift_id`; `shift_number` from payload; `cashier_id`/`opening_cash`/`opened_at` mapped. Treat a `pos_shifts_one_open_per_terminal` partial-index conflict as **idempotent success** (catch + no-op), NOT an error — so dead-letter replay of a `SESSION_OPEN` for an already-open shift never crashes the projector (Codex F-15).
+- `ShiftResource::toArray()` exposes `shift_number`, `session_id`, `opened_at_device` so the device reconcile read can round-trip (Codex F-6/F-16).
+- Migration: **upgrade** the existing `(terminal_id, shift_number)` plain index to UNIQUE (Codex F-7 — the plain index already exists at `:62`; the column already exists at `:33`, so **no column add and no data backfill** — existing rows already carry server-assigned numbers). A rogue second device's colliding number then fails loud.
 - 409 `SHIFT_DEVICE_AUTHORITY_REQUIRED` guard on `POST /pos/shifts/open` for v3.
-- **Tests:** SESSION_OPEN ingest → OPEN `pos_shifts` row with device UUID PK; re-delivery idempotent; two opens collide on the partial unique index → second dead-letters; v3 POST /open returns 409. (Scoped PHPUnit `--filter`, never the full suite.)
-- **Reuses:** `OutboxIngestor`, `ApplyFiscalEventProjectionJob`, projection registry, v3-guard pattern.
+- **Tests:** SESSION_OPEN ingest → OPEN `pos_shifts` row with device UUID PK; re-delivery idempotent (no error); partial-index conflict on replay → idempotent no-op (NOT dead-letter); v3 POST /open returns 409. (Scoped PHPUnit `--filter`, never the full suite.)
+- **Reuses:** `OutboxIngestor`, `ApplyFiscalEventProjectionJob`, the existing projector + registration, v3-guard pattern.
 
 ### Phase 3 — device-authoritative shift CLOSE + projection
 - `closeShift()` authors `SESSION_CLOSE` + `Z_REPORT` (already exist) + updates `local_shifts` to CLOSED; drop the gate POST.
-- Extend `ShiftLifecycleProjection` for `SESSION_CLOSE` → close `pos_shifts` (actual_cash, variance, severity, manager_override_by, closed_by from payload). 409 on `POST /pos/shifts/{id}/close` + `sync-close` for v3.
-- **Tests:** close offline updates `local_shifts`; SESSION_CLOSE ingest closes `pos_shifts` satisfying `pos_shifts_closed_logic`; `CashRegisterReportService` sees the closed row.
+- Extend `ZSessionLifecycleProjection` for `SESSION_CLOSE` → close `pos_shifts` (actual_cash, variance, severity, manager_override_by, closed_by from payload). **Idempotent close** — re-applying `SESSION_CLOSE` to an already-CLOSED row is a no-op, so a reconnect that re-delivers the close never double-closes or corrupts the chain (Codex F-12; the v3 409 already prevents a competing server-side close). 409 on `POST /pos/shifts/{id}/close` + `sync-close` for v3.
+- **Tests:** close offline updates `local_shifts`; SESSION_CLOSE ingest closes `pos_shifts` satisfying `pos_shifts_closed_logic`; re-delivered SESSION_CLOSE is a no-op; `CashRegisterReportService` sees the closed row.
 - **Reuses:** `appendZSessionCloseAndZReport`, `ZReportProjection`.
 
-### Phase 4 — consumer one-id sweep + Today-Sales/cash-drawer fixes
-- Make every shift-scoped lookup key on the single device UUID (zReportService, endOfDayPreview, fetchShiftReceipts, fetchCashDrawerOps, cashDrawerApi, Header, TodaySalesPanel). Collapse `fiscal_shift_id` into `id`.
-- **Tests:** Today Sales + cash-drawer ops resolve online with the device UUID; offline SQLite fallbacks key on the same id.
+### Phase 4 — consumer one-id sweep + Today-Sales/cash-drawer + web-admin UI
+- Make every shift-scoped lookup key on the single device UUID (zReportService, endOfDayPreview, fetchShiftReceipts, fetchCashDrawerOps, cashDrawerApi, Header, TodaySalesPanel). Collapse `fiscal_shift_id` into `id`. Server-side, receipts resolve to a shift by `terminal+cashier+posted_at` window (no shift FK on `pos_receipts`), so this sweep is primarily client-side (Codex F-5/F-14).
+- **`apps/web` POS shift panel:** detect v3 terminals (via the terminal's `fiscal_schema_version`) and **hide/disable the Open & Close controls** with a "shifts open/close on the device" notice, so the v3 409 is never hit interactively (Codex F-4). Read paths unchanged.
+- **Tests:** Today Sales + cash-drawer ops resolve online with the device UUID; offline SQLite fallbacks key on the same id; web panel hides open/close for a v3 terminal fixture.
 
 ### Phase 5 — offline EOD close completeness (B5/B6/B7)
 - Durable SQLite cache for `companyConfig` (B5).
 - Call `refreshFraudSettingsCache` on bootstrap + cache authorized managers (B6).
-- Manager-PIN offline path (B7) — **mirror manager-PIN bcrypt hashes to SQLite** (`manager_pins` table, same pattern as `operator_pins`); above-hard-variance close verifies the PIN locally. Seed on first login, refresh on sync (Decision 1).
-- **Tests:** EOD close offline computes variance thresholds from cached fraud settings; above-hard-variance manager authorization verifies against the mirrored bcrypt hash with no network.
+- **Eager (not lazy) PIN sync at first login (Codex F-8):** operator-PIN sync to `operator_pins` runs immediately after a successful login, before the device can go offline — not on first lazy use — so a device that goes offline right after login can still authorize an EOD close.
+- Manager-PIN offline path (B7) — **mirror manager-PIN bcrypt hashes to SQLite** via a new `GET /pos/manager-pin-data` (mirrors `/pos/auth/pin-data`) into `manager_pins`; above-hard-variance close verifies the PIN locally. Seed on first login, refresh on sync (Decision 1). **Security hardening (Codex F-9):** (a) offline lockout — after N failed local bcrypt attempts, mark the entry locked and require online re-auth (reuse the existing manager-PIN throttle columns on `terminal_state`); (b) `synced_at` + `revoked_at` columns so a PIN change/rotation propagates and stale hashes are invalidated on next sync; (c) `manager_pins` is a **distinct table** from `operator_pins` (managers ≠ operators), sourced from `AuthorizedManagersController`.
+- **Tests:** EOD close offline computes variance thresholds from cached fraud settings; above-hard-variance manager authorization verifies against the mirrored bcrypt hash with no network; N failed attempts lock the entry; a revoked PIN is rejected after sync.
 
 ### Phase 6 — reconciliation + rollout hardening
-- Background reconcile pass (§4.c) with advisory banner on remote-close conflict; audited.
-- `shift_number` seed migration; in-flight grandfather handling.
+- Background reconcile pass (§4.c) with advisory banner on remote-close conflict; audited and idempotent (no double-close — Codex F-12).
+- Device `shift_number` **counter seed** from the server's `MAX(shift_number)` for the terminal at first boot (the `pos_shifts.shift_number` *column* is already populated server-side, so there is no server-side data backfill — Codex F-13 is moot; only the device counter needs seeding). In-flight grandfather handling.
 - Live offline open→sell→close→reopen cycle on the Tunisia demo stack.
 
 ---
@@ -293,11 +301,11 @@ New invariants:
 
 ## 9. Risks & open questions
 
-- **Fiscal/legal (NF525):** device-authoritative shift open/close is compliant **provided** offline signing with a local cert + an unbroken per-register chain (research §4). Our chain is per-terminal SHA-256 and already device-signed; SESSION_OPEN/CLOSE are already chained audit events. Risk is implementation (chain survives crash), not legality. **Tunisia NACEF (eff. 1 Jul 2026):** the MDF decree's offline session rules are not in public sources — does NOT block this design but must be validated with a Tunisian fiscal specialist before the Tunisia launch (already a tracked workstream).
+- **Fiscal/legal (NF525) — claim softened (Codex F-10):** this design does **not** change the fiscal authorship posture. Device-authored fiscal events are **already** the v3 production model (`SESSION_OPEN`/`SALE_RECEIPT`/`SESSION_CLOSE` are device-authored and chained today; server fiscal authoring is retired). Making `pos_shifts` a projection of those already-device-authored events introduces no new fiscal-authorship boundary — it only stops a *non-fiscal* REST row (`pos_shifts`) from being the source of truth. The per-terminal SHA-256 chain (unbroken, device-signed) is the compliance-bearing artifact and is unchanged. We therefore do **not** assert "NF525 neutral" as a closed fact — it is *consistent with the existing certified posture*, but any formal certification language is owned by the compliance workstream, not this spec. **Tunisia NACEF (eff. 1 Jul 2026):** the MDF signing requirement is a separate major workstream ([[project_tunisia_nacef_fiscal]]); this design does not foreclose it but does not satisfy it either. No device-authored shift event is claimed MDF-signed. Validate with a Tunisian fiscal specialist before the Tunisia launch.
 - **Clock skew:** UUIDv7 + `shift_number` timestamps rely on device clock; the engine already validates `event_time_device` UTC-second precision and rejects >86400s drift server-side. NTP background sync recommended.
 - **Two-device-per-terminal mis-provisioning:** the partial unique index + `(terminal_id, shift_number)` unique make this fail loud (dead-letter) rather than silently double-open. Acceptable.
 - **Pre-flip in-flight shifts:** grandfathered; close via their original path; new opens are device-authoritative.
-- **Web admin expectation shift:** web admin can no longer force-close a v3 shift (409). Reconcile banner on the device handles the remote-close intent; confirm this is the desired product behavior.
+- **Web admin expectation shift (resolved):** web admin can no longer open/close a v3 shift (409); the web POS panel hides those controls for v3 terminals and the device reconcile banner surfaces any remote-close intent (Decision 4 / §4.b / Phase 4). The genuine lost-device recovery case is the deferred admin-recovery `SESSION_CLOSE`-on-behalf exception (§10).
 
 ### RESOLVED DECISIONS (owner, 2026-06-13)
 
@@ -325,6 +333,32 @@ New invariants:
 
 ---
 
-## 11. Decision summary (for Codex review)
+## 11. Decision summary
 
-The work is **mostly rewire on the device + one new server projector**, not a ground-up build: the fiscal authoring rails (SESSION_OPEN/OPENING_FLOAT/SESSION_CLOSE/Z_REPORT), the sync rail, the ingest/verify pipeline, and the device-minted UUIDs all already exist. The single genuinely-new server piece is `ShiftLifecycleProjection` writing `pos_shifts` from those events — and every field it needs is already in the synced payloads except `shift_number` (one additive field). The device changes are: mint the id+number locally, write a `local_shifts` row in the existing fiscal transaction, read current-shift from SQLite, and stop treating the REST endpoints as the authority (demote them to v3-gated reconcile/read, keep them for legacy + web reads).
+The work is **device rewire + extending one existing server projector**, not a ground-up build: the fiscal authoring rails (SESSION_OPEN/OPENING_FLOAT/SESSION_CLOSE/Z_REPORT), the sync rail, the ingest/verify pipeline, the device-minted UUIDs, the `pos_shifts.shift_number` column, the `pos_shifts_one_open_per_terminal` index, and a registered, already-firing `ZSessionLifecycleProjection` all already exist. The server change is to add a `pos_shifts` upsert **inside that existing projector** — every field it needs is already in the synced payloads except `shift_number` (added to the `SESSION_OPEN` payload, no `SessionOpenV2`, pre-live). The device changes: mint the id+number locally, write `local_shifts` + the receipt anchor inside the existing `authorZSessionOpenWithOpeningFloatOnDb` fiscal transaction (via the `tx` handle — never nest a self-transacting wrapper), read current-shift from SQLite, and stop treating the REST endpoints as the authority (demote to v3-gated reconcile/read; `apps/web` hides open/close for v3).
+
+---
+
+## 12. Review reconciliation — Codex adversarial review r1 (2026-06-13)
+
+Full review: `docs/superpowers/reviews/2026-06-13-pos-offline-first-shifts-spec-codex-review.md` (verdict NEEDS-REWORK, 4 BLOCKER / 6 HIGH). Each finding was verified against the actual code/runtime before acting (per `superpowers:receiving-code-review` — external feedback is evaluated, not obeyed). Outcome: **no surviving blocker**; the design is sound. Several findings were verifiably false (Codex partly reviewed against section numbers and a `DeviceShiftProjector` name that this spec does not use).
+
+| # | Sev (Codex) | Verdict after verification | Evidence / action |
+|---|---|---|---|
+| F-1 | BLOCKER | **FALSE** | Live demo: device-authored `SESSION_OPEN` is `integrity_status=verified` and projected `applied` by `pos_core_z_session_lifecycle`. In v3 all events are device-authored; no "server-must-author" gate exists. No change. |
+| F-2 | BLOCKER | **OVERSTATED → addressed** | Multi-write-in-one-gate is proven (`receiptService.ts:413`, `authorZSessionOpenWithOpeningFloatOnDb:503`). Real kernel: don't nest self-transacting wrappers. §3.1 step 2 now names the `…OnDb` tx + the hard no-nesting constraint. |
+| F-3 | BLOCKER | **VALID → addressed** | Anchor write is currently a separate pre-write (`terminalStore.ts:228-238`). §3.1 step 3b moves it into the same open `tx`. No FK coupling (anchor keys on string `shift_id`). |
+| F-4 | BLOCKER | **PARTIALLY VALID → addressed** | Spec already kept the endpoints for web; gap was the web UI. §4.b + Phase 4 now require `apps/web` to hide open/close for v3 terminals. |
+| F-5 | HIGH | **FALSE** | `pos_receipts` has **no** shift FK; receipts resolve to a shift by `terminal+cashier+posted_at`. No projection-ordering race. Extending the one projector means the shift row precedes any Z anyway. |
+| F-6 | HIGH | **FALSE** | `pos_shifts.shift_number` column already exists (`:33`). Only the `SESSION_OPEN` *payload* lacks it. `ShiftResource` field exposure added (Phase 2). |
+| F-7 | HIGH | **PARTIALLY TRUE → addressed** | `(terminal_id, shift_number)` plain index exists (`:62`); Phase 2 upgrades it to UNIQUE. No column add / no backfill. |
+| F-8 | HIGH | **VALID → addressed** | Phase 5 makes operator-PIN sync eager at first login (not lazy); device shift_id 404 is fixed structurally by device-authoritative projection. |
+| F-9 | HIGH | **VALID → addressed** | Phase 5 adds offline lockout + `synced_at`/`revoked_at` rotation + clarifies `manager_pins` is a distinct table. |
+| F-10 | HIGH | **PARTIALLY VALID → addressed** | §9 NF525 claim softened: design does not change the already-device-authored v3 fiscal posture; NACEF/MDF explicitly not satisfied, deferred. |
+| F-11 | MEDIUM | **FALSE** | `ZSessionLifecycleProjection` writes `pos_z_session_events`, not `pos_shifts` (grep empty). Headline holds; we extend that projector rather than add one. |
+| F-12 | MEDIUM | **VALID → addressed** | Phase 3 makes the `SESSION_CLOSE` projection idempotent (no double-close); v3 409 already blocks a competing server close. |
+| F-13 | MEDIUM | **MOSTLY MOOT → noted** | `shift_number` column already populated server-side → no data backfill. Only the device counter needs seeding (Phase 6). |
+| F-14 | MEDIUM | **PARTIALLY VALID → addressed** | Server resolves shift by `terminal+cashier+window`, not by receipt `session_id`; sweep is mostly client-side (Phase 4). |
+| F-15 | MEDIUM | **FALSE** | `pos_shifts_one_open_per_terminal` partial unique index already exists (`:69`). Phase 2 treats its conflict as idempotent success. |
+| F-16 | LOW | **VALID → addressed** | `ShiftResource` exposes `shift_number`/`session_id`/`opened_at_device` (Phase 2). |
+| F-17 | LOW | **FALSE** | §2 is the current-state map (not §3); "no projection writes `pos_shifts`" is true. No change. |
