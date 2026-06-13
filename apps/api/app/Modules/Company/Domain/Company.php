@@ -102,6 +102,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string $default_target_margin Default target margin percentage
  * @property string $default_minimum_margin Default minimum margin percentage
  * @property bool $allow_below_cost_sales Whether below-cost sales are allowed
+ * @property bool $allow_cross_location_stock_view Whether the POS may show stock levels from all locations
  * @property string|null $fiscal_chain_seed Unique 256-bit seed for fiscal hash chain genesis
  * @property Carbon $created_at
  * @property Carbon $updated_at
@@ -266,6 +267,7 @@ class Company extends Model
         'reservation_settings',
         'smart_prompts_enabled',
         'smart_prompts_variant',
+        'allow_cross_location_stock_view',
     ];
 
     /**
@@ -307,6 +309,7 @@ class Company extends Model
             'smart_prompts_enabled' => 'boolean',
             'smart_prompts_variant' => SmartPromptsVariant::class,
             'pos_stock_policy' => PosStockPolicy::class,
+            'allow_cross_location_stock_view' => 'boolean',
         ];
     }
 
