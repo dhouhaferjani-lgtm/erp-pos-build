@@ -1,17 +1,16 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getDatabase } from '@/lib/db';
-
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-  }),
-}));
 import { migrations } from '@/lib/db/migrations';
 import { upsertCustomer } from '@/lib/db/repositories/customerRepository';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
 import type { CustomerMirrorRow } from '@/lib/customer/customerTypes';
 import { CustomerSearchInput } from './CustomerSearchInput';
+
+vi.mock('react-i18next', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-i18next')>();
+  return { ...actual, useTranslation: () => ({ t: (k: string) => k }) };
+});
 
 vi.mock('@/lib/db', async () => {
   const actual = await vi.importActual<typeof import('@/lib/db')>('@/lib/db');
@@ -89,7 +88,7 @@ describe('CustomerSearchInput', () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText('customerSearch.label'), { target: { value: 'mariam' } });
+    fireEvent.change(screen.getByLabelText('customer.searchLabel'), { target: { value: 'mariam' } });
 
     await screen.findByText('Mariam Ben Ali');
     expect(screen.queryByText('Mariam Other')).not.toBeInTheDocument();
@@ -114,10 +113,14 @@ describe('CustomerSearchInput', () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText('customerSearch.label'), { target: { value: 'mariam' } });
+    // Measure only this test's behavior — a prior test's async search effect
+    // can settle across the test boundary and pollute the shared spy.
+    vi.mocked(getDatabase).mockClear();
+
+    fireEvent.change(screen.getByLabelText('customer.searchLabel'), { target: { value: 'mariam' } });
 
     await waitFor(() => {
-      expect(screen.getByText('customerAttach.scopeError')).toBeInTheDocument();
+      expect(screen.getByText('customer.scopeError')).toBeInTheDocument();
     });
     expect(onSelect).not.toHaveBeenCalled();
     expect(getDatabase).not.toHaveBeenCalled();

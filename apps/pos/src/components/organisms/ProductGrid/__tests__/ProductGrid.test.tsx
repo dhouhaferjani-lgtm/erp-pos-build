@@ -263,6 +263,24 @@ describe('ProductGrid most-sold sort + popular-row removal', () => {
     expect(screen.queryByText(/^popular$/i)).toBeNull();
     expect(screen.queryByText(/^populaires$/i)).toBeNull();
   });
+
+  it('keeps out-of-stock items below sellable ones even in most-sold mode', () => {
+    // Out-of-stock best-seller must NOT sort above an in-stock low-seller.
+    // Counts: Omega 100 (stock 0 → out), Mid 5 (stock 5), Zilch 0 (stock 5).
+    const stockSpecific: POSProduct[] = [
+      { id: 'p-bestseller', name: 'Omega', sku: 'O', sale_price: '1.000', stock_quantity: 0, barcode: null },
+      { id: 'p-mid', name: 'Mid', sku: 'M', sale_price: '1.000', stock_quantity: 5, barcode: null },
+      { id: 'p-zilch', name: 'Zilch', sku: 'Z', sale_price: '1.000', stock_quantity: 5, barcode: null },
+    ];
+    renderGrid({ products: stockSpecific });
+    fireEvent.click(screen.getByRole('button', { name: /sort by most sold/i }));
+
+    const cards = screen.getAllByRole('button', { name: /Omega|Mid|Zilch/ });
+    // Sellable first (Mid 5 > Zilch 0 by most-sold), out-of-stock Omega last.
+    expect(cards[0]).toHaveAccessibleName('Mid');
+    expect(cards[1]).toHaveAccessibleName('Zilch');
+    expect(cards[2]).toHaveAccessibleName('Omega');
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -63,7 +63,8 @@
     "exact": "Exact",
     "processing": "Traitement...",
     "complete": "Terminer et imprimer",
-    "discount": "Remise"
+    "discount": "Remise",
+    "enterAmount": "Saisir le montant reçu"
   },
   "cashTendered": {
     "title": "Paiement en espèces",
@@ -597,6 +598,7 @@
     "approvalRequired": "L'approbation d'un responsable est requise pour les opérations du tiroir-caisse."
   },
   "display": {
+    "mode": "Mode d'affichage",
     "inStockOnly": "En stock",
     "gridMode": "Vue grille",
     "visualMode": "Vue images"
@@ -829,8 +831,24 @@
     "attached": "Rattaché",
     "amount": "Montant",
     "record": "Enregistrer",
-    "createLocal": "Créer un client local",
-    "searchPlaceholder": "Rechercher par nom, téléphone, e-mail…"
+    "createLocal": "Créer le client",
+    "searchPlaceholder": "Rechercher par nom, téléphone, e-mail…",
+    "searchLabel": "Recherche client",
+    "searchInputPlaceholder": "Nom, téléphone, matricule fiscal",
+    "searching": "Recherche…",
+    "creating": "Création…",
+    "name": "Nom",
+    "phone": "Téléphone",
+    "email": "E-mail",
+    "scopeError": "Le tenant et la société sont requis pour rattacher un client.",
+    "searchFailed": "La recherche de client a échoué.",
+    "differentScope": "Le client appartient à un autre tenant ou une autre société.",
+    "nameRequired": "Le nom du client est requis.",
+    "contactRequired": "Le téléphone ou l'e-mail est requis.",
+    "terminalRequired": "Un terminal actif est requis pour enregistrer un paiement de compte.",
+    "amountRequired": "Le montant du paiement est requis.",
+    "paymentFailed": "Le paiement du compte a échoué.",
+    "createFailed": "La création du client a échoué."
   },
   "voucherTender": {
     "title": "Appliquer un bon",

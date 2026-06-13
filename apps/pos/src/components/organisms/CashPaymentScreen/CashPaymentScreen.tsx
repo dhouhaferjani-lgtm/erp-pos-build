@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
 import { getDenominations } from '@/lib/denominations';
 import { NumPad } from '@/components/molecules/NumPad';
+import { tokens } from '@/lib/designTokens';
+import { cn } from '@/lib/utils';
 import { ArrowLeft, Banknote, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export interface CashPaymentScreenProps {
@@ -77,12 +79,12 @@ export function CashPaymentScreen({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gray-50 text-gray-900">
+    <div className="fixed inset-0 z-50 flex flex-col bg-surface-canvas text-ink">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
+      <div className="flex items-center justify-between border-b border-border-subtle bg-surface-raised px-4 py-3">
         <button
           onClick={onClose}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-muted hover:bg-surface-sunken hover:text-ink"
         >
           <ArrowLeft className="h-4 w-4" />
           {t('cashPayment.back')}
@@ -96,56 +98,58 @@ export function CashPaymentScreen({
 
       {/* Error */}
       {error && (
-        <div className="mx-4 mt-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3">
-          <AlertCircle className="h-4 w-4 shrink-0 text-red-500" />
-          <p className="text-sm text-red-700">{error}</p>
+        <div className="mx-4 mt-3 flex items-center gap-2 rounded-lg border border-danger-subtle bg-danger-surface p-3">
+          <AlertCircle className="h-4 w-4 shrink-0 text-danger" />
+          <p className="text-sm text-danger-strong">{error}</p>
         </div>
       )}
 
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left: amounts */}
-        <div className="flex flex-[2] flex-col items-center justify-center border-r border-gray-200 bg-white p-6">
+        <div className="flex flex-[2] flex-col items-center justify-center border-r border-border-subtle bg-surface-raised p-6">
           <div className="text-center">
-            <p className="text-xs font-medium uppercase tracking-widest text-gray-500">
+            <p className="text-xs font-medium uppercase tracking-widest text-ink-muted">
               {t('cashPayment.amountDue')}
             </p>
-            <p className="mt-2 text-4xl font-bold">{format(total)}</p>
+            <p className="mt-2 text-4xl font-bold tabular-nums text-ink">{format(total)}</p>
           </div>
 
           {discountAmount != null && discountAmount > 0 && (
             <div className="mt-4 text-center">
-              <p className="text-xs font-medium uppercase tracking-widest text-primary-600">
+              <p className="text-xs font-medium uppercase tracking-widest text-action">
                 {t('cashPayment.discount')}
               </p>
-              <p className="mt-1 text-lg font-bold text-primary-600">-{format(discountAmount)}</p>
+              <p className="mt-1 text-lg font-bold tabular-nums text-action">-{format(discountAmount)}</p>
             </div>
           )}
 
           <div className="mt-8 text-center">
-            <p className="text-xs font-medium uppercase tracking-widest text-gray-500">
+            <p className="text-xs font-medium uppercase tracking-widest text-ink-muted">
               {t('cashPayment.tendered')}
             </p>
-            <p className="mt-2 text-3xl font-bold text-primary-600">
+            <p className="mt-2 text-3xl font-bold tabular-nums text-ink">
               {tenderedStr ? format(tenderedNum) : format(0)}
             </p>
           </div>
 
-          <div className="mt-8 w-full max-w-xs rounded-xl border-2 border-green-200 bg-green-50 p-4 text-center">
-            <p className="text-xs font-medium uppercase tracking-widest text-green-700">
-              {t('cashPayment.changeDue')}
-            </p>
-            <p className="mt-2 text-3xl font-bold text-green-700">{format(changeDue)}</p>
-          </div>
+          {changeDue > 0 && (
+            <div className="mt-8 w-full max-w-xs rounded-xl border-2 border-success-subtle bg-success-surface p-4 text-center">
+              <p className="text-xs font-medium uppercase tracking-widest text-success-strong">
+                {t('cashPayment.changeDue')}
+              </p>
+              <p className="mt-2 text-3xl font-bold tabular-nums text-success-strong">{format(changeDue)}</p>
+            </div>
+          )}
         </div>
 
         {/* Right: numpad */}
-        <div className="flex flex-[3] flex-col bg-gray-50 p-4">
+        <div className="flex flex-[3] flex-col bg-surface-canvas p-4">
           {/* Denomination buttons */}
           <div className="mb-3 flex gap-2">
             <button
               onClick={handleExact}
-              className="flex-1 rounded-lg bg-primary-600 px-3 py-3 text-sm font-semibold text-white active:bg-primary-700"
+              className="flex-1 rounded-lg bg-action px-3 py-3 text-sm font-semibold text-ink-inverse active:bg-action-strong"
             >
               {t('cashPayment.exact')}
             </button>
@@ -153,7 +157,7 @@ export function CashPaymentScreen({
               <button
                 key={amount}
                 onClick={() => handleDenomination(amount)}
-                className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm font-medium text-gray-900 active:bg-gray-100"
+                className="flex-1 rounded-lg border border-border-subtle bg-surface-raised px-3 py-3 text-sm font-medium tabular-nums text-ink active:bg-surface-sunken"
               >
                 {amount} {currency}
               </button>
@@ -165,11 +169,22 @@ export function CashPaymentScreen({
             <NumPad value={tenderedStr} onChange={handleNumPadChange} />
           </div>
 
+          {/* Disabled reason — tell the cashier what's blocking the confirm. */}
+          {!isValid && !isProcessing && (
+            <p className="mt-3 text-center text-sm text-ink-faint">
+              {t('cashPayment.enterAmount')}
+            </p>
+          )}
+
           {/* Confirm button */}
           <button
             onClick={handleConfirm}
             disabled={!isValid || isProcessing}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 py-4 text-lg font-bold text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className={cn(
+              tokens.button.confirm,
+              'mt-2 w-full py-4 text-lg font-bold',
+              (!isValid || isProcessing) && tokens.disabledReason,
+            )}
           >
             <CheckCircle2 className="h-5 w-5" />
             {isProcessing ? t('cashPayment.processing') : t('cashPayment.complete')}

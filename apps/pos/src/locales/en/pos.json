@@ -63,7 +63,8 @@
     "exact": "Exact",
     "processing": "Processing...",
     "complete": "Complete & Print Receipt",
-    "discount": "Discount"
+    "discount": "Discount",
+    "enterAmount": "Enter the amount received"
   },
   "cashTendered": {
     "title": "Cash Payment",
@@ -597,6 +598,7 @@
     "approvalRequired": "Manager approval is required for cash drawer operations."
   },
   "display": {
+    "mode": "Display mode",
     "inStockOnly": "In Stock",
     "gridMode": "Grid view",
     "visualMode": "Image view"
@@ -829,8 +831,24 @@
     "attached": "Attached",
     "amount": "Amount",
     "record": "Record",
-    "createLocal": "Create local customer",
-    "searchPlaceholder": "Search by name, phone, email…"
+    "createLocal": "Create customer",
+    "searchPlaceholder": "Search by name, phone, email…",
+    "searchLabel": "Customer search",
+    "searchInputPlaceholder": "Name, phone, tax number",
+    "searching": "Searching…",
+    "creating": "Creating…",
+    "name": "Name",
+    "phone": "Phone",
+    "email": "Email",
+    "scopeError": "Tenant and company are required to attach a customer.",
+    "searchFailed": "Customer search failed.",
+    "differentScope": "Customer belongs to a different tenant or company.",
+    "nameRequired": "Customer name is required.",
+    "contactRequired": "Phone or email is required.",
+    "terminalRequired": "Active terminal is required to record an account payment.",
+    "amountRequired": "Payment amount is required.",
+    "paymentFailed": "Account payment failed.",
+    "createFailed": "Customer create failed."
   },
   "voucherTender": {
     "title": "Apply voucher",

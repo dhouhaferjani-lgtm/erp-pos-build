@@ -50,8 +50,20 @@
 
   /* Semantic */
   --theme-success: #1B7F4E;
+  --theme-success-hover: #15673E;
   --theme-warning: #D97706;
   --theme-error: #C53030;
+
+  /* Semantic status surfaces (light tint / strong text / subtle border) */
+  --theme-success-surface: #E7F4EC;
+  --theme-success-strong: #176B42;
+  --theme-success-subtle: #B8DEC8;
+  --theme-warning-surface: #FBF0DD;
+  --theme-warning-strong: #8A4B06;
+  --theme-warning-subtle: #F0D49A;
+  --theme-danger-surface: #FBEAEA;
+  --theme-danger-strong: #9B2C2C;
+  --theme-danger-subtle: #EFC2C2;
 
   /* POS-specific */
   --pos-header-bg: var(--theme-primary-900);
@@ -84,6 +96,56 @@
   --color-secondary-800: var(--theme-secondary-800);
   --color-secondary-900: var(--theme-secondary-900);
   --color-secondary-950: var(--theme-secondary-950);
+
+  /* ----------------------------------------------------------------------
+   * Semantic role tokens — the canonical design-language vocabulary.
+   * Components must use these (bg-surface-*, text-ink*, bg-action, etc.)
+   * rather than raw Tailwind palette classes. See
+   * docs/superpowers/plans/2026-06-13-pos-ui-remediation.md and
+   * apps/pos/docs/design-language.md.
+   * -------------------------------------------------------------------- */
+
+  /* Surfaces — the separation scale: canvas < raised < overlay */
+  --color-surface-canvas: var(--theme-neutral-100);
+  --color-surface-raised: #FFFFFF;
+  --color-surface-overlay: #FFFFFF;
+  --color-surface-sunken: var(--theme-neutral-50);
+
+  /* Ink — text hierarchy */
+  --color-ink: var(--theme-neutral-900);
+  --color-ink-muted: var(--theme-neutral-600);
+  --color-ink-faint: var(--theme-neutral-400);
+  --color-ink-inverse: #FFFFFF;
+
+  /* Borders */
+  --color-border-subtle: var(--theme-neutral-200);
+  --color-border-strong: var(--theme-neutral-300);
+
+  /* Action — primary interactive + selected (ocean blue) */
+  --color-action: var(--theme-primary-600);
+  --color-action-hover: var(--theme-primary-700);
+  --color-action-subtle: var(--theme-primary-50);
+  --color-action-strong: var(--theme-primary-700);
+
+  /* Brand accent (copper) — wordmark / brand chrome only */
+  --color-brand: var(--theme-secondary-600);
+
+  /* Status — success = confirmed money/sync; warning; danger = errors/destructive */
+  --color-success: var(--theme-success);
+  --color-success-hover: var(--theme-success-hover);
+  --color-success-surface: var(--theme-success-surface);
+  --color-success-strong: var(--theme-success-strong);
+  --color-success-subtle: var(--theme-success-subtle);
+
+  --color-warning: var(--theme-warning);
+  --color-warning-surface: var(--theme-warning-surface);
+  --color-warning-strong: var(--theme-warning-strong);
+  --color-warning-subtle: var(--theme-warning-subtle);
+
+  --color-danger: var(--theme-error);
+  --color-danger-surface: var(--theme-danger-surface);
+  --color-danger-strong: var(--theme-danger-strong);
+  --color-danger-subtle: var(--theme-danger-subtle);
 }
 
 html,
@@ -98,4 +160,15 @@ body,
 *:focus-visible {
   outline: 2px solid var(--theme-primary-500);
   outline-offset: 2px;
+}
+
+/* Suppress the macOS overlay scrollbar (the stray gray "pill") on horizontal
+ * strips like the category-tabs row. Apply `scrollbar-none` to any
+ * `overflow-x-auto` element whose scrollbar should not render. */
+.scrollbar-none {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none; /* WebKit / Tauri webview */
 }

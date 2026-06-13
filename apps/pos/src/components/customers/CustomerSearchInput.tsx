@@ -51,7 +51,7 @@ export function CustomerSearchInput({
       } catch (searchError) {
         if (!cancelled) {
           setResults([]);
-          setError(searchError instanceof Error ? searchError.message : t('customerAttach.errorSearchFailed'));
+          setError(searchError instanceof Error ? searchError.message : t('customer.searchFailed'));
           setLoading(false);
         }
       }
@@ -60,7 +60,7 @@ export function CustomerSearchInput({
     return () => {
       cancelled = true;
     };
-  }, [companyId, limit, query, tenantId]);
+  }, [companyId, limit, query, t, tenantId]);
 
   const handleQueryChange = (value: string) => {
     setQuery(value);
@@ -81,37 +81,37 @@ export function CustomerSearchInput({
     setLoading(true);
   };
 
-  const displayError = scopeMissing ? t('customerAttach.scopeError') : error;
+  const displayError = scopeMissing ? t('customer.scopeError') : error;
   const displayResults = scopeMissing ? [] : results;
 
   return (
     <div className="space-y-2">
-      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500" htmlFor="customer-search">
-        {t('customerSearch.label')}
+      <label className="block text-xs font-semibold uppercase tracking-wide text-ink-faint" htmlFor="customer-search">
+        {t('customer.searchLabel')}
       </label>
       <div className="relative">
-        <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-gray-400" aria-hidden="true" />
+        <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-ink-faint" aria-hidden="true" />
         <input
           id="customer-search"
           value={query}
           onChange={(event) => handleQueryChange(event.target.value)}
-          placeholder={t('customerSearch.placeholder')}
-          className="w-full rounded-md border border-gray-300 bg-white py-2 pl-8 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          placeholder={t('customer.searchInputPlaceholder')}
+          className="w-full rounded-md border border-border-strong bg-surface-raised py-2 pl-8 pr-3 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
         />
       </div>
-      {loading && !scopeMissing && <div className="text-xs text-gray-500">{t('customerSearch.searching')}</div>}
-      {displayError && <div className="text-xs font-medium text-red-700">{displayError}</div>}
+      {loading && !scopeMissing && <div className="text-xs text-ink-faint">{t('customer.searching')}</div>}
+      {displayError && <div className="text-xs font-medium text-danger-strong">{displayError}</div>}
       {displayResults.length > 0 && (
-        <div className="max-h-40 overflow-y-auto rounded-md border border-gray-200 bg-white">
+        <div className="max-h-40 overflow-y-auto rounded-md border border-border-subtle bg-surface-raised">
           {displayResults.map((customer) => (
             <button
               key={`${customer.tenant_id}:${customer.company_id}:${customer.id}`}
               type="button"
               onClick={() => onSelect(customer)}
-              className="block w-full border-b border-gray-100 px-3 py-2 text-left last:border-b-0 hover:bg-blue-50 focus:bg-blue-50 focus:outline-none"
+              className="block w-full border-b border-border-subtle px-3 py-2 text-left last:border-b-0 hover:bg-action-subtle focus:bg-action-subtle focus:outline-none"
             >
-              <span className="block text-sm font-semibold text-gray-900">{customer.name}</span>
-              <span className="block truncate text-xs text-gray-500">
+              <span className="block text-sm font-semibold text-ink">{customer.name}</span>
+              <span className="block truncate text-xs text-ink-faint">
                 {[customer.phone, customer.email, customer.tax_number].filter(Boolean).join(' | ')}
               </span>
             </button>

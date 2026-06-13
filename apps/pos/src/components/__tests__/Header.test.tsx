@@ -119,7 +119,7 @@ vi.mock('@/stores/connectivityStore', () => ({
 
 vi.mock('@/stores/syncStore', () => ({
   useSyncStore: <T,>(selector: (s: unknown) => T): T => {
-    return selector({ pendingReceiptCount: 0, isSyncing: false });
+    return selector({ pendingReceiptCount: 0, isSyncing: false, triggerSync: vi.fn() });
   },
 }));
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeftRight, BarChart3, Lock, Minimize2, Settings } from 'lucide-react';
+import { ArrowLeftRight, BarChart3, Lock, Minimize2, RotateCw, Settings } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -11,7 +11,6 @@ import { useCartStore } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useSyncStore } from '@/stores/syncStore';
-import { SyncButton } from '@/components/atoms/SyncButton/SyncButton';
 import { StockFreshness } from '@/components/atoms/StockFreshness/StockFreshness';
 import { EndOfDayPreviewModal } from '@/components/pos/EndOfDayPreviewModal';
 import { ReportsMenu } from '@/components/pos/ReportsMenu';
@@ -19,7 +18,7 @@ import { XReportModal } from '@/components/pos/XReportModal';
 import { generateXReport, generateZReport } from '@/api/reportApi';
 import type { GenerateXReportOpts, GenerateZReportOpts, XReportResponse } from '@/api/reportApi';
 import { getErrorMessage } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { Badge, IconButton, StatusPill } from '@/components/ui';
 import { CashDrawerModal } from '@/components/organisms/CashDrawerModal';
 import type { EndOfDayConfirmResult, CompanyFraudSettings, AuthorizedManager } from '@/components/pos/EndOfDayPreviewModal';
 import type { CashCountCommitPayload } from '@/components/pos/EndOfDayPreviewModal';
@@ -63,6 +62,7 @@ export function Header() {
   const isOnline = useConnectivityStore((s) => s.isOnline);
   const pendingReceiptCount = useSyncStore((s) => s.pendingReceiptCount);
   const isSyncing = useSyncStore((s) => s.isSyncing);
+  const triggerSync = useSyncStore((s) => s.triggerSync);
 
   const [showEndOfDay, setShowEndOfDay] = useState(false);
 
@@ -396,120 +396,128 @@ export function Header() {
     clearOperator();
   }
 
+  // Single session-status signal (B3): one pill folds connectivity + sync +
+  // pending-receipt backlog into one healthy/warning/danger state, driven by
+  // the same stores the header already reads. The healthy "synced" signal now
+  // lives HERE (the full-width "everything synced" banner is exception-only —
+  // B4 returns null when healthy), so this pill must show the synced state.
+  const statusTone: 'healthy' | 'warning' | 'danger' = !isOnline
+    ? 'danger'
+    : pendingReceiptCount > 0 || isSyncing
+      ? 'warning'
+      : 'healthy';
+
+  const statusLabel = !isOnline
+    ? t('sync.offline')
+    : isSyncing
+      ? t('sync.syncing')
+      : pendingReceiptCount > 0
+        ? t('sync.pendingCount', { count: pendingReceiptCount })
+        : t('sync.online');
+
   return (
     <>
-      <header className="flex h-12 items-center justify-between border-b border-gray-200 bg-white px-4">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold text-gray-900">{t('auth.title')}</h1>
-          {terminal && (
-            <span className="rounded-md bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
-              {terminal.name}
-            </span>
-          )}
+      <header className="flex h-12 items-center justify-between gap-4 border-b border-subtle bg-surface-raised px-4">
+        {/* LEFT zone — identity (largest). Wordmark + terminal badge. */}
+        <div className="flex min-w-0 items-center gap-3">
+          <h1 className="truncate text-xl font-extrabold tracking-tight text-brand">{t('auth.title')}</h1>
+          {terminal && <Badge tone="neutral">{terminal.name}</Badge>}
         </div>
 
-        <div className="flex items-center gap-1.5">
-          {/* Connectivity indicator */}
-          <div className="flex items-center gap-1.5" title={isOnline ? t('sync.online') : t('sync.offline')}>
-            <span
-              className={cn(
-                'inline-block h-2.5 w-2.5 rounded-full',
-                isSyncing
-                  ? 'animate-pulse bg-yellow-500'
-                  : isOnline
-                    ? 'bg-green-500'
-                    : 'bg-red-500',
-              )}
-            />
-            {!isOnline && (
-              <span className="rounded bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
-                {t('sync.offline')}
-              </span>
-            )}
-            {pendingReceiptCount > 0 && (
-              <span className="rounded bg-orange-50 px-1.5 py-0.5 text-xs font-medium text-orange-700">
-                {pendingReceiptCount}
-              </span>
-            )}
-          </div>
-
-          {/* Manual sync button */}
-          <SyncButton />
-
-          {/* Task 12 — stock staleness hint beside the sync freshness display */}
+        {/* CENTER zone — ONE session-status pill (connectivity + sync + stock age). */}
+        <div className="flex min-w-0 items-center gap-2">
+          {/* Status is a clean dot+label indicator (never a nested button). */}
+          <StatusPill tone={statusTone} label={statusLabel} pulse={isSyncing} title={statusLabel} />
+          {/* Manual sync trigger — a SEPARATE control beside the pill, not inside it. */}
+          <IconButton
+            variant="ghost"
+            size="md"
+            onClick={() => triggerSync()}
+            disabled={isSyncing}
+            title={t('sync.syncNow')}
+            aria-label={t('sync.syncNow')}
+            icon={<RotateCw className={isSyncing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />}
+          />
+          {/* Stock staleness hint — own freshness/age signal beside the pill. */}
           <StockFreshness />
+        </div>
 
-          {/* Shift badge — opens End of Day preview */}
+        {/* RIGHT zone — operator + icon-only actions (smallest). */}
+        <div className="flex min-w-0 items-center gap-1">
+          {/* Shift badge — opens End of Day preview. */}
           {shift ? (
             <button
+              type="button"
               onClick={() => setShowEndOfDay(true)}
-              className="flex items-center gap-2 rounded-md bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
+              className="rounded-full"
+              title={t('shift.opening', { amount: shift.opening_cash })}
             >
-              <span>{t('shift.number', { number: shift.shift_number })}</span>
-              <span className="text-green-600">|</span>
-              <span>{t('shift.opening', { amount: shift.opening_cash })}</span>
+              <Badge tone="success">{t('shift.number', { number: shift.shift_number })}</Badge>
             </button>
           ) : (
-            <span className="text-sm text-gray-500">{t('header.noShift')}</span>
+            <span className="text-sm text-ink-faint">{t('header.noShift')}</span>
           )}
 
           {/* Operator name */}
           {operator && (
-            <span className="text-sm font-medium text-gray-700">{operator.name}</span>
+            <span className="mx-1 hidden truncate text-sm font-medium text-ink-muted sm:inline">
+              {operator.name}
+            </span>
           )}
 
-          {/* Switch operator */}
-          <button
+          {/* Switch operator — icon-only */}
+          <IconButton
+            variant="ghost"
+            size="md"
             onClick={handleSwitchOperator}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
             title={t('header.switch')}
-          >
-            <ArrowLeftRight className="h-3.5 w-3.5" />
-            {t('header.switch')}
-          </button>
+            aria-label={t('header.switch')}
+            icon={<ArrowLeftRight className="h-4 w-4" />}
+          />
 
-          {/* Lock */}
-          <button
+          {/* Lock — icon-only */}
+          <IconButton
+            variant="ghost"
+            size="md"
             onClick={lockScreen}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
             title={t('header.lock')}
-          >
-            <Lock className="h-3.5 w-3.5" />
-            {t('header.lock')}
-          </button>
+            aria-label={t('header.lock')}
+            icon={<Lock className="h-4 w-4" />}
+          />
 
-          {/* Reports */}
+          {/* Reports — icon-only (behavior/routing unchanged) */}
           {shift && (
-            <button
+            <IconButton
+              variant="ghost"
+              size="md"
               onClick={() => setShowReportsMenu(true)}
-              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
               title={t('quickActions.reports')}
-            >
-              <BarChart3 className="h-3.5 w-3.5" />
-              {t('quickActions.reports')}
-            </button>
+              aria-label={t('quickActions.reports')}
+              icon={<BarChart3 className="h-4 w-4" />}
+            />
           )}
 
-          {/* Exit fullscreen */}
+          {/* Exit fullscreen — icon-only */}
           {fullscreen && (
-            <button
+            <IconButton
+              variant="ghost"
+              size="md"
               onClick={() => void handleExitFullscreen()}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700"
               title={t('settings.exitFullscreen')}
-            >
-              <Minimize2 className="h-4 w-4" />
-            </button>
+              aria-label={t('settings.exitFullscreen')}
+              icon={<Minimize2 className="h-4 w-4" />}
+            />
           )}
 
-          {/* Settings */}
-          <button
+          {/* Settings — icon-only */}
+          <IconButton
+            variant="ghost"
+            size="md"
             onClick={() => navigate('/settings')}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700"
             title={t('header.settings')}
-          >
-            <Settings className="h-4 w-4" />
-          </button>
-
+            aria-label={t('header.settings')}
+            icon={<Settings className="h-4 w-4" />}
+          />
         </div>
       </header>
 

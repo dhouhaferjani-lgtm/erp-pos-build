@@ -5,10 +5,12 @@ import { getDatabase } from '@/lib/db';
 import { enqueuePendingCustomer } from '@/lib/db/repositories/pendingCustomerRepository';
 import { isBalanceStale } from '@/lib/db/repositories/customerRepository';
 import { usePaymentStore, type AttachedCheckoutCustomer } from '@/stores/paymentStore';
+import { cn } from '@/lib/utils';
+import { tokens } from '@/lib/designTokens';
 import type { CustomerMirrorRow } from '@/lib/customer/customerTypes';
 import { CustomerBalanceBadge } from './CustomerBalanceBadge';
 import { CustomerSearchInput } from './CustomerSearchInput';
-import { CUSTOMER_ATTACH_SCOPE_ERROR, deterministicPendingCustomerUuid } from './customerAttachUtils';
+import { deterministicPendingCustomerUuid } from './customerAttachUtils';
 
 export interface CustomerAttachPanelProps {
   tenantId: string | null | undefined;
@@ -30,6 +32,12 @@ export interface CustomerAttachBodyProps {
   onProcessingChange?: (processing: boolean) => void;
   /** Called after a customer is attached (search-select or create-local success). */
   onSelected?: () => void;
+  /**
+   * When true (default) the body renders its own "Customer" heading + icon.
+   * Set false when hosted inside a Modal whose title bar already shows it,
+   * to avoid the duplicate heading.
+   */
+  showHeading?: boolean;
 }
 
 function fromMirror(row: CustomerMirrorRow): AttachedCheckoutCustomer {
@@ -74,6 +82,7 @@ export function CustomerAttachBody({
   onAccountPaymentComplete,
   onProcessingChange,
   onSelected,
+  showHeading = true,
 }: CustomerAttachBodyProps) {
   const { t } = useTranslation('pos');
   const selectedCustomer = usePaymentStore((state) => state.selectedCustomer);
@@ -90,11 +99,11 @@ export function CustomerAttachBody({
 
   const handleAttach = (row: CustomerMirrorRow) => {
     if (!tenantId || !companyId) {
-      setError(CUSTOMER_ATTACH_SCOPE_ERROR);
+      setError(t('customer.scopeError'));
       return;
     }
     if (row.tenant_id !== tenantId || row.company_id !== companyId) {
-      setError(t('customerAttach.errorWrongScope'));
+      setError(t('customer.differentScope'));
       return;
     }
     attachCustomer(fromMirror(row));
@@ -108,15 +117,15 @@ export function CustomerAttachBody({
     const email = newEmail.trim();
 
     if (!tenantId || !companyId) {
-      setError(CUSTOMER_ATTACH_SCOPE_ERROR);
+      setError(t('customer.scopeError'));
       return;
     }
     if (name === '') {
-      setError(t('customerAttach.errorNameRequired'));
+      setError(t('customer.nameRequired'));
       return;
     }
     if (phone === '' && email === '') {
-      setError(t('customerAttach.errorPhoneOrEmailRequired'));
+      setError(t('customer.contactRequired'));
       return;
     }
 
@@ -169,7 +178,7 @@ export function CustomerAttachBody({
       setNewEmail('');
       onSelected?.();
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : t('customerAttach.errorCreateFailed'));
+      setError(createError instanceof Error ? createError.message : t('customer.createFailed'));
     } finally {
       setCreating(false);
     }
@@ -192,11 +201,11 @@ export function CustomerAttachBody({
   const handleAccountPayment = async () => {
     const amount = accountPaymentAmount.trim();
     if (!terminalId) {
-      setError(t('customerAttach.errorTerminalRequired'));
+      setError(t('customer.terminalRequired'));
       return;
     }
     if (amount === '') {
-      setError(t('customerAttach.errorAmountRequired'));
+      setError(t('customer.amountRequired'));
       return;
     }
 
@@ -211,7 +220,7 @@ export function CustomerAttachBody({
         onAccountPaymentComplete?.();
       }
     } catch (paymentError) {
-      setError(paymentError instanceof Error ? paymentError.message : t('customerAttach.errorPaymentFailed'));
+      setError(paymentError instanceof Error ? paymentError.message : t('customer.paymentFailed'));
     } finally {
       onProcessingChange?.(false);
     }
@@ -219,32 +228,34 @@ export function CustomerAttachBody({
 
   return (
     <>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <User className="h-4 w-4 text-gray-600" aria-hidden="true" />
-          <h3 className="text-sm font-semibold text-gray-900">{t('customerAttach.title')}</h3>
+      {(showHeading || selectedCustomer) && (
+        <div className="mb-2 flex items-center justify-between gap-2">
+          {showHeading ? (
+            <div className="flex items-center gap-2">
+              <User className="h-4 w-4 text-ink-muted" aria-hidden="true" />
+              <h3 className="text-sm font-semibold text-ink">{t('customer.attach')}</h3>
+            </div>
+          ) : (
+            <span />
+          )}
+          {selectedCustomer && <span className={tokens.badge.success}>{t('customer.attached')}</span>}
         </div>
-        {selectedCustomer && (
-          <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
-            {t('customerAttach.attached')}
-          </span>
-        )}
-      </div>
+      )}
 
       {selectedCustomer ? (
-        <div className="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-2">
+        <div className="space-y-2 rounded-md border border-border-subtle bg-surface-sunken p-2">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-gray-900">{selectedCustomer.name}</div>
-              <div className="truncate text-xs text-gray-500">
+              <div className="truncate text-sm font-semibold text-ink">{selectedCustomer.name}</div>
+              <div className="truncate text-xs text-ink-faint">
                 {[selectedCustomer.phone, selectedCustomer.email].filter(Boolean).join(' | ')}
               </div>
             </div>
             <button
               type="button"
               onClick={detachCustomer}
-              aria-label={t('customerAttach.detachLabel')}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-200 hover:text-gray-900"
+              aria-label={t('customer.detach')}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-faint hover:bg-surface-sunken hover:text-ink"
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -257,21 +268,21 @@ export function CustomerAttachBody({
           />
           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             <input
-              aria-label={t('customerAttach.accountPaymentAmountLabel')}
+              aria-label={t('customer.amount')}
               value={accountPaymentAmount}
               onChange={(event) => setAccountPaymentAmount(event.target.value)}
               inputMode="decimal"
-              placeholder={t('customerAttach.accountPaymentAmountPlaceholder')}
-              className="min-w-0 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder={t('customer.amount')}
+              className="min-w-0 rounded-md border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
             />
             <button
               type="button"
               onClick={() => void handleAccountPayment()}
               disabled={isProcessing}
-              className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className={cn(tokens.button.primary, 'px-3 py-2 text-sm')}
             >
               <Wallet className="h-4 w-4" aria-hidden="true" />
-              {t('customerAttach.recordButton')}
+              {t('customer.record')}
             </button>
           </div>
         </div>
@@ -284,40 +295,40 @@ export function CustomerAttachBody({
           />
           <div className="grid grid-cols-1 gap-2">
             <input
-              aria-label={t('customerAttach.newNameLabel')}
+              aria-label={t('customer.name')}
               value={newName}
               onChange={(event) => setNewName(event.target.value)}
-              placeholder={t('customerAttach.newNamePlaceholder')}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder={t('customer.name')}
+              className="rounded-md border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
             />
             <input
-              aria-label={t('customerAttach.newPhoneLabel')}
+              aria-label={t('customer.phone')}
               value={newPhone}
               onChange={(event) => setNewPhone(event.target.value)}
-              placeholder={t('customerAttach.newPhonePlaceholder')}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder={t('customer.phone')}
+              className="rounded-md border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
             />
             <input
-              aria-label={t('customerAttach.newEmailLabel')}
+              aria-label={t('customer.email')}
               value={newEmail}
               onChange={(event) => setNewEmail(event.target.value)}
-              placeholder={t('customerAttach.newEmailPlaceholder')}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder={t('customer.email')}
+              className="rounded-md border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
             />
           </div>
           <button
             type="button"
             onClick={() => void handleCreate()}
             disabled={creating}
-            className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className={cn(tokens.button.secondary, 'px-3 py-2 text-sm')}
           >
             <UserPlus className="h-4 w-4" aria-hidden="true" />
-            {creating ? t('customerAttach.creating') : t('customerAttach.createButton')}
+            {creating ? t('customer.creating') : t('customer.createLocal')}
           </button>
         </div>
       )}
 
-      {error && <div className="mt-2 text-xs font-medium text-red-700">{error}</div>}
+      {error && <div className="mt-2 text-xs font-medium text-danger-strong">{error}</div>}
     </>
   );
 }
@@ -331,7 +342,7 @@ export function CustomerAttachPanel({
   onAccountPaymentComplete,
 }: CustomerAttachPanelProps) {
   return (
-    <section className="border-b border-gray-200 bg-white px-3 py-2">
+    <section className="border-b border-border-subtle bg-surface-raised px-3 py-2">
       <CustomerAttachBody
         tenantId={tenantId}
         companyId={companyId}

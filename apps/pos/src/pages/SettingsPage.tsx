@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield, RefreshCw, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { tokens } from '@/lib/designTokens';
 import { useSettingsStore, SUPPORTED_LANGUAGES } from '@/stores/settingsStore';
 import { usePrinterStore } from '@/stores/printerStore';
 import { useTerminalStore } from '@/stores/terminalStore';
@@ -142,40 +143,43 @@ export function SettingsPage() {
   }, [printerConfig, t]);
 
   return (
-    <div className="flex h-full flex-col bg-gray-50">
+    <div className="flex h-full flex-col bg-surface-canvas">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3">
-        <button
-          onClick={() => navigate('/')}
-          className="flex h-10 w-10 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <h1 className="text-xl font-bold text-gray-900">{t('settings.title')}</h1>
+      <div className="border-b border-border-subtle bg-surface-raised">
+        <div className="mx-auto flex w-full max-w-lg items-center gap-3 px-4 py-3">
+          <button
+            onClick={() => navigate('/')}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-ink-muted hover:bg-surface-sunken"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <h1 className="text-xl font-bold text-ink">{t('settings.title')}</h1>
+        </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-12">
         <div className="mx-auto max-w-lg space-y-6">
           {/* Display Preferences */}
-          <section className="rounded-xl bg-white p-4 shadow-sm">
-            <h2 className="mb-4 text-base font-bold text-gray-900">
+          <section className="rounded-xl bg-surface-raised p-4 shadow-sm">
+            <h2 className="mb-4 text-base font-bold text-ink">
               {t('settings.display')}
             </h2>
 
             {/* Display mode */}
             <div className="mb-4">
-              <label className="mb-2 block text-sm font-medium text-gray-700">
+              <label className="mb-2 block text-sm font-medium text-ink-muted">
                 {t('settings.displayMode')}
               </label>
-              <div className="flex rounded-lg bg-gray-100 p-1">
+              <div className={cn(tokens.segmented.root, 'flex')}>
                 <button
                   onClick={() => setDisplayMode('grid')}
                   className={cn(
-                    'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    tokens.segmented.item,
+                    'flex flex-1 items-center justify-center gap-2',
                     displayMode === 'grid'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700',
+                      ? tokens.segmented.itemActive
+                      : tokens.segmented.itemInactive,
                   )}
                 >
                   <Monitor className="h-4 w-4" />
@@ -184,10 +188,11 @@ export function SettingsPage() {
                 <button
                   onClick={() => setDisplayMode('visual')}
                   className={cn(
-                    'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    tokens.segmented.item,
+                    'flex flex-1 items-center justify-center gap-2',
                     displayMode === 'visual'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700',
+                      ? tokens.segmented.itemActive
+                      : tokens.segmented.itemInactive,
                   )}
                 >
                   <Image className="h-4 w-4" />
@@ -198,16 +203,16 @@ export function SettingsPage() {
 
             {/* Language */}
             <div>
-              <label htmlFor="language-select" className="mb-2 block text-sm font-medium text-gray-700">
+              <label htmlFor="language-select" className="mb-2 block text-sm font-medium text-ink-muted">
                 {t('settings.language')}
               </label>
               <div className="relative">
-                <Globe className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+                <Globe className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-faint" />
                 <select
                   id="language-select"
                   value={language}
                   onChange={(e) => setLanguage(e.target.value)}
-                  className="min-h-[44px] w-full appearance-none rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-8 text-base font-medium text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="min-h-[44px] w-full appearance-none rounded-lg border border-border-strong bg-surface-raised py-2.5 pl-10 pr-8 text-base font-medium text-ink focus:border-action focus:outline-none focus:ring-2 focus:ring-action"
                 >
                   {SUPPORTED_LANGUAGES.map((lang) => (
                     <option key={lang.code} value={lang.code}>
@@ -220,86 +225,62 @@ export function SettingsPage() {
           </section>
 
           {/* Touch & Display */}
-          <section className="rounded-xl bg-white p-4 shadow-sm">
-            <h2 className="mb-4 text-base font-bold text-gray-900">
+          <section className="rounded-xl bg-surface-raised p-4 shadow-sm">
+            <h2 className="mb-4 text-base font-bold text-ink">
               {t('settings.touchDisplay')}
             </h2>
             <div className="space-y-3">
               {/* Touch mode toggle */}
-              <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
+              <div className="flex items-center justify-between rounded-lg bg-surface-sunken px-3 py-3">
                 <div className="flex items-center gap-2">
-                  <Hand className="h-4 w-4 text-gray-600" />
+                  <Hand className="h-4 w-4 text-ink-muted" />
                   <div>
-                    <span className="text-sm font-medium text-gray-900">
+                    <span className="text-sm font-medium text-ink">
                       {t('settings.touchMode')}
                     </span>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-ink-faint">
                       {t('settings.touchModeDesc')}
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setTouchMode(!touchMode)}
-                  className={cn(
-                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                    touchMode ? 'bg-blue-600' : 'bg-gray-300',
-                  )}
-                  role="switch"
-                  aria-checked={touchMode}
-                >
-                  <span
-                    className={cn(
-                      'inline-block h-4 w-4 rounded-full bg-white transition-transform',
-                      touchMode ? 'translate-x-6' : 'translate-x-1',
-                    )}
-                  />
-                </button>
+                <ToggleSwitch
+                  checked={touchMode}
+                  onChange={() => setTouchMode(!touchMode)}
+                />
               </div>
 
               {/* Fullscreen toggle */}
-              <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
+              <div className="flex items-center justify-between rounded-lg bg-surface-sunken px-3 py-3">
                 <div className="flex items-center gap-2">
-                  <Maximize className="h-4 w-4 text-gray-600" />
+                  <Maximize className="h-4 w-4 text-ink-muted" />
                   <div>
-                    <span className="text-sm font-medium text-gray-900">
+                    <span className="text-sm font-medium text-ink">
                       {t('settings.fullscreen')}
                     </span>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-ink-faint">
                       {t('settings.fullscreenDesc')}
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
+                <ToggleSwitch
+                  checked={fullscreen}
+                  onChange={() => {
                     const next = !fullscreen;
                     setFullscreen(next);
                     void applyFullscreen(next);
                   }}
-                  className={cn(
-                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                    fullscreen ? 'bg-blue-600' : 'bg-gray-300',
-                  )}
-                  role="switch"
-                  aria-checked={fullscreen}
-                >
-                  <span
-                    className={cn(
-                      'inline-block h-4 w-4 rounded-full bg-white transition-transform',
-                      fullscreen ? 'translate-x-6' : 'translate-x-1',
-                    )}
-                  />
-                </button>
+                />
               </div>
 
               {/* Force Fullscreen — manual retry / escape hatch for BG9 */}
-              <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
-                <div className="flex items-center gap-2">
-                  <Maximize className="h-4 w-4 text-gray-600" />
-                  <div>
-                    <span className="text-sm font-medium text-gray-900">
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-sunken px-3 py-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Maximize className="h-4 w-4 shrink-0 text-ink-muted" />
+                  <div className="min-w-0">
+                    <span className="text-sm font-medium text-ink">
                       {t('settings.forceFullscreen')}
                     </span>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-ink-faint">
                       {forceFullscreenApplied
                         ? t('settings.forceFullscreenApplied')
                         : t('settings.forceFullscreenDesc')}
@@ -314,7 +295,7 @@ export function SettingsPage() {
                     setForceFullscreenApplied(true);
                     setTimeout(() => { setForceFullscreenApplied(false); }, 2_000);
                   }}
-                  className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                  className={cn(tokens.button.primary, 'h-9 shrink-0 whitespace-nowrap px-3 text-sm')}
                 >
                   {t('settings.forceFullscreen')}
                 </button>
@@ -323,10 +304,10 @@ export function SettingsPage() {
           </section>
 
           {/* Security */}
-          <section className="rounded-xl bg-white p-4 shadow-sm">
+          <section className="rounded-xl bg-surface-raised p-4 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
-              <Shield className="h-5 w-5 text-gray-700" />
-              <h2 className="text-base font-bold text-gray-900">
+              <Shield className="h-5 w-5 text-ink-muted" />
+              <h2 className="text-base font-bold text-ink">
                 {t('settings.security')}
               </h2>
             </div>
@@ -334,22 +315,22 @@ export function SettingsPage() {
             <div className="space-y-4">
               {/* Inactivity timeout */}
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-900">
+                <label className="mb-1 block text-sm font-medium text-ink">
                   {t('settings.inactivityTimeout')}
                 </label>
-                <p className="mb-2 text-xs text-gray-500">
+                <p className="mb-2 text-xs text-ink-faint">
                   {t('settings.inactivityTimeoutDesc')}
                 </p>
-                <div className="flex flex-wrap gap-2">
+                <div className={cn(tokens.segmented.root, 'flex flex-wrap')}>
                   {TIMEOUT_PRESETS.map((preset) => (
                     <button
                       key={preset.value}
                       onClick={() => setInactivityTimeout(preset.value)}
                       className={cn(
-                        'rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                        tokens.segmented.item,
                         inactivityTimeout === preset.value
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200',
+                          ? tokens.segmented.itemActive
+                          : tokens.segmented.itemInactive,
                       )}
                     >
                       {t(preset.labelKey)}
@@ -359,59 +340,47 @@ export function SettingsPage() {
               </div>
 
               {/* Lock after each sale */}
-              <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
+              <div className="flex items-center justify-between rounded-lg bg-surface-sunken px-3 py-3">
                 <div>
-                  <span className="text-sm font-medium text-gray-900">
+                  <span className="text-sm font-medium text-ink">
                     {t('settings.lockAfterSale')}
                   </span>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-ink-faint">
                     {t('settings.lockAfterSaleDesc')}
                   </p>
                 </div>
-                <button
-                  onClick={() => setLockAfterSale(!lockAfterSale)}
-                  className={cn(
-                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                    lockAfterSale ? 'bg-blue-600' : 'bg-gray-300',
-                  )}
-                  role="switch"
-                  aria-checked={lockAfterSale}
-                >
-                  <span
-                    className={cn(
-                      'inline-block h-4 w-4 rounded-full bg-white transition-transform',
-                      lockAfterSale ? 'translate-x-6' : 'translate-x-1',
-                    )}
-                  />
-                </button>
+                <ToggleSwitch
+                  checked={lockAfterSale}
+                  onChange={() => setLockAfterSale(!lockAfterSale)}
+                />
               </div>
             </div>
           </section>
 
           {/* Receipt Printer */}
-          <section className="rounded-xl bg-white p-4 shadow-sm">
+          <section className="rounded-xl bg-surface-raised p-4 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
-              <Printer className="h-5 w-5 text-gray-700" />
-              <h2 className="text-base font-bold text-gray-900">
+              <Printer className="h-5 w-5 text-ink-muted" />
+              <h2 className="text-base font-bold text-ink">
                 {t('settings.printer')}
               </h2>
             </div>
 
             {!isTauri ? (
-              <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
+              <div className="rounded-lg border border-warning-subtle bg-warning-surface p-3 text-sm text-warning-strong">
                 {t('settings.printerDesktopOnly')}
               </div>
             ) : (
               <div className="space-y-4">
                 {/* Current printer */}
                 {printerConfig ? (
-                  <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+                  <div className="rounded-lg border border-success-subtle bg-success-surface p-3">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-green-800">
+                        <p className="text-sm font-medium text-success-strong">
                           {printerConfig.name}
                         </p>
-                        <p className="text-xs text-green-600">
+                        <p className="text-xs text-success-strong">
                           {printerConfig.connection_type === 'usb'
                           ? 'USB'
                           : printerConfig.connection_type === 'windows'
@@ -421,7 +390,7 @@ export function SettingsPage() {
                       </div>
                       <button
                         onClick={clearPrinterConfig}
-                        className="rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                        className="rounded-md px-2 py-1 text-xs font-medium text-danger hover:bg-danger-surface"
                       >
                         {t('settings.removePrinter')}
                       </button>
@@ -432,7 +401,7 @@ export function SettingsPage() {
                       <button
                         onClick={() => void handleTestPrint()}
                         disabled={isPrintingTest}
-                        className="flex items-center gap-1 rounded-lg bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                        className="flex items-center gap-1 rounded-lg bg-surface-raised px-3 py-2 text-xs font-medium text-ink-muted shadow-sm hover:bg-surface-sunken disabled:opacity-50"
                       >
                         {isPrintingTest ? (
                           <Loader2 className="h-3 w-3 animate-spin" />
@@ -444,32 +413,20 @@ export function SettingsPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-lg bg-gray-50 p-3 text-center text-sm text-gray-500">
+                  <div className="rounded-lg bg-surface-sunken p-3 text-center text-sm text-ink-faint">
                     {t('settings.noPrinterConfigured')}
                   </div>
                 )}
 
                 {/* Auto-print toggle */}
-                <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
-                  <span className="text-sm font-medium text-gray-900">
+                <div className="flex items-center justify-between rounded-lg bg-surface-sunken px-3 py-3">
+                  <span className="text-sm font-medium text-ink">
                     {t('settings.autoPrintReceipts')}
                   </span>
-                  <button
-                    onClick={() => setAutoPrint(!autoPrint)}
-                    className={cn(
-                      'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                      autoPrint ? 'bg-blue-600' : 'bg-gray-300',
-                    )}
-                    role="switch"
-                    aria-checked={autoPrint}
-                  >
-                    <span
-                      className={cn(
-                        'inline-block h-4 w-4 rounded-full bg-white transition-transform',
-                        autoPrint ? 'translate-x-6' : 'translate-x-1',
-                      )}
-                    />
-                  </button>
+                  <ToggleSwitch
+                    checked={autoPrint}
+                    onChange={() => setAutoPrint(!autoPrint)}
+                  />
                 </div>
 
                 {/* Advanced printer settings */}
@@ -479,7 +436,7 @@ export function SettingsPage() {
                 <button
                   onClick={() => void handleDiscoverPrinters()}
                   disabled={isDiscovering}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-border-strong bg-surface-raised px-4 py-3 text-sm font-medium text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
                 >
                   {isDiscovering ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -494,7 +451,7 @@ export function SettingsPage() {
                 {/* Discovered printers list */}
                 {discoveredPrinters.length > 0 && (
                   <div className="space-y-2">
-                    <p className="text-xs font-medium uppercase text-gray-500">
+                    <p className="text-xs font-medium uppercase text-ink-faint">
                       {t('settings.availablePrinters')}
                     </p>
                     {discoveredPrinters.map((printer) => (
@@ -504,15 +461,15 @@ export function SettingsPage() {
                         className={cn(
                           'flex w-full items-center justify-between rounded-lg border px-3 py-3 text-left transition-colors',
                           printerConfig?.address === printer.address
-                            ? 'border-blue-300 bg-blue-50'
-                            : 'border-gray-200 bg-white hover:bg-gray-50',
+                            ? 'border-action bg-action-subtle'
+                            : 'border-border-subtle bg-surface-raised hover:bg-surface-sunken',
                         )}
                       >
                         <div>
-                          <p className="text-sm font-medium text-gray-900">
+                          <p className="text-sm font-medium text-ink">
                             {printer.name}
                           </p>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-ink-faint">
                             {printer.connection_type === 'usb'
                             ? 'USB'
                             : printer.connection_type === 'windows'
@@ -521,7 +478,7 @@ export function SettingsPage() {
                           </p>
                         </div>
                         {printerConfig?.address === printer.address && (
-                          <CheckCircle className="h-5 w-5 text-blue-600" />
+                          <CheckCircle className="h-5 w-5 text-action" />
                         )}
                       </button>
                     ))}
@@ -537,8 +494,8 @@ export function SettingsPage() {
                     className={cn(
                       'flex items-center gap-2 rounded-lg p-3 text-sm',
                       printerStatus === 'success'
-                        ? 'bg-green-50 text-green-700'
-                        : 'bg-red-50 text-red-700',
+                        ? 'bg-success-surface text-success-strong'
+                        : 'bg-danger-surface text-danger-strong',
                     )}
                   >
                     {printerStatus === 'success' ? (
@@ -563,40 +520,40 @@ export function SettingsPage() {
           <ScannerSettings />
 
           {/* Kitchen Printer (coming soon) */}
-          <section className="rounded-xl bg-white p-4 shadow-sm">
-            <h2 className="mb-4 text-base font-bold text-gray-900">
+          <section className="rounded-xl bg-surface-raised p-4 shadow-sm">
+            <h2 className="mb-4 text-base font-bold text-ink">
               {t('settings.kitchenPrinter')}
             </h2>
-            <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
-              <span className="text-sm font-medium text-gray-900">{t('settings.kitchenPrinter')}</span>
-              <span className="text-xs text-gray-400">{t('settings.comingSoon')}</span>
+            <div className="flex items-center justify-between rounded-lg bg-surface-sunken px-3 py-3">
+              <span className="text-sm font-medium text-ink">{t('settings.kitchenPrinter')}</span>
+              <span className="text-xs text-ink-faint">{t('settings.comingSoon')}</span>
             </div>
           </section>
 
           {/* Terminal Info */}
-          <section className="rounded-xl bg-white p-4 shadow-sm">
-            <h2 className="mb-4 text-base font-bold text-gray-900">
+          <section className="rounded-xl bg-surface-raised p-4 shadow-sm">
+            <h2 className="mb-4 text-base font-bold text-ink">
               {t('settings.terminal')}
             </h2>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-500">{t('terminal.terminalName')}</span>
-                <span className="font-medium text-gray-900">
+                <span className="text-ink-faint">{t('terminal.terminalName')}</span>
+                <span className="font-medium text-ink">
                   {terminal?.name ?? '-'}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">{t('terminal.location')}</span>
-                <span className="font-medium text-gray-900">
+                <span className="text-ink-faint">{t('terminal.location')}</span>
+                <span className="font-medium text-ink">
                   {terminal?.location.name ?? '-'}
                 </span>
               </div>
               {shift && (
                 <div className="flex justify-between">
-                  <span className="text-gray-500">
+                  <span className="text-ink-faint">
                     {t('shift.number', { number: shift.shift_number })}
                   </span>
-                  <span className="font-medium text-gray-900">{t('shift.statusLabel.' + shift.status)}</span>
+                  <span className="font-medium text-ink">{t('shift.statusLabel.' + shift.status)}</span>
                 </div>
               )}
             </div>
@@ -604,11 +561,11 @@ export function SettingsPage() {
 
           {/* Device & Security — manager only */}
           {isManager && (
-            <section data-testid="device-security-section" className="rounded-xl bg-white p-4 shadow-sm">
-              <h2 className="mb-4 text-base font-bold text-gray-900">{t('settings.deviceSecurity')}</h2>
+            <section data-testid="device-security-section" className="rounded-xl bg-surface-raised p-4 shadow-sm">
+              <h2 className="mb-4 text-base font-bold text-ink">{t('settings.deviceSecurity')}</h2>
               {terminal && (
                 <div className="mb-3">
-                  <p className="mb-2 text-xs text-gray-500">{t('terminal.changeTerminalDesc')}</p>
+                  <p className="mb-2 text-xs text-ink-faint">{t('terminal.changeTerminalDesc')}</p>
                   <button
                     type="button"
                     onClick={() => {
@@ -630,7 +587,7 @@ export function SettingsPage() {
                         navigate('/');
                       }
                     }}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-orange-300 bg-orange-50 px-4 py-3 text-sm font-medium text-orange-700 hover:bg-orange-100"
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-warning-subtle bg-warning-surface px-4 py-3 text-sm font-medium text-warning-strong hover:opacity-90"
                   >
                     <RefreshCw className="h-4 w-4" />{t('terminal.changeTerminal')}
                   </button>
@@ -640,7 +597,7 @@ export function SettingsPage() {
                 type="button"
                 data-testid="device-unbind-button"
                 onClick={() => setShowUnbindConfirm(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 hover:bg-red-100"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-danger-subtle bg-danger-surface px-4 py-3 text-sm font-medium text-danger-strong hover:opacity-90"
               >
                 <LogOut className="h-4 w-4" />{t('settings.deviceUnbind')}
               </button>
@@ -648,31 +605,24 @@ export function SettingsPage() {
           )}
 
           {/* About */}
-          <section className="rounded-xl bg-white p-4 shadow-sm">
-            <h2 className="mb-4 text-base font-bold text-gray-900">
+          <section className="rounded-xl bg-surface-raised p-4 shadow-sm">
+            <h2 className="mb-4 text-base font-bold text-ink">
               {t('settings.about')}
             </h2>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-500">{t('settings.version')}</span>
-                <span className="font-medium text-gray-900">1.0.0</span>
+                <span className="text-ink-faint">{t('settings.version')}</span>
+                <span className="font-medium text-ink">1.0.0</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">{t('settings.serverUrl')}</span>
-                <span className="max-w-[200px] truncate font-medium text-gray-900">
+                <span className="text-ink-faint">{t('settings.serverUrl')}</span>
+                <span className="max-w-[200px] truncate font-medium text-ink">
                   {serverUrl ?? '-'}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">{t('settings.syncStatus')}</span>
-                <span
-                  className={cn(
-                    'rounded-full px-2 py-0.5 text-xs font-semibold',
-                    isOnline
-                      ? 'bg-green-50 text-green-600'
-                      : 'bg-red-50 text-red-600',
-                  )}
-                >
+                <span className="text-ink-faint">{t('settings.syncStatus')}</span>
+                <span className={isOnline ? tokens.badge.success : tokens.badge.danger}>
                   {isOnline ? t('sync.online') : t('sync.offline')}
                 </span>
               </div>
@@ -682,7 +632,7 @@ export function SettingsPage() {
           {/* Back button */}
           <button
             onClick={() => navigate('/')}
-            className="w-full rounded-xl bg-gray-200 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-300"
+            className={cn(tokens.button.secondary, 'w-full py-3 text-sm')}
           >
             {t('settings.back')}
           </button>
@@ -702,7 +652,7 @@ export function SettingsPage() {
                 type="button"
                 data-testid="device-unbind-cancel"
                 onClick={() => setShowUnbindConfirm(false)}
-                className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className={cn(tokens.button.secondary, 'flex-1 py-2.5 text-sm')}
               >
                 {t('settings.cancel')}
               </button>
@@ -710,14 +660,14 @@ export function SettingsPage() {
                 type="button"
                 data-testid="device-unbind-confirm"
                 onClick={() => void handleConfirmUnbind()}
-                className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700"
+                className={cn(tokens.button.destructive, 'flex-1 py-2.5 text-sm')}
               >
                 {t('settings.deviceUnbindConfirm')}
               </button>
             </div>
           }
         >
-          <p className="text-sm text-gray-600">{t('settings.deviceUnbindConfirmMessage')}</p>
+          <p className="text-sm text-ink-muted">{t('settings.deviceUnbindConfirmMessage')}</p>
         </Modal>
       )}
     </div>
@@ -753,7 +703,7 @@ function ManualPrinterEntry({
     return (
       <button
         onClick={() => setExpanded(true)}
-        className="w-full text-center text-sm font-medium text-blue-600 hover:text-blue-700"
+        className="w-full text-center text-sm font-medium text-action hover:text-action-strong"
       >
         {t('settings.addManualPrinter')}
       </button>
@@ -761,8 +711,8 @@ function ManualPrinterEntry({
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 p-3">
-      <p className="mb-2 text-xs font-medium uppercase text-gray-500">
+    <div className="rounded-lg border border-border-subtle p-3">
+      <p className="mb-2 text-xs font-medium uppercase text-ink-faint">
         {t('settings.manualNetworkPrinter')}
       </p>
       <div className="flex gap-2">
@@ -771,31 +721,63 @@ function ManualPrinterEntry({
           value={ipAddress}
           onChange={(e) => setIpAddress(e.target.value)}
           placeholder={t('settings.ipAddressPlaceholder')}
-          className="min-h-[44px] flex-1 rounded-lg border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="min-h-[44px] flex-1 rounded-lg border border-border-strong px-3 text-sm focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
         />
         <input
           type="text"
           value={port}
           onChange={(e) => setPort(e.target.value)}
           placeholder="9100"
-          className="min-h-[44px] w-20 rounded-lg border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="min-h-[44px] w-20 rounded-lg border border-border-strong px-3 text-sm focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
         />
       </div>
       <div className="mt-2 flex gap-2">
         <button
           onClick={handleAdd}
           disabled={!ipAddress.trim()}
-          className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className={cn(tokens.button.primary, 'flex-1 py-2 text-sm disabled:opacity-50')}
         >
           {t('settings.addPrinter')}
         </button>
         <button
           onClick={() => setExpanded(false)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          className={cn(tokens.button.secondary, 'py-2 text-sm')}
         >
           {t('settings.cancel')}
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * Tokenized toggle switch — the ONE switch voice across Settings.
+ * Active = `bg-action`, inactive = `bg-border-strong`, knob = `bg-surface-raised`.
+ */
+function ToggleSwitch({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      role="switch"
+      aria-checked={checked}
+      className={cn(
+        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
+        checked ? 'bg-action' : 'bg-border-strong',
+      )}
+    >
+      <span
+        className={cn(
+          'inline-block h-4 w-4 rounded-full bg-surface-raised transition-transform',
+          checked ? 'translate-x-6' : 'translate-x-1',
+        )}
+      />
+    </button>
   );
 }

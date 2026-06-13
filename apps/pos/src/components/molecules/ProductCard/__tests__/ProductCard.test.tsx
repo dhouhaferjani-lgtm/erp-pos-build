@@ -89,10 +89,14 @@ describe('ProductCard', () => {
     expect(screen.getByText('Stable Product')).toBeInTheDocument();
   });
 
-  it('shows in-cart visual state when isInCart is true', () => {
+  it('shows in-cart visual state via a full action border + corner badge (no side-stripe)', () => {
     renderCard({ isInCart: true });
     const btn = screen.getByRole('button');
-    expect(btn.className).toContain('border-l-primary-500');
+    // Full action border, not an asymmetric thick side-stripe.
+    expect(btn.className).toContain('border-action');
+    expect(btn.className).not.toContain('border-l-4');
+    // Corner badge signals the selected state.
+    expect(screen.getByTestId('in-cart-badge')).toBeInTheDocument();
   });
 });
 

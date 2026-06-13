@@ -97,7 +97,7 @@ describe('TransactionCart', () => {
         onPayCash={vi.fn()}
       />,
     );
-    expect(screen.queryByText('cart.clear')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('cart.clear')).not.toBeInTheDocument();
 
     rerender(
       <TransactionCart
@@ -114,14 +114,14 @@ describe('TransactionCart', () => {
         onPayCash={vi.fn()}
       />,
     );
-    expect(screen.getByText('cart.clear')).toBeInTheDocument();
+    expect(screen.getByLabelText('cart.clear')).toBeInTheDocument();
   });
 
   it('calls onClearCart when clear button clicked', () => {
     const onClearCart = vi.fn();
     renderCart({ items: [makeCartItem()], itemCount: 1, onClearCart });
 
-    fireEvent.click(screen.getByText('cart.clear'));
+    fireEvent.click(screen.getByLabelText('cart.clear'));
 
     expect(onClearCart).toHaveBeenCalledOnce();
   });
@@ -131,9 +131,12 @@ describe('TransactionCart', () => {
     expect(screen.getByTestId('payment-summary')).toBeInTheDocument();
   });
 
-  it('hides payment summary when cart is empty', () => {
+  it('renders a persistent payment summary footer even when cart is empty', () => {
+    // Persistent checkout footer: in normal sale mode the totals + Charge
+    // button stay anchored at the bottom whether or not the cart has items
+    // (the Charge button is disabled via `disabled={... || items.length === 0}`).
     renderCart();
-    expect(screen.queryByTestId('payment-summary')).not.toBeInTheDocument();
+    expect(screen.getByTestId('payment-summary')).toBeInTheDocument();
   });
 });
 
@@ -206,9 +209,9 @@ describe('TransactionCart — Task 52 refund/exchange sections', () => {
       netTotal: -10,
     });
 
-    // The ReturnLineItem renders the product name in red
+    // The ReturnLineItem renders the product name in the danger (red) token
     const nameEl = screen.getAllByText('Widget')[0]!;
-    expect(nameEl.className).toContain('text-red');
+    expect(nameEl.className).toContain('text-danger');
 
     // At least one element with the minus-prefixed total exists
     const allMinusTotals = screen.getAllByText('−€10.00');

@@ -9,29 +9,27 @@ import { usePaymentStore } from '@/stores/paymentStore';
 import type { CustomerMirrorRow } from '@/lib/customer/customerTypes';
 import { CustomerAttachPanel } from './CustomerAttachPanel';
 
-// Resolve translation keys to their real English values from the pos locale so
-// assertions match rendered text regardless of the key scheme.
+// Map translation keys to their English values so assertions match the rendered text.
+const enPosCustomer: Record<string, string> = {
+  'customer.attach': 'Customer',
+  'customer.detach': 'Remove customer',
+  'customer.attached': 'Attached',
+  'customer.amount': 'Amount',
+  'customer.record': 'Record',
+  'customer.createLocal': 'Create customer',
+  'customer.creating': 'Creating…',
+  'customer.searchPlaceholder': 'Search by name, phone, email…',
+  'customer.searchLabel': 'Customer search',
+  'customer.searchInputPlaceholder': 'Name, phone, tax number',
+  'customer.searching': 'Searching…',
+  'customer.name': 'Name',
+  'customer.phone': 'Phone',
+  'customer.email': 'Email',
+  'customer.scopeError': 'Tenant and company are required to attach a customer.',
+};
 vi.mock('react-i18next', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-i18next')>();
-  const en = (await import('@/locales/en/pos.json')).default as Record<string, unknown>;
-  const flat: Record<string, string> = {};
-  (function walk(o: Record<string, unknown>, p: string) {
-    for (const [k, v] of Object.entries(o)) {
-      const K = p ? `${p}.${k}` : k;
-      if (v && typeof v === 'object') walk(v as Record<string, unknown>, K);
-      else flat[K] = String(v);
-    }
-  })(en, '');
-  return {
-    ...actual,
-    useTranslation: () => ({
-      t: (k: string, opts?: Record<string, unknown>) => {
-        let s = flat[k] ?? k;
-        if (opts) for (const [ik, iv] of Object.entries(opts)) s = s.replace(new RegExp(`{{${ik}}}`, 'g'), String(iv));
-        return s;
-      },
-    }),
-  };
+  return { ...actual, useTranslation: () => ({ t: (k: string) => enPosCustomer[k] ?? k }) };
 });
 
 vi.mock('@/lib/db', async () => {
@@ -223,9 +221,9 @@ describe('CustomerAttachPanel', () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText('New customer name'), { target: { value: 'Amina Trabelsi' } });
-    fireEvent.change(screen.getByLabelText('New customer phone'), { target: { value: '+216 99 100 200' } });
-    fireEvent.click(screen.getByText('Create local customer'));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Amina Trabelsi' } });
+    fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '+216 99 100 200' } });
+    fireEvent.click(screen.getByText('Create customer'));
 
     await waitFor(() => {
       expect(usePaymentStore.getState().selectedCustomer).toMatchObject({
@@ -259,9 +257,9 @@ describe('CustomerAttachPanel', () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText('New customer name'), { target: { value: 'Amina Trabelsi' } });
-    fireEvent.change(screen.getByLabelText('New customer phone'), { target: { value: '+216 99 100 200' } });
-    fireEvent.click(screen.getByText('Create local customer'));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Amina Trabelsi' } });
+    fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '+216 99 100 200' } });
+    fireEvent.click(screen.getByText('Create customer'));
 
     await waitFor(() => {
       expect(screen.getByText('Tenant and company are required to attach a customer.')).toBeInTheDocument();
@@ -301,7 +299,7 @@ describe('CustomerAttachPanel', () => {
 
     fireEvent.change(screen.getByLabelText('Customer search'), { target: { value: 'mariam' } });
     fireEvent.click(await screen.findByText('Mariam Ben Ali'));
-    fireEvent.click(screen.getByLabelText('Detach customer'));
+    fireEvent.click(screen.getByLabelText('Remove customer'));
 
     expect(usePaymentStore.getState().selectedCustomer).toBeNull();
     expect(screen.queryByText('Attached')).not.toBeInTheDocument();
@@ -354,7 +352,7 @@ describe('CustomerAttachPanel', () => {
 
     fireEvent.change(screen.getByLabelText('Customer search'), { target: { value: 'mariam' } });
     fireEvent.click(await screen.findByText('Mariam Ben Ali'));
-    fireEvent.change(screen.getByLabelText('Account payment amount'), { target: { value: '10.000' } });
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '10.000' } });
     fireEvent.click(screen.getByText('Record'));
 
     await waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
