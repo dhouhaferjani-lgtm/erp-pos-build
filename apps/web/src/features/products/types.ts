@@ -5,21 +5,15 @@
 
 export type ProductType = 'part' | 'service' | 'consumable' | 'storable'
 
-export interface ProductImage {
+export interface ProductMediaItem {
   id: string
-  product_id: string
-  filename: string
-  original_filename: string
-  storage_path: string
-  storage_disk: string
-  mime_type: string
-  file_size: number
-  width: number | null
-  height: number | null
-  sort_order: number
+  asset_id: string
   is_primary: boolean
-  created_at: string
-  updated_at: string | null
+  sort_order: number
+  role: string
+  url: string | null
+  alt: string | null
+  caption: string | null
 }
 
 export interface Product {
@@ -38,8 +32,8 @@ export interface Product {
   is_active_for_ecommerce: boolean
   oem_numbers: string[] | null
   cross_references: Array<{ brand: string; reference: string }> | null
-  images?: ProductImage[]
-  primary_image?: ProductImage
+  images?: ProductMediaItem[]
+  primary_image?: ProductMediaItem
   created_at: string
   updated_at: string | null
 }

@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Application\Services;
 
+use App\Modules\Catalog\Application\Services\MediaAttachmentService;
+use App\Modules\Catalog\Application\Services\MediaUploadService;
+use App\Modules\Catalog\Domain\Enums\MediaOwnerType;
+use App\Modules\Catalog\Domain\Enums\MediaRole;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Product\Domain\Product;
 use Exception;
@@ -21,8 +25,22 @@ class ProductImageImportService
 
     public const MAX_COMPRESSION_RATIO = 100; // ZIP bomb detection
 
+    /**
+     * Allowed MIME types for imported images.
+     * Mirrors MediaUploadService::ALLOWED_MIME (cannot reference private const cross-class).
+     *
+     * @var array<int, string>
+     */
+    private const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+    /**
+     * Maximum image file size (5 MB).
+     */
+    private const MAX_FILE_SIZE = 5 * 1024 * 1024;
+
     public function __construct(
-        private readonly ProductImageService $imageService
+        private readonly MediaUploadService $mediaUploadService,
+        private readonly MediaAttachmentService $mediaAttachmentService,
     ) {}
 
     /**
@@ -45,7 +63,7 @@ class ProductImageImportService
             $results = [];
             foreach ($scannedFiles as $fileInfo) {
                 try {
-                    $result = $this->importProductImage($fileInfo);
+                    $result = $this->importProductImage($fileInfo, $job->tenant_id);
                     $results[] = $result;
                 } catch (Exception $e) {
                     $results[] = [
@@ -202,61 +220,81 @@ class ProductImageImportService
     }
 
     /**
-     * Import a single product image.
+     * Import a single product image using the new media model.
+     *
+     * The returned `image_id` is the MediaAttachment id (façade identity), not the
+     * MediaAsset id.  Callers (e.g. the POS sync) cache by this identifier, so it
+     * must remain stable even if the underlying asset is replaced.
      *
      * @param  array{path: string, filename: string, sku: string}  $fileInfo
      * @return array{filename: string, sku: string, product_id: string, image_id: string, success: bool}
      */
-    private function importProductImage(array $fileInfo): array
+    private function importProductImage(array $fileInfo, string $tenantId): array
     {
         $sku = $fileInfo['sku'];
         $filePath = $fileInfo['path'];
 
-        // Find product by SKU
+        // Find product by SKU scoped to the job's tenant (avoids the tenant() helper).
         $product = Product::where('sku', $sku)
-            ->where('tenant_id', tenant('id'))
+            ->where('tenant_id', $tenantId)
             ->first();
 
         if (! $product) {
             throw new Exception("Product not found for SKU: {$sku}");
         }
 
-        // Validate image
+        // Validate image before touching storage.
         $this->validateImageFile($filePath);
 
-        // Create UploadedFile from temp file
+        // Create UploadedFile from extracted temp file.
         $uploadedFile = new UploadedFile(
             $filePath,
             $fileInfo['filename'],
             mime_content_type($filePath) ?: 'application/octet-stream',
             null,
-            true // test mode (allows reading from any path)
+            true // test mode — allows reading from arbitrary temp paths
         );
 
-        // Upload using ProductImageService
-        $image = $this->imageService->upload($product, $uploadedFile);
+        // 1. Upload the file and create a MediaAsset row (UPLOADED → PROCESSING → READY via job).
+        $asset = $this->mediaUploadService->uploadForProduct(
+            $tenantId,
+            $product->id,
+            $uploadedFile,
+            null, // no authenticated user in a batch import context
+        );
+
+        // 2. Create the PRIMARY attachment link.
+        //    The attachment id is the façade identity used by the POS sync and all callers.
+        $attachment = $this->mediaAttachmentService->attach(
+            assetId: $asset->id,
+            ownerType: MediaOwnerType::Product,
+            ownerId: $product->id,
+            role: MediaRole::Primary,
+            sort: 0,
+            tenantId: $tenantId,
+        );
 
         return [
             'filename' => $fileInfo['filename'],
             'sku' => $sku,
             'product_id' => $product->id,
-            'image_id' => $image->id,
+            'image_id' => $attachment->id, // attachment id — NOT the asset id
             'success' => true,
         ];
     }
 
     /**
-     * Validate image file.
+     * Validate image file MIME type and size.
      */
     private function validateImageFile(string $filePath): void
     {
         $mimeType = mime_content_type($filePath);
-        if (! $mimeType || ! in_array($mimeType, ProductImageService::ALLOWED_MIME_TYPES, true)) {
+        if (! $mimeType || ! in_array($mimeType, self::ALLOWED_MIME_TYPES, true)) {
             throw new Exception('Invalid image format');
         }
 
         $fileSize = filesize($filePath);
-        if ($fileSize === false || $fileSize > ProductImageService::MAX_FILE_SIZE) {
+        if ($fileSize === false || $fileSize > self::MAX_FILE_SIZE) {
             throw new Exception('Image exceeds maximum size of 5MB');
         }
     }

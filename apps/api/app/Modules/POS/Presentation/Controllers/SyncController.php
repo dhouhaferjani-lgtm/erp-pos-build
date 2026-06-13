@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Catalog\Application\DTOs\ProductMediaData;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\ModifierGroup;
 use App\Modules\Company\Services\CompanyContext;
@@ -17,6 +18,7 @@ use App\Modules\Product\Domain\Category;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\CatalogMediaQueryInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
@@ -36,6 +38,7 @@ final class SyncController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly ShiftManagementService $shiftManagementService,
+        private readonly CatalogMediaQueryInterface $catalogMediaQuery,
     ) {}
 
     /**
@@ -52,6 +55,7 @@ final class SyncController extends Controller
         Gate::authorize('pos.operate_terminal');
 
         $companyId = $this->companyContext->getCompanyId();
+        $tenantId = $this->companyContext->requireTenantId();
         $updatedSince = $request->query('updated_since');
         $parsedSince = null;
 
@@ -59,25 +63,29 @@ final class SyncController extends Controller
             $parsedSince = Carbon::parse($updatedSince);
         }
 
-        // Fetch products with primary image for POS image caching
+        // Fetch products (no primaryImage eager-load — media comes from CatalogMediaQueryInterface)
         $productsQuery = Product::where('company_id', $companyId)
-            ->where('is_active', true)
-            ->with('primaryImage');
+            ->where('is_active', true);
         if ($parsedSince !== null) {
             $productsQuery->where('updated_at', '>', $parsedSince);
         }
-        $products = $productsQuery->get()->map(function (Product $product): array {
+        $productCollection = $productsQuery->get();
+
+        // Single batched media query — never N+1 (one call for all product ids).
+        /** @var array<string, ProductMediaData> $mediaByProduct */
+        $mediaByProduct = $this->catalogMediaQuery->forProducts(
+            $productCollection->pluck('id')->all(),
+            $tenantId,
+        );
+
+        $products = $productCollection->map(function (Product $product) use ($mediaByProduct): array {
             $attributes = $product->toArray();
-            $attributes['image_url'] = $product->primaryImage !== null
-                ? ($product->primaryImage->storage_disk === 'url'
-                    ? $product->primaryImage->storage_path
-                    : route('products.images.download', [
-                        'product' => $product->id,
-                        'image' => $product->primaryImage->id,
-                        'variant' => 'sm',
-                    ]))
-                : null;
-            unset($attributes['primary_image']);
+            $media = $mediaByProduct[$product->id] ?? ProductMediaData::makeEmpty();
+
+            // POS contract: single scalar image_url with the
+            // /products/{productId}/images/{attachmentId}/download?variant=sm shape.
+            // Do NOT add a 'media' key — the POS only caches by image_url.
+            $attributes['image_url'] = $media->primary_image_url;
 
             return $attributes;
         });

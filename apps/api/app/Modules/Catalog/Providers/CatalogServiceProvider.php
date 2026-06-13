@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Catalog\Providers;
 
+use App\Modules\Catalog\Application\Queries\CatalogMediaQuery;
 use App\Modules\Catalog\Application\Services\CompositeItemImportService;
+use App\Modules\Catalog\Domain\Contracts\MediaAssetRepositoryInterface;
+use App\Modules\Catalog\Domain\Contracts\MediaAttachmentRepositoryInterface;
+use App\Modules\Catalog\Domain\Contracts\MediaStorageInterface;
+use App\Modules\Catalog\Domain\Contracts\RenditionGeneratorInterface;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\Modifier;
 use App\Modules\Catalog\Domain\Entities\ModifierGroup;
@@ -12,10 +17,15 @@ use App\Modules\Catalog\Domain\Repositories\AttributeRepository;
 use App\Modules\Catalog\Domain\Repositories\AttributeValueRepository;
 use App\Modules\Catalog\Domain\Repositories\ProductVariantRepository;
 use App\Modules\Catalog\Infrastructure\Adapters\EloquentProductVariantLookup;
+use App\Modules\Catalog\Infrastructure\Persistence\EloquentMediaAssetRepository;
+use App\Modules\Catalog\Infrastructure\Persistence\EloquentMediaAttachmentRepository;
+use App\Modules\Catalog\Infrastructure\Rendition\ImageRenditionGenerator;
 use App\Modules\Catalog\Infrastructure\Repositories\EloquentAttributeRepository;
 use App\Modules\Catalog\Infrastructure\Repositories\EloquentAttributeValueRepository;
 use App\Modules\Catalog\Infrastructure\Repositories\EloquentProductVariantRepository;
+use App\Modules\Catalog\Infrastructure\Storage\MediaStorageAdapter;
 use App\Modules\POS\Infrastructure\Broadcasting\CatalogModelObserver;
+use App\Shared\Contracts\CatalogMediaQueryInterface;
 use App\Shared\Contracts\CompositeItemServiceInterface;
 use App\Shared\Contracts\ProductVariantLookup;
 use Illuminate\Support\Facades\Event;
@@ -30,6 +40,11 @@ class CatalogServiceProvider extends ServiceProvider
         $this->app->bind(AttributeValueRepository::class, EloquentAttributeValueRepository::class);
         $this->app->bind(ProductVariantRepository::class, EloquentProductVariantRepository::class);
         $this->app->bind(ProductVariantLookup::class, EloquentProductVariantLookup::class);
+        $this->app->bind(MediaAttachmentRepositoryInterface::class, EloquentMediaAttachmentRepository::class);
+        $this->app->bind(MediaAssetRepositoryInterface::class, EloquentMediaAssetRepository::class);
+        $this->app->bind(CatalogMediaQueryInterface::class, CatalogMediaQuery::class);
+        $this->app->bind(MediaStorageInterface::class, MediaStorageAdapter::class);
+        $this->app->bind(RenditionGeneratorInterface::class, ImageRenditionGenerator::class);
     }
 
     public function boot(): void
