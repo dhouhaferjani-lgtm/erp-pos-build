@@ -5,6 +5,73 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 
 /**
+ * FU-2 cart-mutator selectors — the raw cartStore actions must only be called
+ * through the gated funnel (addItemGated / updateQuantityGated). Extracted to a
+ * shared const so any block that re-declares `no-restricted-syntax` (flat config
+ * REPLACES the rule across overlapping file globs rather than merging) can
+ * re-include them and keep the guard alive.
+ */
+const cartMutatorSelectors = [
+  {
+    selector: "CallExpression[callee.property.name='addItem']",
+    message:
+      'Do not call cartStore.addItem directly — route cart adds through addItemGated() in lib/stock/cartIngress.ts so the availability gate runs.',
+  },
+  {
+    selector: "CallExpression[callee.property.name='updateQuantity']",
+    message:
+      'Do not call cartStore.updateQuantity directly — route quantity changes through updateQuantityGated() in lib/stock/cartIngress.ts so the availability gate runs.',
+  },
+  {
+    selector: "CallExpression[callee.type='Identifier'][callee.name='addItem']",
+    message:
+      'Do not call the raw addItem action directly — route cart adds through addItemGated() in lib/stock/cartIngress.ts so the availability gate runs.',
+  },
+  {
+    selector: "CallExpression[callee.type='Identifier'][callee.name='updateQuantity']",
+    message:
+      'Do not call the raw updateQuantity action directly — route quantity changes through updateQuantityGated() in lib/stock/cartIngress.ts so the availability gate runs.',
+  },
+];
+
+/**
+ * Hardcoded-color guard (design-language remediation, 2026-06-13). Flags raw
+ * Tailwind palette classes; code must use the semantic tokens defined in
+ * src/index.css @theme (bg-surface-*, text-ink*, bg-action, bg-success/
+ * warning/danger*, …) and the recipes in lib/designTokens.ts.
+ */
+const hardcodedColorSelector = {
+  selector:
+    'Literal[value=/\\b(bg|text|border|ring)-(red|blue|green|yellow|gray|purple|pink|indigo|slate|sky|amber|violet|emerald|stone|rose|zinc|teal|cyan|lime|orange|fuchsia|neutral)-(\\d{2,3})\\b/]',
+  message:
+    'Avoid hardcoded Tailwind color classes. Use semantic tokens (bg-surface-*, text-ink*, bg-action, bg-success/warning/danger*) from src/index.css @theme, or recipes in lib/designTokens.ts.',
+};
+
+/**
+ * Directories migrated to semantic tokens — enforced at ERROR (color + cart).
+ * The hardcoded-color rule cannot be a global `warn` because `no-restricted-
+ * syntax` already carries the FU-2 cart guard at `error` on the same file glob,
+ * and flat config can't mix severities within one rule. So instead of warn-on-
+ * all-legacy, we enforce color as ERROR on the dirs we've actually cleaned, and
+ * ratchet this list as more dirs are migrated. Untouched legacy dirs keep only
+ * the cart guard until they're migrated.
+ */
+const tokenMigratedGlobs = [
+  'src/components/molecules/ProductCard/**/*.{ts,tsx}',
+  'src/components/organisms/ProductGrid/**/*.{ts,tsx}',
+  'src/components/Header.tsx',
+  'src/components/AppShell.tsx',
+  'src/components/fiscal/UnsyncedRiskIndicator.tsx',
+  'src/components/customers/CustomerSearchInput.tsx',
+  'src/components/customers/CustomerAttachPanel.tsx',
+  'src/components/customers/CustomerSearchModal.tsx',
+  'src/components/pos/Modal.tsx',
+  'src/components/organisms/CashPaymentScreen/**/*.{ts,tsx}',
+  'src/components/molecules/NumPad/**/*.{ts,tsx}',
+  'src/pages/SettingsPage.tsx',
+];
+
+/**
  * T2.6 — flat ESLint v9 config for apps/pos.
  *
  * Replaces the missing `.eslintrc.*` that ESLint v9 stopped supporting.
@@ -145,28 +212,22 @@ export default tseslint.config(
       'src/**/__tests__/**',
     ],
     rules: {
+      'no-restricted-syntax': ['error', ...cartMutatorSelectors],
+    },
+  },
+  // Token-migrated dirs — ERROR on hardcoded colors (design-language guardrail).
+  // Re-includes the cart selectors because flat config REPLACES `no-restricted-
+  // syntax` for files matched by a later block; omitting them would silently
+  // drop the FU-2 guard on these dirs. Tests are excluded (they set cart state
+  // directly and aren't user-facing surface).
+  {
+    files: tokenMigratedGlobs,
+    ignores: ['**/*.test.{ts,tsx}', 'src/**/__tests__/**'],
+    rules: {
       'no-restricted-syntax': [
         'error',
-        {
-          selector: "CallExpression[callee.property.name='addItem']",
-          message:
-            'Do not call cartStore.addItem directly — route cart adds through addItemGated() in lib/stock/cartIngress.ts so the availability gate runs.',
-        },
-        {
-          selector: "CallExpression[callee.property.name='updateQuantity']",
-          message:
-            'Do not call cartStore.updateQuantity directly — route quantity changes through updateQuantityGated() in lib/stock/cartIngress.ts so the availability gate runs.',
-        },
-        {
-          selector: "CallExpression[callee.type='Identifier'][callee.name='addItem']",
-          message:
-            'Do not call the raw addItem action directly — route cart adds through addItemGated() in lib/stock/cartIngress.ts so the availability gate runs.',
-        },
-        {
-          selector: "CallExpression[callee.type='Identifier'][callee.name='updateQuantity']",
-          message:
-            'Do not call the raw updateQuantity action directly — route quantity changes through updateQuantityGated() in lib/stock/cartIngress.ts so the availability gate runs.',
-        },
+        ...cartMutatorSelectors,
+        hardcodedColorSelector,
       ],
     },
   },
