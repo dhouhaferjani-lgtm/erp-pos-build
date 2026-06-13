@@ -188,7 +188,8 @@
       "resolvedAt": "Résolu le",
       "resolutionNotes": "Notes de résolution",
       "noProducts": "Aucun produit signalé",
-      "occurrenceCount": "{{count}} fois"
+      "occurrenceCount": "{{count}} fois",
+      "occurrenceCount_plural": "{{count}} fois"
     },
     "modals": {
       "assign": {
