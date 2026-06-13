@@ -32,6 +32,13 @@
   },
   "created": "Cree",
   "updated": "Mis a jour",
+  "owner": "Propriétaire (optionnel)",
+  "noOwner": "-- Aucun propriétaire --",
+  "licensePlateRequired": "La plaque d'immatriculation est obligatoire",
+  "brandRequired": "La marque est obligatoire",
+  "modelRequired": "Le modèle est obligatoire",
+  "mileageKm": "Kilométrage (km)",
+  "mileageNegative": "Le kilométrage ne peut pas être négatif",
   "vinValidation": "Le NIV doit comporter 17 caractères (sans I, O, Q)",
   "yearMin": "L'année doit être postérieure à 1900",
   "yearMax": "L'année est trop éloignée dans le futur",
@@ -42,7 +49,9 @@
     "brand": "Renault",
     "model": "Clio",
     "color": "Bleu",
-    "year": "2020"
+    "year": "2020",
+    "engineCode": "K9K 608",
+    "notes": "Notes supplémentaires sur le véhicule..."
   },
   "empty": {
     "title": "Aucun vehicule",

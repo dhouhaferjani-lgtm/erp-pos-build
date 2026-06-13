@@ -32,6 +32,13 @@
   },
   "created": "Created",
   "updated": "Updated",
+  "owner": "Owner (Optional)",
+  "noOwner": "-- No Owner --",
+  "licensePlateRequired": "License plate is required",
+  "brandRequired": "Brand is required",
+  "modelRequired": "Model is required",
+  "mileageKm": "Mileage (km)",
+  "mileageNegative": "Mileage cannot be negative",
   "vinValidation": "VIN must be 17 characters (no I, O, Q)",
   "yearMin": "Year must be after 1900",
   "yearMax": "Year is too far in the future",
@@ -42,7 +49,9 @@
     "brand": "Renault",
     "model": "Clio",
     "color": "Blue",
-    "year": "2020"
+    "year": "2020",
+    "engineCode": "K9K 608",
+    "notes": "Additional notes about the vehicle..."
   },
   "empty": {
     "title": "No vehicles yet",
