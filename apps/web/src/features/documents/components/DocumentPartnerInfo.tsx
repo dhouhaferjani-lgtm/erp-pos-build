@@ -94,7 +94,7 @@ export function DocumentPartnerInfo({
               {document.vehicle_context.mileage && (
                 <dd className="mt-1 text-sm text-gray-500">
                   {t('documents.mileage')}:{' '}
-                  {document.vehicle_context.mileage.toLocaleString()} km
+                  {t('documents.mileageValue', { value: document.vehicle_context.mileage.toLocaleString() })}
                 </dd>
               )}
             </div>

@@ -223,6 +223,7 @@
     "taxExemptionMention": "Tax exemption applies to {{partner}} - {{reason}}",
     "vehicle": "Vehicle",
     "mileage": "Mileage",
+    "mileageValue": "{{value}} km",
     "items": "Items",
     "sealed": "Sealed",
     "deliveryDate": "Delivery Date",

@@ -223,6 +223,7 @@
     "taxExemptionMention": "Exonération fiscale applicable à {{partner}} - {{reason}}",
     "vehicle": "Véhicule",
     "mileage": "Kilométrage",
+    "mileageValue": "{{value}} km",
     "items": "Articles",
     "sealed": "Scellé",
     "deliveryDate": "Date de livraison",
