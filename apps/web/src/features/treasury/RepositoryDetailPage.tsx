@@ -70,12 +70,7 @@ const typeIcons: Record<Repository['type'], React.ComponentType<{ className?: st
   virtual: Wallet,
 }
 
-const typeLabels: Record<Repository['type'], string> = {
-  cash_register: 'Cash Register',
-  safe: 'Safe',
-  bank_account: 'Bank Account',
-  virtual: 'Virtual',
-}
+// typeLabels resolved at render time via t() — see usage sites
 
 const typeColors: Record<Repository['type'], string> = {
   cash_register: 'bg-green-100 text-green-800',
@@ -92,16 +87,10 @@ const statusColors: Record<string, string> = {
   reversed: 'bg-gray-100 text-gray-800',
 }
 
-const statusLabels: Record<string, string> = {
-  pending: 'Pending',
-  completed: 'Completed',
-  cancelled: 'Cancelled',
-  failed: 'Failed',
-  reversed: 'Reversed',
-}
+// statusLabels resolved at render time via t() — see usage sites
 
 function GlAccountField({ repository }: { repository: Repository }) {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['treasury', 'common'])
   const queryClient = useQueryClient()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
@@ -120,11 +109,11 @@ function GlAccountField({ repository }: { repository: Repository }) {
           queryKey: tenantScopedKey(['payment-repository', repository.id]),
         })
       }
-      toast.success(t('treasury.glAccountUpdated', 'GL account updated'))
+      toast.success(t('treasury:repositories.glAccountUpdated'))
       setIsEditing(false)
     },
     onError: () => {
-      toast.error(t('errors.generic', 'Failed to update'))
+      toast.error(t('common:errors.operationFailed'))
     },
   })
 
@@ -133,7 +122,7 @@ function GlAccountField({ repository }: { repository: Repository }) {
       <div className="flex justify-between items-start">
         <dt className={`${textColors.disabled} flex items-center gap-1`}>
           <BookOpen className="h-3.5 w-3.5" />
-          {t('treasury.glAccount', 'GL Account')}
+          {t('treasury:repositories.glAccount')}
         </dt>
         <dd className="flex items-center gap-2">
           <select
@@ -141,7 +130,7 @@ function GlAccountField({ repository }: { repository: Repository }) {
             onChange={(e) => { setSelectedAccountId(e.target.value) }}
             className={`rounded-md border ${borderColors.default} px-2 py-1 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none`}
           >
-            <option value="">{t('treasury.noGlAccount', '— None —')}</option>
+            <option value="">{t('treasury:repositories.noGlAccount')}</option>
             {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
                 {acc.code} - {acc.name}
@@ -170,7 +159,7 @@ function GlAccountField({ repository }: { repository: Repository }) {
     <div className="flex justify-between">
       <dt className={`${textColors.disabled} flex items-center gap-1`}>
         <BookOpen className="h-3.5 w-3.5" />
-        {t('treasury.glAccount', 'GL Account')}
+        {t('treasury:repositories.glAccount')}
       </dt>
       <dd className="flex items-center gap-2">
         {repository.gl_account ? (
@@ -179,7 +168,7 @@ function GlAccountField({ repository }: { repository: Repository }) {
           </span>
         ) : (
           <span className={`${textColors.warningDark} text-sm italic`}>
-            {t('treasury.noGlAccountWarning', 'Not configured')}
+            {t('treasury:repositories.noGlAccountWarning')}
           </span>
         )}
         <button
@@ -194,7 +183,7 @@ function GlAccountField({ repository }: { repository: Repository }) {
 }
 
 export function RepositoryDetailPage() {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['treasury', 'common'])
   const { id } = useParams<{ id: string }>()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
@@ -237,7 +226,7 @@ export function RepositoryDetailPage() {
   if (isLoadingRepository) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-500">{t('status.loading')}</div>
+        <div className="text-gray-500">{t('common:status.loading')}</div>
       </div>
     )
   }
@@ -250,10 +239,10 @@ export function RepositoryDetailPage() {
           className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"
         >
           <ArrowLeft className="h-4 w-4" />
-          {t('actions.back')}
+          {t('common:actions.back')}
         </Link>
         <div className="rounded-lg bg-red-50 p-4 text-red-700">
-          {t('errors.loadingFailed', 'Error loading repository. Please try again.')}
+          {t('common:errors.loadingFailed')}
         </div>
       </div>
     )
@@ -269,7 +258,7 @@ export function RepositoryDetailPage() {
         className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"
       >
         <ArrowLeft className="h-4 w-4" />
-        {t('navigation.repositories', 'Repositories')}
+        {t('common:navigation.repositories')}
       </Link>
 
       {/* Header */}
@@ -284,7 +273,7 @@ export function RepositoryDetailPage() {
           </div>
         </div>
         <div className="text-end">
-          <p className="text-sm text-gray-500">{t('treasury.balance', 'Current Balance')}</p>
+          <p className="text-sm text-gray-500">{t('treasury:repositories.currentBalance')}</p>
           <p className={`text-3xl font-bold ${parseFloat(repository.balance) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             {formatAmount(repository.balance)}
           </p>
@@ -294,37 +283,37 @@ export function RepositoryDetailPage() {
       {/* Repository Info */}
       <div className="grid gap-6 md:grid-cols-2">
         <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('table.noData', 'Details')}</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('common:details')}</h2>
           <dl className="space-y-3">
             <div className="flex justify-between">
-              <dt className="text-gray-500">{t('treasury.type', 'Type')}</dt>
+              <dt className="text-gray-500">{t('treasury:repositories.type')}</dt>
               <dd>
                 <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${typeColors[repository.type]}`}>
-                  {typeLabels[repository.type]}
+                  {t(`treasury:repositories.types.${repository.type}`)}
                 </span>
               </dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-gray-500">{t('fields.status', 'Status')}</dt>
+              <dt className="text-gray-500">{t('common:fields.status')}</dt>
               <dd>
                 <span
                   className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
                     repository.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                   }`}
                 >
-                  {repository.is_active ? t('active', 'Active') : t('inactive', 'Inactive')}
+                  {repository.is_active ? t('common:active') : t('common:inactive')}
                 </span>
               </dd>
             </div>
             {repository.bank_name && (
               <div className="flex justify-between">
-                <dt className="text-gray-500">{t('treasury.bankName', 'Bank')}</dt>
+                <dt className="text-gray-500">{t('treasury:repositories.bankName')}</dt>
                 <dd className="text-gray-900">{repository.bank_name}</dd>
               </div>
             )}
             {repository.account_number && (
               <div className="flex justify-between">
-                <dt className="text-gray-500">{t('treasury.accountNumber', 'Account')}</dt>
+                <dt className="text-gray-500">{t('treasury:repositories.accountNumber')}</dt>
                 <dd className="text-gray-900 font-mono">{repository.account_number}</dd>
               </div>
             )}
@@ -345,14 +334,14 @@ export function RepositoryDetailPage() {
         </div>
 
         <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('treasury.summary', 'Summary')}</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('treasury:repositories.summary')}</h2>
           <dl className="space-y-3">
             <div className="flex justify-between">
-              <dt className="text-gray-500">{t('treasury.totalTransactions', 'Total Transactions')}</dt>
+              <dt className="text-gray-500">{t('treasury:repositories.totalTransactions')}</dt>
               <dd className="text-gray-900 font-semibold">{transactions.length}</dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-gray-500">{t('treasury.totalReceived', 'Total Received')}</dt>
+              <dt className="text-gray-500">{t('treasury:repositories.totalReceived')}</dt>
               <dd className="text-green-600 font-semibold">
                 {formatAmount(
                   transactions
@@ -369,17 +358,17 @@ export function RepositoryDetailPage() {
       <div className="rounded-lg border border-gray-200 bg-white">
         <div className="border-b border-gray-200 px-6 py-4">
           <h2 className="text-lg font-semibold text-gray-900">
-            {t('treasury.transactionHistory', 'Transaction History')}
+            {t('treasury:repositories.transactionHistory')}
           </h2>
         </div>
 
         {isLoadingTransactions ? (
           <div className="flex items-center justify-center py-12">
-            <div className="text-gray-500">{t('status.loading')}</div>
+            <div className="text-gray-500">{t('common:status.loading')}</div>
           </div>
         ) : transactions.length === 0 ? (
           <div className="px-6 py-12 text-center">
-            <p className="text-gray-500">{t('treasury.noTransactions', 'No transactions yet')}</p>
+            <p className="text-gray-500">{t('treasury:repositories.noTransactions')}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -387,25 +376,25 @@ export function RepositoryDetailPage() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('treasury.payment', 'Payment')}
+                    {t('treasury:payments.title')}
                   </th>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('fields.partner', 'Partner')}
+                    {t('common:fields.contact')}
                   </th>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('treasury.method', 'Method')}
+                    {t('treasury:payments.method')}
                   </th>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('fields.date', 'Date')}
+                    {t('common:fields.date')}
                   </th>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('fields.status', 'Status')}
+                    {t('common:fields.status')}
                   </th>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('treasury.allocatedTo', 'Allocated To')}
+                    {t('treasury:repositories.allocatedTo')}
                   </th>
                   <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('treasury.amount', 'Amount')}
+                    {t('treasury:payments.amount')}
                   </th>
                 </tr>
               </thead>
@@ -426,10 +415,10 @@ export function RepositoryDetailPage() {
                           to={`/sales/customers/${transaction.partner_id}`}
                           className="text-blue-600 hover:text-blue-800 hover:underline"
                         >
-                          {transaction.partner_name ?? 'Unknown'}
+                          {transaction.partner_name ?? t('common:status.unknown')}
                         </Link>
                       ) : (
-                        <span className="text-gray-500">{transaction.partner_name ?? 'Unknown'}</span>
+                        <span className="text-gray-500">{transaction.partner_name ?? t('common:status.unknown')}</span>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
@@ -447,7 +436,7 @@ export function RepositoryDetailPage() {
                           statusColors[transaction.status] ?? 'bg-gray-100 text-gray-800'
                         }`}
                       >
-                        {statusLabels[transaction.status] ?? transaction.status}
+                        {t(`treasury:payments.statuses.${transaction.status}`, transaction.status)}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">
@@ -465,13 +454,13 @@ export function RepositoryDetailPage() {
                           ))}
                           {transaction.allocations.length > 2 && (
                             <span className="text-gray-400">
-                              +{transaction.allocations.length - 2} more
+                              +{transaction.allocations.length - 2} {t('treasury:repositories.moreAllocations')}
                             </span>
                           )}
                         </div>
                       ) : (
                         <span className="text-gray-400 italic">
-                          {transaction.payment_type === 'advance' ? 'Advance' : '-'}
+                          {transaction.payment_type === 'advance' ? t('treasury:payments.types.advance') : '-'}
                         </span>
                       )}
                     </td>

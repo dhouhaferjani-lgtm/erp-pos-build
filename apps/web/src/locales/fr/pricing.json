@@ -37,7 +37,16 @@
       "price": "Prix",
       "quantityRange": "Plage de quantité"
     },
-    "descriptionPlaceholder": "Description optionnelle pour cette liste de prix"
+    "descriptionPlaceholder": "Description optionnelle pour cette liste de prix",
+    "codePlaceholder": "DETAIL",
+    "namePlaceholder": "Prix de détail",
+    "addItemComingSoon": "Modal d'ajout d'article - bientôt disponible",
+    "assignPartnerComingSoon": "Modal d'assignation de partenaire - bientôt disponible",
+    "currencies": {
+      "TND": "TND - Dinar tunisien",
+      "EUR": "EUR - Euro",
+      "USD": "USD - Dollar américain"
+    }
   },
   "validation": {
     "codeRequired": "Le code est requis",

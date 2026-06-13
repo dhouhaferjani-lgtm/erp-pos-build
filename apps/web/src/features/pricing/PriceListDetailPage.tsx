@@ -134,7 +134,7 @@ export function PriceListDetailPage() {
               <h1 className="text-2xl font-bold text-gray-900">{priceList.name}</h1>
               {priceList.is_default && (
                 <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
-                  Default
+                  {t('pricing:priceLists.fields.default')}
                 </span>
               )}
               <span
@@ -351,7 +351,7 @@ export function PriceListDetailPage() {
             <h3 className="text-lg font-semibold text-gray-900 mb-4">
               {t('pricing:priceLists.addItem', 'Add Item')}
             </h3>
-            <p className="text-gray-500 mb-4">Item addition modal - coming soon</p>
+            <p className="text-gray-500 mb-4">{t('pricing:priceLists.addItemComingSoon')}</p>
             <button
               onClick={() => { setShowAddItemModal(false); }}
               className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
@@ -368,7 +368,7 @@ export function PriceListDetailPage() {
             <h3 className="text-lg font-semibold text-gray-900 mb-4">
               {t('pricing:priceLists.assignPartner', 'Assign Partner')}
             </h3>
-            <p className="text-gray-500 mb-4">Partner assignment modal - coming soon</p>
+            <p className="text-gray-500 mb-4">{t('pricing:priceLists.assignPartnerComingSoon')}</p>
             <button
               onClick={() => { setShowAssignPartnerModal(false); }}
               className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"

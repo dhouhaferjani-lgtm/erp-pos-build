@@ -169,7 +169,7 @@ export function AddPaymentMethodModal({
                   <Input
                     id="method-name"
                     {...register('name', { required: t('treasury:paymentMethods.form.nameRequired') })}
-                    placeholder="Cash"
+                    placeholder={t('treasury:paymentMethods.form.namePlaceholder')}
                   />
                 </FormField>
               </div>
@@ -205,7 +205,7 @@ export function AddPaymentMethodModal({
                       {t('treasury:paymentMethods.flags.is_physical')}
                     </div>
                     <div className="text-xs text-gray-500">
-                      Physical payment methods (cash, checks, promissory notes)
+                      {t('treasury:paymentMethods.flagDescriptions.is_physical')}
                     </div>
                   </div>
                 </label>
@@ -221,7 +221,7 @@ export function AddPaymentMethodModal({
                       {t('treasury:paymentMethods.flags.has_maturity')}
                     </div>
                     <div className="text-xs text-gray-500">
-                      Deferred payments (checks, promissory notes)
+                      {t('treasury:paymentMethods.flagDescriptions.has_maturity')}
                     </div>
                   </div>
                 </label>
@@ -237,7 +237,7 @@ export function AddPaymentMethodModal({
                       {t('treasury:paymentMethods.flags.requires_third_party')}
                     </div>
                     <div className="text-xs text-gray-500">
-                      Requires third-party processor (PayPal, Stripe)
+                      {t('treasury:paymentMethods.flagDescriptions.requires_third_party')}
                     </div>
                   </div>
                 </label>
@@ -253,7 +253,7 @@ export function AddPaymentMethodModal({
                       {t('treasury:paymentMethods.flags.is_push')}
                     </div>
                     <div className="text-xs text-gray-500">
-                      Push payment (customer initiates)
+                      {t('treasury:paymentMethods.flagDescriptions.is_push')}
                     </div>
                   </div>
                 </label>
@@ -269,7 +269,7 @@ export function AddPaymentMethodModal({
                       {t('treasury:paymentMethods.flags.has_deducted_fees')}
                     </div>
                     <div className="text-xs text-gray-500">
-                      Fees deducted from received amount
+                      {t('treasury:paymentMethods.flagDescriptions.has_deducted_fees')}
                     </div>
                   </div>
                 </label>
@@ -285,7 +285,7 @@ export function AddPaymentMethodModal({
                       {t('treasury:paymentMethods.flags.is_restricted')}
                     </div>
                     <div className="text-xs text-gray-500">
-                      Restricted usage (meal vouchers, specific conditions)
+                      {t('treasury:paymentMethods.flagDescriptions.is_restricted')}
                     </div>
                   </div>
                 </label>

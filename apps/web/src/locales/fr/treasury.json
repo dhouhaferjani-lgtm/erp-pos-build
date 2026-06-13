@@ -265,7 +265,22 @@
       "title": "Aucun dépôt",
       "description": "Commencez par ajouter une caisse, un coffre ou un compte bancaire.",
       "descriptionNoPermission": "Contactez votre administrateur pour ajouter des dépôts."
-    }
+    },
+    "glAccount": "Compte général",
+    "noGlAccount": "— Aucun —",
+    "noGlAccountWarning": "Non configuré",
+    "glAccountUpdated": "Compte général mis à jour",
+    "currentBalance": "Solde actuel",
+    "type": "Type",
+    "bankName": "Banque",
+    "accountNumber": "Compte",
+    "summary": "Récapitulatif",
+    "totalTransactions": "Total des transactions",
+    "totalReceived": "Total reçu",
+    "transactionHistory": "Historique des transactions",
+    "noTransactions": "Aucune transaction",
+    "allocatedTo": "Alloué à",
+    "moreAllocations": "de plus"
   },
   "smartPayment": {
     "title": "Allocation intelligente de paiement",
@@ -404,7 +419,16 @@
       "feePercentage": "Pourcentage des frais",
       "feeAmountPlaceholder": "0.00",
       "feePercentagePlaceholder": "0.00",
-      "descriptionPlaceholder": "Informations supplémentaires sur ce mode de paiement..."
+      "descriptionPlaceholder": "Informations supplémentaires sur ce mode de paiement...",
+      "namePlaceholder": "Espèces"
+    },
+    "flagDescriptions": {
+      "is_physical": "Moyens de paiement physiques (espèces, chèques, billets à ordre)",
+      "has_maturity": "Paiements différés (chèques, billets à ordre)",
+      "requires_third_party": "Nécessite un prestataire tiers (PayPal, Stripe)",
+      "is_push": "Paiement push (initié par le client)",
+      "has_deducted_fees": "Frais déduits du montant reçu",
+      "is_restricted": "Usage restreint (tickets restaurant, conditions spécifiques)"
     },
     "table": {
       "name": "Nom",
