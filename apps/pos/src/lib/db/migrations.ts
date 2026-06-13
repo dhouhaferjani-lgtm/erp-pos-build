@@ -1604,4 +1604,49 @@ export const migrations: Migration[] = [
     name: 'add_is_physical_to_products',
     sql: `ALTER TABLE products ADD COLUMN is_physical INTEGER NOT NULL DEFAULT 1`,
   },
+  {
+    // Offline-first shifts — Phase 0 (2026-06-14). Device-authoritative shift
+    // lifecycle, mirroring the receipt model.
+    //
+    // `local_shifts` is the device's local source of truth for "the current
+    // open shift": the device mints a UUIDv7 shift id (== fiscal_shift_id ==
+    // pos_shifts.id) plus a per-terminal monotone `shift_number`, authors
+    // SESSION_OPEN locally, and `pos_shifts` becomes a server-side projection
+    // of those already-device-authored events. "Current open shift" is then
+    // answered purely from SQLite — no network.
+    //
+    // The partial unique index mirrors the server `pos_shifts_one_open_per_
+    // terminal` invariant: at most one OPEN row per terminal. A second open
+    // attempt fails loud (constraint violation) rather than silently
+    // double-opening. The `(terminal_id, shift_number)` index backs the
+    // `nextShiftNumber` MAX lookup.
+    //
+    // `id` is the canonical shift UUID; `session_id` is the fiscal session id
+    // (same value in the one-id model, kept as a distinct column so the
+    // SESSION_OPEN payload round-trips). `fiscal_shift_id` is an alias of `id`
+    // — derived in the repository, not stored. `opening_cash` is a TEXT
+    // decimal string (currency-scaled), never a float, per the migration-21
+    // TEXT-decimal discipline.
+    version: 52,
+    name: 'create_local_shifts',
+    sql: `
+      CREATE TABLE IF NOT EXISTS local_shifts (
+        id TEXT PRIMARY KEY,
+        terminal_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        shift_number INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED')),
+        opening_cash TEXT NOT NULL DEFAULT '0',
+        opened_at TEXT NOT NULL,
+        closed_at TEXT,
+        cashier_id TEXT NOT NULL,
+        cashier_name TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_local_shifts_one_open_per_terminal
+        ON local_shifts(terminal_id) WHERE status = 'OPEN';
+      CREATE INDEX IF NOT EXISTS idx_local_shifts_terminal_number
+        ON local_shifts(terminal_id, shift_number);
+    `,
+  },
 ];
