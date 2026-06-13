@@ -52,22 +52,19 @@ describe('UnsyncedRiskIndicator — store-driven rendering', () => {
     expect(screen.queryByTestId('unsynced-risk-indicator')).toBeNull();
   });
 
-  it('renders a green normal badge when the store reports normal risk', () => {
+  it('renders nothing when the store reports normal (healthy) risk', () => {
+    // Exception-only: the healthy signal lives in the Header status pill, so a
+    // healthy terminal must NOT render the full-width durability banner.
     useDurabilityStore.getState().setPollResult({
       riskLevel: 'normal',
       forceArchiveRequired: false,
     });
 
     renderWithI18n(<UnsyncedRiskIndicator />);
-    const badge = screen.getByTestId('unsynced-risk-indicator');
-    expect(badge).not.toBeNull();
-    expect(badge.getAttribute('data-risk-level')).toBe('normal');
-    expect(badge.getAttribute('role')).toBe('status');
-    expect(badge.getAttribute('aria-live')).toBe('polite');
-    expect(badge.textContent).toContain('All synced');
+    expect(screen.queryByTestId('unsynced-risk-indicator')).toBeNull();
   });
 
-  it('renders an amber elevated badge when the store reports elevated risk', () => {
+  it('renders an amber elevated banner with attention-needing role/aria-live', () => {
     useDurabilityStore.getState().setPollResult({
       riskLevel: 'elevated',
       forceArchiveRequired: true,
@@ -76,6 +73,9 @@ describe('UnsyncedRiskIndicator — store-driven rendering', () => {
     renderWithI18n(<UnsyncedRiskIndicator />);
     const badge = screen.getByTestId('unsynced-risk-indicator');
     expect(badge.getAttribute('data-risk-level')).toBe('elevated');
+    expect(badge.getAttribute('role')).toBe('status');
+    expect(badge.getAttribute('aria-live')).toBe('polite');
+    expect(badge.textContent).toContain('Elevated');
   });
 
   it('renders a red escalated badge when the store reports escalated risk', () => {

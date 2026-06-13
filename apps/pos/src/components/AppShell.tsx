@@ -120,7 +120,7 @@ export function AppShell() {
   }, [operator, handleActivity, lock]);
 
   return (
-    <div className="flex h-screen flex-col bg-gray-50">
+    <div className="flex h-screen flex-col bg-surface-canvas">
       <Header />
       {/* T2.5 — sticky training-mode banner. Renders only when the
           active terminal has is_training_mode=true; otherwise null
@@ -129,11 +129,12 @@ export function AppShell() {
       <TrainingModeBanner />
       <C2MigrationBanner />
       {/* Round-2 T32-B2: spec §12 operator-visible unsynced-risk indicator.
-          Renders null pre-first-poll (no DOM, no layout impact); becomes
-          a colored badge once the polling hook reports a risk level. */}
-      <div className="px-4 pt-2">
-        <UnsyncedRiskIndicator />
-      </div>
+          Exception-only: renders null for healthy/pre-first-poll (no DOM,
+          no layout impact — the healthy "synced" signal lives in the Header
+          status pill) and only surfaces a banner for elevated/escalated
+          risk. The indicator owns its own spacing when it renders, so there
+          is no permanent padding wrapper reserving space in the healthy case. */}
+      <UnsyncedRiskIndicator />
       <main className="flex-1 overflow-hidden">
         <Suspense fallback={null}>
           <Routes>

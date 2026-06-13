@@ -30,27 +30,30 @@ import type { UnsyncedRiskLevel } from '@/lib/fiscal/OffDeviceDurabilityService'
 import { useDurabilityStore } from '@/stores/durabilityStore';
 
 /**
- * Tailwind class map per risk level. Matches the sibling `ChainBreakAlert`
- * convention (no `designTokens` module in apps/pos — POS uses Tailwind classes
- * directly per the established atom-component pattern). Green / amber / red
- * are the standard fiscal-status palette across the POS UI.
+ * Exception-only banner classes per *attention-needing* risk level.
+ *
+ * The sync/durability surface is now exception-only: a healthy terminal
+ * (`normal`/`null`) renders nothing here — the healthy signal lives in the
+ * Header status pill. Only `elevated` (warning) and `escalated` (danger)
+ * surface a banner, tokenized via the semantic design tokens so they share
+ * the app-wide color grammar (warning = amber, danger = red).
  */
-const riskClasses: Record<UnsyncedRiskLevel, string> = {
-  normal:
-    'bg-green-50 border-green-300 text-green-900',
+const riskClasses: Record<Exclude<UnsyncedRiskLevel, 'normal'>, string> = {
   elevated:
-    'bg-amber-50 border-amber-300 text-amber-900',
+    'bg-warning-surface border-warning-subtle text-warning-strong',
   escalated:
-    'bg-red-50 border-red-300 text-red-900',
+    'bg-danger-surface border-danger-subtle text-danger-strong',
 };
 
 export function UnsyncedRiskIndicator() {
   const { t } = useTranslation('fiscal');
   const level = useDurabilityStore((s) => s.riskLevel);
 
-  // Pre-first-poll: render nothing. Once the polling hook pushes the first
-  // result, the indicator appears.
-  if (level === null) return null;
+  // Exception-only: healthy (pre-first-poll `null` or polled `normal`) renders
+  // nothing. The healthy "synced" signal lives in the Header status pill, so a
+  // permanent full-width banner would only add alarm fatigue and waste space.
+  // The banner appears only when the unsynced backlog needs attention.
+  if (level === null || level === 'normal') return null;
 
   return (
     <div
@@ -58,7 +61,7 @@ export function UnsyncedRiskIndicator() {
       aria-live="polite"
       data-risk-level={level}
       data-testid="unsynced-risk-indicator"
-      className={`border rounded-md px-3 py-2 text-sm font-medium flex items-center gap-2 ${riskClasses[level]}`}
+      className={`mx-4 mt-2 border rounded-md px-3 py-2 text-sm font-medium flex items-center gap-2 ${riskClasses[level]}`}
     >
       <span aria-hidden="true" className="inline-block w-2 h-2 rounded-full bg-current" />
       <span>{t(`unsyncedRisk.label.${level}`)}</span>
