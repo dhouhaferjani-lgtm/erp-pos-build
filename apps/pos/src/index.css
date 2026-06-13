@@ -161,3 +161,14 @@ body,
   outline: 2px solid var(--theme-primary-500);
   outline-offset: 2px;
 }
+
+/* Suppress the macOS overlay scrollbar (the stray gray "pill") on horizontal
+ * strips like the category-tabs row. Apply `scrollbar-none` to any
+ * `overflow-x-auto` element whose scrollbar should not render. */
+.scrollbar-none {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none; /* WebKit / Tauri webview */
+}

@@ -63,7 +63,8 @@
     "exact": "Exact",
     "processing": "Processing...",
     "complete": "Complete & Print Receipt",
-    "discount": "Discount"
+    "discount": "Discount",
+    "enterAmount": "Enter the amount received"
   },
   "cashTendered": {
     "title": "Cash Payment",

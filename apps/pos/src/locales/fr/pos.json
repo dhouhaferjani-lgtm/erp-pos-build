@@ -63,7 +63,8 @@
     "exact": "Exact",
     "processing": "Traitement...",
     "complete": "Terminer et imprimer",
-    "discount": "Remise"
+    "discount": "Remise",
+    "enterAmount": "Saisir le montant reçu"
   },
   "cashTendered": {
     "title": "Paiement en espèces",
