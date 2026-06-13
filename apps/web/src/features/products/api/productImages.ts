@@ -100,9 +100,10 @@ export async function getPublicProductImages(productId: string): Promise<
     id: string
     url: string
     is_primary: boolean
-    width: number | null
-    height: number | null
     sort_order: number
+    role: string
+    alt: string | null
+    caption: string | null
   }>
 > {
   const response = await api.get<{
@@ -110,9 +111,10 @@ export async function getPublicProductImages(productId: string): Promise<
       id: string
       url: string
       is_primary: boolean
-      width: number | null
-      height: number | null
       sort_order: number
+      role: string
+      alt: string | null
+      caption: string | null
     }>
   }>(`/public/products/${productId}/images`)
   return response.data.data

@@ -100,7 +100,13 @@ final class ProductMediaController extends Controller
             $userId !== null ? (string) $userId : null,
         );
 
-        // Determine role: PRIMARY if no existing READY attachment for this product
+        // Determine role: PRIMARY if no existing READY attachment for this product.
+        // TOCTOU note: this count runs outside the attach() transaction, so two
+        // concurrent first-uploads can both compute PRIMARY here.  That is
+        // intentional and benign: attach() demotes any existing PRIMARY inside a
+        // transaction, and the PG partial unique index on (owner_id, role='primary')
+        // guarantees exactly one PRIMARY survives — the same safety net as the
+        // prior ProductImageService.  The race window is cosmetic, not fiscal.
         $existingCount = MediaAttachment::where('tenant_id', $productModel->tenant_id)
             ->where('owner_type', MediaOwnerType::Product)
             ->where('owner_id', $productModel->id)

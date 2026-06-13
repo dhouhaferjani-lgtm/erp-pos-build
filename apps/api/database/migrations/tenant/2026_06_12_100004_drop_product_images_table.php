@@ -14,6 +14,12 @@ return new class extends Migration
         if (Schema::hasTable('product_images')) {
             $count = DB::table('product_images')->count();
             Log::info('Dropping product_images', ['discarded_rows' => $count]);
+
+            // Discarding rows is intentional for Stage 1: there is no production
+            // data at this point, and demo tenants are re-seeded via the new
+            // media_assets / media_attachments model.  Any real-data migration
+            // (back-fill product_images rows into the new model) is deferred to
+            // a later stage once production tenants have live data.
             Schema::drop('product_images');
         }
     }
