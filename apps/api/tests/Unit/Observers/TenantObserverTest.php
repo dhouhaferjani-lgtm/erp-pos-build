@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Observers\TenantObserver;
 use App\Services\CompanyConfigService;
+use App\Services\TenantTokenRevoker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Stancl\Tenancy\Facades\GlobalCache;
 use Tests\TestCase;
@@ -35,7 +36,10 @@ class TenantObserverTest extends TestCase
     {
         parent::setUp();
 
-        $this->observer = new TenantObserver(app(CompanyConfigService::class));
+        $this->observer = new TenantObserver(
+            app(CompanyConfigService::class),
+            app(TenantTokenRevoker::class),
+        );
     }
 
     public function test_invalidates_tenant_config_cache_when_vertical_changes(): void
