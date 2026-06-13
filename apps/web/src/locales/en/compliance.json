@@ -116,6 +116,24 @@
       "softGteHard": "Soft threshold must be less than hard threshold."
     }
   },
+  "quarantine": {
+    "pageTitle": "Quarantine resolution assist",
+    "pageSubtitle": "Prefill canonical payload fields from a parse-failed fiscal event or quarantine row.",
+    "idLabel": "Quarantine or fiscal event id",
+    "parseButton": "Parse",
+    "noDefects": "No defects",
+    "defectsCount": "{{count}} defect",
+    "defectsCount_plural": "{{count}} defects",
+    "parsedPayloadAriaLabel": "Parsed payload JSON",
+    "defectsSectionTitle": "Defects",
+    "payloadPassedParsing": "The payload passed strict parsing.",
+    "correctionsSectionTitle": "Corrections",
+    "noEditableDefects": "No editable payload defects were detected.",
+    "correctedValueAriaLabel": "Corrected value for {{path}}",
+    "quarantineRowInspectNote": "Quarantine-table rows can be inspected here; only in-table fiscal events can be resolved through this workflow.",
+    "submitCorrectionButton": "Submit correction",
+    "resolvedSuccess": "Parse failure resolved."
+  },
   "fraudAlerts": {
     "title": "Fraud Alerts",
     "description": "Monitor and investigate suspicious activity patterns",
