@@ -99,7 +99,8 @@
     "oem": "OE Manufacturer",
     "iam": "Aftermarket",
     "ean": "EAN / Barcode",
-    "noCrossRefs": "No cross references available"
+    "noCrossRefs": "No cross references available",
+    "copy": "Copy"
   },
   "addToInventory": {
     "title": "Add to Inventory",

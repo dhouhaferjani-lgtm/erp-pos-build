@@ -87,26 +87,12 @@ const typeColors = {
   both: 'bg-green-100 text-green-800',
 }
 
-const typeLabels = {
-  customer: 'Customer',
-  supplier: 'Supplier',
-  both: 'Both',
-}
-
 const documentTypeColors: Record<string, string> = {
   quote: 'bg-yellow-100 text-yellow-800',
   sales_order: 'bg-blue-100 text-blue-800',
   invoice: 'bg-green-100 text-green-800',
   credit_note: 'bg-red-100 text-red-800',
   purchase_order: 'bg-purple-100 text-purple-800',
-}
-
-const documentTypeLabels: Record<string, string> = {
-  quote: 'Quote',
-  sales_order: 'Sales Order',
-  invoice: 'Invoice',
-  credit_note: 'Credit Note',
-  purchase_order: 'Purchase Order',
 }
 
 const statusColors: Record<string, string> = {
@@ -118,7 +104,7 @@ const statusColors: Record<string, string> = {
 
 export function PartnerDetailPage() {
   usePartnerBalanceRealtime()
-  const { t } = useTranslation()
+  const { t } = useTranslation(['common', 'deposits', 'treasury'])
   const queryClient = useQueryClient()
   const { id = '' } = useParams<{ id: string }>()
   const location = useLocation()
@@ -143,7 +129,7 @@ export function PartnerDetailPage() {
       ? '/purchases/suppliers'
       : '/partners'
 
-  const entityLabel = isCustomerContext ? 'Customer' : isSupplierContext ? 'Supplier' : 'Partner'
+  const entityLabel = isCustomerContext ? t('common:partners.customer') : isSupplierContext ? t('common:partners.supplier') : t('common:partners.partner')
 
   const { data: partner, isLoading, error } = useQuery({
     queryKey: tenantScopedKey(['partner', id]),
@@ -225,7 +211,7 @@ export function PartnerDetailPage() {
           {t('actions.back')}
         </Link>
         <div className="rounded-lg bg-red-50 p-4 text-red-700">
-          {entityLabel} not found or an error occurred.
+          {t('common:partner.notFoundError', { entity: entityLabel })}
         </div>
       </div>
     )
@@ -253,7 +239,7 @@ export function PartnerDetailPage() {
               <span
                 className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${typeColors[partner.type]}`}
               >
-                {typeLabels[partner.type]}
+                {t(`common:partners.${partner.type}`)}
               </span>
               <span
                 className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -298,7 +284,7 @@ export function PartnerDetailPage() {
               className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
             >
               <FileText className="h-4 w-4" />
-              {t('actions.newPurchaseOrder', 'New Purchase Order')}
+              {t('actions.newPurchaseOrder')}
             </Link>
           )}
           <Link
@@ -317,7 +303,7 @@ export function PartnerDetailPage() {
           <TabsTrigger value="overview">{t('tabs.overview')}</TabsTrigger>
           {(isCustomerContext || isSupplierContext) && (
             <TabsTrigger value="documents">
-              {isSupplierContext ? t('tabs.purchaseOrders', 'Purchase Orders') : t('tabs.documents')} ({documents.length})
+              {isSupplierContext ? t('tabs.purchaseOrders') : t('tabs.documents')} ({documents.length})
             </TabsTrigger>
           )}
           <TabsTrigger value="payments">
@@ -492,12 +478,12 @@ export function PartnerDetailPage() {
                 <FileText className="mx-auto h-12 w-12 text-gray-400" />
                 <h3 className="mt-2 text-sm font-semibold text-gray-900">
                   {isSupplierContext
-                    ? t('status.noPurchaseOrders', 'No purchase orders')
+                    ? t('status.noPurchaseOrders')
                     : t('status.noDocuments')}
                 </h3>
                 <p className="mt-1 text-sm text-gray-500">
                   {isSupplierContext
-                    ? t('status.noPurchaseOrdersDescription', 'Get started by creating a purchase order for this supplier.')
+                    ? t('status.noPurchaseOrdersDescription')
                     : t('status.noDocumentsDescription')}
                 </p>
                 <div className="mt-6 flex justify-center gap-3">
@@ -507,7 +493,7 @@ export function PartnerDetailPage() {
                       className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                     >
                       <FileText className="h-4 w-4" />
-                      {t('actions.newPurchaseOrder', 'New Purchase Order')}
+                      {t('actions.newPurchaseOrder')}
                     </Link>
                   ) : (
                     <Link
@@ -572,7 +558,7 @@ export function PartnerDetailPage() {
                             <span
                               className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${documentTypeColors[doc.type]}`}
                             >
-                              {documentTypeLabels[doc.type]}
+                              {t(`common:partner.documentType.${doc.type}`)}
                             </span>
                           </td>
                           <td className="whitespace-nowrap px-6 py-4">

@@ -140,8 +140,12 @@
       "stockComingSoon": "Informations sur le stock bientôt disponibles",
       "viewAllStock": "Voir tous les niveaux de stock"
     },
+    "productInformation": "Informations produit",
+    "productId": "ID produit",
     "created": "Créé",
     "lastUpdated": "Dernière mise à jour",
+    "noSearchResults": "Aucun produit trouvé",
+    "noProducts": "Aucun produit disponible",
     "empty": {
       "title": "Aucun produit",
       "description": "Commencez par ajouter votre premier produit."
@@ -229,6 +233,9 @@
       "other": "Autre",
       "stockTransfer": "Transfert de stock"
     },
+    "unknownProduct": "Produit inconnu",
+    "defaultLocation": "Par défaut",
+    "minQuantityLabel": "/ min {{quantity}}",
     "empty": {
       "title": "Aucune donnée de stock",
       "description": "Les niveaux de stock apparaîtront ici une fois les produits ajoutés.",
@@ -237,9 +244,33 @@
   },
   "movements": {
     "title": "Mouvements de stock",
+    "subtitle": "{{count}} mouvement enregistré",
+    "subtitle_plural": "{{count}} mouvements enregistrés",
     "type": "Type",
     "reference": "Référence",
     "date": "Date",
+    "searchPlaceholder": "Rechercher des mouvements...",
+    "noMovements": "Aucun mouvement",
+    "noMatchFilter": "Aucun mouvement ne correspond au filtre sélectionné.",
+    "emptyDescription": "Les mouvements de stock apparaîtront ici lors de changements d'inventaire.",
+    "system": "Système",
+    "filters": {
+      "receipts": "Réceptions",
+      "issues": "Sorties",
+      "adjustments": "Ajustements",
+      "transfers": "Transferts"
+    },
+    "columns": {
+      "product": "Produit",
+      "user": "Utilisateur"
+    },
+    "typeLabels": {
+      "receipt": "Réception",
+      "issue": "Sortie",
+      "adjustment": "Ajustement",
+      "transfer_in": "Transfert entrant",
+      "transfer_out": "Transfert sortant"
+    },
     "types": {
       "in": "Entrée",
       "out": "Sortie",
@@ -265,7 +296,8 @@
     "purchasePrice": "Prix d'achat",
     "additionalCosts": "Coûts additionnels",
     "proportion": "Proportion",
-    "noAdditionalCosts": "Aucun coût additionnel alloué"
+    "noAdditionalCosts": "Aucun coût additionnel alloué",
+    "total": "Total"
   },
   "additionalCosts": {
     "title": "Coûts additionnels",
@@ -281,6 +313,7 @@
       "other": "Autre"
     },
     "total": "Total des coûts additionnels",
+    "removeCost": "Supprimer le coût",
     "empty": "Aucun coût additionnel ajouté"
   },
   "pricing": {
@@ -293,17 +326,39 @@
     "minimumMargin": "Marge minimum",
     "calculatedMargin": "Marge calculée",
     "suggestedPrice": "Prix suggéré",
+    "costPrice": "Prix de revient",
+    "listPrice": "Prix catalogue",
+    "markup": "Majoration",
+    "marginPercent": "Marge %",
+    "lastCost": "Dernier : {{amount}}",
+    "marginValue": "Marge : {{value}} %",
+    "minMargin": "Min : {{margin}} %",
+    "atMargin": "@ {{margin}} % de marge",
+    "neverUpdated": "Jamais",
+    "costLastUpdated": "Coût mis à jour le : {{date}}",
+    "belowTargetHint": "En dessous de la cible : envisagez de porter le prix à {{price}}",
+    "checkingMargin": "Vérification de la marge...",
+    "targetMarginShort": "Cible",
+    "minimumMarginShort": "Minimum",
+    "suggestedPriceButton": "Prix suggéré (marge cible)",
+    "cannotSellAtPrice": "Vous n'êtes pas autorisé à vendre à ce prix. Contactez votre responsable pour obtenir une approbation.",
     "settings": {
       "title": "Paramètres de marge",
       "defaultTarget": "Marge cible par défaut",
       "defaultMinimum": "Marge minimum par défaut",
       "requireApprovalBelow": "Approbation requise sous le minimum",
-      "blockSalesAtLoss": "Bloquer les ventes à perte"
+      "blockSalesAtLoss": "Bloquer les ventes à perte",
+      "targetDescription": "Le pourcentage de marge cible pour les nouveaux produits",
+      "minimumDescription": "Le pourcentage de marge minimum acceptable",
+      "requireApprovalDescription": "Requiert l'approbation du responsable pour les prix inférieurs à la marge minimum",
+      "blockSalesDescription": "Empêcher la vente de produits en dessous de leur prix de revient",
+      "saveChanges": "Enregistrer les modifications"
     }
   },
   "settings": {
     "title": "Paramètres d'inventaire et tarification",
     "description": "Configurer les méthodes de coût d'inventaire et les politiques de marge par défaut pour votre entreprise.",
+    "saveError": "Échec de l'enregistrement des paramètres",
     "costing": {
       "title": "Méthode de coût d'inventaire",
       "description": "Choisissez comment les coûts des produits sont calculés lors de la réception de l'inventaire.",

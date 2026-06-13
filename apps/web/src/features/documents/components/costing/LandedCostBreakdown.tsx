@@ -1,4 +1,5 @@
 import { Package, DollarSign, TrendingUp } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useCurrency } from '@/hooks/useCurrency'
 
 interface DocumentLine {
@@ -17,6 +18,7 @@ interface LandedCostBreakdownProps {
 }
 
 export function LandedCostBreakdown({ lines, totalAdditionalCosts }: LandedCostBreakdownProps) {
+  const { t } = useTranslation(['documents'])
   const { decimals } = useCurrency()
   const subtotal = lines.reduce((sum, line) => sum + Number(line.total), 0)
   const grandTotal = subtotal + totalAdditionalCosts
@@ -24,9 +26,9 @@ export function LandedCostBreakdown({ lines, totalAdditionalCosts }: LandedCostB
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-gray-900">Landed Cost Breakdown</h3>
+        <h3 className="text-sm font-medium text-gray-900">{t('documents:costing.landedCost.title')}</h3>
         <div className="text-xs text-gray-500">
-          Cost Allocation Method: Proportional
+          {t('documents:costing.landedCost.allocationMethod')}
         </div>
       </div>
 
@@ -35,7 +37,7 @@ export function LandedCostBreakdown({ lines, totalAdditionalCosts }: LandedCostB
         <div className="rounded-lg border border-gray-200 bg-white p-4">
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 text-blue-600" />
-            <span className="text-xs font-medium text-gray-600">Products Subtotal</span>
+            <span className="text-xs font-medium text-gray-600">{t('documents:costing.landedCost.productsSubtotal')}</span>
           </div>
           <p className="mt-2 text-lg font-semibold text-gray-900">
             ${subtotal.toFixed(decimals)}
@@ -45,7 +47,7 @@ export function LandedCostBreakdown({ lines, totalAdditionalCosts }: LandedCostB
         <div className="rounded-lg border border-gray-200 bg-white p-4">
           <div className="flex items-center gap-2">
             <DollarSign className="h-4 w-4 text-orange-600" />
-            <span className="text-xs font-medium text-gray-600">Additional Costs</span>
+            <span className="text-xs font-medium text-gray-600">{t('documents:costing.additionalCosts.title')}</span>
           </div>
           <p className="mt-2 text-lg font-semibold text-gray-900">
             ${totalAdditionalCosts.toFixed(decimals)}
@@ -55,7 +57,7 @@ export function LandedCostBreakdown({ lines, totalAdditionalCosts }: LandedCostB
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-blue-600" />
-            <span className="text-xs font-medium text-blue-700">Total Landed Cost</span>
+            <span className="text-xs font-medium text-blue-700">{t('documents:costing.landedCost.totalLandedCost')}</span>
           </div>
           <p className="mt-2 text-lg font-semibold text-blue-900">
             ${grandTotal.toFixed(decimals)}
@@ -69,25 +71,25 @@ export function LandedCostBreakdown({ lines, totalAdditionalCosts }: LandedCostB
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                Product
+                {t('documents:costing.landedCost.columns.product')}
               </th>
               <th className="px-4 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                Qty
+                {t('documents:costing.landedCost.columns.qty')}
               </th>
               <th className="px-4 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                Unit Price
+                {t('documents:costing.landedCost.columns.unitPrice')}
               </th>
               <th className="px-4 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                Line Total
+                {t('documents:costing.landedCost.columns.lineTotal')}
               </th>
               <th className="px-4 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                % of Total
+                {t('documents:costing.landedCost.columns.percentOfTotal')}
               </th>
               <th className="px-4 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                Allocated Cost
+                {t('documents:costing.landedCost.columns.allocatedCost')}
               </th>
               <th className="px-4 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                Landed Unit Cost
+                {t('documents:costing.landedCost.columns.landedUnitCost')}
               </th>
             </tr>
           </thead>
@@ -125,7 +127,7 @@ export function LandedCostBreakdown({ lines, totalAdditionalCosts }: LandedCostB
           <tfoot className="bg-gray-50">
             <tr>
               <td colSpan={3} className="px-4 py-3 text-end text-sm font-medium text-gray-900">
-                Totals:
+                {t('documents:costing.landedCost.totals')}
               </td>
               <td className="px-4 py-3 text-end text-sm font-semibold text-gray-900">
                 ${subtotal.toFixed(decimals)}
@@ -146,8 +148,8 @@ export function LandedCostBreakdown({ lines, totalAdditionalCosts }: LandedCostB
 
       <div className="rounded-lg bg-blue-50 p-4">
         <p className="text-xs text-blue-800">
-          <strong>Note:</strong> Additional costs are allocated proportionally based on each line's percentage of the subtotal.
-          Landed unit cost = (Line Total + Allocated Costs) / Quantity
+          <strong>{t('documents:costing.landedCost.noteLabel')}</strong>{' '}
+          {t('documents:costing.landedCost.noteText')}
         </p>
       </div>
     </div>

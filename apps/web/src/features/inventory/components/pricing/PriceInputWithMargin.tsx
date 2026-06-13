@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { DollarSign, TrendingUp, AlertCircle } from 'lucide-react'
 import { api } from '../../../../lib/api'
 import { MarginIndicator } from './MarginIndicator'
@@ -7,6 +8,7 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import { tokens, textColors, borderColors } from '@/lib/designTokens'
 
 interface MarginCheckResponse {
   data: {
@@ -40,15 +42,18 @@ export function PriceInputWithMargin({
   productId,
   value,
   onChange,
-  label = 'Sell Price',
+  label,
   disabled = false,
   showSuggestedPrice = true,
 }: PriceInputWithMarginProps) {
+  const { t } = useTranslation('inventory')
   const { decimals } = useCurrency()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [localValue, setLocalValue] = useState(value.toString())
   const [debouncedValue, setDebouncedValue] = useState(value)
+
+  const resolvedLabel = label ?? t('pricing.salePrice')
 
   // Debounce the value for API calls
   useEffect(() => {
@@ -93,14 +98,14 @@ export function PriceInputWithMargin({
 
   return (
     <div className="space-y-2">
-      <label className="block text-sm font-medium text-gray-700">
-        {label}
+      <label className={tokens.label.base}>
+        {resolvedLabel}
       </label>
 
       {/* Price Input */}
       <div className="relative">
         <div className="pointer-events-none absolute inset-y-0 start-0 flex items-center ps-3">
-          <DollarSign className="h-4 w-4 text-gray-400" />
+          <DollarSign className={`h-4 w-4 ${textColors.disabled}`} />
         </div>
         <input
           type="number"
@@ -110,8 +115,8 @@ export function PriceInputWithMargin({
           onChange={handleChange}
           disabled={disabled}
           className={`
-            w-full rounded-md border border-gray-300 ps-8 pe-3 py-2 text-sm
-            focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500
+            w-full rounded-md border ${borderColors.default} ps-8 pe-3 py-2 text-sm
+            focus:${borderColors.primary} focus:outline-none focus:ring-1 focus:ring-blue-500
             ${disabled ? 'cursor-not-allowed bg-gray-100' : ''}
           `}
           placeholder="0.00"
@@ -120,9 +125,9 @@ export function PriceInputWithMargin({
 
       {/* Margin Indicator */}
       {isLoading && debouncedValue > 0 && (
-        <div className="flex items-center gap-2 text-sm text-gray-500">
+        <div className={`flex items-center gap-2 text-sm text-gray-500`}>
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
-          Checking margin...
+          {t('pricing.checkingMargin')}
         </div>
       )}
 
@@ -139,26 +144,26 @@ export function PriceInputWithMargin({
           <div className="rounded-lg bg-gray-50 p-3 text-xs">
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <span className="text-gray-600">Cost Price:</span>
-                <span className="ms-1 font-medium text-gray-900">
+                <span className={textColors.tertiary}>{t('pricing.costPrice')}:</span>
+                <span className={`ms-1 font-medium ${textColors.primary}`}>
                   ${parseFloat(marginInfo.cost_price).toFixed(decimals)}
                 </span>
               </div>
               <div>
-                <span className="text-gray-600">Margin:</span>
-                <span className="ms-1 font-medium text-gray-900">
+                <span className={textColors.tertiary}>{t('pricing.margin')}:</span>
+                <span className={`ms-1 font-medium ${textColors.primary}`}>
                   {marginInfo.margin_level.percentage.toFixed(1)}%
                 </span>
               </div>
               <div>
-                <span className="text-gray-600">Target:</span>
-                <span className="ms-1 font-medium text-gray-900">
+                <span className={textColors.tertiary}>{t('pricing.targetMarginShort')}:</span>
+                <span className={`ms-1 font-medium ${textColors.primary}`}>
                   {parseFloat(marginInfo.margins.target_margin).toFixed(1)}%
                 </span>
               </div>
               <div>
-                <span className="text-gray-600">Minimum:</span>
-                <span className="ms-1 font-medium text-gray-900">
+                <span className={textColors.tertiary}>{t('pricing.minimumMarginShort')}:</span>
+                <span className={`ms-1 font-medium ${textColors.primary}`}>
                   {parseFloat(marginInfo.margins.minimum_margin).toFixed(1)}%
                 </span>
               </div>
@@ -173,7 +178,7 @@ export function PriceInputWithMargin({
             >
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4" />
-                <span>Suggested Price (Target Margin)</span>
+                <span>{t('pricing.suggestedPriceButton')}</span>
               </div>
               <span className="font-semibold">
                 ${parseFloat(marginInfo.suggested_price).toFixed(decimals)}
@@ -183,10 +188,10 @@ export function PriceInputWithMargin({
 
           {/* Permission Warning */}
           {!marginInfo.can_sell && (
-            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+            <div className={`flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs ${textColors.error}`}>
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>
-                You don't have permission to sell at this price. Contact your manager for approval.
+                {t('pricing.cannotSellAtPrice')}
               </span>
             </div>
           )}

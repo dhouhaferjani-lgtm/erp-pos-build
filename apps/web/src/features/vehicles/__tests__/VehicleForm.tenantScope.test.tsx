@@ -15,7 +15,17 @@ const mockApiPost = vi.hoisted(() => vi.fn())
 const mockApiPatch = vi.hoisted(() => vi.fn())
 const mockNavigate = vi.hoisted(() => vi.fn())
 const mockRouteId = vi.hoisted(() => ({ current: '' }))
-const mockTranslate = vi.hoisted(() => vi.fn((key: string) => key))
+const mockTranslate = vi.hoisted(() =>
+  vi.fn((key: string) => {
+    const translations: Record<string, string> = {
+      'vehicles:licensePlate': 'License Plate',
+      'vehicles:brand': 'Brand',
+      'vehicles:model': 'Model',
+      'common:actions.save': 'actions.save',
+    }
+    return translations[key] ?? key
+  }),
+)
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')

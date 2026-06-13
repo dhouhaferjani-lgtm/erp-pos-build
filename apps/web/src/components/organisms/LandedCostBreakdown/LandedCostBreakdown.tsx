@@ -127,7 +127,7 @@ export function LandedCostBreakdown({
           <tfoot className="bg-gray-50 dark:bg-gray-800">
             <tr>
               <td className="px-4 py-2 text-sm font-medium text-gray-900 dark:text-gray-100">
-                Total
+                {t('inventory:landedCost.total')}
               </td>
               <td className="px-4 py-2 text-end text-sm text-gray-600 dark:text-gray-400">
                 {lines.reduce((sum, l) => sum + l.quantity, 0)}

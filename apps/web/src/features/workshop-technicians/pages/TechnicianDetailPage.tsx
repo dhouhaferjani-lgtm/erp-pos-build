@@ -77,7 +77,7 @@ export function TechnicianDetailPage() {
         ) : null}
       </header>
 
-      <nav aria-label="authoring tabs" className="border-b border-slate-200">
+      <nav aria-label={t('authoring.tabsAriaLabel')} className="border-b border-slate-200">
         <ul className="-mb-px flex gap-4 text-sm">
           {(['overview', 'certifications', 'timeOff', 'timeEntries'] as const).map((tab) => (
             <li key={tab}>

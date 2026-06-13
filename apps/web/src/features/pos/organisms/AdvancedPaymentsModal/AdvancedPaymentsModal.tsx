@@ -398,7 +398,7 @@ export function AdvancedPaymentsModal({
               colors.hover.gray100,
               textColors.hoverSecondary
             )}
-            aria-label="Close"
+            aria-label={t('advancedPayments.close')}
           >
             <X className="h-6 w-6" />
           </button>

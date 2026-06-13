@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Input } from '../../atoms'
 
 export interface DateRangeFilterProps {
@@ -17,6 +18,8 @@ export function DateRangeFilter({
   onToChange,
   className,
 }: DateRangeFilterProps) {
+  const { t } = useTranslation('common')
+
   const handleFromChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     onFromChange(value === '' ? undefined : value)
@@ -33,13 +36,13 @@ export function DateRangeFilter({
       <div className="grid grid-cols-2 gap-2">
         <Input
           type="date"
-          placeholder="From"
+          placeholder={t('dateFrom')}
           value={fromValue ?? ''}
           onChange={handleFromChange}
         />
         <Input
           type="date"
-          placeholder="To"
+          placeholder={t('dateTo')}
           value={toValue ?? ''}
           onChange={handleToChange}
         />

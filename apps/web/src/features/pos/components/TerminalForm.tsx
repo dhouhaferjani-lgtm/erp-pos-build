@@ -20,7 +20,7 @@ export function TerminalForm({
   onSubmit,
   onCancel,
 }: TerminalFormProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['common', 'settings'])
   const isEditMode = !!terminal
 
   const {
@@ -72,6 +72,7 @@ export function TerminalForm({
             })}
             type="text"
             id="code"
+            // eslint-disable-next-line local/no-untranslated-literal -- technical code example, not user-facing prose
             placeholder="POS01"
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
           />

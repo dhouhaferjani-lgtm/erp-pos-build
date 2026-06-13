@@ -32,6 +32,27 @@
   },
   "created": "Created",
   "updated": "Updated",
+  "owner": "Owner (Optional)",
+  "noOwner": "-- No Owner --",
+  "licensePlateRequired": "License plate is required",
+  "brandRequired": "Brand is required",
+  "modelRequired": "Model is required",
+  "mileageKm": "Mileage (km)",
+  "mileageNegative": "Mileage cannot be negative",
+  "vinValidation": "VIN must be 17 characters (no I, O, Q)",
+  "yearMin": "Year must be after 1900",
+  "yearMax": "Year is too far in the future",
+  "addVehicleHint": "Quick vehicle creation. You can add more details (fuel type, transmission, mileage, etc.) by editing the vehicle later.",
+  "placeholders": {
+    "licensePlate": "AB-123-CD",
+    "vin": "VF1RFB00X51234567",
+    "brand": "Renault",
+    "model": "Clio",
+    "color": "Blue",
+    "year": "2020",
+    "engineCode": "K9K 608",
+    "notes": "Additional notes about the vehicle..."
+  },
   "empty": {
     "title": "No vehicles yet",
     "description": "Get started by adding your first vehicle."

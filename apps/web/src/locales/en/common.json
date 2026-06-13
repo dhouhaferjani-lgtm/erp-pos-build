@@ -6,6 +6,7 @@
   "actions": {
     "save": "Save",
     "cancel": "Cancel",
+    "newPurchaseOrder": "New Purchase Order",
     "delete": "Delete",
     "edit": "Edit",
     "create": "Create",
@@ -72,7 +73,9 @@
     "minLength": "Must be at least {{min}} characters",
     "maxLength": "Must be at most {{max}} characters",
     "minAmount": "Minimum amount is {{amount}}",
-    "terminalCodeFormat": "Terminal code must contain only uppercase letters and numbers"
+    "terminalCodeFormat": "Terminal code must contain only uppercase letters and numbers",
+    "min": "Minimum value is {{min}}",
+    "max": "Maximum value is {{max}}"
   },
   "errorMessages": {
     "generic": "An error occurred. Please try again."
@@ -104,7 +107,9 @@
     "noPayments": "No payments",
     "noPaymentsDescription": "No payments have been recorded for this customer yet.",
     "noVehicles": "No vehicles",
-    "noVehiclesDescription": "No vehicles have been linked to this customer yet."
+    "noVehiclesDescription": "No vehicles have been linked to this customer yet.",
+    "noPurchaseOrders": "No purchase orders",
+    "noPurchaseOrdersDescription": "Get started by creating a purchase order for this supplier."
   },
   "filtersLabel": "Filters",
   "filters": {
@@ -134,19 +139,30 @@
     "vin": "VIN",
     "totalReceivable": "Total Receivable",
     "totalPayable": "Total Payable",
-    "description": "Description"
+    "description": "Description",
+    "currency": "Currency",
+    "basicInfo": "Basic Information"
   },
   "partner": {
     "unallocatedBalance": "Unallocated Balance",
     "unallocatedBalanceHint": "From {{count}} unallocated payment(s)",
     "creditAvailable": "Credit available to apply to invoices",
-    "noBalance": "No balance"
+    "noBalance": "No balance",
+    "notFoundError": "{{entity}} not found or an error occurred.",
+    "documentType": {
+      "quote": "Quote",
+      "sales_order": "Sales Order",
+      "invoice": "Invoice",
+      "credit_note": "Credit Note",
+      "purchase_order": "Purchase Order"
+    }
   },
   "tabs": {
     "overview": "Overview",
     "documents": "Documents",
     "payments": "Payments",
-    "vehicles": "Vehicles"
+    "vehicles": "Vehicles",
+    "purchaseOrders": "Purchase Orders"
   },
   "sections": {
     "balance": "Balance",
@@ -154,11 +170,14 @@
     "businessInfo": "Business Information"
   },
   "errors": {
+    "loadingFailed": "Failed to load data. Please try again.",
     "realtimeConnectionFailed": "Real-time updates are unavailable. Changes may not appear automatically.",
     "locationsFetchFailed": "Failed to load locations.",
     "operationFailed": "Operation failed. Please try again.",
     "unexpectedError": "Something went wrong",
-    "unexpectedErrorDetails": "An unexpected error occurred. Please try again or refresh the page."
+    "unexpectedErrorDetails": "An unexpected error occurred. Please try again or refresh the page.",
+    "saveFailed": "Failed to save. Please try again.",
+    "generic": "Something went wrong. Please try again."
   },
   "dashboard": {
     "title": "Dashboard",
@@ -179,6 +198,7 @@
     "noRecentPayments": "No recent payments"
   },
   "navigation": {
+    "breadcrumb": "Breadcrumb",
     "dashboard": "Dashboard",
     "sales": "Sales",
     "customers": "Customers",
@@ -289,11 +309,32 @@
     "default": "Default",
     "posEnabled": "POS Enabled",
     "code": "Code",
+    "selectLocation": "Select location",
+    "switchLocation": "Switch Location",
+    "currentLocation": "Current: {{name}}",
     "types": {
       "shop": "Shop",
       "warehouse": "Warehouse",
       "office": "Office",
       "mobile": "Mobile Unit"
+    },
+    "typeDescriptions": {
+      "shop": "Customer-facing retail location",
+      "warehouse": "Storage and distribution center",
+      "office": "Administrative location",
+      "mobile": "Mobile service unit"
+    },
+    "modal": {
+      "addTitle": "Add New Location",
+      "locationNameRequired": "Location name is required",
+      "createButton": "Create Location",
+      "namePlaceholder": "Main Warehouse",
+      "codePlaceholder": "WH-001",
+      "emailPlaceholder": "warehouse@company.com",
+      "phonePlaceholder": "+33 1 23 45 67 89",
+      "streetPlaceholder": "123 Industrial Ave",
+      "cityPlaceholder": "Paris",
+      "postalCodePlaceholder": "75001"
     },
     "form": {
       "name": "Location Name",
@@ -328,6 +369,11 @@
       "defaultSet": "Default location updated"
     }
   },
+  "company": {
+    "select": "Select company",
+    "switchCompany": "Switch Company",
+    "addCompany": "Add Company"
+  },
   "table": {
     "actionsColumn": "Actions",
     "noData": "No data available"
@@ -357,10 +403,22 @@
   "noData": "No data available",
   "error": "Error",
   "details": "Details",
+  "dateFrom": "From",
+  "dateTo": "To",
+  "clearSearch": "Clear search",
+  "selectLanguage": "Select language",
+  "notifications": "Notifications",
+  "noLocation": "No location",
+  "centralInvoicing": "Central invoicing",
+  "noLocationResults": "No locations found",
+  "noLocations": "No locations available",
+  "searchLocation": "Search locations...",
+  "sku": "SKU",
   "cancel": "Cancel",
   "retry": "Retry",
   "save": "Save",
   "saved": "Saved",
+  "saveSuccess": "Settings saved successfully.",
   "deleted": "Deleted",
   "saving": "Saving...",
   "creating": "Creating...",
@@ -652,6 +710,8 @@
       "hourly": "Hourly",
       "percentage": "Percentage"
     },
+    "createService": "Create Service",
+    "pricingTypeLabel": "Pricing Type",
     "fields": {
       "code": "Code",
       "name": "Name",
@@ -661,6 +721,8 @@
       "basePrice": "Base Price",
       "hourlyRate": "Hourly Rate",
       "duration": "Duration",
+      "defaultDuration": "Default Duration (minutes)",
+      "percentage": "Percentage",
       "taxRate": "Tax Rate"
     },
     "categories": {
@@ -684,6 +746,10 @@
       "durationHint": "Estimated service duration",
       "taxRateHint": "Leave empty to use default tax rate"
     },
+    "basicInfo": "Basic Information",
+    "noCategory": "No Category",
+    "namePlaceholder": "Oil Change",
+    "descriptionPlaceholder": "Optional description for this service",
     "messages": {
       "created": "Service created successfully",
       "updated": "Service updated successfully",
@@ -1000,13 +1066,22 @@
       "cannotDelete": "Cannot delete category with products or subcategories",
       "selectCategory": "Select category...",
       "rootCategory": "Root Category (No Parent)",
-      "productsCount": "{{count}} products"
+      "productsCount": "{{count}} products",
+      "noCategoriesFound": "No categories found",
+      "expand": "Expand",
+      "collapse": "Collapse"
     },
     "products": {
       "category": "Category"
     }
   },
   "pos": {
+    "inCart": "Added",
+    "productInfo": "Product info",
+    "customizeProduct": "Customize product",
+    "decrementQuantity": "Decrement quantity",
+    "incrementQuantity": "Increment quantity",
+    "removeItem": "Remove item",
     "title": "Point of Sale",
     "exitFullscreen": "Exit POS",
     "quickCheckout": "Quick Checkout",
@@ -1228,6 +1303,78 @@
       "message": "This site uses essential cookies for authentication and security.",
       "accept": "Accept",
       "learnMore": "Learn more"
+    },
+    "privacy": {
+      "lastUpdated": "Last updated",
+      "section1": {
+        "title": "Introduction",
+        "body": "AutoERP (\"we\", \"our\", \"us\") is committed to protecting your personal data. This Privacy Policy explains how we collect, use, and safeguard information when you use our business management platform."
+      },
+      "section2": {
+        "title": "Information We Collect",
+        "intro": "We collect information that you provide directly to us, including:",
+        "accountInfo": {
+          "label": "Account Information",
+          "detail": "Name, email address, phone number, and professional details"
+        },
+        "usageData": {
+          "label": "Usage Data",
+          "detail": "Actions taken within the platform, features used, and timestamps"
+        },
+        "businessData": {
+          "label": "Business Data",
+          "detail": "Customers, invoices, products, and other ERP data you enter"
+        },
+        "cookies": {
+          "label": "Cookies",
+          "detail": "Session tokens and preference cookies for authentication and settings"
+        }
+      },
+      "section3": {
+        "title": "How We Use Your Information",
+        "purpose1": "Provide, maintain, and improve the AutoERP platform",
+        "purpose2": "Process transactions and send related information",
+        "purpose3": "Send technical notices, updates, and support messages",
+        "purpose4": "Comply with legal obligations and protect rights",
+        "legalBasis": "We process your data based on your consent, contractual necessity, and our legitimate interests in providing the service."
+      },
+      "section4": {
+        "title": "Data Sharing",
+        "body": "We do not sell your personal data. We may share data with trusted third-party service providers who assist us in operating the platform, subject to confidentiality agreements. We may disclose data when required by law."
+      },
+      "section5": {
+        "title": "Your Rights",
+        "intro": "Depending on your jurisdiction, you may have the following rights regarding your personal data:",
+        "access": {
+          "label": "Access",
+          "detail": "Request a copy of the personal data we hold about you"
+        },
+        "rectification": {
+          "label": "Rectification",
+          "detail": "Request correction of inaccurate or incomplete data"
+        },
+        "erasure": {
+          "label": "Erasure",
+          "detail": "Request deletion of your personal data under certain conditions"
+        },
+        "portability": {
+          "label": "Portability",
+          "detail": "Request transfer of your data in a machine-readable format"
+        },
+        "objection": {
+          "label": "Objection",
+          "detail": "Object to processing of your data for legitimate interests"
+        }
+      },
+      "section6": {
+        "title": "Data Retention",
+        "body": "We retain your data for as long as your account is active or as needed to provide services. Business records may be retained longer to comply with legal and fiscal obligations."
+      },
+      "section7": {
+        "title": "Contact",
+        "intro": "For privacy-related questions or to exercise your rights, contact our Data Protection Officer at:",
+        "cnil": "If you are located in the EU, you have the right to lodge a complaint with your local supervisory authority (e.g. CNIL in France)."
+      }
     }
   },
   "quickCreate": {
@@ -1247,5 +1394,15 @@
     "loadingError": "Tax load failed — enter rate manually",
     "staleTaxWarning": "Selected tax no longer exists",
     "noTaxes": "No taxes configured"
+  },
+  "partners": {
+    "customer": "Customer",
+    "supplier": "Supplier",
+    "partner": "Partner",
+    "both": "Both",
+    "searchPlaceholder": "Search by name, email, or phone...",
+    "noSearchResults": "No partners found",
+    "noPartners": "No partners available",
+    "addNew": "Add new"
   }
 }

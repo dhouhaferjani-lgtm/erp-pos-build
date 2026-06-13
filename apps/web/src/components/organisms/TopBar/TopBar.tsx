@@ -104,7 +104,7 @@ export function TopBar({ onMenuClick, onSearchClick }: TopBarProps) {
             type="button"
             onClick={() => { setIsLangMenuOpen(!isLangMenuOpen) }}
             className="flex items-center gap-1 rounded-lg p-2 text-gray-500 hover:bg-gray-100"
-            aria-label="Select language"
+            aria-label={t('common:selectLanguage')}
             aria-expanded={isLangMenuOpen}
             aria-haspopup="true"
           >

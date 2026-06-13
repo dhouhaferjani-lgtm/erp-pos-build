@@ -97,7 +97,7 @@ export function StampCardFormModal({ isOpen, onClose, onSubmit, isPending, editi
             </div>
 
             <FormField label={t('loyalty:fields.rewardId')} error={form.formState.errors.reward_id?.message}>
-              <Input {...form.register('reward_id')} placeholder="Reward UUID" />
+              <Input {...form.register('reward_id')} placeholder={t('loyalty:fields.rewardIdPlaceholder')} />
             </FormField>
 
             <div className="grid grid-cols-2 gap-4">

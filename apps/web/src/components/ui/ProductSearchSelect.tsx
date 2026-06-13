@@ -119,7 +119,7 @@ export function ProductSearchSelect({
         <span className={selectedProduct ? 'text-gray-900' : 'text-gray-500'}>
           {selectedProduct
             ? `${selectedProduct.name}${selectedProduct.sku ? ` (${selectedProduct.sku})` : ''}`
-            : (placeholder ?? t('common:actions.select', 'Select product'))}
+            : (placeholder ?? t('common:actions.select'))}
         </span>
         <div className="flex items-center gap-1">
           {value && !disabled && (
@@ -129,7 +129,7 @@ export function ProductSearchSelect({
                 e.stopPropagation()
                 handleClear()
               }}
-              aria-label="Clear selection"
+              aria-label={t('common:clearSearch')}
               className="rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
             >
               <X className="h-4 w-4" />
@@ -149,7 +149,7 @@ export function ProductSearchSelect({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value) }}
-                placeholder={t('inventory:products.searchPlaceholder', 'Search by name or SKU...')}
+                placeholder={t('inventory:products.searchPlaceholder')}
                 className="w-full rounded-lg border border-gray-300 py-2 pe-10 ps-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
               {searchQuery && (
@@ -167,15 +167,15 @@ export function ProductSearchSelect({
           <div className="max-h-60 overflow-y-auto">
             {isLoading ? (
               <div className="p-4 text-center text-sm text-gray-500">
-                {t('common:status.loading', 'Loading...')}
+                {t('common:status.loading')}
               </div>
             ) : products.length === 0 ? (
               <div className="p-4 text-center text-sm">
                 <Package className="mx-auto h-8 w-8 text-gray-300" />
                 <p className="mt-2 text-gray-500">
                   {searchQuery
-                    ? t('inventory:products.noSearchResults', 'No products found')
-                    : t('inventory:products.noProducts', 'No products available')}
+                    ? t('inventory:products.noSearchResults')
+                    : t('inventory:products.noProducts')}
                 </p>
               </div>
             ) : (

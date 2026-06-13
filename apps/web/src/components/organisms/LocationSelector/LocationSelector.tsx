@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { MapPin, ChevronDown, Check, Plus, Warehouse, Store, Building2, Truck, type LucideIcon } from 'lucide-react'
 import { useLocation } from '../../../hooks/useLocation'
 import { useQueryClient } from '@tanstack/react-query'
@@ -15,24 +16,6 @@ const LOCATION_ICONS: Record<LocationType, LucideIcon> = {
   warehouse: Warehouse,
   office: Building2,
   mobile: Truck,
-}
-
-/**
- * Get label for location type
- */
-function getLocationTypeLabel(type: LocationType): string {
-  switch (type) {
-    case 'shop':
-      return 'Shop'
-    case 'warehouse':
-      return 'Warehouse'
-    case 'office':
-      return 'Office'
-    case 'mobile':
-      return 'Mobile'
-    default:
-      return type
-  }
 }
 
 function scopedNamespacePredicate(
@@ -61,6 +44,7 @@ interface LocationSelectorProps {
  * Shows current location with type icon, dropdown to switch, and option to add new locations.
  */
 export function LocationSelector({ className = '' }: LocationSelectorProps) {
+  const { t } = useTranslation('common')
   const { currentLocation, locations, hasMultipleLocations, switchLocation, isLoading } = useLocation()
   const [isOpen, setIsOpen] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -112,7 +96,7 @@ export function LocationSelector({ className = '' }: LocationSelectorProps) {
         <div className={`relative ${className}`}>
           <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-400">
             <MapPin className="h-4 w-4 animate-pulse" />
-            <span>Loading...</span>
+            <span>{t('common:loading')}</span>
           </div>
         </div>
         <AddLocationModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false) }} />
@@ -121,7 +105,7 @@ export function LocationSelector({ className = '' }: LocationSelectorProps) {
   }
 
   // Determine button label
-  const buttonLabel = currentLocation?.name ?? (locations.length === 0 ? 'Add Location' : 'Select location')
+  const buttonLabel = currentLocation?.name ?? (locations.length === 0 ? t('common:locations.addLocation') : t('common:locations.selectLocation'))
 
   return (
     <>
@@ -130,7 +114,7 @@ export function LocationSelector({ className = '' }: LocationSelectorProps) {
           type="button"
           onClick={() => { if (locations.length === 0) { setIsModalOpen(true) } else { setIsOpen(!isOpen) } }}
           className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          aria-label="Select location"
+          aria-label={t('common:locations.selectLocation')}
           aria-expanded={isOpen}
           aria-haspopup="true"
         >
@@ -147,7 +131,7 @@ export function LocationSelector({ className = '' }: LocationSelectorProps) {
             {hasMultipleLocations && (
               <>
                 <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Switch Location
+                  {t('common:locations.switchLocation')}
                 </div>
                 <div className="max-h-64 overflow-y-auto">
                   {locations.map((location) => {
@@ -168,8 +152,8 @@ export function LocationSelector({ className = '' }: LocationSelectorProps) {
                               {location.name}
                             </span>
                             <span className="text-xs text-gray-500">
-                              {getLocationTypeLabel(location.type)}
-                              {location.isDefault && ' (Default)'}
+                              {t(`common:locations.types.${location.type}`)}
+                              {location.isDefault && ` (${t('common:locations.default')})`}
                             </span>
                           </div>
                         </div>
@@ -186,7 +170,7 @@ export function LocationSelector({ className = '' }: LocationSelectorProps) {
             {!hasMultipleLocations && locations.length === 1 && (
               <>
                 <div className="px-3 py-2 text-xs text-gray-500">
-                  Current: {currentLocation?.name}
+                  {t('common:locations.currentLocation', { name: currentLocation?.name })}
                 </div>
                 <div className="my-1 border-t border-gray-100" />
               </>
@@ -197,7 +181,7 @@ export function LocationSelector({ className = '' }: LocationSelectorProps) {
               className="flex w-full items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50"
             >
               <Plus className="h-4 w-4" />
-              Add Location
+              {t('common:locations.addLocation')}
             </button>
           </div>
         )}

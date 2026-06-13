@@ -139,7 +139,7 @@ export function AdditionalCostsForm({
                 onClick={() => { handleRemoveCost(cost.id) }}
                 disabled={disabled}
                 className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                aria-label="Remove cost"
+                aria-label={t('inventory:additionalCosts.removeCost')}
               >
                 <Trash2 className="h-4 w-4" />
               </button>

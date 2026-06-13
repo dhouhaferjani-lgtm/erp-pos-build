@@ -45,7 +45,8 @@
     "addVehicle": "Ajouter un véhicule",
     "import": "Importer",
     "export": "Exporter",
-    "actions": "Actions"
+    "actions": "Actions",
+    "newPurchaseOrder": "Nouvelle commande fournisseur"
   },
   "common": {
     "create": "Créer",
@@ -72,7 +73,9 @@
     "maxLength": "Doit contenir au maximum {{max}} caractères",
     "minAmount": "Le montant minimum est {{amount}}",
     "terminalCodeFormat": "Le code du terminal ne doit contenir que des lettres majuscules et des chiffres",
-    "invalidNumber": "Nombre invalide"
+    "invalidNumber": "Nombre invalide",
+    "min": "La valeur minimale est {{min}}",
+    "max": "La valeur maximale est {{max}}"
   },
   "errorMessages": {
     "generic": "Une erreur est survenue. Veuillez réessayer."
@@ -104,14 +107,19 @@
     "noPayments": "Aucun paiement",
     "noPaymentsDescription": "Aucun paiement n'a été enregistré pour ce client.",
     "noVehicles": "Aucun véhicule",
-    "noVehiclesDescription": "Aucun véhicule n'a été lié à ce client."
+    "noVehiclesDescription": "Aucun véhicule n'a été lié à ce client.",
+    "noPurchaseOrders": "Aucune commande fournisseur",
+    "noPurchaseOrdersDescription": "Commencez par créer une commande fournisseur pour ce fournisseur."
   },
   "errors": {
+    "loadingFailed": "Échec du chargement des données. Veuillez réessayer.",
     "realtimeConnectionFailed": "Les mises à jour en temps réel sont indisponibles. Les changements peuvent ne pas apparaître automatiquement.",
     "locationsFetchFailed": "Échec du chargement des emplacements.",
     "operationFailed": "L'opération a échoué. Veuillez réessayer.",
     "unexpectedError": "Une erreur est survenue",
-    "unexpectedErrorDetails": "Une erreur inattendue s'est produite. Veuillez réessayer ou actualiser la page."
+    "unexpectedErrorDetails": "Une erreur inattendue s'est produite. Veuillez réessayer ou actualiser la page.",
+    "saveFailed": "Échec de l'enregistrement. Veuillez réessayer.",
+    "generic": "Une erreur s’est produite. Veuillez réessayer."
   },
   "dashboard": {
     "title": "Tableau de bord",
@@ -132,6 +140,7 @@
     "noRecentPayments": "Aucun paiement récent"
   },
   "navigation": {
+    "breadcrumb": "Fil d'Ariane",
     "dashboard": "Tableau de bord",
     "sales": "Ventes",
     "customers": "Clients",
@@ -254,7 +263,9 @@
     "vehicle": "Véhicule",
     "year": "Année",
     "vin": "NIV",
-    "description": "Description"
+    "description": "Description",
+    "currency": "Devise",
+    "basicInfo": "Informations générales"
   },
   "sections": {
     "balance": "Solde",
@@ -265,7 +276,15 @@
     "unallocatedBalance": "Solde non alloué",
     "unallocatedBalanceHint": "De {{count}} paiement(s) non alloué(s)",
     "creditAvailable": "Crédit disponible à appliquer aux factures",
-    "noBalance": "Aucun solde"
+    "noBalance": "Aucun solde",
+    "notFoundError": "{{entity}} introuvable ou une erreur s'est produite.",
+    "documentType": {
+      "quote": "Devis",
+      "sales_order": "Bon de commande",
+      "invoice": "Facture",
+      "credit_note": "Avoir",
+      "purchase_order": "Commande fournisseur"
+    }
   },
   "locations": {
     "title": "Gestion des emplacements",
@@ -277,11 +296,32 @@
     "default": "Par défaut",
     "posEnabled": "Point de vente activé",
     "code": "Code",
+    "selectLocation": "Sélectionner un emplacement",
+    "switchLocation": "Changer d'emplacement",
+    "currentLocation": "Actuel : {{name}}",
     "types": {
       "shop": "Magasin",
       "warehouse": "Entrepôt",
       "office": "Bureau",
       "mobile": "Unité mobile"
+    },
+    "typeDescriptions": {
+      "shop": "Point de vente accessible aux clients",
+      "warehouse": "Centre de stockage et de distribution",
+      "office": "Espace administratif",
+      "mobile": "Unité de service mobile"
+    },
+    "modal": {
+      "addTitle": "Ajouter un emplacement",
+      "locationNameRequired": "Le nom de l'emplacement est requis",
+      "createButton": "Créer l'emplacement",
+      "namePlaceholder": "Entrepôt principal",
+      "codePlaceholder": "ENT-001",
+      "emailPlaceholder": "entrepot@entreprise.com",
+      "phonePlaceholder": "+33 1 23 45 67 89",
+      "streetPlaceholder": "123 Avenue Industrielle",
+      "cityPlaceholder": "Paris",
+      "postalCodePlaceholder": "75001"
     },
     "form": {
       "name": "Nom de l'emplacement",
@@ -316,6 +356,11 @@
       "defaultSet": "Emplacement par défaut mis à jour"
     }
   },
+  "company": {
+    "select": "Sélectionner une entreprise",
+    "switchCompany": "Changer d'entreprise",
+    "addCompany": "Ajouter une entreprise"
+  },
   "table": {
     "actionsColumn": "Actions",
     "noData": "Aucune donnée disponible"
@@ -346,10 +391,22 @@
   "noData": "Aucune donnée disponible",
   "error": "Erreur",
   "details": "Détails",
+  "dateFrom": "Du",
+  "dateTo": "Au",
+  "clearSearch": "Effacer la recherche",
+  "selectLanguage": "Choisir la langue",
+  "notifications": "Notifications",
+  "noLocation": "Aucun emplacement",
+  "centralInvoicing": "Facturation centrale",
+  "noLocationResults": "Aucun emplacement trouvé",
+  "noLocations": "Aucun emplacement disponible",
+  "searchLocation": "Rechercher des emplacements...",
+  "sku": "Référence",
   "cancel": "Annuler",
   "retry": "Réessayer",
   "save": "Enregistrer",
   "saved": "Enregistré",
+  "saveSuccess": "Paramètres enregistrés avec succès.",
   "deleted": "Supprimé",
   "saving": "Enregistrement...",
   "creating": "Création...",
@@ -396,7 +453,8 @@
     "overview": "Aperçu",
     "documents": "Documents",
     "payments": "Paiements",
-    "vehicles": "Véhicules"
+    "vehicles": "Véhicules",
+    "purchaseOrders": "Commandes fournisseurs"
   },
   "reports": {
     "description": "Aperçu de la performance de votre entreprise",
@@ -653,6 +711,7 @@
       "plural": "prestations"
     },
     "pricingType": "Tarification",
+    "pricingTypeLabel": "Type de tarification",
     "category": "Catégorie",
     "details": "Détails de la prestation",
     "pricing": "Tarification",
@@ -675,7 +734,15 @@
       "percentage": "Pourcentage",
       "taxRate": "Taux de TVA (%)"
     },
-    "categories": "Catégories de prestations",
+    "categories": {
+      "title": "Catégories de prestations",
+      "addCategory": "Ajouter une catégorie",
+      "editCategory": "Modifier la catégorie",
+      "noCategories": "Aucune catégorie",
+      "noCategoriesDescription": "Créez des catégories pour organiser vos prestations.",
+      "parentCategory": "Catégorie parente",
+      "rootCategory": "Catégorie racine"
+    },
     "addCategory": "Ajouter une catégorie",
     "editCategory": "Modifier la catégorie",
     "createCategory": "Créer une catégorie",
@@ -688,9 +755,22 @@
       "singular": "catégorie",
       "plural": "catégories"
     },
+    "form": {
+      "basicInfo": "Informations générales",
+      "pricing": "Tarification",
+      "codePlaceholder": "ex. SRV-001",
+      "namePlaceholder": "ex. Vidange d'huile",
+      "descriptionPlaceholder": "Description de la prestation...",
+      "selectCategory": "Sélectionner une catégorie",
+      "noCategory": "Sans catégorie",
+      "durationMinutes": "Durée (minutes)",
+      "durationHint": "Durée estimée de la prestation",
+      "taxRateHint": "Laisser vide pour utiliser le taux de TVA par défaut"
+    },
     "basicInfo": "Informations générales",
     "noCategory": "Sans catégorie",
     "namePlaceholder": "Vidange d'huile",
+    "descriptionPlaceholder": "Description optionnelle pour cette prestation",
     "categoryNamePlaceholder": "Entretien",
     "messages": {
       "created": "Prestation créée avec succès",
@@ -1003,13 +1083,22 @@
       "cannotDelete": "Impossible de supprimer une catégorie contenant des produits ou des sous-catégories",
       "selectCategory": "Sélectionner une catégorie...",
       "rootCategory": "Catégorie racine (Aucune parente)",
-      "productsCount": "{{count}} produits"
+      "productsCount": "{{count}} produits",
+      "noCategoriesFound": "Aucune catégorie trouvée",
+      "expand": "Développer",
+      "collapse": "Réduire"
     },
     "products": {
       "category": "Catégorie"
     }
   },
   "pos": {
+    "inCart": "Ajouté",
+    "productInfo": "Infos produit",
+    "customizeProduct": "Personnaliser le produit",
+    "decrementQuantity": "Diminuer la quantité",
+    "incrementQuantity": "Augmenter la quantité",
+    "removeItem": "Supprimer l'article",
     "title": "Point de vente",
     "exitFullscreen": "Quitter le PDV",
     "quickCheckout": "Règlement rapide",
@@ -1039,6 +1128,42 @@
     "due": "Échéance",
     "cartSummary": "Récapitulatif du panier",
     "calculator": "Calculatrice",
+    "shift": "Session de caisse",
+    "operations": "Opérations",
+    "generateXReport": "Générer le rapport X",
+    "xReportGenerated": "Rapport X généré avec succès",
+    "xReportError": "Échec de la génération du rapport X",
+    "cashDeposit": "Dépôt d'espèces",
+    "cashPayout": "Sortie d'espèces",
+    "pauseShift": "Mettre la session en pause",
+    "openShift": "Ouvrir la session de caisse",
+    "enterOpeningCash": "Saisissez le montant initial en caisse",
+    "openingCash": "Fonds de caisse initial",
+    "openingCashHelp": "Comptez tous les billets et pièces dans la caisse avant de démarrer votre session",
+    "openingCashMustBePositive": "Le fonds de caisse initial doit être positif",
+    "mustOpenShift": "Vous devez ouvrir une session de caisse avant d'utiliser le point de vente",
+    "mustOpenShiftWarning": "Vous ne pouvez pas utiliser le point de vente sans ouvrir une session de caisse",
+    "shiftOpened": "Session de caisse ouverte avec succès",
+    "shiftOpenError": "Échec de l'ouverture de la session de caisse",
+    "openingShift": "Ouverture de la session de caisse...",
+    "startShift": "Démarrer la session de caisse",
+    "featureComingSoon": "Cette fonctionnalité sera bientôt disponible",
+    "shiftInfo": "Informations sur la session de caisse",
+    "totalSales": "Ventes",
+    "expectedCash": "Attendu",
+    "amount": "Montant",
+    "reason": "Motif",
+    "reasonPlaceholder": "Saisissez le motif de cette opération...",
+    "amountMustBePositive": "Le montant doit être positif",
+    "depositInfo": "Enregistrer un ajout d'espèces en caisse",
+    "payoutInfo": "Enregistrer un retrait d'espèces de la caisse",
+    "cashOperationWarning": "Cette opération affectera le solde de la session. Veillez à compter les espèces avec précision.",
+    "recording": "Enregistrement...",
+    "recordDeposit": "Enregistrer le dépôt",
+    "recordPayout": "Enregistrer le retrait",
+    "depositRecorded": "Dépôt d'espèces enregistré avec succès",
+    "payoutRecorded": "Sortie d'espèces enregistrée avec succès",
+    "operationError": "Échec de l'enregistrement de l'opération",
     "terminal": {
       "terminal": "Terminal",
       "register": "Enregistrer un terminal",
@@ -1195,6 +1320,78 @@
       "message": "Ce site utilise des cookies essentiels pour l'authentification et la sécurité.",
       "accept": "Accepter",
       "learnMore": "En savoir plus"
+    },
+    "privacy": {
+      "lastUpdated": "Dernière mise à jour",
+      "section1": {
+        "title": "Introduction",
+        "body": "AutoERP (« nous », « notre ») s'engage à protéger vos données personnelles. Cette politique de confidentialité explique comment nous collectons, utilisons et protégeons les informations lorsque vous utilisez notre plateforme de gestion d'entreprise."
+      },
+      "section2": {
+        "title": "Informations collectées",
+        "intro": "Nous collectons les informations que vous nous fournissez directement, notamment :",
+        "accountInfo": {
+          "label": "Informations de compte",
+          "detail": "Nom, adresse e-mail, numéro de téléphone et informations professionnelles"
+        },
+        "usageData": {
+          "label": "Données d'utilisation",
+          "detail": "Actions effectuées sur la plateforme, fonctionnalités utilisées et horodatages"
+        },
+        "businessData": {
+          "label": "Données métier",
+          "detail": "Clients, factures, produits et autres données ERP que vous saisissez"
+        },
+        "cookies": {
+          "label": "Cookies",
+          "detail": "Jetons de session et cookies de préférences pour l'authentification et les paramètres"
+        }
+      },
+      "section3": {
+        "title": "Utilisation de vos informations",
+        "purpose1": "Fournir, maintenir et améliorer la plateforme AutoERP",
+        "purpose2": "Traiter les transactions et envoyer les informations associées",
+        "purpose3": "Envoyer des avis techniques, des mises à jour et des messages d'assistance",
+        "purpose4": "Respecter les obligations légales et protéger les droits",
+        "legalBasis": "Nous traitons vos données sur la base de votre consentement, de la nécessité contractuelle et de nos intérêts légitimes à fournir le service."
+      },
+      "section4": {
+        "title": "Partage des données",
+        "body": "Nous ne vendons pas vos données personnelles. Nous pouvons partager des données avec des prestataires tiers de confiance qui nous aident à exploiter la plateforme, sous réserve d'accords de confidentialité. Nous pouvons divulguer des données lorsque la loi l'exige."
+      },
+      "section5": {
+        "title": "Vos droits",
+        "intro": "Selon votre juridiction, vous disposez des droits suivants concernant vos données personnelles :",
+        "access": {
+          "label": "Accès",
+          "detail": "Demander une copie des données personnelles que nous détenons sur vous"
+        },
+        "rectification": {
+          "label": "Rectification",
+          "detail": "Demander la correction de données inexactes ou incomplètes"
+        },
+        "erasure": {
+          "label": "Effacement",
+          "detail": "Demander la suppression de vos données personnelles sous certaines conditions"
+        },
+        "portability": {
+          "label": "Portabilité",
+          "detail": "Demander le transfert de vos données dans un format lisible par machine"
+        },
+        "objection": {
+          "label": "Opposition",
+          "detail": "Vous opposer au traitement de vos données pour des intérêts légitimes"
+        }
+      },
+      "section6": {
+        "title": "Conservation des données",
+        "body": "Nous conservons vos données aussi longtemps que votre compte est actif ou selon les besoins du service. Les documents comptables peuvent être conservés plus longtemps pour respecter les obligations légales et fiscales."
+      },
+      "section7": {
+        "title": "Contact",
+        "intro": "Pour toute question relative à la confidentialité ou pour exercer vos droits, contactez notre délégué à la protection des données à :",
+        "cnil": "Si vous êtes situé dans l'UE, vous avez le droit de déposer une réclamation auprès de votre autorité de contrôle locale (par exemple la CNIL en France)."
+      }
     }
   },
   "quickCreate": {
@@ -1214,5 +1411,15 @@
     "loadingError": "Échec du chargement — saisir le taux manuellement",
     "staleTaxWarning": "La taxe sélectionnée n'existe plus",
     "noTaxes": "Aucune taxe configurée"
+  },
+  "partners": {
+    "customer": "Client",
+    "supplier": "Fournisseur",
+    "partner": "Partenaire",
+    "both": "Les deux",
+    "searchPlaceholder": "Rechercher par nom, e-mail ou téléphone...",
+    "noSearchResults": "Aucun partenaire trouvé",
+    "noPartners": "Aucun partenaire disponible",
+    "addNew": "Ajouter"
   }
 }

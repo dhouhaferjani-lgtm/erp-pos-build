@@ -3,7 +3,9 @@
   "dismiss": "Dismiss",
   "toast_collapsed": "{{count}} AI suggestions for this cart",
   "info_title": "Why this suggestion?",
+  "info_label": "More info",
   "info_source": "Source: {{source}}",
+  "info_score": "Score: {{score}}",
   "add_to_cart": "Add",
   "skin_type_question": "What's the customer's skin type?",
   "skin_type": {

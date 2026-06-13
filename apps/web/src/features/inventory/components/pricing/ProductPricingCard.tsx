@@ -1,6 +1,8 @@
 import { DollarSign, TrendingUp, Shield, Calendar } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { MarginBadge } from './MarginIndicator'
 import { useCurrency } from '@/hooks/useCurrency'
+import { textColors, borderColors, shadows } from '@/lib/designTokens'
 
 interface Product {
   id: string
@@ -27,6 +29,7 @@ export function ProductPricingCard({
   defaultMinimumMargin = 15,
   canViewCosts = true,
 }: ProductPricingCardProps) {
+  const { t } = useTranslation('inventory')
   const { decimals } = useCurrency()
   const costPrice = parseFloat(product.cost_price || '0')
   const listPrice = parseFloat(product.list_price || '0')
@@ -55,18 +58,24 @@ export function ProductPricingCard({
     : 0
 
   const formatDate = (dateString?: string) => {
-    if (!dateString) return 'Never'
+    if (!dateString) return t('pricing.neverUpdated')
     const date = new Date(dateString)
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
+  const marginLevelTextColor =
+    marginLevel === 'green' ? 'text-green-600' :
+    marginLevel === 'yellow' ? 'text-yellow-600' :
+    marginLevel === 'orange' ? 'text-orange-600' :
+    'text-red-600'
+
   return (
-    <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+    <div className={`overflow-hidden rounded-lg ${borderColors.light} bg-white ${shadows.sm}`}>
       {/* Header */}
-      <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+      <div className={`border-b ${borderColors.light} bg-gray-50 px-4 py-3`}>
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">{product.name}</h3>
+            <h3 className={`text-sm font-semibold ${textColors.primary}`}>{product.name}</h3>
             <p className="text-xs text-gray-500">{product.sku}</p>
           </div>
           <MarginBadge level={marginLevel} />
@@ -78,16 +87,16 @@ export function ProductPricingCard({
         {/* Cost Price */}
         {canViewCosts && (
           <div>
-            <div className="flex items-center gap-1 text-xs text-gray-600">
+            <div className={`flex items-center gap-1 text-xs ${textColors.tertiary}`}>
               <Shield className="h-3 w-3" />
-              <span>Cost Price</span>
+              <span>{t('pricing.costPrice')}</span>
             </div>
-            <p className="mt-1 text-lg font-semibold text-gray-900">
+            <p className={`mt-1 text-lg font-semibold ${textColors.primary}`}>
               ${costPrice.toFixed(decimals)}
             </p>
             {lastPurchaseCost > 0 && lastPurchaseCost !== costPrice && (
               <p className="text-xs text-gray-500">
-                Last: ${lastPurchaseCost.toFixed(decimals)}
+                {t('pricing.lastCost', { amount: `$${lastPurchaseCost.toFixed(decimals)}` })}
               </p>
             )}
           </div>
@@ -95,16 +104,16 @@ export function ProductPricingCard({
 
         {/* List Price */}
         <div>
-          <div className="flex items-center gap-1 text-xs text-gray-600">
+          <div className={`flex items-center gap-1 text-xs ${textColors.tertiary}`}>
             <DollarSign className="h-3 w-3" />
-            <span>List Price</span>
+            <span>{t('pricing.listPrice')}</span>
           </div>
-          <p className="mt-1 text-lg font-semibold text-gray-900">
+          <p className={`mt-1 text-lg font-semibold ${textColors.primary}`}>
             ${listPrice.toFixed(decimals)}
           </p>
           {currentMargin > 0 && (
             <p className="text-xs text-gray-500">
-              Margin: {currentMargin.toFixed(1)}%
+              {t('pricing.marginValue', { value: currentMargin.toFixed(1) })}
             </p>
           )}
         </div>
@@ -112,15 +121,15 @@ export function ProductPricingCard({
         {/* Target Margin */}
         {canViewCosts && (
           <div>
-            <div className="flex items-center gap-1 text-xs text-gray-600">
+            <div className={`flex items-center gap-1 text-xs ${textColors.tertiary}`}>
               <TrendingUp className="h-3 w-3" />
-              <span>Target Margin</span>
+              <span>{t('pricing.targetMargin')}</span>
             </div>
-            <p className="mt-1 text-lg font-semibold text-gray-900">
+            <p className={`mt-1 text-lg font-semibold ${textColors.primary}`}>
               {targetMargin.toFixed(1)}%
             </p>
             <p className="text-xs text-gray-500">
-              Min: {minimumMargin.toFixed(1)}%
+              {t('pricing.minMargin', { margin: minimumMargin.toFixed(1) })}
             </p>
           </div>
         )}
@@ -128,15 +137,15 @@ export function ProductPricingCard({
         {/* Suggested Price */}
         {canViewCosts && suggestedPrice > 0 && (
           <div>
-            <div className="flex items-center gap-1 text-xs text-gray-600">
+            <div className={`flex items-center gap-1 text-xs ${textColors.tertiary}`}>
               <TrendingUp className="h-3 w-3" />
-              <span>Suggested Price</span>
+              <span>{t('pricing.suggestedPrice')}</span>
             </div>
-            <p className="mt-1 text-lg font-semibold text-blue-600">
+            <p className={`mt-1 text-lg font-semibold ${textColors.brand}`}>
               ${suggestedPrice.toFixed(decimals)}
             </p>
             <p className="text-xs text-gray-500">
-              @ {targetMargin.toFixed(1)}% margin
+              {t('pricing.atMargin', { margin: targetMargin.toFixed(1) })}
             </p>
           </div>
         )}
@@ -144,38 +153,33 @@ export function ProductPricingCard({
 
       {/* Footer */}
       {canViewCosts && product.cost_updated_at && (
-        <div className="border-t border-gray-200 bg-gray-50 px-4 py-2">
-          <div className="flex items-center gap-1 text-xs text-gray-600">
+        <div className={`border-t ${borderColors.light} bg-gray-50 px-4 py-2`}>
+          <div className={`flex items-center gap-1 text-xs ${textColors.tertiary}`}>
             <Calendar className="h-3 w-3" />
-            <span>Cost last updated: {formatDate(product.cost_updated_at)}</span>
+            <span>{t('pricing.costLastUpdated', { date: formatDate(product.cost_updated_at) })}</span>
           </div>
         </div>
       )}
 
       {/* Margin Details */}
       {canViewCosts && costPrice > 0 && listPrice > 0 && (
-        <div className="border-t border-gray-200 px-4 py-3">
+        <div className={`border-t ${borderColors.light} px-4 py-3`}>
           <div className="space-y-2 text-xs">
             <div className="flex justify-between">
-              <span className="text-gray-600">Markup:</span>
-              <span className="font-medium text-gray-900">
+              <span className={textColors.tertiary}>{t('pricing.markup')}:</span>
+              <span className={`font-medium ${textColors.primary}`}>
                 ${(listPrice - costPrice).toFixed(decimals)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Margin %:</span>
-              <span className={`font-semibold ${
-                marginLevel === 'green' ? 'text-green-600' :
-                marginLevel === 'yellow' ? 'text-yellow-600' :
-                marginLevel === 'orange' ? 'text-orange-600' :
-                'text-red-600'
-              }`}>
+              <span className={textColors.tertiary}>{t('pricing.marginPercent')}:</span>
+              <span className={`font-semibold ${marginLevelTextColor}`}>
                 {currentMargin.toFixed(2)}%
               </span>
             </div>
             {currentMargin < targetMargin && (
               <div className="rounded-md bg-yellow-50 p-2 text-yellow-800">
-                <span className="font-medium">Below target:</span> Consider raising price to ${suggestedPrice.toFixed(decimals)}
+                {t('pricing.belowTargetHint', { price: `$${suggestedPrice.toFixed(decimals)}` })}
               </div>
             )}
           </div>

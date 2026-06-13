@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { JSX } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ChevronRight, ChevronDown, Folder, FolderOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { CategoryTreeNode } from '@/features/catalog/types'
@@ -19,6 +20,7 @@ export function CategoryTree({
   expandedIds: initialExpanded = [],
   className,
 }: CategoryTreeProps) {
+  const { t } = useTranslation('common')
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set(initialExpanded))
 
   const toggleExpand = (id: number, e: React.MouseEvent) => {
@@ -61,7 +63,7 @@ export function CategoryTree({
             <button
               onClick={(e) => { toggleExpand(category.id, e); }}
               className="p-0.5 hover:bg-gray-200 rounded shrink-0"
-              aria-label={isExpanded ? 'Collapse' : 'Expand'}
+              aria-label={isExpanded ? t('catalog.categories.collapse') : t('catalog.categories.expand')}
             >
               {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </button>
@@ -94,7 +96,7 @@ export function CategoryTree({
       {categories.length > 0 ? (
         categories.map((category) => renderCategory(category))
       ) : (
-        <p className="text-sm text-gray-500 px-2 py-4 text-center">No categories found</p>
+        <p className="text-sm text-gray-500 px-2 py-4 text-center">{t('catalog.categories.noCategoriesFound')}</p>
       )}
     </div>
   )

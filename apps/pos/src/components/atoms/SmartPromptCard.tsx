@@ -30,7 +30,7 @@ export function SmartPromptCard({ recommendation, onAdd }: SmartPromptCardProps)
             e.stopPropagation();
             setShowInfo(!showInfo);
           }}
-          aria-label="info"
+          aria-label={t('info_label')}
         >
           ℹ
         </button>
@@ -48,7 +48,7 @@ export function SmartPromptCard({ recommendation, onAdd }: SmartPromptCardProps)
           <div className="mb-1 font-semibold">{t('info_title')}</div>
           <div className="mb-2 text-gray-400">{recommendation.reason}</div>
           <div className="text-gray-500">
-            {t('info_source', { source: recommendation.strategy })} · Score: {recommendation.score}
+            {t('info_source', { source: recommendation.strategy })} · {t('info_score', { score: recommendation.score })}
           </div>
         </div>
       )}

@@ -856,5 +856,53 @@
     "amountExceedsDue": "Le montant ne peut pas dépasser le reste dû ({{due}} {{currency}}).",
     "applyFailed": "Échec de l'application du bon.",
     "lookupFailed": "Impossible de lire la base de données locale des bons. Veuillez réessayer."
+  },
+  "customerAttach": {
+    "title": "Client",
+    "attached": "Rattaché",
+    "detachLabel": "Détacher le client",
+    "accountPaymentAmountLabel": "Montant du règlement sur compte",
+    "accountPaymentAmountPlaceholder": "Montant",
+    "recordButton": "Enregistrer",
+    "newNameLabel": "Nom du nouveau client",
+    "newNamePlaceholder": "Nom",
+    "newPhoneLabel": "Téléphone du nouveau client",
+    "newPhonePlaceholder": "Téléphone",
+    "newEmailLabel": "E-mail du nouveau client",
+    "newEmailPlaceholder": "E-mail",
+    "createButton": "Créer un client local",
+    "creating": "Création...",
+    "scopeError": "L'établissement et l'entreprise sont requis pour rattacher un client.",
+    "errorWrongScope": "Ce client appartient à un autre établissement ou une autre entreprise.",
+    "errorNameRequired": "Le nom du client est obligatoire.",
+    "errorPhoneOrEmailRequired": "Un téléphone ou un e-mail est requis.",
+    "errorCreateFailed": "La création du client a échoué.",
+    "errorTerminalRequired": "Un terminal actif est requis pour enregistrer un règlement sur compte.",
+    "errorAmountRequired": "Le montant du règlement est obligatoire.",
+    "errorPaymentFailed": "Le règlement sur compte a échoué.",
+    "errorSearchFailed": "La recherche de client a échoué."
+  },
+  "customerSearch": {
+    "label": "Rechercher un client",
+    "placeholder": "Nom, téléphone, numéro fiscal",
+    "searching": "Recherche..."
+  },
+  "customerBalance": {
+    "due": "Dû {{amount}}",
+    "credit": "Crédit {{amount}}",
+    "netDue": "Net dû {{amount}}",
+    "stale": "Expiré",
+    "fresh": "À jour",
+    "staleAriaLabel": "Le solde client est expiré",
+    "freshAriaLabel": "Le solde client est à jour",
+    "neverSynced": "Jamais synchronisé",
+    "updatedAt": "Solde mis à jour {{time}}"
+  },
+  "printer": {
+    "charset": {
+      "cp437": "CP437 (US/ASCII)",
+      "cp858": "CP858 (Europe occidentale)",
+      "cp1252": "CP1252 (Windows latin occidental)"
+    }
   }
 }

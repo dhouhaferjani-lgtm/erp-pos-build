@@ -139,7 +139,7 @@ export function PriceListForm() {
               id="code"
               {...register('code', { required: t('pricing:validation.codeRequired', 'Code is required') })}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="RETAIL"
+              placeholder={t('pricing:priceLists.codePlaceholder')}
             />
             {errors.code && (
               <p className="mt-1 text-sm text-red-600">{errors.code.message}</p>
@@ -156,7 +156,7 @@ export function PriceListForm() {
               id="name"
               {...register('name', { required: t('pricing:validation.nameRequired', 'Name is required') })}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="Retail Prices"
+              placeholder={t('pricing:priceLists.namePlaceholder')}
             />
             {errors.name && (
               <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
@@ -173,9 +173,9 @@ export function PriceListForm() {
               {...register('currency', { required: true })}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              <option value="TND">TND - Tunisian Dinar</option>
-              <option value="EUR">EUR - Euro</option>
-              <option value="USD">USD - US Dollar</option>
+              <option value="TND">{t('pricing:priceLists.currencies.TND')}</option>
+              <option value="EUR">{t('pricing:priceLists.currencies.EUR')}</option>
+              <option value="USD">{t('pricing:priceLists.currencies.USD')}</option>
             </select>
           </div>
 

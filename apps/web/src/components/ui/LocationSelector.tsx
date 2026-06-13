@@ -129,7 +129,7 @@ export function LocationSelector({
               )}
             </span>
           ) : (
-            placeholder ?? t('common.selectLocation', 'Select location')
+            placeholder ?? t('common:locations.selectLocation')
           )}
         </span>
         <div className="flex items-center gap-1">
@@ -140,7 +140,7 @@ export function LocationSelector({
                 e.stopPropagation()
                 handleClear()
               }}
-              aria-label="Clear selection"
+              aria-label={t('common:clearSearch')}
               className="rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
             >
               <X className="h-4 w-4" />
@@ -162,7 +162,7 @@ export function LocationSelector({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value) }}
-                placeholder={t('common.searchLocation', 'Search locations...')}
+                placeholder={t('common:searchLocation')}
                 className="w-full rounded-lg border border-gray-300 py-2 pe-10 ps-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
               {searchQuery && (
@@ -193,10 +193,10 @@ export function LocationSelector({
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-gray-900">
-                    {nullLabel ?? t('common.noLocation', 'No location')}
+                    {nullLabel ?? t('common:noLocation')}
                   </div>
                   <div className="text-xs text-gray-500">
-                    {t('common.centralInvoicing', 'Central invoicing')}
+                    {t('common:centralInvoicing')}
                   </div>
                 </div>
                 {!value && (
@@ -209,15 +209,15 @@ export function LocationSelector({
 
             {isLoading ? (
               <div className="p-4 text-center text-sm text-gray-500">
-                {t('status.loading', 'Loading...')}
+                {t('common:status.loading')}
               </div>
             ) : locations.length === 0 ? (
               <div className="p-4 text-center text-sm">
                 <MapPin className="mx-auto h-8 w-8 text-gray-300" />
                 <p className="mt-2 text-gray-500">
                   {searchQuery
-                    ? t('common.noLocationResults', 'No locations found')
-                    : t('common.noLocations', 'No locations available')}
+                    ? t('common:noLocationResults')
+                    : t('common:noLocations')}
                 </p>
               </div>
             ) : (
@@ -241,12 +241,12 @@ export function LocationSelector({
                           </div>
                           {location.isDefault && (
                             <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
-                              {t('common.default', 'Default')}
+                              {t('common:locations.default')}
                             </span>
                           )}
                           {!location.isActive && (
                             <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800">
-                              {t('common.inactive', 'Inactive')}
+                              {t('common:inactive')}
                             </span>
                           )}
                         </div>

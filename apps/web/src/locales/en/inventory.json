@@ -140,8 +140,12 @@
       "stockComingSoon": "Stock information coming soon",
       "viewAllStock": "View all stock levels"
     },
+    "productInformation": "Product Information",
+    "productId": "Product ID",
     "created": "Created",
     "lastUpdated": "Last Updated",
+    "noSearchResults": "No products found",
+    "noProducts": "No products available",
     "empty": {
       "title": "No products yet",
       "description": "Get started by adding your first product."
@@ -229,6 +233,9 @@
       "other": "Other",
       "stockTransfer": "Stock Transfer"
     },
+    "unknownProduct": "Unknown Product",
+    "defaultLocation": "Default",
+    "minQuantityLabel": "/ min {{quantity}}",
     "empty": {
       "title": "No stock data",
       "description": "Stock levels will appear here once products are added.",
@@ -237,9 +244,33 @@
   },
   "movements": {
     "title": "Stock Movements",
+    "subtitle": "{{count}} movement recorded",
+    "subtitle_plural": "{{count}} movements recorded",
     "type": "Type",
     "reference": "Reference",
     "date": "Date",
+    "searchPlaceholder": "Search movements...",
+    "noMovements": "No movements",
+    "noMatchFilter": "No movements match the selected filter.",
+    "emptyDescription": "Stock movements will appear here when inventory changes.",
+    "system": "System",
+    "filters": {
+      "receipts": "Receipts",
+      "issues": "Issues",
+      "adjustments": "Adjustments",
+      "transfers": "Transfers"
+    },
+    "columns": {
+      "product": "Product",
+      "user": "User"
+    },
+    "typeLabels": {
+      "receipt": "Receipt",
+      "issue": "Issue",
+      "adjustment": "Adjustment",
+      "transfer_in": "Transfer In",
+      "transfer_out": "Transfer Out"
+    },
     "types": {
       "in": "Stock In",
       "out": "Stock Out",
@@ -265,7 +296,8 @@
     "purchasePrice": "Purchase Price",
     "additionalCosts": "Additional Costs",
     "proportion": "Proportion",
-    "noAdditionalCosts": "No additional costs allocated"
+    "noAdditionalCosts": "No additional costs allocated",
+    "total": "Total"
   },
   "additionalCosts": {
     "title": "Additional Costs",
@@ -281,6 +313,7 @@
       "other": "Other"
     },
     "total": "Total Additional Costs",
+    "removeCost": "Remove cost",
     "empty": "No additional costs added"
   },
   "pricing": {
@@ -293,17 +326,39 @@
     "minimumMargin": "Minimum Margin",
     "calculatedMargin": "Calculated Margin",
     "suggestedPrice": "Suggested Price",
+    "costPrice": "Cost Price",
+    "listPrice": "List Price",
+    "markup": "Markup",
+    "marginPercent": "Margin %",
+    "lastCost": "Last: {{amount}}",
+    "marginValue": "Margin: {{value}}%",
+    "minMargin": "Min: {{margin}}%",
+    "atMargin": "@ {{margin}}% margin",
+    "neverUpdated": "Never",
+    "costLastUpdated": "Cost last updated: {{date}}",
+    "belowTargetHint": "Below target: Consider raising price to {{price}}",
+    "checkingMargin": "Checking margin...",
+    "targetMarginShort": "Target",
+    "minimumMarginShort": "Minimum",
+    "suggestedPriceButton": "Suggested Price (Target Margin)",
+    "cannotSellAtPrice": "You don't have permission to sell at this price. Contact your manager for approval.",
     "settings": {
       "title": "Margin Settings",
       "defaultTarget": "Default Target Margin",
       "defaultMinimum": "Default Minimum Margin",
       "requireApprovalBelow": "Require Approval Below Minimum",
-      "blockSalesAtLoss": "Block Sales at Loss"
+      "blockSalesAtLoss": "Block Sales at Loss",
+      "targetDescription": "The target margin percentage for new products",
+      "minimumDescription": "The minimum acceptable margin percentage",
+      "requireApprovalDescription": "Require manager approval for prices below minimum margin",
+      "blockSalesDescription": "Prevent selling products below their cost price",
+      "saveChanges": "Save Changes"
     }
   },
   "settings": {
     "title": "Inventory & Pricing Settings",
     "description": "Configure inventory costing methods and default margin policies for your company.",
+    "saveError": "Failed to save settings",
     "costing": {
       "title": "Inventory Costing Method",
       "description": "Choose how product costs are calculated when inventory is received.",

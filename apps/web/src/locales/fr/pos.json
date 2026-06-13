@@ -48,7 +48,11 @@
     "changePortion": "Monnaie (espèces)",
     "creditPortion": "Crédit client",
     "changeExplanation": "La monnaie ne peut pas dépasser le montant payé en espèces ou par carte",
-    "noImmediatePayment": "Aucun moyen de paiement immédiat pour rendre la monnaie"
+    "noImmediatePayment": "Aucun moyen de paiement immédiat pour rendre la monnaie",
+    "close": "Fermer",
+    "noPaymentMethods": "Aucun moyen de paiement configuré",
+    "configureInSettings": "Configurez les moyens de paiement dans Paramètres > Trésorerie",
+    "noRepositories": "Aucun dépôt de paiement configuré."
   },
   "payment": {
     "success": "Paiement Réussi!",
@@ -88,6 +92,7 @@
     "change": "Modifier",
     "empty": "Le panier est vide",
     "addProducts": "Ajoutez des produits pour commencer",
+    "tax": "Taxe",
     "discount": "Remise",
     "editDiscount": "Modifier la Remise",
     "applyDiscount": "Appliquer la Remise",

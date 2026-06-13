@@ -65,5 +65,45 @@
   },
   "discount": {
     "below_tolerance": "Discount must exceed the tolerance margin ({{margin}}). For smaller residuals, use payment-tolerance write-off at settlement."
+  },
+  "costing": {
+    "landedCost": {
+      "title": "Landed Cost Breakdown",
+      "allocationMethod": "Cost Allocation Method: Proportional",
+      "productsSubtotal": "Products Subtotal",
+      "totalLandedCost": "Total Landed Cost",
+      "totals": "Totals:",
+      "noteLabel": "Note:",
+      "noteText": "Additional costs are allocated proportionally based on each line's percentage of the subtotal. Landed unit cost = (Line Total + Allocated Costs) / Quantity",
+      "columns": {
+        "product": "Product",
+        "qty": "Qty",
+        "unitPrice": "Unit Price",
+        "lineTotal": "Line Total",
+        "percentOfTotal": "% of Total",
+        "allocatedCost": "Allocated Cost",
+        "landedUnitCost": "Landed Unit Cost"
+      }
+    },
+    "additionalCosts": {
+      "title": "Additional Costs",
+      "loading": "Loading costs...",
+      "total": "Total: {{amount}}",
+      "costTypeLabel": "Cost Type",
+      "amountLabel": "Amount",
+      "descriptionOptional": "Description (Optional)",
+      "descriptionPlaceholder": "e.g., International freight",
+      "addButton": "Add Cost",
+      "empty": "No additional costs added yet.",
+      "deleteConfirm": "Are you sure you want to delete this cost?",
+      "costTypes": {
+        "transport": "Transport",
+        "shipping": "Shipping",
+        "insurance": "Insurance",
+        "customs": "Customs",
+        "handling": "Handling",
+        "other": "Other"
+      }
+    }
   }
 }

@@ -5,6 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import noHardcodedStep from './eslint-rules/no-hardcoded-step.js'
 import noParseFloatOnMoney from './eslint-rules/no-parsefloat-on-money.js'
+import noUntranslatedLiteral from './eslint-rules/no-untranslated-literal.js'
 
 // Local Phase-11 precision-guard plugin. Two custom rules discourage the
 // float-precision anti-patterns the precision-drift remediation eliminates:
@@ -17,6 +18,17 @@ const precisionPlugin = {
   rules: {
     'no-hardcoded-step': noHardcodedStep,
     'no-parsefloat-on-money': noParseFloatOnMoney,
+  },
+}
+
+// Local i18n guard plugin. `no-untranslated-literal` flags user-facing string
+// literals (JSX text + user-facing attributes) that bypass react-i18next
+// `t()`. WARN on the legacy surface (ratcheted by scripts/lint-ratchet.mjs);
+// promoted to ERROR for i18n-clean feature dirs in the override block below so
+// they can never regress.
+const localPlugin = {
+  rules: {
+    'no-untranslated-literal': noUntranslatedLiteral,
   },
 }
 
@@ -58,9 +70,13 @@ export default tseslint.config(
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
       precision: precisionPlugin,
+      local: localPlugin,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      // i18n guard — WARN on the legacy surface (ratcheted). Cleaned feature
+      // dirs promote it to ERROR in the i18n-clean override block at the end.
+      'local/no-untranslated-literal': 'warn',
       // Phase-11 precision-guard rules — WARN level (ratcheted, not hard-fail).
       'precision/no-hardcoded-step': 'warn',
       'precision/no-parsefloat-on-money': 'warn',
@@ -231,5 +247,38 @@ export default tseslint.config(
         },
       ],
     },
+  },
+  // i18n-clean dirs — fully EN/FR translated in the 2026-06 sweep; no
+  // untranslated user-facing literal may regress here. The internal
+  // super-admin panel (src/features/admin) is intentionally NOT listed yet
+  // (deferred — staff-only surface), so it stays WARN-ratcheted.
+  // See docs/i18n/README.md + docs/i18n/i18n-tracker.yaml.
+  {
+    files: [
+      'src/components/**/*.{ts,tsx}',
+      'src/pages/**/*.{ts,tsx}',
+      'src/features/inventory/**/*.{ts,tsx}',
+      'src/features/documents/**/*.{ts,tsx}',
+      'src/features/finance/**/*.{ts,tsx}',
+      'src/features/settings/**/*.{ts,tsx}',
+      'src/features/vehicles/**/*.{ts,tsx}',
+      'src/features/pos/**/*.{ts,tsx}',
+      'src/features/compliance/**/*.{ts,tsx}',
+      'src/features/treasury/**/*.{ts,tsx}',
+      'src/features/pricing/**/*.{ts,tsx}',
+      'src/features/company/**/*.{ts,tsx}',
+      'src/features/parapharmacy/**/*.{ts,tsx}',
+      'src/features/services/**/*.{ts,tsx}',
+      'src/features/uom/**/*.{ts,tsx}',
+      'src/features/import/**/*.{ts,tsx}',
+      'src/features/loyalty/**/*.{ts,tsx}',
+      'src/features/products/**/*.{ts,tsx}',
+      'src/features/catalog/**/*.{ts,tsx}',
+      'src/features/partners/**/*.{ts,tsx}',
+      'src/features/parts-catalog/**/*.{ts,tsx}',
+      'src/features/withholding/**/*.{ts,tsx}',
+      'src/features/workshop-technicians/**/*.{ts,tsx}',
+    ],
+    rules: { 'local/no-untranslated-literal': 'error' },
   },
 )

@@ -126,7 +126,8 @@
       "completed": "Import completed!",
       "failed": "Import failed",
       "progress": "Progress",
-      "viewResults": "View Results"
+      "viewResults": "View Results",
+      "progressAriaLabel": "Import progress"
     },
     "complete": {
       "title": "Import Complete!",
@@ -154,7 +155,8 @@
     "missingRequired": "Missing required fields",
     "legendMapped": "Mapped",
     "legendSkipped": "Skipped",
-    "legendRequired": "Required"
+    "legendRequired": "Required",
+    "suggested": "(suggested)"
   },
   "validation": {
     "allValid": "All rows are valid",

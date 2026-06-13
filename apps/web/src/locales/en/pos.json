@@ -48,7 +48,11 @@
     "changePortion": "Change (cash)",
     "creditPortion": "Customer credit",
     "changeExplanation": "Change cannot exceed the amount paid in cash or card",
-    "noImmediatePayment": "No immediate payment method to return change from"
+    "noImmediatePayment": "No immediate payment method to return change from",
+    "close": "Close",
+    "noPaymentMethods": "No payment methods configured",
+    "configureInSettings": "Configure payment methods in Settings > Treasury",
+    "noRepositories": "No payment repositories configured."
   },
   "payment": {
     "success": "Payment Successful!",
@@ -88,6 +92,7 @@
     "change": "Change",
     "empty": "Cart is empty",
     "addProducts": "Add products to get started",
+    "tax": "Tax",
     "discount": "Discount",
     "editDiscount": "Edit Discount",
     "applyDiscount": "Apply Discount",

@@ -177,7 +177,7 @@ export function HealthClaimFormPage() {
                   htmlFor="claim_type"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  {t('parapharmacy:claimType')} <span className="text-red-600">*</span>
+                  {t('parapharmacy:claimTypeLabel')} <span className="text-red-600">*</span>
                 </label>
                 <Select
                   id="claim_type"
@@ -227,7 +227,7 @@ export function HealthClaimFormPage() {
                   htmlFor="regulatory_status"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  {t('parapharmacy:regulatoryStatus')}{' '}
+                  {t('parapharmacy:regulatoryStatusLabel')}{' '}
                   <span className="text-red-600">*</span>
                 </label>
                 <Select
@@ -261,7 +261,7 @@ export function HealthClaimFormPage() {
                   id="efsa_reference"
                   value={efsaReference}
                   onChange={(e) => { setEfsaReference(e.target.value); }}
-                  placeholder="EFSA-Q-2008-123"
+                  placeholder={t('parapharmacy:efsaReferencePlaceholder')}
                 />
               </div>
             </div>
@@ -278,7 +278,7 @@ export function HealthClaimFormPage() {
                   id="fda_reference"
                   value={fdaReference}
                   onChange={(e) => { setFdaReference(e.target.value); }}
-                  placeholder="FDA-2008-N-0453"
+                  placeholder={t('parapharmacy:fdaReferencePlaceholder')}
                 />
               </div>
 
@@ -293,7 +293,7 @@ export function HealthClaimFormPage() {
                   id="country_restrictions"
                   value={countryRestrictions}
                   onChange={(e) => { setCountryRestrictions(e.target.value); }}
-                  placeholder="FR, DE, IT (comma-separated)"
+                  placeholder={t('parapharmacy:countryRestrictionsPlaceholder')}
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   {t('parapharmacy:countryRestrictionsHelp')}

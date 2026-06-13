@@ -179,7 +179,7 @@ export function ProductDetailPage() {
                 {product.is_active ? t('common:status.active') : t('common:status.inactive')}
               </span>
             </div>
-            <p className="text-sm text-gray-500">SKU: {product.sku}</p>
+            <p className="text-sm text-gray-500">{t('common:sku')}: {product.sku}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -223,23 +223,23 @@ export function ProductDetailPage() {
               {/* Product Information */}
               <div className="rounded-lg border border-gray-200 bg-white">
                 <div className="border-b border-gray-200 px-6 py-4">
-                  <h2 className="text-base font-semibold text-gray-900">Product Information</h2>
+                  <h2 className="text-base font-semibold text-gray-900">{t('products.productInformation')}</h2>
                 </div>
                 <div className="divide-y divide-gray-100">
                   {product.description && (
                     <div className="px-6 py-3">
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Description</div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.description')}</div>
                       <div className="mt-1 text-sm text-gray-900">{product.description}</div>
                     </div>
                   )}
                   <div className="grid grid-cols-2 gap-x-6 px-6 py-3">
                     <div>
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Unit</div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.unit')}</div>
                       <div className="mt-1 text-sm font-medium text-gray-900">{product.unit ?? '-'}</div>
                     </div>
                     {product.barcode && (
                       <div>
-                        <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Barcode</div>
+                        <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.barcode')}</div>
                         <div className="mt-1 font-mono text-sm font-medium text-gray-900">{product.barcode}</div>
                       </div>
                     )}
@@ -250,26 +250,26 @@ export function ProductDetailPage() {
               {/* Pricing */}
               <div className="rounded-lg border border-gray-200 bg-white">
                 <div className="border-b border-gray-200 px-6 py-4">
-                  <h2 className="text-base font-semibold text-gray-900">Pricing</h2>
+                  <h2 className="text-base font-semibold text-gray-900">{t('products.sections.pricing')}</h2>
                 </div>
                 <div className="divide-y divide-gray-100">
                   <div className="grid grid-cols-3 gap-x-6 px-6 py-3">
                     <div>
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Sale Price</div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.salePrice')}</div>
                       <div className="mt-1 text-base font-semibold text-gray-900">{formatAmount(product.sale_price)}</div>
                     </div>
                     <div>
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Cost (WAC)</div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.costWac')}</div>
                       <div className="mt-1 text-base font-semibold text-gray-900">{formatAmount(product.cost_price)}</div>
                     </div>
                     <div>
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Tax Rate</div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.fields.taxRate')}</div>
                       <div className="mt-1 text-base font-semibold text-gray-900">{taxConfigName ?? (product.tax_rate ? `${product.tax_rate}%` : '-')}</div>
                     </div>
                   </div>
                   {product.sale_price && product.cost_price && (
                     <div className="px-6 py-3">
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Margin</div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.margin')}</div>
                       <div className="mt-1 text-base font-semibold text-gray-900">
                         {formatAmount(
                           String(parseFloat(product.sale_price) - parseFloat(product.cost_price))
@@ -361,23 +361,23 @@ export function ProductDetailPage() {
               {/* Metadata Sidebar */}
               <div className="rounded-lg border border-gray-200 bg-white">
                 <div className="border-b border-gray-200 px-6 py-4">
-                  <h3 className="text-base font-semibold text-gray-900">Metadata</h3>
+                  <h3 className="text-base font-semibold text-gray-900">{t('products.sections.metadata')}</h3>
                 </div>
                 <div className="divide-y divide-gray-100 px-6">
                   <div className="grid grid-cols-1 gap-y-3 py-3">
                     <div>
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Created</div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.created')}</div>
                       <div className="mt-1 text-sm text-gray-900">{formatDate(product.created_at)}</div>
                     </div>
                     {product.updated_at && (
                       <div>
-                        <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Last Updated</div>
+                        <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.lastUpdated')}</div>
                         <div className="mt-1 text-sm text-gray-900">{formatDate(product.updated_at)}</div>
                       </div>
                     )}
                   </div>
                   <div className="py-3">
-                    <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Product ID</div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.productId')}</div>
                     <div className="mt-1 font-mono text-xs text-gray-600">{product.id}</div>
                   </div>
                 </div>
@@ -386,23 +386,23 @@ export function ProductDetailPage() {
           ) : (
             <div className="rounded-lg border border-gray-200 bg-white">
               <div className="border-b border-gray-200 px-6 py-4">
-                <h3 className="text-base font-semibold text-gray-900">Metadata</h3>
+                <h3 className="text-base font-semibold text-gray-900">{t('products.sections.metadata')}</h3>
               </div>
               <div className="divide-y divide-gray-100 px-6">
                 <div className="grid grid-cols-2 gap-x-6 py-3">
                   <div>
-                    <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Created</div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.created')}</div>
                     <div className="mt-1 text-sm text-gray-900">{formatDate(product.created_at)}</div>
                   </div>
                   {product.updated_at && (
                     <div>
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Last Updated</div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.lastUpdated')}</div>
                       <div className="mt-1 text-sm text-gray-900">{formatDate(product.updated_at)}</div>
                     </div>
                   )}
                 </div>
                 <div className="py-3">
-                  <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Product ID</div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.productId')}</div>
                   <div className="mt-1 font-mono text-xs text-gray-600">{product.id}</div>
                 </div>
               </div>

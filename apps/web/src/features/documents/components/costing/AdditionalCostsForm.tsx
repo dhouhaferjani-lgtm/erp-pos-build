@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, DollarSign } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useCurrency } from '@/hooks/useCurrency'
 import { api } from '../../../../lib/api'
 import { tenantScopedKey } from '../../../../lib/tenantScopedKey'
@@ -21,16 +22,8 @@ interface AdditionalCostsFormProps {
   onUpdate?: () => void
 }
 
-const COST_TYPE_LABELS = {
-  transport: 'Transport',
-  shipping: 'Shipping',
-  insurance: 'Insurance',
-  customs: 'Customs',
-  handling: 'Handling',
-  other: 'Other',
-}
-
 export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: AdditionalCostsFormProps) {
+  const { t } = useTranslation(['documents'])
   const queryClient = useQueryClient()
   const { decimals } = useCurrency()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
@@ -85,22 +78,22 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
   }
 
   const handleDelete = (costId: string) => {
-    if (confirm('Are you sure you want to delete this cost?')) {
+    if (confirm(t('documents:costing.additionalCosts.deleteConfirm'))) {
       deleteMutation.mutate(costId)
     }
   }
 
   if (isLoading) {
-    return <div className="text-sm text-gray-500">Loading costs...</div>
+    return <div className="text-sm text-gray-500">{t('documents:costing.additionalCosts.loading')}</div>
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-gray-900">Additional Costs</h3>
+        <h3 className="text-sm font-medium text-gray-900">{t('documents:costing.additionalCosts.title')}</h3>
         {totalCosts > 0 && (
           <div className="text-sm font-semibold text-gray-900">
-            Total: ${totalCosts.toFixed(decimals)}
+            {t('documents:costing.additionalCosts.total', { amount: `$${totalCosts.toFixed(decimals)}` })}
           </div>
         )}
       </div>
@@ -117,7 +110,7 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
                 <div className="flex items-center gap-2">
                   <DollarSign className="h-4 w-4 text-gray-400" />
                   <span className="text-sm font-medium text-gray-900">
-                    {COST_TYPE_LABELS[cost.cost_type]}
+                    {t(`documents:costing.additionalCosts.costTypes.${cost.cost_type}`)}
                   </span>
                   <span className="text-sm font-semibold text-gray-900">
                     ${Number(cost.amount).toFixed(decimals)}
@@ -147,23 +140,23 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-700">
-                Cost Type
+                {t('documents:costing.additionalCosts.costTypeLabel')}
               </label>
               <select
                 value={newCost.cost_type}
                 onChange={(e) => { setNewCost({ ...newCost, cost_type: e.target.value as AdditionalCost['cost_type'] }); }}
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
-                {Object.entries(COST_TYPE_LABELS).map(([value, label]) => (
+                {(['transport', 'shipping', 'insurance', 'customs', 'handling', 'other'] as const).map((value) => (
                   <option key={value} value={value}>
-                    {label}
+                    {t(`documents:costing.additionalCosts.costTypes.${value}`)}
                   </option>
                 ))}
               </select>
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-700">
-                Amount
+                {t('documents:costing.additionalCosts.amountLabel')}
               </label>
               <input
                 type="number"
@@ -178,14 +171,14 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-700">
-              Description (Optional)
+              {t('documents:costing.additionalCosts.descriptionOptional')}
             </label>
             <input
               type="text"
               value={newCost.description || ''}
               onChange={(e) => { setNewCost({ ...newCost, description: e.target.value }); }}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="e.g., International freight"
+              placeholder={t('documents:costing.additionalCosts.descriptionPlaceholder')}
             />
           </div>
           <Button
@@ -195,14 +188,14 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
             size="sm"
           >
             <Plus className="mr-1 h-4 w-4" />
-            Add Cost
+            {t('documents:costing.additionalCosts.addButton')}
           </Button>
         </div>
       )}
 
       {costs.length === 0 && (
         <p className="text-center text-sm text-gray-500">
-          No additional costs added yet.
+          {t('documents:costing.additionalCosts.empty')}
         </p>
       )}
     </div>

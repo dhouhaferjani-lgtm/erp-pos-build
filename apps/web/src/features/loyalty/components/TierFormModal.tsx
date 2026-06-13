@@ -146,7 +146,7 @@ export function TierFormModal({ isOpen, onClose, onSubmit, isPending, editingTie
               </FormField>
             </div>
 
-            <FormField label="Color">
+            <FormField label={t('loyalty:fields.color')}>
               <Input {...form.register('color')} type="color" className="h-10 w-20" />
             </FormField>
           </div>

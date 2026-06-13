@@ -245,7 +245,7 @@ export function OpenInvoicesList({
                 </th>
               )}
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                Status
+                {t('common:fields.status')}
               </th>
             </tr>
           </thead>

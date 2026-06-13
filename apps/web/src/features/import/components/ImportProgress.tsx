@@ -1,4 +1,5 @@
 import { Check } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 
 interface Step {
@@ -17,9 +18,10 @@ export function ImportProgress({
   currentStep,
   completedSteps,
 }: ImportProgressProps) {
+  const { t } = useTranslation('import')
 
   return (
-    <nav aria-label="Progress">
+    <nav aria-label={t('wizard.progressAriaLabel')}>
       <ol className="flex items-center">
         {steps.map((step, index) => {
           const isCompleted = completedSteps.includes(index)

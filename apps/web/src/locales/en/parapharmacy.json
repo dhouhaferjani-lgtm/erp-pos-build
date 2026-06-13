@@ -13,7 +13,6 @@
   "createIngredientError": "Failed to create ingredient",
   "updateIngredientError": "Failed to update ingredient",
   "deleteIngredientError": "Failed to delete ingredient",
-
   "certifications": "Certifications",
   "certificationsDescription": "Manage product certifications and compliance badges",
   "noCertifications": "No certifications yet",
@@ -28,7 +27,6 @@
   "createCertificationError": "Failed to create certification",
   "updateCertificationError": "Failed to update certification",
   "deleteCertificationError": "Failed to delete certification",
-
   "healthClaims": "Health Claims",
   "healthClaimsDescription": "Manage approved health claims for parapharmacy products",
   "noHealthClaims": "No health claims yet",
@@ -43,7 +41,6 @@
   "createHealthClaimError": "Failed to create health claim",
   "updateHealthClaimError": "Failed to update health claim",
   "deleteHealthClaimError": "Failed to delete health claim",
-
   "keyComponents": "Key Components",
   "keyComponentsDescription": "Manage non-active product components (capsules, binders, etc.)",
   "noKeyComponents": "No key components yet",
@@ -58,7 +55,6 @@
   "createKeyComponentError": "Failed to create key component",
   "updateKeyComponentError": "Failed to update key component",
   "deleteKeyComponentError": "Failed to delete key component",
-
   "name": "Name",
   "slug": "Slug",
   "slugHelp": "URL-friendly identifier (lowercase, hyphens only)",
@@ -66,7 +62,13 @@
   "allergen": "Allergen",
   "allergenCode": "Allergen Code",
   "isAllergen": "Is Allergen",
-  "regulatoryStatus": "Regulatory Status",
+  "regulatoryStatus": {
+    "approved": "Approved",
+    "restricted": "Restricted",
+    "banned": "Banned",
+    "pending": "Pending",
+    "rejected": "Rejected"
+  },
   "notes": "Notes",
   "notesPlaceholder": "Additional notes or remarks...",
   "basicInformation": "Basic Information",
@@ -76,10 +78,11 @@
   "noTranslations": "No translations added yet",
   "required": "Required",
   "description": "Description",
-
   "type": "Type",
   "typeHelp": "Certification type (organic, vegan, halal, etc.)",
+  "typePlaceholder": "organic, vegan, halal, fair-trade",
   "certifyingBody": "Certifying Body",
+  "certifyingBodyPlaceholder": "Ecocert, NSF, USDA",
   "logoUrl": "Logo URL",
   "verificationUrl": "Verification URL",
   "status": "Status",
@@ -88,28 +91,22 @@
   "isActive": "Is Active",
   "displayOrder": "Display Order",
   "displayOrderHelp": "Order in which certifications appear (lower = first)",
-
   "claim": "Claim",
-  "claimType": "Claim Type",
-  "efsaReference": "EFSA Reference",
-  "fdaReference": "FDA Reference",
-  "countryRestrictions": "Country Restrictions",
-  "countryRestrictionsHelp": "Countries where this claim is restricted (comma-separated country codes)",
-  "requiresDisclaimer": "Requires Disclaimer",
-  "disclaimer": "Disclaimer",
-  "disclaimerText": "Disclaimer Text",
-
-  "regulatoryStatus": {
-    "approved": "Approved",
-    "restricted": "Restricted",
-    "banned": "Banned",
-    "pending": "Pending",
-    "rejected": "Rejected"
-  },
-
+  "claimTypeLabel": "Claim Type",
   "claimType": {
     "function": "Function Claim",
     "reduction_of_disease_risk": "Disease Risk Reduction",
     "development_and_health": "Development and Health"
-  }
+  },
+  "efsaReference": "EFSA Reference",
+  "efsaReferencePlaceholder": "EFSA-Q-2008-123",
+  "fdaReference": "FDA Reference",
+  "fdaReferencePlaceholder": "FDA-2008-N-0453",
+  "countryRestrictions": "Country Restrictions",
+  "countryRestrictionsPlaceholder": "FR, DE, IT (comma-separated)",
+  "countryRestrictionsHelp": "Countries where this claim is restricted (comma-separated country codes)",
+  "requiresDisclaimer": "Requires Disclaimer",
+  "disclaimer": "Disclaimer",
+  "disclaimerText": "Disclaimer Text",
+  "regulatoryStatusLabel": "Regulatory Status"
 }

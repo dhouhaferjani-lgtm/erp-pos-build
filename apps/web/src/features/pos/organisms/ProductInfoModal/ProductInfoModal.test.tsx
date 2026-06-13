@@ -55,6 +55,10 @@ vi.mock('react-i18next', () => ({
         'common:errors.loadingFailed': 'Error loading data',
         'common:noData': 'No data available',
         'products:parapharmacy.activeIngredients': 'Active Ingredients',
+        'products:parapharmacy.keyComponents': 'Key Components',
+        'products:parapharmacy.healthClaims': 'Health Claims',
+        'products:parapharmacy.certifications': 'Certifications',
+        'common:fields.description': 'Description',
       }
       return translations[key] || key
     },

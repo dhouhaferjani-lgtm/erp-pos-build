@@ -92,6 +92,7 @@
     "payrollExports": "Payroll exports"
   },
   "authoring": {
+    "tabsAriaLabel": "Technician detail tabs",
     "tabs": {
       "overview": "Overview",
       "certifications": "Certifications",
