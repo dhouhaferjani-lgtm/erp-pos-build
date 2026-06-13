@@ -140,6 +140,8 @@
       "stockComingSoon": "Informations sur le stock bientôt disponibles",
       "viewAllStock": "Voir tous les niveaux de stock"
     },
+    "productInformation": "Informations produit",
+    "productId": "ID produit",
     "created": "Créé",
     "lastUpdated": "Dernière mise à jour",
     "noSearchResults": "Aucun produit trouvé",
@@ -239,9 +241,33 @@
   },
   "movements": {
     "title": "Mouvements de stock",
+    "subtitle": "{{count}} mouvement enregistré",
+    "subtitle_plural": "{{count}} mouvements enregistrés",
     "type": "Type",
     "reference": "Référence",
     "date": "Date",
+    "searchPlaceholder": "Rechercher des mouvements...",
+    "noMovements": "Aucun mouvement",
+    "noMatchFilter": "Aucun mouvement ne correspond au filtre sélectionné.",
+    "emptyDescription": "Les mouvements de stock apparaîtront ici lors de changements d'inventaire.",
+    "system": "Système",
+    "filters": {
+      "receipts": "Réceptions",
+      "issues": "Sorties",
+      "adjustments": "Ajustements",
+      "transfers": "Transferts"
+    },
+    "columns": {
+      "product": "Produit",
+      "user": "Utilisateur"
+    },
+    "typeLabels": {
+      "receipt": "Réception",
+      "issue": "Sortie",
+      "adjustment": "Ajustement",
+      "transfer_in": "Transfert entrant",
+      "transfer_out": "Transfert sortant"
+    },
     "types": {
       "in": "Entrée",
       "out": "Sortie",

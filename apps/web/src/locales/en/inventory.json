@@ -140,6 +140,8 @@
       "stockComingSoon": "Stock information coming soon",
       "viewAllStock": "View all stock levels"
     },
+    "productInformation": "Product Information",
+    "productId": "Product ID",
     "created": "Created",
     "lastUpdated": "Last Updated",
     "noSearchResults": "No products found",
@@ -239,9 +241,33 @@
   },
   "movements": {
     "title": "Stock Movements",
+    "subtitle": "{{count}} movement recorded",
+    "subtitle_plural": "{{count}} movements recorded",
     "type": "Type",
     "reference": "Reference",
     "date": "Date",
+    "searchPlaceholder": "Search movements...",
+    "noMovements": "No movements",
+    "noMatchFilter": "No movements match the selected filter.",
+    "emptyDescription": "Stock movements will appear here when inventory changes.",
+    "system": "System",
+    "filters": {
+      "receipts": "Receipts",
+      "issues": "Issues",
+      "adjustments": "Adjustments",
+      "transfers": "Transfers"
+    },
+    "columns": {
+      "product": "Product",
+      "user": "User"
+    },
+    "typeLabels": {
+      "receipt": "Receipt",
+      "issue": "Issue",
+      "adjustment": "Adjustment",
+      "transfer_in": "Transfer In",
+      "transfer_out": "Transfer Out"
+    },
     "types": {
       "in": "Stock In",
       "out": "Stock Out",
