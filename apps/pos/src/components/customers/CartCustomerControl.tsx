@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { User, X } from 'lucide-react';
+import { Button, IconButton } from '@/components/ui';
 import { usePaymentStore, type AttachedCheckoutCustomer } from '@/stores/paymentStore';
 
 export interface CartCustomerControlProps {
@@ -12,37 +13,43 @@ export function CartCustomerControl({ onOpen }: CartCustomerControlProps) {
   const detachCustomer = usePaymentStore((s) => s.detachCustomer);
 
   if (selectedCustomer !== null) {
+    // Attached "selected" treatment: a chip carrying the action tone (this is
+    // the sale's chosen customer = a selected state, per the color grammar).
+    // Kept as a chip rather than a nested Button so the detach control can be
+    // its own real <button> (no invalid button-in-button), while the
+    // UNATTACHED trigger below is a plain secondary Button identical to the
+    // toolbar actions.
     return (
-      <div className="flex min-w-0 items-center gap-2 rounded-md border border-action bg-action-subtle px-2 py-1">
+      <div className="flex min-h-11 min-w-0 items-center gap-1 rounded-xl border border-action bg-action-subtle pr-1 pl-3">
         <User className="h-4 w-4 shrink-0 text-action-strong" aria-hidden />
         <button
           type="button"
           onClick={onOpen}
-          className="truncate text-sm font-medium text-action-strong hover:underline"
+          className="min-w-0 truncate text-sm font-semibold text-action-strong hover:underline"
         >
           {selectedCustomer.name}
         </button>
-        <button
-          type="button"
+        <IconButton
+          variant="ghost"
+          size="sm"
           onClick={detachCustomer}
           aria-label={t('customer.detach')}
-          className="ml-1 shrink-0 rounded p-0.5 text-action-strong hover:bg-action-subtle"
-        >
-          <X className="h-4 w-4" />
-        </button>
+          icon={<X className="h-4 w-4" />}
+          className="text-action-strong hover:bg-action-subtle"
+        />
       </div>
     );
   }
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="secondary"
+      size="md"
       onClick={onOpen}
       aria-label={t('customer.attach')}
-      className="flex items-center gap-1.5 rounded-md border border-border-strong bg-surface-raised px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+      leftIcon={<User className="h-4 w-4" aria-hidden />}
     >
-      <User className="h-4 w-4" aria-hidden />
       {t('customer.attach')}
-    </button>
+    </Button>
   );
 }

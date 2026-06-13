@@ -4,8 +4,8 @@ import { ShoppingCart, Trash2, RotateCcw } from 'lucide-react';
 import { CartLineItem } from '@/components/molecules/CartLineItem';
 import { PaymentSummary } from '@/components/organisms/PaymentSummary';
 import { QuickActions } from '@/components/molecules/QuickActions';
+import { Button, IconButton } from '@/components/ui';
 import { useCurrency } from '@/lib/currency';
-import { tokens } from '@/lib/designTokens';
 import type { CartItem } from '@/types/cart';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 
@@ -141,14 +141,15 @@ export function TransactionCart({
                 {hasQuickActions && (
                   <span className="h-6 w-px shrink-0 bg-border-subtle" aria-hidden="true" />
                 )}
-                <button
+                <IconButton
+                  variant="destructive"
+                  size="md"
                   onClick={onClearCart}
                   aria-label={t('cart.clear')}
                   title={t('cart.clear')}
-                  className="flex min-h-[36px] shrink-0 items-center justify-center rounded-md px-2 text-danger-strong transition-colors hover:bg-danger-surface ml-auto"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                  icon={<Trash2 className="h-4 w-4" />}
+                  className="ml-auto"
+                />
               </>
             )}
           </div>
@@ -262,7 +263,10 @@ export function TransactionCart({
                     </span>
                   </div>
                 </div>
-                <button
+                <Button
+                  variant="confirm"
+                  size="lg"
+                  fullWidth
                   onClick={onPayCash}
                   disabled={netButtonDisabled}
                   aria-disabled={netButtonDisabled}
@@ -271,29 +275,31 @@ export function TransactionCart({
                       ? t('payment.configNotLoaded')
                       : undefined
                   }
-                  className={`w-full py-2.5 text-sm ${tokens.button.confirm}`}
                 >
                   {getNetLabel()}
-                </button>
+                </Button>
               </div>
             );
           })()
         ) : (
-          items.length > 0 && (
-            <PaymentSummary
-              subtotal={subtotal}
-              taxAmount={taxAmount}
-              discountAmount={discountAmount}
-              total={total}
-              hasDiscount={hasDiscount}
-              onPayCash={onPayCash}
-              onAdvancedPayments={onAdvancedPayments}
-              onRemoveDiscount={onRemoveDiscount}
-              paymentMethods={paymentMethods}
-              paymentRepositories={paymentRepositories}
-              disabled={checkoutDisabled}
-            />
-          )
+          // Persistent checkout footer: in normal sale mode the totals +
+          // Charge button are ALWAYS anchored at the bottom, even when the
+          // cart is empty. The Charge button is disabled (grayed out) until
+          // there is at least one item, so the footer reads as a stable,
+          // ever-present checkout surface rather than appearing/disappearing.
+          <PaymentSummary
+            subtotal={subtotal}
+            taxAmount={taxAmount}
+            discountAmount={discountAmount}
+            total={total}
+            hasDiscount={hasDiscount}
+            onPayCash={onPayCash}
+            onAdvancedPayments={onAdvancedPayments}
+            onRemoveDiscount={onRemoveDiscount}
+            paymentMethods={paymentMethods}
+            paymentRepositories={paymentRepositories}
+            disabled={checkoutDisabled || items.length === 0}
+          />
         )}
       </div>
     </div>

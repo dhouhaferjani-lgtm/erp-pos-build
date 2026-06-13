@@ -131,9 +131,12 @@ describe('TransactionCart', () => {
     expect(screen.getByTestId('payment-summary')).toBeInTheDocument();
   });
 
-  it('hides payment summary when cart is empty', () => {
+  it('renders a persistent payment summary footer even when cart is empty', () => {
+    // Persistent checkout footer: in normal sale mode the totals + Charge
+    // button stay anchored at the bottom whether or not the cart has items
+    // (the Charge button is disabled via `disabled={... || items.length === 0}`).
     renderCart();
-    expect(screen.queryByTestId('payment-summary')).not.toBeInTheDocument();
+    expect(screen.getByTestId('payment-summary')).toBeInTheDocument();
   });
 });
 

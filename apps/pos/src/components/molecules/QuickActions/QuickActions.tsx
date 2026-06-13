@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tag, Pause, ClipboardList, RotateCcw } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui';
 
 export interface QuickActionsProps {
   onDiscount: () => void;
@@ -74,21 +74,19 @@ export function QuickActions({
                 aria-hidden="true"
               />
             )}
-            <button
+            <Button
+              variant="secondary"
+              size="md"
               onClick={action.onClick}
               disabled={action.disabled}
-              className={cn(
-                'relative flex min-h-[36px] flex-1 items-center justify-center gap-1.5 rounded-md bg-surface-sunken px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-canvas hover:text-ink',
-                action.disabled &&
-                  'cursor-not-allowed bg-surface-sunken text-ink-faint hover:bg-surface-sunken hover:text-ink-faint',
-              )}
+              leftIcon={<Icon className="h-4 w-4" />}
+              className="relative flex-1"
             >
-              <Icon className="h-4 w-4" />
               {action.label}
               {action.showBadge && (
                 <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-danger" />
               )}
-            </button>
+            </Button>
           </Fragment>
         );
       })}

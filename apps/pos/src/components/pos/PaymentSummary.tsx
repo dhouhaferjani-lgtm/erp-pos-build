@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
 import { Banknote, Wallet, X } from 'lucide-react';
-import { tokens } from '@/lib/designTokens';
+import { Button, IconButton } from '@/components/ui';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 
 interface PaymentSummaryProps {
@@ -75,13 +75,14 @@ export function PaymentSummary({
           <div className="flex items-center gap-2">
             <span className="font-medium tabular-nums text-danger-strong">-{format(discountAmount)}</span>
             {onRemoveDiscount && (
-              <button
+              <IconButton
+                variant="destructive"
+                size="sm"
                 onClick={onRemoveDiscount}
-                className="rounded-md bg-danger-surface px-2 py-1 text-xs font-medium text-danger-strong hover:opacity-90"
+                aria-label={t('pos:discount.remove')}
                 title={t('pos:discount.remove')}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+                icon={<X className="h-3.5 w-3.5" />}
+              />
             )}
           </div>
         </div>
@@ -97,28 +98,32 @@ export function PaymentSummary({
 
       {/* Payment buttons */}
       <div className="flex gap-2">
-        <button
+        <Button
+          variant="confirm"
+          size="lg"
           onClick={onPayCash}
           disabled={cashButtonDisabled}
           aria-disabled={cashButtonDisabled}
           title={
             !paymentConfigReady ? t('pos:payment.configNotLoaded') : undefined
           }
-          className={`${tokens.button.confirm} flex-[3] py-2.5 text-sm`}
+          leftIcon={<Banknote className="h-5 w-5" />}
+          className="flex-[3]"
         >
-          <Banknote className="h-5 w-5" />
           {t('pos:payment.cashPayment')}
-        </button>
+        </Button>
 
         {showAdvancedPayments && (
-          <button
+          <Button
+            variant="secondary"
+            size="lg"
             onClick={onAdvancedPayments}
             disabled={disabled}
-            className={`${tokens.button.secondary} flex-1 py-2.5 text-sm`}
+            leftIcon={<Wallet className="h-5 w-5" />}
+            className="flex-1"
           >
-            <Wallet className="h-5 w-5" />
             {t('pos:payment.advancedPayments')}
-          </button>
+          </Button>
         )}
       </div>
     </div>
