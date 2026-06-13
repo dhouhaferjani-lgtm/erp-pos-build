@@ -30,13 +30,19 @@ The fix for "weak separation": elevation comes from the surface scale, not from 
 - `surface-overlay` — modals (white + `shadow-2xl` + `bg-black/50` scrim).
 - `surface-sunken` — inset boxes, disabled controls, neutral keypad keys.
 
-## 3. Components — one voice (from `tokens` in `designTokens.ts`)
+## 3. Components — atomic layer (`src/components/ui/`)
 
-- **Buttons:** `tokens.button.{primary,confirm,secondary,ghost,destructive}`. Primary = the one strong action per view. Confirm = money completion (green). Destructive = irreversible (red). Pair with a min-height (`min-h-[56px]` for touch).
-- **Badges/pills:** `tokens.badge.{neutral,success,warning,danger}`.
-- **Choose-one controls:** `tokens.segmented` — the ONLY segmented/chip-group voice. Do not hand-roll a second one.
-- **Header status:** `tokens.statusPill` (healthy/warning/danger).
-- **Disabled controls:** `tokens.disabledReason` — communicate disabled by surface + ink + cursor, **never opacity alone**, and show the reason near the control. A faded primary button reads as "is this on?".
+**This is the rule the whole system hinges on: every element of a given type is the same atom.** Never hand-roll a button/badge/pill/segmented control with raw classes — import the atom from `@/components/ui`. A change to an atom or a token then propagates to every instance automatically. Atoms are ESLint-guarded (no raw palette classes).
+
+- **`<Button variant size>`** — the single source for text buttons. Variants encode role (the color grammar): `primary` (main action), `confirm` (money completion — Charge/Pay, green), `secondary` (neutral actions — Client, Discount, Hold…), `ghost` (low-emphasis), `destructive` (irreversible, red). Sizes are touch targets: `sm`=36px (desktop-dense), `md`=44px (default), `lg`=56px (primary CTA). All 8 states; disabled communicated by surface+ink (never opacity); `loading` shows a spinner.
+- **`<IconButton aria-label icon variant size>`** — square icon-only button, same variants; accessible name enforced.
+- **`<Badge tone>`** — one pill shape for terminal/shift/stock/counts. Tones: neutral/success/warning/danger/action.
+- **`<StatusPill tone label pulse>`** — the session/connectivity indicator (one consistent shape, dot + label). It's an indicator, NOT a control — keep the manual sync trigger as a separate `<IconButton>` beside it.
+- **`<SegmentedControl options value onChange>`** — the ONLY choose-one control voice.
+
+> Legacy `tokens.*` recipes in `designTokens.ts` (button/badge/segmented/statusPill/money/surface) still back the color grammar and a few non-atom spots, but **new UI must use the atoms in `ui/`**. The atoms supersede the className-string recipes for buttons.
+
+- **Disabled controls:** communicate disabled by surface + ink + cursor, **never opacity alone**; show the reason near the control where space allows.
 
 ## 4. Typography & numbers
 
