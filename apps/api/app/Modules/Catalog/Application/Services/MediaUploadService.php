@@ -228,7 +228,11 @@ final class MediaUploadService
             ]);
         }
 
-        $host = strtolower($parsed['host']);
+        // Normalize the host: strip IPv6 brackets so '[::1]' becomes '::1'
+        // before comparing against BLOCKED_HOSTS.  parse_url() preserves the
+        // brackets (RFC-3986 §3.2.2), so without trimming, the check misses
+        // IPv6 loopback addresses passed as 'https://[::1]/path'.
+        $host = strtolower(trim($parsed['host'], '[]'));
 
         if (in_array($host, self::BLOCKED_HOSTS, true)) {
             throw ValidationException::withMessages([

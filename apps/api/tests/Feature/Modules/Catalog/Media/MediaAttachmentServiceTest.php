@@ -10,9 +10,13 @@ use App\Modules\Catalog\Domain\Enums\MediaOwnerType;
 use App\Modules\Catalog\Domain\Enums\MediaRole;
 use App\Modules\Catalog\Domain\Enums\MediaSource;
 use App\Modules\Catalog\Domain\Enums\MediaStatus;
+use App\Modules\Catalog\Domain\Enums\RenditionFormat;
+use App\Modules\Catalog\Domain\Enums\RenditionName;
 use App\Modules\Catalog\Domain\Media\MediaAsset;
 use App\Modules\Catalog\Domain\Media\MediaAttachment;
+use App\Modules\Catalog\Domain\Media\MediaRendition;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -38,6 +42,32 @@ final class MediaAttachmentServiceTest extends TestCase
             'storage_disk' => 'url',
             'external_url' => 'https://example.com/' . Str::uuid() . '.jpg',
         ]);
+    }
+
+    /**
+     * Create a MediaAsset backed by a fake S3 disk, with a real file stored at the path.
+     *
+     * @return array{asset: MediaAsset, asset_path: string}
+     */
+    private function makeS3Asset(string $tenantId): array
+    {
+        $assetPath = 'products/' . $tenantId . '/' . Str::uuid() . '/original.jpg';
+
+        Storage::disk('s3')->put($assetPath, 'fake-image-content');
+
+        $asset = MediaAsset::create([
+            'tenant_id' => $tenantId,
+            'type' => MediaAssetType::Image,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Ready,
+            'storage_disk' => 's3',
+            'storage_path' => $assetPath,
+            'mime_type' => 'image/jpeg',
+            'file_size' => 18,
+            'checksum' => hash('sha256', 'fake-image-content'),
+        ]);
+
+        return ['asset' => $asset, 'asset_path' => $assetPath];
     }
 
     public function test_attaching_new_primary_demotes_prior_primary_to_gallery(): void
@@ -229,5 +259,41 @@ final class MediaAttachmentServiceTest extends TestCase
         // Tenant A's attachment must remain PRIMARY (different tenant — no collision).
         self::assertSame(MediaRole::Primary, $attachA->fresh()->role, 'Tenant A PRIMARY must not be demoted by tenant B operation');
         self::assertSame(MediaRole::Primary, $attachB->fresh()->role, 'Tenant B PRIMARY must be set correctly');
+    }
+
+    public function test_delete_asset_removes_s3_original_and_rendition_files(): void
+    {
+        Storage::fake('s3');
+
+        $tenantId = (string) Str::uuid();
+
+        ['asset' => $asset, 'asset_path' => $assetPath] = $this->makeS3Asset($tenantId);
+
+        // Create a rendition row with its own S3 file.
+        $renditionPath = 'products/' . $tenantId . '/' . $asset->id . '/thumb.webp';
+        Storage::disk('s3')->put($renditionPath, 'fake-rendition-content');
+
+        MediaRendition::create([
+            'tenant_id' => $tenantId,
+            'media_asset_id' => $asset->id,
+            'name' => RenditionName::Thumbnail,
+            'format' => RenditionFormat::Webp,
+            'storage_disk' => 's3',
+            'storage_path' => $renditionPath,
+            'width' => 150,
+            'height' => 150,
+            'file_size' => 22,
+        ]);
+
+        // Confirm files exist before deletion.
+        Storage::disk('s3')->assertExists($assetPath);
+        Storage::disk('s3')->assertExists($renditionPath);
+
+        // No attachment links exist — deleteAsset must succeed.
+        $this->service->deleteAsset($asset->id, $tenantId);
+
+        // Both files must have been removed from S3 after the commit.
+        Storage::disk('s3')->assertMissing($assetPath);
+        Storage::disk('s3')->assertMissing($renditionPath);
     }
 }

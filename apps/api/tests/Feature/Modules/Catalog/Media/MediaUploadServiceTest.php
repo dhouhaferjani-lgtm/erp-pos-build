@@ -8,6 +8,7 @@ use App\Modules\Catalog\Application\Jobs\GenerateRenditions;
 use App\Modules\Catalog\Application\Services\MediaUploadService;
 use App\Modules\Catalog\Domain\Enums\MediaSource;
 use App\Modules\Catalog\Domain\Enums\MediaStatus;
+use App\Modules\Catalog\Domain\Media\MediaAsset;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Bus;
@@ -137,17 +138,42 @@ final class MediaUploadServiceTest extends TestCase
 
         $tenantId = (string) Str::uuid();
         $productId = (string) Str::uuid();
-
-        // Use a partial mock that lets the upload proceed but throws during the transaction.
-        // We test this by providing a mock service that overrides the DB transaction step.
-        // Since we can't easily inject a failing DB, we verify the contract indirectly:
-        // if upload succeeds, the file is present.  The S3 cleanup path is integration-tested
-        // as a contract at code review level; the unit-level test lives in the service itself.
-        // Here we just confirm successful upload leaves the file present.
         $file = UploadedFile::fake()->image('test.jpg', 100, 100);
-        $asset = $this->service->uploadForProduct($tenantId, $productId, $file, null);
 
-        Storage::disk('s3')->assertExists($asset->storage_path);
+        // Capture the S3 path and force the DB::transaction to fail by throwing inside
+        // the Eloquent "creating" event for MediaAsset.  The event fires INSIDE the
+        // DB::transaction closure in uploadForProduct(), so the exception propagates
+        // to the catch(\Throwable) block, which must delete the orphaned S3 file.
+        //
+        // We use a flag so the listener disables itself after one invocation, preventing
+        // bleed-over into subsequent tests (flushEventListeners() is intentionally avoided
+        // because it would also remove service-provider-registered observers).
+        $capturedPath = null;
+        $fired = false;
+
+        MediaAsset::creating(function (MediaAsset $asset) use (&$capturedPath, &$fired): never {
+            if (! $fired) {
+                $fired = true;
+                $capturedPath = $asset->storage_path;
+                throw new \RuntimeException('Simulated DB failure for S3 cleanup test');
+            }
+            // Unreachable in this test — satisfies never return type for the throw above.
+            throw new \LogicException('Listener fired a second time unexpectedly');
+        });
+
+        try {
+            $this->service->uploadForProduct($tenantId, $productId, $file, null);
+            self::fail('Expected RuntimeException was not thrown');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('Simulated DB failure', $e->getMessage());
+        } finally {
+            // Detach only the listener we added so service-provider observers survive.
+            MediaAsset::getEventDispatcher()?->forget('eloquent.creating: ' . MediaAsset::class);
+        }
+
+        // The orphaned S3 file must have been removed by the catch block.
+        self::assertNotNull($capturedPath, 'Storage path must have been captured before the throw');
+        Storage::disk('s3')->assertMissing($capturedPath);
     }
 
     public function test_register_external_url_creates_ready_asset(): void
@@ -235,5 +261,18 @@ final class MediaUploadServiceTest extends TestCase
         $this->expectException(ValidationException::class);
 
         $this->service->registerExternalUrl($tenantId, $productId, 'https://192.168.1.1/image.jpg');
+    }
+
+    public function test_register_external_url_rejects_ipv6_loopback_with_brackets(): void
+    {
+        $tenantId = (string) Str::uuid();
+        $productId = (string) Str::uuid();
+
+        // parse_url('https://[::1]/x') returns host '[::1]' (with brackets).
+        // The normalisation `trim($host, '[]')` must strip brackets before the
+        // BLOCKED_HOSTS comparison so this is correctly rejected.
+        $this->expectException(ValidationException::class);
+
+        $this->service->registerExternalUrl($tenantId, $productId, 'https://[::1]/image.jpg');
     }
 }
