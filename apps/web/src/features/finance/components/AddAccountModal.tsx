@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { useCreateAccount, useAccounts } from '../hooks/useAccounts'
+import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import type { AccountType } from '../types'
 
 interface AddAccountModalProps {
@@ -11,7 +12,7 @@ interface AddAccountModalProps {
 }
 
 export function AddAccountModal({ open, onClose, onSuccess }: AddAccountModalProps) {
-  const { t } = useTranslation(['common', 'validation'])
+  const { t } = useTranslation(['finance', 'common', 'validation'])
   const { data: accounts } = useAccounts()
   const createMutation = useCreateAccount()
 
@@ -70,13 +71,13 @@ export function AddAccountModal({ open, onClose, onSuccess }: AddAccountModalPro
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div className={tokens.modal.backdrop}>
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4" role="dialog">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Add Account</h2>
+        <div className={`flex items-center justify-between px-6 py-4 border-b ${borderColors.light}`}>
+          <h2 className={`text-lg font-semibold ${textColors.primary}`}>{t('finance:chartOfAccounts.account.addTitle')}</h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className={`${textColors.disabled} ${textColors.hoverSecondary} transition-colors`}
           >
             <X className="h-5 w-5" />
           </button>
@@ -84,8 +85,8 @@ export function AddAccountModal({ open, onClose, onSuccess }: AddAccountModalPro
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label htmlFor="code" className="block text-sm font-medium text-gray-700 mb-1">
-              Account Code
+            <label htmlFor="code" className={`${tokens.label.base} mb-1`}>
+              {t('finance:chartOfAccounts.account.code')}
             </label>
             <input
               id="code"
@@ -93,14 +94,14 @@ export function AddAccountModal({ open, onClose, onSuccess }: AddAccountModalPro
               type="text"
               value={formData.code}
               onChange={(e) => { setFormData({ ...formData, code: e.target.value }); }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
             />
-            {errors['code'] && <p className="mt-1 text-sm text-red-600">{errors['code']}</p>}
+            {errors['code'] && <p className={tokens.helperText.error}>{errors['code']}</p>}
           </div>
 
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-              Account Name
+            <label htmlFor="name" className={`${tokens.label.base} mb-1`}>
+              {t('finance:chartOfAccounts.account.name')}
             </label>
             <input
               id="name"
@@ -108,42 +109,42 @@ export function AddAccountModal({ open, onClose, onSuccess }: AddAccountModalPro
               type="text"
               value={formData.name}
               onChange={(e) => { setFormData({ ...formData, name: e.target.value }); }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
             />
-            {errors['name'] && <p className="mt-1 text-sm text-red-600">{errors['name']}</p>}
+            {errors['name'] && <p className={tokens.helperText.error}>{errors['name']}</p>}
           </div>
 
           <div>
-            <label htmlFor="type" className="block text-sm font-medium text-gray-700 mb-1">
-              Account Type
+            <label htmlFor="type" className={`${tokens.label.base} mb-1`}>
+              {t('finance:chartOfAccounts.account.type')}
             </label>
             <select
               id="type"
               name="type"
               value={formData.type}
               onChange={(e) => { setFormData({ ...formData, type: e.target.value as AccountType }); }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
             >
-              <option value="asset">Asset</option>
-              <option value="liability">Liability</option>
-              <option value="equity">Equity</option>
-              <option value="revenue">Revenue</option>
-              <option value="expense">Expense</option>
+              <option value="asset">{t('finance:chartOfAccounts.account.types.asset')}</option>
+              <option value="liability">{t('finance:chartOfAccounts.account.types.liability')}</option>
+              <option value="equity">{t('finance:chartOfAccounts.account.types.equity')}</option>
+              <option value="revenue">{t('finance:chartOfAccounts.account.types.revenue')}</option>
+              <option value="expense">{t('finance:chartOfAccounts.account.types.expense')}</option>
             </select>
           </div>
 
           <div>
-            <label htmlFor="parent_id" className="block text-sm font-medium text-gray-700 mb-1">
-              Parent Account (Optional)
+            <label htmlFor="parent_id" className={`${tokens.label.base} mb-1`}>
+              {t('finance:chartOfAccounts.account.parentAccount')}
             </label>
             <select
               id="parent_id"
               name="parent_id"
               value={formData.parent_id}
               onChange={(e) => { setFormData({ ...formData, parent_id: e.target.value }); }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
             >
-              <option value="">None</option>
+              <option value="">{t('finance:chartOfAccounts.account.noParent')}</option>
               {accounts?.filter((a) => a.type === formData.type).map((account) => (
                 <option key={account.id} value={account.id}>
                   {account.code} - {account.name}
@@ -153,8 +154,8 @@ export function AddAccountModal({ open, onClose, onSuccess }: AddAccountModalPro
           </div>
 
           <div>
-            <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
-              Description (Optional)
+            <label htmlFor="description" className={`${tokens.label.base} mb-1`}>
+              {t('finance:chartOfAccounts.account.description')}
             </label>
             <textarea
               id="description"
@@ -162,7 +163,7 @@ export function AddAccountModal({ open, onClose, onSuccess }: AddAccountModalPro
               rows={3}
               value={formData.description}
               onChange={(e) => { setFormData({ ...formData, description: e.target.value }); }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
             />
           </div>
 
@@ -170,16 +171,18 @@ export function AddAccountModal({ open, onClose, onSuccess }: AddAccountModalPro
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              className={`flex-1 px-4 py-2 border ${borderColors.default} rounded-lg text-sm font-medium ${textColors.secondary} hover:bg-gray-50 transition-colors`}
             >
-              Cancel
+              {t('common:actions.cancel')}
             </button>
             <button
               type="submit"
               disabled={createMutation.isPending}
-              className="flex-1 px-4 py-2 bg-blue-600 rounded-lg text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              className={`flex-1 px-4 py-2 ${tokens.button.primary} rounded-lg text-sm font-medium disabled:opacity-50 transition-colors`}
             >
-              {createMutation.isPending ? 'Creating...' : 'Create Account'}
+              {createMutation.isPending
+                ? t('finance:chartOfAccounts.account.creating')
+                : t('finance:chartOfAccounts.account.create')}
             </button>
           </div>
         </form>

@@ -3,6 +3,7 @@ import { ChevronRight, ChevronDown, Edit } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useCompany } from '@/hooks/useCompany'
 import { formatCurrency } from '@/lib/formatCurrency'
+import { textColors, borderColors } from '@/lib/designTokens'
 import type { Account } from '../types'
 
 interface AccountTreeViewProps {
@@ -11,7 +12,7 @@ interface AccountTreeViewProps {
 }
 
 export function AccountTreeView({ accounts, onEdit }: AccountTreeViewProps) {
-  const { i18n } = useTranslation()
+  const { t, i18n } = useTranslation(['finance'])
   const { currentCompany } = useCompany()
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
@@ -45,7 +46,7 @@ export function AccountTreeView({ accounts, onEdit }: AccountTreeViewProps) {
     return (
       <div key={account.id}>
         <div
-          className="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 border-b border-gray-100"
+          className={`flex items-center gap-2 px-4 py-3 hover:bg-gray-50 border-b ${borderColors.light}`}
           style={{ paddingLeft: `${String(level * 2 + 1)}rem` }}
         >
           <button
@@ -60,9 +61,9 @@ export function AccountTreeView({ accounts, onEdit }: AccountTreeViewProps) {
           >
             {hasChildren ? (
               isExpanded ? (
-                <ChevronDown className="h-4 w-4 text-gray-400" />
+                <ChevronDown className={`h-4 w-4 ${textColors.disabled}`} />
               ) : (
-                <ChevronRight className="h-4 w-4 text-gray-400" />
+                <ChevronRight className={`h-4 w-4 ${textColors.disabled}`} />
               )
             ) : (
               <span className="w-4" />
@@ -70,19 +71,19 @@ export function AccountTreeView({ accounts, onEdit }: AccountTreeViewProps) {
           </button>
 
           <div className="flex-1 flex items-center gap-4">
-            <span className="font-mono text-sm text-gray-600 w-20">{account.code}</span>
-            <span className="font-medium text-gray-900">{account.name}</span>
-            <span className="text-sm text-gray-500 capitalize">{account.type}</span>
+            <span className={`font-mono text-sm ${textColors.tertiary} w-20`}>{account.code}</span>
+            <span className={`font-medium ${textColors.primary}`}>{account.name}</span>
+            <span className={`text-sm ${textColors.tertiary} capitalize`}>{account.type}</span>
           </div>
 
           <div className="flex items-center gap-4">
-            <span className="font-mono text-sm text-gray-900">
+            <span className={`font-mono text-sm ${textColors.primary}`}>
               {currentCompany ? formatCurrency(account.balance, currentCompany.currency, i18n.language) : account.balance}
             </span>
             {!account.is_system && (
               <button
                 onClick={() => { onEdit(account); }}
-                className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors"
+                className={`p-1.5 ${textColors.disabled} hover:text-blue-600 transition-colors`}
                 data-testid={`edit-${account.id}`}
               >
                 <Edit className="h-4 w-4" />
@@ -98,11 +99,11 @@ export function AccountTreeView({ accounts, onEdit }: AccountTreeViewProps) {
 
   if (accounts.length === 0) {
     return (
-      <div className="px-6 py-12 text-center text-sm text-gray-500">
-        No accounts found. Create your first account to get started.
+      <div className={`px-6 py-12 text-center text-sm ${textColors.tertiary}`}>
+        {t('finance:chartOfAccounts.emptyState')}
       </div>
     )
   }
 
-  return <div className="divide-y divide-gray-100">{rootAccounts.map((account) => renderAccount(account))}</div>
+  return <div className={`divide-y ${borderColors.divideLight}`}>{rootAccounts.map((account) => renderAccount(account))}</div>
 }

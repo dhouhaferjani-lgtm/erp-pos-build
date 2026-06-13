@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { useUpdateAccount } from '../hooks/useAccounts'
+import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import type { Account } from '../types'
 
 interface EditAccountModalProps {
@@ -12,7 +13,7 @@ interface EditAccountModalProps {
 }
 
 export function EditAccountModal({ account, open, onClose, onSuccess }: EditAccountModalProps) {
-  const { t } = useTranslation(['common', 'validation'])
+  const { t } = useTranslation(['finance', 'common', 'validation'])
   const updateMutation = useUpdateAccount()
 
   const [formData, setFormData] = useState({
@@ -70,13 +71,13 @@ export function EditAccountModal({ account, open, onClose, onSuccess }: EditAcco
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div className={tokens.modal.backdrop}>
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4" role="dialog">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Edit Account</h2>
+        <div className={`flex items-center justify-between px-6 py-4 border-b ${borderColors.light}`}>
+          <h2 className={`text-lg font-semibold ${textColors.primary}`}>{t('finance:chartOfAccounts.account.editTitle')}</h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className={`${textColors.disabled} ${textColors.hoverSecondary} transition-colors`}
           >
             <X className="h-5 w-5" />
           </button>
@@ -84,34 +85,34 @@ export function EditAccountModal({ account, open, onClose, onSuccess }: EditAcco
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Account Code
+            <label className={`${tokens.label.base} mb-1`}>
+              {t('finance:chartOfAccounts.account.code')}
             </label>
             <input
               type="text"
               value={account.code}
               disabled
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
+              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg bg-gray-50 ${textColors.disabled}`}
             />
-            <p className="mt-1 text-xs text-gray-500">Account code cannot be changed</p>
+            <p className={tokens.helperText.base}>{t('finance:chartOfAccounts.account.codeReadonly')}</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Account Type
+            <label className={`${tokens.label.base} mb-1`}>
+              {t('finance:chartOfAccounts.account.type')}
             </label>
             <input
               type="text"
               value={account.type}
               disabled
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 capitalize"
+              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg bg-gray-50 ${textColors.disabled} capitalize`}
             />
-            <p className="mt-1 text-xs text-gray-500">Account type cannot be changed</p>
+            <p className={tokens.helperText.base}>{t('finance:chartOfAccounts.account.typeReadonly')}</p>
           </div>
 
           <div>
-            <label htmlFor="edit-name" className="block text-sm font-medium text-gray-700 mb-1">
-              Account Name
+            <label htmlFor="edit-name" className={`${tokens.label.base} mb-1`}>
+              {t('finance:chartOfAccounts.account.name')}
             </label>
             <input
               id="edit-name"
@@ -119,14 +120,14 @@ export function EditAccountModal({ account, open, onClose, onSuccess }: EditAcco
               type="text"
               value={formData.name}
               onChange={(e) => { setFormData({ ...formData, name: e.target.value }); }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
             />
-            {errors['name'] && <p className="mt-1 text-sm text-red-600">{errors['name']}</p>}
+            {errors['name'] && <p className={tokens.helperText.error}>{errors['name']}</p>}
           </div>
 
           <div>
-            <label htmlFor="edit-description" className="block text-sm font-medium text-gray-700 mb-1">
-              Description (Optional)
+            <label htmlFor="edit-description" className={`${tokens.label.base} mb-1`}>
+              {t('finance:chartOfAccounts.account.description')}
             </label>
             <textarea
               id="edit-description"
@@ -134,7 +135,7 @@ export function EditAccountModal({ account, open, onClose, onSuccess }: EditAcco
               rows={3}
               value={formData.description}
               onChange={(e) => { setFormData({ ...formData, description: e.target.value }); }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
             />
           </div>
 
@@ -145,10 +146,10 @@ export function EditAccountModal({ account, open, onClose, onSuccess }: EditAcco
               type="checkbox"
               checked={formData.is_active}
               onChange={(e) => { setFormData({ ...formData, is_active: e.target.checked }); }}
-              className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+              className={tokens.checkbox.base}
             />
-            <label htmlFor="is_active" className="text-sm font-medium text-gray-700">
-              Active
+            <label htmlFor="is_active" className={tokens.label.base}>
+              {t('finance:chartOfAccounts.account.active')}
             </label>
           </div>
 
@@ -156,16 +157,18 @@ export function EditAccountModal({ account, open, onClose, onSuccess }: EditAcco
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              className={`flex-1 px-4 py-2 border ${borderColors.default} rounded-lg text-sm font-medium ${textColors.secondary} hover:bg-gray-50 transition-colors`}
             >
-              Cancel
+              {t('common:actions.cancel')}
             </button>
             <button
               type="submit"
               disabled={updateMutation.isPending}
-              className="flex-1 px-4 py-2 bg-blue-600 rounded-lg text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              className={`flex-1 px-4 py-2 ${tokens.button.primary} rounded-lg text-sm font-medium disabled:opacity-50 transition-colors`}
             >
-              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+              {updateMutation.isPending
+                ? t('finance:chartOfAccounts.account.saving')
+                : t('finance:chartOfAccounts.account.saveChanges')}
             </button>
           </div>
         </form>
