@@ -74,6 +74,7 @@ const tokenMigratedGlobs = [
   'src/components/customers/CartCustomerControl.tsx',
   'src/components/pos/PaymentSummary.tsx',
   'src/components/molecules/CartLineItem/**/*.{ts,tsx}',
+  'src/components/ui/**/*.{ts,tsx}',
 ];
 
 /**
