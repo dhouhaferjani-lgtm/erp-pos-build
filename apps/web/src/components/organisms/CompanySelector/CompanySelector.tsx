@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Building2, ChevronDown, Check, Plus } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useCompany } from '../../../hooks/useCompany'
@@ -11,6 +12,7 @@ import { useQueryClient } from '@tanstack/react-query'
  * Invalidates all queries when company is switched to refetch data.
  */
 export function CompanySelector() {
+  const { t } = useTranslation('common')
   const { currentCompany, companies, hasMultipleCompanies, switchCompany } = useCompany()
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -52,12 +54,12 @@ export function CompanySelector() {
           type="button"
           onClick={() => { setIsOpen(!isOpen) }}
           className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          aria-label="Select company"
+          aria-label={t('company.select')}
           aria-expanded={isOpen}
           aria-haspopup="true"
         >
           <Building2 className="h-4 w-4 text-gray-500" />
-          <span className="max-w-32 truncate">{currentCompany?.name ?? 'Select company'}</span>
+          <span className="max-w-32 truncate">{currentCompany?.name ?? t('company.select')}</span>
           <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
 
@@ -67,7 +69,7 @@ export function CompanySelector() {
             {hasMultipleCompanies && (
               <>
                 <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Switch Company
+                  {t('company.switchCompany')}
                 </div>
                 <div className="max-h-64 overflow-y-auto">
                   {companies.map((company) => (
@@ -102,7 +104,7 @@ export function CompanySelector() {
               className="flex w-full items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50"
             >
               <Plus className="h-4 w-4" />
-              Add Company
+              {t('company.addCompany')}
             </button>
           </div>
         )}

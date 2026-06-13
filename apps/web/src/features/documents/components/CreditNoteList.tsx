@@ -128,7 +128,7 @@ export function CreditNoteList({
               value={filterReason}
               onChange={(e) => { setFilterReason(e.target.value as CreditNoteReason | 'all'); }}
               className="rounded-md border border-gray-300 px-2 py-1 text-sm"
-              aria-label="Filter by reason"
+              aria-label={t('sales:creditNotes.filterByReason')}
             >
               <option value="all">{t('sales:creditNotes.allReasons')}</option>
               <option value="return">{t('sales:creditNotes.reasons.return')}</option>
@@ -158,7 +158,7 @@ export function CreditNoteList({
               value={sortField}
               onChange={(e) => { setSortField(e.target.value as SortField); }}
               className="rounded-md border border-gray-300 px-2 py-1 text-sm"
-              aria-label="Sort by"
+              aria-label={t('sales:creditNotes.sortBy')}
             >
               <option value="date">{t('sales:creditNotes.sortByDate')}</option>
               <option value="amount">{t('sales:creditNotes.sortByAmount')}</option>
@@ -186,10 +186,10 @@ export function CreditNoteList({
                 {t('sales:creditNotes.amount')}
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                {t('sales:creditNotes.reason')}
+                {t('sales:creditNotes.reasonLabel')}
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                {t('sales:creditNotes.status')}
+                {t('sales:creditNotes.statusLabel')}
               </th>
             </tr>
           </thead>

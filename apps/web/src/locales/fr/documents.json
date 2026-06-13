@@ -65,5 +65,45 @@
   },
   "discount": {
     "below_tolerance": "La remise doit dépasser la marge de tolérance ({{margin}}). Pour des résidus plus petits, utilisez l'écriture de tolérance de paiement au règlement."
+  },
+  "costing": {
+    "landedCost": {
+      "title": "Détail du coût rendu",
+      "allocationMethod": "Méthode de répartition : Proportionnelle",
+      "productsSubtotal": "Sous-total produits",
+      "totalLandedCost": "Coût rendu total",
+      "totals": "Totaux :",
+      "noteLabel": "Remarque :",
+      "noteText": "Les coûts supplémentaires sont répartis proportionnellement selon le pourcentage de chaque ligne par rapport au sous-total. Coût unitaire rendu = (Total ligne + Coûts alloués) / Quantité",
+      "columns": {
+        "product": "Produit",
+        "qty": "Qté",
+        "unitPrice": "Prix unitaire",
+        "lineTotal": "Total ligne",
+        "percentOfTotal": "% du total",
+        "allocatedCost": "Coût alloué",
+        "landedUnitCost": "Coût unitaire rendu"
+      }
+    },
+    "additionalCosts": {
+      "title": "Coûts supplémentaires",
+      "loading": "Chargement des coûts...",
+      "total": "Total : {{amount}}",
+      "costTypeLabel": "Type de coût",
+      "amountLabel": "Montant",
+      "descriptionOptional": "Description (facultatif)",
+      "descriptionPlaceholder": "ex. Fret international",
+      "addButton": "Ajouter le coût",
+      "empty": "Aucun coût supplémentaire ajouté.",
+      "deleteConfirm": "Êtes-vous sûr de vouloir supprimer ce coût ?",
+      "costTypes": {
+        "transport": "Transport",
+        "shipping": "Livraison",
+        "insurance": "Assurance",
+        "customs": "Douane",
+        "handling": "Manutention",
+        "other": "Autre"
+      }
+    }
   }
 }

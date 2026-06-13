@@ -38,20 +38,7 @@ interface CompanyResponse {
   vat_registration_number: string | null
 }
 
-const MONTHS = [
-  { value: 1, label: 'January' },
-  { value: 2, label: 'February' },
-  { value: 3, label: 'March' },
-  { value: 4, label: 'April' },
-  { value: 5, label: 'May' },
-  { value: 6, label: 'June' },
-  { value: 7, label: 'July' },
-  { value: 8, label: 'August' },
-  { value: 9, label: 'September' },
-  { value: 10, label: 'October' },
-  { value: 11, label: 'November' },
-  { value: 12, label: 'December' },
-]
+const MONTH_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
 function scopedNamespacePredicate(
   namespace: string,
@@ -193,8 +180,8 @@ export function TaxSettingsPage() {
 
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">{t('tax.configurations.pageTitle')}</h1>
-            <p className="mt-2 text-sm text-gray-600">{t('tax.configurations.description')}</p>
+            <h1 className="text-3xl font-bold text-gray-900">{t('settings:tax.configurations.pageTitle')}</h1>
+            <p className="mt-2 text-sm text-gray-600">{t('settings:tax.configurations.description')}</p>
           </div>
         </div>
       </div>
@@ -202,8 +189,8 @@ export function TaxSettingsPage() {
       {/* Tabs */}
       <Tabs defaultValue="profile" value={activeTab} onChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="profile">{t('tax.configurations.tabs.profile')}</TabsTrigger>
-          <TabsTrigger value="taxes">{t('tax.configurations.tabs.taxes')}</TabsTrigger>
+          <TabsTrigger value="profile">{t('settings:tax.configurations.tabs.profile')}</TabsTrigger>
+          <TabsTrigger value="taxes">{t('settings:tax.configurations.tabs.taxes')}</TabsTrigger>
         </TabsList>
 
         {/* Company Tax Profile Tab */}
@@ -213,16 +200,16 @@ export function TaxSettingsPage() {
               {/* Tax Status */}
               <div className="px-6 py-6 border-b border-gray-200">
                 <h2 className="text-lg font-medium text-gray-900 mb-4">
-                  {t('tax.configurations.profile.title')}
+                  {t('settings:tax.configurations.profile.title')}
                 </h2>
                 <p className="text-sm text-gray-600 mb-4">
-                  {t('tax.configurations.profile.description')}
+                  {t('settings:tax.configurations.profile.description')}
                 </p>
 
                 <div className="space-y-4 max-w-md">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      {t('tax.configurations.profile.title')}
+                      {t('settings:tax.configurations.profile.title')}
                     </label>
                     <div className="space-y-2">
                       <label className="flex items-start">
@@ -236,10 +223,10 @@ export function TaxSettingsPage() {
                         />
                         <span className="ms-3">
                           <span className="block text-sm font-medium text-gray-900">
-                            {t('tax.configurations.profile.registered')}
+                            {t('settings:tax.configurations.profile.registered')}
                           </span>
                           <span className="block text-sm text-gray-500">
-                            {t('tax.configurations.profile.registeredDescription')}
+                            {t('settings:tax.configurations.profile.registeredDescription')}
                           </span>
                         </span>
                       </label>
@@ -254,10 +241,10 @@ export function TaxSettingsPage() {
                         />
                         <span className="ms-3">
                           <span className="block text-sm font-medium text-gray-900">
-                            {t('tax.configurations.profile.nonRegistered')}
+                            {t('settings:tax.configurations.profile.nonRegistered')}
                           </span>
                           <span className="block text-sm text-gray-500">
-                            {t('tax.configurations.profile.nonRegisteredDescription')}
+                            {t('settings:tax.configurations.profile.nonRegisteredDescription')}
                           </span>
                         </span>
                       </label>
@@ -267,7 +254,7 @@ export function TaxSettingsPage() {
                   {formData.tax_status === 'REGISTERED' && (
                     <div>
                       <label htmlFor="vat_number" className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('tax.configurations.profile.vatNumber')}
+                        {t('settings:tax.configurations.profile.vatNumber')}
                       </label>
                       <input
                         type="text"
@@ -275,7 +262,7 @@ export function TaxSettingsPage() {
                         value={formData.vat_registration_number ?? ''}
                         onChange={(e) => { handleChange('vat_registration_number', e.target.value || null); }}
                         className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        placeholder="TN123456789"
+                        placeholder={t('settings:tax.configurations.profile.vatNumberPlaceholder')}
                       />
                     </div>
                   )}
@@ -284,12 +271,12 @@ export function TaxSettingsPage() {
 
               {/* Default Tax Rate */}
               <div className="px-6 py-6 border-b border-gray-200">
-                <h2 className="text-lg font-medium text-gray-900 mb-4">{t('tax.defaultTaxRate.title')}</h2>
-                <p className="text-sm text-gray-600 mb-4">{t('tax.defaultTaxRate.description')}</p>
+                <h2 className="text-lg font-medium text-gray-900 mb-4">{t('settings:tax.defaultTaxRate.title')}</h2>
+                <p className="text-sm text-gray-600 mb-4">{t('settings:tax.defaultTaxRate.description')}</p>
 
                 <div className="max-w-xs">
                   <label htmlFor="default_tax_rate" className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('tax.defaultTaxRate.label')}
+                    {t('settings:tax.defaultTaxRate.label')}
                   </label>
                   <div className="relative">
                     <input
@@ -307,18 +294,18 @@ export function TaxSettingsPage() {
                       <span className="text-gray-500 sm:text-sm">%</span>
                     </div>
                   </div>
-                  <p className="mt-2 text-xs text-gray-500">{t('tax.defaultTaxRate.help')}</p>
+                  <p className="mt-2 text-xs text-gray-500">{t('settings:tax.defaultTaxRate.help')}</p>
                 </div>
               </div>
 
               {/* Fiscal Year */}
               <div className="px-6 py-6">
-                <h2 className="text-lg font-medium text-gray-900 mb-4">{t('tax.fiscalYear.title')}</h2>
-                <p className="text-sm text-gray-600 mb-4">{t('tax.fiscalYear.description')}</p>
+                <h2 className="text-lg font-medium text-gray-900 mb-4">{t('settings:tax.fiscalYear.title')}</h2>
+                <p className="text-sm text-gray-600 mb-4">{t('settings:tax.fiscalYear.description')}</p>
 
                 <div className="max-w-xs">
                   <label htmlFor="fiscal_year_start_month" className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('tax.fiscalYear.label')}
+                    {t('settings:tax.fiscalYear.label')}
                   </label>
                   <select
                     id="fiscal_year_start_month"
@@ -326,13 +313,13 @@ export function TaxSettingsPage() {
                     onChange={(e) => { handleChange('fiscal_year_start_month', parseInt(e.target.value)); }}
                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                   >
-                    {MONTHS.map(month => (
-                      <option key={month.value} value={month.value}>
-                        {month.label}
+                    {MONTH_VALUES.map(value => (
+                      <option key={value} value={value}>
+                        {t(`settings:tax.months.${value}`)}
                       </option>
                     ))}
                   </select>
-                  <p className="mt-2 text-xs text-gray-500">{t('tax.fiscalYear.help')}</p>
+                  <p className="mt-2 text-xs text-gray-500">{t('settings:tax.fiscalYear.help')}</p>
                 </div>
               </div>
             </div>
@@ -368,14 +355,14 @@ export function TaxSettingsPage() {
                 className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
               >
                 <Plus className="h-4 w-4" />
-                {t('tax.configurations.addButton')}
+                {t('settings:tax.configurations.addButton')}
               </button>
             </div>
 
             {/* Tax List */}
             {taxConfigurations.length === 0 ? (
               <div className="bg-white rounded-lg border border-gray-200">
-                <EmptyState title={t('tax.configurations.table.noData')} />
+                <EmptyState title={t('settings:tax.configurations.table.noData')} />
               </div>
             ) : (
               <div className="bg-white shadow sm:rounded-lg overflow-hidden">
@@ -383,22 +370,22 @@ export function TaxSettingsPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        {t('tax.configurations.table.name')}
+                        {t('settings:tax.configurations.table.name')}
                       </th>
                       <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        {t('tax.configurations.table.type')}
+                        {t('settings:tax.configurations.table.type')}
                       </th>
                       <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        {t('tax.configurations.table.rate')}
+                        {t('settings:tax.configurations.table.rate')}
                       </th>
                       <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        {t('tax.configurations.table.appliesTo')}
+                        {t('settings:tax.configurations.table.appliesTo')}
                       </th>
                       <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        {t('tax.configurations.table.active')}
+                        {t('settings:tax.configurations.table.active')}
                       </th>
                       <th className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        {t('tax.configurations.table.actions')}
+                        {t('settings:tax.configurations.table.actions')}
                       </th>
                     </tr>
                   </thead>
@@ -415,13 +402,13 @@ export function TaxSettingsPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {tax.tax_type === 'PERCENTAGE' ? t('tax.configurations.form.typePercentage') : t('tax.configurations.form.typeFixed')}
+                          {tax.tax_type === 'PERCENTAGE' ? t('settings:tax.configurations.form.typePercentage') : t('settings:tax.configurations.form.typeFixed')}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {tax.tax_type === 'PERCENTAGE' ? `${tax.percentage_rate}%` : tax.fixed_amount}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {tax.applies_to === 'LINE_ITEMS' ? t('tax.configurations.form.appliesToLineItems') : t('tax.configurations.form.appliesToDocument')}
+                          {tax.applies_to === 'LINE_ITEMS' ? t('settings:tax.configurations.form.appliesToLineItems') : t('settings:tax.configurations.form.appliesToDocument')}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
@@ -471,8 +458,8 @@ export function TaxSettingsPage() {
         onConfirm={() => {
           void handleDeleteTax()
         }}
-        title={t('tax.configurations.confirmDelete.title')}
-        message={t('tax.configurations.confirmDelete.message')}
+        title={t('settings:tax.configurations.confirmDelete.title')}
+        message={t('settings:tax.configurations.confirmDelete.message')}
         confirmText={t('common:delete')}
         variant="danger"
         isLoading={deleteTax.isPending}

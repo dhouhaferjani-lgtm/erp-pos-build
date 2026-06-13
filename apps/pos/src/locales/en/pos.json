@@ -822,6 +822,16 @@
       "not_enabled": "This customer is not enabled for account charge."
     }
   },
+  "customer": {
+    "attach": "Customer",
+    "detach": "Remove customer",
+    "modalTitle": "Customer",
+    "attached": "Attached",
+    "amount": "Amount",
+    "record": "Record",
+    "createLocal": "Create local customer",
+    "searchPlaceholder": "Search by name, phone, email…"
+  },
   "voucherTender": {
     "title": "Apply voucher",
     "codeLabel": "Voucher code",
@@ -846,5 +856,53 @@
     "amountExceedsDue": "Amount cannot exceed the remaining due ({{due}} {{currency}}).",
     "applyFailed": "Failed to apply voucher.",
     "lookupFailed": "Could not read local voucher database. Please try again."
+  },
+  "customerAttach": {
+    "title": "Customer",
+    "attached": "Attached",
+    "detachLabel": "Detach customer",
+    "accountPaymentAmountLabel": "Account payment amount",
+    "accountPaymentAmountPlaceholder": "Amount",
+    "recordButton": "Record",
+    "newNameLabel": "New customer name",
+    "newNamePlaceholder": "Name",
+    "newPhoneLabel": "New customer phone",
+    "newPhonePlaceholder": "Phone",
+    "newEmailLabel": "New customer email",
+    "newEmailPlaceholder": "Email",
+    "createButton": "Create local customer",
+    "creating": "Creating...",
+    "scopeError": "Tenant and company are required to attach a customer.",
+    "errorWrongScope": "Customer belongs to a different tenant or company.",
+    "errorNameRequired": "Customer name is required.",
+    "errorPhoneOrEmailRequired": "Phone or email is required.",
+    "errorCreateFailed": "Customer create failed.",
+    "errorTerminalRequired": "Active terminal is required to record an account payment.",
+    "errorAmountRequired": "Payment amount is required.",
+    "errorPaymentFailed": "Account payment failed.",
+    "errorSearchFailed": "Customer search failed."
+  },
+  "customerSearch": {
+    "label": "Customer search",
+    "placeholder": "Name, phone, tax number",
+    "searching": "Searching..."
+  },
+  "customerBalance": {
+    "due": "Due {{amount}}",
+    "credit": "Credit {{amount}}",
+    "netDue": "Net due {{amount}}",
+    "stale": "Stale",
+    "fresh": "Fresh",
+    "staleAriaLabel": "Customer balance is stale",
+    "freshAriaLabel": "Customer balance is fresh",
+    "neverSynced": "Never synced",
+    "updatedAt": "Balance updated {{time}}"
+  },
+  "printer": {
+    "charset": {
+      "cp437": "CP437 (US/ASCII)",
+      "cp858": "CP858 (Western Europe)",
+      "cp1252": "CP1252 (Windows Latin)"
+    }
   }
 }

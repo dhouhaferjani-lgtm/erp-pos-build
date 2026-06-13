@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { X, Loader2 } from 'lucide-react'
 import { createCompany, type CreateCompanyInput } from '../../../features/company/api'
 import { useInvalidateCompanies } from '../../../features/company/CompanyProvider'
@@ -36,6 +37,7 @@ const COUNTRIES: CountryConfig[] = [
  * Modal for adding a new company
  */
 export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
+  const { t } = useTranslation(['settings', 'common'])
   const invalidateCompanies = useInvalidateCompanies()
   const setCurrentCompany = useCompanyStore((state) => state.setCurrentCompany)
 
@@ -90,7 +92,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
     setError(null)
 
     if (!formData.name.trim()) {
-      setError('Company name is required')
+      setError(t('settings:company.modal.companyNameRequired'))
       return
     }
 
@@ -122,12 +124,12 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
       <div className="relative mx-4 w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">Add New Company</h2>
+          <h2 className="text-xl font-semibold text-gray-900">{t('settings:company.modal.title')}</h2>
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-            aria-label="Close"
+            aria-label={t('common:actions.close')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -145,7 +147,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
           {/* Country */}
           <div>
             <label htmlFor="countryCode" className="block text-sm font-medium text-gray-700">
-              Country <span className="text-red-500">*</span>
+              {t('settings:company.fields.country')} <span className="text-red-500">*</span>
             </label>
             <select
               id="countryCode"
@@ -161,14 +163,17 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
               ))}
             </select>
             <p className="mt-1 text-xs text-gray-500">
-              Currency: {selectedCountry.currency} | Timezone: {selectedCountry.timezone}
+              {t('settings:company.modal.currencyTimezone', {
+                currency: selectedCountry.currency,
+                timezone: selectedCountry.timezone,
+              })}
             </p>
           </div>
 
           {/* Company Name */}
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-              Company Name <span className="text-red-500">*</span>
+              {t('settings:company.fields.name').replace(' *', '')} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
@@ -176,7 +181,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
               name="name"
               value={formData.name}
               onChange={handleChange}
-              placeholder="My Company"
+              placeholder={t('settings:company.modal.namePlaceholder')}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               required
             />
@@ -185,7 +190,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
           {/* Legal Name */}
           <div>
             <label htmlFor="legalName" className="block text-sm font-medium text-gray-700">
-              Legal Name
+              {t('settings:company.fields.legalName')}
             </label>
             <input
               type="text"
@@ -193,7 +198,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
               name="legalName"
               value={formData.legalName}
               onChange={handleChange}
-              placeholder="My Company SARL"
+              placeholder={t('settings:company.modal.legalNamePlaceholder')}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -201,7 +206,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
           {/* Tax ID */}
           <div>
             <label htmlFor="taxId" className="block text-sm font-medium text-gray-700">
-              Tax ID / VAT Number
+              {t('settings:company.fields.taxId')}
             </label>
             <input
               type="text"
@@ -209,7 +214,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
               name="taxId"
               value={formData.taxId}
               onChange={handleChange}
-              placeholder="FR12345678901"
+              placeholder={t('settings:company.modal.taxIdPlaceholder')}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -218,7 +223,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email
+                {t('settings:company.fields.email')}
               </label>
               <input
                 type="email"
@@ -226,13 +231,13 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
                 name="email"
                 value={formData.email}
                 onChange={handleChange}
-                placeholder="contact@company.com"
+                placeholder={t('settings:company.modal.emailPlaceholder')}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
             <div>
               <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                Phone
+                {t('settings:company.fields.phone')}
               </label>
               <input
                 type="tel"
@@ -240,7 +245,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
                 name="phone"
                 value={formData.phone}
                 onChange={handleChange}
-                placeholder="+33 1 23 45 67 89"
+                placeholder={t('settings:company.modal.phonePlaceholder')}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
@@ -249,7 +254,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
           {/* Address */}
           <div>
             <label htmlFor="addressStreet" className="block text-sm font-medium text-gray-700">
-              Street Address
+              {t('settings:company.fields.street')}
             </label>
             <input
               type="text"
@@ -257,7 +262,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
               name="addressStreet"
               value={formData.addressStreet}
               onChange={handleChange}
-              placeholder="123 Main Street"
+              placeholder={t('settings:company.modal.streetPlaceholder')}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -265,7 +270,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label htmlFor="addressCity" className="block text-sm font-medium text-gray-700">
-                City
+                {t('settings:company.fields.city')}
               </label>
               <input
                 type="text"
@@ -273,13 +278,13 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
                 name="addressCity"
                 value={formData.addressCity}
                 onChange={handleChange}
-                placeholder="Paris"
+                placeholder={t('settings:company.modal.cityPlaceholder')}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
             <div>
               <label htmlFor="addressPostalCode" className="block text-sm font-medium text-gray-700">
-                Postal Code
+                {t('settings:company.fields.postalCode')}
               </label>
               <input
                 type="text"
@@ -287,7 +292,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
                 name="addressPostalCode"
                 value={formData.addressPostalCode}
                 onChange={handleChange}
-                placeholder="75001"
+                placeholder={t('settings:company.modal.postalCodePlaceholder')}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
@@ -301,7 +306,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
               className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               disabled={mutation.isPending}
             >
-              Cancel
+              {t('common:actions.cancel')}
             </button>
             <button
               type="submit"
@@ -309,7 +314,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
               disabled={mutation.isPending}
             >
               {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Create Company
+              {t('settings:company.modal.createButton')}
             </button>
           </div>
         </form>

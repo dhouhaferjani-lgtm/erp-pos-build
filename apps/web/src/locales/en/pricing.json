@@ -37,7 +37,16 @@
       "price": "Price",
       "quantityRange": "Quantity Range"
     },
-    "descriptionPlaceholder": "Optional description for this price list"
+    "descriptionPlaceholder": "Optional description for this price list",
+    "codePlaceholder": "RETAIL",
+    "namePlaceholder": "Retail Prices",
+    "addItemComingSoon": "Item addition modal - coming soon",
+    "assignPartnerComingSoon": "Partner assignment modal - coming soon",
+    "currencies": {
+      "TND": "TND - Tunisian Dinar",
+      "EUR": "EUR - Euro",
+      "USD": "USD - US Dollar"
+    }
   },
   "validation": {
     "codeRequired": "Code is required",

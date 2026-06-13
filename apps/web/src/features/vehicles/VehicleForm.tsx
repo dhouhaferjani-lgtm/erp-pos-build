@@ -74,7 +74,7 @@ function scopedNamespacePredicate(
 }
 
 export function VehicleForm() {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['vehicles', 'common'])
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
@@ -206,7 +206,7 @@ export function VehicleForm() {
   if (isEdit && loadingVehicle) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className={textColors.disabled}>{t('status.loading')}</div>
+        <div className={textColors.disabled}>{t('common:status.loading')}</div>
       </div>
     )
   }
@@ -220,30 +220,30 @@ export function VehicleForm() {
           className={`inline-flex items-center gap-2 text-sm ${textColors.tertiary} ${textColors.hoverSecondary}`}
         >
           <ArrowLeft className="h-4 w-4" />
-          {t('actions.back')}
+          {t('common:actions.back')}
         </Link>
         <h1 className={`text-2xl font-bold ${textColors.primary}`}>
-          {isEdit ? 'Edit Vehicle' : 'New Vehicle'}
+          {isEdit ? t('vehicles:edit') : t('vehicles:new')}
         </h1>
       </div>
 
       {/* Form */}
       <form onSubmit={(e) => void handleSubmit(onSubmit)(e)} className="space-y-6">
         <div className={`rounded-lg border ${borderColors.light} bg-white p-6`}>
-          <h2 className={`text-lg font-semibold ${textColors.primary} mb-4`}>Vehicle Information</h2>
+          <h2 className={`text-lg font-semibold ${textColors.primary} mb-4`}>{t('vehicles:sections.vehicleInfo')}</h2>
 
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {/* Owner (Partner) */}
             <div>
               <label htmlFor="partner_id" className={tokens.label.base}>
-                Owner (Optional)
+                {t('vehicles:owner')}
               </label>
               <select
                 id="partner_id"
                 {...register('partner_id')}
                 className={tokens.select.base}
               >
-                <option value="">-- No Owner --</option>
+                <option value="">{t('vehicles:noOwner')}</option>
                 {partners.map((partner) => (
                   <option key={partner.id} value={partner.id}>
                     {partner.name}
@@ -255,14 +255,14 @@ export function VehicleForm() {
             {/* License Plate */}
             <div>
               <label htmlFor="license_plate" className={tokens.label.base}>
-                License Plate *
+                {t('vehicles:licensePlate')} *
               </label>
               <input
                 type="text"
                 id="license_plate"
-                {...register('license_plate', { required: 'License plate is required' })}
+                {...register('license_plate', { required: t('vehicles:licensePlateRequired') })}
                 className={tokens.input.base}
-                placeholder="AB-123-CD"
+                placeholder={t('vehicles:placeholders.licensePlate')}
               />
               {errors.license_plate && (
                 <p className={tokens.helperText.error}>{errors.license_plate.message}</p>
@@ -272,7 +272,7 @@ export function VehicleForm() {
             {/* VIN */}
             <div>
               <label htmlFor="vin" className={tokens.label.base}>
-                VIN
+                {t('vehicles:vin')}
               </label>
               <input
                 type="text"
@@ -280,11 +280,11 @@ export function VehicleForm() {
                 {...register('vin', {
                   pattern: {
                     value: /^[A-HJ-NPR-Z0-9]{17}$/i,
-                    message: 'VIN must be 17 characters (no I, O, Q)'
+                    message: t('vehicles:vinValidation'),
                   }
                 })}
                 className={`${tokens.input.base} font-mono`}
-                placeholder="VF1RFB00X51234567"
+                placeholder={t('vehicles:placeholders.vin')}
                 maxLength={17}
               />
               {errors.vin && (
@@ -295,14 +295,14 @@ export function VehicleForm() {
             {/* Brand */}
             <div>
               <label htmlFor="brand" className={tokens.label.base}>
-                Brand *
+                {t('vehicles:brand')} *
               </label>
               <input
                 type="text"
                 id="brand"
-                {...register('brand', { required: 'Brand is required' })}
+                {...register('brand', { required: t('vehicles:brandRequired') })}
                 className={tokens.input.base}
-                placeholder="Renault"
+                placeholder={t('vehicles:placeholders.brand')}
               />
               {errors.brand && (
                 <p className={tokens.helperText.error}>{errors.brand.message}</p>
@@ -312,14 +312,14 @@ export function VehicleForm() {
             {/* Model */}
             <div>
               <label htmlFor="model" className={tokens.label.base}>
-                Model *
+                {t('vehicles:model')} *
               </label>
               <input
                 type="text"
                 id="model"
-                {...register('model', { required: 'Model is required' })}
+                {...register('model', { required: t('vehicles:modelRequired') })}
                 className={tokens.input.base}
-                placeholder="Clio"
+                placeholder={t('vehicles:placeholders.model')}
               />
               {errors.model && (
                 <p className={tokens.helperText.error}>{errors.model.message}</p>
@@ -329,17 +329,17 @@ export function VehicleForm() {
             {/* Year */}
             <div>
               <label htmlFor="year" className={tokens.label.base}>
-                Year
+                {t('vehicles:year')}
               </label>
               <input
                 type="number"
                 id="year"
                 {...register('year', {
-                  min: { value: 1900, message: 'Year must be after 1900' },
-                  max: { value: new Date().getFullYear() + 1, message: 'Year is too far in the future' }
+                  min: { value: 1900, message: t('vehicles:yearMin') },
+                  max: { value: new Date().getFullYear() + 1, message: t('vehicles:yearMax') }
                 })}
                 className={tokens.input.base}
-                placeholder="2020"
+                placeholder={t('vehicles:placeholders.year')}
               />
               {errors.year && (
                 <p className={tokens.helperText.error}>{errors.year.message}</p>
@@ -349,26 +349,26 @@ export function VehicleForm() {
             {/* Color */}
             <div>
               <label htmlFor="color" className={tokens.label.base}>
-                Color
+                {t('vehicles:color')}
               </label>
               <input
                 type="text"
                 id="color"
                 {...register('color')}
                 className={tokens.input.base}
-                placeholder="Blue"
+                placeholder={t('vehicles:placeholders.color')}
               />
             </div>
 
             {/* Mileage */}
             <div>
               <label htmlFor="mileage" className={tokens.label.base}>
-                Mileage (km)
+                {t('vehicles:mileageKm')}
               </label>
               <input
                 type="number"
                 id="mileage"
-                {...register('mileage', { min: { value: 0, message: 'Mileage cannot be negative' } })}
+                {...register('mileage', { min: { value: 0, message: t('vehicles:mileageNegative') } })}
                 className={tokens.input.base}
                 placeholder="45000"
               />
@@ -380,14 +380,14 @@ export function VehicleForm() {
             {/* Fuel Type */}
             <div>
               <label htmlFor="fuel_type" className={tokens.label.base}>
-                Fuel Type
+                {t('vehicles:fuelType')}
               </label>
               <select
                 id="fuel_type"
                 {...register('fuel_type')}
                 className={tokens.select.base}
               >
-                <option value="">-- Select --</option>
+                <option value="">{t('common:common.selectOption')}</option>
                 {fuelTypes.map((fuel) => (
                   <option key={fuel} value={fuel}>
                     {fuel}
@@ -399,14 +399,14 @@ export function VehicleForm() {
             {/* Transmission */}
             <div>
               <label htmlFor="transmission" className={tokens.label.base}>
-                Transmission
+                {t('vehicles:transmission')}
               </label>
               <select
                 id="transmission"
                 {...register('transmission')}
                 className={tokens.select.base}
               >
-                <option value="">-- Select --</option>
+                <option value="">{t('common:common.selectOption')}</option>
                 {transmissions.map((trans) => (
                   <option key={trans} value={trans}>
                     {trans}
@@ -418,14 +418,14 @@ export function VehicleForm() {
             {/* Engine Code */}
             <div>
               <label htmlFor="engine_code" className={tokens.label.base}>
-                Engine Code
+                {t('vehicles:engineCode')}
               </label>
               <input
                 type="text"
                 id="engine_code"
                 {...register('engine_code')}
                 className={tokens.input.base}
-                placeholder="K9K 608"
+                placeholder={t('vehicles:placeholders.engineCode')}
               />
             </div>
           </div>
@@ -433,14 +433,14 @@ export function VehicleForm() {
           {/* Notes */}
           <div className="mt-6">
             <label htmlFor="notes" className={tokens.label.base}>
-              Notes
+              {t('vehicles:notes')}
             </label>
             <textarea
               id="notes"
               {...register('notes')}
               rows={3}
               className={tokens.textarea.base}
-              placeholder="Additional notes about the vehicle..."
+              placeholder={t('vehicles:placeholders.notes')}
             />
           </div>
         </div>
@@ -448,7 +448,7 @@ export function VehicleForm() {
         {/* Error Message */}
         {mutationError && (
           <div className={`${tokens.alert.base} ${tokens.alert.error}`}>
-            {mutationError instanceof Error ? mutationError.message : 'An error occurred. Please try again.'}
+            {mutationError instanceof Error ? mutationError.message : t('common:errorMessages.generic')}
           </div>
         )}
 
@@ -458,14 +458,14 @@ export function VehicleForm() {
             to={isEdit ? `/vehicles/${vehicleId}` : '/vehicles'}
             className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
           >
-            {t('actions.cancel')}
+            {t('common:actions.cancel')}
           </Link>
           <button
             type="submit"
             disabled={isSubmitting}
             className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
           >
-            {isSubmitting ? t('status.saving', 'Saving...') : t('actions.save')}
+            {isSubmitting ? t('common:status.saving') : t('common:actions.save')}
           </button>
         </div>
       </form>

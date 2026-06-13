@@ -48,7 +48,44 @@
   },
   "chartOfAccounts": {
     "title": "Plan comptable",
-    "addAccount": "Ajouter un compte"
+    "description": "Gérer votre plan comptable",
+    "addAccount": "Ajouter un compte",
+    "loadError": "Échec du chargement du plan comptable",
+    "emptyState": "Aucun compte trouvé. Créez votre premier compte pour commencer.",
+    "account": {
+      "addTitle": "Ajouter un compte",
+      "editTitle": "Modifier le compte",
+      "code": "Code du compte",
+      "name": "Nom du compte",
+      "type": "Type de compte",
+      "parentAccount": "Compte parent (facultatif)",
+      "description": "Description (facultatif)",
+      "active": "Actif",
+      "codeReadonly": "Le code du compte ne peut pas être modifié",
+      "typeReadonly": "Le type de compte ne peut pas être modifié",
+      "noParent": "Aucun",
+      "types": {
+        "asset": "Actif",
+        "liability": "Passif",
+        "equity": "Capitaux propres",
+        "revenue": "Produits",
+        "expense": "Charges"
+      },
+      "creating": "Création...",
+      "create": "Créer le compte",
+      "saving": "Enregistrement...",
+      "saveChanges": "Enregistrer les modifications"
+    }
+  },
+  "widget": {
+    "title": "Aperçu financier",
+    "viewReports": "Voir les rapports →",
+    "totalAssets": "Total actif",
+    "totalLiabilities": "Total passif",
+    "netIncomeMtd": "Résultat net (mois en cours)",
+    "netIncomeYtd": "Résultat net (exercice)",
+    "accountsReceivable": "Créances clients",
+    "accountsPayable": "Dettes fournisseurs"
   },
   "ledger": {
     "title": "Grand livre",

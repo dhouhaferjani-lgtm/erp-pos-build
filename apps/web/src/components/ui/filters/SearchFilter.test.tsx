@@ -29,7 +29,7 @@ describe('SearchFilter', () => {
         onChange={onChangeMock}
       />
     )
-    const input = screen.getByPlaceholderText('Search...')
+    const input = screen.getByPlaceholderText('Search')
     expect(input).toBeInTheDocument()
   })
 
@@ -40,7 +40,7 @@ describe('SearchFilter', () => {
         onChange={onChangeMock}
       />
     )
-    expect(screen.getByPlaceholderText('Search...')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Search')).toBeInTheDocument()
   })
 
   it('displays custom placeholder', () => {
@@ -73,7 +73,7 @@ describe('SearchFilter', () => {
         onChange={onChangeMock}
       />
     )
-    const input = screen.getByPlaceholderText('Search...') as HTMLInputElement
+    const input = screen.getByPlaceholderText('Search') as HTMLInputElement
     expect(input.value).toBe('test query')
   })
 
@@ -84,7 +84,7 @@ describe('SearchFilter', () => {
         onChange={onChangeMock}
       />
     )
-    const input = screen.getByPlaceholderText('Search...')
+    const input = screen.getByPlaceholderText('Search')
     await user.type(input, 'abc')
 
     // userEvent.type() triggers onChange for each character
@@ -99,7 +99,7 @@ describe('SearchFilter', () => {
         onChange={onChangeMock}
       />
     )
-    const input = screen.getByPlaceholderText('Search...')
+    const input = screen.getByPlaceholderText('Search')
     await user.clear(input)
 
     expect(onChangeMock).toHaveBeenCalledWith(undefined)
@@ -147,7 +147,7 @@ describe('SearchFilter', () => {
         onChange={onChangeMock}
       />
     )
-    const input = screen.getByPlaceholderText('Search...') as HTMLInputElement
+    const input = screen.getByPlaceholderText('Search') as HTMLInputElement
     expect(input.value).toBe('')
   })
 
@@ -169,7 +169,7 @@ describe('SearchFilter', () => {
         onChange={onChangeMock}
       />
     )
-    const input = screen.getByPlaceholderText('Search...')
+    const input = screen.getByPlaceholderText('Search')
     expect(input).toHaveAttribute('type', 'text')
   })
 

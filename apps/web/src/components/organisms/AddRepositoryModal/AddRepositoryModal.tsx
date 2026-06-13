@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
+import { tokens } from '../../../lib/designTokens'
 import { Modal, ModalHeader, ModalContent, ModalFooter } from '../Modal'
 import { FormField } from '../../atoms/FormField'
 import { Input } from '../../atoms/Input'
@@ -169,7 +170,7 @@ export function AddRepositoryModal({
                 <Input
                   id="repository-code"
                   {...register('code', { required: t('common:validation.required') })}
-                  placeholder="CASH-01"
+                  placeholder={t('treasury:repositories.codePlaceholder')}
                 />
               </FormField>
 
@@ -182,7 +183,7 @@ export function AddRepositoryModal({
                 <Input
                   id="repository-name"
                   {...register('name', { required: t('common:validation.required') })}
-                  placeholder="Main Cash Register"
+                  placeholder={t('treasury:repositories.namePlaceholder')}
                 />
               </FormField>
             </div>
@@ -233,7 +234,7 @@ export function AddRepositoryModal({
                   <Input
                     id="repository-bank-name"
                     {...register('bank_name')}
-                    placeholder="Bank of America"
+                    placeholder={t('treasury:repositories.bankNamePlaceholder')}
                   />
                 </FormField>
 
@@ -245,7 +246,7 @@ export function AddRepositoryModal({
                     <Input
                       id="repository-account-number"
                       {...register('account_number')}
-                      placeholder="1234567890"
+                      placeholder={t('treasury:repositories.accountNumberPlaceholder')}
                     />
                   </FormField>
 
@@ -256,7 +257,7 @@ export function AddRepositoryModal({
                     <Input
                       id="repository-iban"
                       {...register('iban')}
-                      placeholder="FR1234567890"
+                      placeholder={t('treasury:repositories.ibanPlaceholder')}
                     />
                   </FormField>
                 </div>
@@ -268,7 +269,7 @@ export function AddRepositoryModal({
                   <Input
                     id="repository-bic"
                     {...register('bic')}
-                    placeholder="BNPAFRPP"
+                    placeholder={t('treasury:repositories.bicPlaceholder')}
                   />
                 </FormField>
               </>
@@ -277,7 +278,7 @@ export function AddRepositoryModal({
 
           {/* Error message */}
           {mutation.isError && (
-            <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            <div className={`mt-4 rounded-lg p-3 text-sm ${tokens.alert.error}`}>
               {mutation.error instanceof Error
                 ? mutation.error.message
                 : t('common:errorMessages.generic')}

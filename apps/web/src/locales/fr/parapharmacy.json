@@ -13,7 +13,6 @@
   "createIngredientError": "Échec de la création de l'ingrédient",
   "updateIngredientError": "Échec de la mise à jour de l'ingrédient",
   "deleteIngredientError": "Échec de la suppression de l'ingrédient",
-
   "certifications": "Certifications",
   "certificationsDescription": "Gérer les certifications de produits et les badges de conformité",
   "noCertifications": "Aucune certification",
@@ -28,7 +27,6 @@
   "createCertificationError": "Échec de la création de la certification",
   "updateCertificationError": "Échec de la mise à jour de la certification",
   "deleteCertificationError": "Échec de la suppression de la certification",
-
   "healthClaims": "Allégations santé",
   "healthClaimsDescription": "Gérer les allégations santé approuvées pour les produits parapharmaceutiques",
   "noHealthClaims": "Aucune allégation santé",
@@ -43,7 +41,6 @@
   "createHealthClaimError": "Échec de la création de l'allégation santé",
   "updateHealthClaimError": "Échec de la mise à jour de l'allégation santé",
   "deleteHealthClaimError": "Échec de la suppression de l'allégation santé",
-
   "keyComponents": "Composants clés",
   "keyComponentsDescription": "Gérer les composants non actifs des produits (capsules, liants, etc.)",
   "noKeyComponents": "Aucun composant clé",
@@ -58,7 +55,6 @@
   "createKeyComponentError": "Échec de la création du composant clé",
   "updateKeyComponentError": "Échec de la mise à jour du composant clé",
   "deleteKeyComponentError": "Échec de la suppression du composant clé",
-
   "name": "Nom",
   "slug": "Slug",
   "slugHelp": "Identifiant compatible URL (minuscules, tirets uniquement)",
@@ -66,7 +62,13 @@
   "allergen": "Allergène",
   "allergenCode": "Code allergène",
   "isAllergen": "Est un allergène",
-  "regulatoryStatus": "Statut réglementaire",
+  "regulatoryStatus": {
+    "approved": "Approuvé",
+    "restricted": "Restreint",
+    "banned": "Interdit",
+    "pending": "En attente",
+    "rejected": "Rejeté"
+  },
   "notes": "Notes",
   "notesPlaceholder": "Notes ou remarques supplémentaires...",
   "basicInformation": "Informations de base",
@@ -76,10 +78,11 @@
   "noTranslations": "Aucune traduction ajoutée",
   "required": "Requis",
   "description": "Description",
-
   "type": "Type",
   "typeHelp": "Type de certification (bio, vegan, halal, etc.)",
+  "typePlaceholder": "bio, vegan, halal, commerce-équitable",
   "certifyingBody": "Organisme certificateur",
+  "certifyingBodyPlaceholder": "Ecocert, NSF, USDA",
   "logoUrl": "URL du logo",
   "verificationUrl": "URL de vérification",
   "status": "Statut",
@@ -88,28 +91,22 @@
   "isActive": "Est actif",
   "displayOrder": "Ordre d'affichage",
   "displayOrderHelp": "Ordre d'apparition des certifications (plus bas = premier)",
-
   "claim": "Allégation",
-  "claimType": "Type d'allégation",
-  "efsaReference": "Référence EFSA",
-  "fdaReference": "Référence FDA",
-  "countryRestrictions": "Restrictions par pays",
-  "countryRestrictionsHelp": "Pays où cette allégation est restreinte (codes pays séparés par des virgules)",
-  "requiresDisclaimer": "Nécessite un avertissement",
-  "disclaimer": "Avertissement",
-  "disclaimerText": "Texte d'avertissement",
-
-  "regulatoryStatus": {
-    "approved": "Approuvé",
-    "restricted": "Restreint",
-    "banned": "Interdit",
-    "pending": "En attente",
-    "rejected": "Rejeté"
-  },
-
   "claimType": {
     "function": "Allégation fonctionnelle",
     "reduction_of_disease_risk": "Réduction du risque de maladie",
     "development_and_health": "Développement et santé"
-  }
+  },
+  "efsaReference": "Référence EFSA",
+  "efsaReferencePlaceholder": "EFSA-Q-2008-123",
+  "fdaReference": "Référence FDA",
+  "fdaReferencePlaceholder": "FDA-2008-N-0453",
+  "countryRestrictions": "Restrictions par pays",
+  "countryRestrictionsPlaceholder": "FR, DE, IT (séparés par des virgules)",
+  "countryRestrictionsHelp": "Pays où cette allégation est restreinte (codes pays séparés par des virgules)",
+  "requiresDisclaimer": "Nécessite un avertissement",
+  "disclaimer": "Avertissement",
+  "disclaimerText": "Texte d'avertissement",
+  "claimTypeLabel": "Type d’allégation",
+  "regulatoryStatusLabel": "Statut réglementaire"
 }

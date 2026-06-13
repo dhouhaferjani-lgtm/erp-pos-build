@@ -9,6 +9,31 @@ import { usePaymentStore } from '@/stores/paymentStore';
 import type { CustomerMirrorRow } from '@/lib/customer/customerTypes';
 import { CustomerAttachPanel } from './CustomerAttachPanel';
 
+// Resolve translation keys to their real English values from the pos locale so
+// assertions match rendered text regardless of the key scheme.
+vi.mock('react-i18next', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-i18next')>();
+  const en = (await import('@/locales/en/pos.json')).default as Record<string, unknown>;
+  const flat: Record<string, string> = {};
+  (function walk(o: Record<string, unknown>, p: string) {
+    for (const [k, v] of Object.entries(o)) {
+      const K = p ? `${p}.${k}` : k;
+      if (v && typeof v === 'object') walk(v as Record<string, unknown>, K);
+      else flat[K] = String(v);
+    }
+  })(en, '');
+  return {
+    ...actual,
+    useTranslation: () => ({
+      t: (k: string, opts?: Record<string, unknown>) => {
+        let s = flat[k] ?? k;
+        if (opts) for (const [ik, iv] of Object.entries(opts)) s = s.replace(new RegExp(`{{${ik}}}`, 'g'), String(iv));
+        return s;
+      },
+    }),
+  };
+});
+
 vi.mock('@/lib/db', async () => {
   const actual = await vi.importActual<typeof import('@/lib/db')>('@/lib/db');
   return {

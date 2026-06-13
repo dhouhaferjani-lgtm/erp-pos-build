@@ -28,6 +28,8 @@ use Illuminate\Support\Str;
  * @property int $depth
  * @property int $sort_order
  * @property bool $is_active
+ * @property string|null $default_tax_rate
+ * @property string|null $default_tax_configuration_id
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
@@ -55,6 +57,8 @@ class Category extends Model
         'depth',
         'sort_order',
         'is_active',
+        'default_tax_rate',
+        'default_tax_configuration_id',
     ];
 
     /**
@@ -76,6 +80,7 @@ class Category extends Model
             'depth' => 'integer',
             'sort_order' => 'integer',
             'is_active' => 'boolean',
+            'default_tax_rate' => 'decimal:2',
         ];
     }
 

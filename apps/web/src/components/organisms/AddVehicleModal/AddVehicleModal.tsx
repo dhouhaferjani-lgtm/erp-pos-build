@@ -10,6 +10,7 @@ import { Button } from '../../atoms/Button'
 import { apiPost } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
+import { tokens } from '../../../lib/designTokens'
 import { useCompanyStore } from '../../../stores/companyStore'
 
 function scopedNamespacePredicate(
@@ -186,7 +187,7 @@ export function AddVehicleModal({
               <Input
                 id="vehicle-license-plate"
                 {...register('license_plate', { required: t('common:validation.required') })}
-                placeholder="AB-123-CD"
+                placeholder={t('vehicles:placeholders.licensePlate')}
               />
             </FormField>
 
@@ -201,10 +202,10 @@ export function AddVehicleModal({
                 {...register('vin', {
                   pattern: {
                     value: /^[A-HJ-NPR-Z0-9]{17}$/i,
-                    message: 'VIN must be 17 characters (no I, O, Q)',
+                    message: t('vehicles:vinValidation'),
                   },
                 })}
-                placeholder="VF1RFB00X51234567"
+                placeholder={t('vehicles:placeholders.vin')}
                 maxLength={17}
                 className="font-mono"
               />
@@ -220,7 +221,7 @@ export function AddVehicleModal({
               <Input
                 id="vehicle-brand"
                 {...register('brand', { required: t('common:validation.required') })}
-                placeholder="Renault"
+                placeholder={t('vehicles:placeholders.brand')}
               />
             </FormField>
 
@@ -234,7 +235,7 @@ export function AddVehicleModal({
               <Input
                 id="vehicle-model"
                 {...register('model', { required: t('common:validation.required') })}
-                placeholder="Clio"
+                placeholder={t('vehicles:placeholders.model')}
               />
             </FormField>
 
@@ -250,10 +251,10 @@ export function AddVehicleModal({
                 min="1900"
                 max={currentYear + 1}
                 {...register('year', {
-                  min: { value: 1900, message: 'Year must be after 1900' },
+                  min: { value: 1900, message: t('vehicles:yearMin') },
                   max: {
                     value: currentYear + 1,
-                    message: 'Year is too far in the future',
+                    message: t('vehicles:yearMax'),
                   },
                 })}
                 placeholder="2020"
@@ -268,19 +269,19 @@ export function AddVehicleModal({
               <Input
                 id="vehicle-color"
                 {...register('color')}
-                placeholder="Blue"
+                placeholder={t('vehicles:placeholders.color')}
               />
             </FormField>
           </div>
 
           {/* Info message */}
-          <div className="mt-4 rounded-lg bg-blue-50 p-3 text-sm text-blue-700">
-            Quick vehicle creation. You can add more details (fuel type, transmission, mileage, etc.) by editing the vehicle later.
+          <div className={`mt-4 rounded-lg p-3 text-sm ${tokens.alert.info}`}>
+            {t('vehicles:addVehicleHint')}
           </div>
 
           {/* Error message */}
           {mutation.isError && (
-            <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            <div className={`mt-4 rounded-lg p-3 text-sm ${tokens.alert.error}`}>
               {mutation.error instanceof Error
                 ? mutation.error.message
                 : t('common:errorMessages.generic')}

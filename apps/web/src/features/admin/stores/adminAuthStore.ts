@@ -11,39 +11,43 @@ interface SuperAdmin {
 /**
  * Admin auth state interface
  *
- * SECURITY: Token is NOT stored - authentication relies on httpOnly cookies
- * managed by Sanctum. Only admin info is persisted for UI display.
+ * SECURITY: `token` is held in MEMORY ONLY (never persisted to localStorage).
+ * Bearer-only deploys (SANCTUM_STATEFUL_DOMAINS="") have no session cookie, so
+ * this is the only credential. A page refresh therefore requires re-login by
+ * design. Only the display profile (`admin`) is persisted for UI rendering.
  */
 interface AdminAuthState {
   admin: SuperAdmin | null
+  token: string | null
   isAuthenticated: boolean
-  setAuth: (admin: SuperAdmin) => void
+  setAuth: (admin: SuperAdmin, token: string) => void
   logout: () => void
 }
 
 /**
- * Admin auth store with persistence
+ * Admin auth store with selective persistence.
  *
- * SECURITY NOTE: Authentication tokens are managed via httpOnly cookies
- * by Laravel Sanctum. We only persist admin info for UI display purposes.
- * The actual authentication state is determined by the session cookie.
+ * SECURITY NOTE: The Bearer token is NEVER written to localStorage.
+ * Only `admin` (display profile) is persisted via `partialize`.
+ * `isAuthenticated` and `token` reset on page refresh — consistent with
+ * the memory-only security posture.
  */
 export const useAdminAuthStore = create<AdminAuthState>()(
   persist(
     (set) => ({
       admin: null,
+      token: null,
       isAuthenticated: false,
-      setAuth: (admin) => {
-        set({ admin, isAuthenticated: true })
+      setAuth: (admin, token) => {
+        set({ admin, token, isAuthenticated: true })
       },
       logout: () => {
-        set({ admin: null, isAuthenticated: false })
+        set({ admin: null, token: null, isAuthenticated: false })
       },
     }),
     {
       name: 'admin-auth-storage',
-      // Only persist admin info for UI - NOT authentication state
-      // The session cookie determines actual auth status
+      // Only the display profile is persisted — never token/isAuthenticated.
       partialize: (state) => ({
         admin: state.admin,
       }),

@@ -8,6 +8,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Stancl\Tenancy\Database\Concerns\CentralConnection;
 
 /**
  * Line item on a billing invoice.
@@ -34,6 +35,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 final class InvoiceItem extends Model
 {
+    // Central table — platform billing (invoices the platform issues to tenants).
+    use CentralConnection;
     use HasUuids;
 
     protected $table = 'billing_invoice_items';

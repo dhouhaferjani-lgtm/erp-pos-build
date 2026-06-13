@@ -121,9 +121,9 @@ export function PrinterAdvancedSettings() {
               }
               className="min-h-[44px] w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              <option value="cp437">CP437 (US/ASCII)</option>
-              <option value="cp858">CP858 (Western Europe)</option>
-              <option value="cp1252">CP1252 (Windows Latin)</option>
+              <option value="cp437">{t('printer.charset.cp437')}</option>
+              <option value="cp858">{t('printer.charset.cp858')}</option>
+              <option value="cp1252">{t('printer.charset.cp1252')}</option>
             </select>
           </div>
         </div>

@@ -19,7 +19,7 @@ const routeToBreadcrumb: Partial<Record<string, { parent?: string; labelKey: str
   '/sales/quotes': { parent: '/sales', labelKey: 'navigation.quotes' },
   '/sales/orders': { parent: '/sales', labelKey: 'navigation.salesOrders' },
   '/sales/invoices': { parent: '/sales', labelKey: 'navigation.invoices' },
-  '/sales/credit-notes': { parent: '/sales', labelKey: 'Credit Notes' },
+  '/sales/credit-notes': { parent: '/sales', labelKey: 'navigation.creditNotes' },
   '/purchases': { labelKey: 'navigation.purchases' },
   '/purchases/suppliers': { parent: '/purchases', labelKey: 'navigation.suppliers' },
   '/purchases/orders': { parent: '/purchases', labelKey: 'navigation.purchaseOrders' },
@@ -54,7 +54,7 @@ function buildBreadcrumbsFromPath(pathname: string, t: (key: string) => string):
 
     if (isUuid) {
       // This is a detail page, add "Details" breadcrumb
-      breadcrumbs.push({ label: 'Details' })
+      breadcrumbs.push({ label: t('details') })
     } else if (isNew) {
       breadcrumbs.push({ label: t('actions.add') })
     } else if (isEdit) {
@@ -92,7 +92,7 @@ export function Breadcrumb({ items }: BreadcrumbProps) {
   }
 
   return (
-    <nav aria-label="Breadcrumb" className="mb-4">
+    <nav aria-label={t('navigation.breadcrumb')} className="mb-4">
       <ol className="flex items-center gap-1 text-sm">
         {/* Home link */}
         <li>

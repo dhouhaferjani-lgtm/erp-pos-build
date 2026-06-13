@@ -127,7 +127,7 @@ export function CreditNoteDetail({
           {/* Reason */}
           <div>
             <label className="block text-sm font-medium text-gray-700">
-              {t('sales:creditNotes.reason')}
+              {t('sales:creditNotes.reasonLabel')}
             </label>
             <p className="mt-1 text-base text-gray-900">
               {getReasonLabel(creditNote.reason)}
@@ -137,7 +137,7 @@ export function CreditNoteDetail({
           {/* Status */}
           <div>
             <label className="block text-sm font-medium text-gray-700">
-              {t('sales:creditNotes.status')}
+              {t('sales:creditNotes.statusLabel')}
             </label>
             <p className="mt-1 text-base text-gray-900">
               {creditNote.status === 'posted'

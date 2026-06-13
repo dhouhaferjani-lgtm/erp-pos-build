@@ -8,6 +8,7 @@ import { DesignationCell } from '../DesignationCell'
 import { NotesCell } from '../NotesCell'
 import { useLineDesignationFeature } from '../../hooks/useLineDesignationFeature'
 import { textColors } from '../../../../lib/designTokens'
+import { useTranslation } from 'react-i18next'
 
 export interface DocumentLineData {
   id: string
@@ -80,6 +81,7 @@ export function DocumentLineRow({
   const taxConfigName = useTaxConfigName(line.tax_configuration_id)
   const level = margin !== null ? getMarginLevel(margin, targetMargin, minimumMargin) : null
   const designationFeatureEnabled = useLineDesignationFeature()
+  const { t } = useTranslation('sales')
 
   return (
     <tr
@@ -94,7 +96,7 @@ export function DocumentLineRow({
           <button
             type="button"
             className="cursor-grab text-gray-400 hover:text-gray-600"
-            aria-label="Drag to reorder"
+            aria-label={t('lineItems.actions.dragToReorder')}
           >
             <GripVertical className="h-4 w-4" />
           </button>
@@ -208,7 +210,7 @@ export function DocumentLineRow({
             type="button"
             onClick={onRemove}
             className="text-gray-400 hover:text-red-600"
-            aria-label="Remove line"
+            aria-label={t('lineItems.actions.removeLine')}
           >
             <Trash2 className="h-4 w-4" />
           </button>

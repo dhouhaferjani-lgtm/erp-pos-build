@@ -13,6 +13,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -85,6 +86,11 @@ class DatabaseSeeder extends Seeder
         $this->command->info('Creating payment repositories for French company...');
         $this->call(PaymentRepositorySeeder::class, false, ['company' => $frCompany]);
 
+        $this->command->info('Provisioning tax configurations for French company...');
+        (new CompanyTaxProvisioningService(
+            failLoudOnMissingCountry: true,
+        ))->provisionForCompany($frCompany);
+
         $this->command->info('Creating partners for French company...');
         $this->createPartners($tenant, $frCompany);
 
@@ -114,8 +120,10 @@ class DatabaseSeeder extends Seeder
         $this->command->info('Creating payment repositories for Tunisian company...');
         $this->call(PaymentRepositorySeeder::class, false, ['company' => $tnCompany]);
 
-        $this->command->info('Creating Tunisia tax configurations...');
-        $this->call(TunisiaTaxConfigurationSeeder::class);
+        $this->command->info('Provisioning tax configurations for Tunisian company...');
+        (new CompanyTaxProvisioningService(
+            failLoudOnMissingCountry: true,
+        ))->provisionForCompany($tnCompany);
 
         $this->command->info('Creating partners for Tunisian company...');
         $this->createPartners($tenant, $tnCompany);

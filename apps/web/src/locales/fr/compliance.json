@@ -116,6 +116,24 @@
       "softGteHard": "Le seuil souple doit être inférieur au seuil strict."
     }
   },
+  "quarantine": {
+    "pageTitle": "Assistance à la résolution de quarantaine",
+    "pageSubtitle": "Préremplissez les champs du payload canonique à partir d'un événement fiscal ou d'une ligne de quarantaine dont l'analyse a échoué.",
+    "idLabel": "Identifiant de quarantaine ou d'événement fiscal",
+    "parseButton": "Analyser",
+    "noDefects": "Aucun défaut",
+    "defectsCount": "{{count}} défaut",
+    "defectsCount_plural": "{{count}} défauts",
+    "parsedPayloadAriaLabel": "JSON du payload analysé",
+    "defectsSectionTitle": "Défauts",
+    "payloadPassedParsing": "Le payload a passé l'analyse stricte.",
+    "correctionsSectionTitle": "Corrections",
+    "noEditableDefects": "Aucun défaut de payload modifiable n'a été détecté.",
+    "correctedValueAriaLabel": "Valeur corrigée pour {{path}}",
+    "quarantineRowInspectNote": "Les lignes de la table de quarantaine peuvent être inspectées ici ; seuls les événements fiscaux présents dans la table peuvent être résolus via ce workflow.",
+    "submitCorrectionButton": "Soumettre la correction",
+    "resolvedSuccess": "Échec d'analyse résolu."
+  },
   "fraudAlerts": {
     "title": "Alertes de fraude",
     "description": "Surveillez et enquêtez sur les patterns d'activité suspects",
@@ -170,7 +188,8 @@
       "resolvedAt": "Résolu le",
       "resolutionNotes": "Notes de résolution",
       "noProducts": "Aucun produit signalé",
-      "occurrenceCount": "{{count}} fois"
+      "occurrenceCount": "{{count}} fois",
+      "occurrenceCount_plural": "{{count}} fois"
     },
     "modals": {
       "assign": {

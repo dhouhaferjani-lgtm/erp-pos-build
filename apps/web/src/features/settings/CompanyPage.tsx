@@ -329,7 +329,7 @@ export function CompanyPage() {
                   id="tax_id"
                   value={formData.tax_id ?? ''}
                   onChange={(e) => { handleInputChange('tax_id', e.target.value || null) }}
-                  placeholder="FR12345678901"
+                  placeholder={t('settings:company.placeholders.taxId')}
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
@@ -342,7 +342,7 @@ export function CompanyPage() {
                   id="registration_number"
                   value={formData.registration_number ?? ''}
                   onChange={(e) => { handleInputChange('registration_number', e.target.value || null) }}
-                  placeholder="123 456 789 RCS Paris"
+                  placeholder={t('settings:company.placeholders.registrationNumber')}
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
@@ -363,7 +363,7 @@ export function CompanyPage() {
                   id="street"
                   value={formData.address?.street ?? ''}
                   onChange={(e) => { handleAddressChange('street', e.target.value) }}
-                  placeholder="123 Business Street"
+                  placeholder={t('settings:company.placeholders.street')}
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
@@ -377,7 +377,7 @@ export function CompanyPage() {
                     id="city"
                     value={formData.address?.city ?? ''}
                     onChange={(e) => { handleAddressChange('city', e.target.value) }}
-                    placeholder="Paris"
+                    placeholder={t('settings:company.placeholders.city')}
                     className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
@@ -535,7 +535,7 @@ export function CompanyPage() {
                     id="primary_color"
                     value={formData.primary_color ?? '#2563EB'}
                     onChange={(e) => { handleInputChange('primary_color', e.target.value) }}
-                    placeholder="#2563EB"
+                    placeholder={t('settings:company.placeholders.primaryColor')}
                     pattern="^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$"
                     className="block flex-1 rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
@@ -558,12 +558,12 @@ export function CompanyPage() {
                   onChange={(e) => { handleInputChange('currency_code', e.target.value) }}
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
-                  <option value="EUR">EUR - Euro</option>
-                  <option value="USD">USD - US Dollar</option>
-                  <option value="GBP">GBP - British Pound</option>
-                  <option value="TND">TND - Tunisian Dinar</option>
-                  <option value="MAD">MAD - Moroccan Dirham</option>
-                  <option value="DZD">DZD - Algerian Dinar</option>
+                  <option value="EUR">{t('settings:company.currencies.EUR')}</option>
+                  <option value="USD">{t('settings:company.currencies.USD')}</option>
+                  <option value="GBP">{t('settings:company.currencies.GBP')}</option>
+                  <option value="TND">{t('settings:company.currencies.TND')}</option>
+                  <option value="MAD">{t('settings:company.currencies.MAD')}</option>
+                  <option value="DZD">{t('settings:company.currencies.DZD')}</option>
                 </select>
               </div>
               <div>
@@ -576,12 +576,12 @@ export function CompanyPage() {
                   onChange={(e) => { handleInputChange('timezone', e.target.value) }}
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
-                  <option value="Europe/Paris">Europe/Paris (UTC+1)</option>
-                  <option value="Europe/London">Europe/London (UTC+0)</option>
-                  <option value="America/New_York">America/New_York (UTC-5)</option>
-                  <option value="Africa/Tunis">Africa/Tunis (UTC+1)</option>
-                  <option value="Africa/Casablanca">Africa/Casablanca (UTC+0)</option>
-                  <option value="Africa/Algiers">Africa/Algiers (UTC+1)</option>
+                  <option value="Europe/Paris">{t('settings:company.timezones.EuropeParis')}</option>
+                  <option value="Europe/London">{t('settings:company.timezones.EuropeLondon')}</option>
+                  <option value="America/New_York">{t('settings:company.timezones.AmericaNewYork')}</option>
+                  <option value="Africa/Tunis">{t('settings:company.timezones.AfricaTunis')}</option>
+                  <option value="Africa/Casablanca">{t('settings:company.timezones.AfricaCasablanca')}</option>
+                  <option value="Africa/Algiers">{t('settings:company.timezones.AfricaAlgiers')}</option>
                 </select>
               </div>
               <div>
@@ -594,9 +594,9 @@ export function CompanyPage() {
                   onChange={(e) => { handleInputChange('date_format', e.target.value) }}
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
-                  <option value="DD/MM/YYYY">DD/MM/YYYY (31/12/2025)</option>
-                  <option value="MM/DD/YYYY">MM/DD/YYYY (12/31/2025)</option>
-                  <option value="YYYY-MM-DD">YYYY-MM-DD (2025-12-31)</option>
+                  <option value="DD/MM/YYYY">{t('settings:company.dateFormats.DDMMYYYY')}</option>
+                  <option value="MM/DD/YYYY">{t('settings:company.dateFormats.MMDDYYYY')}</option>
+                  <option value="YYYY-MM-DD">{t('settings:company.dateFormats.YYYYMMDD')}</option>
                 </select>
               </div>
               <div>
@@ -609,9 +609,9 @@ export function CompanyPage() {
                   onChange={(e) => { handleInputChange('locale', e.target.value) }}
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
-                  <option value="fr">Français</option>
-                  <option value="en">English</option>
-                  <option value="ar">العربية</option>
+                  <option value="fr">{t('settings:company.languages.fr')}</option>
+                  <option value="en">{t('settings:company.languages.en')}</option>
+                  <option value="ar">{t('settings:company.languages.ar')}</option>
                 </select>
               </div>
             </div>

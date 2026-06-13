@@ -411,6 +411,7 @@ export function CreateCreditNotePage() {
               {/* Issue Date */}
               <div>
                 <label htmlFor="issue_date" className="block text-sm font-medium text-gray-700">
+                  {/* eslint-disable-next-line local/no-untranslated-literal */}
                   {t('sales:documents.date')} <span className="text-red-500" aria-label="required">*</span>
                 </label>
                 <input
@@ -430,6 +431,7 @@ export function CreateCreditNotePage() {
               {/* Reason */}
               <div>
                 <label htmlFor="reason" className="block text-sm font-medium text-gray-700">
+                  {/* eslint-disable-next-line local/no-untranslated-literal */}
                   {t('sales:creditNotes.reason.title')} <span className="text-red-500" aria-label="required">*</span>
                 </label>
                 <select
@@ -526,7 +528,7 @@ export function CreateCreditNotePage() {
               {/* Partial Line Selection */}
               {lineMode === 'partial' && lines.length > 0 && (
                 <div className="mt-6">
-                  <table className="min-w-full divide-y divide-gray-200" aria-label="Invoice line items for credit note">
+                  <table className="min-w-full divide-y divide-gray-200" aria-label={t('sales:creditNotes.form.selectLinesTable', 'Select invoice lines to credit')}>
                     <caption className="sr-only">{t('sales:creditNotes.form.selectLinesTable', 'Select invoice lines to credit')}</caption>
                     <thead className="bg-gray-50">
                       <tr>

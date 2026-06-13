@@ -99,7 +99,8 @@
     "oem": "Fabricant d'origine",
     "iam": "Pièce de rechange",
     "ean": "EAN / Code-barres",
-    "noCrossRefs": "Aucune référence croisée disponible"
+    "noCrossRefs": "Aucune référence croisée disponible",
+    "copy": "Copier"
   },
   "addToInventory": {
     "title": "Ajouter au stock",

@@ -10,6 +10,7 @@ use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Presentation\Requests\StoreCompositeItemRequest;
 use App\Modules\Catalog\Presentation\Requests\UpdateCompositeItemRequest;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Taxation\Domain\Services\TaxResolutionService;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,6 +22,7 @@ class CompositeItemController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly CompositeItemAvailabilityService $availabilityService,
+        private readonly TaxResolutionService $taxResolutionService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -84,8 +86,19 @@ class CompositeItemController extends Controller
     {
         $company = $this->companyContext->requireCompany();
 
+        $validated = $request->validated();
+
+        // Resolve a default tax rate when the caller does not supply one explicitly.
+        // Composite items may have no category — pass null and the service returns the company default.
+        if (($validated['tax_rate'] ?? null) === null) {
+            $validated['tax_rate'] = $this->taxResolutionService->getDefaultTaxForNewProduct(
+                $company,
+                $validated['category_id'] ?? null,
+            );
+        }
+
         $item = CompositeItem::create([
-            ...$request->validated(),
+            ...$validated,
             'tenant_id' => $company->tenant_id,
             'company_id' => $company->id,
         ]);

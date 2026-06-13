@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Presentation\Requests;
 
+use App\Modules\Catalog\Presentation\Rules\TaxConfigurationCountryCoherent;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Domain\Enums\AgeRestriction;
 use App\Modules\Product\Domain\Enums\AutomotiveArticleStatus;
@@ -14,12 +16,19 @@ use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
 use App\Modules\Product\Domain\Enums\PlatformLinkStatus;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Enums\VehicleTypeRef;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
 
 class CreateProductRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -34,6 +43,8 @@ class CreateProductRequest extends FormRequest
         $user = $this->user();
         $tenantId = $user?->tenant_id;
 
+        $company = $this->companyContext->requireCompany();
+
         return [
             'name' => ['required', 'string', 'max:255'],
             'sku' => [
@@ -44,6 +55,7 @@ class CreateProductRequest extends FormRequest
                     ->where('tenant_id', $tenantId)
                     ->whereNull('deleted_at'),
             ],
+            'category_id' => ['nullable', 'integer', ScopedExists::company('categories', $company->id)],
             'type' => ['nullable', new Enum(ProductType::class)],
             'is_physical' => ['sometimes', 'boolean'],
             'description' => ['nullable', 'string', 'max:5000'],
@@ -58,7 +70,12 @@ class CreateProductRequest extends FormRequest
             // See docs/superpowers/audits/2026-05-04-scanner-tax-configurations-false-positive.md.
             // Mirrors the api.catalog.002 / 005 precedent (UpdateCompositeItemRequest /
             // StoreCompositeItemRequest) closed via the same annotation.
-            'default_tax_configuration_id' => ['nullable', 'uuid', 'exists:tax_configurations,id'],
+            // Defense-in-depth coherence check enforced below via
+            // TaxConfigurationCountryCoherent rule (Task 11 parity with categories).
+            'default_tax_configuration_id' => [
+                'nullable', 'uuid', 'exists:tax_configurations,id',
+                new TaxConfigurationCountryCoherent($company->country_code),
+            ],
             'unit' => ['nullable', 'string', 'max:50'],
             // Unit of measure FK — drives quantity precision (decimals/step).
             // Without this the API could not set it, so new products defaulted

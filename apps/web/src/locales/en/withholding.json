@@ -119,6 +119,7 @@
     "editRule": "Edit Withholding Rule",
     "countryFilter": "Country",
     "code": "Code",
+    "codePlaceholder": "e.g., TN_PROF_10",
     "name": "Name",
     "namePlaceholder": "e.g., Professional Services Withholding",
     "rate": "Rate",

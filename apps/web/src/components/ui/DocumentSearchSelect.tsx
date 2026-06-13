@@ -184,7 +184,7 @@ export function DocumentSearchSelect<T extends BaseDocument>({
 
     // Default display text
     const docNumber = getDocumentNumber(value)
-    const partner = value.partner?.name || t('common:unknown')
+    const partner = value.partner?.name || t('common:status.unknown')
     const total = value.total ? formatCurrency(value.total, value.currency) : ''
 
     return `${docNumber} - ${partner}${total ? ` - ${total}` : ''}`
@@ -192,7 +192,7 @@ export function DocumentSearchSelect<T extends BaseDocument>({
 
   const renderDefaultItem = (document: T) => {
     const docNumber = getDocumentNumber(document)
-    const partner = document.partner?.name || t('common:unknown')
+    const partner = document.partner?.name || t('common:status.unknown')
     const total = document.total ? formatCurrency(document.total, document.currency) : null
     const date = new Date(document.document_date).toLocaleDateString()
 
@@ -265,7 +265,7 @@ export function DocumentSearchSelect<T extends BaseDocument>({
                 e.stopPropagation()
                 handleClear()
               }}
-              aria-label="Clear selection"
+              aria-label={t('common:clearSearch')}
               className="rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
             >
               <X className="h-4 w-4" />

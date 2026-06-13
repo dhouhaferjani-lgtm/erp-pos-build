@@ -61,6 +61,7 @@
     },
     "fields": {
       "name": "Nom de l'entreprise *",
+      "companyName": "Nom de l'entreprise",
       "legalName": "Raison sociale",
       "taxId": "Numéro de TVA / Identifiant fiscal",
       "registrationNumber": "Numéro d'immatriculation",
@@ -78,8 +79,73 @@
       "dateFormat": "Format de date",
       "language": "Langue"
     },
+    "modal": {
+      "title": "Ajouter une entreprise",
+      "subtitle": "Configurez votre profil d'entreprise en quelques étapes simples",
+      "currencyTimezone": "Devise : {{currency}} | Fuseau horaire : {{timezone}}",
+      "createButton": "Créer l'entreprise",
+      "companyNameRequired": "Le nom de l'entreprise est requis",
+      "namePlaceholder": "Mon Entreprise",
+      "legalNamePlaceholder": "Mon Entreprise SARL",
+      "emailPlaceholder": "contact@entreprise.com",
+      "phonePlaceholder": "+33 1 23 45 67 89",
+      "streetPlaceholder": "123 Rue Principale",
+      "cityPlaceholder": "Paris",
+      "postalCodePlaceholder": "75001",
+      "taxIdPlaceholder": "FR12345678901",
+      "selectCountry": "Sélectionnez votre pays",
+      "selectCountryHint": "Cela déterminera votre devise, fuseau horaire et paramètres régionaux par défaut",
+      "enterCompanyDetails": "Saisissez les informations de votre entreprise",
+      "legalNameHint": "Si différent du nom commercial",
+      "contactInfoHint": "Ajoutez vos coordonnées et adresse (optionnel)",
+      "reviewTitle": "Récapitulatif et confirmation",
+      "reviewHint": "Veuillez vérifier vos informations avant de créer l'entreprise",
+      "regionalSettings": "Pays et paramètres régionaux",
+      "steps": {
+        "country": "Pays",
+        "company": "Entreprise",
+        "contact": "Contact",
+        "review": "Récapitulatif"
+      },
+      "loading": "Chargement des entreprises...",
+      "noCompaniesTitle": "Aucune entreprise trouvée",
+      "noCompaniesMessage": "Vous n'avez accès à aucune entreprise. Veuillez contacter votre administrateur."
+    },
     "actions": {
       "replaceLogo": "Remplacer"
+    },
+    "placeholders": {
+      "taxId": "FR12345678901",
+      "registrationNumber": "123 456 789 RCS Paris",
+      "street": "123 Rue des Affaires",
+      "city": "Ville",
+      "primaryColor": "#2563EB"
+    },
+    "currencies": {
+      "EUR": "EUR - Euro",
+      "USD": "USD - Dollar américain",
+      "GBP": "GBP - Livre sterling",
+      "TND": "TND - Dinar tunisien",
+      "MAD": "MAD - Dirham marocain",
+      "DZD": "DZD - Dinar algérien"
+    },
+    "timezones": {
+      "EuropeParis": "Europe/Paris (UTC+1)",
+      "EuropeLondon": "Europe/London (UTC+0)",
+      "AmericaNewYork": "America/New_York (UTC-5)",
+      "AfricaTunis": "Africa/Tunis (UTC+1)",
+      "AfricaCasablanca": "Africa/Casablanca (UTC+0)",
+      "AfricaAlgiers": "Africa/Algiers (UTC+1)"
+    },
+    "dateFormats": {
+      "DDMMYYYY": "JJ/MM/AAAA (31/12/2025)",
+      "MMDDYYYY": "MM/JJ/AAAA (12/31/2025)",
+      "YYYYMMDD": "AAAA-MM-JJ (2025-12-31)"
+    },
+    "languages": {
+      "fr": "Français",
+      "en": "English",
+      "ar": "العربية"
     },
     "messages": {
       "saved": "Paramètres de l'entreprise enregistrés avec succès.",
@@ -177,7 +243,8 @@
         "registeredDescription": "Vous pouvez récupérer la TVA sur les achats",
         "nonRegistered": "Non assujetti à la TVA",
         "nonRegisteredDescription": "La TVA sur les achats est ajoutée au coût du stock",
-        "vatNumber": "Numéro d'identification fiscale"
+        "vatNumber": "Numéro d'identification fiscale",
+        "vatNumberPlaceholder": "TN123456789"
       },
       "table": {
         "name": "Nom",
@@ -229,6 +296,20 @@
         "title": "Désactiver la taxe ?",
         "message": "Cette taxe sera désactivée mais pas supprimée. Les documents existants ne seront pas affectés."
       }
+    },
+    "months": {
+      "1": "Janvier",
+      "2": "Février",
+      "3": "Mars",
+      "4": "Avril",
+      "5": "Mai",
+      "6": "Juin",
+      "7": "Juillet",
+      "8": "Août",
+      "9": "Septembre",
+      "10": "Octobre",
+      "11": "Novembre",
+      "12": "Décembre"
     }
   },
   "onboarding": {

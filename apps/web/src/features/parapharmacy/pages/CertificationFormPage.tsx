@@ -174,7 +174,7 @@ export function CertificationFormPage() {
                   value={type}
                   onChange={(e) => { setType(e.target.value); }}
                   required
-                  placeholder="organic, vegan, halal, fair-trade"
+                  placeholder={t('parapharmacy:typePlaceholder')}
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   {t('parapharmacy:typeHelp')}
@@ -213,7 +213,7 @@ export function CertificationFormPage() {
                   id="certifying_body"
                   value={certifyingBody}
                   onChange={(e) => { setCertifyingBody(e.target.value); }}
-                  placeholder="Ecocert, NSF, USDA"
+                  placeholder={t('parapharmacy:certifyingBodyPlaceholder')}
                 />
               </div>
 

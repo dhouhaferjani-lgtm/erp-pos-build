@@ -3,7 +3,6 @@ export interface AdminAuthResponse {
   email: string
   name: string
   role: 'super_admin'
-  token?: string
 }
 
 export interface AdminDashboardStats {
@@ -389,7 +388,9 @@ export interface TenantDetailResponse {
     companies_count: number
     locations_count: number
   }
-  plan_summary: PlanSummary
+  stats_available: boolean
+  /** null when the tenant database is unreachable at detail-load time */
+  plan_summary: PlanSummary | null
   compatible_extras?: string[]
   default_modules?: string[]
   vertical_label?: string | null

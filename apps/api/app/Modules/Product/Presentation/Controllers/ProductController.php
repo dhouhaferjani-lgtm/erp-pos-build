@@ -22,6 +22,7 @@ use App\Modules\Product\Domain\Events\ProductUpdated;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Presentation\Requests\CreateProductRequest;
 use App\Modules\Product\Presentation\Requests\UpdateProductRequest;
+use App\Modules\Taxation\Domain\Services\TaxResolutionService;
 use App\Modules\Uom\Domain\Entities\Unit;
 use App\Shared\Contracts\CatalogMediaQueryInterface;
 use App\Support\Traits\FiltersAndSorts;
@@ -41,6 +42,7 @@ class ProductController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly ProductTombstoneService $tombstoneService,
         private readonly CatalogMediaQueryInterface $catalogMedia,
+        private readonly TaxResolutionService $taxResolution,
     ) {}
 
     /**
@@ -331,6 +333,15 @@ class ProductController extends Controller
         if (array_key_exists('automotive_metadata', $validated)) {
             $automotiveMetadata = $validated['automotive_metadata'];
             unset($validated['automotive_metadata']);
+        }
+
+        // Resolve default tax rate when the caller did not supply one.
+        // Priority: category default_tax_rate > company default_tax_rate > '0.00'.
+        if (($validated['tax_rate'] ?? null) === null) {
+            $validated['tax_rate'] = $this->taxResolution->getDefaultTaxForNewProduct(
+                $company,
+                $validated['category_id'] ?? null,
+            );
         }
 
         $product = Product::create([

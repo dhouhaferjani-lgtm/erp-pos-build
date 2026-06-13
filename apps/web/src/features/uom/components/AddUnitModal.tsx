@@ -218,7 +218,7 @@ export function AddUnitModal({ isOpen, onClose, unit, categoryId }: AddUnitModal
               {...register('code')}
               disabled={isSystemUnit}
               error={!!errors.code}
-              placeholder="tbsp"
+              placeholder={t('uom:codePlaceholder')}
             />
           </FormField>
 
@@ -229,7 +229,7 @@ export function AddUnitModal({ isOpen, onClose, unit, categoryId }: AddUnitModal
               {...register('name')}
               disabled={isSystemUnit}
               error={!!errors.name}
-              placeholder="Tablespoon"
+              placeholder={t('uom:namePlaceholder')}
             />
           </FormField>
 
@@ -246,7 +246,7 @@ export function AddUnitModal({ isOpen, onClose, unit, categoryId }: AddUnitModal
               {...register('symbol')}
               disabled={isSystemUnit}
               error={!!errors.symbol}
-              placeholder="tbsp"
+              placeholder={t('uom:symbolPlaceholder')}
             />
           </FormField>
 

@@ -26,6 +26,7 @@ use App\Modules\Product\Domain\Ingredient;
 use App\Modules\Product\Domain\KeyComponent;
 use App\Modules\Product\Domain\ParapharmacyProductMetadata;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Application\Services\IdentityIndexService;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -217,6 +218,16 @@ class ParapharmacySeeder extends Seeder
         // 4. Setup financial foundation
         $this->command->info('💰 Setting up financial foundation...');
         $this->setupFinancialFoundation($this->company);
+
+        // 4b. Provision country tax configurations (FR: 5 TVA bands + company default).
+        //     Called after CoA + countries (seeded above at step 2) so the
+        //     provisioning service can resolve GL accounts and the countries
+        //     FK is already in the tenant-scoped connection.
+        $companyTaxProvisioning = new CompanyTaxProvisioningService(
+            failLoudOnMissingCountry: true,
+        );
+        $companyTaxProvisioning->provisionForCompany($this->company);
+        $this->command->info('✓ Tax configurations provisioned');
 
         // 5. Seed products (1000 default; T1.0: configurable via SCALE)
         $this->command->info('📦 Seeding products...');
@@ -1189,13 +1200,13 @@ class ParapharmacySeeder extends Seeder
         $margin = rand(30, 60) / 100;
         $cost = $retailPrice * (1 - $margin);
 
-        // VAT rate
-        $vatRate = match ($category) {
-            ParapharmacyCategory::Supplement,
-            ParapharmacyCategory::BabyCare,
-            ParapharmacyCategory::MedicalDevice => 5.50, // 5.5% essential products
-            default => 20.00, // 20% standard rate
-        };
+        // VAT rate — demo default: 20% standard FR TVA for all parapharmacy
+        // categories. Supplements, baby care, and medical devices are NOT
+        // reimbursed medicines, so the standard rate applies in the demo
+        // context (task T15). Real pharmacies may negotiate reduced rates,
+        // but the demo must show non-zero tax matching the provisioned
+        // default TaxConfiguration (TVA 20%).
+        $vatRate = 20.00;
 
         return [$retailPrice, $cost, $vatRate];
     }

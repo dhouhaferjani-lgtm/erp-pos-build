@@ -141,7 +141,12 @@
     "type": "Type",
     "selectType": "Select type",
     "typeRequired": "Type is required",
-    "status": "Status",
+    "status": {
+      "draft": "Draft",
+      "confirmed": "Confirmed",
+      "posted": "Posted",
+      "cancelled": "Cancelled"
+    },
     "partner": "Partner",
     "partnerInfo": "Partner Information",
     "documentInfo": "Document Information",
@@ -221,7 +226,15 @@
       "goodsReceived": "Goods received"
     },
     "taxExemptionMention": "Tax exemption applies to {{partner}} - {{reason}}",
-    "vehicle": "Vehicle"
+    "vehicle": "Vehicle",
+    "mileage": "Mileage",
+    "mileageValue": "{{value}} km",
+    "items": "Items",
+    "sealed": "Sealed",
+    "deliveryDate": "Delivery Date",
+    "returnDate": "Return Date",
+    "notesPlaceholder": "Additional notes...",
+    "draftSavedAt": "Draft saved {{time}}"
   },
   "lineItems": {
     "title": "Line Items",
@@ -258,7 +271,9 @@
     "noProductsFound": "No products found matching your search",
     "noProductsAvailable": "No products available",
     "noServicesFound": "No services found matching your search",
-    "noServicesAvailable": "No services available"
+    "noServicesAvailable": "No services available",
+    "product": "Product",
+    "price": "Price"
   },
   "orders": {
     "title": "Orders",
@@ -394,7 +409,12 @@
         "differentCurrencies": "All selected delivery notes must use the same currency",
         "invalidSelection": "Please select at least one delivery note"
       }
-    }
+    },
+    "confirmed": "Delivery note confirmed",
+    "backToList": "Back to Delivery Notes",
+    "emailSubject": "Delivery Note",
+    "confirmTitle": "Confirm Delivery Note",
+    "confirmMessage": "Are you sure you want to confirm this delivery note? Stock will be issued from inventory. This action cannot be undone."
   },
   "relatedDocuments": {
     "title": "Related Documents",
@@ -454,6 +474,7 @@
       "creditPartial": "Credit Partial",
       "creditPartialDesc": "Select specific lines and quantities",
       "selectLinesRequired": "Please select at least one line to credit",
+      "selectLinesTable": "Select invoice lines to credit",
       "linesRequired": "Please add at least one line",
       "create": "Create Credit Note"
     },
@@ -499,7 +520,37 @@
         "message": "This will create a credit note for the full invoice amount. Are you sure?",
         "button": "Create Full Refund"
       }
-    }
+    },
+    "empty": {
+      "title": "No credit notes",
+      "description": "No credit notes have been created yet."
+    },
+    "reasons": {
+      "return": "Product Return",
+      "price_adjustment": "Price Adjustment",
+      "billing_error": "Billing Error",
+      "damaged_goods": "Damaged Goods",
+      "service_issue": "Service Issue",
+      "other": "Other"
+    },
+    "number": "Number",
+    "date": "Date",
+    "statusLabel": "Status",
+    "reasonLabel": "Reason",
+    "filterByReason": "Filter by reason",
+    "allReasons": "All reasons",
+    "sortBy": "Sort by",
+    "sortByDate": "Date",
+    "sortByAmount": "Amount",
+    "sortByNumber": "Number",
+    "confirmed": "Credit note confirmed",
+    "posted": "Credit note posted",
+    "backToList": "Back to Credit Notes",
+    "emailSubject": "Credit Note",
+    "confirmTitle": "Confirm Credit Note",
+    "confirmMessage": "Are you sure you want to confirm this credit note? Once confirmed, it cannot be edited.",
+    "postTitle": "Post Credit Note",
+    "postMessage": "Are you sure you want to post this credit note? This will create accounting entries. This action cannot be undone."
   },
   "returnNotes": {
     "title": "Return Notes",
@@ -596,7 +647,16 @@
         "message": "Would you like to create a credit note for this return?",
         "button": "Create Credit Note"
       }
-    }
+    },
+    "backToList": "Back to Return Notes",
+    "emailSubject": "Return Note",
+    "confirmTitle": "Confirm Return Note",
+    "confirmMessage": "This will receive the returned goods back into inventory. Continue?",
+    "returnedItems": "Returned Items",
+    "returnedQty": "Returned Qty",
+    "returnValue": "Return Value",
+    "sourceDocument": "Source Document",
+    "create": "Create Return Note"
   },
   "tax": {
     "breakdown": {

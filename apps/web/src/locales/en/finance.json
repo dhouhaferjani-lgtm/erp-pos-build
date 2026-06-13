@@ -48,7 +48,44 @@
   },
   "chartOfAccounts": {
     "title": "Chart of Accounts",
-    "addAccount": "Add Account"
+    "description": "Manage your chart of accounts",
+    "addAccount": "Add Account",
+    "loadError": "Failed to load chart of accounts",
+    "emptyState": "No accounts found. Create your first account to get started.",
+    "account": {
+      "addTitle": "Add Account",
+      "editTitle": "Edit Account",
+      "code": "Account Code",
+      "name": "Account Name",
+      "type": "Account Type",
+      "parentAccount": "Parent Account (Optional)",
+      "description": "Description (Optional)",
+      "active": "Active",
+      "codeReadonly": "Account code cannot be changed",
+      "typeReadonly": "Account type cannot be changed",
+      "noParent": "None",
+      "types": {
+        "asset": "Asset",
+        "liability": "Liability",
+        "equity": "Equity",
+        "revenue": "Revenue",
+        "expense": "Expense"
+      },
+      "creating": "Creating...",
+      "create": "Create Account",
+      "saving": "Saving...",
+      "saveChanges": "Save Changes"
+    }
+  },
+  "widget": {
+    "title": "Finance Overview",
+    "viewReports": "View Reports →",
+    "totalAssets": "Total Assets",
+    "totalLiabilities": "Total Liabilities",
+    "netIncomeMtd": "Net Income (MTD)",
+    "netIncomeYtd": "Net Income (YTD)",
+    "accountsReceivable": "Accounts Receivable",
+    "accountsPayable": "Accounts Payable"
   },
   "ledger": {
     "title": "General Ledger",

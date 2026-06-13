@@ -54,7 +54,7 @@ export function ConfirmDialog({
           type="button"
           onClick={onClose}
           className="absolute end-4 top-4 rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-          aria-label="Close"
+          aria-label={t('actions.close')}
           disabled={isLoading}
         >
           <X className="h-5 w-5" />

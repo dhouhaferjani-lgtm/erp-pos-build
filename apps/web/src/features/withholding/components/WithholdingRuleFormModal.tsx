@@ -141,7 +141,7 @@ export function WithholdingRuleFormModal({
                     onChange={(e) => { handleChange('code', e.target.value); }}
                     required
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="e.g., TN_PROF_10"
+                    placeholder={t('withholding:rules.codePlaceholder')}
                   />
                 </div>
 
@@ -316,7 +316,7 @@ export function WithholdingRuleFormModal({
                 disabled={isLoading}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
-                {isLoading ? t('common:saving') : rule ? t('common:save') : t('common:create')}
+                {isLoading ? t('common:saving') : rule ? t('common:save') : t('common:actions.create')}
               </button>
             </div>
           </form>

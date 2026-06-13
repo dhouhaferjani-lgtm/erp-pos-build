@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Application\Services;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Category;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Domain\Services\TaxResolutionService;
 use App\Shared\Contracts\ProductServiceInterface;
 
 /**
@@ -16,6 +18,10 @@ use App\Shared\Contracts\ProductServiceInterface;
  */
 final class ProductService implements ProductServiceInterface
 {
+    public function __construct(
+        private readonly TaxResolutionService $taxResolution,
+    ) {}
+
     /**
      * Find a product by SKU.
      *
@@ -70,6 +76,27 @@ final class ProductService implements ProductServiceInterface
                 ->first();
             if ($category !== null) {
                 $attributes['category_id'] = $category->id;
+            }
+        }
+
+        if (($attributes['tax_rate'] ?? null) === null) {
+            $existing = Product::where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('sku', $data['sku'])
+                ->first();
+
+            if ($existing !== null && $existing->tax_rate !== null) {
+                // Re-import without a rate column must not clobber an existing explicit rate.
+                $attributes['tax_rate'] = $existing->tax_rate;
+            } else {
+                $company = Company::where('tenant_id', $tenantId)
+                    ->where('id', $companyId)
+                    ->firstOrFail();
+
+                $attributes['tax_rate'] = $this->taxResolution->getDefaultTaxForNewProduct(
+                    $company,
+                    $attributes['category_id'] ?? null,
+                );
             }
         }
 

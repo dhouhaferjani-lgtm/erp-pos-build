@@ -135,6 +135,7 @@ export function BootstrapErrorScreen() {
             className="mt-2 rounded bg-gray-50 p-2 text-left text-xs text-gray-600 font-mono"
           >
             <div className="flex justify-between">
+              {/* eslint-disable-next-line local/no-untranslated-literal -- developer debug label in technical error panel; not end-user copy */}
               <dt>phase</dt>
               <dd>{error.phase}</dd>
             </div>

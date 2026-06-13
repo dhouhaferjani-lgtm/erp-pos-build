@@ -25,7 +25,7 @@ interface ServiceFormData extends Omit<CreateServiceData, 'base_price' | 'hourly
 }
 
 export function ServiceForm() {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['common', 'settings'])
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
@@ -183,8 +183,8 @@ export function ServiceForm() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
             {isEditing
-              ? t('services.editService', 'Edit Service')
-              : t('services.createService', 'Create Service')}
+              ? t('services.editService')
+              : t('services.createService')}
           </h1>
         </div>
       </div>
@@ -197,14 +197,14 @@ export function ServiceForm() {
         {/* Error display */}
         {mutation.error && (
           <div className="rounded-lg bg-red-50 p-4 text-red-700">
-            {t('errors.saveFailed', 'Failed to save. Please try again.')}
+            {t('errors.saveFailed')}
           </div>
         )}
 
         {/* Basic Information */}
         <div className="rounded-lg border border-gray-200 bg-white p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            {t('services.basicInfo', 'Basic Information')}
+            {t('services.basicInfo')}
           </h2>
           <div className="grid gap-6 sm:grid-cols-2">
             {/* Code */}
@@ -215,9 +215,9 @@ export function ServiceForm() {
               <input
                 type="text"
                 id="code"
-                {...register('code', { required: t('validation.required', 'This field is required') })}
+                {...register('code', { required: t('validation.required') })}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="SRV-001"
+                placeholder={t('services.form.codePlaceholder')}
               />
               {errors.code && (
                 <p className="mt-1 text-sm text-red-600">{errors.code.message}</p>
@@ -227,14 +227,14 @@ export function ServiceForm() {
             {/* Name */}
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                {t('fields.name', 'Name')} *
+                {t('fields.name')} *
               </label>
               <input
                 type="text"
                 id="name"
-                {...register('name', { required: t('validation.required', 'This field is required') })}
+                {...register('name', { required: t('validation.required') })}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder={t('services.namePlaceholder', 'Oil Change')}
+                placeholder={t('services.namePlaceholder')}
               />
               {errors.name && (
                 <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
@@ -251,7 +251,7 @@ export function ServiceForm() {
                 {...register('category_id')}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
-                <option value="">{t('services.noCategory', 'No Category')}</option>
+                <option value="">{t('services.noCategory')}</option>
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>
                     {category.name}
@@ -263,7 +263,7 @@ export function ServiceForm() {
             {/* Status */}
             <div>
               <label htmlFor="is_active" className="block text-sm font-medium text-gray-700">
-                {t('fields.status', 'Status')}
+                {t('fields.status')}
               </label>
               <select
                 id="is_active"
@@ -278,14 +278,14 @@ export function ServiceForm() {
             {/* Description */}
             <div className="sm:col-span-2">
               <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                {t('fields.description', 'Description')}
+                {t('fields.description')}
               </label>
               <textarea
                 id="description"
                 {...register('description')}
                 rows={3}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder={t('services.descriptionPlaceholder', 'Optional description for this service')}
+                placeholder={t('services.descriptionPlaceholder')}
               />
             </div>
           </div>
@@ -294,38 +294,38 @@ export function ServiceForm() {
         {/* Pricing Information */}
         <div className="rounded-lg border border-gray-200 bg-white p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            {t('services.pricing', 'Pricing')}
+            {t('services.pricing')}
           </h2>
           <div className="grid gap-6 sm:grid-cols-2">
             {/* Pricing Type */}
             <div>
               <label htmlFor="pricing_type" className="block text-sm font-medium text-gray-700">
-                {t('services.pricingType', 'Pricing Type')} *
+                {t('services.pricingTypeLabel')} *
               </label>
               <select
                 id="pricing_type"
                 {...register('pricing_type', { required: true })}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
-                <option value="flat_rate">{t('services.pricingTypes.flatRate', 'Flat Rate')}</option>
-                <option value="hourly">{t('services.pricingTypes.hourly', 'Hourly')}</option>
-                <option value="percentage">{t('services.pricingTypes.percentage', 'Percentage')}</option>
+                <option value="flat_rate">{t('services.pricingTypes.flatRate')}</option>
+                <option value="hourly">{t('services.pricingTypes.hourly')}</option>
+                <option value="percentage">{t('services.pricingTypes.percentage')}</option>
               </select>
             </div>
 
             {/* Currency */}
             <div>
               <label htmlFor="currency" className="block text-sm font-medium text-gray-700">
-                {t('fields.currency', 'Currency')} *
+                {t('fields.currency')} *
               </label>
               <select
                 id="currency"
                 {...register('currency', { required: true })}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
-                <option value="TND">TND - Tunisian Dinar</option>
-                <option value="EUR">EUR - Euro</option>
-                <option value="USD">USD - US Dollar</option>
+                <option value="TND">{t('settings:company.currencies.TND')}</option>
+                <option value="EUR">{t('settings:company.currencies.EUR')}</option>
+                <option value="USD">{t('settings:company.currencies.USD')}</option>
               </select>
             </div>
 
@@ -333,7 +333,7 @@ export function ServiceForm() {
             {pricingType === 'flat_rate' && (
               <div>
                 <label htmlFor="base_price" className="block text-sm font-medium text-gray-700">
-                  {t('services.fields.basePrice', 'Base Price')} *
+                  {t('services.fields.basePrice')} *
                 </label>
                 <MoneyInput
                   id="base_price"
@@ -355,7 +355,7 @@ export function ServiceForm() {
               <>
                 <div>
                   <label htmlFor="hourly_rate" className="block text-sm font-medium text-gray-700">
-                    {t('services.fields.hourlyRate', 'Hourly Rate')} *
+                    {t('services.fields.hourlyRate')} *
                   </label>
                   <MoneyInput
                     id="hourly_rate"
@@ -372,7 +372,7 @@ export function ServiceForm() {
                 </div>
                 <div>
                   <label htmlFor="default_duration_minutes" className="block text-sm font-medium text-gray-700">
-                    {t('services.fields.defaultDuration', 'Default Duration (minutes)')}
+                    {t('services.fields.defaultDuration')}
                   </label>
                   <input
                     type="number"
@@ -391,7 +391,7 @@ export function ServiceForm() {
             {pricingType === 'percentage' && (
               <div>
                 <label htmlFor="base_price" className="block text-sm font-medium text-gray-700">
-                  {t('services.fields.percentage', 'Percentage')} *
+                  {t('services.fields.percentage')} *
                 </label>
                 <div className="relative mt-1">
                   <QuantityInput
@@ -415,7 +415,7 @@ export function ServiceForm() {
 
             {/* Tax Rate */}
             <TaxConfigurationField
-              label={t('services.fields.taxRate', 'Tax Rate')}
+              label={t('services.fields.taxRate')}
               value={watch('tax_configuration_id')}
               onChange={(configId, taxRate) => {
                 setValue('tax_configuration_id', configId)
@@ -438,7 +438,7 @@ export function ServiceForm() {
             disabled={isSubmitting || mutation.isPending}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {mutation.isPending ? t('status.saving', 'Saving...') : t('actions.save')}
+            {mutation.isPending ? t('status.saving') : t('actions.save')}
           </button>
         </div>
       </form>

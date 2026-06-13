@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { apiPost, ensureCsrfCookie } from '@/lib/api'
-import { adminApiGet, adminApiGetPaginated, adminApiPost, adminApiPatch, adminApiPut } from '../lib/adminApi'
+import { adminApi, adminApiGet, adminApiGetPaginated, adminApiPost, adminApiPatch, adminApiPut } from '../lib/adminApi'
 import type {
   AdminAuthResponse,
   AdminDashboardStats,
@@ -24,19 +24,28 @@ import type {
   UpdateVerticalConfigRequest,
 } from '../types'
 
+export interface AdminLoginResult {
+  admin: AdminAuthResponse
+  token: string
+}
+
 // Authentication (uses regular API since not authenticated yet)
 export async function loginSuperAdmin(
   email: string,
   password: string
-): Promise<AdminAuthResponse> {
-  // Ensure CSRF cookie is set before login (required for Sanctum SPA auth)
-  await ensureCsrfCookie()
-  const response = await apiPost<{ admin: AdminAuthResponse }>(
-    '/admin/auth/login',
-    { email, password }
-  )
-  // Cookie is set automatically by Sanctum - just return admin data
-  return response.admin
+): Promise<AdminLoginResult> {
+  // Cookie-capable deploys need the CSRF cookie before login; Bearer-only
+  // deploys may not serve a usable session — never let this block login.
+  try {
+    await ensureCsrfCookie()
+  } catch {
+    // Bearer-only deploy: proceed without a session cookie.
+  }
+  const response = await apiPost<AdminLoginResult>('/admin/auth/login', {
+    email,
+    password,
+  })
+  return response
 }
 
 export async function logoutSuperAdmin(): Promise<void> {
@@ -255,8 +264,22 @@ export async function createInvoice(data: CreateInvoiceRequest): Promise<Invoice
   return adminApiPost<Invoice>('/admin/billing/invoices', data)
 }
 
-export function getInvoiceDownloadUrl(id: string): string {
-  return `/api/v1/admin/billing/invoices/${id}/download`
+/**
+ * Download an invoice PDF via the authenticated admin client (the Bearer
+ * header cannot ride on a plain <a href> navigation on Bearer-only deploys).
+ */
+export async function downloadInvoicePdf(id: string): Promise<void> {
+  const response = await adminApi.get<Blob>(`/admin/billing/invoices/${id}/download`, {
+    responseType: 'blob',
+  })
+  const url = URL.createObjectURL(response.data)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `invoice-${id}.pdf`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
 
 // Payments - billing endpoints return paginated data directly
@@ -544,6 +567,13 @@ export async function getAdminUsers(params?: {
   return { data: response.data.data }
 }
 
-export async function verifyUserEmail(userId: string, notes?: string): Promise<AdminUser> {
-  return adminApiPost<AdminUser>(`/admin/users/${userId}/verify-email`, { notes })
+export async function verifyUserEmail(
+  userId: string,
+  tenantId: string,
+  notes?: string
+): Promise<AdminUser> {
+  return adminApiPost<AdminUser>(`/admin/users/${userId}/verify-email`, {
+    tenant_id: tenantId,
+    notes,
+  })
 }

@@ -32,7 +32,8 @@ import { printRefundSettlementArtifacts } from '@/lib/refundFlow/refundReceiptPr
 import { ReceiptScanConfirmationSheet } from '@/components/pos/ReceiptScanConfirmationSheet';
 import { ReceiptLocatorScreen } from '@/components/pos/ReceiptLocatorScreen';
 import { ResumeRefundDraftBanner } from '@/components/pos/ResumeRefundDraftBanner';
-import { CustomerAttachPanel } from '@/components/customers/CustomerAttachPanel';
+import { CartCustomerControl } from '@/components/customers/CartCustomerControl';
+import { CustomerSearchModal } from '@/components/customers/CustomerSearchModal';
 import { MoneyInput } from '@/components/atoms/MoneyInput';
 import { getErrorMessage } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
@@ -216,6 +217,7 @@ export function HomePage() {
   }, [companyIdForVoucherDb]);
 
   // Modal state
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [showCashModal, setShowCashModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showAdvancedModal, setShowAdvancedModal] = useState(false);
@@ -1386,12 +1388,10 @@ export function HomePage() {
 
       {/* Cart - left panel (first in DOM) */}
       <div className="flex min-w-[340px] flex-[4] flex-col border-r border-gray-200">
-        <CustomerAttachPanel
-          tenantId={activeTenantId}
-          companyId={activeCompanyId}
-          terminalId={terminal?.id ?? null}
-          onAccountPaymentComplete={() => setShowSuccessModal(true)}
-        />
+        {/* Cart-header customer control — compact single-line row */}
+        <div className="flex items-center border-b border-gray-200 bg-white px-3 py-2">
+          <CartCustomerControl onOpen={() => setShowCustomerModal(true)} />
+        </div>
         <div className="min-h-0 flex-1">
           <TransactionCart
             items={cartItems}
@@ -1612,6 +1612,18 @@ export function HomePage() {
         isOpen={showReceiptLocator}
         onClose={() => setShowReceiptLocator(false)}
       />
+
+      {/* Customer search modal — opened by CartCustomerControl in the cart header */}
+      {activeTenantId !== null && activeCompanyId !== null && terminal !== null && (
+        <CustomerSearchModal
+          isOpen={showCustomerModal}
+          onClose={() => setShowCustomerModal(false)}
+          tenantId={activeTenantId}
+          companyId={activeCompanyId}
+          terminalId={terminal.id}
+          onAccountPaymentComplete={() => setShowSuccessModal(true)}
+        />
+      )}
 
       {/* Task 2b (Task 53 wiring): refund settlement flow — destination picker,
           confirm modal, manager-PIN approval, /return submit. Driven by

@@ -148,30 +148,13 @@ return new class extends Migration
             ['balance_after', 15, 3],
         ],
 
-        // Billing
-        'billing_invoices' => [
-            ['subtotal', 12, 3],
-            ['tax_amount', 12, 3],
-            ['discount_amount', 12, 3],
-            ['total', 12, 3],
-            ['amount_paid', 12, 3],
-            ['amount_due', 12, 3],
-        ],
-        'billing_invoice_items' => [
-            ['unit_price', 12, 3],
-            ['amount', 12, 3],
-            ['tax_amount', 12, 3],
-            ['discount_amount', 12, 3],
-        ],
-        'billing_payments' => [
-            ['amount', 12, 3],
-            ['fee', 12, 3],
-            ['net_amount', 12, 3],
-            ['refunded_amount', 12, 3],
-        ],
-        'billing_refunds' => [
-            ['amount', 12, 3],
-        ],
+        // Billing (billing_invoices / billing_invoice_items / billing_payments /
+        // billing_refunds) entries removed 2026-06-12: those tables moved to the
+        // CENTRAL migration set (they were misfiled in the T6 flip) with scale 3
+        // baked into the create migrations. Fresh tenant DBs no longer have them,
+        // and this migration has no hasTable guard — leaving the entries would
+        // break tenant provisioning. Already-provisioned tenant DBs ran the old
+        // version of this file; editing it does not re-run there.
 
         // Coupons
         'coupons' => [

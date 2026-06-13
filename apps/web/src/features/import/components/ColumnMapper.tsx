@@ -113,7 +113,7 @@ export function ColumnMapper({
                       <span className="font-medium text-gray-900">{sourceCol}</span>
                       {suggested && (
                         <span className="text-xs text-green-600">
-                          (suggested)
+                          {t('mapping.suggested')}
                         </span>
                       )}
                     </div>

@@ -17,6 +17,7 @@
     "noImage": "Aucune image",
     "dragDropOrClick": "Glissez-déposez une image ici, ou cliquez pour sélectionner",
     "supportedFormats": "Formats supportés",
+    "supportedFormatsDetail": "Formats acceptés : JPEG, PNG, WebP, GIF (max 5 Mo)",
     "uploading": "Téléchargement de l'image...",
     "primary": "Principale",
     "setPrimary": "Définir comme principale",
@@ -50,6 +51,9 @@
     "requiresConsultation": "Nécessite une Consultation Pharmaceutique",
     "regulatoryCode": "Code Réglementaire",
     "storageRequirements": "Conditions de Conservation",
+    "keyComponents": "Composants Clés",
+    "healthClaims": "Allégations Santé",
+    "certifications": "Certifications",
     "categories": {
       "supplement": "Complément Alimentaire",
       "cosmetic": "Cosmétique & Soins de la Peau",
@@ -77,5 +81,8 @@
       "children_only": "Enfants Uniquement",
       "all_ages": "Tous Âges"
     }
+  },
+  "fields": {
+    "skuLabel": "Réf. :"
   }
 }

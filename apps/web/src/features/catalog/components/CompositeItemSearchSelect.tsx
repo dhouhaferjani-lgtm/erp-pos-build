@@ -32,7 +32,7 @@ export function CompositeItemSearchSelect({
   className,
   disabled = false,
 }: CompositeItemSearchSelectProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['catalog', 'common'])
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
@@ -127,7 +127,7 @@ export function CompositeItemSearchSelect({
                 e.stopPropagation()
                 handleClear()
               }}
-              aria-label="Clear selection"
+              aria-label={t('common:actions.clear')}
               className="rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
             >
               <X className="h-4 w-4" />
@@ -147,7 +147,7 @@ export function CompositeItemSearchSelect({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value) }}
-                placeholder={placeholder ?? t('common:search')}
+                placeholder={placeholder ?? t('common:actions.search')}
                 className="w-full rounded-lg border border-gray-300 py-2 pe-10 ps-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
               {searchQuery && (

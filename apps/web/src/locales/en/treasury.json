@@ -231,6 +231,21 @@
     "cash": "Cash Register",
     "bank": "Bank Account",
     "safe": "Safe",
+    "code": "Code",
+    "name": "Name",
+    "type": "Type",
+    "glAccount": "GL Account",
+    "noGlAccount": "— None —",
+    "bankName": "Bank Name",
+    "accountNumber": "Account Number",
+    "iban": "IBAN",
+    "bic": "BIC/SWIFT",
+    "codePlaceholder": "CASH-01",
+    "namePlaceholder": "Main Cash Register",
+    "bankNamePlaceholder": "Bank of America",
+    "accountNumberPlaceholder": "1234567890",
+    "ibanPlaceholder": "FR1234567890",
+    "bicPlaceholder": "BNPAFRPP",
     "types": {
       "cash_register": "Cash Register",
       "safe": "Safe",
@@ -250,7 +265,22 @@
       "title": "No repositories",
       "description": "Get started by adding a cash register, safe, or bank account.",
       "descriptionNoPermission": "Contact your administrator to add repositories."
-    }
+    },
+    "glAccount": "GL Account",
+    "noGlAccount": "— None —",
+    "noGlAccountWarning": "Not configured",
+    "glAccountUpdated": "GL account updated",
+    "currentBalance": "Current Balance",
+    "type": "Type",
+    "bankName": "Bank",
+    "accountNumber": "Account",
+    "summary": "Summary",
+    "totalTransactions": "Total Transactions",
+    "totalReceived": "Total Received",
+    "transactionHistory": "Transaction History",
+    "noTransactions": "No transactions yet",
+    "allocatedTo": "Allocated To",
+    "moreAllocations": "more"
   },
   "smartPayment": {
     "title": "Smart Payment Allocation",
@@ -389,7 +419,16 @@
       "feePercentage": "Fee Percentage",
       "feeAmountPlaceholder": "0.00",
       "feePercentagePlaceholder": "0.00",
-      "descriptionPlaceholder": "Additional information about this payment method..."
+      "descriptionPlaceholder": "Additional information about this payment method...",
+      "namePlaceholder": "Cash"
+    },
+    "flagDescriptions": {
+      "is_physical": "Physical payment methods (cash, checks, promissory notes)",
+      "has_maturity": "Deferred payments (checks, promissory notes)",
+      "requires_third_party": "Requires third-party processor (PayPal, Stripe)",
+      "is_push": "Push payment (customer initiates)",
+      "has_deducted_fees": "Fees deducted from received amount",
+      "is_restricted": "Restricted usage (meal vouchers, specific conditions)"
     },
     "table": {
       "name": "Name",

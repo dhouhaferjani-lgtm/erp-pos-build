@@ -3,7 +3,9 @@
   "dismiss": "Masquer",
   "toast_collapsed": "{{count}} suggestions IA pour ce panier",
   "info_title": "Pourquoi cette suggestion ?",
+  "info_label": "Plus d'infos",
   "info_source": "Source : {{source}}",
+  "info_score": "Score : {{score}}",
   "add_to_cart": "Ajouter",
   "skin_type_question": "Quel est le type de peau du client ?",
   "skin_type": {
