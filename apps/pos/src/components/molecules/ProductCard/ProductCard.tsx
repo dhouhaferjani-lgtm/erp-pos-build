@@ -1,7 +1,8 @@
 import { memo, useCallback, type KeyboardEvent } from 'react';
 import { cn } from '@/lib/utils';
+import { tokens } from '@/lib/designTokens';
 import { useCurrency } from '@/lib/currency';
-import { ArrowUpRight, Package, SlidersHorizontal } from 'lucide-react';
+import { ArrowUpRight, Check, Package, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useProductImage } from '@/lib/images/useProductImage';
 import { bccomp, bcsum } from '@/lib/decimal';
@@ -9,6 +10,8 @@ import { formatAvailableQty } from '@/lib/stock/stockGate';
 import {
   CARD_MIN_H_CLASS_GRID,
   CARD_MIN_H_CLASS_VISUAL,
+  CARD_NAME_MIN_H_CLASS_GRID,
+  CARD_NAME_MIN_H_CLASS_VISUAL,
 } from './cardSizing';
 import type { POSProduct } from '@/types/product';
 import type { LocationStockDisplay } from '@/lib/stock/gridStock';
@@ -117,13 +120,12 @@ function ProductCardInner({
     }
   }
 
-  const stockTone = isOutOfStock
-    ? 'font-medium text-red-600'
-    : isLowStock
-      ? 'font-medium text-amber-600'
-      : 'text-green-600';
-
+  // In-stock count is data, not a money/sync confirmation → ink-muted, never
+  // green. Low-stock gets a warning dot + warning-strong text (rendered as a
+  // dot + label below). Out-of-stock is a NEUTRAL badge (see JSX), not red.
   const minHClass = displayMode === 'grid' ? CARD_MIN_H_CLASS_GRID : CARD_MIN_H_CLASS_VISUAL;
+  const nameMinHClass =
+    displayMode === 'grid' ? CARD_NAME_MIN_H_CLASS_GRID : CARD_NAME_MIN_H_CLASS_VISUAL;
 
   // Activation refuses only under 'block' policy (Codex final-review P1):
   // under 'warn'/'off' the tap must reach the stock gate, which allows the
@@ -155,15 +157,34 @@ function ProductCardInner({
       className={cn(
         'relative flex flex-col rounded-xl border-2 p-4 text-left outline-none',
         minHClass,
-        'transition-all duration-150 active:scale-[0.95] focus-visible:ring-2 focus-visible:ring-primary-500',
+        'transition-all duration-150 active:scale-[0.95] focus-visible:ring-2 focus-visible:ring-action',
         displayMode === 'visual' ? 'items-center text-center' : 'items-start',
+        // Out-of-stock + hard-blocked: desaturate the whole card (sunken
+        // surface, faint ink) instead of a red treatment — "unavailable", not
+        // "error".
         isActivationBlocked
-          ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-60'
+          ? 'cursor-not-allowed border-subtle bg-surface-sunken text-ink-faint opacity-70'
           : isInCart
-            ? 'border-l-4 border-l-primary-500 border-t-gray-200 border-r-gray-200 border-b-gray-200 bg-white shadow-sm'
-            : 'cursor-pointer border-gray-200 bg-white hover:border-primary-300 hover:shadow-md',
+            ? // Selected: full action border + a corner badge (below). No
+              // asymmetric side-stripe.
+              'cursor-pointer border-action bg-surface-raised shadow-sm'
+            : 'cursor-pointer border-subtle bg-surface-raised hover:border-action hover:shadow-md',
       )}
     >
+      {isInCart && (
+        <span
+          data-testid="in-cart-badge"
+          className={cn(
+            tokens.badge.neutral,
+            'absolute top-1.5 left-1.5 border-action bg-action-subtle text-action-strong',
+          )}
+          title={t('products.inCart')}
+        >
+          <Check className="h-3 w-3" aria-hidden="true" />
+          {t('products.inCart')}
+        </span>
+      )}
+
       {hasModifiers && onCustomize && (
         <button
           type="button"
@@ -172,7 +193,7 @@ function ProductCardInner({
             e.stopPropagation();
             onCustomize(product);
           }}
-          className="absolute top-1.5 right-1.5 flex h-10 w-10 items-center justify-center rounded-full bg-primary-100/90 text-primary-600 shadow-sm transition-colors hover:bg-primary-200 active:bg-primary-300"
+          className="absolute top-1.5 right-1.5 flex h-10 w-10 items-center justify-center rounded-full bg-action-subtle text-action shadow-sm transition-colors hover:bg-action-subtle/70 active:bg-action-subtle"
           title={t('products.customize')}
         >
           <SlidersHorizontal className="h-5 w-5" />
@@ -180,7 +201,7 @@ function ProductCardInner({
       )}
       {hasModifiers && !onCustomize && (
         <div className="absolute top-2 right-2">
-          <SlidersHorizontal className="h-4 w-4 text-primary-500" />
+          <SlidersHorizontal className="h-4 w-4 text-action" />
         </div>
       )}
 
@@ -193,8 +214,8 @@ function ProductCardInner({
               className="h-20 w-20 rounded-xl object-cover"
             />
           ) : (
-            <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-gray-100">
-              <Package className="h-8 w-8 text-gray-400" />
+            <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-surface-sunken">
+              <Package className="h-8 w-8 text-ink-faint" />
             </div>
           )}
         </div>
@@ -203,7 +224,12 @@ function ProductCardInner({
       <h3
         title={product.name}
         className={cn(
-          'flex-1 min-h-0 line-clamp-2 font-semibold text-gray-900',
+          // Fixed two-line slot: line-clamp-2 caps the visible text and the
+          // min-height pins the box to exactly two lines, so a long name can
+          // never leak a sliced third line nor push the price/stock rows up.
+          'w-full line-clamp-2 overflow-hidden font-semibold',
+          nameMinHClass,
+          isActivationBlocked ? 'text-ink-faint' : 'text-ink',
           displayMode === 'visual' ? 'text-sm' : 'text-base',
         )}
       >
@@ -212,7 +238,10 @@ function ProductCardInner({
 
       <p
         data-testid="price-row"
-        className="shrink-0 pt-2 text-lg font-bold text-primary-600"
+        className={cn(
+          'shrink-0 pt-2 text-lg font-bold tabular-nums',
+          isActivationBlocked ? 'text-ink-faint' : 'text-ink',
+        )}
       >
         {format(product.sale_price ?? '0')}
       </p>
@@ -220,8 +249,21 @@ function ProductCardInner({
       {stockLabel !== null && (
         <p
           data-testid="stock-row"
-          className={cn('shrink-0 mt-1 text-xs', stockTone)}
+          className={cn(
+            'shrink-0 mt-1 inline-flex items-center gap-1 text-xs',
+            isOutOfStock
+              ? 'font-medium text-ink-muted'
+              : isLowStock
+                ? 'font-medium text-warning-strong'
+                : 'text-ink-muted',
+          )}
         >
+          {isLowStock && (
+            <span
+              aria-hidden="true"
+              className="inline-block h-1.5 w-1.5 rounded-full bg-warning"
+            />
+          )}
           {stockLabel}
         </p>
       )}
@@ -230,7 +272,7 @@ function ProductCardInner({
         <p
           data-testid="incoming-badge"
           title={incomingTitle}
-          className="shrink-0 mt-0.5 inline-flex items-center gap-0.5 text-xs font-medium text-sky-600"
+          className="shrink-0 mt-0.5 inline-flex items-center gap-0.5 text-xs font-medium text-action"
         >
           <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
           {(t as unknown as TranslateWithStringCount)('stock.incoming', {
