@@ -50,6 +50,9 @@
     "requiresConsultation": "Requires Pharmacist Consultation",
     "regulatoryCode": "Regulatory Code",
     "storageRequirements": "Storage Requirements",
+    "keyComponents": "Key Components",
+    "healthClaims": "Health Claims",
+    "certifications": "Certifications",
     "categories": {
       "supplement": "Dietary Supplement",
       "cosmetic": "Cosmetic & Skincare",

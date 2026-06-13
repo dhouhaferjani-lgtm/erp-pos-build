@@ -72,7 +72,9 @@
     "maxLength": "Doit contenir au maximum {{max}} caractères",
     "minAmount": "Le montant minimum est {{amount}}",
     "terminalCodeFormat": "Le code du terminal ne doit contenir que des lettres majuscules et des chiffres",
-    "invalidNumber": "Nombre invalide"
+    "invalidNumber": "Nombre invalide",
+    "min": "La valeur minimale est {{min}}",
+    "max": "La valeur maximale est {{max}}"
   },
   "errorMessages": {
     "generic": "Une erreur est survenue. Veuillez réessayer."
@@ -107,6 +109,7 @@
     "noVehiclesDescription": "Aucun véhicule n'a été lié à ce client."
   },
   "errors": {
+    "loadingFailed": "Échec du chargement des données. Veuillez réessayer.",
     "realtimeConnectionFailed": "Les mises à jour en temps réel sont indisponibles. Les changements peuvent ne pas apparaître automatiquement.",
     "locationsFetchFailed": "Échec du chargement des emplacements.",
     "operationFailed": "L'opération a échoué. Veuillez réessayer.",
@@ -1052,6 +1055,12 @@
     }
   },
   "pos": {
+    "inCart": "Ajouté",
+    "productInfo": "Infos produit",
+    "customizeProduct": "Personnaliser le produit",
+    "decrementQuantity": "Diminuer la quantité",
+    "incrementQuantity": "Augmenter la quantité",
+    "removeItem": "Supprimer l'article",
     "title": "Point de vente",
     "exitFullscreen": "Quitter le PDV",
     "quickCheckout": "Règlement rapide",

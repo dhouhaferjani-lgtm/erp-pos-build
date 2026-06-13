@@ -72,7 +72,9 @@
     "minLength": "Must be at least {{min}} characters",
     "maxLength": "Must be at most {{max}} characters",
     "minAmount": "Minimum amount is {{amount}}",
-    "terminalCodeFormat": "Terminal code must contain only uppercase letters and numbers"
+    "terminalCodeFormat": "Terminal code must contain only uppercase letters and numbers",
+    "min": "Minimum value is {{min}}",
+    "max": "Maximum value is {{max}}"
   },
   "errorMessages": {
     "generic": "An error occurred. Please try again."
@@ -154,6 +156,7 @@
     "businessInfo": "Business Information"
   },
   "errors": {
+    "loadingFailed": "Failed to load data. Please try again.",
     "realtimeConnectionFailed": "Real-time updates are unavailable. Changes may not appear automatically.",
     "locationsFetchFailed": "Failed to load locations.",
     "operationFailed": "Operation failed. Please try again.",
@@ -1049,6 +1052,12 @@
     }
   },
   "pos": {
+    "inCart": "Added",
+    "productInfo": "Product info",
+    "customizeProduct": "Customize product",
+    "decrementQuantity": "Decrement quantity",
+    "incrementQuantity": "Increment quantity",
+    "removeItem": "Remove item",
     "title": "Point of Sale",
     "exitFullscreen": "Exit POS",
     "quickCheckout": "Quick Checkout",

@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils'
 import { StockBadge } from '../../atoms'
 import { Info, Package, SlidersHorizontal } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useCurrency } from '@/hooks/useCurrency'
 
 export interface Product {
@@ -35,6 +36,7 @@ export function ProductCard({
   touchOptimized = false,
   className,
 }: ProductCardProps) {
+  const { t } = useTranslation('common')
   const { currency } = useCurrency()
   const isOutOfStock = product.stock_quantity <= 0
   const hasModifiers = (product.modifierGroups?.length ?? 0) > 0
@@ -117,7 +119,7 @@ export function ProductCard({
             'transition-all duration-150',
             touchOptimized && 'p-3'
           )}
-          aria-label="Product info"
+          aria-label={t('pos.productInfo')}
         >
           <Info className={cn('text-gray-700', touchOptimized ? 'w-6 h-6' : 'w-5 h-5')} />
         </button>
@@ -132,7 +134,7 @@ export function ProductCard({
         {/* In Cart Indicator */}
         {isInCart && (
           <div className="absolute bottom-2 start-2 px-2 py-1 bg-green-600 text-white text-xs font-bold rounded">
-            Added
+            {t('pos.inCart')}
           </div>
         )}
 
@@ -148,7 +150,7 @@ export function ProductCard({
               'transition-all duration-150',
               touchOptimized && 'p-3'
             )}
-            aria-label="Customize product"
+            aria-label={t('pos.customizeProduct')}
           >
             <SlidersHorizontal className={cn('text-white', touchOptimized ? 'w-5 h-5' : 'w-4 h-4')} />
           </button>

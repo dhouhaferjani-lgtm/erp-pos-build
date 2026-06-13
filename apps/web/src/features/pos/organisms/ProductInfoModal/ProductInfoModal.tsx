@@ -296,7 +296,7 @@ export function ProductInfoModal({
                   {/* Description */}
                   {product.description && (
                     <div>
-                      <p className="text-sm font-medium text-gray-500 mb-1">Description</p>
+                      <p className="text-sm font-medium text-gray-500 mb-1">{t('common:fields.description')}</p>
                       <p className="text-sm text-gray-700">{product.description}</p>
                     </div>
                   )}
@@ -432,7 +432,7 @@ export function ProductInfoModal({
                     product.parapharmacy_metadata.key_components.length > 0 && (
                       <div>
                         <h4 className="mb-2 text-sm font-semibold text-gray-900">
-                          Key Components
+                          {t('products:parapharmacy.keyComponents')}
                         </h4>
                         <div className="space-y-2">
                           {product.parapharmacy_metadata.key_components.map((component) => (
@@ -455,7 +455,7 @@ export function ProductInfoModal({
                   {product.parapharmacy_metadata?.health_claims &&
                     product.parapharmacy_metadata.health_claims.length > 0 && (
                       <div>
-                        <h4 className="mb-2 text-sm font-semibold text-gray-900">Health Claims</h4>
+                        <h4 className="mb-2 text-sm font-semibold text-gray-900">{t('products:parapharmacy.healthClaims')}</h4>
                         <div className="space-y-2">
                           {product.parapharmacy_metadata.health_claims.map((claim) => (
                             <div key={claim.id} className="rounded-md bg-green-50 p-3">
@@ -478,7 +478,7 @@ export function ProductInfoModal({
                     product.parapharmacy_metadata.certifications.length > 0 && (
                       <div>
                         <h4 className="mb-2 text-sm font-semibold text-gray-900">
-                          Certifications
+                          {t('products:parapharmacy.certifications')}
                         </h4>
                         <div className="grid gap-3 sm:grid-cols-2">
                           {product.parapharmacy_metadata.certifications.map((cert) => (

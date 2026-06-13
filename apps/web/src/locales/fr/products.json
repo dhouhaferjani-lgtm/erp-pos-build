@@ -50,6 +50,9 @@
     "requiresConsultation": "Nécessite une Consultation Pharmaceutique",
     "regulatoryCode": "Code Réglementaire",
     "storageRequirements": "Conditions de Conservation",
+    "keyComponents": "Composants Clés",
+    "healthClaims": "Allégations Santé",
+    "certifications": "Certifications",
     "categories": {
       "supplement": "Complément Alimentaire",
       "cosmetic": "Cosmétique & Soins de la Peau",

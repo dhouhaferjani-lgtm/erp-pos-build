@@ -526,7 +526,7 @@ describe('AdvancedPaymentsModal', () => {
       />
     )
 
-    const closeButton = screen.getByLabelText('Close')
+    const closeButton = screen.getByLabelText('advancedPayments.close')
     await user.click(closeButton)
 
     expect(onClose).toHaveBeenCalledTimes(1)

@@ -60,7 +60,7 @@ export function CartLineItem({
   disabled = false,
   className,
 }: CartLineItemProps) {
-  const { t } = useTranslation('pos')
+  const { t } = useTranslation(['pos', 'common'])
   const { currency } = useCurrency()
   const [touchStart, setTouchStart] = useState<number>(0)
   const [showDelete, setShowDelete] = useState(false)
@@ -179,7 +179,7 @@ export function CartLineItem({
                 touchOptimized ? 'text-sm' : 'text-xs'
               )}
             >
-              (Tax: {item.tax_amount} {currency})
+              ({t('cart.tax')}: {item.tax_amount} {currency})
             </span>
           )}
         </div>
@@ -227,7 +227,7 @@ export function CartLineItem({
           disabled={disabled}
           touchOptimized={touchOptimized}
           icon={<Minus className="w-4 h-4" />}
-          aria-label="Decrement quantity"
+          aria-label={t('common:pos.decrementQuantity')}
         />
 
         <span
@@ -246,7 +246,7 @@ export function CartLineItem({
           disabled={disabled}
           touchOptimized={touchOptimized}
           icon={<Plus className="w-4 h-4" />}
-          aria-label="Increment quantity"
+          aria-label={t('common:pos.incrementQuantity')}
         />
       </div>
 
@@ -269,7 +269,7 @@ export function CartLineItem({
           disabled={disabled}
           touchOptimized={touchOptimized}
           icon={<Trash2 className="w-4 h-4" />}
-          aria-label="Remove item"
+          aria-label={t('common:pos.removeItem')}
           className={cn(
             showDelete && touchOptimized && 'animate-bounce'
           )}
