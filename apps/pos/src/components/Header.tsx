@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeftRight, BarChart3, Lock, Minimize2, Settings } from 'lucide-react';
+import { ArrowLeftRight, BarChart3, Lock, Minimize2, RotateCw, Settings } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -11,7 +11,6 @@ import { useCartStore } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useSyncStore } from '@/stores/syncStore';
-import { SyncButton } from '@/components/atoms/SyncButton/SyncButton';
 import { StockFreshness } from '@/components/atoms/StockFreshness/StockFreshness';
 import { EndOfDayPreviewModal } from '@/components/pos/EndOfDayPreviewModal';
 import { ReportsMenu } from '@/components/pos/ReportsMenu';
@@ -19,7 +18,7 @@ import { XReportModal } from '@/components/pos/XReportModal';
 import { generateXReport, generateZReport } from '@/api/reportApi';
 import type { GenerateXReportOpts, GenerateZReportOpts, XReportResponse } from '@/api/reportApi';
 import { getErrorMessage } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { Badge, IconButton, StatusPill } from '@/components/ui';
 import { CashDrawerModal } from '@/components/organisms/CashDrawerModal';
 import type { EndOfDayConfirmResult, CompanyFraudSettings, AuthorizedManager } from '@/components/pos/EndOfDayPreviewModal';
 import type { CashCountCommitPayload } from '@/components/pos/EndOfDayPreviewModal';
@@ -43,7 +42,6 @@ import { verifyManagerPin } from '@/api/managerPinApi';
 import { useRefundFlowStore } from '@/stores/refundFlowStore';
 import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { getTerminalState, setManagerPinThrottle, setManagerPinFailedAttempts } from '@/lib/db/repositories/terminalStateRepository';
-import { tokens } from '@/lib/designTokens';
 
 export function Header() {
   const { t } = useTranslation('pos');
@@ -64,6 +62,7 @@ export function Header() {
   const isOnline = useConnectivityStore((s) => s.isOnline);
   const pendingReceiptCount = useSyncStore((s) => s.pendingReceiptCount);
   const isSyncing = useSyncStore((s) => s.isSyncing);
+  const triggerSync = useSyncStore((s) => s.triggerSync);
 
   const [showEndOfDay, setShowEndOfDay] = useState(false);
 
@@ -416,35 +415,29 @@ export function Header() {
         ? t('sync.pendingCount', { count: pendingReceiptCount })
         : t('sync.online');
 
-  const statusDotColor =
-    statusTone === 'healthy' ? 'bg-success' : statusTone === 'warning' ? 'bg-warning' : 'bg-danger';
-
   return (
     <>
       <header className="flex h-12 items-center justify-between gap-4 border-b border-subtle bg-surface-raised px-4">
         {/* LEFT zone — identity (largest). Wordmark + terminal badge. */}
         <div className="flex min-w-0 items-center gap-3">
           <h1 className="truncate text-xl font-extrabold tracking-tight text-brand">{t('auth.title')}</h1>
-          {terminal && <span className={tokens.badge.neutral}>{terminal.name}</span>}
+          {terminal && <Badge tone="neutral">{terminal.name}</Badge>}
         </div>
 
         {/* CENTER zone — ONE session-status pill (connectivity + sync + stock age). */}
         <div className="flex min-w-0 items-center gap-2">
-          <div
-            className={cn(tokens.statusPill.base, tokens.statusPill[statusTone])}
-            title={statusLabel}
-            aria-label={statusLabel}
-          >
-            <span
-              className={cn(
-                tokens.statusPill.dot,
-                statusDotColor,
-                isSyncing && 'animate-pulse',
-              )}
-            />
-            <span className="truncate">{statusLabel}</span>
-            <SyncButton />
-          </div>
+          {/* Status is a clean dot+label indicator (never a nested button). */}
+          <StatusPill tone={statusTone} label={statusLabel} pulse={isSyncing} title={statusLabel} />
+          {/* Manual sync trigger — a SEPARATE control beside the pill, not inside it. */}
+          <IconButton
+            variant="ghost"
+            size="md"
+            onClick={() => triggerSync()}
+            disabled={isSyncing}
+            title={t('sync.syncNow')}
+            aria-label={t('sync.syncNow')}
+            icon={<RotateCw className={isSyncing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />}
+          />
           {/* Stock staleness hint — own freshness/age signal beside the pill. */}
           <StockFreshness />
         </div>
@@ -454,11 +447,12 @@ export function Header() {
           {/* Shift badge — opens End of Day preview. */}
           {shift ? (
             <button
+              type="button"
               onClick={() => setShowEndOfDay(true)}
-              className={cn(tokens.badge.success, 'hover:bg-success-surface/80')}
+              className="rounded-full"
               title={t('shift.opening', { amount: shift.opening_cash })}
             >
-              <span>{t('shift.number', { number: shift.shift_number })}</span>
+              <Badge tone="success">{t('shift.number', { number: shift.shift_number })}</Badge>
             </button>
           ) : (
             <span className="text-sm text-ink-faint">{t('header.noShift')}</span>
@@ -472,58 +466,58 @@ export function Header() {
           )}
 
           {/* Switch operator — icon-only */}
-          <button
+          <IconButton
+            variant="ghost"
+            size="md"
             onClick={handleSwitchOperator}
-            className={cn(tokens.button.ghost, 'h-8 w-8 !px-0')}
             title={t('header.switch')}
             aria-label={t('header.switch')}
-          >
-            <ArrowLeftRight className="h-4 w-4" />
-          </button>
+            icon={<ArrowLeftRight className="h-4 w-4" />}
+          />
 
           {/* Lock — icon-only */}
-          <button
+          <IconButton
+            variant="ghost"
+            size="md"
             onClick={lockScreen}
-            className={cn(tokens.button.ghost, 'h-8 w-8 !px-0')}
             title={t('header.lock')}
             aria-label={t('header.lock')}
-          >
-            <Lock className="h-4 w-4" />
-          </button>
+            icon={<Lock className="h-4 w-4" />}
+          />
 
           {/* Reports — icon-only (behavior/routing unchanged) */}
           {shift && (
-            <button
+            <IconButton
+              variant="ghost"
+              size="md"
               onClick={() => setShowReportsMenu(true)}
-              className={cn(tokens.button.ghost, 'h-8 w-8 !px-0')}
               title={t('quickActions.reports')}
               aria-label={t('quickActions.reports')}
-            >
-              <BarChart3 className="h-4 w-4" />
-            </button>
+              icon={<BarChart3 className="h-4 w-4" />}
+            />
           )}
 
           {/* Exit fullscreen — icon-only */}
           {fullscreen && (
-            <button
+            <IconButton
+              variant="ghost"
+              size="md"
               onClick={() => void handleExitFullscreen()}
-              className={cn(tokens.button.ghost, 'h-8 w-8 !px-0')}
               title={t('settings.exitFullscreen')}
               aria-label={t('settings.exitFullscreen')}
-            >
-              <Minimize2 className="h-4 w-4" />
-            </button>
+              icon={<Minimize2 className="h-4 w-4" />}
+            />
           )}
 
           {/* Settings — icon-only */}
-          <button
+          <IconButton
+            variant="ghost"
+            size="md"
             onClick={() => navigate('/settings')}
-            className={cn(tokens.button.ghost, 'h-8 w-8 !px-0')}
             title={t('header.settings')}
             aria-label={t('header.settings')}
-          >
-            <Settings className="h-4 w-4" />
-          </button>
+            icon={<Settings className="h-4 w-4" />}
+          />
         </div>
       </header>
 
