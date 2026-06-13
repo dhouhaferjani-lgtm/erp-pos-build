@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { cn } from '@/lib/utils';
 import { Search, X, Package, LayoutGrid, Image, TrendingUp } from 'lucide-react';
-import { tokens } from '@/lib/designTokens';
+import { Button, SegmentedControl } from '@/components/ui';
+import type { SegmentedOption } from '@/components/ui';
 import { ProductCard } from '@/components/molecules/ProductCard';
 import type { POSProduct } from '@/types/product';
 import type { GridLocationStockMap } from '@/lib/stock/gridStock';
@@ -105,6 +106,22 @@ export function ProductGrid({
     setDisplayMode(mode);
     localStorage.setItem(DISPLAY_MODE_STORAGE_KEY, mode);
   }, []);
+
+  const displayModeOptions = useMemo<SegmentedOption<DisplayMode>[]>(
+    () => [
+      {
+        value: 'grid',
+        icon: <LayoutGrid className="h-5 w-5" />,
+        ariaLabel: t('display.gridMode'),
+      },
+      {
+        value: 'visual',
+        icon: <Image className="h-5 w-5" />,
+        ariaLabel: t('display.visualMode'),
+      },
+    ],
+    [t],
+  );
 
   /**
    * Sellable-first guard. Out-of-stock items (`stock_quantity <= 0`) must
@@ -339,56 +356,30 @@ export function ProductGrid({
           )}
         </div>
 
-        {/* Most-sold sort toggle. Styled as a secondary button (consistent
-            with the toolbar voice); the active/pressed state is signalled by
-            a soft action-subtle fill + action text, not a saturated block.
-            `aria-pressed` reflects state; `title` gives a click-to-undo hint. */}
-        <button
+        {/* Most-sold sort toggle — secondary Button atom; active/pressed state
+            signalled by a soft action-subtle fill, not a saturated block. */}
+        <Button
+          variant="secondary"
+          size="md"
+          leftIcon={<TrendingUp className="h-5 w-5" />}
           onClick={() => setSortMode((m) => (m === 'mostSold' ? 'default' : 'mostSold'))}
           className={cn(
-            tokens.button.secondary,
-            'h-12',
             sortMode === 'mostSold' &&
               'border-action bg-action-subtle text-action-strong hover:bg-action-subtle',
           )}
           title={sortMode === 'mostSold' ? t('products.sortDefault') : undefined}
           aria-pressed={sortMode === 'mostSold'}
         >
-          <TrendingUp className="h-5 w-5" />
           {t('products.sortByMostSold')}
-        </button>
+        </Button>
 
-        {/* Display mode toggle — the ONE segmented-control voice. */}
-        <div className={tokens.segmented.root}>
-          <button
-            onClick={() => handleDisplayModeChange('grid')}
-            className={cn(
-              tokens.segmented.item,
-              'flex h-10 w-10 items-center justify-center',
-              displayMode === 'grid'
-                ? tokens.segmented.itemActive
-                : tokens.segmented.itemInactive,
-            )}
-            title={t('display.gridMode')}
-            aria-pressed={displayMode === 'grid'}
-          >
-            <LayoutGrid className="h-5 w-5" />
-          </button>
-          <button
-            onClick={() => handleDisplayModeChange('visual')}
-            className={cn(
-              tokens.segmented.item,
-              'flex h-10 w-10 items-center justify-center',
-              displayMode === 'visual'
-                ? tokens.segmented.itemActive
-                : tokens.segmented.itemInactive,
-            )}
-            title={t('display.visualMode')}
-            aria-pressed={displayMode === 'visual'}
-          >
-            <Image className="h-5 w-5" />
-          </button>
-        </div>
+        {/* Display mode toggle — the ONE segmented-control voice (atom). */}
+        <SegmentedControl
+          options={displayModeOptions}
+          value={displayMode}
+          onChange={handleDisplayModeChange}
+          ariaLabel={t('display.mode')}
+        />
       </div>
 
       {/* Category tabs + In Stock filter */}

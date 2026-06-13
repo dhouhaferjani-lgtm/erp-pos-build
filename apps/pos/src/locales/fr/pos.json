@@ -598,6 +598,7 @@
     "approvalRequired": "L'approbation d'un responsable est requise pour les opérations du tiroir-caisse."
   },
   "display": {
+    "mode": "Mode d'affichage",
     "inStockOnly": "En stock",
     "gridMode": "Vue grille",
     "visualMode": "Vue images"

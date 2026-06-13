@@ -598,6 +598,7 @@
     "approvalRequired": "Manager approval is required for cash drawer operations."
   },
   "display": {
+    "mode": "Display mode",
     "inStockOnly": "In Stock",
     "gridMode": "Grid view",
     "visualMode": "Image view"
