@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, Grid3x3, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react'
-import type { ProductImage } from '../types'
+import type { ProductMediaItem } from '../types'
 import { getProductImageDownloadUrl } from '../api/productImages'
 
 interface ImageGalleryModalProps {
   productId: string
-  images: ProductImage[]
+  images: ProductMediaItem[]
   isOpen: boolean
   onClose: () => void
   initialIndex?: number
@@ -138,7 +138,7 @@ export function ImageGalleryModal({
                 >
                   <img
                     src={getProductImageDownloadUrl(productId, image.id)}
-                    alt={image.original_filename}
+                    alt={image.alt ?? ''}
                     className="h-full w-full object-cover"
                   />
                   {image.is_primary && (
@@ -173,7 +173,7 @@ export function ImageGalleryModal({
             <div className="relative max-h-[90vh] max-w-[90vw]">
               <img
                 src={getProductImageDownloadUrl(productId, currentImage.id)}
-                alt={currentImage.original_filename}
+                alt={currentImage.alt ?? ''}
                 className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
               />
               {currentImage.is_primary && (

@@ -285,26 +285,6 @@ class Product extends Model implements SellableContract
     }
 
     /**
-     * Get all images for this product, ordered by sort_order.
-     *
-     * @return HasMany<ProductImage, $this>
-     */
-    public function images(): HasMany
-    {
-        return $this->hasMany(ProductImage::class)->ordered();
-    }
-
-    /**
-     * Get the primary image for this product.
-     *
-     * @return HasOne<ProductImage, $this>
-     */
-    public function primaryImage(): HasOne
-    {
-        return $this->hasOne(ProductImage::class)->where('is_primary', true);
-    }
-
-    /**
      * Get the unit of measure for this product.
      *
      * @return BelongsTo<Unit, $this>

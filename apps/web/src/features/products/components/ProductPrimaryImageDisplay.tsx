@@ -89,7 +89,7 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
       <div className="group relative aspect-square w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
         <img
           src={getProductImageDownloadUrl(productId, primaryImage.id)}
-          alt={primaryImage.original_filename}
+          alt={primaryImage.alt ?? ''}
           className="h-full w-full object-cover"
           onError={() => { handleImageError(primaryImage.id); }}
         />
@@ -126,7 +126,7 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
             >
               <img
                 src={getProductImageDownloadUrl(productId, image.id)}
-                alt={image.original_filename}
+                alt={image.alt ?? ''}
                 className="h-full w-full object-cover"
                 onError={() => { handleImageError(image.id); }}
               />

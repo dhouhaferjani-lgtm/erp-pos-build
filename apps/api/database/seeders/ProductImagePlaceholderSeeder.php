@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Modules\Catalog\Application\Services\MediaAttachmentService;
+use App\Modules\Catalog\Application\Services\MediaUploadService;
+use App\Modules\Catalog\Domain\Enums\MediaOwnerType;
+use App\Modules\Catalog\Domain\Enums\MediaRole;
+use App\Modules\Catalog\Domain\Media\MediaAttachment;
 use App\Modules\Product\Domain\Product;
-use App\Modules\Product\Domain\ProductImage;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Str;
 
 /**
- * Assigns placeholder images to all products that don't have a primary image.
+ * Assigns placeholder images to all products that don't have a primary media attachment.
  *
  * Uses picsum.photos for realistic placeholder images — each product gets a
  * deterministic image seeded by its UUID, so re-running produces the same images.
@@ -19,11 +22,22 @@ use Illuminate\Support\Str;
  */
 class ProductImagePlaceholderSeeder extends Seeder
 {
+    public function __construct(
+        private readonly MediaUploadService $uploadService,
+        private readonly MediaAttachmentService $attachmentService,
+    ) {}
+
     public function run(): void
     {
-        // Get all products without a primary image
+        // Get products that already have a PRIMARY MediaAttachment
+        $productsWithPrimary = MediaAttachment::where('owner_type', MediaOwnerType::Product)
+            ->where('role', MediaRole::Primary)
+            ->pluck('owner_id')
+            ->all();
+
+        // Get all products without a primary media attachment
         $products = Product::query()
-            ->whereDoesntHave('primaryImage')
+            ->whereNotIn('id', $productsWithPrimary)
             ->select(['id', 'tenant_id', 'name'])
             ->get();
 
@@ -37,44 +51,27 @@ class ProductImagePlaceholderSeeder extends Seeder
 
         $bar = $this->command->getOutput()->createProgressBar($products->count());
 
-        $batch = [];
-        $now = now()->toDateTimeString();
-
         foreach ($products as $product) {
             // Use a short seed derived from the product UUID for deterministic images
             $seed = substr(md5($product->id), 0, 8);
+            $url = "https://picsum.photos/seed/{$seed}/400/400";
 
-            $batch[] = [
-                'id' => Str::uuid()->toString(),
-                'tenant_id' => $product->tenant_id,
-                'product_id' => $product->id,
-                'filename' => "placeholder-{$seed}.jpg",
-                'original_filename' => "placeholder-{$seed}.jpg",
-                'storage_path' => "https://picsum.photos/seed/{$seed}/400/400",
-                'storage_disk' => 'url',
-                'mime_type' => 'image/jpeg',
-                'file_size' => 0,
-                'width' => 400,
-                'height' => 400,
-                'sort_order' => 0,
-                'is_primary' => true,
-                'thumbnail_path' => "https://picsum.photos/seed/{$seed}/100/100",
-                'uploaded_by' => null,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ];
+            $asset = $this->uploadService->registerExternalUrl(
+                $product->tenant_id,
+                $product->id,
+                $url,
+            );
 
-            if (count($batch) >= 100) {
-                ProductImage::insert($batch);
-                $batch = [];
-            }
+            $this->attachmentService->attach(
+                $asset->id,
+                MediaOwnerType::Product,
+                $product->id,
+                MediaRole::Primary,
+                0,
+                $product->tenant_id,
+            );
 
             $bar->advance();
-        }
-
-        // Insert remaining
-        if (! empty($batch)) {
-            ProductImage::insert($batch);
         }
 
         $bar->finish();

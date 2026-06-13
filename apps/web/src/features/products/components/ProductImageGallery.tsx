@@ -7,7 +7,7 @@ import {
   setProductImagePrimary,
   getProductImageDownloadUrl,
 } from '../api/productImages'
-import type { ProductImage } from '../types'
+import type { ProductMediaItem } from '../types'
 import { getErrorMessage } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
@@ -15,7 +15,7 @@ import { useCompanyStore } from '@/stores/companyStore'
 
 interface ProductImageGalleryProps {
   productId: string
-  images: ProductImage[]
+  images: ProductMediaItem[]
   readOnly?: boolean
 }
 
@@ -104,7 +104,7 @@ export function ProductImageGallery({
           <div className="relative aspect-square overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
             <img
               src={getProductImageDownloadUrl(productId, image.id)}
-              alt={image.original_filename}
+              alt={image.alt ?? ''}
               className="h-full w-full object-cover"
               loading="lazy"
             />
@@ -155,12 +155,8 @@ export function ProductImageGallery({
 
           {/* Image Info */}
           <div className="mt-1 px-1">
-            <p className="truncate text-xs text-gray-600" title={image.original_filename}>
-              {image.original_filename}
-            </p>
-            <p className="text-xs text-gray-400">
-              {(image.file_size / 1024).toFixed(0)} KB
-              {image.width && image.height && ` • ${image.width}×${image.height}`}
+            <p className="truncate text-xs text-gray-600" title={image.alt ?? ''}>
+              {image.alt ?? ''}
             </p>
           </div>
         </div>

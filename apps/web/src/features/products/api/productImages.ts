@@ -1,11 +1,11 @@
 import { api } from '@/lib/api'
-import type { ProductImage } from '../types'
+import type { ProductMediaItem } from '../types'
 
 /**
  * Get all images for a product
  */
-export async function getProductImages(productId: string): Promise<ProductImage[]> {
-  const response = await api.get<{ data: ProductImage[] }>(`/products/${productId}/images`)
+export async function getProductImages(productId: string): Promise<ProductMediaItem[]> {
+  const response = await api.get<{ data: ProductMediaItem[] }>(`/products/${productId}/images`)
   return response.data.data
 }
 
@@ -16,14 +16,14 @@ export async function uploadProductImage(
   productId: string,
   file: File,
   sortOrder?: number
-): Promise<ProductImage> {
+): Promise<ProductMediaItem> {
   const formData = new FormData()
   formData.append('image', file)
   if (sortOrder !== undefined) {
     formData.append('sort_order', String(sortOrder))
   }
 
-  const response = await api.post<{ data: ProductImage }>(
+  const response = await api.post<{ data: ProductMediaItem }>(
     `/products/${productId}/images`,
     formData,
     {
@@ -41,8 +41,8 @@ export async function uploadProductImage(
 export async function setProductImagePrimary(
   productId: string,
   imageId: string
-): Promise<ProductImage> {
-  const response = await api.patch<{ data: ProductImage }>(
+): Promise<ProductMediaItem> {
+  const response = await api.patch<{ data: ProductMediaItem }>(
     `/products/${productId}/images/${imageId}`,
     { is_primary: true }
   )
@@ -56,8 +56,8 @@ export async function updateProductImageSortOrder(
   productId: string,
   imageId: string,
   sortOrder: number
-): Promise<ProductImage> {
-  const response = await api.patch<{ data: ProductImage }>(
+): Promise<ProductMediaItem> {
+  const response = await api.patch<{ data: ProductMediaItem }>(
     `/products/${productId}/images/${imageId}`,
     { sort_order: sortOrder }
   )
@@ -70,8 +70,8 @@ export async function updateProductImageSortOrder(
 export async function reorderProductImages(
   productId: string,
   imageIds: string[]
-): Promise<ProductImage[]> {
-  const response = await api.post<{ data: ProductImage[] }>(
+): Promise<ProductMediaItem[]> {
+  const response = await api.post<{ data: ProductMediaItem[] }>(
     `/products/${productId}/images/reorder`,
     { image_ids: imageIds }
   )
