@@ -31,7 +31,7 @@ const COUNTRIES: CountryConfig[] = [
 ]
 
 export function CompanyOnboardingPage() {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['common', 'settings'])
   const navigate = useNavigate()
   const invalidateCompanies = useInvalidateCompanies()
   const setCurrentCompany = useCompanyStore((state) => state.setCurrentCompany)
@@ -100,7 +100,7 @@ export function CompanyOnboardingPage() {
 
   const handleSubmit = () => {
     if (!formData.name.trim()) {
-      setError('Company name is required')
+      setError(t('settings:company.modal.companyNameRequired'))
       return
     }
 
@@ -130,13 +130,13 @@ export function CompanyOnboardingPage() {
             className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4"
           >
             <ArrowLeft className="w-4 h-4 me-1" />
-            {t('back')}
+            {t('common:back')}
           </Link>
           <div className="flex items-center gap-3 mb-2">
             <Building2 className="w-8 h-8 text-blue-600" />
-            <h1 className="text-3xl font-bold">{t('Add New Company')}</h1>
+            <h1 className="text-3xl font-bold">{t('settings:company.modal.title')}</h1>
           </div>
-          <p className="text-gray-500">{t('Set up your company profile in a few simple steps')}</p>
+          <p className="text-gray-500">{t('settings:company.modal.subtitle')}</p>
         </div>
 
         {/* Progress Steps */}
@@ -165,7 +165,7 @@ export function CompanyOnboardingPage() {
                       !isActive && !isCompleted && 'text-gray-500'
                     )}
                   >
-                    {step.charAt(0).toUpperCase() + step.slice(1)}
+                    {t(`settings:company.modal.steps.${step}`)}
                   </span>
                   {index < STEPS.length - 1 && (
                     <div
@@ -196,10 +196,10 @@ export function CompanyOnboardingPage() {
               <div>
                 <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
                   <Globe className="w-6 h-6 text-blue-600" />
-                  {t('Select Your Country')}
+                  {t('settings:company.modal.selectCountry')}
                 </h2>
                 <p className="text-gray-500 text-sm">
-                  {t('This will determine your default currency, timezone, and regional settings')}
+                  {t('settings:company.modal.selectCountryHint')}
                 </p>
               </div>
 
@@ -239,24 +239,24 @@ export function CompanyOnboardingPage() {
               <div>
                 <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
                   <Building2 className="w-6 h-6 text-blue-600" />
-                  {t('Company Information')}
+                  {t('settings:company.sections.information')}
                 </h2>
                 <p className="text-gray-500 text-sm">
-                  {t('Enter your company details')}
+                  {t('settings:company.modal.enterCompanyDetails')}
                 </p>
               </div>
 
               <div className="space-y-4">
                 <div>
                   <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('Company Name')} <span className="text-red-500">*</span>
+                    {t('settings:company.fields.companyName')} <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     id="name"
                     value={formData.name}
                     onChange={(e) => { setFormData({ ...formData, name: e.target.value }); }}
-                    placeholder={t('My Company')}
+                    placeholder={t('settings:company.modal.namePlaceholder')}
                     className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     autoFocus
                   />
@@ -264,31 +264,31 @@ export function CompanyOnboardingPage() {
 
                 <div>
                   <label htmlFor="legalName" className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('Legal Name')}
+                    {t('settings:company.fields.legalName')}
                   </label>
                   <input
                     type="text"
                     id="legalName"
                     value={formData.legalName}
                     onChange={(e) => { setFormData({ ...formData, legalName: e.target.value }); }}
-                    placeholder={t('My Company SARL')}
+                    placeholder={t('settings:company.modal.legalNamePlaceholder')}
                     className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <p className="mt-1 text-xs text-gray-500">
-                    {t('If different from company name')}
+                    {t('settings:company.modal.legalNameHint')}
                   </p>
                 </div>
 
                 <div>
                   <label htmlFor="taxId" className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('Tax ID / VAT Number')}
+                    {t('settings:company.fields.taxId')}
                   </label>
                   <input
                     type="text"
                     id="taxId"
                     value={formData.taxId}
                     onChange={(e) => { setFormData({ ...formData, taxId: e.target.value }); }}
-                    placeholder="FR12345678901"
+                    placeholder={t('settings:company.modal.taxIdPlaceholder')}
                     className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -302,10 +302,10 @@ export function CompanyOnboardingPage() {
               <div>
                 <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
                   <Mail className="w-6 h-6 text-blue-600" />
-                  {t('Contact Information')}
+                  {t('settings:company.sections.contact')}
                 </h2>
                 <p className="text-gray-500 text-sm">
-                  {t('Add your contact details and address (optional)')}
+                  {t('settings:company.modal.contactInfoHint')}
                 </p>
               </div>
 
@@ -314,14 +314,14 @@ export function CompanyOnboardingPage() {
                   <div>
                     <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
                       <Mail className="w-4 h-4" />
-                      {t('Email')}
+                      {t('settings:company.fields.email')}
                     </label>
                     <input
                       type="email"
                       id="email"
                       value={formData.email}
                       onChange={(e) => { setFormData({ ...formData, email: e.target.value }); }}
-                      placeholder="contact@company.com"
+                      placeholder={t('settings:company.modal.emailPlaceholder')}
                       className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -329,14 +329,14 @@ export function CompanyOnboardingPage() {
                   <div>
                     <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
                       <Phone className="w-4 h-4" />
-                      {t('Phone')}
+                      {t('settings:company.fields.phone')}
                     </label>
                     <input
                       type="tel"
                       id="phone"
                       value={formData.phone}
                       onChange={(e) => { setFormData({ ...formData, phone: e.target.value }); }}
-                      placeholder="+33 1 23 45 67 89"
+                      placeholder={t('settings:company.modal.phonePlaceholder')}
                       className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -345,14 +345,14 @@ export function CompanyOnboardingPage() {
                 <div>
                   <label htmlFor="addressStreet" className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
                     <MapPin className="w-4 h-4" />
-                    {t('Street Address')}
+                    {t('settings:company.fields.street')}
                   </label>
                   <input
                     type="text"
                     id="addressStreet"
                     value={formData.addressStreet}
                     onChange={(e) => { setFormData({ ...formData, addressStreet: e.target.value }); }}
-                    placeholder="123 Main Street"
+                    placeholder={t('settings:company.modal.streetPlaceholder')}
                     className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -360,28 +360,28 @@ export function CompanyOnboardingPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="addressCity" className="block text-sm font-medium text-gray-700 mb-1">
-                      {t('City')}
+                      {t('settings:company.fields.city')}
                     </label>
                     <input
                       type="text"
                       id="addressCity"
                       value={formData.addressCity}
                       onChange={(e) => { setFormData({ ...formData, addressCity: e.target.value }); }}
-                      placeholder="Paris"
+                      placeholder={t('settings:company.modal.cityPlaceholder')}
                       className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
                   <div>
                     <label htmlFor="addressPostalCode" className="block text-sm font-medium text-gray-700 mb-1">
-                      {t('Postal Code')}
+                      {t('settings:company.fields.postalCode')}
                     </label>
                     <input
                       type="text"
                       id="addressPostalCode"
                       value={formData.addressPostalCode}
                       onChange={(e) => { setFormData({ ...formData, addressPostalCode: e.target.value }); }}
-                      placeholder="75001"
+                      placeholder={t('settings:company.modal.postalCodePlaceholder')}
                       className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -396,48 +396,48 @@ export function CompanyOnboardingPage() {
               <div>
                 <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
                   <Check className="w-6 h-6 text-blue-600" />
-                  {t('Review & Confirm')}
+                  {t('settings:company.modal.reviewTitle')}
                 </h2>
                 <p className="text-gray-500 text-sm">
-                  {t('Please review your information before creating the company')}
+                  {t('settings:company.modal.reviewHint')}
                 </p>
               </div>
 
               <div className="space-y-4">
                 <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-semibold text-gray-900 mb-3">{t('Country & Regional Settings')}</h3>
+                  <h3 className="font-semibold text-gray-900 mb-3">{t('settings:company.modal.regionalSettings')}</h3>
                   <dl className="grid grid-cols-1 gap-2 text-sm">
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">{t('Country')}:</dt>
+                      <dt className="text-gray-500">{t('settings:company.fields.country')}:</dt>
                       <dd className="font-medium">{selectedCountry.name}</dd>
                     </div>
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">{t('Currency')}:</dt>
+                      <dt className="text-gray-500">{t('settings:company.fields.currency')}:</dt>
                       <dd className="font-medium">{selectedCountry.currency}</dd>
                     </div>
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">{t('Timezone')}:</dt>
+                      <dt className="text-gray-500">{t('settings:company.fields.timezone')}:</dt>
                       <dd className="font-medium">{selectedCountry.timezone}</dd>
                     </div>
                   </dl>
                 </div>
 
                 <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-semibold text-gray-900 mb-3">{t('Company Information')}</h3>
+                  <h3 className="font-semibold text-gray-900 mb-3">{t('settings:company.sections.information')}</h3>
                   <dl className="grid grid-cols-1 gap-2 text-sm">
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">{t('Company Name')}:</dt>
+                      <dt className="text-gray-500">{t('settings:company.fields.companyName')}:</dt>
                       <dd className="font-medium">{formData.name}</dd>
                     </div>
                     {formData.legalName && (
                       <div className="flex justify-between">
-                        <dt className="text-gray-500">{t('Legal Name')}:</dt>
+                        <dt className="text-gray-500">{t('settings:company.fields.legalName')}:</dt>
                         <dd className="font-medium">{formData.legalName}</dd>
                       </div>
                     )}
                     {formData.taxId && (
                       <div className="flex justify-between">
-                        <dt className="text-gray-500">{t('Tax ID')}:</dt>
+                        <dt className="text-gray-500">{t('settings:company.fields.taxId')}:</dt>
                         <dd className="font-medium">{formData.taxId}</dd>
                       </div>
                     )}
@@ -446,23 +446,23 @@ export function CompanyOnboardingPage() {
 
                 {(formData.email || formData.phone || formData.addressStreet) && (
                   <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-semibold text-gray-900 mb-3">{t('Contact Information')}</h3>
+                    <h3 className="font-semibold text-gray-900 mb-3">{t('settings:company.sections.contact')}</h3>
                     <dl className="grid grid-cols-1 gap-2 text-sm">
                       {formData.email && (
                         <div className="flex justify-between">
-                          <dt className="text-gray-500">{t('Email')}:</dt>
+                          <dt className="text-gray-500">{t('settings:company.fields.email')}:</dt>
                           <dd className="font-medium">{formData.email}</dd>
                         </div>
                       )}
                       {formData.phone && (
                         <div className="flex justify-between">
-                          <dt className="text-gray-500">{t('Phone')}:</dt>
+                          <dt className="text-gray-500">{t('settings:company.fields.phone')}:</dt>
                           <dd className="font-medium">{formData.phone}</dd>
                         </div>
                       )}
                       {formData.addressStreet && (
                         <div>
-                          <dt className="text-gray-500 mb-1">{t('Address')}:</dt>
+                          <dt className="text-gray-500 mb-1">{t('settings:company.fields.street')}:</dt>
                           <dd className="font-medium">
                             {formData.addressStreet}
                             {(formData.addressCity || formData.addressPostalCode) && (
@@ -491,7 +491,7 @@ export function CompanyOnboardingPage() {
             className="inline-flex items-center px-6 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <ArrowLeft className="w-4 h-4 me-2" />
-            {t('previous')}
+            {t('common:previous')}
           </button>
 
           {currentStep === 'review' ? (
@@ -502,7 +502,7 @@ export function CompanyOnboardingPage() {
               className="inline-flex items-center px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {mutation.isPending && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
-              {mutation.isPending ? t('creating') : t('Create Company')}
+              {mutation.isPending ? t('common:status.creating') : t('settings:company.modal.createButton')}
             </button>
           ) : (
             <button
@@ -511,7 +511,7 @@ export function CompanyOnboardingPage() {
               disabled={!canProceed()}
               className="inline-flex items-center px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {t('next')}
+              {t('common:next')}
               <ArrowRight className="w-4 h-4 ms-2" />
             </button>
           )}

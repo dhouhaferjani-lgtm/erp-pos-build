@@ -136,7 +136,8 @@
     "vin": "VIN",
     "totalReceivable": "Total Receivable",
     "totalPayable": "Total Payable",
-    "description": "Description"
+    "description": "Description",
+    "currency": "Currency"
   },
   "partner": {
     "unallocatedBalance": "Unallocated Balance",
@@ -161,7 +162,8 @@
     "locationsFetchFailed": "Failed to load locations.",
     "operationFailed": "Operation failed. Please try again.",
     "unexpectedError": "Something went wrong",
-    "unexpectedErrorDetails": "An unexpected error occurred. Please try again or refresh the page."
+    "unexpectedErrorDetails": "An unexpected error occurred. Please try again or refresh the page.",
+    "saveFailed": "Failed to save. Please try again."
   },
   "dashboard": {
     "title": "Dashboard",
@@ -694,6 +696,8 @@
       "hourly": "Hourly",
       "percentage": "Percentage"
     },
+    "createService": "Create Service",
+    "pricingTypeLabel": "Pricing Type",
     "fields": {
       "code": "Code",
       "name": "Name",
@@ -703,6 +707,8 @@
       "basePrice": "Base Price",
       "hourlyRate": "Hourly Rate",
       "duration": "Duration",
+      "defaultDuration": "Default Duration (minutes)",
+      "percentage": "Percentage",
       "taxRate": "Tax Rate"
     },
     "categories": {
@@ -726,6 +732,10 @@
       "durationHint": "Estimated service duration",
       "taxRateHint": "Leave empty to use default tax rate"
     },
+    "basicInfo": "Basic Information",
+    "noCategory": "No Category",
+    "namePlaceholder": "Oil Change",
+    "descriptionPlaceholder": "Optional description for this service",
     "messages": {
       "created": "Service created successfully",
       "updated": "Service updated successfully",

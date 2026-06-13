@@ -61,6 +61,7 @@
     },
     "fields": {
       "name": "Nom de l'entreprise *",
+      "companyName": "Nom de l'entreprise",
       "legalName": "Raison sociale",
       "taxId": "Numéro de TVA / Identifiant fiscal",
       "registrationNumber": "Numéro d'immatriculation",
@@ -80,6 +81,7 @@
     },
     "modal": {
       "title": "Ajouter une entreprise",
+      "subtitle": "Configurez votre profil d'entreprise en quelques étapes simples",
       "currencyTimezone": "Devise : {{currency}} | Fuseau horaire : {{timezone}}",
       "createButton": "Créer l'entreprise",
       "companyNameRequired": "Le nom de l'entreprise est requis",
@@ -90,7 +92,24 @@
       "streetPlaceholder": "123 Rue Principale",
       "cityPlaceholder": "Paris",
       "postalCodePlaceholder": "75001",
-      "taxIdPlaceholder": "FR12345678901"
+      "taxIdPlaceholder": "FR12345678901",
+      "selectCountry": "Sélectionnez votre pays",
+      "selectCountryHint": "Cela déterminera votre devise, fuseau horaire et paramètres régionaux par défaut",
+      "enterCompanyDetails": "Saisissez les informations de votre entreprise",
+      "legalNameHint": "Si différent du nom commercial",
+      "contactInfoHint": "Ajoutez vos coordonnées et adresse (optionnel)",
+      "reviewTitle": "Récapitulatif et confirmation",
+      "reviewHint": "Veuillez vérifier vos informations avant de créer l'entreprise",
+      "regionalSettings": "Pays et paramètres régionaux",
+      "steps": {
+        "country": "Pays",
+        "company": "Entreprise",
+        "contact": "Contact",
+        "review": "Récapitulatif"
+      },
+      "loading": "Chargement des entreprises...",
+      "noCompaniesTitle": "Aucune entreprise trouvée",
+      "noCompaniesMessage": "Vous n'avez accès à aucune entreprise. Veuillez contacter votre administrateur."
     },
     "actions": {
       "replaceLogo": "Remplacer"

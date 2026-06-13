@@ -61,6 +61,7 @@
     },
     "fields": {
       "name": "Company Name *",
+      "companyName": "Company Name",
       "legalName": "Legal Name",
       "taxId": "Tax ID / VAT Number",
       "registrationNumber": "Registration Number",
@@ -80,6 +81,7 @@
     },
     "modal": {
       "title": "Add New Company",
+      "subtitle": "Set up your company profile in a few simple steps",
       "currencyTimezone": "Currency: {{currency}} | Timezone: {{timezone}}",
       "createButton": "Create Company",
       "companyNameRequired": "Company name is required",
@@ -90,7 +92,24 @@
       "streetPlaceholder": "123 Main Street",
       "cityPlaceholder": "Paris",
       "postalCodePlaceholder": "75001",
-      "taxIdPlaceholder": "FR12345678901"
+      "taxIdPlaceholder": "FR12345678901",
+      "selectCountry": "Select Your Country",
+      "selectCountryHint": "This will determine your default currency, timezone, and regional settings",
+      "enterCompanyDetails": "Enter your company details",
+      "legalNameHint": "If different from company name",
+      "contactInfoHint": "Add your contact details and address (optional)",
+      "reviewTitle": "Review & Confirm",
+      "reviewHint": "Please review your information before creating the company",
+      "regionalSettings": "Country & Regional Settings",
+      "steps": {
+        "country": "Country",
+        "company": "Company",
+        "contact": "Contact",
+        "review": "Review"
+      },
+      "loading": "Loading companies...",
+      "noCompaniesTitle": "No Companies Found",
+      "noCompaniesMessage": "You don't have access to any companies. Please contact your administrator."
     },
     "actions": {
       "replaceLogo": "Replace"

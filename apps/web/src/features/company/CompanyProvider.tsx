@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useCompanyStore, type Company } from '../../stores/companyStore'
@@ -56,6 +57,7 @@ function userCompaniesPredicate(q: { queryKey: readonly unknown[] }): boolean {
  * Skips fetching on admin routes since they use separate authentication.
  */
 export function CompanyProvider({ children }: CompanyProviderProps) {
+  const { t } = useTranslation('settings')
   const routerLocation = useLocation()
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
@@ -114,7 +116,7 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-          <p className="text-gray-500">Loading companies...</p>
+          <p className="text-gray-500">{t('company.modal.loading')}</p>
         </div>
       </div>
     )
@@ -125,9 +127,9 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-900">No Companies Found</h2>
+          <h2 className="text-xl font-semibold text-gray-900">{t('company.modal.noCompaniesTitle')}</h2>
           <p className="mt-2 text-gray-600">
-            You don't have access to any companies. Please contact your administrator.
+            {t('company.modal.noCompaniesMessage')}
           </p>
         </div>
       </div>

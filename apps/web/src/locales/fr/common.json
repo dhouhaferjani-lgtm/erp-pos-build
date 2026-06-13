@@ -114,7 +114,8 @@
     "locationsFetchFailed": "Échec du chargement des emplacements.",
     "operationFailed": "L'opération a échoué. Veuillez réessayer.",
     "unexpectedError": "Une erreur est survenue",
-    "unexpectedErrorDetails": "Une erreur inattendue s'est produite. Veuillez réessayer ou actualiser la page."
+    "unexpectedErrorDetails": "Une erreur inattendue s'est produite. Veuillez réessayer ou actualiser la page.",
+    "saveFailed": "Échec de l'enregistrement. Veuillez réessayer."
   },
   "dashboard": {
     "title": "Tableau de bord",
@@ -258,7 +259,8 @@
     "vehicle": "Véhicule",
     "year": "Année",
     "vin": "NIV",
-    "description": "Description"
+    "description": "Description",
+    "currency": "Devise"
   },
   "sections": {
     "balance": "Solde",
@@ -695,6 +697,7 @@
       "plural": "prestations"
     },
     "pricingType": "Tarification",
+    "pricingTypeLabel": "Type de tarification",
     "category": "Catégorie",
     "details": "Détails de la prestation",
     "pricing": "Tarification",
@@ -733,6 +736,7 @@
     "basicInfo": "Informations générales",
     "noCategory": "Sans catégorie",
     "namePlaceholder": "Vidange d'huile",
+    "descriptionPlaceholder": "Description optionnelle pour cette prestation",
     "categoryNamePlaceholder": "Entretien",
     "messages": {
       "created": "Prestation créée avec succès",
