@@ -10,7 +10,25 @@ import { CustomerSearchModal } from './CustomerSearchModal';
 
 vi.mock('react-i18next', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-i18next')>();
-  return { ...actual, useTranslation: () => ({ t: (k: string) => k }) };
+  const en = (await import('@/locales/en/pos.json')).default as Record<string, unknown>;
+  const flat: Record<string, string> = {};
+  (function walk(o: Record<string, unknown>, p: string) {
+    for (const [k, v] of Object.entries(o)) {
+      const K = p ? `${p}.${k}` : k;
+      if (v && typeof v === 'object') walk(v as Record<string, unknown>, K);
+      else flat[K] = String(v);
+    }
+  })(en, '');
+  return {
+    ...actual,
+    useTranslation: () => ({
+      t: (k: string, opts?: Record<string, unknown>) => {
+        let s = flat[k] ?? k;
+        if (opts) for (const [ik, iv] of Object.entries(opts)) s = s.replace(new RegExp(`{{${ik}}}`, 'g'), String(iv));
+        return s;
+      },
+    }),
+  };
 });
 
 vi.mock('@/lib/db', async () => {
@@ -179,7 +197,7 @@ describe('CustomerSearchModal', () => {
       />,
     );
 
-    expect(screen.queryByText('customer.modalTitle')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Customer' })).not.toBeInTheDocument();
     expect(screen.queryByTestId('customer-modal-shell')).not.toBeInTheDocument();
   });
 
@@ -194,7 +212,7 @@ describe('CustomerSearchModal', () => {
       />,
     );
 
-    expect(screen.getByText('customer.modalTitle')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Customer' })).toBeInTheDocument();
     const shell = screen.getByTestId('customer-modal-shell');
     expect(shell).toBeInTheDocument();
     expect(shell.className).toContain('min-h-[420px]');

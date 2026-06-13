@@ -9,18 +9,29 @@ import { usePaymentStore } from '@/stores/paymentStore';
 import type { CustomerMirrorRow } from '@/lib/customer/customerTypes';
 import { CustomerAttachPanel } from './CustomerAttachPanel';
 
-// Map translation keys to their English values so assertions match the rendered text.
-const enPosCustomer: Record<string, string> = {
-  'customer.attach': 'Customer',
-  'customer.attached': 'Attached',
-  'customer.amount': 'Amount',
-  'customer.record': 'Record',
-  'customer.createLocal': 'Create local customer',
-  'customer.searchPlaceholder': 'Search by name, phone, email…',
-};
+// Resolve translation keys to their real English values from the pos locale so
+// assertions match rendered text regardless of the key scheme.
 vi.mock('react-i18next', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-i18next')>();
-  return { ...actual, useTranslation: () => ({ t: (k: string) => enPosCustomer[k] ?? k }) };
+  const en = (await import('@/locales/en/pos.json')).default as Record<string, unknown>;
+  const flat: Record<string, string> = {};
+  (function walk(o: Record<string, unknown>, p: string) {
+    for (const [k, v] of Object.entries(o)) {
+      const K = p ? `${p}.${k}` : k;
+      if (v && typeof v === 'object') walk(v as Record<string, unknown>, K);
+      else flat[K] = String(v);
+    }
+  })(en, '');
+  return {
+    ...actual,
+    useTranslation: () => ({
+      t: (k: string, opts?: Record<string, unknown>) => {
+        let s = flat[k] ?? k;
+        if (opts) for (const [ik, iv] of Object.entries(opts)) s = s.replace(new RegExp(`{{${ik}}}`, 'g'), String(iv));
+        return s;
+      },
+    }),
+  };
 });
 
 vi.mock('@/lib/db', async () => {
