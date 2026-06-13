@@ -138,7 +138,7 @@ export function ProductImageUpload({ productId, onUploadSuccess }: ProductImageU
                 {t('products:images.dragDropOrClick')}
               </p>
               <p className="text-xs text-gray-500">
-                {t('products:images.supportedFormats')}: JPEG, PNG, WebP, GIF (max 5MB)
+                {t('products:images.supportedFormatsDetail')}
               </p>
             </>
           )}

@@ -92,6 +92,7 @@
     "payrollExports": "Exports paie"
   },
   "authoring": {
+    "tabsAriaLabel": "Onglets du détail technicien",
     "tabs": {
       "overview": "Aperçu",
       "certifications": "Certifications",

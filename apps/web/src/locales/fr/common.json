@@ -1285,6 +1285,7 @@
           "detail": "Clients, factures, produits et autres données ERP que vous saisissez"
         },
         "cookies": {
+          "label": "Cookies",
           "detail": "Jetons de session et cookies de préférences pour l'authentification et les paramètres"
         }
       },

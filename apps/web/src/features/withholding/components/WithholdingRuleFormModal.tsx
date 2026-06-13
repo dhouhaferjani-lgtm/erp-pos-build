@@ -141,7 +141,7 @@ export function WithholdingRuleFormModal({
                     onChange={(e) => { handleChange('code', e.target.value); }}
                     required
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="e.g., TN_PROF_10"
+                    placeholder={t('withholding:rules.codePlaceholder')}
                   />
                 </div>
 

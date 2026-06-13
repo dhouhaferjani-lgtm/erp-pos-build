@@ -118,6 +118,7 @@
     "createRule": "Créer une règle de retenue",
     "editRule": "Modifier la règle de retenue",
     "code": "Code",
+    "codePlaceholder": "ex. TN_PROF_10",
     "name": "Nom",
     "namePlaceholder": "ex. Retenue services professionnels",
     "rate": "Taux",

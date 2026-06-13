@@ -17,6 +17,7 @@
     "noImage": "Aucune image",
     "dragDropOrClick": "Glissez-déposez une image ici, ou cliquez pour sélectionner",
     "supportedFormats": "Formats supportés",
+    "supportedFormatsDetail": "Formats acceptés : JPEG, PNG, WebP, GIF (max 5 Mo)",
     "uploading": "Téléchargement de l'image...",
     "primary": "Principale",
     "setPrimary": "Définir comme principale",
@@ -80,5 +81,8 @@
       "children_only": "Enfants Uniquement",
       "all_ages": "Tous Âges"
     }
+  },
+  "fields": {
+    "skuLabel": "Réf. :"
   }
 }

@@ -1324,6 +1324,7 @@
           "detail": "Customers, invoices, products, and other ERP data you enter"
         },
         "cookies": {
+          "label": "Cookies",
           "detail": "Session tokens and preference cookies for authentication and settings"
         }
       },

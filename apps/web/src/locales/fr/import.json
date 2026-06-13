@@ -126,7 +126,8 @@
       "completed": "Import terminé !",
       "failed": "Échec de l'import",
       "progress": "Progression",
-      "viewResults": "Voir les résultats"
+      "viewResults": "Voir les résultats",
+      "progressAriaLabel": "Progression de l'import"
     },
     "complete": {
       "title": "Import terminé !",
@@ -154,7 +155,8 @@
     "missingRequired": "Champs obligatoires manquants",
     "legendMapped": "Mappé",
     "legendSkipped": "Ignoré",
-    "legendRequired": "Obligatoire"
+    "legendRequired": "Obligatoire",
+    "suggested": "(suggéré)"
   },
   "validation": {
     "allValid": "Toutes les lignes sont valides",

@@ -199,7 +199,7 @@ export function ProductSelector({
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{product.name}</div>
                       <div className="flex items-center gap-2 text-sm text-gray-500">
-                        <span className="truncate">SKU: {product.sku}</span>
+                        <span className="truncate">{t('products:fields.skuLabel')} {product.sku}</span>
                         {product.barcode && (
                           <>
                             <span>•</span>

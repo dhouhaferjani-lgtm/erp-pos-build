@@ -57,7 +57,7 @@ export function PrivacyPolicyPage() {
                 {t('legal.privacy.section2.businessData.detail')}
               </li>
               <li>
-                <strong>Cookies</strong>:{' '}
+                <strong>{t('legal.privacy.section2.cookies.label')}</strong>:{' '}
                 {t('legal.privacy.section2.cookies.detail')}
               </li>
             </ul>
