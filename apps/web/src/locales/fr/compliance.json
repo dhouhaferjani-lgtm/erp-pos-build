@@ -130,7 +130,7 @@
     "correctionsSectionTitle": "Corrections",
     "noEditableDefects": "Aucun défaut de payload modifiable n'a été détecté.",
     "correctedValueAriaLabel": "Valeur corrigée pour {{path}}",
-    "quarantineRowInspectNote": "Les lignes de la table de quarantaine peuvent être inspectées ici ; seuls les événements fiscaux en table peuvent être résolus via ce workflow.",
+    "quarantineRowInspectNote": "Les lignes de la table de quarantaine peuvent être inspectées ici ; seuls les événements fiscaux présents dans la table peuvent être résolus via ce workflow.",
     "submitCorrectionButton": "Soumettre la correction",
     "resolvedSuccess": "Échec d'analyse résolu."
   },

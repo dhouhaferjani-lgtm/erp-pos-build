@@ -131,11 +131,11 @@
     },
     "timezones": {
       "EuropeParis": "Europe/Paris (UTC+1)",
-      "EuropeLondon": "Europe/Londres (UTC+0)",
-      "AmericaNewYork": "Amérique/New_York (UTC-5)",
-      "AfricaTunis": "Afrique/Tunis (UTC+1)",
-      "AfricaCasablanca": "Afrique/Casablanca (UTC+0)",
-      "AfricaAlgiers": "Afrique/Alger (UTC+1)"
+      "EuropeLondon": "Europe/London (UTC+0)",
+      "AmericaNewYork": "America/New_York (UTC-5)",
+      "AfricaTunis": "Africa/Tunis (UTC+1)",
+      "AfricaCasablanca": "Africa/Casablanca (UTC+0)",
+      "AfricaAlgiers": "Africa/Algiers (UTC+1)"
     },
     "dateFormats": {
       "DDMMYYYY": "JJ/MM/AAAA (31/12/2025)",
