@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useInvoices, useCreateInvoice } from '../hooks/useBilling'
-import { getInvoiceDownloadUrl } from '../api'
+import { downloadInvoicePdf } from '../api'
 import type { Invoice, InvoiceStatus, CreateInvoiceRequest } from '../types'
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
@@ -235,14 +235,12 @@ export function InvoicesPage() {
                         View
                       </button>
                       {invoice.pdf_path && (
-                        <a
-                          href={getInvoiceDownloadUrl(invoice.id)}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          onClick={() => { void downloadInvoicePdf(invoice.id) }}
                           className="text-sm text-green-600 hover:text-green-800"
                         >
                           Download
-                        </a>
+                        </button>
                       )}
                     </div>
                   </td>
@@ -411,14 +409,12 @@ export function InvoicesPage() {
 
               <div className="flex justify-end gap-3">
                 {selectedInvoice.pdf_path && (
-                  <a
-                    href={getInvoiceDownloadUrl(selectedInvoice.id)}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() => { void downloadInvoicePdf(selectedInvoice.id) }}
                     className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
                   >
                     Download PDF
-                  </a>
+                  </button>
                 )}
                 <button
                   onClick={() => { setSelectedInvoice(null); }}

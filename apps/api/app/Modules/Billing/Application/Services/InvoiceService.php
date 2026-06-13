@@ -14,7 +14,9 @@ use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 /**
  * Service for managing billing invoices.
@@ -346,17 +348,31 @@ final class InvoiceService
     /**
      * Get default tax rate for tenant based on country.
      *
-     * Looks up the default tax rate from country_tax_rates table.
-     * Falls back to config value if no rate is found.
+     * country_tax_rates is a TENANT-resident table (FK to the tenant-side
+     * countries table), but this service runs in CENTRAL context (admin
+     * billing, webhooks, scheduler) — the lookup must execute inside
+     * $tenant->run(). An unreachable tenant DB degrades to the config
+     * default rather than blocking platform invoicing.
      */
     private function getTaxRate(Tenant $tenant): float
     {
         $countryCode = $tenant->country_code ?? config('billing.default_country', 'FR');
 
-        $defaultRate = CountryTaxRate::where('country_code', $countryCode)
-            ->where('is_default', true)
-            ->where('is_active', true)
-            ->value('rate');
+        try {
+            /** @var string|float|null $defaultRate */
+            $defaultRate = $tenant->run(
+                static fn (): string|float|null => CountryTaxRate::where('country_code', $countryCode)
+                    ->where('is_default', true)
+                    ->where('is_active', true)
+                    ->value('rate')
+            );
+        } catch (Throwable $e) {
+            Log::warning('Invoice tax rate: tenant database unreachable, using config default', [
+                'tenant_id' => $tenant->id,
+                'error' => $e->getMessage(),
+            ]);
+            $defaultRate = null;
+        }
 
         if ($defaultRate !== null) {
             return (float) $defaultRate;

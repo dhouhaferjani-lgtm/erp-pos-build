@@ -8,9 +8,12 @@ use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Stancl\Tenancy\Database\Concerns\CentralConnection;
 
 class AdminAuditLog extends Model
 {
+    // Central table — admin audit log must land centrally even if logged from tenant context.
+    use CentralConnection;
     use HasUuids;
 
     public const UPDATED_AT = null;

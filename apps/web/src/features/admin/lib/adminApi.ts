@@ -1,11 +1,15 @@
 import axios, { type AxiosInstance } from 'axios'
+import { useAdminAuthStore } from '../stores/adminAuthStore'
 
 /**
- * Create admin API client with cookie-based auth
+ * Admin API client — cookie-based Sanctum auth with a Bearer fallback.
  *
- * SECURITY: Authentication is handled via httpOnly cookies set by Laravel Sanctum.
- * No tokens are stored in localStorage or sent via Authorization header.
- * CSRF protection is provided via the XSRF-TOKEN cookie.
+ * Bearer-only deploys (db-per-tenant: SANCTUM_STATEFUL_DOMAINS="") cannot
+ * establish a session cookie, so the login response token (kept in the
+ * memory-only adminAuthStore) is attached as Authorization: Bearer. On
+ * cookie-capable deploys the cookie still works and the header is a no-op
+ * for the same principal. 401 responses clear auth state and bounce to the
+ * admin login page.
  */
 function createAdminApiClient(): AxiosInstance {
   const client = axios.create({
@@ -19,6 +23,27 @@ function createAdminApiClient(): AxiosInstance {
     xsrfCookieName: 'XSRF-TOKEN', // Cookie name set by Sanctum
     xsrfHeaderName: 'X-XSRF-TOKEN', // Header name expected by Sanctum
   })
+
+  client.interceptors.request.use((config) => {
+    const token = useAdminAuthStore.getState().token
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+  })
+
+  client.interceptors.response.use(
+    (response) => response,
+    (error: unknown) => {
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        useAdminAuthStore.getState().logout()
+        if (!window.location.pathname.startsWith('/admin/login')) {
+          window.location.assign('/admin/login')
+        }
+      }
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+    }
+  )
 
   return client
 }

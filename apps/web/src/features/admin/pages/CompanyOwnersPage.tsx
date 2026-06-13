@@ -17,10 +17,10 @@ export function CompanyOwnersPage() {
 
   const users = usersData?.data ?? []
 
-  const handleVerifyEmail = (userId: string, userName: string) => {
+  const handleVerifyEmail = (userId: string, tenantId: string, userName: string) => {
     const notes = prompt(`Enter verification notes for ${userName} (optional):`)
     if (confirm(`Are you sure you want to verify email for ${userName}?`)) {
-      verifyEmailMutation.mutate(notes ? { userId, notes } : { userId })
+      verifyEmailMutation.mutate(notes ? { userId, tenantId, notes } : { userId, tenantId })
     }
   }
 
@@ -153,7 +153,7 @@ export function CompanyOwnersPage() {
                   <td className="whitespace-nowrap px-6 py-4 text-sm">
                     {!user.email_verified_at ? (
                       <button
-                        onClick={() => { handleVerifyEmail(user.id, user.name); }}
+                        onClick={() => { handleVerifyEmail(user.id, user.tenant_id, user.name); }}
                         disabled={verifyEmailMutation.isPending}
                         className="inline-flex items-center gap-1 rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
                       >

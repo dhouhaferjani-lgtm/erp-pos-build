@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Shield, LayoutDashboard, Users, FileText, LogOut, CreditCard, Activity, UserCheck, Layers } from 'lucide-react'
+import { logoutSuperAdmin } from '../api'
 import { useAdminAuthStore } from '../stores/adminAuthStore'
 
 const navigation = [
@@ -17,7 +18,12 @@ export function AdminLayout() {
   const navigate = useNavigate()
   const { admin, logout } = useAdminAuthStore()
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await logoutSuperAdmin()
+    } catch {
+      // Token may already be expired/revoked — local logout regardless.
+    }
     logout()
     navigate('/admin/login')
   }
@@ -79,7 +85,7 @@ export function AdminLayout() {
             </div>
           </div>
           <button
-            onClick={handleLogout}
+            onClick={() => { void handleLogout() }}
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
           >
             <LogOut className="h-4 w-4" />

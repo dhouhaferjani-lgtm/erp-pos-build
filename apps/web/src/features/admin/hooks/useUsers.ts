@@ -19,8 +19,8 @@ export function useVerifyUserEmail() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ userId, notes }: { userId: string; notes?: string }) =>
-      verifyUserEmail(userId, notes),
+    mutationFn: ({ userId, tenantId, notes }: { userId: string; tenantId: string; notes?: string }) =>
+      verifyUserEmail(userId, tenantId, notes),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] })
       queryClient.invalidateQueries({ queryKey: ['admin', 'tenants'] })

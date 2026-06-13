@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Stancl\Tenancy\Database\Concerns\CentralConnection;
 
 /**
  * Payment record for billing.
@@ -48,6 +49,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 final class Payment extends Model
 {
+    // Central table — platform billing (invoices the platform issues to tenants).
+    use CentralConnection;
     use HasUuids;
     use SoftDeletes;
 
