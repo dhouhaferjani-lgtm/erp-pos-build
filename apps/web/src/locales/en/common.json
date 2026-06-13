@@ -140,7 +140,8 @@
     "totalReceivable": "Total Receivable",
     "totalPayable": "Total Payable",
     "description": "Description",
-    "currency": "Currency"
+    "currency": "Currency",
+    "basicInfo": "Basic Information"
   },
   "partner": {
     "unallocatedBalance": "Unallocated Balance",
@@ -175,7 +176,8 @@
     "operationFailed": "Operation failed. Please try again.",
     "unexpectedError": "Something went wrong",
     "unexpectedErrorDetails": "An unexpected error occurred. Please try again or refresh the page.",
-    "saveFailed": "Failed to save. Please try again."
+    "saveFailed": "Failed to save. Please try again.",
+    "generic": "Something went wrong. Please try again."
   },
   "dashboard": {
     "title": "Dashboard",

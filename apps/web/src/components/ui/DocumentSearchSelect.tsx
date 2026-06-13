@@ -184,7 +184,7 @@ export function DocumentSearchSelect<T extends BaseDocument>({
 
     // Default display text
     const docNumber = getDocumentNumber(value)
-    const partner = value.partner?.name || t('common:unknown')
+    const partner = value.partner?.name || t('common:status.unknown')
     const total = value.total ? formatCurrency(value.total, value.currency) : ''
 
     return `${docNumber} - ${partner}${total ? ` - ${total}` : ''}`
@@ -192,7 +192,7 @@ export function DocumentSearchSelect<T extends BaseDocument>({
 
   const renderDefaultItem = (document: T) => {
     const docNumber = getDocumentNumber(document)
-    const partner = document.partner?.name || t('common:unknown')
+    const partner = document.partner?.name || t('common:status.unknown')
     const total = document.total ? formatCurrency(document.total, document.currency) : null
     const date = new Date(document.document_date).toLocaleDateString()
 

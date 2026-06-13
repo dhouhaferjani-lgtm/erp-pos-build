@@ -177,7 +177,7 @@ export function HealthClaimFormPage() {
                   htmlFor="claim_type"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  {t('parapharmacy:claimType')} <span className="text-red-600">*</span>
+                  {t('parapharmacy:claimTypeLabel')} <span className="text-red-600">*</span>
                 </label>
                 <Select
                   id="claim_type"
@@ -227,7 +227,7 @@ export function HealthClaimFormPage() {
                   htmlFor="regulatory_status"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  {t('parapharmacy:regulatoryStatus')}{' '}
+                  {t('parapharmacy:regulatoryStatusLabel')}{' '}
                   <span className="text-red-600">*</span>
                 </label>
                 <Select

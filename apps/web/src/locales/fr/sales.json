@@ -141,7 +141,12 @@
     "type": "Type",
     "selectType": "Sélectionner le type",
     "typeRequired": "Le type est requis",
-    "status": "Statut",
+    "status": {
+      "draft": "Brouillon",
+      "confirmed": "Confirmé",
+      "posted": "Comptabilisé",
+      "cancelled": "Annulé"
+    },
     "partner": "Partenaire",
     "partnerInfo": "Informations partenaire",
     "documentInfo": "Informations document",
@@ -229,13 +234,7 @@
     "deliveryDate": "Date de livraison",
     "returnDate": "Date de retour",
     "notesPlaceholder": "Notes supplémentaires...",
-    "draftSavedAt": "Brouillon enregistré {{time}}",
-    "status": {
-      "draft": "Brouillon",
-      "confirmed": "Confirmé",
-      "posted": "Comptabilisé",
-      "cancelled": "Annulé"
-    }
+    "draftSavedAt": "Brouillon enregistré {{time}}"
   },
   "lineItems": {
     "title": "Lignes",
@@ -272,7 +271,9 @@
     "noProductsFound": "Aucun produit trouvé correspondant à votre recherche",
     "noProductsAvailable": "Aucun produit disponible",
     "noServicesFound": "Aucun service trouvé correspondant à votre recherche",
-    "noServicesAvailable": "Aucun service disponible"
+    "noServicesAvailable": "Aucun service disponible",
+    "product": "Produit",
+    "price": "Prix"
   },
   "orders": {
     "title": "Commandes",

@@ -141,7 +141,12 @@
     "type": "Type",
     "selectType": "Select type",
     "typeRequired": "Type is required",
-    "status": "Status",
+    "status": {
+      "draft": "Draft",
+      "confirmed": "Confirmed",
+      "posted": "Posted",
+      "cancelled": "Cancelled"
+    },
     "partner": "Partner",
     "partnerInfo": "Partner Information",
     "documentInfo": "Document Information",
@@ -229,13 +234,7 @@
     "deliveryDate": "Delivery Date",
     "returnDate": "Return Date",
     "notesPlaceholder": "Additional notes...",
-    "draftSavedAt": "Draft saved {{time}}",
-    "status": {
-      "draft": "Draft",
-      "confirmed": "Confirmed",
-      "posted": "Posted",
-      "cancelled": "Cancelled"
-    }
+    "draftSavedAt": "Draft saved {{time}}"
   },
   "lineItems": {
     "title": "Line Items",
@@ -272,7 +271,9 @@
     "noProductsFound": "No products found matching your search",
     "noProductsAvailable": "No products available",
     "noServicesFound": "No services found matching your search",
-    "noServicesAvailable": "No services available"
+    "noServicesAvailable": "No services available",
+    "product": "Product",
+    "price": "Price"
   },
   "orders": {
     "title": "Orders",

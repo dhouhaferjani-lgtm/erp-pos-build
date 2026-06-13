@@ -118,7 +118,8 @@
     "operationFailed": "L'opération a échoué. Veuillez réessayer.",
     "unexpectedError": "Une erreur est survenue",
     "unexpectedErrorDetails": "Une erreur inattendue s'est produite. Veuillez réessayer ou actualiser la page.",
-    "saveFailed": "Échec de l'enregistrement. Veuillez réessayer."
+    "saveFailed": "Échec de l'enregistrement. Veuillez réessayer.",
+    "generic": "Une erreur s’est produite. Veuillez réessayer."
   },
   "dashboard": {
     "title": "Tableau de bord",
@@ -263,7 +264,8 @@
     "year": "Année",
     "vin": "NIV",
     "description": "Description",
-    "currency": "Devise"
+    "currency": "Devise",
+    "basicInfo": "Informations générales"
   },
   "sections": {
     "balance": "Solde",

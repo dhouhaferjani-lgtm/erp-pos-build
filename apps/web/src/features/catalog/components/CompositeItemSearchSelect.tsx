@@ -147,7 +147,7 @@ export function CompositeItemSearchSelect({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value) }}
-                placeholder={placeholder ?? t('common:search')}
+                placeholder={placeholder ?? t('common:actions.search')}
                 className="w-full rounded-lg border border-gray-300 py-2 pe-10 ps-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
               {searchQuery && (

@@ -5,9 +5,9 @@
 summary:
   web:
     en_keys: 6892
-    missing_fr: 54
+    missing_fr: 0
     identical_fr: 227
-    extra_fr: 16
+    extra_fr: 15
     hardcoded_candidates: 335
   pos:
     en_keys: 833
@@ -37,62 +37,7 @@ clusters:
 parity:
   web:
     missing_fr:
-      common:
-        - services.categories.title
-        - services.categories.addCategory
-        - services.categories.editCategory
-        - services.categories.noCategories
-        - services.categories.noCategoriesDescription
-        - services.categories.parentCategory
-        - services.categories.rootCategory
-        - services.form.basicInfo
-        - services.form.pricing
-        - services.form.codePlaceholder
-        - services.form.namePlaceholder
-        - services.form.descriptionPlaceholder
-        - services.form.selectCategory
-        - services.form.noCategory
-        - services.form.durationMinutes
-        - services.form.durationHint
-        - services.form.taxRateHint
-        - pos.shift
-        - pos.operations
-        - pos.generateXReport
-        - pos.xReportGenerated
-        - pos.xReportError
-        - pos.cashDeposit
-        - pos.cashPayout
-        - pos.pauseShift
-        - pos.openShift
-        - pos.enterOpeningCash
-        - pos.openingCash
-        - pos.openingCashHelp
-        - pos.openingCashMustBePositive
-        - pos.mustOpenShift
-        - pos.mustOpenShiftWarning
-        - pos.shiftOpened
-        - pos.shiftOpenError
-        - pos.openingShift
-        - pos.startShift
-        - pos.featureComingSoon
-        - pos.shiftInfo
-        - pos.totalSales
-        - pos.expectedCash
-        - pos.amount
-        - pos.reason
-        - pos.reasonPlaceholder
-        - pos.amountMustBePositive
-        - pos.depositInfo
-        - pos.payoutInfo
-        - pos.cashOperationWarning
-        - pos.recording
-        - pos.recordDeposit
-        - pos.recordPayout
-        - pos.depositRecorded
-        - pos.payoutRecorded
-        - pos.operationError
-      compliance:
-        - fraudAlerts.detail.occurrenceCount_plural
+      {}
     identical_fr:
       admin:
         - verticals.table.actions
@@ -365,7 +310,6 @@ parity:
         - services.details
         - services.pricing
         - services.metadata
-        - services.categories
         - services.addCategory
         - services.editCategory
         - services.createCategory

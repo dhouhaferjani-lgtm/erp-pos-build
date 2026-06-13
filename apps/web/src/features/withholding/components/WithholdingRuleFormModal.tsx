@@ -316,7 +316,7 @@ export function WithholdingRuleFormModal({
                 disabled={isLoading}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
-                {isLoading ? t('common:saving') : rule ? t('common:save') : t('common:create')}
+                {isLoading ? t('common:saving') : rule ? t('common:save') : t('common:actions.create')}
               </button>
             </div>
           </form>

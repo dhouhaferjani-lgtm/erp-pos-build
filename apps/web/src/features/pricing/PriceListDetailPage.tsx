@@ -243,7 +243,7 @@ export function PriceListDetailPage() {
                   {t('pricing:priceLists.fields.quantityRange', 'Quantity Range')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('common:table.actions')}
+                  {t('common:table.actionsColumn')}
                 </th>
               </tr>
             </thead>
