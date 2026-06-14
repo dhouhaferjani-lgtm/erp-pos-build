@@ -107,7 +107,17 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
   (refund/reverse, deposit/transfer/bounce, AddPaymentMethod, Withholding Preview/RuleForm, Add/EditAccount);
   components (AllocationPreview, OpenInvoicesList, PaymentAllocationForm, ToleranceSettingsDisplay,
   Ledger Table/Filters, FinanceWidget, AccountTreeView, ExpenseCard/ExpenseList). lint 11512 → 10123.
-- [ ] 3.3 admin/settings (10 bespoke modals, 169 raw controls, 3 settings layouts)
+- ◧ 3.3 admin/settings — **PARTIAL.** ✅ DONE (light settings, lint 10123→9809): UsersPage + UserEditModal
+  (+Add/PIN modals), RolesPage, LocationsPage, CompanyPage, TaxSettingsPage — all bespoke modals → Modal
+  organism; tenantScope suites green. ⏳ REMAINING light settings (~5 files): settings/components/
+  InventorySettings (67), CompanyOnboardingPage (64), settings/components/SetupChecklist (24),
+  settings/SettingsPage (22), users/components/UserSelector (18).
+  🚫 DEFERRED BY DESIGN: the entire `admin/*` super-admin panel (MonitoringPage 208, PaymentsPage 175,
+  InvoicesPage 129, SubscriptionsPage 90, BillingDashboard 54, TenantsPage 44, CompanyOwnersPage 43,
+  AuditLogs 35, AdminDashboard 24, AdminLogin 18, AdminLayout 17, TenantDetailModal 67) is an INTENTIONAL
+  separate DARK design language (REPORT M10). Do NOT force it into light tokens. Its English-only
+  localization is the M10 owner decision (Phase 5). If the owner wants the dark shell tokenized, that
+  needs a dark-token scale first — separate workstream.
 - [ ] 3.4 inventory/catalog (8 bespoke modals, rainbow hub, status badges)
 - [ ] 3.5 POS color drift (keep POSButton/touch layout; adopt tokens; kill glassmorphism/dark)
 - [ ] 3.6 workshop-* (close lint gap; status pills → StatusBadge; modals → Modal)
@@ -151,4 +161,5 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
 | 2026-06-14 | 3.2 | `e31e50edf` | whole withholding feature (CertificatesList, RulesPage, SalesWithholdingTrackingPage lists → ListPageLayout/DataTable; PreviewModal + RuleFormModal → Modal organism); 5 TDD suites; 20 tests incl. tenantScope; web lint 10641→10439 (−202) |
 | 2026-06-14 | 3.2 | `9575e1f9b` | treasury PaymentMethodsPage + AddPaymentMethodModal + BankReconciliationPage + allocation components (OpenInvoicesList/AllocationPreview/PaymentAllocationForm) → primitives; bespoke modals → Modal organism; 168 treasury tests green; web lint 10439→10210 (−229) |
 | 2026-06-14 | 3.2 | `9a8e6e5f9` | **Phase 3.2 FINISH** — finance GeneralLedger (page+table+filters), ChartOfAccounts (page+tree+Add/EditAccountModal), FinanceWidget, ToleranceSettingsDisplay, ExpenseCard/List. Shared a11y fix: Modal organism `role="dialog"`/`aria-modal`/`aria-label`. Reconciled finance suites (skeleton/eager-filters/dialog-role). 213 tests green; web lint 10210→10123 (−87). **Phase 3.2 done: 11512→10123 (−1389).** |
+| 2026-06-14 | 3.3 | `96b72e559` | core light settings (UsersPage+UserEditModal+Add/PIN modals, RolesPage, LocationsPage, CompanyPage, TaxSettingsPage) → primitives; bespoke modals → Modal organism; 6 TDD suites; 77 settings tests green incl. tenantScope; web lint 10123→9809 (−314). admin/* dark shell deferred by design (M10). |
 | 2026-06-14 | docs | `a3f38d44f` `4b48d0f08` (+ this) | PROGRESS handover updates |
