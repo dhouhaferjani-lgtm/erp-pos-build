@@ -620,20 +620,23 @@ describe('syncService', () => {
   });
 
   describe('pullOperatorPins', () => {
-    it('pulls operator data', async () => {
+    it('pulls operator data scoped to the terminal', async () => {
       vi.mocked(apiGet).mockResolvedValue([
         { id: 'op-1', name: 'Jane', pin_hash: 'hash123' },
       ]);
 
-      const count = await pullOperatorPins(db);
+      const count = await pullOperatorPins(db, 'term-1');
 
       expect(count).toBe(1);
+      // terminal_id MUST be sent — otherwise the server mirrors terminal_ids: []
+      // and verifyOfflineApprovalPin rejects every operator (scope_mismatch).
+      expect(vi.mocked(apiGet)).toHaveBeenCalledWith('/pos/auth/pin-data?terminal_id=term-1');
     });
 
     it('returns 0 on error', async () => {
       vi.mocked(apiGet).mockRejectedValue(new Error('Unauthorized'));
 
-      const count = await pullOperatorPins(db);
+      const count = await pullOperatorPins(db, 'term-1');
 
       expect(count).toBe(0);
     });

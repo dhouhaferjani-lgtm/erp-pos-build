@@ -475,7 +475,7 @@ export async function seedOfflineHashChain(terminalId: string): Promise<void> {
     // device that goes offline immediately after login can still authorize an
     // EOD close from the local operator_pins mirror — rather than waiting for
     // the first lazy sync tick. Fire-and-forget; the sync scheduler re-pulls.
-    void pullOperatorPins(db).catch((err: unknown) => {
+    void pullOperatorPins(db, terminalId).catch((err: unknown) => {
       console.error(
         '[POS][terminalStore][preWarm] operator-PIN sync failed',
         serializeErrorForLog(err),

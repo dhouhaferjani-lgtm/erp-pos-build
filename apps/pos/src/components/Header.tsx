@@ -318,17 +318,20 @@ export function Header() {
       throw new Error('Missing terminal, shift, company, or tenant context');
     }
 
-    // F-1 (B7, fail-closed): a v3 device-authoritative close needs the
+    // F-1/F-2 (B7, fail-closed): a v3 device-authoritative close needs the
     // cash-count fraud policy to decide variance severity and whether manager
-    // approval is required. If it could not be loaded (genuinely offline AND the
-    // fraud-settings cache was never populated — e.g. a network blip during
-    // activation), BLOCK the close rather than silently closing without the
-    // variance gate. Reconnect once (which warms the cache) then retry.
-    if (terminal.fiscal_schema_version === 3 && fraudSettings === null && !isOnline) {
+    // approval is required. If it could not be loaded — whether genuinely
+    // offline with an empty cache, OR online-but-the-fraud-fetch-failed with no
+    // cached fallback — BLOCK the close rather than silently degrading to a
+    // preview-only close without the variance gate (Codex F-2: the guard must
+    // NOT be limited to the offline branch). fraudSettings is only ever null
+    // when the policy genuinely failed to load (the server always returns one),
+    // so this never false-blocks a normal close.
+    if (terminal.fiscal_schema_version === 3 && fraudSettings === null) {
       throw new Error(
-        t('cash_count.offline_policy_unavailable', {
+        t('cash_count.policy_unavailable', {
           defaultValue:
-            'Cannot close this shift offline yet: the cash-count policy has not been synced to this device. Connect to the network once, then retry the close.',
+            'Cannot close this shift: the cash-count policy has not been synced to this device. Connect to the network once, then retry the close.',
         }),
       );
     }

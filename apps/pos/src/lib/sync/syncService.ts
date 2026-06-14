@@ -1004,9 +1004,16 @@ export async function pullPaymentConfig(db: Database): Promise<boolean> {
 /**
  * Pull operator PIN hashes for offline verification.
  */
-export async function pullOperatorPins(db: Database): Promise<number> {
+export async function pullOperatorPins(db: Database, terminalId: string): Promise<number> {
   try {
-    const operators = await apiGet<OperatorPinData[]>('/pos/auth/pin-data');
+    // terminal_id is REQUIRED: the server scopes each mirrored operator's
+    // approval to the requesting terminal (terminal_ids = [terminal_id]).
+    // Omitting it returns terminal_ids: [], and verifyOfflineApprovalPin then
+    // rejects every operator (scope_mismatch) — breaking ALL offline approvals
+    // (cash-drawer, discount, and the B7 EOD manager-PIN close).
+    const operators = await apiGet<OperatorPinData[]>(
+      `/pos/auth/pin-data?terminal_id=${encodeURIComponent(terminalId)}`,
+    );
     await upsertOperators(db, operators);
     await setSyncMetadata(db, 'operators_last_sync', new Date().toISOString());
     await logSyncOperation(db, 'pull', 'operators', null, 'success', `${operators.length} operators`);
@@ -1858,7 +1865,7 @@ export async function runFullSync(
   // Then pull (always pull even if push had failures, to keep local data fresh)
   const productsPulled = await pullProducts(db);
   const paymentConfigPulled = await pullPaymentConfig(db);
-  const operatorsPulled = await pullOperatorPins(db);
+  const operatorsPulled = await pullOperatorPins(db, terminalId);
   const terminalStatePulled = await pullTerminalState(db, terminalId);
   await pullZChainState(db, terminalId);
   const tablesPulled = await pullTables(db);
