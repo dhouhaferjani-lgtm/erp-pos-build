@@ -188,7 +188,13 @@ export function Header() {
     setReportError(null);
     setXReport(null);
     try {
-      const xOpts: GenerateXReportOpts = shift && tenantId
+      // Only device-authoritative (v3) terminals author fiscal events locally.
+      // generateXReport treats a defined fiscalShiftId/fiscalSessionId as the
+      // trigger to append an X_REPORT fiscal event; for a v2 server shift there
+      // is no local SESSION_OPEN, so supplying ids would wrongly author (and
+      // throw). Gate the opts on v3 — pre-one-id-sweep this was implicit because
+      // v2 shifts had no fiscal_shift_id.
+      const xOpts: GenerateXReportOpts = shift && tenantId && terminal.fiscal_schema_version === 3
         ? {
             tenantId,
             fiscalShiftId: fiscalShiftIdForReceipt(shift),
@@ -222,15 +228,21 @@ export function Header() {
 
     // Build opts from cash-count payload when present.
     // Pass fraudSettings so generateZReport can compute variance_severity.
+    // v3 only: device-authoritative close authors SESSION_CLOSE + Z_REPORT
+    // locally. For a v2 server shift there is no local SESSION_OPEN, so the
+    // fiscal ids must stay undefined — buildFiscalCloseInput keys on them and
+    // would otherwise append a close with no matching open (pre-one-id-sweep
+    // this was implicit because v2 shifts had no fiscal_shift_id).
+    const isDeviceAuthoritative = terminal.fiscal_schema_version === 3;
     const fiscalZOpts: GenerateZReportOpts = {
       tenantId,
-      fiscalShiftId: fiscalShiftIdForReceipt(shift),
-      fiscalSessionId: fiscalShiftIdForReceipt(shift),
+      fiscalShiftId: isDeviceAuthoritative ? fiscalShiftIdForReceipt(shift) : undefined,
+      fiscalSessionId: isDeviceAuthoritative ? fiscalShiftIdForReceipt(shift) : undefined,
       terminalLabel: terminal.code,
       operatorId: shift.user.id,
       operatorName: shift.user.name,
       isTraining: terminal.is_training_mode === true,
-      requireFiscalEvents: terminal.fiscal_schema_version === 3,
+      requireFiscalEvents: isDeviceAuthoritative,
     };
     const zOpts: GenerateZReportOpts = cashCountPayload != null
       ? {
