@@ -93,6 +93,7 @@ final class PosVariantFeedServiceTest extends TestCase
             tenantId: $this->tenant->id,
             companyId: $this->company->id,
             updatedSince: null,
+            updatedUntil: null,
             page: 1,
             perPage: 50,
         );
@@ -155,6 +156,7 @@ final class PosVariantFeedServiceTest extends TestCase
             tenantId: $this->tenant->id,
             companyId: $this->company->id,
             updatedSince: $cursor,
+            updatedUntil: null,
             page: 1,
             perPage: 50,
         );
@@ -189,6 +191,7 @@ final class PosVariantFeedServiceTest extends TestCase
             tenantId: $this->tenant->id,
             companyId: $this->company->id,
             updatedSince: $cursor,
+            updatedUntil: null,
             page: 1,
             perPage: 50,
         );
@@ -196,5 +199,67 @@ final class PosVariantFeedServiceTest extends TestCase
         $variantIds = array_map(static fn (PosVariantData $v): string => $v->id, $page->variants);
         $this->assertContains($variant->id, $variantIds);
         $this->assertNotContains($variant->id, $page->deletedIds);
+    }
+
+    public function test_updated_until_upper_bound_excludes_rows_mutated_after_window(): void
+    {
+        $cursor = CarbonImmutable::parse('2026-06-01T12:00:00+00:00');
+        $until = CarbonImmutable::parse('2026-06-03T00:00:00+00:00');
+
+        // In-window active — updated between cursor and until → included.
+        $inWindow = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'is_active' => true,
+        ]);
+        $this->setUpdatedAt($inWindow, '2026-06-02 00:00:00');
+
+        // Active mutated AFTER until → EXCLUDED from ->variants.
+        $afterWindow = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'is_active' => true,
+        ]);
+        $this->setUpdatedAt($afterWindow, '2026-06-04 00:00:00');
+
+        // Deactivated AFTER until → EXCLUDED from ->deletedIds.
+        $deactivatedAfter = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'is_active' => false,
+        ]);
+        $this->setUpdatedAt($deactivatedAfter, '2026-06-04 00:00:00');
+
+        // Soft-deleted AFTER until → EXCLUDED from ->deletedIds.
+        $softDeletedAfter = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'is_active' => true,
+        ]);
+        $softDeletedAfter->delete();
+        DB::table('product_variants')->where('id', $softDeletedAfter->id)->update([
+            'updated_at' => '2026-06-04 00:00:00',
+            'deleted_at' => '2026-06-04 00:00:00',
+        ]);
+
+        $page = $this->reader()->read(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            updatedSince: $cursor,
+            updatedUntil: $until,
+            page: 1,
+            perPage: 50,
+        );
+
+        $variantIds = array_map(static fn (PosVariantData $v): string => $v->id, $page->variants);
+        $this->assertContains($inWindow->id, $variantIds);
+        $this->assertNotContains($afterWindow->id, $variantIds);
+
+        $this->assertNotContains($deactivatedAfter->id, $page->deletedIds);
+        $this->assertNotContains($softDeletedAfter->id, $page->deletedIds);
     }
 }

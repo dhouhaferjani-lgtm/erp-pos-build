@@ -13,6 +13,7 @@ interface PosVariantFeedReader
         string $tenantId,
         string $companyId,
         ?CarbonImmutable $updatedSince,
+        ?CarbonImmutable $updatedUntil,
         int $page,
         int $perPage,
     ): PosVariantFeedPageDTO;

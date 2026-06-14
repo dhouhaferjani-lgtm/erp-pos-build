@@ -9,9 +9,10 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
@@ -73,6 +74,9 @@ final class PosVariantFeedEndpointTest extends TestCase
         Sanctum::actingAs($this->user);
     }
 
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
     private function makeActiveVariant(array $overrides = []): ProductVariant
     {
         return ProductVariant::factory()->create(array_merge([
@@ -207,6 +211,43 @@ final class PosVariantFeedEndpointTest extends TestCase
         $this->actAsUser();
 
         $this->getJson('/api/v1/pos/variants?updated_since=not-a-date')->assertStatus(422);
+    }
+
+    public function test_updated_since_as_array_is_422(): void
+    {
+        $this->actAsUser();
+
+        $this->getJson('/api/v1/pos/variants?updated_since[]=x')->assertStatus(422);
+    }
+
+    public function test_updated_until_pins_as_of_and_bounds_window(): void
+    {
+        $this->actAsUser();
+
+        $t0 = '2026-06-01T12:00:00+00:00';
+        $t1 = '2026-06-03T00:00:00+00:00';
+
+        // In-window variant → present.
+        $inWindow = $this->makeActiveVariant();
+        DB::table('product_variants')->where('id', $inWindow->id)->update(['updated_at' => '2026-06-02 00:00:00']);
+
+        // Mutated AFTER t1 → must NOT be present (window upper-bounded by client).
+        $afterWindow = $this->makeActiveVariant();
+        DB::table('product_variants')->where('id', $afterWindow->id)->update(['updated_at' => '2026-06-04 00:00:00']);
+
+        $resp = $this->getJson(
+            '/api/v1/pos/variants?updated_since='.urlencode($t0).'&updated_until='.urlencode($t1)
+        )->assertOk();
+
+        // as_of echoes the client-pinned upper bound.
+        $this->assertSame(
+            CarbonImmutable::parse($t1)->toIso8601String(),
+            $resp->json('data.as_of'),
+        );
+
+        $variantIds = array_map(static fn (array $v): string => $v['id'], $resp->json('data.variants'));
+        $this->assertContains($inWindow->id, $variantIds);
+        $this->assertNotContains($afterWindow->id, $variantIds);
     }
 
     public function test_response_includes_pagination_meta_and_as_of(): void

@@ -38,15 +38,23 @@ final class PosVariantController extends Controller
 
         $validated = $request->validate([
             'page' => ['sometimes', 'integer', 'min:1'],
+            'updated_since' => ['sometimes', 'string'],
+            'updated_until' => ['sometimes', 'string'],
         ]);
 
-        $updatedSince = $this->parseUpdatedSince($request);
-        $asOf = now()->toIso8601String();
+        $updatedSince = $this->parseIsoQueryParam($request, 'updated_since');
+
+        // The upper bound pins the delta window so every page of one sync shares
+        // the same snapshot. Page 1 mints it (now()); pages 2+ echo the client's
+        // pinned value. as_of always equals the upper bound that was used.
+        $updatedUntil = $this->parseIsoQueryParam($request, 'updated_until') ?? CarbonImmutable::now();
+        $asOf = $updatedUntil->toIso8601String();
 
         $feed = $this->reader->read(
             tenantId: $this->companyContext->requireTenantId(),
             companyId: $this->companyContext->requireCompanyId(),
             updatedSince: $updatedSince,
+            updatedUntil: $updatedUntil,
             page: (int) ($validated['page'] ?? 1),
             perPage: self::PER_PAGE,
         );
@@ -78,17 +86,18 @@ final class PosVariantController extends Controller
         ]);
     }
 
-    private function parseUpdatedSince(Request $request): ?CarbonImmutable
+    private function parseIsoQueryParam(Request $request, string $key): ?CarbonImmutable
     {
-        $raw = $request->query('updated_since');
+        $raw = $request->query($key);
         if (! is_string($raw) || $raw === '') {
             return null;
         }
+        // Restore a '+HH:MM' offset that the HTTP layer decoded to a space.
         $normalised = preg_replace('/T(\d{2}:\d{2}:\d{2}(?:\.\d+)?) (\d{2}:\d{2})$/', 'T$1+$2', $raw);
         try {
             return CarbonImmutable::parse($normalised ?? $raw);
         } catch (InvalidFormatException) {
-            throw ValidationException::withMessages(['updated_since' => ['The updated_since must be a valid date.']]);
+            throw ValidationException::withMessages([$key => ["The {$key} must be a valid date."]]);
         }
     }
 }

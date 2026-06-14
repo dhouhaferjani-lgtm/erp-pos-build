@@ -16,16 +16,19 @@ final class PosVariantFeedService implements PosVariantFeedReader
         string $tenantId,
         string $companyId,
         ?CarbonImmutable $updatedSince,
+        ?CarbonImmutable $updatedUntil,
         int $page,
         int $perPage,
     ): PosVariantFeedPageDTO {
         $page = max(1, $page);
+        $perPage = min(max(1, $perPage), 500);
 
         $paginator = ProductVariant::query()
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->where('is_active', true)
             ->when($updatedSince !== null, fn ($q) => $q->where('updated_at', '>', $updatedSince))
+            ->when($updatedUntil !== null, fn ($q) => $q->where('updated_at', '<=', $updatedUntil))
             ->orderBy('product_id')
             ->orderBy('display_order')
             ->orderBy('id')
@@ -55,6 +58,7 @@ final class PosVariantFeedService implements PosVariantFeedReader
                 ->where('tenant_id', $tenantId)
                 ->where('company_id', $companyId)
                 ->where('deleted_at', '>', $updatedSince)
+                ->when($updatedUntil !== null, fn ($q) => $q->where('deleted_at', '<=', $updatedUntil))
                 ->pluck('id')
                 ->all();
             /** @var list<string> $deactivated */
@@ -63,6 +67,7 @@ final class PosVariantFeedService implements PosVariantFeedReader
                 ->where('company_id', $companyId)
                 ->where('is_active', false)
                 ->where('updated_at', '>', $updatedSince)
+                ->when($updatedUntil !== null, fn ($q) => $q->where('updated_at', '<=', $updatedUntil))
                 ->pluck('id')
                 ->all();
             $deletedIds = array_values(array_unique([...$softDeleted, ...$deactivated]));
