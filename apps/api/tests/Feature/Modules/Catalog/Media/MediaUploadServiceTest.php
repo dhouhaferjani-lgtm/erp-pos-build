@@ -275,4 +275,52 @@ final class MediaUploadServiceTest extends TestCase
 
         $this->service->registerExternalUrl($tenantId, $productId, 'https://[::1]/image.jpg');
     }
+
+    // -----------------------------------------------------------------------
+    // Fix #4 — fail-loud when object storage write fails (putFileAs → false)
+    // -----------------------------------------------------------------------
+
+    public function test_upload_throws_runtime_exception_and_creates_no_asset_when_putfileas_fails(): void
+    {
+        Bus::fake();
+
+        // Use a real fake disk but intercept putFileAs() so it returns false,
+        // simulating a MinIO connectivity failure or bucket-not-found condition.
+        $fakeDisk = Storage::fake('s3');
+
+        // Partially mock the disk: put/putFileAs returns false.
+        // Storage::fake() returns a FilesystemAdapter backed by an in-memory
+        // League disk; wrap it so the next putFileAs call returns false.
+        // We use Storage::shouldReceive() on a mocked disk by swapping the
+        // 's3' disk with a mock that returns false for put/putFileAs.
+        Storage::shouldReceive('disk')
+            ->with('s3')
+            ->once()
+            ->andReturn(
+                tap(\Mockery::mock(\Illuminate\Contracts\Filesystem\Filesystem::class), function ($mock): void {
+                    $mock->shouldReceive('putFileAs')->once()->andReturn(false);
+                }),
+            );
+
+        $tenantId = (string) Str::uuid();
+        $productId = (string) Str::uuid();
+        $file = UploadedFile::fake()->image('photo.jpg', 100, 100);
+
+        $assetCountBefore = MediaAsset::count();
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/Object storage write failed/');
+
+        try {
+            $this->service->uploadForProduct($tenantId, $productId, $file, null);
+        } finally {
+            // No media_assets row must have been created — the exception fires BEFORE
+            // the DB transaction, so the count must remain unchanged.
+            self::assertSame(
+                $assetCountBefore,
+                MediaAsset::count(),
+                'No media_assets row must be created when S3 write fails',
+            );
+        }
+    }
 }
