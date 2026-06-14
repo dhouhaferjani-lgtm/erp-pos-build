@@ -35,7 +35,8 @@
     "fullName": "Nom complet du produit",
     "sortByMostSold": "Trier par plus vendus",
     "sortDefault": "Ordre par défaut",
-    "favorites": "Favoris"
+    "favorites": "Favoris",
+    "viewDetails": "Voir les détails"
   },
   "payment": {
     "success": "Paiement réussi !",
@@ -274,6 +275,18 @@
     "lastSync": "Dernière synchro : {{time}}",
     "debounceBlocked": "Un instant — synchronisation en cours.",
     "degradedTitle": "La dernière synchro a échoué — cliquez pour réessayer"
+  },
+  "crossLocationStock": {
+    "title": "Stock par emplacement",
+    "variant": "Variante",
+    "location": "Emplacement",
+    "onHand": "En stock",
+    "incoming": "En transit",
+    "total": "Total",
+    "asOf": "Au {{time}}",
+    "refresh": "Actualiser",
+    "loading": "Chargement…",
+    "offlineNoCache": "Indisponible hors ligne — connectez-vous pour actualiser"
   },
   "fiscal": {
     "regressionBlocked": "Intégrité de la chaîne fiscale préservée. Les données locales sont plus récentes que le serveur."
