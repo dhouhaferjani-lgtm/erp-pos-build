@@ -1654,8 +1654,18 @@ export const migrations: Migration[] = [
     // directly calling addItemGated). Default 0 is safe for existing rows —
     // they stay on the non-variant path until the next catalog sync writes
     // the server-authoritative value. See ProductData.has_variants (backend).
+    //
+    // HIGH-1 fix: also clear the `products_last_sync` cursor from
+    // sync_metadata so the next pullProductsCore executes a FULL re-fetch
+    // and writes the server-authoritative has_variants value to every
+    // existing product row. Without this reset, unchanged variant products
+    // would never be re-fetched by the delta-keyed sync and would keep
+    // has_variants=0 indefinitely.
     version: 54,
     name: 'add_has_variants_to_products',
-    sql: `ALTER TABLE products ADD COLUMN has_variants INTEGER NOT NULL DEFAULT 0`,
+    sql: `
+      ALTER TABLE products ADD COLUMN has_variants INTEGER NOT NULL DEFAULT 0;
+      DELETE FROM sync_metadata WHERE key = 'products_last_sync';
+    `,
   },
 ];

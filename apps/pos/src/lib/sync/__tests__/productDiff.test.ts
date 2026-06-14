@@ -80,4 +80,55 @@ describe('diffProducts', () => {
     expect(result.changed).toBe(false);
     expect(result.products[0]).toBe(p1);
   });
+
+  // HIGH-2: has_variants must be in COMPARE_FIELDS so existing products
+  // whose flag flips (false → true or true → false) are re-projected into
+  // the in-memory catalog and the VariantPickerModal gating is re-evaluated.
+  it('HIGH-2: detects has_variants flipping false → true on an existing product', () => {
+    // Simulates the v54 re-sync scenario: stale cached row has has_variants
+    // absent (undefined == false); fresh server row returns has_variants: true.
+    // Without has_variants in COMPARE_FIELDS, productEquals would return true
+    // and tile-tap/scan would keep calling addItemGated directly, skipping
+    // the picker.
+    const stale: POSProduct = { ...makeProduct('tire-205-55-r16', '89.00') };
+    const fresh: POSProduct = {
+      ...makeProduct('tire-205-55-r16', '89.00'),
+      has_variants: true,
+    };
+    const result = diffProducts([stale], [fresh]);
+    expect(result.changed).toBe(true);
+    expect(result.products[0]).toBe(fresh); // merged carries the server-authoritative flag
+    expect(result.products[0]!.has_variants).toBe(true);
+  });
+
+  it('HIGH-2: detects has_variants flipping true → false on an existing product', () => {
+    // Covers the reverse: a variant product whose variants are collapsed
+    // back to a single option — server returns has_variants: false but the
+    // cached row still has has_variants: true. Without has_variants in
+    // COMPARE_FIELDS the picker would still open, causing a confusing UX.
+    const stale: POSProduct = {
+      ...makeProduct('oil-filter', '12.00'),
+      has_variants: true,
+    };
+    const fresh: POSProduct = {
+      ...makeProduct('oil-filter', '12.00'),
+      has_variants: false,
+    };
+    const result = diffProducts([stale], [fresh]);
+    expect(result.changed).toBe(true);
+    expect(result.products[0]).toBe(fresh);
+    expect(result.products[0]!.has_variants).toBe(false);
+  });
+
+  it('HIGH-2: treats two products with the same has_variants value as equal (no spurious change)', () => {
+    // Verify the COMPARE_FIELDS addition does not break the no-diff case for
+    // variant products: if both cached and fresh have has_variants: true and
+    // nothing else changed, diffProducts must return changed: false and
+    // preserve the cached reference.
+    const cached: POSProduct = { ...makeProduct('brake-pad', '34.00'), has_variants: true };
+    const fetched: POSProduct = { ...makeProduct('brake-pad', '34.00'), has_variants: true };
+    const result = diffProducts([cached], [fetched]);
+    expect(result.changed).toBe(false);
+    expect(result.products[0]).toBe(cached); // same reference preserved
+  });
 });
