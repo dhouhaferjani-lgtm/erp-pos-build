@@ -111,6 +111,48 @@ describe('verifyScopedManagerPin', () => {
     expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1);
   });
 
+  it('with targetOperatorId, matches ONLY that operator (EOD selected-manager close)', async () => {
+    // Two scope-holding managers; bcrypt mock returns true for both. Without
+    // targetOperatorId the loop would match the first (supervisor-1). With it,
+    // the match is pinned to supervisor-2 → the online confirm carries that id.
+    vi.mocked(getAllOperators).mockResolvedValue([
+      operator({ id: 'supervisor-1', name: 'First', approval_scopes: ['close_shift_variance'] }),
+      operator({ id: 'supervisor-2', name: 'Second', approval_scopes: ['close_shift_variance'] }),
+    ]);
+    vi.mocked(apiPost).mockResolvedValue({
+      valid: true,
+      user_id: 'supervisor-2',
+      user_name: 'Second',
+    });
+
+    await expect(
+      verifyScopedManagerPin({
+        ...input,
+        approvalScope: 'close_shift_variance',
+        targetOperatorId: 'supervisor-2',
+      }),
+    ).resolves.toMatchObject({ id: 'supervisor-2' });
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith(
+      '/pos/verify-manager-pin',
+      expect.objectContaining({ user_id: 'supervisor-2', approval_scope: 'close_shift_variance' }),
+    );
+  });
+
+  it('with targetOperatorId, a non-matching selected manager is a scope mismatch (no online call)', async () => {
+    vi.mocked(getAllOperators).mockResolvedValue([
+      operator({ id: 'supervisor-1', approval_scopes: ['close_shift_variance'] }),
+    ]);
+
+    await expect(
+      verifyScopedManagerPin({
+        ...input,
+        approvalScope: 'close_shift_variance',
+        targetOperatorId: 'someone-else',
+      }),
+    ).rejects.toThrow('manager_pin_scope_mismatch');
+    expect(vi.mocked(apiPost)).not.toHaveBeenCalled();
+  });
+
   it('fails closed when online manager verification explicitly rejects a cached PIN', async () => {
     vi.mocked(apiPost).mockResolvedValue({
       valid: false,

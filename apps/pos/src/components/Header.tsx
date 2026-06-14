@@ -38,7 +38,8 @@ import { usePrinterStore } from '@/stores/printerStore';
 import { toast } from 'sonner';
 import { fetchFraudSettings } from '@/api/fraudSettingsApi';
 import { fetchAuthorizedManagers } from '@/api/managersApi';
-import { verifyManagerPin } from '@/api/managerPinApi';
+import { verifyScopedManagerPin } from '@/lib/operatorApproval/scopedManagerPin';
+import { ApiRequestError } from '@/lib/api';
 import { useRefundFlowStore } from '@/stores/refundFlowStore';
 import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { getTerminalState, setManagerPinThrottle, setManagerPinFailedAttempts } from '@/lib/db/repositories/terminalStateRepository';
@@ -181,6 +182,20 @@ export function Header() {
             });
           }
 
+          // F-3 (B7): the authorized-managers list for the offline above-hard
+          // close comes from the operator_pins mirror — the managers holding the
+          // close_shift_variance approval scope (their bcrypt hashes are already
+          // mirrored there and verified locally by verifyScopedManagerPin).
+          const { getAllOperators } = await import(
+            '@/lib/db/repositories/operatorPinRepository'
+          );
+          const offlineManagers = (await getAllOperators(db))
+            .filter((o) => o.approval_scopes?.includes('close_shift_variance'))
+            .map((o) => ({ id: o.id, name: o.name }));
+          if (!cancelled) {
+            setAuthorizedManagers(offlineManagers);
+          }
+
           const ts = await getTerminalState(db, terminal.id);
           if (!cancelled) {
             setManagerPinThrottleState({
@@ -199,9 +214,45 @@ export function Header() {
     };
   }, [showEndOfDay, terminal, companyId]);
 
+  // B7: above-hard-variance close manager approval is now OFFLINE-CAPABLE,
+  // reusing the audited operator-approval verifier (online-first → anti-downgrade
+  // → local bcrypt fallback against operator_pins for the close_shift_variance
+  // scope). targetOperatorId pins the match to the manager the cashier selected.
   const onVerifyManagerPin = useCallback(
-    (userId: string, pin: string) => verifyManagerPin(userId, pin),
-    [],
+    async (managerUserId: string, pin: string) => {
+      if (!approvalContext || !shift) return { valid: false };
+      try {
+        const approved = await verifyScopedManagerPin({
+          pin,
+          context: approvalContext,
+          approvalScope: 'close_shift_variance',
+          targetOperatorId: managerUserId,
+          targetEventType: 'SESSION_CLOSE',
+          targetReferenceId: shift.id,
+          reason: 'above_hard_variance_close',
+        });
+        return { valid: true, user_id: approved.id, user_name: approved.name };
+      } catch (error) {
+        // A local no-match (wrong PIN / scope mismatch) or an explicit server
+        // denial (4xx, not 408/429) is a COUNTABLE failed attempt → valid:false.
+        // A fail-closed service-unavailable (503) or any unexpected error must
+        // NOT be counted as a bad PIN — rethrow so the panel shows a generic
+        // error without advancing the lockout (anti-downgrade discipline).
+        if (error instanceof Error && error.message === 'manager_pin_scope_mismatch') {
+          return { valid: false };
+        }
+        if (
+          error instanceof ApiRequestError &&
+          error.status < 500 &&
+          error.status !== 408 &&
+          error.status !== 429
+        ) {
+          return { valid: false };
+        }
+        throw error;
+      }
+    },
+    [approvalContext, shift],
   );
 
   const onManagerPinThrottleUpdate = useCallback(
@@ -265,6 +316,21 @@ export function Header() {
   ): Promise<EndOfDayConfirmResult> => {
     if (!terminal || !shift || !companyId || !tenantId) {
       throw new Error('Missing terminal, shift, company, or tenant context');
+    }
+
+    // F-1 (B7, fail-closed): a v3 device-authoritative close needs the
+    // cash-count fraud policy to decide variance severity and whether manager
+    // approval is required. If it could not be loaded (genuinely offline AND the
+    // fraud-settings cache was never populated — e.g. a network blip during
+    // activation), BLOCK the close rather than silently closing without the
+    // variance gate. Reconnect once (which warms the cache) then retry.
+    if (terminal.fiscal_schema_version === 3 && fraudSettings === null && !isOnline) {
+      throw new Error(
+        t('cash_count.offline_policy_unavailable', {
+          defaultValue:
+            'Cannot close this shift offline yet: the cash-count policy has not been synced to this device. Connect to the network once, then retry the close.',
+        }),
+      );
     }
 
     // Build opts from cash-count payload when present.

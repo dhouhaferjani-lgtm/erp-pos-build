@@ -77,6 +77,13 @@ export interface ScopedManagerPinApprovalInput {
   targetEventType: string;
   targetReferenceId: string;
   reason: string;
+  /**
+   * When set, only the operator with this id is considered for the local match
+   * (the EOD above-hard-variance close selects a SPECIFIC manager, unlike the
+   * override flows where any scope-holder may approve). Omitted → any operator
+   * holding the scope may match.
+   */
+  targetOperatorId?: string;
 }
 
 export interface ScopedManagerPinApproval {
@@ -100,6 +107,9 @@ export async function verifyScopedManagerPin(
   let matched = null as (typeof operators)[number] | null;
 
   for (const operator of operators) {
+    if (input.targetOperatorId !== undefined && operator.id !== input.targetOperatorId) {
+      continue;
+    }
     const result = await verifyOfflineApprovalPin({
       operator,
       pin: input.pin,
