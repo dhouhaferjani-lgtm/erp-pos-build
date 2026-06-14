@@ -325,6 +325,18 @@ export const tokens = {
   },
 
   /**
+   * Section heading styles.
+   *
+   * The ONE sanctioned treatment for in-card `<h2>`/`<h3>` section titles, so
+   * forms stop varying between `font-bold`/`font-semibold`/`font-medium`
+   * (see CANONICALIZATION-SPEC §"Headers"). Only the theme-bridged `gray`
+   * palette is used, so no new off-theme color literals are introduced.
+   */
+  heading: {
+    section: 'text-lg font-medium text-gray-900',
+  },
+
+  /**
    * Helper text / description styles
    */
   helperText: {

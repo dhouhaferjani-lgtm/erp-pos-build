@@ -69,6 +69,10 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
 > Canonical target: lists → `ListPageLayout`+`DataTable`+`StatusBadge`; forms → `PageHeader`+`tokens.card.base` sections+`FormField`/`Input`+`StickyFormFooter`. **Rule: never raw `<input>` — always the `<Input>` atom.**
 > Suggested order: `documents/DocumentForm` + `DocumentListPage` (the reference originals) → `ProductForm`/`ProductListPage` → catalog/menu drift modules. Fold rule-19 precision fixes in per form.
 
+### Module order (per CANONICALIZATION-SPEC §C)
+- [x] **`documents/DocumentForm.tsx`** → `PageHeader` (back link in breadcrumb slot) + `tokens.card.base` + `<h2>` "Details" section (new `tokens.heading.section` token) + `FormField`+`Input`/`Select`/`Textarea` (settles `rounded-lg`→`rounded-md` drift) + `Button` footer (Cancel→`navigate`, Save submit) + auto-save SVGs→lucide `Loader2`/`Check` with `textColors`. 24 color warnings → 0; 4 Vitest tests; before/after `screens/phase3/documentform-{before,after}.png`. ✅
+- [ ] `documents/DocumentListPage.tsx` → `ListPageLayout`+`DataTable`+`StatusBadge`; add pagination.
+
 ### (original cluster framing — superseded by CANONICALIZATION-SPEC for module order)
 - [ ] 3.1 `documents/` (epicenter: 65 raw controls, 5 bespoke modals, ~50 off-theme)
 - [ ] 3.2 finance + treasury (11 bespoke modals, tabular-nums, parseFloat-on-money cross-ref)
@@ -102,3 +106,4 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
 | 2026-06-14 | audit docs | (this commit) | REPORT.md + PROGRESS.md + screenshot harness onto branch |
 | 2026-06-14 | 1.1 | (this commit) | chartColors → Deep Ocean theme (IziPOS); 4 tests; per-vertical caveat logged |
 | 2026-06-14 | 2 | (this commit) | 5 primitives (PageHeader/DataTable/StatusBadge/ListPageLayout/HubCard+HubGrid); 48 tests; tsc clean; 0 new lint warnings; barrels wired |
+| 2026-06-14 | 3 | (this commit) | rebased onto origin/dev; DocumentForm canonicalized → PageHeader/card/section-heading/FormField+atoms/Button; added `tokens.heading.section`; 4 tests; tsc clean; web lint 11747→11724 (−23); before/after screenshots |
