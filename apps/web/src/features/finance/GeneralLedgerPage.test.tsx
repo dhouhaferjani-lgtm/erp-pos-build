@@ -104,7 +104,8 @@ describe('GeneralLedgerPage', () => {
 
     renderWithProviders(<GeneralLedgerPage />)
 
-    expect(screen.getByText(/loading/i)).toBeInTheDocument()
+    // LedgerTable now renders the DataTable animated skeleton while loading.
+    expect(document.querySelector('.animate-pulse')).toBeInTheDocument()
   })
 
   it('displays ledger entries', async () => {
@@ -185,6 +186,11 @@ describe('GeneralLedgerPage', () => {
     })
 
     const accountSelect = screen.getByLabelText(/account/i)
+    // Filters render eagerly in the canonical always-visible filter slot, so
+    // wait for the account options to load before selecting.
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /1000 - Cash/ })).toBeInTheDocument()
+    })
     await user.selectOptions(accountSelect, '1')
 
     await waitFor(() => {
