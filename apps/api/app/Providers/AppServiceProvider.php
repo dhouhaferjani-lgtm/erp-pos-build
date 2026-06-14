@@ -304,6 +304,14 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(100)->by($request->ip() ?? 'unknown');
         });
 
+        // Signed media serving — 120 per minute per IP.
+        // These URLs carry their own HMAC gate (60-min TTL), so the limiter
+        // is a secondary defence against enumeration loops rather than the
+        // primary access control.
+        RateLimiter::for('signed-media', function (Request $request): Limit {
+            return Limit::perMinute(120)->by($request->ip() ?? 'unknown');
+        });
+
         // Storefront appointment booking - 10 requests per minute per IP + company pair.
         // The {company_id} route parameter is the companies.uuid primary key.
         RateLimiter::for('storefront-booking-ip', function (Request $request): Limit {
