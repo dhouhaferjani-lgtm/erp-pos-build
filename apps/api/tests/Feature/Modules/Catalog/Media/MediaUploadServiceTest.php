@@ -9,6 +9,7 @@ use App\Modules\Catalog\Application\Services\MediaUploadService;
 use App\Modules\Catalog\Domain\Enums\MediaSource;
 use App\Modules\Catalog\Domain\Enums\MediaStatus;
 use App\Modules\Catalog\Domain\Media\MediaAsset;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Bus;
@@ -96,7 +97,7 @@ final class MediaUploadServiceTest extends TestCase
 
         // Path structure: products/{tenantId}/{productId}/{uuid}/original.png
         self::assertMatchesRegularExpression(
-            '#^products/' . preg_quote($tenantId, '#') . '/' . preg_quote($productId, '#') . '/[0-9a-f\-]{36}/original\.png$#',
+            '#^products/'.preg_quote($tenantId, '#').'/'.preg_quote($productId, '#').'/[0-9a-f\-]{36}/original\.png$#',
             $asset->storage_path,
         );
     }
@@ -168,7 +169,7 @@ final class MediaUploadServiceTest extends TestCase
             self::assertStringContainsString('Simulated DB failure', $e->getMessage());
         } finally {
             // Detach only the listener we added so service-provider observers survive.
-            MediaAsset::getEventDispatcher()?->forget('eloquent.creating: ' . MediaAsset::class);
+            MediaAsset::getEventDispatcher()?->forget('eloquent.creating: '.MediaAsset::class);
         }
 
         // The orphaned S3 file must have been removed by the catch block.
@@ -216,7 +217,7 @@ final class MediaUploadServiceTest extends TestCase
         $tenantId = (string) Str::uuid();
         $productId = (string) Str::uuid();
 
-        $longUrl = 'https://cdn.example.com/' . str_repeat('a', 2048);
+        $longUrl = 'https://cdn.example.com/'.str_repeat('a', 2048);
 
         $this->expectException(ValidationException::class);
 
@@ -297,7 +298,7 @@ final class MediaUploadServiceTest extends TestCase
             ->with('s3')
             ->once()
             ->andReturn(
-                tap(\Mockery::mock(\Illuminate\Contracts\Filesystem\Filesystem::class), function ($mock): void {
+                tap(\Mockery::mock(Filesystem::class), function ($mock): void {
                     $mock->shouldReceive('putFileAs')->once()->andReturn(false);
                 }),
             );

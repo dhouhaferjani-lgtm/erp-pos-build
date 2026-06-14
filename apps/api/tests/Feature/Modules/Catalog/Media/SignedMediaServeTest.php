@@ -12,7 +12,6 @@ use App\Modules\Catalog\Domain\Enums\MediaSource;
 use App\Modules\Catalog\Domain\Enums\MediaStatus;
 use App\Modules\Catalog\Domain\Media\MediaAsset;
 use App\Modules\Catalog\Domain\Media\MediaAttachment;
-use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -20,13 +19,14 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /**
  * Feature tests for the signed-URL media serving route.
  *
  * Route: GET /api/v1/media/{tenant}/{attachment}/serve
- * Middleware: ['api', 'signed', 'throttle:signed-media']
+ * Middleware: ['api', 'signed:relative', 'throttle:signed-media']
  *
  * Contract:
  *   - A valid temporarySignedRoute URL serves bytes with HTTP 200 (or 302 for
@@ -89,11 +89,12 @@ final class SignedMediaServeTest extends TestCase
             'sort_order' => 0,
         ]);
 
-        // Generate a signed URL — no auth credentials injected.
+        // Generate a relative signed URL — no auth credentials injected.
         $signedUrl = URL::temporarySignedRoute(
             'media.serve',
             now()->addMinutes(60),
             ['tenant' => $this->tenant->id, 'attachment' => $attachment->id],
+            absolute: false,
         );
 
         // Issue the request with NO Authorization header.
@@ -116,9 +117,12 @@ final class SignedMediaServeTest extends TestCase
             'media.serve',
             now()->addMinutes(60),
             ['tenant' => $this->tenant->id, 'attachment' => $attachment->id],
+            absolute: false,
         );
 
         // Tamper: replace the signature value with random bytes.
+        // The URL is a relative path (e.g. /api/v1/media/…?expires=…&signature=…);
+        // the regex targets the query string so no host manipulation is needed.
         $tamperedUrl = preg_replace('/signature=[^&]+/', 'signature='.Str::random(40), $signedUrl);
         self::assertNotNull($tamperedUrl, 'Regex substitution must produce a non-null string');
 
@@ -136,11 +140,12 @@ final class SignedMediaServeTest extends TestCase
         $asset = $this->makeUploadAsset();
         $attachment = $this->makeAttachment($asset->id);
 
-        // Generate a URL that has already expired.
+        // Generate a relative URL that has already expired.
         $expiredUrl = URL::temporarySignedRoute(
             'media.serve',
             now()->subMinute(),
             ['tenant' => $this->tenant->id, 'attachment' => $attachment->id],
+            absolute: false,
         );
 
         $response = $this->get($expiredUrl);
@@ -184,6 +189,7 @@ final class SignedMediaServeTest extends TestCase
             'media.serve',
             now()->addMinutes(60),
             ['tenant' => $this->tenant->id, 'attachment' => $otherAttachment->id],
+            absolute: false,
         );
 
         $response = $this->get($signedUrl);
@@ -228,6 +234,7 @@ final class SignedMediaServeTest extends TestCase
             'media.serve',
             now()->addMinutes(60),
             ['tenant' => $this->tenant->id, 'attachment' => $attachment->id],
+            absolute: false,
         );
 
         // The eager-loaded mediaAsset is constrained to tenant A; since the
@@ -286,6 +293,7 @@ final class SignedMediaServeTest extends TestCase
             'media.serve',
             now()->addMinutes(60),
             ['tenant' => $this->tenant->id, 'attachment' => $attachment->id, 'variant' => 'lg'],
+            absolute: false,
         );
 
         $response = $this->get($signedUrl);
@@ -303,6 +311,7 @@ final class SignedMediaServeTest extends TestCase
             'media.serve',
             now()->addMinutes(60),
             ['tenant' => $this->tenant->id, 'attachment' => $attachment->id, 'variant' => 'sm'],
+            absolute: false,
         );
 
         $response = $this->get($signedUrl);
@@ -320,6 +329,7 @@ final class SignedMediaServeTest extends TestCase
             'media.serve',
             now()->addMinutes(60),
             ['tenant' => $this->tenant->id, 'attachment' => $attachment->id],
+            absolute: false,
         );
 
         $response = $this->get($signedUrl);
@@ -360,6 +370,7 @@ final class SignedMediaServeTest extends TestCase
             'media.serve',
             now()->addMinutes(60),
             ['tenant' => $this->tenant->id, 'attachment' => $attachment->id],
+            absolute: false,
         );
 
         $response = $this->get($signedUrl);
@@ -395,6 +406,7 @@ final class SignedMediaServeTest extends TestCase
             'media.serve',
             now()->addMinutes(60),
             ['tenant' => $this->tenant->id, 'attachment' => $attachment->id],
+            absolute: false,
         );
 
         $response = $this->get($signedUrl);
@@ -433,6 +445,7 @@ final class SignedMediaServeTest extends TestCase
             'media.serve',
             now()->addMinutes(60),
             ['tenant' => $this->tenant->id, 'attachment' => $attachment->id],
+            absolute: false,
         );
 
         // Follow redirects is off by default — expect 302 + Location header.
@@ -451,11 +464,11 @@ final class SignedMediaServeTest extends TestCase
 
         $externalUrl = 'https://cdn.example.com/photo.jpg';
 
-        $asset = new MediaAsset();
+        $asset = new MediaAsset;
         $asset->source = MediaSource::ExternalUrl;
         $asset->external_url = $externalUrl;
 
-        $attachment = new MediaAttachment();
+        $attachment = new MediaAttachment;
         $attachment->id = (string) Str::uuid();
         $attachment->tenant_id = $this->tenant->id;
         $attachment->owner_id = (string) Str::uuid();
@@ -476,10 +489,10 @@ final class SignedMediaServeTest extends TestCase
 
         $attachmentId = (string) Str::uuid();
 
-        $asset = new MediaAsset();
+        $asset = new MediaAsset;
         $asset->source = MediaSource::Upload;
 
-        $attachment = new MediaAttachment();
+        $attachment = new MediaAttachment;
         $attachment->id = $attachmentId;
         $attachment->tenant_id = $this->tenant->id;
         $attachment->owner_id = (string) Str::uuid();
@@ -488,6 +501,7 @@ final class SignedMediaServeTest extends TestCase
         $url = $resolver->forAttachment($attachment, 'sm');
 
         self::assertNotNull($url, 'Upload asset must resolve to a non-null URL');
+        self::assertStringStartsWith('/', $url, 'Signed URL must be relative (starts with /) — no host prefix');
         self::assertStringContainsString('/media/', $url, 'Signed URL must route to media.serve (contains /media/)');
         self::assertStringContainsString('signature=', $url, 'Signed URL must contain an HMAC signature');
         self::assertStringContainsString($attachmentId, $url, 'Signed URL must embed the attachment id');
@@ -500,10 +514,8 @@ final class SignedMediaServeTest extends TestCase
     /**
      * Create an Upload asset with the given status and return the HTTP response
      * for a valid signed URL request against it.
-     *
-     * @return \Illuminate\Testing\TestResponse
      */
-    private function serveAssetWithStatus(MediaStatus $status): \Illuminate\Testing\TestResponse
+    private function serveAssetWithStatus(MediaStatus $status): TestResponse
     {
         $storagePath = 'products/'.$this->tenant->id.'/'.Str::uuid().'/original.jpg';
         Storage::disk('s3')->put($storagePath, 'FAKE_IMAGE_BYTES');
@@ -524,6 +536,7 @@ final class SignedMediaServeTest extends TestCase
             'media.serve',
             now()->addMinutes(60),
             ['tenant' => $this->tenant->id, 'attachment' => $attachment->id],
+            absolute: false,
         );
 
         return $this->get($signedUrl);

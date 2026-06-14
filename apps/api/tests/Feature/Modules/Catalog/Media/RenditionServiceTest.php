@@ -44,19 +44,19 @@ final class RenditionServiceTest extends TestCase
         Storage::fake('s3');
 
         $tenantId = (string) Str::uuid();
-        $storagePath = 'products/' . $tenantId . '/original.jpg';
+        $storagePath = 'products/'.$tenantId.'/original.jpg';
 
         $asset = MediaAsset::create([
-            'tenant_id'      => $tenantId,
-            'type'           => MediaAssetType::Image,
-            'source'         => MediaSource::Upload,
-            'status'         => MediaStatus::Processing,
-            'storage_disk'   => 's3',
-            'storage_path'   => $storagePath,
-            'mime_type'      => 'image/jpeg',
-            'file_size'      => 100,
-            'width'          => 20,
-            'height'         => 20,
+            'tenant_id' => $tenantId,
+            'type' => MediaAssetType::Image,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Processing,
+            'storage_disk' => 's3',
+            'storage_path' => $storagePath,
+            'mime_type' => 'image/jpeg',
+            'file_size' => 100,
+            'width' => 20,
+            'height' => 20,
         ]);
 
         // Put a real JPEG at the asset's storage_path on the fake disk
@@ -89,17 +89,17 @@ final class RenditionServiceTest extends TestCase
         Storage::fake('s3');
 
         $tenantId = (string) Str::uuid();
-        $storagePath = 'products/' . $tenantId . '/main.jpg';
+        $storagePath = 'products/'.$tenantId.'/main.jpg';
 
         $asset = MediaAsset::create([
-            'tenant_id'    => $tenantId,
-            'type'         => MediaAssetType::Image,
-            'source'       => MediaSource::Upload,
-            'status'       => MediaStatus::Processing,
+            'tenant_id' => $tenantId,
+            'type' => MediaAssetType::Image,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Processing,
             'storage_disk' => 's3',
             'storage_path' => $storagePath,
-            'mime_type'    => 'image/jpeg',
-            'file_size'    => 100,
+            'mime_type' => 'image/jpeg',
+            'file_size' => 100,
         ]);
 
         Storage::disk('s3')->put($storagePath, $this->tinyJpegBytes());

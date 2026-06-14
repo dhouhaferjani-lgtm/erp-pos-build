@@ -75,10 +75,16 @@ final class MediaUrlResolver
             $params['variant'] = $variant;
         }
 
+        // absolute: false → a RELATIVE signed URL (path + query only, no host).
+        // The browser resolves it against the page origin, so it works behind the
+        // nginx proxy / inside Docker regardless of APP_URL (which is the internal
+        // service name, e.g. http://api). The HMAC covers the path + query, so the
+        // serve route validates it with the `signed:relative` middleware.
         return URL::temporarySignedRoute(
             'media.serve',
             now()->addMinutes(self::SIGNED_URL_TTL_MINUTES),
             $params,
+            absolute: false,
         );
     }
 

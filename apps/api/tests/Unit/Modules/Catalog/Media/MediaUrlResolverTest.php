@@ -29,17 +29,17 @@ final class MediaUrlResolverTest extends TestCase
 
     public function test_for_attachment_upload_returns_signed_media_serve_url_with_variant(): void
     {
-        $resolver = new MediaUrlResolver();
+        $resolver = new MediaUrlResolver;
 
         $tenantId = (string) Str::uuid();
         $attachmentId = (string) Str::uuid();
 
-        $asset = new MediaAsset();
+        $asset = new MediaAsset;
         $asset->type = MediaAssetType::Image;
         $asset->source = MediaSource::Upload;
         $asset->status = MediaStatus::Ready;
 
-        $attachment = new MediaAttachment();
+        $attachment = new MediaAttachment;
         $attachment->id = $attachmentId;
         $attachment->tenant_id = $tenantId;
         $attachment->owner_id = (string) Str::uuid();
@@ -48,6 +48,8 @@ final class MediaUrlResolverTest extends TestCase
         $url = $resolver->forAttachment($attachment, 'sm');
 
         self::assertNotNull($url, 'forAttachment must return a URL for an Upload asset');
+        // Relative signed URL: starts with '/', no scheme/host prefix.
+        self::assertStringStartsWith('/', $url, 'Signed URL must be relative (no scheme/host — proxy/Docker-safe)');
         // Signed URL goes to the media.serve route, not the legacy download route.
         self::assertStringContainsString('/media/', $url, 'Signed URL must contain /media/ (media.serve route)');
         self::assertStringContainsString($attachmentId, $url, 'Signed URL must embed the attachment id');
@@ -60,17 +62,17 @@ final class MediaUrlResolverTest extends TestCase
 
     public function test_for_attachment_upload_null_variant_is_omitted(): void
     {
-        $resolver = new MediaUrlResolver();
+        $resolver = new MediaUrlResolver;
 
         $tenantId = (string) Str::uuid();
         $attachmentId = (string) Str::uuid();
 
-        $asset = new MediaAsset();
+        $asset = new MediaAsset;
         $asset->type = MediaAssetType::Image;
         $asset->source = MediaSource::Upload;
         $asset->status = MediaStatus::Ready;
 
-        $attachment = new MediaAttachment();
+        $attachment = new MediaAttachment;
         $attachment->id = $attachmentId;
         $attachment->tenant_id = $tenantId;
         $attachment->owner_id = (string) Str::uuid();
@@ -79,6 +81,7 @@ final class MediaUrlResolverTest extends TestCase
         $url = $resolver->forAttachment($attachment, null);
 
         self::assertNotNull($url);
+        self::assertStringStartsWith('/', $url, 'Signed URL must be relative (no scheme/host — proxy/Docker-safe)');
         self::assertStringContainsString('/media/', $url);
         self::assertStringContainsString('signature=', $url);
         self::assertStringNotContainsString('variant=', $url, 'Null variant must be omitted from the signed URL');
@@ -86,15 +89,15 @@ final class MediaUrlResolverTest extends TestCase
 
     public function test_for_attachment_external_url_returns_asset_external_url(): void
     {
-        $resolver = new MediaUrlResolver();
+        $resolver = new MediaUrlResolver;
 
-        $asset = new MediaAsset();
+        $asset = new MediaAsset;
         $asset->type = MediaAssetType::Image;
         $asset->source = MediaSource::ExternalUrl;
         $asset->status = MediaStatus::Ready;
         $asset->external_url = 'https://cdn.example.com/photo.jpg';
 
-        $attachment = new MediaAttachment();
+        $attachment = new MediaAttachment;
         $attachment->id = (string) Str::uuid();
         $attachment->tenant_id = (string) Str::uuid();
         $attachment->owner_id = (string) Str::uuid();
@@ -108,9 +111,9 @@ final class MediaUrlResolverTest extends TestCase
 
     public function test_for_attachment_null_asset_returns_null(): void
     {
-        $resolver = new MediaUrlResolver();
+        $resolver = new MediaUrlResolver;
 
-        $attachment = new MediaAttachment();
+        $attachment = new MediaAttachment;
         $attachment->id = (string) Str::uuid();
         $attachment->tenant_id = (string) Str::uuid();
         $attachment->owner_id = (string) Str::uuid();
@@ -125,17 +128,17 @@ final class MediaUrlResolverTest extends TestCase
 
     public function test_for_pos_sync_upload_returns_download_route_with_variant_query_string(): void
     {
-        $resolver = new MediaUrlResolver();
+        $resolver = new MediaUrlResolver;
 
         $productId = (string) Str::uuid();
         $attachmentId = (string) Str::uuid();
 
-        $asset = new MediaAsset();
+        $asset = new MediaAsset;
         $asset->type = MediaAssetType::Image;
         $asset->source = MediaSource::Upload;
         $asset->status = MediaStatus::Ready;
 
-        $attachment = new MediaAttachment();
+        $attachment = new MediaAttachment;
         $attachment->id = $attachmentId;
         $attachment->tenant_id = (string) Str::uuid();
         $attachment->owner_id = $productId;
@@ -154,17 +157,17 @@ final class MediaUrlResolverTest extends TestCase
 
     public function test_for_pos_sync_null_variant_is_omitted(): void
     {
-        $resolver = new MediaUrlResolver();
+        $resolver = new MediaUrlResolver;
 
         $productId = (string) Str::uuid();
         $attachmentId = (string) Str::uuid();
 
-        $asset = new MediaAsset();
+        $asset = new MediaAsset;
         $asset->type = MediaAssetType::Image;
         $asset->source = MediaSource::Upload;
         $asset->status = MediaStatus::Ready;
 
-        $attachment = new MediaAttachment();
+        $attachment = new MediaAttachment;
         $attachment->id = $attachmentId;
         $attachment->tenant_id = (string) Str::uuid();
         $attachment->owner_id = $productId;
@@ -179,17 +182,17 @@ final class MediaUrlResolverTest extends TestCase
 
     public function test_for_pos_sync_external_url_returns_asset_external_url(): void
     {
-        $resolver = new MediaUrlResolver();
+        $resolver = new MediaUrlResolver;
 
         $externalUrl = 'https://cdn.example.com/placeholder.jpg';
 
-        $asset = new MediaAsset();
+        $asset = new MediaAsset;
         $asset->type = MediaAssetType::Image;
         $asset->source = MediaSource::ExternalUrl;
         $asset->status = MediaStatus::Ready;
         $asset->external_url = $externalUrl;
 
-        $attachment = new MediaAttachment();
+        $attachment = new MediaAttachment;
         $attachment->id = (string) Str::uuid();
         $attachment->tenant_id = (string) Str::uuid();
         $attachment->owner_id = (string) Str::uuid();
