@@ -21,7 +21,6 @@ import {
   nextShiftNumber,
   getCurrentOpenShift,
   closeLocalShift,
-  backfillLocalShiftFromCache,
   type LocalShiftInput,
 } from '@/lib/db/repositories/localShiftRepository';
 
@@ -170,125 +169,6 @@ describe('migration v53 — local_shifts', () => {
       await insertLocalShift(db, makeOpenShift({ id: 's1', shift_number: 1 }));
       await closeLocalShift(db, 's1', '2026-06-14T12:00:00Z');
       expect(await getCurrentOpenShift(db, 'term-1')).toBeNull();
-    });
-  });
-
-  describe('backfillLocalShiftFromCache (one-time copy)', () => {
-    it('copies an OPEN cached shift into local_shifts', async () => {
-      const db = adapter.asDatabase();
-      const inserted = await backfillLocalShiftFromCache(db, {
-        id: '019700aa-bbbb-7ccc-8ddd-eeeeffff00aa',
-        terminal_id: 'term-1',
-        shift_number: 12,
-        status: 'OPEN',
-        opening_cash: '50.000',
-        opened_at: '2026-06-14T07:00:00Z',
-        fiscal_session_id: '019700aa-bbbb-7ccc-8ddd-eeeeffff00aa',
-        user: { id: 'cashier-9', name: 'Bob' },
-      });
-      expect(inserted).toBe(true);
-
-      const open = await getCurrentOpenShift(db, 'term-1');
-      expect(open).toMatchObject({
-        id: '019700aa-bbbb-7ccc-8ddd-eeeeffff00aa',
-        terminal_id: 'term-1',
-        shift_number: 12,
-        status: 'OPEN',
-        cashier_id: 'cashier-9',
-        cashier_name: 'Bob',
-      });
-    });
-
-    it('is idempotent — re-running does not duplicate or throw', async () => {
-      const db = adapter.asDatabase();
-      const cached = {
-        id: '019700aa-bbbb-7ccc-8ddd-eeeeffff00aa',
-        terminal_id: 'term-1',
-        shift_number: 12,
-        status: 'OPEN' as const,
-        opening_cash: '50.000',
-        opened_at: '2026-06-14T07:00:00Z',
-        user: { id: 'cashier-9', name: 'Bob' },
-      };
-      expect(await backfillLocalShiftFromCache(db, cached)).toBe(true);
-      expect(await backfillLocalShiftFromCache(db, cached)).toBe(false);
-
-      const open = await getCurrentOpenShift(db, 'term-1');
-      expect(open?.id).toBe('019700aa-bbbb-7ccc-8ddd-eeeeffff00aa');
-    });
-
-    it('does nothing for a null cache or a CLOSED cached shift', async () => {
-      const db = adapter.asDatabase();
-      expect(await backfillLocalShiftFromCache(db, null)).toBe(false);
-      expect(
-        await backfillLocalShiftFromCache(db, {
-          id: 'closed-1',
-          terminal_id: 'term-1',
-          shift_number: 1,
-          status: 'CLOSED',
-          opening_cash: '0',
-          opened_at: '2026-06-14T07:00:00Z',
-          user: { id: 'cashier-9', name: 'Bob' },
-        }),
-      ).toBe(false);
-      expect(await getCurrentOpenShift(db, 'term-1')).toBeNull();
-    });
-
-    it('normalizes a grandfathered offline-<uuid> cached shift to its valid fiscal_shift_id', async () => {
-      // The OLD offline-fork path minted id = `offline-<uuid>` (not a UUID) but a
-      // valid `fiscal_shift_id`. Backfilling the offline- id verbatim would later
-      // author SESSION_CLOSE with a non-UUID shift_id and quarantine the close,
-      // wedging the terminal. The row must carry the valid fiscal UUID instead.
-      const db = adapter.asDatabase();
-      const inserted = await backfillLocalShiftFromCache(db, {
-        id: 'offline-019700aa-bbbb-7ccc-8ddd-eeeeffff00cc',
-        terminal_id: 'term-1',
-        shift_number: 3,
-        status: 'OPEN',
-        opening_cash: '50.000',
-        opened_at: '2026-06-14T07:00:00Z',
-        fiscal_shift_id: '019700aa-bbbb-7ccc-8ddd-eeeeffff00cc',
-        fiscal_session_id: '019700aa-bbbb-7ccc-8ddd-eeeeffff00cc',
-        user: { id: 'cashier-9', name: 'Bob' },
-      });
-      expect(inserted).toBe(true);
-
-      const open = await getCurrentOpenShift(db, 'term-1');
-      expect(open?.id).toBe('019700aa-bbbb-7ccc-8ddd-eeeeffff00cc');
-      expect(open?.fiscal_shift_id).toBe('019700aa-bbbb-7ccc-8ddd-eeeeffff00cc');
-      expect(open?.session_id).toBe('019700aa-bbbb-7ccc-8ddd-eeeeffff00cc');
-    });
-
-    it('skips backfill when neither id nor fiscal_shift_id is a valid UUID', async () => {
-      const db = adapter.asDatabase();
-      const inserted = await backfillLocalShiftFromCache(db, {
-        id: 'offline-not-a-uuid',
-        terminal_id: 'term-1',
-        shift_number: 1,
-        status: 'OPEN',
-        opening_cash: '0',
-        opened_at: '2026-06-14T07:00:00Z',
-        user: { id: 'cashier-9', name: 'Bob' },
-      });
-      expect(inserted).toBe(false);
-      expect(await getCurrentOpenShift(db, 'term-1')).toBeNull();
-    });
-
-    it('does not overwrite an existing open shift for the terminal', async () => {
-      const db = adapter.asDatabase();
-      await insertLocalShift(db, makeOpenShift({ id: 'already-open', shift_number: 3 }));
-      const inserted = await backfillLocalShiftFromCache(db, {
-        id: 'cached-different',
-        terminal_id: 'term-1',
-        shift_number: 99,
-        status: 'OPEN',
-        opening_cash: '50.000',
-        opened_at: '2026-06-14T07:00:00Z',
-        user: { id: 'cashier-9', name: 'Bob' },
-      });
-      expect(inserted).toBe(false);
-      const open = await getCurrentOpenShift(db, 'term-1');
-      expect(open?.id).toBe('already-open');
     });
   });
 });

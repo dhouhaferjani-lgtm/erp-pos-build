@@ -54,28 +54,6 @@ export interface LocalShift extends LocalShiftRow {
   fiscal_shift_id: string;
 }
 
-/**
- * The pre-cutover cached shift shape (the `Shift` object stored under
- * `StorageKeys.SHIFT`). Used only by the one-time backfill.
- */
-export interface CachedShiftInput {
-  id: string;
-  terminal_id: string;
-  shift_number: number;
-  status: LocalShiftStatus;
-  opening_cash: string;
-  opened_at: string;
-  fiscal_shift_id?: string;
-  fiscal_session_id?: string;
-  user: { id: string; name: string };
-}
-
-const LOWER_HEX_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function isUuid(value: string | undefined): value is string {
-  return value !== undefined && LOWER_HEX_UUID.test(value);
-}
-
 function mapRow(row: LocalShiftRow): LocalShift {
   return { ...row, fiscal_shift_id: row.id };
 }
@@ -147,55 +125,4 @@ export async function getCurrentOpenShift(
     [terminalId],
   );
   return row ? mapRow(row) : null;
-}
-
-/**
- * One-time copy of the pre-cutover cached open shift into `local_shifts`, so
- * the SQLite-first `fetchCurrentShift` (Phase 1) finds the in-flight shift
- * after the device becomes shift-authoritative. Returns true when a row was
- * inserted, false when there was nothing to copy (null cache, a CLOSED cached
- * shift, or an open shift already present for the terminal — idempotent).
- */
-export async function backfillLocalShiftFromCache(
-  db: Database,
-  cached: CachedShiftInput | null,
-): Promise<boolean> {
-  if (!cached || cached.status !== 'OPEN') return false;
-
-  // `local_shifts.id` is the canonical fiscal shift UUID (== fiscal_shift_id ==
-  // pos_shifts.id). A grandfathered pre-cutover offline shift has id
-  // `offline-<uuid>` (NOT a UUID) but a valid `fiscal_shift_id`; copying the
-  // offline- id verbatim would later author SESSION_CLOSE with a non-UUID
-  // shift_id, quarantine the close server-side, and wedge the terminal (the
-  // one-open partial unique then blocks reopening). Resolve to a valid UUID;
-  // if none is available the cache can't be safely adopted — skip and let the
-  // shift close via its legacy path.
-  const id = isUuid(cached.id) ? cached.id : isUuid(cached.fiscal_shift_id) ? cached.fiscal_shift_id : null;
-  if (id === null) return false;
-  const sessionId = isUuid(cached.fiscal_session_id) ? cached.fiscal_session_id : id;
-
-  // Never clobber an existing open shift for this terminal (the device may
-  // have already authored one post-cutover). This guard also makes the
-  // backfill idempotent across boots.
-  const existing = await getCurrentOpenShift(db, cached.terminal_id);
-  if (existing) return false;
-
-  await execute(
-    db,
-    `INSERT INTO local_shifts
-       (id, terminal_id, session_id, shift_number, status, opening_cash, opened_at, closed_at, cashier_id, cashier_name)
-     VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NULL, $7, $8)
-     ON CONFLICT(id) DO NOTHING`,
-    [
-      id,
-      cached.terminal_id,
-      sessionId,
-      cached.shift_number,
-      cached.opening_cash,
-      cached.opened_at,
-      cached.user.id,
-      cached.user.name,
-    ],
-  );
-  return true;
 }

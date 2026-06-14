@@ -14,8 +14,6 @@ import { authorZSessionOpenWithOpeningFloat } from '@/lib/fiscal/zSessionAuthori
 import { uuidv7 } from '@/lib/uuidv7';
 import {
   getCurrentOpenShift,
-  backfillLocalShiftFromCache,
-  type CachedShiftInput,
   type LocalShift,
 } from '@/lib/db/repositories/localShiftRepository';
 
@@ -257,21 +255,6 @@ function localShiftToShift(open: LocalShift): Shift {
     fiscal_shift_id: open.fiscal_shift_id,
     fiscal_session_id: open.session_id,
     user: { id: open.cashier_id, name: open.cashier_name },
-  };
-}
-
-/** Map the pre-cutover cached `Shift` to the one-time backfill input. */
-function cachedShiftToBackfillInput(s: Shift): CachedShiftInput {
-  return {
-    id: s.id,
-    terminal_id: s.terminal_id,
-    shift_number: s.shift_number,
-    status: s.status,
-    opening_cash: s.opening_cash,
-    opened_at: s.opened_at,
-    fiscal_shift_id: s.fiscal_shift_id,
-    fiscal_session_id: s.fiscal_session_id,
-    user: s.user,
   };
 }
 
@@ -743,15 +726,12 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     // fiscal event).
     if (terminal.fiscal_schema_version === 3) {
       const companyId = useAuthStore.getState().companyId;
-      const cached = await getStoredValue<Shift>(StorageKeys.SHIFT);
       if (!companyId) {
+        const cached = await getStoredValue<Shift>(StorageKeys.SHIFT);
         set({ shift: cached ?? null });
         return;
       }
       const db = await getDatabase(companyId);
-      // One-time copy of the pre-cutover cached open shift into local_shifts so
-      // the in-flight shift survives the cutover to device authority. Idempotent.
-      await backfillLocalShiftFromCache(db, cached ? cachedShiftToBackfillInput(cached) : null);
       const open = await getCurrentOpenShift(db, terminal.id);
       if (open) {
         const shift = localShiftToShift(open);
