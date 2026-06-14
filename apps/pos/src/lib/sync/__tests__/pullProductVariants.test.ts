@@ -33,13 +33,16 @@ vi.mock('@/lib/db/repositories/syncLogRepository', () => ({
   cleanupOldSyncLogs: vi.fn(),
 }));
 
-// productStore mock for the catalog gate (standard tenant has POS module only)
+// productStore mock for the catalog gate — mutable so individual tests can
+// switch to a Menu tenant without affecting the other four tests.
+const gate = vi.hoisted(() => ({ modules: ['POS'] as string[] }));
+
 vi.mock('@/stores/productStore', () => ({
   useProductStore: {
     getState: () => ({
       companyConfig: {
         company_id: 'company-1',
-        all_enabled_modules: ['POS'],
+        all_enabled_modules: gate.modules,
       },
     }),
   },
@@ -148,6 +151,8 @@ function makePage(args: {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getSyncMetadata).mockResolvedValue(null);
+  // Reset to standard-retail tenant so existing tests are unaffected.
+  gate.modules = ['POS'];
 });
 
 describe('pullProductVariants — full pull (no cursor)', () => {
@@ -287,5 +292,19 @@ describe('pullProductVariants — success log', () => {
       'success',
       expect.stringContaining('upserted'),
     );
+  });
+});
+
+describe('pullProductVariants — Menu-tenant / non-standard gate short-circuit', () => {
+  it('short-circuits to {count:0} with no API call for Menu tenants', async () => {
+    // Override to a Menu-only tenant: resolveCatalogTenantGate will call
+    // hasModule(config, 'Menu') → true → decision 'menu' → not 'standard'
+    // → pullProductVariants returns {count:0} before any fetchVariants call.
+    gate.modules = ['Menu'];
+
+    const result = await pullProductVariants(db);
+
+    expect(result).toEqual({ count: 0 });
+    expect(fetchVariants).not.toHaveBeenCalled();
   });
 });

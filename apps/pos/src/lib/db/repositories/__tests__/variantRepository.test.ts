@@ -28,6 +28,11 @@ describe('variantRepository', () => {
     expect(await getVariantByBarcode(db, 'NOPE')).toBeNull();
   });
 
+  it('getVariantByBarcode ignores whitespace-only codes', async () => {
+    await upsertVariants(db, [row({ barcode: 'BC1' })]);
+    expect(await getVariantByBarcode(db, '   ')).toBeNull();
+  });
+
   it('joins location_stock available into stock_quantity', async () => {
     await upsertVariants(db, [row()]);
     await upsertStockRows(db, [{ product_id: 'p1', variant_id: 'v1', quantity: '5.0000', reserved: '0.0000', available: '5.0000', updated_at: null }]);

@@ -167,13 +167,16 @@ export async function getVariantsForProduct(
 
 /**
  * Look up a single active variant by barcode.
- * Returns null for empty/blank barcodes (never match NULL/empty in the table).
+ * Returns null for empty/blank/whitespace-only barcodes (never match NULL/empty in the table).
+ * The barcode is trimmed before the guard and the query so a scanner that
+ * appends a trailing space cannot produce a false-negative lookup.
  */
 export async function getVariantByBarcode(
   db: Database,
   barcode: string,
 ): Promise<POSProductVariant | null> {
-  if (!barcode) return null;
+  const code = barcode.trim();
+  if (!code) return null;
   const row = await queryOne<VariantJoinRow>(
     db,
     `SELECT v.id, v.product_id, v.sku, v.barcode, v.name_suffix, v.price_override, v.image_url,
@@ -182,7 +185,7 @@ export async function getVariantByBarcode(
        LEFT JOIN location_stock ls ON ls.product_id = v.product_id AND ls.variant_id = v.id
       WHERE v.barcode = $1 AND v.is_active = 1
       LIMIT 1`,
-    [barcode],
+    [code],
   );
   return row ? toVariant(row) : null;
 }
