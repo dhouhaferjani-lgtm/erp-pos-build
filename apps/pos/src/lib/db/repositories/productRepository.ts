@@ -62,6 +62,11 @@ export async function getProductByBarcode(db: Database, barcode: string): Promis
   return row ? rowToProduct(row) : null;
 }
 
+export async function getProductById(db: Database, id: string): Promise<POSProduct | null> {
+  const row = await queryOne<ProductRow>(db, 'SELECT * FROM products WHERE id = $1', [id]);
+  return row ? rowToProduct(row) : null;
+}
+
 /**
  * C2 Day 1 — Codex round 4 P2 closure: plural lookup for Menu-tenant
  * cross-listed barcodes.
