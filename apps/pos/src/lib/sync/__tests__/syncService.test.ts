@@ -124,6 +124,7 @@ vi.mock('@/stores/authStore', () => ({
 
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   upsertTerminalState: vi.fn().mockResolvedValue(undefined),
+  setShiftNumberSeed: vi.fn().mockResolvedValue(undefined),
   upsertZChainState: vi.fn().mockResolvedValue(undefined),
   FiscalRegressionError: class FiscalRegressionError extends Error {
     constructor(
@@ -175,7 +176,10 @@ import {
   type LocalFiscalEvent,
 } from '@/lib/db/repositories/fiscalEventRepository';
 import { upsertProducts, deleteProducts } from '@/lib/db/repositories/productRepository';
-import { upsertTerminalState } from '@/lib/db/repositories/terminalStateRepository';
+import {
+  upsertTerminalState,
+  setShiftNumberSeed,
+} from '@/lib/db/repositories/terminalStateRepository';
 import { computeGenesisHash } from '@/lib/fiscal/hashService';
 
 function makeMockDb() {
@@ -697,6 +701,41 @@ describe('syncService', () => {
         manager_pin_failed_attempts: 0,
         fiscal_schema_version: 2,
       });
+    });
+
+    it('Phase 6.1: seeds the shift_number counter from the server max_shift_number', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: null },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 3,
+        max_shift_number: 42,
+      });
+
+      const result = await pullTerminalState(db, 'term-1');
+
+      expect(result).toBe(true);
+      expect(setShiftNumberSeed).toHaveBeenCalledWith(db, 'term-1', 42);
+    });
+
+    it('Phase 6.1: seeds 0 when the server omits max_shift_number (stale server)', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: null },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 2,
+      });
+
+      const result = await pullTerminalState(db, 'term-1');
+
+      expect(result).toBe(true);
+      expect(setShiftNumberSeed).toHaveBeenCalledWith(db, 'term-1', 0);
     });
 
     it('Codex review B1: projects v3 fiscal_schema_version when the server declares it', async () => {

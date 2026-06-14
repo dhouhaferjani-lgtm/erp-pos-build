@@ -1671,4 +1671,39 @@ export const migrations: Migration[] = [
         ON local_shifts(terminal_id, shift_number);
     `,
   },
+  {
+    // Offline-first shifts — Phase 6.1 (2026-06-14). Per-terminal
+    // `shift_number` counter seed.
+    //
+    // A freshly-installed (or DB-reset) device starts with an empty
+    // `local_shifts`, so `nextShiftNumber` would restart the per-terminal
+    // counter at 1 and collide with shift numbers the server already projected
+    // from a prior install. The device caches the server's current
+    // `MAX(pos_shifts.shift_number)` for the terminal (carried on the terminal
+    // payload as `max_shift_number`, see TerminalResource) into this column so
+    // the counter continues monotonically.
+    //
+    // `nextShiftNumber` takes MAX(local row, seed); `setShiftNumberSeed` writes
+    // it with a monotone guard so a stale server read can never rewind it below
+    // a number the device has already used. Default 0 preserves the legacy
+    // local-only behaviour for terminals with no server history.
+    //
+    // Numbered v54 — migration versions are a global UNIQUE key (v53 =
+    // create_local_shifts). ALTER ADD COLUMN guarded with the duplicate-column
+    // pattern so the migration is re-runnable.
+    version: 54,
+    name: 'add_shift_number_seed_to_terminal_state',
+    sql: '',
+    async run(db) {
+      try {
+        await db.execute(
+          'ALTER TABLE terminal_state ADD COLUMN shift_number_seed INTEGER NOT NULL DEFAULT 0',
+        );
+      } catch (error) {
+        if (!isDuplicateColumnError(error)) {
+          throw error;
+        }
+      }
+    },
+  },
 ];

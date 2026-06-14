@@ -125,6 +125,54 @@ export async function getTerminalState(
   return { ...row, fiscal_schema_version: row.fiscal_schema_version };
 }
 
+/**
+ * The per-terminal `shift_number` seed (offline-first shifts Phase 6.1) — the
+ * server's `MAX(pos_shifts.shift_number)` cached at activation so a fresh device
+ * continues numbering monotonically instead of restarting at 1.
+ *
+ * Tolerant of a pre-v54 `terminal_state` (no `shift_number_seed` column) and of
+ * a missing row: both read as 0 — the legacy local-only behaviour. This mirrors
+ * `getZChainState`'s no-such-column tolerance and keeps the Phase-0 authoring
+ * path working on older schemas.
+ */
+export async function getShiftNumberSeed(db: Database, terminalId: string): Promise<number> {
+  try {
+    const row = await queryOne<{ shift_number_seed: number | null }>(
+      db,
+      `SELECT shift_number_seed FROM terminal_state WHERE terminal_id = $1`,
+      [terminalId],
+    );
+    return row?.shift_number_seed ?? 0;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '';
+    if (msg.includes('no such column')) {
+      return 0;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Persist the per-terminal `shift_number` seed with a monotone guard: the seed
+ * only ever rises (`MAX(existing, incoming)`), so a transiently stale server
+ * read reporting a lower MAX can never rewind it below a number the device has
+ * already used. No-op when no `terminal_state` row exists yet (the seed is
+ * pulled alongside `upsertTerminalState`, which creates the row first).
+ */
+export async function setShiftNumberSeed(
+  db: Database,
+  terminalId: string,
+  seed: number,
+): Promise<void> {
+  await execute(
+    db,
+    `UPDATE terminal_state
+        SET shift_number_seed = MAX(shift_number_seed, $1)
+      WHERE terminal_id = $2`,
+    [seed, terminalId],
+  );
+}
+
 export async function setManagerPinThrottle(
   db: Database,
   terminalId: string,

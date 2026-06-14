@@ -75,6 +75,11 @@ final class TerminalController extends Controller
 
         $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->with(['location', 'company'])
+            // Offline-first shifts Phase 6.1: eager-load the per-terminal
+            // MAX(shift_number) so the device can seed its counter without an
+            // extra round-trip (TerminalResource falls back to a lazy MAX when
+            // this attribute is absent).
+            ->withMax('shifts', 'shift_number')
             ->findOrFail($id);
 
         return response()->json([

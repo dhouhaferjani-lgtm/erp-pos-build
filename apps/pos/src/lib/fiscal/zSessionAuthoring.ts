@@ -20,6 +20,7 @@ import {
   getMaxReceiptHashSequence,
   insertShiftReceiptAnchor,
 } from '@/lib/db/repositories/shiftReceiptAnchorRepository';
+import { getShiftNumberSeed } from '@/lib/db/repositories/terminalStateRepository';
 
 export interface AuthorZSessionOpenInput {
   tenantId: string;
@@ -525,7 +526,15 @@ export async function authorZSessionOpenWithOpeningFloatOnDb(
     // Mint the per-terminal monotone shift number inside the tx. The
     // local_shifts one-open partial unique index is the correctness
     // backstop if two opens ever race (the second insert fails loud).
-    const shiftNumber = await nextShiftNumber(txDb, input.terminalId);
+    //
+    // Phase 6.1: seed the counter from the server's cached
+    // MAX(pos_shifts.shift_number) so a freshly-installed device continues
+    // numbering from the server's value instead of restarting at 1 (which
+    // would collide with server-projected numbers from a prior install).
+    // Read inside the tx on the same connection; tolerant of a pre-v54 schema
+    // (returns 0 → legacy local-only behaviour).
+    const shiftNumberSeed = await getShiftNumberSeed(txDb, input.terminalId);
+    const shiftNumber = await nextShiftNumber(txDb, input.terminalId, shiftNumberSeed);
 
     const sessionOpenEvent = await engine.append(tx, {
       event_type: 'SESSION_OPEN',

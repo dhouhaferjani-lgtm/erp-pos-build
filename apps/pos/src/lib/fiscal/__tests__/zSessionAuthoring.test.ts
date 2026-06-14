@@ -3,6 +3,7 @@ import { setWriter, __resetWriteGateForTesting } from '@/lib/db/writeGate';
 import type { SqlSurface } from '@/lib/fiscal/FiscalEventEngine';
 
 import { migrations } from '@/lib/db/migrations';
+import { setShiftNumberSeed } from '@/lib/db/repositories/terminalStateRepository';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
 import { FiscalEventCanonicalEncoder } from '../FiscalEventCanonicalEncoder';
 import { FiscalEventEngine } from '../FiscalEventEngine';
@@ -304,6 +305,26 @@ d('zSessionAuthoring', () => {
     );
     const envelope = JSON.parse(row!.canonical_bytes) as { payload: { shift_number: number } };
     expect(envelope.payload.shift_number).toBe(1);
+  });
+
+  it('continues shift_number from the server-seeded counter on a fresh device', async () => {
+    // Phase 6.1: apply v54 (the seed column) on top of the v53 beforeEach
+    // baseline, then seed the per-terminal counter from a prior install's
+    // server MAX. local_shifts is empty, so without the seed numbering would
+    // restart at 1 and collide with the server-projected numbers.
+    const v54 = migrations.find((m) => m.version === 54);
+    await v54!.run!(adapter.asDatabase());
+    await setShiftNumberSeed(adapter.asDatabase(), TERMINAL_ID, 5);
+
+    const result = await authorZSessionOpenWithOpeningFloatOnDb(adapter, engine, input());
+
+    expect(result.shiftNumber).toBe(6);
+
+    const [open] = await adapter.select<Array<{ shift_number: number }>>(
+      'SELECT shift_number FROM local_shifts WHERE id = $1',
+      [SHIFT_ID],
+    );
+    expect(open!.shift_number).toBe(6);
   });
 
   it('inserts a local_shifts row + receipt anchor atomically inside the open tx', async () => {

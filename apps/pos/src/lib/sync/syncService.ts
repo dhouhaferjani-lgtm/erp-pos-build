@@ -25,6 +25,7 @@ import { upsertOperators } from '@/lib/db/repositories/operatorPinRepository';
 import Big from 'big.js';
 import {
   upsertTerminalState,
+  setShiftNumberSeed,
   upsertZChainState,
   getZChainState,
   type TerminalHashState,
@@ -120,6 +121,14 @@ interface TerminalStateResponse {
    * server roll-out adds the field.
    */
   fiscal_schema_version?: number;
+  /**
+   * Offline-first shifts Phase 6.1: the server's current
+   * `MAX(pos_shifts.shift_number)` for this terminal. Cached into
+   * `terminal_state.shift_number_seed` so a freshly-installed device continues
+   * numbering monotonically instead of restarting at 1. Optional in the wire
+   * shape so a stale server (pre-6.1) does not break the pull; absent → seed 0.
+   */
+  max_shift_number?: number;
 }
 
 export interface SyncResult {
@@ -1073,8 +1082,16 @@ export async function pullTerminalState(
       fiscal_schema_version: fiscalSchemaVersion,
     };
 
+    // Offline-first shifts Phase 6.1: cache the server's per-terminal
+    // MAX(shift_number) so the device's `nextShiftNumber` continues numbering
+    // monotonically after a fresh install / DB reset. `setShiftNumberSeed` is
+    // monotone (MAX of existing + incoming), so a stale server read can never
+    // rewind it. Absent on a pre-6.1 server → 0 (legacy local-only behaviour).
+    const shiftNumberSeed = state.max_shift_number ?? 0;
+
     try {
       await upsertTerminalState(db, hashState);
+      await setShiftNumberSeed(db, terminalId, shiftNumberSeed);
       await logSyncOperation(db, 'pull', 'terminal_state', terminalId, 'success');
       return true;
     } catch (error) {
@@ -1087,6 +1104,9 @@ export async function pullTerminalState(
           local_sequence: error.before,
           server_sequence: error.after,
         });
+        // The local fiscal head is ahead of the server, but the terminal_state
+        // row exists — still refresh the monotone shift-number seed.
+        await setShiftNumberSeed(db, terminalId, shiftNumberSeed);
         await logSyncOperation(
           db,
           'pull',

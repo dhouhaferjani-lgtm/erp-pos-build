@@ -62,17 +62,29 @@ const SELECT_COLUMNS =
   'id, terminal_id, session_id, shift_number, status, opening_cash, opened_at, closed_at, cashier_id, cashier_name';
 
 /**
- * The next per-terminal shift number = `MAX(shift_number) + 1` (1 when the
- * terminal has never opened a shift). Must be computed inside the same write
- * transaction as the insert so two opens can't race onto the same number.
+ * The next per-terminal shift number = `MAX(local MAX(shift_number), seed) + 1`
+ * (1 when the terminal has never opened a shift and no seed is given). Must be
+ * computed inside the same write transaction as the insert so two opens can't
+ * race onto the same number.
+ *
+ * `seed` (offline-first shifts Phase 6.1) is the server's cached
+ * `MAX(pos_shifts.shift_number)` (`getShiftNumberSeed`). On a freshly-installed
+ * device `local_shifts` is empty, so the seed keeps numbering continuing from
+ * the server's value rather than restarting at 1 and colliding with
+ * server-projected numbers from a prior install. Defaults to 0 — the legacy
+ * local-only behaviour — when the caller has no server history to seed from.
  */
-export async function nextShiftNumber(db: Database, terminalId: string): Promise<number> {
+export async function nextShiftNumber(
+  db: Database,
+  terminalId: string,
+  seed = 0,
+): Promise<number> {
   const row = await queryOne<{ max_number: number | null }>(
     db,
     `SELECT MAX(shift_number) AS max_number FROM local_shifts WHERE terminal_id = $1`,
     [terminalId],
   );
-  return (row?.max_number ?? 0) + 1;
+  return Math.max(row?.max_number ?? 0, seed) + 1;
 }
 
 /**
