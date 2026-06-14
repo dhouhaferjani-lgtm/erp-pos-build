@@ -26,7 +26,7 @@ final class QuantityScale
      * @param  string  $value  Well-formed numeric string (e.g. "1.23456")
      * @param  int  $decimalPlaces  Target decimal scale (>= 0)
      * @param  string  $method  One of 'half_up', 'floor', 'ceil'
-     * @return string Rounded numeric string with exactly $decimalPlaces digits
+     * @return numeric-string Rounded numeric string with exactly $decimalPlaces digits
      *
      * @throws \InvalidArgumentException For unknown rounding method
      */
