@@ -8,6 +8,19 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
 }));
 vi.mock('@/lib/currency', () => ({ useCurrency: () => ({ format: (n: string | number) => `${n}` }) }));
+// F8 — the drawer now renders CrossLocationStockSection, which pulls two network
+// hooks (one wraps useQuery and needs a QueryClientProvider). Stub them so this
+// own-location test stays isolated; the gate (canView=false from the default
+// null operator/company stores) keeps the section empty anyway.
+vi.mock('@/hooks/useCrossLocationStock', () => ({
+  useCrossLocationStock: () => ({
+    data: null, source: null, fetchedAt: null, isStale: false,
+    isLoading: false, error: null, refresh: () => {},
+  }),
+}));
+vi.mock('@/hooks/useProductVariants', () => ({
+  useProductVariants: () => ({ data: [], isLoading: false }),
+}));
 
 const product = { id: 'p1', name: 'Widget', sku: 'W1', sale_price: '9.99', stock_quantity: 999 } as POSProduct;
 

@@ -4,6 +4,10 @@ import { X, Package } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { bccomp } from '@/lib/decimal';
 import { formatAvailableQty } from '@/lib/stock/stockGate';
+import { useProductStore } from '@/stores/productStore';
+import { useOperatorStore } from '@/stores/operatorStore';
+import { useTerminalStore } from '@/stores/terminalStore';
+import { CrossLocationStockSection } from '@/components/organisms/CrossLocationStockSection/CrossLocationStockSection';
 import type { POSProduct } from '@/types/product';
 import type { LocationStockDisplay } from '@/lib/stock/gridStock';
 
@@ -23,6 +27,17 @@ export function ProductDetailDrawer({
 }: ProductDetailDrawerProps) {
   const { t } = useTranslation('pos');
   const { format } = useCurrency();
+
+  // F8 — cross-location stock gate. ALL hooks must run before the early return
+  // below to keep hook order stable. The section itself renders only when both
+  // the company flag and the operator permission are present (canView).
+  const allowCrossLocation = useProductStore(
+    (s) => s.companyConfig?.allow_cross_location_stock_view === true,
+  );
+  const canViewCrossLocation = useOperatorStore(
+    (s) => s.operator?.permissions?.includes('pos.view_cross_location_stock') ?? false,
+  );
+  const currentLocationId = useTerminalStore((s) => s.terminal?.location.id ?? null);
 
   if (!product) return null;
 
@@ -138,6 +153,13 @@ export function ProductDetailDrawer({
               </div>
             )}
           </div>
+
+          {/* F8 — cross-location stock distribution (gated inside the section) */}
+          <CrossLocationStockSection
+            product={product}
+            canView={allowCrossLocation && canViewCrossLocation}
+            currentLocationId={currentLocationId}
+          />
         </div>
       </div>
     </>
