@@ -8,6 +8,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Tenant\Presentation\Middleware\EnsureTenantIsActive;
 use App\Providers\TenancyServiceProvider;
+use App\Services\TenantTokenRevoker;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Database\ConnectionResolverInterface;
 use Psr\Log\LoggerInterface;
@@ -70,16 +71,27 @@ class TenantDeprovisioningService
         private readonly Dispatcher $bus,
         private readonly ConnectionResolverInterface $db,
         private readonly LoggerInterface $logger,
+        private readonly TenantTokenRevoker $tokenRevoker,
     ) {}
 
     /**
-     * Tear down a deleted/archived tenant: drop its physical database (DB mode
-     * only) and remove every central directory row. Idempotent — calling it on
-     * a tenant whose database was never provisioned, or calling it twice, does
-     * not error.
+     * Tear down a deleted/archived tenant: revoke its users' central bearer
+     * tokens, drop its physical database (DB mode only) and remove every central
+     * directory row. Idempotent — calling it on a tenant whose database was
+     * never provisioned, or calling it twice, does not error.
      */
     public function deprovision(Tenant $tenant): void
     {
+        // Revoke the tenant users' central bearer tokens FIRST. This delete
+        // path removes the central `tenants` row via the query builder, which
+        // fires NO Eloquent model events, so the TenantObserver's revocation
+        // never runs here — it must be invoked explicitly. Ordering is
+        // critical: the revoker enumerates users inside $tenant->run() (needs
+        // the tenant DB still up) with a central_identities fallback, and both
+        // are torn down below, so revocation must precede the physical drop and
+        // the central directory cleanup.
+        $this->tokenRevoker->revokeTenantTokens($tenant);
+
         if ($this->isDatabasePerTenantMode()) {
             $this->dropPhysicalDatabaseIfPresent($tenant);
         }

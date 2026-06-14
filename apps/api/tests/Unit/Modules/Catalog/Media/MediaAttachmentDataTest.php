@@ -4,32 +4,43 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Modules\Catalog\Media;
 
-use App\Modules\Catalog\Application\DTOs\MediaAttachmentData;
 use App\Modules\Catalog\Application\DTOs\MediaAssetData;
+use App\Modules\Catalog\Application\DTOs\MediaAttachmentData;
 use App\Modules\Catalog\Application\DTOs\MediaRenditionData;
 use App\Modules\Catalog\Application\DTOs\ProductMediaData;
 use App\Modules\Catalog\Domain\Enums\MediaAssetType;
 use App\Modules\Catalog\Domain\Enums\MediaRole;
 use App\Modules\Catalog\Domain\Enums\MediaSource;
 use App\Modules\Catalog\Domain\Enums\MediaStatus;
+use App\Modules\Catalog\Domain\Enums\RenditionFormat;
+use App\Modules\Catalog\Domain\Enums\RenditionName;
 use App\Modules\Catalog\Domain\Media\MediaAsset;
 use App\Modules\Catalog\Domain\Media\MediaAttachment;
 use App\Modules\Catalog\Domain\Media\MediaRendition;
-use App\Modules\Catalog\Domain\Enums\RenditionFormat;
-use App\Modules\Catalog\Domain\Enums\RenditionName;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
+/**
+ * These cases instantiate real Eloquent media models (MediaAsset / MediaAttachment
+ * / MediaRendition) to exercise the DTO `fromModel` mappers. Eloquent models lean
+ * on global static state (the event dispatcher — wired to Spatie event-sourcing —
+ * and the connection resolver), so a bare PHPUnit\Framework\TestCase passes in
+ * isolation but fails in the full Unit run once an earlier app-booting test leaks
+ * that state (BindingResolutionException on the event subscriber; an int leaking
+ * into the string `$id`). Extending the Laravel TestCase re-boots the app per test
+ * (no DB needed — no model is persisted), making these order-independent — matching
+ * the sibling MediaUrlResolverTest.
+ */
 final class MediaAttachmentDataTest extends TestCase
 {
     public function test_attachment_data_exposes_url_and_role_from_model(): void
     {
-        $asset = new MediaAsset();
+        $asset = new MediaAsset;
         $asset->id = 'asset-uuid-001';
         $asset->type = MediaAssetType::Image;
         $asset->source = MediaSource::Upload;
         $asset->status = MediaStatus::Ready;
 
-        $attachment = new MediaAttachment();
+        $attachment = new MediaAttachment;
         $attachment->id = 'attach-uuid-001';
         $attachment->media_asset_id = 'asset-uuid-001';
         $attachment->role = MediaRole::Primary;
@@ -52,13 +63,13 @@ final class MediaAttachmentDataTest extends TestCase
 
     public function test_attachment_data_url_can_be_null(): void
     {
-        $asset = new MediaAsset();
+        $asset = new MediaAsset;
         $asset->id = 'asset-uuid-002';
         $asset->type = MediaAssetType::Image;
         $asset->source = MediaSource::Upload;
         $asset->status = MediaStatus::Ready;
 
-        $attachment = new MediaAttachment();
+        $attachment = new MediaAttachment;
         $attachment->id = 'attach-uuid-002';
         $attachment->media_asset_id = 'asset-uuid-002';
         $attachment->role = MediaRole::Gallery;
@@ -85,13 +96,13 @@ final class MediaAttachmentDataTest extends TestCase
 
     public function test_product_media_data_holds_attachments(): void
     {
-        $asset = new MediaAsset();
+        $asset = new MediaAsset;
         $asset->id = 'asset-uuid-003';
         $asset->type = MediaAssetType::Image;
         $asset->source = MediaSource::Upload;
         $asset->status = MediaStatus::Ready;
 
-        $attachment = new MediaAttachment();
+        $attachment = new MediaAttachment;
         $attachment->id = 'attach-uuid-003';
         $attachment->media_asset_id = 'asset-uuid-003';
         $attachment->role = MediaRole::Primary;
@@ -110,7 +121,7 @@ final class MediaAttachmentDataTest extends TestCase
 
     public function test_media_asset_data_from_model(): void
     {
-        $asset = new MediaAsset();
+        $asset = new MediaAsset;
         $asset->id = 'asset-uuid-004';
         $asset->tenant_id = 'tenant-001';
         $asset->type = MediaAssetType::Image;
@@ -137,7 +148,7 @@ final class MediaAttachmentDataTest extends TestCase
 
     public function test_media_rendition_data_from_model(): void
     {
-        $rendition = new MediaRendition();
+        $rendition = new MediaRendition;
         $rendition->id = 'rend-uuid-001';
         $rendition->tenant_id = 'tenant-001';
         $rendition->media_asset_id = 'asset-uuid-001';

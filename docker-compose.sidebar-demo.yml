@@ -128,6 +128,28 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-shot bucket provisioner — creates the application bucket if it does not
+  # already exist (mc mb -p is idempotent).  The bucket is kept private (no
+  # anonymous read policy) because all access goes through signed URLs or the
+  # authenticated /download route.  Exits 0 on success so Docker marks it as
+  # "completed" and it is never restarted.
+  createbuckets:
+    image: minio/mc:latest
+    restart: "no"
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-autoerp_minio}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-autoerp_minio_secret}
+      AWS_BUCKET: ${AWS_BUCKET:-autoerp}
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+        mc alias set local http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\" &&
+        mc mb -p local/\"$$AWS_BUCKET\" &&
+        echo 'Bucket provisioned: '\"$$AWS_BUCKET\"
+      "
+
   api:
     build:
       context: ./apps/api

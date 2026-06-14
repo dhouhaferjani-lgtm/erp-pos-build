@@ -255,6 +255,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'pos.approve_cash_drawer_control',
             'pos.configure_cash_count',
             'pos.tolerance.apply',
+            'pos.view_cross_location_stock',
 
             // POS Orders
             'pos_orders.view',
@@ -434,7 +435,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'pos.approve_credit_limit_override', 'pos.approve_account_status_override',
             'pos.approve_discount_limit_override', 'pos.approve_tender_tolerance_override',
             'pos.approve_void_or_return_override', 'pos.approve_cash_drawer_control',
-            'pos.configure_cash_count', 'pos.tolerance.apply',
+            'pos.configure_cash_count', 'pos.tolerance.apply', 'pos.view_cross_location_stock',
             'pos_orders.view', 'pos_orders.create', 'pos_orders.update', 'pos_orders.delete',
             'pos_held_orders.view', 'pos_held_orders.create', 'pos_held_orders.delete',
             'batches.view', 'batches.create', 'batches.update', 'batches.delete',

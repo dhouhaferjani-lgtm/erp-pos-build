@@ -2,30 +2,53 @@ import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
 import { X, Package } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { bccomp } from '@/lib/decimal';
+import { formatAvailableQty } from '@/lib/stock/stockGate';
+import { useProductStore } from '@/stores/productStore';
+import { useOperatorStore } from '@/stores/operatorStore';
+import { useTerminalStore } from '@/stores/terminalStore';
+import { CrossLocationStockSection } from '@/components/organisms/CrossLocationStockSection/CrossLocationStockSection';
 import type { POSProduct } from '@/types/product';
+import type { LocationStockDisplay } from '@/lib/stock/gridStock';
 
 interface ProductDetailDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   product: POSProduct | null;
+  /** Same slice semantics as ProductCard: object -> location-aware; null -> exempt (no chrome); undefined -> legacy fallback. */
+  locationStock?: LocationStockDisplay | null;
 }
 
 export function ProductDetailDrawer({
   isOpen,
   onClose,
   product,
+  locationStock,
 }: ProductDetailDrawerProps) {
   const { t } = useTranslation('pos');
   const { format } = useCurrency();
 
+  // F8 — cross-location stock gate. ALL hooks must run before the early return
+  // below to keep hook order stable. The section itself renders only when both
+  // the company flag and the operator permission are present (canView).
+  const allowCrossLocation = useProductStore(
+    (s) => s.companyConfig?.allow_cross_location_stock_view === true,
+  );
+  const canViewCrossLocation = useOperatorStore(
+    (s) => s.operator?.permissions?.includes('pos.view_cross_location_stock') ?? false,
+  );
+  const currentLocationId = useTerminalStore((s) => s.terminal?.location.id ?? null);
+
   if (!product) return null;
 
-  const stockColor =
-    product.stock_quantity <= 0
-      ? 'text-red-600 bg-red-50'
-      : product.stock_quantity <= 10
-        ? 'text-amber-600 bg-amber-50'
-        : 'text-green-600 bg-green-50';
+  const hasSlice = locationStock !== undefined && locationStock !== null;
+  const exempt = locationStock === null;
+
+  const available = hasSlice ? locationStock!.available : null;
+  const isOut = available !== null ? bccomp(available, '0') <= 0 : product.stock_quantity <= 0;
+  const isLow = !isOut && (available !== null ? bccomp(available, '10') <= 0 : product.stock_quantity <= 10);
+  const stockTone = isOut ? 'text-red-600 bg-red-50' : isLow ? 'text-amber-600 bg-amber-50' : 'text-green-600 bg-green-50';
+  const stockText = available !== null ? formatAvailableQty(available) : String(product.stock_quantity);
 
   return (
     <>
@@ -107,17 +130,20 @@ export function ProductDetailDrawer({
             )}
 
             {/* Stock */}
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">{t('productDetail.stock')}</span>
-              <span
-                className={cn(
-                  'rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                  stockColor,
-                )}
-              >
-                {product.stock_quantity}
-              </span>
-            </div>
+            {!exempt && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">{t('productDetail.stock')}</span>
+                <span
+                  data-testid="drawer-stock-row"
+                  className={cn(
+                    'rounded-full px-2.5 py-0.5 text-xs font-semibold',
+                    stockTone,
+                  )}
+                >
+                  {stockText}
+                </span>
+              </div>
+            )}
 
             {/* Tax rate */}
             {product.tax_rate && (
@@ -127,6 +153,13 @@ export function ProductDetailDrawer({
               </div>
             )}
           </div>
+
+          {/* F8 — cross-location stock distribution (gated inside the section) */}
+          <CrossLocationStockSection
+            product={product}
+            canView={allowCrossLocation && canViewCrossLocation}
+            currentLocationId={currentLocationId}
+          />
         </div>
       </div>
     </>

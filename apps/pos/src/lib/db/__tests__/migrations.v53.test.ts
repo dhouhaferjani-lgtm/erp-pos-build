@@ -1,5 +1,5 @@
 /**
- * Migration v52 — `local_shifts` (offline-first shifts Phase 0).
+ * Migration v53 — `local_shifts` (offline-first shifts Phase 0).
  *
  * The device becomes the authority for the shift lifecycle: it mints a UUIDv7
  * shift id + a per-terminal monotone `shift_number` and authors SESSION_OPEN
@@ -46,12 +46,12 @@ function makeOpenShift(overrides: Partial<LocalShiftInput> = {}): LocalShiftInpu
   };
 }
 
-describe('migration v52 — local_shifts', () => {
+describe('migration v53 — local_shifts', () => {
   let adapter: SqliteTestAdapter;
 
   beforeEach(async () => {
     adapter = new SqliteTestAdapter();
-    await runMigrationsUpTo(adapter, 52);
+    await runMigrationsUpTo(adapter, 53);
   });
 
   afterEach(() => {
@@ -88,9 +88,9 @@ describe('migration v52 — local_shifts', () => {
   });
 
   it('is re-runnable (CREATE TABLE / INDEX IF NOT EXISTS)', async () => {
-    const v52 = migrations.find((m) => m.version === 52);
-    expect(v52).toBeDefined();
-    await expect(adapter.execute(v52!.sql)).resolves.toBeDefined();
+    const v53 = migrations.find((m) => m.version === 53);
+    expect(v53).toBeDefined();
+    await expect(adapter.execute(v53!.sql)).resolves.toBeDefined();
   });
 
   describe('nextShiftNumber', () => {

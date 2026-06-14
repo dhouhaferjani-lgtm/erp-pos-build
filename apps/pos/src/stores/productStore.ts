@@ -188,8 +188,22 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
       }
     }
 
-    // Step 2: Fetch company config if not cached
+    // Step 2: Fetch company config if not cached.
+    // H2: hydrate from offline cache first so the cross-location gate is
+    // available even after an offline restart when the SQLite stock payload
+    // is already present but the network is unavailable.
     let config = get().companyConfig;
+    if (!config) {
+      if (companyId) {
+        try {
+          const { loadCachedCompanyConfig } = await import('@/lib/companyConfigCache');
+          config = await loadCachedCompanyConfig(companyId);
+          if (config) set({ companyConfig: config });
+        } catch {
+          // Best-effort — continue to live fetch
+        }
+      }
+    }
     if (!config) {
       try {
         config = await fetchCompanyConfig();

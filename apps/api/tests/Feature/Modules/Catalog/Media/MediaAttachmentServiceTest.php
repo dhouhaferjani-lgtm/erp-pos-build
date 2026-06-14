@@ -40,7 +40,7 @@ final class MediaAttachmentServiceTest extends TestCase
             'source' => MediaSource::ExternalUrl,
             'status' => MediaStatus::Ready,
             'storage_disk' => 'url',
-            'external_url' => 'https://example.com/' . Str::uuid() . '.jpg',
+            'external_url' => 'https://example.com/'.Str::uuid().'.jpg',
         ]);
     }
 
@@ -51,7 +51,7 @@ final class MediaAttachmentServiceTest extends TestCase
      */
     private function makeS3Asset(string $tenantId): array
     {
-        $assetPath = 'products/' . $tenantId . '/' . Str::uuid() . '/original.jpg';
+        $assetPath = 'products/'.$tenantId.'/'.Str::uuid().'/original.jpg';
 
         Storage::disk('s3')->put($assetPath, 'fake-image-content');
 
@@ -270,7 +270,7 @@ final class MediaAttachmentServiceTest extends TestCase
         ['asset' => $asset, 'asset_path' => $assetPath] = $this->makeS3Asset($tenantId);
 
         // Create a rendition row with its own S3 file.
-        $renditionPath = 'products/' . $tenantId . '/' . $asset->id . '/thumb.webp';
+        $renditionPath = 'products/'.$tenantId.'/'.$asset->id.'/thumb.webp';
         Storage::disk('s3')->put($renditionPath, 'fake-rendition-content');
 
         MediaRendition::create([

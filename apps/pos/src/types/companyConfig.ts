@@ -11,4 +11,5 @@ export interface CompanyConfig {
   vertical?: string;
   smart_prompts_enabled?: boolean;
   smart_prompts_variant?: 'inline' | 'toast' | 'both' | 'off';
+  allow_cross_location_stock_view?: boolean;
 }

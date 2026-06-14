@@ -35,7 +35,8 @@
     "fullName": "Full product name",
     "sortByMostSold": "Sort by most sold",
     "sortDefault": "Default order",
-    "favorites": "Favorites"
+    "favorites": "Favorites",
+    "viewDetails": "View details"
   },
   "payment": {
     "success": "Payment Successful!",
@@ -274,6 +275,18 @@
     "lastSync": "Last sync: {{time}}",
     "debounceBlocked": "Hold on — still processing the previous sync.",
     "degradedTitle": "Last sync had errors — click to retry"
+  },
+  "crossLocationStock": {
+    "title": "Stock across locations",
+    "variant": "Variant",
+    "location": "Location",
+    "onHand": "On-hand",
+    "incoming": "In-transit",
+    "total": "Total",
+    "asOf": "As of {{time}}",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "offlineNoCache": "Unavailable offline — connect to refresh"
   },
   "fiscal": {
     "regressionBlocked": "Fiscal chain integrity preserved. Local data is newer than the server response."

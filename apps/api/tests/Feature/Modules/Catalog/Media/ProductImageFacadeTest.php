@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature\Modules\Catalog\Media;
 
 use App\Enums\Vertical;
-use App\Modules\Catalog\Application\Services\MediaAttachmentService;
-use App\Modules\Catalog\Application\Services\MediaUploadService;
 use App\Modules\Catalog\Domain\Enums\MediaAssetType;
 use App\Modules\Catalog\Domain\Enums\MediaOwnerType;
 use App\Modules\Catalog\Domain\Enums\MediaRole;

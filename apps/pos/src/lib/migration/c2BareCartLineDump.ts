@@ -6,10 +6,10 @@ import {
   listHeldTransactions,
   type HeldTransactionRow,
 } from '@/lib/db/repositories/heldTransactionRepository';
-import { getStoredValue, setStoredValue, StorageKeys } from '@/lib/storage';
+import { setStoredValue, StorageKeys } from '@/lib/storage';
+import { persistCompanyConfig, loadCachedCompanyConfig } from '@/lib/companyConfigCache';
 import { hasModule, useProductStore } from '@/stores/productStore';
 import type { CartItem } from '@/types/cart';
-import type { CompanyConfig } from '@/types/companyConfig';
 
 // Codex PR #118 round-6 P2 — the completion key and the held-transaction
 // scan are now both per-terminal. A device that hosts more than one
@@ -28,7 +28,6 @@ const MIGRATION_KEY_PREFIX = 'c2_bare_cart_line_dump';
 function migrationKey(terminalId: string): string {
   return `${MIGRATION_KEY_PREFIX}:${terminalId}`;
 }
-const COMPANY_CONFIG_CACHE_PREFIX = 'company_config';
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const UUID_RE = new RegExp(`^${UUID}$`, 'i');
 const MENU_COMPOSITE_RE = new RegExp(`^${UUID}_${UUID}$`, 'i');
@@ -166,12 +165,12 @@ async function resolveIsMenuTenant(companyId?: string): Promise<boolean | null> 
     const config = await fetchCompanyConfig();
     useProductStore.setState({ companyConfig: config });
     if (companyId) {
-      await setStoredValue(companyConfigCacheKey(companyId), config);
+      await persistCompanyConfig(companyId, config);
     }
     return hasModule(config, 'Menu');
   } catch (error) {
     if (companyId) {
-      const cached = await getStoredValue<CompanyConfig>(companyConfigCacheKey(companyId));
+      const cached = await loadCachedCompanyConfig(companyId);
       if (cached !== null) {
         useProductStore.setState({ companyConfig: cached });
         return hasModule(cached, 'Menu');
@@ -180,10 +179,6 @@ async function resolveIsMenuTenant(companyId?: string): Promise<boolean | null> 
     console.warn('[c2BareCartLineDump] deferred: company config unavailable', error);
     return null;
   }
-}
-
-function companyConfigCacheKey(companyId: string): string {
-  return `${COMPANY_CONFIG_CACHE_PREFIX}:${companyId}`;
 }
 
 async function getMigrationRanFromDb(db: Database, key: string): Promise<boolean> {

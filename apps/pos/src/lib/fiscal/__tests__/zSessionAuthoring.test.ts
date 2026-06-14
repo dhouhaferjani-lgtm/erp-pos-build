@@ -215,7 +215,7 @@ d('zSessionAuthoring', () => {
     adapter = new SqliteTestAdapter();
     __resetWriteGateForTesting();
     setWriter(adapter as unknown as SqlSurface);
-    await runMigrationsUpTo(adapter, 52);
+    await runMigrationsUpTo(adapter, 53);
     await seedTerminalState(adapter);
     engine = new FiscalEventEngine(
       adapter,
