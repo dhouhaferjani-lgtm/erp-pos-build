@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { apiGet, apiPost, ApiRequestError } from '@/lib/api';
+import { apiGet, apiPost } from '@/lib/api';
 import { getDeviceId } from '@/lib/device';
 import { getStoredValue, setStoredValue, removeStoredValue, StorageKeys } from '@/lib/storage';
 import { getDatabase } from '@/lib/db';
@@ -11,6 +11,13 @@ import { usePaymentStore } from '@/stores/paymentStore';
 import { serializeErrorForLog } from '@/lib/errorLogging';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { authorZSessionOpenWithOpeningFloat } from '@/lib/fiscal/zSessionAuthoring';
+import { uuidv7 } from '@/lib/uuidv7';
+import {
+  getCurrentOpenShift,
+  backfillLocalShiftFromCache,
+  type CachedShiftInput,
+  type LocalShift,
+} from '@/lib/db/repositories/localShiftRepository';
 
 /**
  * Company-level stock-enforcement policy delivered on the terminal payload
@@ -238,6 +245,36 @@ function withShiftUser(serverShift: ServerShiftPayload, cached: Shift | null): S
   return { ...serverShift, user: { id: cashierId, name } };
 }
 
+/** Map a device `local_shifts` row to the in-memory `Shift` (one-id model). */
+function localShiftToShift(open: LocalShift): Shift {
+  return {
+    id: open.id,
+    terminal_id: open.terminal_id,
+    shift_number: open.shift_number,
+    status: open.status,
+    opening_cash: open.opening_cash,
+    opened_at: open.opened_at,
+    fiscal_shift_id: open.fiscal_shift_id,
+    fiscal_session_id: open.session_id,
+    user: { id: open.cashier_id, name: open.cashier_name },
+  };
+}
+
+/** Map the pre-cutover cached `Shift` to the one-time backfill input. */
+function cachedShiftToBackfillInput(s: Shift): CachedShiftInput {
+  return {
+    id: s.id,
+    terminal_id: s.terminal_id,
+    shift_number: s.shift_number,
+    status: s.status,
+    opening_cash: s.opening_cash,
+    opened_at: s.opened_at,
+    fiscal_shift_id: s.fiscal_shift_id,
+    fiscal_session_id: s.fiscal_session_id,
+    user: s.user,
+  };
+}
+
 async function authorShiftOpenFiscalEvents(
   terminal: Terminal,
   shift: Shift,
@@ -257,34 +294,14 @@ async function authorShiftOpenFiscalEvents(
     throw new Error(`Cannot author Z-session opening event with invalid shift opened_at ${shift.opened_at}.`);
   }
 
-  // M3: record the terminal's last receipt hash_sequence at shift open so the
-  // device Z can select THIS shift's receipts by monotonic, clock-rollback-immune
-  // sequence (`hash_sequence > anchor`) instead of wall-clock created_at.
-  //
-  // The anchor MUST be in the same sequence space the Z window bounds by —
-  // `offline_receipts.hash_sequence` (the fiscal-event operational
-  // sequence_number) — NOT `terminal_state.hash_sequence`, which is the separate
-  // legacy receipt-V3 counter (using it would re-include the previous shift's
-  // receipts in the next Z and corrupt every total + the Z hash).
-  //
-  // Written BEFORE authoring the open event and fail-CLOSED: a device-authority
-  // shift must not run without a correct fiscal Z boundary, so a failure here
-  // aborts the open (no fiscal event has been authored yet). The created_at
-  // fallback in generateZReport now only applies to shifts that pre-date
-  // migration 49 (which never recorded an anchor).
-  {
-    const db = await getDatabase(auth.companyId);
-    const { getMaxReceiptHashSequence, insertShiftReceiptAnchor } = await import(
-      '@/lib/db/repositories/shiftReceiptAnchorRepository'
-    );
-    const openingHashSequence = await getMaxReceiptHashSequence(db, terminal.id);
-    await insertShiftReceiptAnchor(db, {
-      shift_id: shift.id,
-      opening_hash_sequence: openingHashSequence,
-    });
-  }
-
-  await authorZSessionOpenWithOpeningFloat({
+  // SESSION_OPEN + OPENING_FLOAT, the M3 receipt anchor, and the device-
+  // authoritative `local_shifts` row are authored atomically inside the fiscal
+  // write-gate transaction (see authorZSessionOpenWithOpeningFloatOnDb). The
+  // anchor records the terminal's receipt hash_sequence at open time so the Z
+  // window selects THIS shift's receipts by monotonic, clock-rollback-immune
+  // sequence; the local_shifts row is the SQLite-first source of truth for
+  // "the current open shift". `shift_number` is minted in-tx and returned.
+  const { shiftNumber } = await authorZSessionOpenWithOpeningFloat({
     tenantId: auth.user.tenantId,
     companyId: auth.companyId,
     terminalId: terminal.id,
@@ -302,12 +319,9 @@ async function authorShiftOpenFiscalEvents(
     openingCashDrawerOperationId: null,
   });
 
-  if (shift.fiscal_shift_id === fiscalShiftId && shift.fiscal_session_id === fiscalSessionId) {
-    return shift;
-  }
-
   return {
     ...shift,
+    shift_number: shiftNumber,
     fiscal_shift_id: fiscalShiftId,
     fiscal_session_id: fiscalSessionId,
   };
@@ -722,6 +736,34 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     const { terminal } = get();
     if (!terminal) return;
 
+    // v3 terminals: SQLite-FIRST. "Current open shift" is read purely from the
+    // local_shifts projection — no network. The server is a downstream
+    // projection of the device's fiscal events and is never consulted for the
+    // live shift (an app restart must not sever the shift from its SESSION_OPEN
+    // fiscal event).
+    if (terminal.fiscal_schema_version === 3) {
+      const companyId = useAuthStore.getState().companyId;
+      const cached = await getStoredValue<Shift>(StorageKeys.SHIFT);
+      if (!companyId) {
+        set({ shift: cached ?? null });
+        return;
+      }
+      const db = await getDatabase(companyId);
+      // One-time copy of the pre-cutover cached open shift into local_shifts so
+      // the in-flight shift survives the cutover to device authority. Idempotent.
+      await backfillLocalShiftFromCache(db, cached ? cachedShiftToBackfillInput(cached) : null);
+      const open = await getCurrentOpenShift(db, terminal.id);
+      if (open) {
+        const shift = localShiftToShift(open);
+        await setStoredValue(StorageKeys.SHIFT, shift);
+        set({ shift });
+      } else {
+        await removeStoredValue(StorageKeys.SHIFT);
+        set({ shift: null });
+      }
+      return;
+    }
+
     try {
       const serverShift = await apiGet<ServerShiftPayload | null>(`/pos/shifts/current/${terminal.code}`);
       if (serverShift) {
@@ -757,6 +799,62 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     if (!terminal) throw new Error('No terminal configured');
 
     set({ isLoading: true });
+
+    // Task 9 — full location-stock re-baseline on shift open (spec §4.3): the
+    // opening cashier starts the shift against fresh availability.
+    // Fire-and-forget + swallow-and-log: it must never block the open (offline
+    // it just times out).
+    const pullLocationStockNonFatal = (): void => {
+      void (async () => {
+        const companyId = useAuthStore.getState().companyId;
+        if (!companyId) return;
+        const db = await getDatabase(companyId);
+        await pullLocationStock(db, 'full', { terminalId: terminal.id });
+      })().catch((err: unknown) => {
+        console.error(
+          '[POS][terminalStore][openShift] location-stock full pull failed (non-fatal)',
+          serializeErrorForLog(err),
+        );
+      });
+    };
+
+    // v3 terminals are DEVICE-AUTHORITATIVE (mirror the receipt model): the
+    // device mints the shift id (UUIDv7) + per-terminal monotone shift_number
+    // and authors SESSION_OPEN + OPENING_FLOAT locally inside the fiscal
+    // write-gate — NO server round-trip, fully offline. `pos_shifts` is a
+    // projection of the synced fiscal events. The old server-first POST,
+    // `offline-<uuid>` fork, and SHIFT_ALREADY_OPEN adoption are gone: there is
+    // exactly one open path and one shift id.
+    if (terminal.fiscal_schema_version === 3) {
+      const auth = useAuthStore.getState();
+      const id = uuidv7();
+      const shift: Shift = {
+        id,
+        terminal_id: terminal.id,
+        shift_number: 0, // assigned in-tx by the fiscal authoring; filled below
+        status: 'OPEN',
+        opening_cash: openingCash,
+        opened_at: new Date().toISOString(),
+        fiscal_shift_id: id,
+        fiscal_session_id: id,
+        user: {
+          id: cashierId ?? auth.user?.id ?? '',
+          name: auth.user?.name ?? 'Operator',
+        },
+      };
+      try {
+        const fiscalShift = await authorShiftOpenFiscalEvents(terminal, shift, openingCash);
+        await setStoredValue(StorageKeys.SHIFT, fiscalShift);
+        set({ shift: fiscalShift, isLoading: false });
+      } catch (error) {
+        set({ isLoading: false });
+        throw error;
+      }
+      pullLocationStockNonFatal();
+      return;
+    }
+
+    // Legacy pre-cutover (v<3) terminals remain server-authoritative.
     let shift: Shift;
     try {
       const body: Record<string, string> = {
@@ -768,79 +866,11 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
       }
       shift = withShiftUser(await apiPost<ServerShiftPayload>('/pos/shifts/open', body), null);
     } catch (error) {
-      if (error instanceof ApiRequestError && error.code === 'SHIFT_ALREADY_OPEN') {
-        // A reachable server refusing the open means a shift is ALREADY open
-        // for this terminal — adopt it. Forking a local `offline-…` shift
-        // here split the device from the server shift (2026-06-12 live
-        // regression: Today Sales 404'd on the unknown shift id and fiscal
-        // payloads carried a non-UUID shift_id).
-        try {
-          const current = await apiGet<ServerShiftPayload | null>(`/pos/shifts/current/${terminal.code}`);
-          if (!current) throw error;
-          const cached = await getStoredValue<Shift>(StorageKeys.SHIFT);
-          shift = withShiftUser(current, cached);
-          if (cached && cached.id === shift.id) {
-            shift = {
-              ...shift,
-              fiscal_shift_id: shift.fiscal_shift_id ?? cached.fiscal_shift_id,
-              fiscal_session_id: shift.fiscal_session_id ?? cached.fiscal_session_id,
-            };
-          }
-        } catch (adoptionError) {
-          set({ isLoading: false });
-          throw adoptionError;
-        }
-      } else {
-        // Offline fallback: create local shift
-        const authState = useAuthStore.getState();
-        const user = authState.user;
-        shift = {
-          id: `offline-${crypto.randomUUID()}`,
-          terminal_id: terminal.id,
-          shift_number: 0,
-          status: 'OPEN',
-          opening_cash: openingCash,
-          opened_at: new Date().toISOString(),
-          fiscal_shift_id: crypto.randomUUID(),
-          fiscal_session_id: crypto.randomUUID(),
-          user: {
-            id: cashierId ?? user?.id ?? '',
-            name: user?.name ?? 'Operator',
-          },
-        };
-      }
+      set({ isLoading: false });
+      throw error;
     }
 
-    // Task 9 — full location-stock re-baseline on shift open (spec §4.3):
-    // the opening cashier starts the shift against fresh availability.
-    // Fire-and-forget + swallow-and-log: an offline shift open (the catch
-    // branch above) will time out here, and that must never block the
-    // shift from opening or selling from starting.
-    void (async () => {
-      const companyId = useAuthStore.getState().companyId;
-      if (!companyId) return;
-      const db = await getDatabase(companyId);
-      await pullLocationStock(db, 'full', { terminalId: terminal.id });
-    })().catch((err: unknown) => {
-      console.error(
-        '[POS][terminalStore][openShift] location-stock full pull failed (non-fatal)',
-        serializeErrorForLog(err),
-      );
-    });
-
-    if (terminal.fiscal_schema_version === 3) {
-      try {
-        const fiscalShift = await authorShiftOpenFiscalEvents(terminal, shift, openingCash);
-        await setStoredValue(StorageKeys.SHIFT, fiscalShift);
-        set({ shift: fiscalShift, isLoading: false });
-      } catch (error) {
-        set({ isLoading: false });
-        throw error;
-      }
-
-      return;
-    }
-
+    pullLocationStockNonFatal();
     await setStoredValue(StorageKeys.SHIFT, shift);
     set({ shift, isLoading: false });
   },

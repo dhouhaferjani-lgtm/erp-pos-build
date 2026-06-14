@@ -114,6 +114,64 @@ final class StrictCanonicalParserTest extends TestCase
         $this->assertStringContainsString('envelope_chain_context_event_type_mismatch', $result->failureReason ?? '');
     }
 
+    public function test_strict_parser_accepts_session_open_with_valid_shift_number(): void
+    {
+        $bytes = $this->envelope(
+            'SESSION_OPEN',
+            $this->canonicalSessionOpenPayload(),
+            ['chain_context' => 'z_session'],
+        );
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SESSION_OPEN);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+        $this->assertNotNull($result->payload);
+        $this->assertSame(7, $result->payload['shift_number']);
+    }
+
+    public function test_strict_parser_rejects_session_open_missing_shift_number(): void
+    {
+        $payload = $this->canonicalSessionOpenPayload();
+        unset($payload['shift_number']);
+        $bytes = $this->envelope('SESSION_OPEN', $payload, ['chain_context' => 'z_session']);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SESSION_OPEN);
+
+        // Now that `shift_number` is in `SessionOpenPayload::PAYLOAD_KEYS`,
+        // it is a REQUIRED canonical key. A payload omitting it is rejected
+        // at the canonical-schema layer (`assertPresent` during DTO hydration)
+        // with a missing-required-key violation before per-field validation.
+        $this->assertFailed($result);
+        $this->assertStringContainsString('missing required key', $result->failureReason ?? '');
+        $this->assertStringContainsString('shift_number', $result->failureReason ?? '');
+    }
+
+    public function test_strict_parser_rejects_session_open_with_zero_shift_number(): void
+    {
+        $payload = $this->canonicalSessionOpenPayload();
+        $payload['shift_number'] = 0;
+        $bytes = $this->envelope('SESSION_OPEN', $payload, ['chain_context' => 'z_session']);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SESSION_OPEN);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('payload_integer_format_mismatch', $result->failureReason ?? '');
+        $this->assertStringContainsString('shift_number', $result->failureReason ?? '');
+    }
+
+    public function test_strict_parser_rejects_session_open_with_non_int_shift_number(): void
+    {
+        $payload = $this->canonicalSessionOpenPayload();
+        $payload['shift_number'] = '7';
+        $bytes = $this->envelope('SESSION_OPEN', $payload, ['chain_context' => 'z_session']);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SESSION_OPEN);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('payload_integer_format_mismatch', $result->failureReason ?? '');
+        $this->assertStringContainsString('shift_number', $result->failureReason ?? '');
+    }
+
     public function test_strict_parser_accepts_z_session_cash_out_payload(): void
     {
         $bytes = $this->envelope(
@@ -716,6 +774,7 @@ final class StrictCanonicalParserTest extends TestCase
             'operator_name' => 'Default Cashier',
             'session_id' => '77777777-7777-4777-8777-777777777777',
             'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'shift_number' => 7,
             'terminal_id' => '33333333-3333-4333-8333-333333333333',
             'terminal_label' => 'T01',
             'training_flag' => $trainingFlag,

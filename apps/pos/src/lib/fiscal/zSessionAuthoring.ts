@@ -11,6 +11,15 @@ import { getFiscalEventEngine } from '@/lib/fiscal/instance';
 import { withWriteTransaction } from '@/lib/db/writeGate';
 import { bcformat } from '@/lib/decimal';
 import { lockTerminal } from '@/lib/offline/terminalMutex';
+import {
+  nextShiftNumber,
+  insertLocalShift,
+  closeLocalShift,
+} from '@/lib/db/repositories/localShiftRepository';
+import {
+  getMaxReceiptHashSequence,
+  insertShiftReceiptAnchor,
+} from '@/lib/db/repositories/shiftReceiptAnchorRepository';
 
 export interface AuthorZSessionOpenInput {
   tenantId: string;
@@ -35,6 +44,8 @@ export interface AuthorZSessionOpenResult {
   sessionOpenEvent: FiscalEventAppendResult;
   openingFloatEvent: FiscalEventAppendResult;
   openingFloatMovementId: string;
+  /** The device-minted, per-terminal monotone shift number assigned in-tx. */
+  shiftNumber: number;
 }
 
 export interface ZSessionReportTotals {
@@ -276,7 +287,11 @@ async function assertNoZReportForSession(
   }
 }
 
-export function buildSessionOpenPayload(input: AuthorZSessionOpenInput, openedAtDevice: Date): Record<string, unknown> {
+export function buildSessionOpenPayload(
+  input: AuthorZSessionOpenInput,
+  openedAtDevice: Date,
+  shiftNumber: number,
+): Record<string, unknown> {
   return {
     business_date: input.businessDate,
     currency_code: input.currencyCode,
@@ -287,6 +302,7 @@ export function buildSessionOpenPayload(input: AuthorZSessionOpenInput, openedAt
     operator_name: input.operatorName,
     session_id: input.sessionId,
     shift_id: input.shiftId,
+    shift_number: shiftNumber,
     terminal_id: input.terminalId,
     terminal_label: input.terminalLabel,
     training_flag: input.isTraining,
@@ -496,11 +512,21 @@ export async function authorZSessionOpenWithOpeningFloatOnDb(
   const movementId = input.openingFloatMovementId ?? crypto.randomUUID();
   const chainContext = zChainContext(input.isTraining);
 
-  // Single-writer architecture: the two appends run as ONE exclusive
-  // write-gate transaction on the single connection (fiscal lane). The `db`
-  // parameter remains for sibling read helpers; writes must not issue BEGIN
-  // through the pooled plugin (see writeGate.ts).
+  // Single-writer architecture: SESSION_OPEN + OPENING_FLOAT, the receipt
+  // anchor, and the `local_shifts` row are authored as ONE exclusive
+  // write-gate transaction on the single connection (fiscal lane), so the
+  // device shift is created all-or-nothing. The `db` parameter remains for
+  // sibling read helpers; writes must not issue BEGIN through the pooled
+  // plugin (see writeGate.ts). Repo helpers are typed for the pooled
+  // Database; the gate's `tx` exposes the same execute/select surface.
   const result = await withWriteTransaction('fiscal', async (tx) => {
+    const txDb = tx as unknown as Database;
+
+    // Mint the per-terminal monotone shift number inside the tx. The
+    // local_shifts one-open partial unique index is the correctness
+    // backstop if two opens ever race (the second insert fails loud).
+    const shiftNumber = await nextShiftNumber(txDb, input.terminalId);
+
     const sessionOpenEvent = await engine.append(tx, {
       event_type: 'SESSION_OPEN',
       tenant_id: input.tenantId,
@@ -510,7 +536,7 @@ export async function authorZSessionOpenWithOpeningFloatOnDb(
       event_time_device: isoSecondsUtc(openedAtDevice),
       business_date: input.businessDate,
       chain_context: chainContext,
-      payload: buildSessionOpenPayload(input, openedAtDevice),
+      payload: buildSessionOpenPayload(input, openedAtDevice, shiftNumber),
       source_event_class: 'pos_session',
       source_event_id: input.sessionId,
     });
@@ -530,13 +556,37 @@ export async function authorZSessionOpenWithOpeningFloatOnDb(
       source_event_id: movementId,
     });
 
-    return { sessionOpenEvent, openingFloatEvent };
+    // M3: anchor the Z window to the terminal's receipt hash_sequence at open
+    // time (clock-rollback-immune). Inside the tx so a failure unwinds the
+    // whole open.
+    const openingHashSequence = await getMaxReceiptHashSequence(txDb, input.terminalId);
+    await insertShiftReceiptAnchor(txDb, {
+      shift_id: input.shiftId,
+      opening_hash_sequence: openingHashSequence,
+    });
+
+    // The device-authoritative shift row — the local source of truth for
+    // "the current open shift", readable with no network. One UUID per shift
+    // (id == fiscal_shift_id == pos_shifts.id).
+    await insertLocalShift(txDb, {
+      id: input.shiftId,
+      terminal_id: input.terminalId,
+      session_id: input.sessionId,
+      shift_number: shiftNumber,
+      opening_cash: formatMoney(input.openingFloatAmount, input.currencyScale),
+      opened_at: openedAtDevice.toISOString(),
+      cashier_id: input.operatorId,
+      cashier_name: input.operatorName,
+    });
+
+    return { sessionOpenEvent, openingFloatEvent, shiftNumber };
   });
 
   return {
     sessionOpenEvent: result.sessionOpenEvent,
     openingFloatEvent: result.openingFloatEvent,
     openingFloatMovementId: movementId,
+    shiftNumber: result.shiftNumber,
   };
 }
 
@@ -641,6 +691,11 @@ export async function appendZSessionCloseAndZReport(
     source_event_class: 'z_report',
     source_event_id: input.zReportUuid,
   });
+
+  // Close the device-authoritative shift row so the terminal can open a new
+  // shift (the one-open partial unique index blocks a reopen otherwise). A
+  // no-op UPDATE for grandfathered shifts that pre-date local_shifts.
+  await closeLocalShift(db as unknown as Database, input.shiftId, isoSecondsUtc(closedAtDevice));
 
   return {
     sessionCloseEvent,

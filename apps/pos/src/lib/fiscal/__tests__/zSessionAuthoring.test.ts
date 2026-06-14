@@ -46,6 +46,7 @@ const SESSION_ID = '44444444-4444-4444-8444-444444444444';
 const MOVEMENT_ID = '55555555-5555-4555-8555-555555555555';
 const GENESIS_SEED = 'a'.repeat(64);
 const SECOND_SESSION_ID = '12121212-1212-4212-8212-121212121212';
+const SECOND_SHIFT_ID = '23232323-2323-4323-8323-232323232323';
 
 async function runMigrationsUpTo(adapter: SqliteTestAdapter, maxVersion: number): Promise<void> {
   for (const migration of migrations) {
@@ -214,7 +215,7 @@ d('zSessionAuthoring', () => {
     adapter = new SqliteTestAdapter();
     __resetWriteGateForTesting();
     setWriter(adapter as unknown as SqlSurface);
-    await runMigrationsUpTo(adapter, 37);
+    await runMigrationsUpTo(adapter, 52);
     await seedTerminalState(adapter);
     engine = new FiscalEventEngine(
       adapter,
@@ -231,7 +232,7 @@ d('zSessionAuthoring', () => {
   it('builds canonical session-open and opening-float payloads', () => {
     const openedAtDevice = new Date('2026-05-16T08:00:00.123Z');
 
-    expect(buildSessionOpenPayload(input(), openedAtDevice)).toEqual({
+    expect(buildSessionOpenPayload(input(), openedAtDevice, 7)).toEqual({
       business_date: '2026-05-16',
       currency_code: 'TND',
       currency_scale: 3,
@@ -241,6 +242,7 @@ d('zSessionAuthoring', () => {
       operator_name: 'Alice',
       session_id: SESSION_ID,
       shift_id: SHIFT_ID,
+      shift_number: 7,
       terminal_id: TERMINAL_ID,
       terminal_label: 'T01',
       training_flag: false,
@@ -289,6 +291,82 @@ d('zSessionAuthoring', () => {
       { event_type: 'SESSION_OPEN', chain_context: 'z_session', sequence_number: 1 },
       { event_type: 'OPENING_FLOAT', chain_context: 'z_session', sequence_number: 2 },
     ]);
+  });
+
+  it('mints shift_number 1 for the first shift and stamps it into the SESSION_OPEN payload', async () => {
+    const result = await authorZSessionOpenWithOpeningFloatOnDb(adapter, engine, input());
+
+    expect(result.shiftNumber).toBe(1);
+
+    const [row] = await adapter.select<Array<{ canonical_bytes: string }>>(
+      'SELECT canonical_bytes FROM fiscal_events WHERE id = $1',
+      [result.sessionOpenEvent.id],
+    );
+    const envelope = JSON.parse(row!.canonical_bytes) as { payload: { shift_number: number } };
+    expect(envelope.payload.shift_number).toBe(1);
+  });
+
+  it('inserts a local_shifts row + receipt anchor atomically inside the open tx', async () => {
+    await authorZSessionOpenWithOpeningFloatOnDb(adapter, engine, input());
+
+    const shifts = await adapter.select<
+      Array<{ id: string; terminal_id: string; shift_number: number; status: string; opening_cash: string; cashier_id: string; cashier_name: string }>
+    >('SELECT id, terminal_id, shift_number, status, opening_cash, cashier_id, cashier_name FROM local_shifts');
+    expect(shifts).toEqual([
+      {
+        id: SHIFT_ID,
+        terminal_id: TERMINAL_ID,
+        shift_number: 1,
+        status: 'OPEN',
+        opening_cash: '100.000',
+        cashier_id: OPERATOR_ID,
+        cashier_name: 'Alice',
+      },
+    ]);
+
+    const anchors = await adapter.select<Array<{ shift_id: string; opening_hash_sequence: number }>>(
+      'SELECT shift_id, opening_hash_sequence FROM shift_receipt_anchors',
+    );
+    expect(anchors).toEqual([{ shift_id: SHIFT_ID, opening_hash_sequence: 0 }]);
+  });
+
+  it('rolls back the local_shifts row and fiscal events when the open tx fails', async () => {
+    // A SESSION_OPEN whose movement id collides with an existing fiscal event
+    // forces the second append to throw; the whole tx (events + local_shifts
+    // + anchor) must roll back.
+    await authorZSessionOpenWithOpeningFloatOnDb(adapter, engine, input());
+    await expect(
+      authorZSessionOpenWithOpeningFloatOnDb(
+        adapter,
+        engine,
+        // Same terminal with a STILL-OPEN local shift → the local_shifts
+        // one-open partial unique index rejects the second insert and unwinds
+        // the appended fiscal events.
+        input({ shiftId: SECOND_SHIFT_ID, sessionId: SECOND_SESSION_ID, openingFloatMovementId: '13131313-1313-4313-8313-131313131313' }),
+      ),
+    ).rejects.toThrow();
+
+    const shiftCount = await adapter.select<Array<{ n: number }>>(
+      'SELECT COUNT(*) AS n FROM local_shifts',
+    );
+    expect(shiftCount[0]!.n).toBe(1);
+  });
+
+  it('closes the local shift when SESSION_CLOSE is authored', async () => {
+    await authorZSessionOpenWithOpeningFloatOnDb(adapter, engine, input());
+    await appendZSessionCloseAndZReport(adapter, engine, closeInput());
+
+    const open = await adapter.select<Array<{ id: string }>>(
+      "SELECT id FROM local_shifts WHERE terminal_id = $1 AND status = 'OPEN'",
+      [TERMINAL_ID],
+    );
+    expect(open).toEqual([]);
+    const closed = await adapter.select<Array<{ status: string; closed_at: string | null }>>(
+      'SELECT status, closed_at FROM local_shifts WHERE id = $1',
+      [SHIFT_ID],
+    );
+    expect(closed[0]!.status).toBe('CLOSED');
+    expect(closed[0]!.closed_at).not.toBeNull();
   });
 
   it('builds SESSION_CLOSE and Z_REPORT payloads with required canonical keys', () => {
@@ -426,6 +504,7 @@ d('zSessionAuthoring', () => {
       adapter,
       engine,
       input({
+        shiftId: SECOND_SHIFT_ID,
         sessionId: SECOND_SESSION_ID,
         openingFloatMovementId: '13131313-1313-4313-8313-131313131313',
       }),
@@ -435,6 +514,7 @@ d('zSessionAuthoring', () => {
       adapter,
       engine,
       closeInput({
+        shiftId: SECOND_SHIFT_ID,
         sessionId: SECOND_SESSION_ID,
         sessionCloseUuid: '14141414-1414-4414-8414-141414141414',
         zReportUuid: '15151515-1515-4515-8515-151515151515',

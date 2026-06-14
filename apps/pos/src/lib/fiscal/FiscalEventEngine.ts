@@ -1153,6 +1153,7 @@ const SESSION_OPEN_PAYLOAD_KEYS = [
   'operator_name',
   'session_id',
   'shift_id',
+  'shift_number',
   'terminal_id',
   'terminal_label',
   'training_flag',
@@ -2891,6 +2892,15 @@ function assertBoolAt(bag: Record<string, unknown>, field: string, path: string)
   return value;
 }
 
+function assertPositiveInt(bag: Record<string, unknown>, field: string): void {
+  const value = bag[field];
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_field_invalid:${field} must be a positive integer (>= 1); got ${typeofTag(value)}`,
+    );
+  }
+}
+
 function assertUuid(bag: Record<string, unknown>, field: string): void {
   assertUuidAt(bag, field, field);
 }
@@ -3362,6 +3372,7 @@ function validateSessionOpenPayload(payload: unknown): void {
   assertNonEmptyString(p, 'operator_name');
   assertUuid(p, 'terminal_id');
   assertNonEmptyString(p, 'terminal_label');
+  assertPositiveInt(p, 'shift_number');
   const scale = assertCurrency(p);
   assertMoneyString(p, 'opening_float_amount', moneyRegex(scale), scale);
   assertBool(p, 'training_flag');
