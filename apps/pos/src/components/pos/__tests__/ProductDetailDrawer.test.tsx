@@ -23,4 +23,9 @@ describe('ProductDetailDrawer own-location stock', () => {
     render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} locationStock={null} />);
     expect(screen.queryByTestId('drawer-stock-row')).toBeNull();
   });
+
+  it('falls back to legacy stock_quantity when slice is undefined', () => {
+    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    expect(screen.getByTestId('drawer-stock-row')).toHaveTextContent('999');
+  });
 });
