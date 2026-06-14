@@ -11,6 +11,8 @@ use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\ZSessionEvent;
+use App\Shared\Domain\Enums\VarianceSeverity;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 final class ZSessionLifecycleProjection implements FiscalEventProjector
@@ -76,34 +78,46 @@ final class ZSessionLifecycleProjection implements FiscalEventProjector
 
         $shiftId = $payload['shift_id'] ?? null;
 
-        ZSessionEvent::query()->create([
-            'id' => (string) $event->id,
-            'fiscal_event_id' => (string) $event->id,
-            'tenant_id' => (string) $event->tenant_id,
-            'company_id' => (string) $event->company_id,
-            'terminal_id' => (string) $event->terminal_id,
-            'shift_id' => is_string($shiftId) && $shiftId !== '' ? $shiftId : null,
-            'session_id' => $sessionId,
-            'event_type' => $event->event_type->value,
-            'chain_context' => (string) $event->chain_context,
-            'sequence_number' => (int) $event->sequence_number,
-            'previous_hash' => (string) $event->previous_hash,
-            'current_hash' => (string) $event->current_hash,
-            'business_date' => $event->business_date,
-            'event_time_device' => $event->event_time_device,
-            'payload' => $payload,
-        ]);
+        // All writes for one event commit atomically (this is the projector's
+        // T_apply boundary — see ApplyFiscalEventProjectionJob): the
+        // z_session_events row and the pos_shifts projection are all-or-nothing.
+        // Without this, a crash between the two would commit z_session_events
+        // but not pos_shifts, and the z_session_events idempotency
+        // short-circuit below would then permanently skip the pos_shifts
+        // projection on the Horizon retry.
+        DB::transaction(function () use ($event, $payload, $sessionId, $shiftId): void {
+            if (ZSessionEvent::query()->where('fiscal_event_id', $event->id)->exists()) {
+                return;
+            }
 
-        // `pos_shifts` is a projection of the device-authored SESSION_OPEN
-        // (Phase 2). The device is authoritative for the shift lifecycle; this
-        // upserts the derived row keyed by the device shift UUID.
-        if ($event->event_type === FiscalEventType::SESSION_OPEN) {
-            $this->projectPosShiftOpen($event, $payload, $shiftId);
-        }
+            ZSessionEvent::query()->create([
+                'id' => (string) $event->id,
+                'fiscal_event_id' => (string) $event->id,
+                'tenant_id' => (string) $event->tenant_id,
+                'company_id' => (string) $event->company_id,
+                'terminal_id' => (string) $event->terminal_id,
+                'shift_id' => is_string($shiftId) && $shiftId !== '' ? $shiftId : null,
+                'session_id' => $sessionId,
+                'event_type' => $event->event_type->value,
+                'chain_context' => (string) $event->chain_context,
+                'sequence_number' => (int) $event->sequence_number,
+                'previous_hash' => (string) $event->previous_hash,
+                'current_hash' => (string) $event->current_hash,
+                'business_date' => $event->business_date,
+                'event_time_device' => $event->event_time_device,
+                'payload' => $payload,
+            ]);
 
-        if ($event->event_type === FiscalEventType::SESSION_CLOSE) {
-            $this->projectPosShiftClose($event, $payload, $shiftId);
-        }
+            // `pos_shifts` is a projection of the device-authored SESSION_OPEN /
+            // SESSION_CLOSE. The device is authoritative for the shift lifecycle.
+            if ($event->event_type === FiscalEventType::SESSION_OPEN) {
+                $this->projectPosShiftOpen($event, $payload, $shiftId);
+            }
+
+            if ($event->event_type === FiscalEventType::SESSION_CLOSE) {
+                $this->projectPosShiftClose($event, $payload, $shiftId);
+            }
+        });
     }
 
     /**
@@ -187,7 +201,21 @@ final class ZSessionLifecycleProjection implements FiscalEventProjector
         }
 
         $shift = Shift::query()->whereKey($shiftId)->first();
-        if ($shift === null || $shift->status === ShiftStatus::Closed) {
+        if ($shift === null) {
+            // The SESSION_OPEN projection has not landed yet — per-event jobs on
+            // the fiscal-projections queue carry NO cross-row ordering
+            // guarantee, so a SESSION_CLOSE can be picked up before its open.
+            // Throw so Horizon retries this close (backoff [10,30,…]) until the
+            // open's pos_shifts row exists; the open event is guaranteed present
+            // on the chain. (Clean-slate: there is no grandfathered
+            // no-projection case to no-op on.)
+            throw new RuntimeException(sprintf(
+                'SESSION_CLOSE %s arrived before its pos_shift %s was projected; retrying until the SESSION_OPEN projection lands.',
+                $event->id,
+                $shiftId,
+            ));
+        }
+        if ($shift->status === ShiftStatus::Closed) {
             return;
         }
 
@@ -203,7 +231,17 @@ final class ZSessionLifecycleProjection implements FiscalEventProjector
         $countedRaw = $payload['counted_cash'] ?? null;
         $expectedCash = is_string($expectedRaw) && is_numeric($expectedRaw) ? $expectedRaw : null;
         $countedCash = is_string($countedRaw) && is_numeric($countedRaw) ? $countedRaw : null;
-        $varianceSeverity = is_string($payload['variance_severity'] ?? null) ? $payload['variance_severity'] : null;
+
+        // The device severity domain (computeCashCountSeverity) includes
+        // 'balanced' for a zero-variance close, but pos_shifts.variance_severity
+        // is constrained (pos_shifts_variance_severity_enum, PG-only) to
+        // info|warning|critical|NULL. Map anything outside that set — 'balanced'
+        // included — to NULL so the projection never violates the CHECK and
+        // dead-letters on PostgreSQL.
+        $severityRaw = $payload['variance_severity'] ?? null;
+        $varianceSeverity = is_string($severityRaw)
+            ? VarianceSeverity::tryFrom($severityRaw)?->value
+            : null;
 
         $managerApproval = $payload['manager_approval'] ?? null;
         $managerOverrideBy = is_array($managerApproval) && is_string($managerApproval['supervisor_user_id'] ?? null)

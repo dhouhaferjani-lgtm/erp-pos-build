@@ -184,15 +184,40 @@ final class PosShiftProjectionTest extends TestCase
         $this->assertSame(1, Shift::query()->where('id', $shiftId)->count());
     }
 
-    public function test_session_close_for_a_missing_shift_is_a_noop(): void
+    public function test_session_close_before_its_open_throws_for_retry(): void
     {
-        // SESSION_CLOSE with no projected pos_shift (grandfathered/out-of-order)
-        // must not crash the projector or create a phantom row.
+        // Per-event projection jobs carry no cross-row ordering guarantee, so a
+        // SESSION_CLOSE can be picked up before its SESSION_OPEN. The close must
+        // throw (retryable) — never silently no-op and lose the close — so it
+        // re-applies once the open's pos_shift row exists.
         $shiftId = Str::uuid()->toString();
+
+        $this->expectException(\RuntimeException::class);
         $this->app->make(ZSessionLifecycleProjection::class)
             ->apply($this->makeSessionCloseEvent($shiftId, sequenceNumber: 1));
+    }
 
-        $this->assertNull(Shift::query()->find($shiftId));
+    public function test_session_close_maps_balanced_severity_to_null(): void
+    {
+        // The device emits variance_severity='balanced' for a zero-variance
+        // close, but pos_shifts.variance_severity only allows
+        // info|warning|critical|NULL (PG CHECK). 'balanced' must map to NULL.
+        $shiftId = Str::uuid()->toString();
+        $projector = $this->app->make(ZSessionLifecycleProjection::class);
+        $projector->apply($this->makeSessionOpenEvent($shiftId, shiftNumber: 1));
+        $projector->apply($this->makeSessionCloseEvent($shiftId, sequenceNumber: 2));
+
+        $this->assertNull(Shift::query()->findOrFail($shiftId)->variance_severity);
+    }
+
+    public function test_session_close_preserves_a_valid_severity(): void
+    {
+        $shiftId = Str::uuid()->toString();
+        $projector = $this->app->make(ZSessionLifecycleProjection::class);
+        $projector->apply($this->makeSessionOpenEvent($shiftId, shiftNumber: 1));
+        $projector->apply($this->makeSessionCloseEvent($shiftId, sequenceNumber: 2, payloadOverrides: ['variance_severity' => 'warning']));
+
+        $this->assertSame('warning', Shift::query()->findOrFail($shiftId)->variance_severity);
     }
 
     public function test_shift_resource_exposes_device_reconcile_fields(): void
@@ -267,12 +292,13 @@ final class PosShiftProjectionTest extends TestCase
     }
 
     /**
+     * @param  array<string, mixed>  $payloadOverrides
      * @param  array<string, mixed>  $overrides
      */
-    private function makeSessionCloseEvent(string $shiftId, int $sequenceNumber, array $overrides = []): FiscalEvent
+    private function makeSessionCloseEvent(string $shiftId, int $sequenceNumber, array $payloadOverrides = [], array $overrides = []): FiscalEvent
     {
         $closeUuid = Str::uuid()->toString();
-        $payload = [
+        $payload = array_merge([
             'business_date' => '2026-06-14',
             'closure_status' => 'closed',
             'counted_cash' => '150.000',
@@ -290,7 +316,7 @@ final class PosShiftProjectionTest extends TestCase
             'variance_direction' => 'balanced',
             'variance_reason' => null,
             'variance_severity' => 'balanced',
-        ];
+        ], $payloadOverrides);
         $canonicalBytes = json_encode(['payload' => $payload], JSON_THROW_ON_ERROR);
 
         return FiscalEvent::query()->create(array_merge([
