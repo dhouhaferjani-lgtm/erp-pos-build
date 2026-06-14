@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Domain;
 
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Enums\ProductType;
@@ -64,6 +65,8 @@ use Illuminate\Support\Carbon;
  * @property-read AutomotiveProductMetadata|null $automotiveMetadata
  * @property-read EnrichmentResult|null $latestEnrichmentResult
  * @property-read Collection<int, EnrichmentResult> $enrichmentResults
+ * @property-read Collection<int, ProductVariant> $activeVariants
+ * @property-read int $active_variants_count Populated by withCount('activeVariants')
  */
 class Product extends Model implements SellableContract
 {
@@ -355,5 +358,41 @@ class Product extends Model implements SellableContract
     public function enrichmentResults(): HasMany
     {
         return $this->hasMany(EnrichmentResult::class);
+    }
+
+    /**
+     * Active variants of this product (is_active = true, not soft-deleted).
+     * Used by withCount('activeVariants') in ProductController::index to avoid N+1.
+     *
+     * @return HasMany<ProductVariant, $this>
+     */
+    public function activeVariants(): HasMany
+    {
+        return $this->hasMany(ProductVariant::class)->where('is_active', true);
+    }
+
+    /**
+     * Whether this product has at least one active variant.
+     *
+     * Resolution order (fastest first):
+     *   1. `active_variants_count` populated by ->withCount('activeVariants') — no extra query.
+     *   2. Loaded `activeVariants` relation — no extra query.
+     *   3. Fallback exists() query — one query per product (N+1 risk; only used in
+     *      non-index callsites that did not eager-load).
+     */
+    public function getHasVariantsAttribute(): bool
+    {
+        // Priority 1: withCount populated the aggregate column.
+        if (isset($this->attributes['active_variants_count'])) {
+            return ((int) $this->attributes['active_variants_count']) > 0;
+        }
+
+        // Priority 2: relation already loaded in memory.
+        if ($this->relationLoaded('activeVariants')) {
+            return $this->activeVariants->isNotEmpty();
+        }
+
+        // Priority 3: single exists() query (N+1 risk — avoid in list contexts).
+        return $this->activeVariants()->exists();
     }
 }

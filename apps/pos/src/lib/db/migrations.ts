@@ -1647,4 +1647,15 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_product_variants_barcode ON product_variants(barcode);
     `,
   },
+  {
+    // M4 adversarial-review: persist has_variants from the server /products
+    // feed so the POS knows offline whether a product requires variant
+    // selection before cart-add (opens VariantPickerModal instead of
+    // directly calling addItemGated). Default 0 is safe for existing rows —
+    // they stay on the non-variant path until the next catalog sync writes
+    // the server-authoritative value. See ProductData.has_variants (backend).
+    version: 54,
+    name: 'add_has_variants_to_products',
+    sql: `ALTER TABLE products ADD COLUMN has_variants INTEGER NOT NULL DEFAULT 0`,
+  },
 ];

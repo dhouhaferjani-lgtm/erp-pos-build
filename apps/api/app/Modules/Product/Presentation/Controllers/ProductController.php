@@ -86,6 +86,7 @@ class ProductController extends Controller
 
         $query = Product::query()
             ->where('company_id', $companyId)
+            ->withCount(['activeVariants'])
             ->with($with);
 
         // Apply filters

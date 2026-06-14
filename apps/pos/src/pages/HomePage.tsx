@@ -336,7 +336,12 @@ export function HomePage() {
   const addProductToCartWithToast = useCallback(
     (product: POSProduct) => {
       const { autoAddToCart } = useScannerStore.getState();
-      if (!autoAddToCart) return;
+      if (!autoAddToCart) {
+        // Part C: clear the "looking up" banner set by handleProductBarcode so it
+        // doesn't remain stuck when the user is in manual-add mode.
+        setScanMessage(null);
+        return;
+      }
       // BUG FIX (FV5): a scanned PARENT barcode of a variant product must open
       // the picker, not add the base product (matches handleAddToCart tile-tap).
       // This is belt-and-suspenders: routeScanResult already routes hit+has_variants
@@ -347,7 +352,12 @@ export function HomePage() {
       }
       void (async () => {
         const added = await addItemGated(product);
-        if (!added) return;
+        if (!added) {
+          // Part C: the stock gate fired its own sonner toast; clear the "looking up"
+          // scan banner so it doesn't remain stuck after the blocked add.
+          setScanMessage(null);
+          return;
+        }
         setScanMessage({ text: t('barcode.productAdded', { name: product.name }), type: 'success' });
         setTimeout(() => setScanMessage(null), 2000);
       })();
@@ -420,7 +430,11 @@ export function HomePage() {
             addProductToCartWithToast,
             addVariantToCart: (product, variant) => {
               const { autoAddToCart } = useScannerStore.getState();
-              if (!autoAddToCart) return;
+              if (!autoAddToCart) {
+                // Part C: clear the "looking up" banner set before scan resolution.
+                setScanMessage(null);
+                return;
+              }
               void (async () => {
                 const added = await addItemGated(product, { variant });
                 if (added) {
@@ -429,6 +443,9 @@ export function HomePage() {
                     type: 'success',
                   });
                   setTimeout(() => setScanMessage(null), 2000);
+                } else {
+                  // Part C: stock gate fired its own sonner toast; clear the scan banner.
+                  setScanMessage(null);
                 }
               })();
             },
