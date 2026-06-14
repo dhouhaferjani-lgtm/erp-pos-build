@@ -712,7 +712,10 @@ export interface VariantFeedPage {
 }
 
 export async function fetchVariants(
-  params: { updated_since?: string; page?: string },
+  // `updated_until` pins the delta read window across all pages of one sync
+  // (M1 fix H-1): page 1 omits it and the server mints as_of=now(); pages 2+
+  // echo page-1's as_of so every page shares the same upper bound.
+  params: { updated_since?: string; updated_until?: string; page?: string },
   opts?: ApiRequestOptions,
 ): Promise<VariantFeedPage> {
   return apiGetRaw<VariantFeedPage>('/pos/variants', params, opts);
@@ -748,8 +751,11 @@ export async function pullProductVariants(
   let lastPage = 1;
 
   do {
-    const params: { updated_since?: string; page?: string } = { page: String(page) };
+    const params: { updated_since?: string; updated_until?: string; page?: string } = { page: String(page) };
     if (cursor !== null) params.updated_since = cursor;
+    // M1 fix H-1: pin the upper bound to page-1's as_of on every subsequent
+    // page so the multi-page delta is read from a single snapshot window.
+    if (asOf !== null) params.updated_until = asOf;
     const result = await fetchVariants(params, { signal: opts.signal, timeoutMs: opts.timeoutMs });
     allVariants.push(...result.data.variants);
     if (page === 1) { deletedIds = result.data.deleted_ids; asOf = result.data.as_of; }
