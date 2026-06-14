@@ -80,17 +80,26 @@ final class RenditionService
 
             [$width, $height] = $this->imageDimensions($webpBytes);
 
-            MediaRendition::create([
-                'tenant_id' => $asset->tenant_id,
-                'media_asset_id' => $asset->id,
-                'name' => $renditionName,
-                'format' => RenditionFormat::Webp,
-                'storage_disk' => $asset->storage_disk,
-                'storage_path' => $renditionPath,
-                'width' => $width,
-                'height' => $height,
-                'file_size' => strlen($webpBytes),
-            ]);
+            // Idempotent: keyed on the (media_asset_id, name, format) unique index
+            // so a re-run (e.g. a queue retry after a partial success, or a
+            // regenerate command) updates the existing row instead of hitting a
+            // unique-constraint violation. The storage path is deterministic, so
+            // put() above already overwrites the file in place.
+            MediaRendition::updateOrCreate(
+                [
+                    'media_asset_id' => $asset->id,
+                    'name' => $renditionName,
+                    'format' => RenditionFormat::Webp,
+                ],
+                [
+                    'tenant_id' => $asset->tenant_id,
+                    'storage_disk' => $asset->storage_disk,
+                    'storage_path' => $renditionPath,
+                    'width' => $width,
+                    'height' => $height,
+                    'file_size' => strlen($webpBytes),
+                ],
+            );
         }
     }
 

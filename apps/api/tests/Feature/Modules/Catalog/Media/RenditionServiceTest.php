@@ -118,4 +118,42 @@ final class RenditionServiceTest extends TestCase
             );
         }
     }
+
+    public function test_generate_is_idempotent_on_rerun(): void
+    {
+        // A queue retry after a partial success (or a regenerate command) re-runs
+        // generate() for an asset that already has renditions. It must update the
+        // existing rows, not throw on the (media_asset_id, name, format) unique
+        // index, and must not duplicate rows.
+        Storage::fake('s3');
+
+        $tenantId = (string) Str::uuid();
+        $storagePath = 'products/'.$tenantId.'/rerun.jpg';
+
+        $asset = MediaAsset::create([
+            'tenant_id' => $tenantId,
+            'type' => MediaAssetType::Image,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Processing,
+            'storage_disk' => 's3',
+            'storage_path' => $storagePath,
+            'mime_type' => 'image/jpeg',
+            'file_size' => 100,
+        ]);
+
+        Storage::disk('s3')->put($storagePath, $this->tinyJpegBytes());
+
+        /** @var RenditionService $service */
+        $service = app(RenditionService::class);
+
+        $service->generate($asset);
+        // Second run must not throw and must not create duplicates.
+        $service->generate($asset);
+
+        self::assertSame(
+            count(RenditionService::TARGETS),
+            $asset->fresh(['renditions'])?->renditions->count(),
+            'Re-running generate() must keep exactly one rendition per target (idempotent).',
+        );
+    }
 }
