@@ -127,6 +127,28 @@ export function Header() {
         // Load throttle state from local SQLite
         const { getDatabase } = await import('@/lib/db');
         const db = await getDatabase(companyId);
+
+        // B6 (Codex F-2): refresh the durable fraud-settings cache on every
+        // successful online EOD open, so a later OFFLINE close in the same
+        // session reads fresh thresholds — not just the activation-time snapshot.
+        try {
+          const { upsertCompanyFraudSettings } = await import(
+            '@/lib/db/repositories/companyFraudSettingsCacheRepository'
+          );
+          await upsertCompanyFraudSettings(db, {
+            company_id: companyId,
+            cash_variance_over_soft: settings.cashVarianceOverSoft,
+            cash_variance_over_hard: settings.cashVarianceOverHard,
+            cash_variance_under_soft: settings.cashVarianceUnderSoft,
+            cash_variance_under_hard: settings.cashVarianceUnderHard,
+            require_blind_cash_count: settings.requireBlindCashCount,
+            require_manager_pin_above_hard: settings.requireManagerPinAboveHard,
+            cash_variance_email_severity: settings.cashVarianceEmailSeverity,
+          });
+        } catch {
+          // Non-fatal: a cache-write blip must not block the EOD flow.
+        }
+
         const ts = await getTerminalState(db, terminal.id);
         if (!cancelled) {
           setManagerPinThrottleState({
