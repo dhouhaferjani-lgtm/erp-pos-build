@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, Grid3x3, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { ProductMediaItem } from '../types'
-import { getProductImageDownloadUrl } from '../api/productImages'
 
 interface ImageGalleryModalProps {
   productId: string
@@ -14,7 +13,7 @@ interface ImageGalleryModalProps {
 }
 
 export function ImageGalleryModal({
-  productId,
+  productId: _productId,
   images,
   isOpen,
   onClose,
@@ -137,7 +136,7 @@ export function ImageGalleryModal({
                   className="group relative aspect-square overflow-hidden rounded-lg bg-gray-800 transition-transform hover:scale-105"
                 >
                   <img
-                    src={getProductImageDownloadUrl(productId, image.id)}
+                    src={image.url ?? undefined}
                     alt={image.alt ?? ''}
                     className="h-full w-full object-cover"
                   />
@@ -172,7 +171,7 @@ export function ImageGalleryModal({
             {/* Image */}
             <div className="relative max-h-[90vh] max-w-[90vw]">
               <img
-                src={getProductImageDownloadUrl(productId, currentImage.id)}
+                src={currentImage.url ?? undefined}
                 alt={currentImage.alt ?? ''}
                 className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
               />

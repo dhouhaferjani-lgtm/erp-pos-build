@@ -5,7 +5,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   deleteProductImage,
   setProductImagePrimary,
-  getProductImageDownloadUrl,
 } from '../api/productImages'
 import type { ProductMediaItem } from '../types'
 import { getErrorMessage } from '@/lib/api'
@@ -103,7 +102,7 @@ export function ProductImageGallery({
           {/* Image Container */}
           <div className="relative aspect-square overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
             <img
-              src={getProductImageDownloadUrl(productId, image.id)}
+              src={image.url ?? undefined}
               alt={image.alt ?? ''}
               className="h-full w-full object-cover"
               loading="lazy"

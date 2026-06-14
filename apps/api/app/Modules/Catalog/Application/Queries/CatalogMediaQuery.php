@@ -46,7 +46,10 @@ final class CatalogMediaQuery implements CatalogMediaQueryInterface
             $rows = $byOwner[$id] ?? [];
 
             $dtos = array_map(
-                fn ($a) => MediaAttachmentData::fromModel($a, $this->urls->forAttachment($a, 'sm')),
+                // Use forPosSync() here — CatalogMediaQuery feeds the POS sync payload
+                // whose image_url shape is frozen (Tauri cache key).  The SPA uses
+                // forAttachment() via ProductMediaController/PublicProductMediaController.
+                fn ($a) => MediaAttachmentData::fromModel($a, $this->urls->forPosSync($a, 'sm')),
                 $rows,
             );
 
