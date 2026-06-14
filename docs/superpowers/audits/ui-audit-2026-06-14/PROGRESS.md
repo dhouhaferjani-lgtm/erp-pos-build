@@ -86,13 +86,30 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
   - Migrated by 4 parallel subagents (disjoint feature dirs → 0 conflicts); orchestrator ran the authoritative tsc/tests/lint, the single `dist` build, screenshots, and all commits serially.
 
 ### (original cluster framing — superseded by CANONICALIZATION-SPEC for module order)
+> **Continuation note (branch `feat/ui-consistency-clusters`, off LOCAL dev `04873f158`):** Phase 3.7
+> done; Phase 3.2 ~40% done (18 files). Lint ratchet 11512 → **10807** (−705), 0 errors, tsc clean,
+> all suites green. Pattern proven: parallel subagents on DISJOINT files (presentation-only; preserve
+> every useQuery/mutation key; no shared-file/locale/barrel/test edits), orchestrator runs the
+> authoritative tsc/eslint/vitest + reconciles existing suites + all commits serially.
 - [ ] 3.1 `documents/` (epicenter: 65 raw controls, 5 bespoke modals, ~50 off-theme)
-- [ ] 3.2 finance + treasury (11 bespoke modals, tabular-nums, parseFloat-on-money cross-ref)
+- ◧ 3.2 finance + treasury — **PARTIAL.** ✅ DONE: 5 finance report pages (Aged AR/AP, Trial Balance,
+  P&L, Balance Sheet); 5 list pages (Payment/Repository/Instrument/JournalEntry/Expense); 5 forms
+  (Payment, SplitPayment, JournalEntry, Expense page+fields); 3 treasury detail pages
+  (Payment/Instrument/Repository — bespoke modals → Modal organism). ⏳ REMAINING: detail pages
+  ExpenseDetailPage (54), JournalEntryDetailPage (43), WithholdingCertificateDetail (91); modals
+  AddPaymentMethodModal (23), WithholdingPreviewModal (49), WithholdingRuleFormModal (46),
+  finance AddAccountModal/EditAccountModal; pages BankReconciliationPage (63), PaymentMethodsPage (53),
+  withholding (SalesWithholdingTrackingPage 50, WithholdingCertificatesList 48, WithholdingRulesPage 38);
+  components AllocationPreview (37), OpenInvoicesList (36), PaymentAllocationForm (30),
+  ToleranceSettingsDisplay (15), ExpenseCard/ExpenseList, finance LedgerTable/LedgerFilters/FinanceWidget,
+  GeneralLedgerPage, ChartOfAccountsPage/AccountTreeView. (~46 files / ~1100 warnings left.)
 - [ ] 3.3 admin/settings (10 bespoke modals, 169 raw controls, 3 settings layouts)
 - [ ] 3.4 inventory/catalog (8 bespoke modals, rainbow hub, status badges)
 - [ ] 3.5 POS color drift (keep POSButton/touch layout; adopt tokens; kill glassmorphism/dark)
 - [ ] 3.6 workshop-* (close lint gap; status pills → StatusBadge; modals → Modal)
-- [ ] 3.7 Convert 4 hub pages (Finance/Inventory/POS/Marketing) → HubCard/HubGrid
+- [x] **3.7 Convert 4 hub pages (Finance/Inventory/POS/Marketing) → HubCard/HubGrid** ✅
+  (icons as `LucideIcon` refs, per-card rainbow chips removed, gating + Finance sections + POS
+  Open-POS CTA preserved; 17 tests; color 0/file)
 
 ## Phase 4 — Kill duplicates  ☐
 - [ ] 4.1 Remove 9 `ui/` re-export shims (update importers)
@@ -121,3 +138,8 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
 | 2026-06-14 | 3 | (this commit) | rebased onto origin/dev; DocumentForm canonicalized → PageHeader/card/section-heading/FormField+atoms/Button; added `tokens.heading.section`; 4 tests; tsc clean; web lint 11747→11724 (−23); before/after screenshots |
 | 2026-06-14 | 3 | (this commit) | DocumentListPage canonicalized → ListPageLayout/DataTable/StatusBadge + server pagination (OffsetPagination); retired type/status color maps; fixed `sales:documents.status`-is-an-object header bug (→`common:fields.status`); 4 tests + tenant-scope key updated; tsc clean; web lint 11724→11683 (−41); before/after screenshots |
 | 2026-06-14 | 3 | (8 commits) | inventory (ProductForm, ProductListPage), catalog (CompositeItemListPage, CompositeItemFormPage, ProductVariantMatrixEditor, CategoryManagementPage), menu (MenuListPage, MenuFormPage) — migrated by 4 parallel subagents, serially integrated. tsc clean; +25 TDD tests; 142 pass/4 pre-existing-fail; web lint 11683→11512 (−171); runtime-smoke + before/after screenshots for 7 routes |
+| 2026-06-14 | 3.7 | `8a40dea3b` | **branch `feat/ui-consistency-clusters` off LOCAL dev `04873f158`.** 4 hub pages (Finance/Inventory/POS/Marketing) → PageHeader+HubGrid/HubCard; rainbow chips removed; 17 TDD tests; tsc clean; web lint 11512→11456 (−56) |
+| 2026-06-14 | 3.2 | `02b79390e` | 5 finance report pages (Aged AR/AP, Trial Balance, P&L, Balance Sheet) → PageHeader/Button/FormField + tokenized tables + tabular-nums; 3 parallel subagents; 5 TDD suites, 34 tests; web lint 11456→11320 (−136) |
+| 2026-06-14 | 3.2 | `706e988b8` | 5 list pages (treasury Payment/Repository/Instrument, finance JournalEntry, Expense) → ListPageLayout/DataTable/StatusBadge/OffsetPagination (presentation-only, keys preserved); 5 TDD suites; 44 tests incl. tenantScope; web lint 11320→11174 (−146) |
+| 2026-06-14 | 3.2 | `a99495fd4` | 5 form files (treasury Payment/SplitPayment, finance JournalEntry, Expense page+fields) → PageHeader/card/FormField+atoms/MoneyInput/StickyFormFooter; reconciled treasury.test.tsx + finance/JournalEntryForm.test.tsx (link→Button, loading-text→DataTable skeleton); 113 tests; web lint 11174→11028 (−146) |
+| 2026-06-14 | 3.2 | `8d32dfff0` | 3 treasury detail pages (Payment/Instrument/Repository) → PageHeader/StatusBadge/tokenized tables; bespoke modals → Modal organism; 3 TDD suites; 67 tests incl. tenantScope; web lint 11028→10807 (−221) |
