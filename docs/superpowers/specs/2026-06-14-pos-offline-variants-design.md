@@ -2,7 +2,7 @@
 
 - **Date:** 2026-06-14
 - **Branch:** `feat/pos-offline-variants` (forked off `dev` at `a9d483def`)
-- **Status:** Draft — pending user review
+- **Status:** Draft (rev2 — incorporates adversarial review `docs/superpowers/reviews/2026-06-14-pos-offline-variants-adversarial-review.md`) — pending user review
 - **Author:** brainstorming session (Claude)
 - **Program:** This is **Spec A** of a 3-spec variant program ("close the variant gap once and for all"):
   - **A — POS offline variant support** (this doc): on-device catalog + offline picker + offline scan-to-variant.
@@ -44,10 +44,11 @@ Industry research (Shopify/Square/Lightspeed/Clover/Toast/Odoo + GS1) is decisiv
 | B | Picker layout | **Flat variant list** (existing `VariantPickerModal` / `ProductVariantStockView`), rewired to read local-first. Axis chips deferred. |
 | C | Scan resolution | **Variant-barcode tier added to the existing tiered resolver**; a variant-barcode hit returns the exact variant. **Square-style**, no parent detour. |
 | D | Parent-barcode scan on a variant product | **Open the picker** (fixes the current bug), matching tile-tap behavior. |
-| E | Scan auto-add | **Auto-add the exact variant** with no confirmation step (owner-approved). |
-| F | Sync | **Dedicated `GET /pos/variants` delta endpoint** mirroring `/pos/stock-levels` (full/delta/tombstone). |
-| G | Permission | **None new** — variant catalog is core catalog (like products). Standard POS sync middleware. |
+| E | Scan auto-add | **Auto-add the exact variant** with no confirmation step (owner-approved). **Only `is_active` variants** auto-resolve (see I). |
+| F | Sync | **Dedicated `GET /pos/variants` endpoint.** Delta **cursor** mechanics mirror `/pos/stock-levels` (server `as_of`); **tombstones** mirror the `/products` pull (`pullProductsCore` + `deleted_ids`) — **NOT** stock-levels, which has no tombstone. **Company-scoped, no `terminal_id`** (catalog is company-wide, unlike per-terminal stock). |
+| G | Permission/auth | **No new permission.** Reuse `Gate::authorize('pos.operate_terminal')` (the existing POS sync gate) + standard POS route-group middleware. |
 | H | 2D/QR | Opaque-string match against the barcode index in v1; GS1 parsing deferred to C. |
+| I | Active-only safety | Local scan resolution + picker show **`is_active = 1` only**. A deactivated/soft-deleted variant must never scan-resolve-and-auto-add (would bypass the picker and sell a withdrawn SKU). |
 
 ## 5. Current-State Findings (reconnaissance)
 
@@ -90,10 +91,15 @@ SCAN (offline-capable, PRIMARY path):
 
 ### 6.2 Backend — `GET /api/v1/pos/variants`
 
-- Mounted in the existing POS route group (`['api','auth:sanctum',SetPermissionsTeam,EnforceTokenTenantClaim]`). No new permission.
-- Query: `updated_since` (optional ISO), `page` (pagination like stock-levels). Tenant + company scoped via `CompanyContext`.
-- Returns `{ data: { variants: ProductVariantData[], deleted_ids: string[], as_of }, meta: { pagination } }` — same envelope shape as `/pos/stock-levels` (full snapshot on no-cursor; delta when `updated_since` given; `deleted_ids` = soft-deleted/deactivated since cursor). Quantities/prices as decimal **strings**.
-- New `LocationStockReader`-style reader or a small `PosVariantQueryService` in the Catalog module (constructor-injected). Reuses `ProductVariantData`.
+- Mounted in the existing POS route group (`['api','auth:sanctum',SetPermissionsTeam,EnforceTokenTenantClaim]`). **`Gate::authorize('pos.operate_terminal')`** — no new permission.
+- **Company-scoped, NO `terminal_id`** (rev2). The variant catalog is company-wide; unlike `/pos/stock-levels` (which requires a `terminal_id` to resolve the device's location), this feed must not require or accept a terminal. Tenant + company resolved via `CompanyContext`.
+- Query params: `updated_since` (optional ISO), `page` (pagination — a **full snapshot must paginate**, like `/products`). 
+- Returns `{ data: { variants: PosVariantData[], deleted_ids: string[], as_of }, meta: { pagination } }`:
+  - **No cursor** → full snapshot of all `is_active` variants for the company (paginated; `deleted_ids` empty).
+  - **`updated_since` given** → `variants` = rows with `updated_at > cursor` (this naturally includes **reactivations**, since flipping `is_active` back to true bumps `updated_at`); `deleted_ids` = **tombstones** = variant ids that became unsellable since the cursor, i.e. `deleted_at > cursor` (soft-delete) **OR** `is_active = false AND updated_at > cursor` (deactivation). A row appears in **exactly one** of `variants` / `deleted_ids`.
+  - `as_of` = **server** timestamp watermark for the next pull's `updated_since` (clock-skew-safe; never device time).
+- **Slim device DTO `PosVariantData`** (rev2 — do NOT reuse the full `ProductVariantData`, which carries `tenant_id`/`company_id`/`cost_override` the device must not see): `{ id, product_id, sku, barcode, name_suffix, price_override, image_url, is_default, display_order, updated_at }`. Prices as decimal **strings**.
+- New `PosVariantQueryService` in the Catalog module (constructor-injected), exposing the snapshot + delta + tombstone queries above. Tombstone capture has no existing precedent here — it must be implemented and tested explicitly (`onlyTrashed`/`withTrashed` for soft-deletes + the `is_active=false` arm).
 
 ### 6.3 POS — local table (migration v53)
 
@@ -119,17 +125,27 @@ CREATE INDEX IF NOT EXISTS idx_product_variants_barcode ON product_variants(barc
 
 ### 6.4 POS — sync wiring
 
-`syncService.ts`: add `pullVariants(db)` mirroring `pullLocationStock` (full on first/claim, delta on tick, `variants_as_of` cursor, tombstone via `deleteVariantsForProducts`). Cascade-evict on product tombstone alongside the existing `deleteLocationStockForProducts`. New `stockApi`-style `variantSyncApi.fetchVariants(params)` using `apiGetRaw` (preserves `meta.pagination`).
+`syncService.ts`: add `pullVariants(db)`. The **delta/cursor/pagination** loop mirrors `pullLocationStock` (full on first/claim, delta on tick, server `variants_as_of` cursor). The **tombstone** handling mirrors `pullProductsCore` (the products pull is the real tombstone precedent — stock-levels has none): apply `deleted_ids` via `deleteVariantsById(ids)` after each delta. **Two distinct deletion paths:** (a) `deleted_ids` from the feed (variant deactivated/soft-deleted), and (b) **cascade** on product tombstone — when `pullProductsCore` removes a product, also `deleteVariantsForProducts([...])` (alongside the existing `deleteLocationStockForProducts`). New `variantSyncApi.fetchVariants(params)` using `apiGetRaw` (preserves `meta.pagination`).
 
 ### 6.5 POS — picker rewire
 
-`useProductVariants(productId)` becomes local-first: read `getVariantsForProduct` from SQLite (synchronous-feeling, offline); if online, kick a background refresh that upserts and re-reads. Map the local row → `POSProductVariant` (the existing type). `VariantPickerModal` / `ProductVariantStockView` are **unchanged** (same props, same flat list + per-variant stock from `location_stock`). The online-only error branch is replaced by: local data if present, else (offline + no cache) a "connect to load variants" message.
+`useProductVariants(productId)` becomes local-first: read `getVariantsForProduct` (active only) from SQLite (offline-capable); if online, kick a background refresh that upserts and re-reads. Map the local row → `POSProductVariant` (the existing type).
+
+**The hook contract changes (rev2 — not literally "unchanged").** The old shape is React-Query `{ data, isLoading, isError }`; the new local-first hook must expose enough to distinguish three states the modal now needs:
+- **have local variants** → render the list (works offline);
+- **none locally + online** → cold-start: live-fetch fallback (loading) then upsert;
+- **none locally + offline** → "connect to load variants" message (new i18n key).
+
+So `VariantPickerModal` / `ProductVariantStockView` get a **small additive change** (the offline-no-cache state + key); their core flat-list + per-variant-stock rendering (stock from `location_stock`) is otherwise the same. Note: a "synced but legitimately empty" product and a "not-yet-synced" product must be distinguishable (e.g. a `hasSyncedOnce`/source flag) so we don't show "connect to load" for a product that genuinely has zero active variants.
 
 ### 6.6 POS — scan-to-variant
 
-`resolveScannedCode.ts`: insert a **variant-barcode tier**. After the product in-memory/SQLite tiers miss (or before — see ordering note), query `getVariantByBarcode(code)`. On a hit, return a new result kind `{ kind: 'variant-hit', product, variant }`. `HomePage` handles `variant-hit` by `addItemGated(product, { variant })` + success toast (reusing the variant-grain stock gate).
-- **Ordering:** check the variant barcode index in the same SQLite tier as the product lookup (one extra indexed query). A code is either a product barcode or a variant barcode (variant barcodes are unique per tenant); if both somehow match, prefer the variant (more specific) — or surface `BarcodeChooserModal`.
-- **Bug fix:** `addProductToCartWithToast` (the auto-add path) must mirror `handleAddToCart`: if the resolved product `has_variants` and we did NOT arrive via a variant-hit, open `VariantPickerModal` instead of adding the base product.
+`resolveScannedCode.ts`: add a **variant-barcode tier** and a new result kind `{ kind: 'variant-hit', product, variant }`. Concretely:
+- **Local SQLite tier:** in the same tier as the existing product `getProductsByBarcode`, also run `getVariantByBarcode(code)` (one extra indexed query). `getVariantByBarcode` **MUST filter `is_active = 1`** (rev2 / HIGH-3) — a deactivated/withdrawn variant must never resolve-and-auto-add, which would bypass the picker and sell a withdrawn SKU. (The backend `findByBarcode` does *not* filter active and is company- vs the tenant-scoped unique index — so we do not rely on it; the local query owns this guard.)
+- **Collision:** in practice a scanned code is a product barcode XOR a variant barcode. If both match (data error), **prefer the variant** (more specific) for v1. `BarcodeChooserModal` currently renders **products only**, so a genuine product-vs-variant collision is out of its scope in v1 — we prefer-variant and log; extending the chooser to mixed results is a follow-up.
+- **Result-kind ripple (rev2 / MED-1):** adding `'variant-hit'` touches the `result.kind` switch in `HomePage` (the `hit`/`choose`/`miss` handling) and the `autoAddToCart` gate. **Do NOT cache a variant-hit in the Tier-0 recent-scan LRU** — that cache stores `POSProduct` only and can't represent a variant; caching it would lose the variant on a repeat scan. The variant lookup is an indexed SQLite hit, so skipping the LRU is cheap.
+- `HomePage` handles `variant-hit` by `addItemGated(product, { variant })` + success toast (reusing the variant-grain stock gate + variant pricing already in `cartStore`).
+- **Bug fix:** `addProductToCartWithToast` (the auto-add path) must mirror `handleAddToCart`: if the resolved product `has_variants` and we did NOT arrive via a `variant-hit`, open `VariantPickerModal` instead of adding the base product. (Non-double-fire: a `variant-hit` adds directly and never reaches this branch; a plain product `hit` with `has_variants` opens the picker.)
 
 ### 6.7 Cross-location knock-on
 
@@ -142,17 +158,18 @@ Read-only catalog cache, per-device, refreshed on sync — no writes, no fiscal/
 ## 8. Testing (TDD)
 
 ### Backend (PHPUnit, scoped with `--filter`)
-1. `/pos/variants` full snapshot returns active variants for the company (tenant/company scoped; another tenant's excluded).
-2. Delta (`updated_since`) returns only changed variants + `deleted_ids` for soft-deleted/deactivated since the cursor.
-3. Decimal `price_override` serialized as string; pagination envelope matches `/pos/stock-levels`.
-4. No new permission required (standard POS middleware); `EnforceTokenTenantClaim` mismatch → 401.
+1. `/pos/variants` full snapshot returns `is_active` variants for the company (tenant + company scoped; another tenant's/company's excluded); pagination works for a large snapshot.
+2. Delta (`updated_since`) returns only `updated_at > cursor` variants; `as_of` is the server watermark.
+3. **Tombstone capture (all three triggers):** `deleted_ids` includes a **soft-deleted** variant (`deleted_at > cursor`) AND a **deactivated** variant (`is_active=false, updated_at > cursor`); a **reactivated** variant (`is_active` flipped back true) appears in `variants`, NOT `deleted_ids`; a row is in exactly one list.
+4. Endpoint is **company-scoped with no `terminal_id`** (does not require/accept it). Reuses `pos.operate_terminal`; `EnforceTokenTenantClaim` mismatch → 401.
+5. The slim `PosVariantData` does NOT leak `tenant_id`/`company_id`/`cost_override`; `price_override` is a decimal string.
 
 ### Frontend (Vitest)
-1. `variantRepository`: upsert/get-by-product (active, ordered)/get-by-barcode/delete-for-products; decimal strings preserved; v53 migration runs in the real in-memory harness.
-2. `pullVariants`: full vs delta vs tombstone (mirror the stock-pull tests).
-3. `useProductVariants` reads local-first (offline returns cached variants with no network); online triggers background refresh.
-4. `resolveScannedCode`: a variant-barcode scan returns `variant-hit` with the exact variant and does NOT fall through to the base product; a product-barcode scan for a `has_variants` product surfaces the picker, not a base-product add.
-5. `HomePage` scan handling: `variant-hit` → `addItemGated(product, { variant })`; parent-barcode + `has_variants` → picker; unknown → existing miss toast.
+1. `variantRepository`: upsert/get-by-product (active, ordered by display_order)/`getVariantByBarcode` (**`is_active=1` only**)/delete-by-id/delete-for-products; decimal strings preserved; v53 migration runs in the real in-memory harness.
+2. `pullVariants`: full vs delta; applies `deleted_ids` (delete-by-id) AND cascades on product tombstone (`deleteVariantsForProducts`); uses the server cursor.
+3. `useProductVariants` reads local-first (offline returns cached active variants, no network); online triggers a background refresh; distinguishes **synced-empty** (no message) from **not-yet-synced offline** ("connect to load variants").
+4. `resolveScannedCode`: a variant-barcode scan returns `variant-hit` with the exact variant and does NOT fall through to the base product; **a deactivated variant's barcode does NOT resolve (no auto-add)**; a product-barcode scan for a `has_variants` product surfaces the picker, not a base-product add; a `variant-hit` is **not written to the recent-scan LRU**.
+5. `HomePage` scan handling: `variant-hit` → `addItemGated(product, { variant })`; parent-barcode + `has_variants` → picker (no double-fire); unknown → existing miss toast.
 6. Cold start (online, variants not yet synced) → picker live-fetch fallback; offline + no cache → "connect to load variants".
 
 ### Quality gates
@@ -163,8 +180,12 @@ Read-only catalog cache, per-device, refreshed on sync — no writes, no fiscal/
 
 No flag needed — this is a strict capability addition (offline + scan) on top of existing online behavior. Variant sync is additive; tenants without variants get empty pulls. Ships safely; manual Tauri smoke for scan-to-variant + offline picker before relying on it in a demo.
 
-## 10. Open questions / to confirm during implementation
+## 10. Open questions / residual items (to handle during the plan)
 
-- **Scan ordering** detail (variant tier before vs alongside product tier) — finalize in the resolver to keep a single indexed SQLite round-trip.
-- Whether to **drop** the cross-location `variant_label`-from-cache workaround in this spec or as a follow-up (low priority).
-- Backend reader placement: a small `PosVariantQueryService` in Catalog vs extending an existing POS sync service — decide against the real module boundaries during the plan.
+- **`display_order` tie-break:** order the local picker by `(display_order, id)` for deterministic ordering when `display_order` collides.
+- **NULL-barcode rows:** variants may have `barcode = NULL`; ensure `getVariantByBarcode` never matches NULL/empty scans (guard empty string) and the barcode index tolerates NULLs.
+- **Product-loses-all-variants** (transient): a product whose variants are all removed should fall back to non-variant behaviour or show "no active variants"; covered by the synced-empty vs not-synced distinction (§6.5).
+- Whether to **drop** the cross-location `variant_label`-from-cache workaround in this spec or as a follow-up (low priority — the knock-on §6.7 makes it redundant either way).
+- Backend reader placement: `PosVariantQueryService` in the Catalog module vs a POS-module reader — decide against the real module boundaries (Catalog owns variants; the POS module consumes via a contract) during the plan.
+
+> Adversarial review verified-correct (no action needed): the variant-scan bug is real; v53 is the right migration version; offline variant **pricing** (`cartStore` resolves `variant.price_override`), **fiscal** variant signing (`SaleReceiptV2Payload`), offline **variant-grain stock gating**, and the `location_stock` variant-UUID **join** all already work; route-group middleware, `apiGetRaw`, and `getDatabase` are as described.
