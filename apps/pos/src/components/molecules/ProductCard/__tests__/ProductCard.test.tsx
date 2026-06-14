@@ -190,4 +190,24 @@ describe('ProductCard layout regressions', () => {
     card.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
     expect(onAdd).toHaveBeenCalledTimes(2);
   });
+
+  it('renders an eye button when onViewDetails is provided and opens details on click without adding to cart', () => {
+    const onViewDetails = vi.fn();
+    const onAddToCart = vi.fn();
+    const product = makeProduct({ id: 'p1', name: 'Widget', sale_price: '5.00', stock_quantity: 10 });
+    renderCard({ product, onAddToCart, onViewDetails });
+    fireEvent.click(screen.getByTestId('view-details-button'));
+    expect(onViewDetails).toHaveBeenCalledWith(product);
+    expect(onAddToCart).not.toHaveBeenCalled();
+  });
+
+  it('keyboard-activating the eye button does NOT add to cart (H1)', () => {
+    const onViewDetails = vi.fn();
+    const onAddToCart = vi.fn();
+    const product = makeProduct({ id: 'p1', name: 'Widget', sale_price: '5.00', stock_quantity: 10 });
+    renderCard({ product, onAddToCart, onViewDetails });
+    const eye = screen.getByTestId('view-details-button');
+    fireEvent.keyDown(eye, { key: 'Enter' });
+    expect(onAddToCart).not.toHaveBeenCalled();
+  });
 });

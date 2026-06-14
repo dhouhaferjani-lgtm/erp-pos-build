@@ -20,6 +20,7 @@ use App\Modules\POS\Presentation\Controllers\PosStockLevelController;
 use App\Modules\POS\Presentation\Controllers\ReceiptController;
 use App\Modules\POS\Presentation\Controllers\ReportController;
 use App\Modules\POS\Presentation\Controllers\ShiftController;
+use App\Modules\POS\Presentation\Controllers\StockDistributionController;
 use App\Modules\POS\Presentation\Controllers\SyncController;
 use App\Modules\POS\Presentation\Controllers\TerminalController;
 use App\Modules\POS\Presentation\Controllers\VoucherSyncController;
@@ -103,6 +104,9 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     // Location stock feed for the device sync (spec 2026-06-11 §4.1)
     Route::get('/pos/stock-levels', [PosStockLevelController::class, 'index']);
+
+    // Cross-location stock distribution for one product (Task B5 — gated + variant-aware)
+    Route::get('/pos/products/{product}/stock-distribution', [StockDistributionController::class, 'show']);
 
     // Voucher + receipt-QR-index sync (Session 1.5 — offline POS mirror)
     Route::get('/pos/vouchers/sync', [VoucherSyncController::class, 'pullVouchers']);

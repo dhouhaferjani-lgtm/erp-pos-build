@@ -40,7 +40,20 @@ export async function fetchProductByBarcode(
 }
 
 export async function fetchCompanyConfig(): Promise<CompanyConfig> {
-  return apiGet<CompanyConfig>('/company/config');
+  const config = await apiGet<CompanyConfig>('/company/config');
+  // Persist offline so the cross-location gate survives a restart (H2).
+  // Dynamic import avoids a productApi → authStore static cycle.
+  try {
+    const { useAuthStore } = await import('@/stores/authStore');
+    const companyId = useAuthStore.getState().companyId;
+    if (companyId) {
+      const { persistCompanyConfig } = await import('@/lib/companyConfigCache');
+      await persistCompanyConfig(companyId, config).catch(() => {});
+    }
+  } catch {
+    // Best-effort — never break the fetch path
+  }
+  return config;
 }
 
 interface ActiveMenuCategory {

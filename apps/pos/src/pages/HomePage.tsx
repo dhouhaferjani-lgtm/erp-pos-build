@@ -47,6 +47,7 @@ import { TerminalNotReadyBanner } from '@/components/atoms/TerminalNotReadyBanne
 import { ConsumptionModeToggle } from '@/components/atoms/ConsumptionModeToggle';
 import { TableSelector } from '@/components/atoms/TableSelector';
 import { ProductGrid } from '@/components/organisms/ProductGrid';
+import { ProductDetailDrawer } from '@/components/organisms/ProductDetailDrawer';
 import { TransactionCart } from '@/components/organisms/TransactionCart';
 import { CashPaymentScreen } from '@/components/organisms/CashPaymentScreen';
 import { CheckoutSuccessModal } from '@/components/organisms/CheckoutSuccessModal';
@@ -230,6 +231,7 @@ export function HomePage() {
 
   // Modifier selection state
   const [modifierProduct, setModifierProduct] = useState<POSProduct | null>(null);
+  const [detailProduct, setDetailProduct] = useState<POSProduct | null>(null);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
 
   // T2 — variant picker state: the product whose variants the cashier is
@@ -889,6 +891,10 @@ export function HomePage() {
     [],
   );
 
+  const handleViewDetails = useCallback((product: POSProduct) => {
+    setDetailProduct(product);
+  }, []);
+
   const handleEditModifiers = useCallback(
     (itemId: string) => {
       const cartItem = cartItems.find((i) => i.id === itemId);
@@ -1406,6 +1412,7 @@ export function HomePage() {
           categories={categories}
           onAddToCart={handleAddToCart}
           onCustomize={handleCustomize}
+          onViewDetails={handleViewDetails}
           cartProductIds={cartProductIds}
           isLoading={productsLoading}
           locationStock={locationStock}
@@ -1519,6 +1526,14 @@ export function HomePage() {
         onClose={() => setVariantPickerProduct(null)}
         product={variantPickerProduct}
         onConfirm={handleVariantConfirm}
+      />
+
+      {/* Product detail drawer — eye icon on a product tile opens this */}
+      <ProductDetailDrawer
+        isOpen={detailProduct !== null}
+        product={detailProduct}
+        onClose={() => setDetailProduct(null)}
+        locationStock={detailProduct ? locationStock[detailProduct.id] : undefined}
       />
 
       {/* T2.1 Step B — barcode collision chooser. Mounts when the scan

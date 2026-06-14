@@ -14,6 +14,7 @@ import {
   type ServerIncomingRow,
   type ServerStockRow,
 } from '@/lib/db/repositories/locationStockRepository';
+import { deleteDistributionForProducts } from '@/lib/db/repositories/crossLocationStockRepository';
 import { fetchLocationStock, type LocationStockPage } from '@/api/stockApi';
 import { flattenMenuToProducts } from '@/api/productApi';
 import {
@@ -590,6 +591,9 @@ export async function pullProductsCore(
     // Task 8 — tombstone cascade: remove cached location_stock rows for
     // products the server has deleted so stale stock data is never surfaced.
     await deleteLocationStockForProducts(db, deletedIdsAccumulator);
+    // Task F5 — tombstone cascade: evict cross-location distribution cache for
+    // deleted products so the drawer never shows stale data.
+    await deleteDistributionForProducts(db, deletedIdsAccumulator);
   }
 
   if (totalPulled > 0 || deletedIdsAccumulator.length > 0) {

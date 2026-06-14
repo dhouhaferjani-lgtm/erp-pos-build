@@ -2,7 +2,7 @@ import { memo, useCallback, type KeyboardEvent } from 'react';
 import { cn } from '@/lib/utils';
 import { tokens } from '@/lib/designTokens';
 import { useCurrency } from '@/lib/currency';
-import { ArrowUpRight, Check, Package, SlidersHorizontal } from 'lucide-react';
+import { ArrowUpRight, Check, Eye, Package, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useProductImage } from '@/lib/images/useProductImage';
 import { bccomp, bcsum } from '@/lib/decimal';
@@ -32,6 +32,7 @@ export interface ProductCardProps {
   product: POSProduct;
   onAddToCart: (product: POSProduct) => void;
   onCustomize?: (product: POSProduct) => void;
+  onViewDetails?: (product: POSProduct) => void;
   isInCart?: boolean;
   displayMode?: 'grid' | 'visual';
   /**
@@ -57,6 +58,7 @@ function ProductCardInner({
   product,
   onAddToCart,
   onCustomize,
+  onViewDetails,
   isInCart = false,
   displayMode = 'grid',
   locationStock,
@@ -185,6 +187,30 @@ function ProductCardInner({
         </span>
       )}
 
+      {onViewDetails && (
+        <button
+          type="button"
+          data-testid="view-details-button"
+          aria-label={t('products.viewDetails')}
+          onClick={(e) => {
+            e.stopPropagation();
+            onViewDetails(product);
+          }}
+          onKeyDown={(e) => {
+            // H1: the card root is role=button with onKeyDown=activate; Enter/Space
+            // on this inner button must NOT bubble up and add the product to cart.
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.stopPropagation();
+              e.preventDefault();
+              onViewDetails(product);
+            }
+          }}
+          className="absolute bottom-1.5 right-1.5 flex h-9 w-9 items-center justify-center rounded-full bg-surface-sunken text-ink-faint shadow-sm transition-colors hover:bg-surface-sunken hover:text-ink active:bg-surface-sunken"
+          title={t('products.viewDetails')}
+        >
+          <Eye className="h-4 w-4" />
+        </button>
+      )}
       {hasModifiers && onCustomize && (
         <button
           type="button"

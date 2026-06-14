@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Application\Services;
 
+use App\Modules\Company\Domain\Enums\LocationType;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Inventory\Domain\Enums\TransferStatus;
@@ -13,6 +15,8 @@ use App\Shared\Domain\QuantityScale;
 use App\Shared\DTOs\LocationIncomingRowDTO;
 use App\Shared\DTOs\LocationStockPageDTO;
 use App\Shared\DTOs\LocationStockRowDTO;
+use App\Shared\DTOs\StockDistributionDTO;
+use App\Shared\DTOs\StockDistributionRowDTO;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -78,6 +82,128 @@ final class LocationStockQueryService implements LocationStockReader
             page: $paginator->currentPage(),
             lastPage: $paginator->lastPage(),
             total: $paginator->total(),
+        );
+    }
+
+    /**
+     * Cross-location stock distribution for one product (+ optional variant)
+     * across all active shop+warehouse locations of the company (Task B4).
+     *
+     * Three grouped queries only — no per-location loop of read():
+     *  (1) the active shop+warehouse locations,
+     *  (2) on-hand per location (variant-grain matched), and
+     *  (3) in-transit incoming per destination location (variant-grain matched).
+     */
+    public function stockDistributionForProduct(
+        string $tenantId,
+        string $companyId,
+        string $productId,
+        ?string $variantId,
+        string $currentLocationId,
+    ): StockDistributionDTO {
+        // (1) Active shop+warehouse locations (one query). Office/mobile and
+        // inactive locations are excluded.
+        /** @var \Illuminate\Database\Eloquent\Collection<int, Location> $locations */
+        $locations = Location::query()
+            ->where('company_id', $companyId)
+            ->where('is_active', true)
+            ->whereIn('type', [LocationType::Shop->value, LocationType::Warehouse->value])
+            ->get(['id', 'name', 'type']);
+
+        // (2) On-hand per location, variant-grain matched (one query). When
+        // variantId is null we must match variant_id IS NULL — never sum the
+        // product-grain row together with variant rows.
+        $stockQuery = StockLevel::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('product_id', $productId);
+        $variantId === null
+            ? $stockQuery->whereNull('variant_id')
+            : $stockQuery->where('variant_id', $variantId);
+
+        // available = quantity − reserved, both already quantity-scale-4
+        // numeric strings (StockLevel decimal:4 cast). Mirrors
+        // StockLevel::getAvailableQuantity().
+        /** @var array<string, numeric-string> $availableByLoc */
+        $availableByLoc = [];
+        foreach ($stockQuery->get(['location_id', 'quantity', 'reserved']) as $level) {
+            $availableByLoc[(string) $level->location_id] = bcsub(
+                $level->quantity,
+                $level->reserved,
+                self::QTY_SCALE,
+            );
+        }
+
+        // (3) In-transit incoming per destination location (one grouped query).
+        // Attributed to the destination only, status=in_transit only.
+        $transferQuery = DB::table('stock_transfer_lines')
+            ->join('stock_transfers', 'stock_transfer_lines.transfer_id', '=', 'stock_transfers.id')
+            ->where('stock_transfer_lines.tenant_id', $tenantId)
+            ->where('stock_transfer_lines.company_id', $companyId)
+            ->where('stock_transfer_lines.product_id', $productId)
+            ->where('stock_transfers.status', TransferStatus::InTransit->value);
+        $variantId === null
+            ? $transferQuery->whereNull('stock_transfer_lines.variant_id')
+            : $transferQuery->where('stock_transfer_lines.variant_id', $variantId);
+
+        /** @var array<string, numeric-string> $incomingByLoc */
+        $incomingByLoc = [];
+        /** @var Collection<int, object{loc: string, incoming: float|int|string}> $incomingRows */
+        $incomingRows = $transferQuery
+            ->groupBy('stock_transfers.destination_location_id')
+            ->selectRaw('
+                stock_transfers.destination_location_id as loc,
+                SUM(stock_transfer_lines.quantity) as incoming
+            ')
+            ->get();
+        foreach ($incomingRows as $row) {
+            $incomingByLoc[(string) $row->loc] = QuantityScale::round(
+                (string) $row->incoming,
+                self::QTY_SCALE,
+                QuantityScale::FLOOR,
+            );
+        }
+
+        // (4) Assemble zero-filled rows, current first then by name, and
+        // accumulate the totals from the same numeric-string source values.
+        /** @var numeric-string $totalOnHand */
+        $totalOnHand = '0.0000';
+        /** @var numeric-string $totalIncoming */
+        $totalIncoming = '0.0000';
+        $rows = [];
+        foreach ($locations as $loc) {
+            $id = (string) $loc->id;
+            $onHand = $availableByLoc[$id] ?? '0.0000';
+            $incoming = $incomingByLoc[$id] ?? '0.0000';
+
+            $totalOnHand = bcadd($totalOnHand, $onHand, self::QTY_SCALE);
+            $totalIncoming = bcadd($totalIncoming, $incoming, self::QTY_SCALE);
+
+            $rows[] = new StockDistributionRowDTO(
+                locationId: $id,
+                locationName: (string) $loc->name,
+                locationType: $loc->type->value,
+                isCurrent: $id === $currentLocationId,
+                onHand: $onHand,
+                incomingTransfer: $incoming,
+            );
+        }
+
+        usort($rows, function (StockDistributionRowDTO $a, StockDistributionRowDTO $b): int {
+            if ($a->isCurrent !== $b->isCurrent) {
+                return $a->isCurrent ? -1 : 1;
+            }
+
+            return strcmp($a->locationName, $b->locationName);
+        });
+
+        return new StockDistributionDTO(
+            productId: $productId,
+            variantId: $variantId,
+            variantLabel: null,
+            locations: $rows,
+            totalOnHand: $totalOnHand,
+            totalIncomingTransfer: $totalIncoming,
         );
     }
 
