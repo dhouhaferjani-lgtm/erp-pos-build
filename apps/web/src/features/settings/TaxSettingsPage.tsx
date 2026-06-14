@@ -10,8 +10,16 @@ import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useCompany } from '../../hooks/useCompany'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { cn } from '../../lib/utils'
+import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Tabs'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { Button } from '../../components/atoms/Button'
+import { FormField } from '../../components/atoms/FormField'
+import { Input } from '../../components/atoms/Input'
+import { Select } from '../../components/atoms/Select'
+import { StatusBadge } from '../../components/atoms/StatusBadge'
+import { PageHeader } from '../../components/molecules/PageHeader'
 import {
   useTaxConfigurations,
   useDeleteTaxConfiguration,
@@ -159,8 +167,8 @@ export function TaxSettingsPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">{t('common:loading')}</p>
+          <div className={cn('animate-spin rounded-full h-12 w-12 border-b-2 mx-auto', borderColors.primary)}></div>
+          <p className={cn('mt-4', textColors.tertiary)}>{t('common:loading')}</p>
         </div>
       </div>
     )
@@ -169,22 +177,19 @@ export function TaxSettingsPage() {
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
-      <div className="mb-6">
-        <Link
-          to="/settings"
-          className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4"
-        >
-          <ArrowLeft className="h-4 w-4 me-1" />
-          {t('common:back')}
-        </Link>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">{t('settings:tax.configurations.pageTitle')}</h1>
-            <p className="mt-2 text-sm text-gray-600">{t('settings:tax.configurations.description')}</p>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        title={t('settings:tax.configurations.pageTitle')}
+        subtitle={t('settings:tax.configurations.description')}
+        breadcrumb={
+          <Link
+            to="/settings"
+            className={cn('inline-flex items-center text-sm', textColors.tertiary, textColors.hoverPrimary)}
+          >
+            <ArrowLeft className="h-4 w-4 me-1" />
+            {t('common:back')}
+          </Link>
+        }
+      />
 
       {/* Tabs */}
       <Tabs defaultValue="profile" value={activeTab} onChange={setActiveTab}>
@@ -196,19 +201,19 @@ export function TaxSettingsPage() {
         {/* Company Tax Profile Tab */}
         <TabsContent value="profile" className="mt-6">
           <form onSubmit={handleSubmit}>
-            <div className="bg-white shadow sm:rounded-lg">
+            <div className={cn(tokens.card.base, 'p-0')}>
               {/* Tax Status */}
-              <div className="px-6 py-6 border-b border-gray-200">
-                <h2 className="text-lg font-medium text-gray-900 mb-4">
+              <div className={cn('px-6 py-6 border-b', borderColors.light)}>
+                <h2 className={cn(tokens.heading.section, 'mb-4')}>
                   {t('settings:tax.configurations.profile.title')}
                 </h2>
-                <p className="text-sm text-gray-600 mb-4">
+                <p className={cn('text-sm mb-4', textColors.tertiary)}>
                   {t('settings:tax.configurations.profile.description')}
                 </p>
 
                 <div className="space-y-4 max-w-md">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className={cn(tokens.label.base, 'mb-2')}>
                       {t('settings:tax.configurations.profile.title')}
                     </label>
                     <div className="space-y-2">
@@ -219,13 +224,13 @@ export function TaxSettingsPage() {
                           value="REGISTERED"
                           checked={formData.tax_status === 'REGISTERED'}
                           onChange={(e) => { handleChange('tax_status', e.target.value as CompanyTaxStatus); }}
-                          className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                          className={cn('mt-0.5', tokens.radio.base)}
                         />
                         <span className="ms-3">
-                          <span className="block text-sm font-medium text-gray-900">
+                          <span className={cn('block text-sm font-medium', textColors.primary)}>
                             {t('settings:tax.configurations.profile.registered')}
                           </span>
-                          <span className="block text-sm text-gray-500">
+                          <span className={cn('block text-sm', textColors.tertiary)}>
                             {t('settings:tax.configurations.profile.registeredDescription')}
                           </span>
                         </span>
@@ -237,13 +242,13 @@ export function TaxSettingsPage() {
                           value="NON_REGISTERED"
                           checked={formData.tax_status === 'NON_REGISTERED'}
                           onChange={(e) => { handleChange('tax_status', e.target.value as CompanyTaxStatus); }}
-                          className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                          className={cn('mt-0.5', tokens.radio.base)}
                         />
                         <span className="ms-3">
-                          <span className="block text-sm font-medium text-gray-900">
+                          <span className={cn('block text-sm font-medium', textColors.primary)}>
                             {t('settings:tax.configurations.profile.nonRegistered')}
                           </span>
-                          <span className="block text-sm text-gray-500">
+                          <span className={cn('block text-sm', textColors.tertiary)}>
                             {t('settings:tax.configurations.profile.nonRegisteredDescription')}
                           </span>
                         </span>
@@ -252,94 +257,95 @@ export function TaxSettingsPage() {
                   </div>
 
                   {formData.tax_status === 'REGISTERED' && (
-                    <div>
-                      <label htmlFor="vat_number" className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('settings:tax.configurations.profile.vatNumber')}
-                      </label>
-                      <input
+                    <FormField
+                      label={t('settings:tax.configurations.profile.vatNumber')}
+                      htmlFor="vat_number"
+                    >
+                      <Input
                         type="text"
                         id="vat_number"
                         value={formData.vat_registration_number ?? ''}
                         onChange={(e) => { handleChange('vat_registration_number', e.target.value || null); }}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                         placeholder={t('settings:tax.configurations.profile.vatNumberPlaceholder')}
                       />
-                    </div>
+                    </FormField>
                   )}
                 </div>
               </div>
 
               {/* Default Tax Rate */}
-              <div className="px-6 py-6 border-b border-gray-200">
-                <h2 className="text-lg font-medium text-gray-900 mb-4">{t('settings:tax.defaultTaxRate.title')}</h2>
-                <p className="text-sm text-gray-600 mb-4">{t('settings:tax.defaultTaxRate.description')}</p>
+              <div className={cn('px-6 py-6 border-b', borderColors.light)}>
+                <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('settings:tax.defaultTaxRate.title')}</h2>
+                <p className={cn('text-sm mb-4', textColors.tertiary)}>{t('settings:tax.defaultTaxRate.description')}</p>
 
                 <div className="max-w-xs">
-                  <label htmlFor="default_tax_rate" className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('settings:tax.defaultTaxRate.label')}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      id="default_tax_rate"
-                      step="0.01"
-                      min="0"
-                      max="100"
-                      value={formData.default_tax_rate ?? ''}
-                      onChange={(e) => { handleChange('default_tax_rate', e.target.value || null); }}
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm pe-8"
-                      placeholder="19.00"
-                    />
-                    <div className="absolute inset-y-0 end-0 pe-3 flex items-center pointer-events-none">
-                      <span className="text-gray-500 sm:text-sm">%</span>
+                  <FormField
+                    label={t('settings:tax.defaultTaxRate.label')}
+                    htmlFor="default_tax_rate"
+                    helperText={t('settings:tax.defaultTaxRate.help')}
+                  >
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        id="default_tax_rate"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        value={formData.default_tax_rate ?? ''}
+                        onChange={(e) => { handleChange('default_tax_rate', e.target.value || null); }}
+                        className="pe-8"
+                        placeholder="19.00"
+                      />
+                      <div className="absolute inset-y-0 end-0 pe-3 flex items-center pointer-events-none">
+                        <span className={cn('text-sm', textColors.tertiary)}>%</span>
+                      </div>
                     </div>
-                  </div>
-                  <p className="mt-2 text-xs text-gray-500">{t('settings:tax.defaultTaxRate.help')}</p>
+                  </FormField>
                 </div>
               </div>
 
               {/* Fiscal Year */}
               <div className="px-6 py-6">
-                <h2 className="text-lg font-medium text-gray-900 mb-4">{t('settings:tax.fiscalYear.title')}</h2>
-                <p className="text-sm text-gray-600 mb-4">{t('settings:tax.fiscalYear.description')}</p>
+                <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('settings:tax.fiscalYear.title')}</h2>
+                <p className={cn('text-sm mb-4', textColors.tertiary)}>{t('settings:tax.fiscalYear.description')}</p>
 
                 <div className="max-w-xs">
-                  <label htmlFor="fiscal_year_start_month" className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('settings:tax.fiscalYear.label')}
-                  </label>
-                  <select
-                    id="fiscal_year_start_month"
-                    value={formData.fiscal_year_start_month}
-                    onChange={(e) => { handleChange('fiscal_year_start_month', parseInt(e.target.value)); }}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  <FormField
+                    label={t('settings:tax.fiscalYear.label')}
+                    htmlFor="fiscal_year_start_month"
+                    helperText={t('settings:tax.fiscalYear.help')}
                   >
-                    {MONTH_VALUES.map(value => (
-                      <option key={value} value={value}>
-                        {t(`settings:tax.months.${value}`)}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-2 text-xs text-gray-500">{t('settings:tax.fiscalYear.help')}</p>
+                    <Select
+                      id="fiscal_year_start_month"
+                      value={formData.fiscal_year_start_month}
+                      onChange={(e) => { handleChange('fiscal_year_start_month', parseInt(e.target.value)); }}
+                    >
+                      {MONTH_VALUES.map(value => (
+                        <option key={value} value={value}>
+                          {t(`settings:tax.months.${String(value)}`)}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormField>
                 </div>
               </div>
             </div>
 
             {/* Actions */}
             <div className="mt-6 flex items-center justify-end gap-3">
-              <Link
-                to="/settings"
-                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-              >
-                {t('common:cancel')}
+              <Link to="/settings">
+                <Button type="button" variant="secondary">
+                  {t('common:cancel')}
+                </Button>
               </Link>
-              <button
+              <Button
                 type="submit"
                 disabled={!isDirty || updateMutation.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="gap-2"
               >
                 <Save className="h-4 w-4" />
                 {updateMutation.isPending ? t('common:saving') : t('common:save')}
-              </button>
+              </Button>
             </div>
           </form>
         </TabsContent>
@@ -349,89 +355,93 @@ export function TaxSettingsPage() {
           <div className="space-y-6">
             {/* Add Tax Button */}
             <div className="flex justify-end">
-              <button
+              <Button
                 type="button"
                 onClick={handleCreateTax}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                className="gap-2"
               >
                 <Plus className="h-4 w-4" />
                 {t('settings:tax.configurations.addButton')}
-              </button>
+              </Button>
             </div>
 
             {/* Tax List */}
             {taxConfigurations.length === 0 ? (
-              <div className="bg-white rounded-lg border border-gray-200">
+              <div className={cn('rounded-lg border', colors.white, borderColors.light)}>
                 <EmptyState title={t('settings:tax.configurations.table.noData')} />
               </div>
             ) : (
-              <div className="bg-white shadow sm:rounded-lg overflow-hidden">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+              <div className={cn(tokens.card.base, 'p-0 overflow-hidden')}>
+                <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+                  <thead className={tokens.table.header}>
                     <tr>
-                      <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                         {t('settings:tax.configurations.table.name')}
                       </th>
-                      <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                         {t('settings:tax.configurations.table.type')}
                       </th>
-                      <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                         {t('settings:tax.configurations.table.rate')}
                       </th>
-                      <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                         {t('settings:tax.configurations.table.appliesTo')}
                       </th>
-                      <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                         {t('settings:tax.configurations.table.active')}
                       </th>
-                      <th className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className={cn('px-6 py-3 text-end text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                         {t('settings:tax.configurations.table.actions')}
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className={cn(colors.white, 'divide-y', borderColors.divideDefault)}>
                     {taxConfigurations.map((tax) => (
                       <tr key={tax.id}>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
-                            <GripVertical className="h-4 w-4 text-gray-400 me-2" />
+                            <GripVertical className={cn('h-4 w-4 me-2', textColors.disabled)} />
                             <div>
-                              <div className="text-sm font-medium text-gray-900">{tax.name}</div>
-                              <div className="text-sm text-gray-500">{tax.code}</div>
+                              <div className={cn('text-sm font-medium', textColors.primary)}>{tax.name}</div>
+                              <div className={cn('text-sm', textColors.tertiary)}>{tax.code}</div>
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className={cn('px-6 py-4 whitespace-nowrap text-sm', textColors.tertiary)}>
                           {tax.tax_type === 'PERCENTAGE' ? t('settings:tax.configurations.form.typePercentage') : t('settings:tax.configurations.form.typeFixed')}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <td className={cn('px-6 py-4 whitespace-nowrap text-sm', textColors.primary)}>
                           {tax.tax_type === 'PERCENTAGE' ? `${tax.percentage_rate}%` : tax.fixed_amount}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className={cn('px-6 py-4 whitespace-nowrap text-sm', textColors.tertiary)}>
                           {tax.applies_to === 'LINE_ITEMS' ? t('settings:tax.configurations.form.appliesToLineItems') : t('settings:tax.configurations.form.appliesToDocument')}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            tax.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                          }`}>
+                          <StatusBadge tone={tax.is_active ? 'success' : 'neutral'}>
                             {tax.is_active ? t('common:yes') : t('common:no')}
-                          </span>
+                          </StatusBadge>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-end text-sm font-medium">
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="sm"
                             onClick={() => { handleEditTax(tax); }}
-                            className="text-blue-600 hover:text-blue-900 me-4"
+                            aria-label={t('common:edit')}
+                            className={cn('me-2', textColors.brand)}
                           >
                             <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="sm"
                             onClick={() => { setDeletingTaxId(tax.id); }}
-                            className="text-red-600 hover:text-red-900"
+                            aria-label={t('common:delete')}
+                            className={textColors.error}
                           >
                             <Trash2 className="h-4 w-4" />
-                          </button>
+                          </Button>
                         </td>
                       </tr>
                     ))}

@@ -14,14 +14,25 @@ import {
   Trash2,
   Hash,
   Pencil,
+  Loader2,
 } from 'lucide-react'
 import { api, getErrorMessage } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { cn } from '../../lib/utils'
+import { tokens, textColors } from '../../lib/designTokens'
 import { SearchInput } from '../../components/ui/SearchInput'
 import { FilterTabs } from '../../components/ui/FilterTabs'
 import { ActionMenu, type ActionMenuItem } from '../../components/ui/ActionMenu'
+import { Button, StatusBadge, statusTone, FormField, Input, Select } from '../../components/atoms'
+import {
+  DataTable,
+  type DataTableColumn,
+  EmptyState,
+  ListPageLayout,
+} from '../../components/molecules'
+import { Modal, ModalContent, ModalFooter } from '../../components/organisms/Modal'
 import { UserEditModal } from './components/UserEditModal'
 import type { User } from '../users/types'
 
@@ -51,24 +62,21 @@ interface CreateUserData {
 
 type StatusFilter = 'all' | 'active' | 'inactive' | 'pending_verification'
 
-const statusColors: Record<string, string> = {
-  active: 'bg-green-100 text-green-800',
-  inactive: 'bg-gray-100 text-gray-800',
-  pending_verification: 'bg-yellow-100 text-yellow-800',
-  locked: 'bg-red-100 text-red-800',
-}
+// Domain status/role → semantic tone overrides for StatusBadge.
+const STATUS_TONE_OVERRIDES = {
+  pending_verification: 'pending',
+  locked: 'danger',
+} as const
 
-// Status labels are now handled via translations - see users.statusLabels
-
-const roleColors: Record<string, string> = {
-  admin: 'bg-purple-100 text-purple-800',
-  manager: 'bg-blue-100 text-blue-800',
-  cashier: 'bg-green-100 text-green-800',
-  accountant: 'bg-indigo-100 text-indigo-800',
-  operator: 'bg-teal-100 text-teal-800',
-  technician: 'bg-orange-100 text-orange-800',
-  viewer: 'bg-gray-100 text-gray-800',
-}
+const ROLE_TONE_OVERRIDES = {
+  admin: 'info',
+  manager: 'info',
+  cashier: 'success',
+  accountant: 'info',
+  operator: 'info',
+  technician: 'warning',
+  viewer: 'neutral',
+} as const
 
 function scopedNamespacePredicate(
   namespace: string,
@@ -262,7 +270,7 @@ export function UsersPage() {
       {
         key: 'edit',
         label: t('users.actions.edit', { defaultValue: 'Edit' }),
-        icon: <Pencil className="h-4 w-4 text-blue-500" />,
+        icon: <Pencil className={cn('h-4 w-4', textColors.brand)} />,
         onClick: () => { setEditUser(user) },
       },
     ]
@@ -271,7 +279,7 @@ export function UsersPage() {
       items.push({
         key: 'activate',
         label: t('users.actions.activate'),
-        icon: <CheckCircle className="h-4 w-4 text-green-500" />,
+        icon: <CheckCircle className={cn('h-4 w-4', textColors.success)} />,
         onClick: () => { activateMutation.mutate(user.id) },
       })
     }
@@ -280,7 +288,7 @@ export function UsersPage() {
       items.push({
         key: 'deactivate',
         label: t('users.actions.deactivate'),
-        icon: <XCircle className="h-4 w-4 text-yellow-500" />,
+        icon: <XCircle className={cn('h-4 w-4', textColors.warningDark)} />,
         onClick: () => {
           if (confirm(t('users.confirmations.deactivate'))) {
             deactivateMutation.mutate(user.id)
@@ -292,7 +300,7 @@ export function UsersPage() {
     items.push({
       key: 'set-pin',
       label: t('users.actions.setPosPin', { defaultValue: 'Set POS PIN' }),
-      icon: <Hash className="h-4 w-4 text-indigo-500" />,
+      icon: <Hash className={cn('h-4 w-4', textColors.brand)} />,
       onClick: () => { setShowPinModal(user.id) },
     })
 
@@ -300,7 +308,7 @@ export function UsersPage() {
       items.push({
         key: 'reset-password',
         label: t('users.actions.resetPassword'),
-        icon: <KeyRound className="h-4 w-4 text-blue-500" />,
+        icon: <KeyRound className={cn('h-4 w-4', textColors.brand)} />,
         onClick: () => { resetPasswordMutation.mutate(user.id) },
       })
     }
@@ -322,14 +330,117 @@ export function UsersPage() {
     return items
   }
 
+  const columns: DataTableColumn<User>[] = [
+    {
+      key: 'user',
+      header: t('users.table.user'),
+      render: (user) => (
+        <div className="flex items-center gap-3">
+          <div className={cn('h-10 w-10 rounded-full flex items-center justify-center', tokens.badge.blue)}>
+            <span className="text-sm font-semibold">
+              {user.name.charAt(0).toUpperCase()}
+            </span>
+          </div>
+          <div>
+            <div className={cn('font-medium', textColors.primary)}>{user.name}</div>
+            {user.email && (
+              <div className={cn('text-sm flex items-center gap-1', textColors.tertiary)}>
+                <Mail className="h-3.5 w-3.5" />
+                {user.email}
+              </div>
+            )}
+            {user.phone && (
+              <div className={cn('text-sm flex items-center gap-1', textColors.tertiary)}>
+                <Phone className="h-3.5 w-3.5" />
+                {user.phone}
+              </div>
+            )}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'role',
+      header: t('users.table.role'),
+      render: (user) => (
+        <div className="flex flex-wrap gap-1">
+          {user.roles.map((role) => (
+            <StatusBadge key={role} tone={statusTone(role, ROLE_TONE_OVERRIDES)} className="capitalize">
+              {role}
+            </StatusBadge>
+          ))}
+        </div>
+      ),
+    },
+    {
+      key: 'status',
+      header: t('users.table.status'),
+      render: (user) => (
+        <StatusBadge tone={statusTone(user.status, STATUS_TONE_OVERRIDES)}>
+          {t(`users.statusLabels.${user.status === 'pending_verification' ? 'pending' : user.status}`)}
+        </StatusBadge>
+      ),
+    },
+    {
+      key: 'lastLogin',
+      header: t('users.table.lastLogin'),
+      render: (user) => (
+        <span className={cn('text-sm', textColors.tertiary)}>{formatDate(user.lastLoginAt)}</span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: <span className="sr-only">{t('users.table.actions')}</span>,
+      align: 'right',
+      render: (user) => (
+        <ActionMenu
+          items={buildMenuItems(user)}
+          ariaLabel={t('users.table.actions')}
+          isLoading={actionLoading === user.id}
+        />
+      ),
+    },
+  ]
+
   return (
-    <div className="space-y-6">
+    <ListPageLayout
+      title={t('users.title')}
+      subtitle={t(total === 1 ? 'users.count' : 'users.count_plural', { count: total })}
+      breadcrumb={
+        <Link
+          to="/settings"
+          className={cn('inline-flex items-center gap-2 text-sm', textColors.tertiary, textColors.hoverPrimary)}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {t('actions.back')}
+        </Link>
+      }
+      actions={
+        <Button className="gap-2" onClick={() => { setShowAddModal(true) }}>
+          <UserPlus className="h-4 w-4" />
+          {t('users.addUser')}
+        </Button>
+      }
+      filters={
+        <>
+          <FilterTabs tabs={filterTabs} value={statusFilter} onChange={(value) => { setStatusFilter(value) }} />
+          <SearchInput
+            value={searchQuery}
+            onChange={(value) => { setSearchQuery(value) }}
+            placeholder={t('users.searchPlaceholder')}
+            className="w-full sm:w-72"
+          />
+        </>
+      }
+    >
       {/* Notification */}
       {notification && (
         <div
-          className={`fixed top-4 right-4 z-50 rounded-lg p-4 shadow-lg ${
-            notification.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-          }`}
+          className={cn(
+            'fixed top-4 right-4 z-50 rounded-lg p-4 shadow-lg',
+            tokens.alert.base,
+            notification.type === 'success' ? tokens.alert.success : tokens.alert.error,
+          )}
         >
           <div className="flex items-center gap-2">
             {notification.type === 'success' ? (
@@ -342,176 +453,44 @@ export function UsersPage() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link
-            to="/settings"
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            {t('actions.back')}
-          </Link>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <Users className="h-6 w-6 text-blue-500" />
-              {t('users.title')}
-            </h1>
-            <p className="text-gray-500">
-              {t(total === 1 ? 'users.count' : 'users.count_plural', { count: total })}
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={() => { setShowAddModal(true) }}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
-        >
-          <UserPlus className="h-4 w-4" />
-          {t('users.addUser')}
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <FilterTabs tabs={filterTabs} value={statusFilter} onChange={(value) => { setStatusFilter(value) }} />
-        <SearchInput
-          value={searchQuery}
-          onChange={(value) => { setSearchQuery(value) }}
-          placeholder={t('users.searchPlaceholder')}
-          className="w-full sm:w-72"
-        />
-      </div>
-
-      {/* Content */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-gray-500">{t('status.loading')}</div>
-        </div>
-      ) : error ? (
-        <div className="rounded-lg bg-red-50 p-4 text-red-700">
+      {error ? (
+        <div className={cn(tokens.alert.base, tokens.alert.error)}>
           {t('users.errorLoading')}
         </div>
-      ) : users.length === 0 ? (
-        <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-          <Users className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-semibold text-gray-900">
-            {searchQuery ? t('users.empty.noResults') : t('users.empty.title')}
-          </h3>
-          <p className="mt-1 text-sm text-gray-500">
-            {searchQuery
-              ? t('users.empty.tryDifferent')
-              : t('users.empty.getStarted')}
-          </p>
+      ) : !isLoading && users.length === 0 ? (
+        <div className="py-6">
+          <EmptyState
+            icon={<Users className={cn('mx-auto h-12 w-12', textColors.disabled)} />}
+            title={searchQuery ? t('users.empty.noResults') : t('users.empty.title')}
+            description={searchQuery ? t('users.empty.tryDifferent') : t('users.empty.getStarted')}
+          />
           {!searchQuery && (
-            <div className="mt-6">
-              <button
-                onClick={() => { setShowAddModal(true) }}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              >
+            <div className="mt-6 flex justify-center">
+              <Button className="gap-2" onClick={() => { setShowAddModal(true) }}>
                 <UserPlus className="h-4 w-4" />
                 {t('users.addUser')}
-              </button>
+              </Button>
             </div>
           )}
         </div>
       ) : (
-        <div className="rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('users.table.user')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('users.table.role')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('users.table.status')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('users.table.lastLogin')}
-                </th>
-                <th className="relative px-6 py-3">
-                  <span className="sr-only">{t('users.table.actions')}</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
-              {users.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-50">
-                  <td className="whitespace-nowrap px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                        <span className="text-sm font-semibold text-blue-600">
-                          {user.name.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <div>
-                        <div className="font-medium text-gray-900">{user.name}</div>
-                        {user.email && (
-                          <div className="text-sm text-gray-500 flex items-center gap-1">
-                            <Mail className="h-3.5 w-3.5" />
-                            {user.email}
-                          </div>
-                        )}
-                        {user.phone && (
-                          <div className="text-sm text-gray-500 flex items-center gap-1">
-                            <Phone className="h-3.5 w-3.5" />
-                            {user.phone}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4">
-                    <div className="flex flex-wrap gap-1">
-                      {user.roles.map((role) => (
-                        <span
-                          key={role}
-                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
-                            roleColors[role] ?? 'bg-gray-100 text-gray-800'
-                          }`}
-                        >
-                          {role}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        statusColors[user.status] ?? 'bg-gray-100 text-gray-800'
-                      }`}
-                    >
-                      {t(`users.statusLabels.${user.status === 'pending_verification' ? 'pending' : user.status}`)}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    {formatDate(user.lastLoginAt)}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-end text-sm">
-                    <ActionMenu
-                      items={buildMenuItems(user)}
-                      ariaLabel={t('users.table.actions')}
-                      isLoading={actionLoading === user.id}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={columns}
+          data={users}
+          keyExtractor={(user) => user.id}
+          isLoading={isLoading}
+          emptyTitle={t('users.empty.title')}
+        />
       )}
 
       {/* Add User Modal */}
-      {showAddModal && (
-        <AddUserModal
-          roles={roles}
-          onClose={() => { setShowAddModal(false) }}
-          onSubmit={(data) => { createUserMutation.mutate(data) }}
-          isLoading={createUserMutation.isPending}
-        />
-      )}
+      <AddUserModal
+        isOpen={showAddModal}
+        roles={roles}
+        onClose={() => { setShowAddModal(false) }}
+        onSubmit={(data) => { createUserMutation.mutate(data) }}
+        isLoading={createUserMutation.isPending}
+      />
 
       {/* Edit User Modal */}
       {editUser && (
@@ -525,21 +504,19 @@ export function UsersPage() {
       )}
 
       {/* POS PIN Modal */}
-      {showPinModal && (
-        <PosPinModal
-          userId={showPinModal}
-          onClose={() => { setShowPinModal(null) }}
-          onSubmit={(pin) => { setPosPinMutation.mutate({ userId: showPinModal, pin }) }}
-          onClear={() => { setPosPinMutation.mutate({ userId: showPinModal, pin: null }) }}
-          isLoading={setPosPinMutation.isPending}
-        />
-      )}
-
-    </div>
+      <PosPinModal
+        isOpen={showPinModal !== null}
+        onClose={() => { setShowPinModal(null) }}
+        onSubmit={(pin) => { if (showPinModal) setPosPinMutation.mutate({ userId: showPinModal, pin }) }}
+        onClear={() => { if (showPinModal) setPosPinMutation.mutate({ userId: showPinModal, pin: null }) }}
+        isLoading={setPosPinMutation.isPending}
+      />
+    </ListPageLayout>
   )
 }
 
 interface AddUserModalProps {
+  isOpen: boolean
   roles: Role[]
   onClose: () => void
   onSubmit: (data: CreateUserData) => void
@@ -547,7 +524,7 @@ interface AddUserModalProps {
 }
 
 interface PosPinModalProps {
-  userId: string
+  isOpen: boolean
   onClose: () => void
   onSubmit: (pin: string) => void
   onClear: () => void
@@ -579,7 +556,7 @@ export function generateRandomPin(length = 4): string {
   return result
 }
 
-function PosPinModal({ onClose, onSubmit, onClear, isLoading }: PosPinModalProps) {
+function PosPinModal({ isOpen, onClose, onSubmit, onClear, isLoading }: PosPinModalProps) {
   const { t } = useTranslation()
   const [pin, setPin] = useState('')
   const [pinError, setPinError] = useState<string | null>(null)
@@ -602,90 +579,63 @@ function PosPinModal({ onClose, onSubmit, onClear, isLoading }: PosPinModalProps
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-full items-center justify-center p-4">
-        <div className="fixed inset-0 bg-black bg-opacity-25" onClick={onClose} />
-        <div className="relative w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            {t('users.pinModal.title', { defaultValue: 'Set POS PIN' })}
-          </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label htmlFor="posPin" className="block text-sm font-medium text-gray-700">
-                {t('users.pinModal.pinLabel', { defaultValue: 'PIN (4-6 digits)' })}
-              </label>
-              <input
-                type="text"
-                id="posPin"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={6}
-                value={pin}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/\D/g, '')
-                  setPin(v)
-                  setPinError(null)
-                  setWasGenerated(false)
-                }}
-                className={`mt-1 block w-full rounded-md border px-3 py-2 text-center text-2xl tracking-[0.5em] shadow-sm focus:outline-none focus:ring-1 ${
-                  pinError
-                    ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-                }`}
-                autoFocus
-              />
-              {pinError && <p className="mt-1 text-sm text-red-600">{pinError}</p>}
-              <button
-                type="button"
-                onClick={handleGenerate}
-                disabled={isLoading}
-                className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50"
-              >
-                {t('users.pinModal.generate', { defaultValue: 'Generate random PIN' })}
-              </button>
-              {wasGenerated && (
-                <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  {t('users.pinModal.shareWithCashier', {
-                    defaultValue: 'Share this PIN with the cashier now — it will not be shown again after saving.',
-                  })}
-                </p>
-              )}
-            </div>
+    <Modal isOpen={isOpen} onClose={onClose} size="sm" title={t('users.pinModal.title', { defaultValue: 'Set POS PIN' })}>
+      <form onSubmit={handleSubmit}>
+        <ModalContent>
+          <FormField
+            label={t('users.pinModal.pinLabel', { defaultValue: 'PIN (4-6 digits)' })}
+            htmlFor="posPin"
+            error={pinError ?? undefined}
+          >
+            <Input
+              type="text"
+              id="posPin"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              value={pin}
+              error={pinError !== null}
+              onChange={(e) => {
+                const v = e.target.value.replace(/\D/g, '')
+                setPin(v)
+                setPinError(null)
+                setWasGenerated(false)
+              }}
+              className="text-center text-2xl tracking-[0.5em]"
+              autoFocus
+            />
+          </FormField>
+          <Button type="button" variant="ghost" size="sm" onClick={handleGenerate} disabled={isLoading}>
+            {t('users.pinModal.generate', { defaultValue: 'Generate random PIN' })}
+          </Button>
+          {wasGenerated && (
+            <p className={cn(tokens.alert.base, tokens.alert.warning)}>
+              {t('users.pinModal.shareWithCashier', {
+                defaultValue: 'Share this PIN with the cashier now — it will not be shown again after saving.',
+              })}
+            </p>
+          )}
+        </ModalContent>
 
-            <div className="flex justify-between gap-3 pt-2">
-              <button
-                type="button"
-                onClick={onClear}
-                disabled={isLoading}
-                className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-              >
-                {t('users.pinModal.clearPin', { defaultValue: 'Clear PIN' })}
-              </button>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  {t('actions.cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isLoading || !pin}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {isLoading ? t('status.saving', { defaultValue: 'Saving...' }) : t('actions.save', { defaultValue: 'Save' })}
-                </button>
-              </div>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
+        <ModalFooter className="justify-between">
+          <Button type="button" variant="danger" onClick={onClear} disabled={isLoading}>
+            {t('users.pinModal.clearPin', { defaultValue: 'Clear PIN' })}
+          </Button>
+          <div className="flex gap-3">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              {t('actions.cancel')}
+            </Button>
+            <Button type="submit" disabled={isLoading || !pin}>
+              {isLoading ? t('status.saving', { defaultValue: 'Saving...' }) : t('actions.save', { defaultValue: 'Save' })}
+            </Button>
+          </div>
+        </ModalFooter>
+      </form>
+    </Modal>
   )
 }
 
-function AddUserModal({ roles, onClose, onSubmit, isLoading }: AddUserModalProps) {
+function AddUserModal({ isOpen, roles, onClose, onSubmit, isLoading }: AddUserModalProps) {
   const { t } = useTranslation()
   const [formData, setFormData] = useState<CreateUserData>({
     name: '',
@@ -728,127 +678,87 @@ function AddUserModal({ roles, onClose, onSubmit, isLoading }: AddUserModalProps
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-full items-center justify-center p-4">
-        <div className="fixed inset-0 bg-black bg-opacity-25" onClick={onClose} />
-        <div className="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('users.modal.title')}</h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                {t('users.modal.nameLabel')} *
-              </label>
-              <input
-                type="text"
-                id="name"
-                value={formData.name}
-                onChange={(e) => { setFormData({ ...formData, name: e.target.value }) }}
-                className={`mt-1 block w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none focus:ring-1 ${
-                  errors['name']
-                    ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-                }`}
-                placeholder={t('users.modal.namePlaceholder')}
-              />
-              {errors['name'] && <p className="mt-1 text-sm text-red-600">{errors['name']}</p>}
-            </div>
+    <Modal isOpen={isOpen} onClose={onClose} size="md" title={t('users.modal.title')}>
+      <form onSubmit={handleSubmit}>
+        <ModalContent>
+          <FormField label={t('users.modal.nameLabel')} htmlFor="name" required error={errors['name']}>
+            <Input
+              type="text"
+              id="name"
+              value={formData.name}
+              error={Boolean(errors['name'])}
+              onChange={(e) => { setFormData({ ...formData, name: e.target.value }) }}
+              placeholder={t('users.modal.namePlaceholder')}
+            />
+          </FormField>
 
-            <div>
-              <label htmlFor="role" className="block text-sm font-medium text-gray-700">
-                {t('users.modal.roleLabel')} *
-              </label>
-              <select
-                id="role"
-                value={formData.role}
-                onChange={(e) => { setFormData({ ...formData, role: e.target.value }) }}
-                className={`mt-1 block w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none focus:ring-1 ${
-                  errors['role']
-                    ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-                }`}
-              >
-                {roles.map((role) => (
-                  <option key={role.name} value={role.name}>
-                    {role.name.charAt(0).toUpperCase() + role.name.slice(1)}
-                  </option>
-                ))}
-              </select>
-              {errors['role'] && <p className="mt-1 text-sm text-red-600">{errors['role']}</p>}
-            </div>
+          <FormField label={t('users.modal.roleLabel')} htmlFor="role" required error={errors['role']}>
+            <Select
+              id="role"
+              value={formData.role}
+              error={Boolean(errors['role'])}
+              onChange={(e) => { setFormData({ ...formData, role: e.target.value }) }}
+            >
+              {roles.map((role) => (
+                <option key={role.name} value={role.name}>
+                  {role.name.charAt(0).toUpperCase() + role.name.slice(1)}
+                </option>
+              ))}
+            </Select>
+          </FormField>
 
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                {t('users.modal.emailLabel')} {formData.role !== 'cashier' && '*'}
-              </label>
-              <input
-                type="email"
-                id="email"
-                value={formData.email ?? ''}
-                onChange={(e) => { setFormData({ ...formData, email: e.target.value }) }}
-                className={`mt-1 block w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none focus:ring-1 ${
-                  errors['email']
-                    ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-                }`}
-                placeholder={t('users.modal.emailPlaceholder')}
-              />
-              {errors['email'] && <p className="mt-1 text-sm text-red-600">{errors['email']}</p>}
-              {formData.role === 'cashier' && (
-                <p className="mt-1 text-xs text-gray-500">
-                  {t('users.modal.emailOptionalHint')}
-                </p>
-              )}
-            </div>
+          <FormField
+            label={`${t('users.modal.emailLabel')}${formData.role !== 'cashier' ? ' *' : ''}`}
+            htmlFor="email"
+            error={errors['email']}
+            helperText={formData.role === 'cashier' ? t('users.modal.emailOptionalHint') : undefined}
+          >
+            <Input
+              type="email"
+              id="email"
+              value={formData.email ?? ''}
+              error={Boolean(errors['email'])}
+              onChange={(e) => { setFormData({ ...formData, email: e.target.value }) }}
+              placeholder={t('users.modal.emailPlaceholder')}
+            />
+          </FormField>
 
-            <div>
-              <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                {t('users.modal.phoneLabel')}
-              </label>
-              <input
-                type="tel"
-                id="phone"
-                value={formData.phone}
-                onChange={(e) => { setFormData({ ...formData, phone: e.target.value }) }}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder={t('users.modal.phonePlaceholder')}
-              />
-            </div>
+          <FormField label={t('users.modal.phoneLabel')} htmlFor="phone">
+            <Input
+              type="tel"
+              id="phone"
+              value={formData.phone}
+              onChange={(e) => { setFormData({ ...formData, phone: e.target.value }) }}
+              placeholder={t('users.modal.phonePlaceholder')}
+            />
+          </FormField>
 
-            <p className="text-sm text-gray-500">
-              {formData.role === 'cashier' && !formData.email?.trim()
-                ? t('users.modal.cashierPinNote')
-                : t('users.modal.invitationNote')}
-            </p>
+          <p className={cn('text-sm', textColors.tertiary)}>
+            {formData.role === 'cashier' && !formData.email?.trim()
+              ? t('users.modal.cashierPinNote')
+              : t('users.modal.invitationNote')}
+          </p>
+        </ModalContent>
 
-            <div className="flex justify-end gap-3 pt-4">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                {t('actions.cancel')}
-              </button>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                {isLoading ? (
-                  <>
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    {t('status.creating')}
-                  </>
-                ) : (
-                  <>
-                    <UserPlus className="h-4 w-4" />
-                    {t('users.modal.createUser')}
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
+        <ModalFooter>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            {t('actions.cancel')}
+          </Button>
+          <Button type="submit" className="gap-2" disabled={isLoading}>
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t('status.creating')}
+              </>
+            ) : (
+              <>
+                <UserPlus className="h-4 w-4" />
+                {t('users.modal.createUser')}
+              </>
+            )}
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
   )
 }
