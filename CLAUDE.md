@@ -83,6 +83,15 @@ The POS spans device SQLite, server projections, and queue workers — each laye
 - **Queued jobs / fiscal projections run with NO CompanyContext:** pass explicit currency to scale resolution (rule 19). Projection tests must `app(CompanyContext::class)->clear()` before `apply()` — binding context in setUp masks the worker reality.
 - **Retiring/gating a server endpoint** (e.g. fiscal v3 retired server X reports): the client's fallback path becomes the PRIMARY path — audit and test that path with same-day data before shipping the retirement.
 
+### 21. Dev Branch Sync Discipline — local-first, batched, fast-forward-only (post-2026-06-14 divergence incident)
+`dev` is shared and other sessions push to it constantly. Keep local and remote `dev` from drifting into a messy diverge:
+- **Work in a `git worktree` off `dev`** — never edit/commit directly in a shared `dev` worktree. Parallel sessions mutate branch refs between commands; on 2026-06-14 a session fast-forwarded local `dev` onto a feature branch and it silently diverged from `origin/dev`.
+- **Merge into LOCAL `dev` first, promote to `origin/dev` in verified batches** (e.g. end of day) — and ONLY as a clean **fast-forward**.
+- **Before every promotion:** `git fetch origin dev`; if local `dev` is behind/diverged, `git merge origin/dev` (or rebase your local commits onto it) FIRST, then push. This keeps `origin/dev` a pure fast-forward.
+- **Never force-push `dev`**, and never `reset --hard` / `branch -f` the shared `dev` pointer onto a feature branch. To discard accidental local-`dev` commits, first confirm they live on their own feature branch, then `git reset --hard origin/dev`.
+- **To land a small change without dragging a contaminated local `dev`:** base your branch on `origin/dev`, then `git push origin <branch>:dev` (clean ff of just your commit).
+- Enforced by the **`dev-push-guard`** PreToolUse hook (`.claude/hooks/git-dev-push-guard.sh`, wired in `.claude/settings.json`): it BLOCKS force-pushes to `dev` and pushes of a behind/diverged local `dev`, with the exact reconcile command. Review/disable via `/hooks`.
+
 ---
 
 ## Context Files
