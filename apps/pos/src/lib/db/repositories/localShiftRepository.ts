@@ -70,6 +70,12 @@ export interface CachedShiftInput {
   user: { id: string; name: string };
 }
 
+const LOWER_HEX_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string | undefined): value is string {
+  return value !== undefined && LOWER_HEX_UUID.test(value);
+}
+
 function mapRow(row: LocalShiftRow): LocalShift {
   return { ...row, fiscal_shift_id: row.id };
 }
@@ -156,6 +162,18 @@ export async function backfillLocalShiftFromCache(
 ): Promise<boolean> {
   if (!cached || cached.status !== 'OPEN') return false;
 
+  // `local_shifts.id` is the canonical fiscal shift UUID (== fiscal_shift_id ==
+  // pos_shifts.id). A grandfathered pre-cutover offline shift has id
+  // `offline-<uuid>` (NOT a UUID) but a valid `fiscal_shift_id`; copying the
+  // offline- id verbatim would later author SESSION_CLOSE with a non-UUID
+  // shift_id, quarantine the close server-side, and wedge the terminal (the
+  // one-open partial unique then blocks reopening). Resolve to a valid UUID;
+  // if none is available the cache can't be safely adopted — skip and let the
+  // shift close via its legacy path.
+  const id = isUuid(cached.id) ? cached.id : isUuid(cached.fiscal_shift_id) ? cached.fiscal_shift_id : null;
+  if (id === null) return false;
+  const sessionId = isUuid(cached.fiscal_session_id) ? cached.fiscal_session_id : id;
+
   // Never clobber an existing open shift for this terminal (the device may
   // have already authored one post-cutover). This guard also makes the
   // backfill idempotent across boots.
@@ -169,9 +187,9 @@ export async function backfillLocalShiftFromCache(
      VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, NULL, $7, $8)
      ON CONFLICT(id) DO NOTHING`,
     [
-      cached.id,
+      id,
       cached.terminal_id,
-      cached.fiscal_session_id ?? cached.id,
+      sessionId,
       cached.shift_number,
       cached.opening_cash,
       cached.opened_at,
