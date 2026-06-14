@@ -1,18 +1,24 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Plus, Clock, Calendar, Star } from 'lucide-react'
 import { useMenus, useDeleteMenu } from '../hooks/useMenus'
 import { useTableState } from '../../../hooks/useTableState'
 import { SearchFilter } from '../../../components/ui/filters/SearchFilter'
 import { FilterTabs } from '../../../components/ui/FilterTabs'
 import { OffsetPagination } from '../../../components/ui/OffsetPagination'
+import { PageHeader } from '../../../components/molecules/PageHeader'
+import { EmptyState } from '../../../components/molecules/EmptyState'
+import { Button, StatusBadge, statusTone } from '../../../components/atoms'
+import { cn } from '../../../lib/utils'
+import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import type { MenuData } from '../types/menu'
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 export function MenuListPage() {
   const { t } = useTranslation(['menu', 'common'])
+  const navigate = useNavigate()
 
   const tableState = useTableState({
     defaultPerPage: 25,
@@ -70,21 +76,17 @@ export function MenuListPage() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('menu:menus')}</h1>
-          <p className="text-gray-500">
-            {meta?.total ?? 0} {t('common:total')}
-          </p>
-        </div>
-        <Link
-          to="/catalog/menus/new"
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          {t('menu:createMenu')}
-        </Link>
-      </div>
+      <PageHeader
+        title={t('menu:menus')}
+        subtitle={`${String(meta?.total ?? 0)} ${t('common:total')}`}
+        actions={
+          <Button onClick={() => { void navigate('/catalog/menus/new') }}>
+            <Plus className="mr-2 h-4 w-4" />
+            {t('menu:createMenu')}
+          </Button>
+        }
+        className="mb-0"
+      />
 
       {/* Filters */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -104,22 +106,20 @@ export function MenuListPage() {
       {/* Content */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="text-gray-500">{t('common:loading')}</div>
+          <div className={textColors.tertiary}>{t('common:loading')}</div>
         </div>
       ) : menus.length === 0 ? (
-        <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-          <h3 className="mt-2 text-sm font-semibold text-gray-900">
-            {tableState.hasActiveFilters ? t('common:status.noResults') : t('menu:noMenus')}
-          </h3>
+        <div className="py-6">
+          <EmptyState
+            title={tableState.hasActiveFilters ? t('common:status.noResults') : t('menu:noMenus')}
+            description=""
+          />
           {!tableState.hasActiveFilters && (
-            <div className="mt-6">
-              <Link
-                to="/catalog/menus/new"
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              >
-                <Plus className="h-4 w-4" />
+            <div className="mt-6 flex justify-center">
+              <Button onClick={() => { void navigate('/catalog/menus/new') }}>
+                <Plus className="mr-2 h-4 w-4" />
                 {t('menu:createMenu')}
-              </Link>
+              </Button>
             </div>
           )}
         </div>
@@ -129,55 +129,54 @@ export function MenuListPage() {
             <Link
               key={menu.id}
               to={`/catalog/menus/${menu.id}/edit`}
-              className="relative block rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-blue-300 hover:shadow-md transition-all"
+              className={cn(
+                'relative block',
+                tokens.card.base,
+                tokens.card.hover,
+                borderColors.hover,
+              )}
             >
               {/* Badges */}
               <div className="flex items-center gap-2 mb-3">
                 {menu.is_default && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
+                  <StatusBadge tone="warning" className="gap-1">
                     <Star className="h-3 w-3" />
                     {t('menu:default')}
-                  </span>
+                  </StatusBadge>
                 )}
-                <span
-                  className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                    menu.is_active
-                      ? 'bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20'
-                      : 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20'
-                  }`}
-                >
+                <StatusBadge tone={statusTone(menu.is_active ? 'active' : 'inactive', { inactive: 'danger' })}>
                   {menu.is_active ? t('common:active') : t('common:inactive')}
-                </span>
+                </StatusBadge>
               </div>
 
-              <h3 className="text-lg font-semibold text-gray-900">{menu.name}</h3>
+              <h3 className={cn(tokens.heading.section, 'font-semibold')}>{menu.name}</h3>
               {menu.description && (
-                <p className="mt-1 text-sm text-gray-500 line-clamp-2">{menu.description}</p>
+                <p className={cn('mt-1 text-sm line-clamp-2', textColors.tertiary)}>{menu.description}</p>
               )}
 
               {/* Schedule info */}
               <div className="mt-3 space-y-1">
                 {formatTimeRange(menu) && (
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <div className={cn('flex items-center gap-1.5 text-xs', textColors.tertiary)}>
                     <Clock className="h-3.5 w-3.5" />
                     {formatTimeRange(menu)}
                   </div>
                 )}
                 {formatDateRange(menu) && (
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <div className={cn('flex items-center gap-1.5 text-xs', textColors.tertiary)}>
                     <Calendar className="h-3.5 w-3.5" />
                     {formatDateRange(menu)}
                   </div>
                 )}
                 {formatDays(menu.available_days) && (
-                  <div className="text-xs text-gray-500">
+                  <div className={cn('text-xs', textColors.tertiary)}>
                     {formatDays(menu.available_days)}
                   </div>
                 )}
               </div>
 
               {/* Stats */}
-              <div className="mt-4 flex items-center gap-4 text-sm text-gray-500 border-t border-gray-100 pt-3">
+              <div className={cn('mt-4 flex items-center gap-4 text-sm border-t pt-3', textColors.tertiary, borderColors.light)}>
                 <span>{menu.categories_count} {t('menu:categories')}</span>
                 <span>{menu.items_count} {t('menu:items')}</span>
               </div>
@@ -191,7 +190,7 @@ export function MenuListPage() {
                     e.stopPropagation()
                     handleDelete(menu)
                   }}
-                  className="absolute top-4 right-4 text-gray-400 hover:text-red-500 text-xs"
+                  className={cn('absolute top-4 right-4 text-xs', textColors.disabled, textColors.hoverError)}
                   title={t('common:delete')}
                 >
                   {t('common:delete')}

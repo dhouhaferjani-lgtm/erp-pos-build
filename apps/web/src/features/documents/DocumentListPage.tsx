@@ -1,42 +1,52 @@
 import { useState, useMemo } from 'react'
 import { usePageTitle } from '../../hooks/usePageTitle'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, FileText, Calendar } from 'lucide-react'
 import { api } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { cn } from '../../lib/utils'
+import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
 import { SearchInput } from '../../components/ui/SearchInput'
 import { FilterTabs } from '../../components/ui/FilterTabs'
+import { OffsetPagination } from '../../components/ui/OffsetPagination'
+import { Button, StatusBadge, statusTone, type StatusTone } from '../../components/atoms'
+import {
+  DataTable,
+  type DataTableColumn,
+  EmptyState,
+  ListPageLayout,
+} from '../../components/molecules'
 import type { Document } from '../../types/document'
 
 interface DocumentsResponse {
   data: Document[]
-  meta?: { total: number }
+  meta?: {
+    total?: number
+    current_page?: number
+    last_page?: number
+    per_page?: number
+    from?: number | null
+    to?: number | null
+  }
 }
 
 export type DocumentType = 'quote' | 'sales_order' | 'invoice' | 'purchase_order' | 'delivery_note' | 'credit_note' | 'return_note'
 
-const typeColors: Record<string, string> = {
-  quote: 'bg-yellow-100 text-yellow-800',
-  order: 'bg-blue-100 text-blue-800',
-  sales_order: 'bg-blue-100 text-blue-800',
-  purchase_order: 'bg-purple-100 text-purple-800',
-  invoice: 'bg-green-100 text-green-800',
-  credit_note: 'bg-red-100 text-red-800',
-  delivery_note: 'bg-purple-100 text-purple-800',
-  return_note: 'bg-orange-100 text-orange-800',
-}
-
-const statusColors: Record<Document['status'], string> = {
-  draft: 'bg-gray-100 text-gray-800',
-  confirmed: 'bg-blue-100 text-blue-800',
-  posted: 'bg-green-100 text-green-800',
-  received: 'bg-teal-100 text-teal-800',
-  cancelled: 'bg-red-100 text-red-800',
+/**
+ * Document workflow statuses that aren't in the shared `statusTone` built-in
+ * map get a semantic tone here, so every document status renders through the
+ * one sanctioned `StatusBadge` palette instead of a bespoke off-theme map.
+ * (`draft` → pending, `cancelled` → danger are already built in.)
+ */
+const documentStatusTones: Record<string, StatusTone> = {
+  confirmed: 'info',
+  posted: 'success',
+  received: 'info',
 }
 
 // Map document types to navigation paths
@@ -94,12 +104,25 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
   const { t } = useTranslation()
   usePageTitle('documents.title', 'sales')
   const location = useLocation()
+  const navigate = useNavigate()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<PaymentStatusFilter>('all')
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(25)
+
+  // Reset to the first page whenever the result set changes shape.
+  const handleStatusFilterChange = (value: StatusFilter) => {
+    setStatusFilter(value)
+    setPage(1)
+  }
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value)
+    setPage(1)
+  }
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
@@ -120,11 +143,13 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
   const getStatusLabel = (status: string) => t(`status.${status}`, status)
 
   const { data, isLoading, error } = useQuery({
-    queryKey: tenantScopedKey(['documents', effectiveType, searchQuery, statusFilter]),
+    queryKey: tenantScopedKey(['documents', effectiveType, searchQuery, statusFilter, page, perPage]),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchQuery) params.append('search', searchQuery)
       if (statusFilter !== 'all') params.append('status', statusFilter)
+      params.append('page', String(page))
+      params.append('per_page', String(perPage))
       const queryString = params.toString()
       const response = await api.get<DocumentsResponse>(`${apiEndpoint}${queryString ? `?${queryString}` : ''}`)
       return response.data
@@ -168,7 +193,15 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
     })
   }, [data?.data, effectiveType, paymentStatusFilter])
 
-  const total = data?.meta?.total ?? documents.length
+  // Server pagination metadata (Laravel paginator). Falls back gracefully when
+  // an endpoint returns only a `total`.
+  const meta = data?.meta
+  const total = meta?.total ?? documents.length
+  const currentPage = meta?.current_page ?? page
+  const lastPage = meta?.last_page ?? 1
+  const perPageActual = meta?.per_page ?? perPage
+  const rangeFrom = meta?.from ?? null
+  const rangeTo = meta?.to ?? null
 
   // Format currency using company settings
   const formatAmount = (amount: string | number | null) => {
@@ -211,7 +244,7 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
 
 
   // Helper function to determine payment status for invoices
-  const getPaymentStatus = (doc: Document): { label: string; color: string; key: string } | null => {
+  const getPaymentStatus = (doc: Document): { label: string; tone: StatusTone; key: string } | null => {
     // Only show payment status for posted invoices
     if (doc.type !== 'invoice' || doc.status !== 'posted') {
       return null
@@ -222,7 +255,7 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
 
     // Fully paid
     if (balanceDue === 0) {
-      return { label: t('sales:documents.statuses.paid'), color: 'bg-green-100 text-green-800', key: 'paid' }
+      return { label: t('sales:documents.statuses.paid'), tone: 'success', key: 'paid' }
     }
 
     // Check if overdue
@@ -233,17 +266,17 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
       dueDate.setHours(0, 0, 0, 0)
 
       if (dueDate < today && balanceDue > 0) {
-        return { label: t('sales:documents.statuses.overdue'), color: 'bg-red-100 text-red-800', key: 'overdue' }
+        return { label: t('sales:documents.statuses.overdue'), tone: 'danger', key: 'overdue' }
       }
     }
 
     // Partially paid
     if (balanceDue > 0 && balanceDue < total) {
-      return { label: t('sales:documents.statuses.partial'), color: 'bg-yellow-100 text-yellow-800', key: 'partial' }
+      return { label: t('sales:documents.statuses.partial'), tone: 'warning', key: 'partial' }
     }
 
     // Unpaid
-    return { label: t('sales:documents.statuses.unpaid'), color: 'bg-orange-100 text-orange-800', key: 'unpaid' }
+    return { label: t('sales:documents.statuses.unpaid'), tone: 'warning', key: 'unpaid' }
   }
 
   // Get translated singular name for button and count
@@ -262,196 +295,203 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
   }
   const entitySingular = getEntitySingular()
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{pageTitle}</h1>
-          <p className="text-gray-500">
-            {total} {entitySingular.toLowerCase()} {t('total')}
-          </p>
-        </div>
+  const addPath =
+    documentType === 'credit_note' ? `${basePath}/create` : `${basePath}/new`
+
+  const columns: DataTableColumn<Document>[] = [
+    {
+      key: 'number',
+      header: t('sales:documents.number'),
+      render: (doc) => (
         <Link
-          to={documentType === 'credit_note' ? `${basePath}/create` : `${basePath}/new`}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+          to={`${basePath}/${doc.id}`}
+          className={cn('font-medium', textColors.brand, 'hover:underline')}
         >
+          {doc.document_number}
+        </Link>
+      ),
+    },
+    {
+      key: 'type',
+      header: t('sales:documents.type'),
+      render: (doc) => (
+        <StatusBadge tone="neutral">{getTypeLabel(doc.type)}</StatusBadge>
+      ),
+    },
+    {
+      // `sales:documents.status` is an object of status *values*; the column
+      // label is the generic "Status" string.
+      key: 'status',
+      header: t('common:fields.status'),
+      render: (doc) => {
+        const paymentStatus = getPaymentStatus(doc)
+        return (
+          <div className="flex flex-col items-start gap-1">
+            <StatusBadge tone={statusTone(doc.status, documentStatusTones)}>
+              {getStatusLabel(doc.status)}
+            </StatusBadge>
+            {paymentStatus && (
+              <StatusBadge tone={paymentStatus.tone}>
+                {t(`sales:documents.statuses.${paymentStatus.key}`, paymentStatus.label)}
+              </StatusBadge>
+            )}
+          </div>
+        )
+      },
+    },
+    {
+      key: 'partner',
+      header: t('sales:documents.partner'),
+      render: (doc) =>
+        doc.partner_id ? (
+          <Link
+            to={
+              doc.type === 'purchase_order'
+                ? `/purchases/suppliers/${doc.partner_id}`
+                : `/sales/customers/${doc.partner_id}`
+            }
+            className={cn(textColors.brand, 'hover:underline')}
+          >
+            {doc.partner_name ?? t('sales:partners.unknown')}
+          </Link>
+        ) : (
+          <span className={textColors.tertiary}>
+            {doc.partner_name ?? t('sales:partners.unknown')}
+          </span>
+        ),
+    },
+    {
+      key: 'date',
+      header: t('sales:documents.date'),
+      render: (doc) => (
+        <div className={cn('flex items-center gap-1', textColors.tertiary)}>
+          <Calendar className="h-3.5 w-3.5" />
+          {new Date(doc.document_date).toLocaleDateString()}
+        </div>
+      ),
+    },
+    {
+      key: 'total',
+      header: t('sales:documents.total'),
+      numeric: true,
+      cellClassName: 'font-medium',
+      render: (doc) => formatAmount(doc.total ?? 0),
+    },
+  ]
+
+  if (effectiveType === 'invoice') {
+    columns.push({
+      key: 'balance',
+      header: t('sales:documents.balanceDue'),
+      numeric: true,
+      cellClassName: 'font-medium',
+      render: (doc) => {
+        const paymentStatus = getPaymentStatus(doc)
+        return (
+          <span
+            className={
+              paymentStatus?.key === 'overdue'
+                ? cn('font-semibold', textColors.error)
+                : undefined
+            }
+          >
+            {formatAmount(doc.balance_due ?? doc.total ?? 0)}
+          </span>
+        )
+      },
+    })
+  }
+
+  columns.push({
+    key: 'actions',
+    header: <span className="sr-only">{t('table.actionsColumn')}</span>,
+    align: 'right',
+    render: (doc) => (
+      <Link to={`${basePath}/${doc.id}`} className={textColors.brand}>
+        {t('actions.view')}
+      </Link>
+    ),
+  })
+
+  return (
+    <ListPageLayout
+      title={pageTitle}
+      subtitle={`${total} ${entitySingular.toLowerCase()} ${t('total')}`}
+      actions={
+        <Button className="gap-2" onClick={() => { void navigate(addPath) }}>
           <Plus className="h-4 w-4" />
           {t('actions.add')} {entitySingular}
-        </Link>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <FilterTabs tabs={filterTabs} value={statusFilter} onChange={setStatusFilter} />
-          <SearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder={`${t('actions.search')} ${pageTitle.toLowerCase()}...`}
-            className="w-full sm:w-72"
-          />
-        </div>
-
-        {/* Payment Status Filter (Invoices only) */}
-        {effectiveType === 'invoice' && paymentFilterTabs.length > 0 && (
-          <div className="border-t border-gray-200 pt-4">
-            <label className="text-sm font-medium text-gray-700 mb-2 block">
-              {t('sales:documents.paymentStatus')}
-            </label>
-            <FilterTabs
-              tabs={paymentFilterTabs}
-              value={paymentStatusFilter}
-              onChange={setPaymentStatusFilter}
+        </Button>
+      }
+      filters={
+        <div className="flex w-full flex-col gap-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <FilterTabs tabs={filterTabs} value={statusFilter} onChange={handleStatusFilterChange} />
+            <SearchInput
+              value={searchQuery}
+              onChange={handleSearchChange}
+              placeholder={`${t('actions.search')} ${pageTitle.toLowerCase()}...`}
+              className="w-full sm:w-72"
             />
           </div>
-        )}
-      </div>
 
-      {/* Content */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-gray-500">{t('status.loading')}</div>
+          {/* Payment Status Filter (Invoices only) */}
+          {effectiveType === 'invoice' && paymentFilterTabs.length > 0 && (
+            <div className={cn('border-t pt-4', borderColors.light)}>
+              <label className={cn('mb-2 block', tokens.label.base)}>
+                {t('sales:documents.paymentStatus')}
+              </label>
+              <FilterTabs
+                tabs={paymentFilterTabs}
+                value={paymentStatusFilter}
+                onChange={setPaymentStatusFilter}
+              />
+            </div>
+          )}
         </div>
-      ) : error ? (
-        <div className="rounded-lg bg-red-50 p-4 text-red-700">
+      }
+      pagination={
+        !error && documents.length > 0 ? (
+          <OffsetPagination
+            currentPage={currentPage}
+            lastPage={lastPage}
+            total={total}
+            perPage={perPageActual}
+            from={rangeFrom}
+            to={rangeTo}
+            onPageChange={setPage}
+            onPerPageChange={(n) => { setPerPage(n); setPage(1) }}
+          />
+        ) : undefined
+      }
+    >
+      {error ? (
+        <div className={cn(tokens.alert.base, tokens.alert.error)}>
           {t('errors.loadingFailed')}
         </div>
-      ) : documents.length === 0 ? (
-        <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-          <FileText className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-semibold text-gray-900">{t('sales:documents.empty.title')}</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            {t('sales:documents.empty.description')}
-          </p>
-          <div className="mt-6">
-            <Link
-              to={documentType === 'credit_note' ? `${basePath}/create` : `${basePath}/new`}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              <Plus className="h-4 w-4" />
-              {t('actions.add')} {entitySingular}
-            </Link>
-          </div>
-        </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('sales:documents.number')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('sales:documents.type')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('sales:documents.status')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('sales:documents.partner')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('sales:documents.date')}
-                </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('sales:documents.total')}
-                </th>
-                {/* Show Balance Due column only for invoices */}
-                {effectiveType === 'invoice' && (
-                  <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('sales:documents.balanceDue')}
-                  </th>
-                )}
-                <th className="relative px-6 py-3">
-                  <span className="sr-only">{t('table.actionsColumn')}</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
-              {documents.map((doc) => {
-                const paymentStatus = getPaymentStatus(doc)
-                return (
-                  <tr key={doc.id} className="hover:bg-gray-50">
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <Link
-                        to={`${basePath}/${doc.id}`}
-                        className="font-medium text-gray-900 hover:text-blue-600"
-                      >
-                        {doc.document_number}
-                      </Link>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${typeColors[doc.type]}`}
-                      >
-                        {getTypeLabel(doc.type)}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <div className="flex flex-col gap-1">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[doc.status]}`}
-                        >
-                          {getStatusLabel(doc.status)}
-                        </span>
-                        {/* Payment status badge for posted invoices */}
-                        {paymentStatus && (
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${paymentStatus.color}`}
-                          >
-                            {t(`sales:documents.statuses.${paymentStatus.key}`, paymentStatus.label)}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                      {doc.partner_id ? (
-                        <Link
-                          to={doc.type === 'purchase_order'
-                            ? `/purchases/suppliers/${doc.partner_id}`
-                            : `/sales/customers/${doc.partner_id}`
-                          }
-                          className="text-blue-600 hover:text-blue-800 hover:underline"
-                        >
-                          {doc.partner_name ?? t('sales:partners.unknown')}
-                        </Link>
-                      ) : (
-                        <span className="text-gray-500">{doc.partner_name ?? t('sales:partners.unknown')}</span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                      <div className="flex items-center gap-1">
-                        <Calendar className="h-3.5 w-3.5" />
-                        {new Date(doc.document_date).toLocaleDateString()}
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
-                      {formatAmount(doc.total ?? 0)}
-                    </td>
-                    {/* Balance Due column for invoices */}
-                    {effectiveType === 'invoice' && (
-                      <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium">
-                        <span className={paymentStatus?.key === 'overdue' ? 'text-red-600 font-semibold' : 'text-gray-900'}>
-                          {formatAmount(doc.balance_due ?? doc.total ?? 0)}
-                        </span>
-                      </td>
-                    )}
-                    <td className="whitespace-nowrap px-6 py-4 text-end text-sm">
-                      <Link
-                        to={`${basePath}/${doc.id}`}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        {t('actions.view')}
-                      </Link>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={columns}
+          data={documents}
+          keyExtractor={(doc) => doc.id}
+          isLoading={isLoading}
+          emptyState={
+            <div className="py-6">
+              <EmptyState
+                icon={<FileText className={cn('mx-auto h-12 w-12', textColors.disabled)} />}
+                title={t('sales:documents.empty.title')}
+                description={t('sales:documents.empty.description')}
+              />
+              <div className="mt-6 flex justify-center">
+                <Button className="gap-2" onClick={() => { void navigate(addPath) }}>
+                  <Plus className="h-4 w-4" />
+                  {t('actions.add')} {entitySingular}
+                </Button>
+              </div>
+            </div>
+          }
+        />
       )}
-    </div>
+    </ListPageLayout>
   )
 }
