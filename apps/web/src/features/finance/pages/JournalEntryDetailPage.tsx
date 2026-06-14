@@ -1,35 +1,29 @@
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
-import { ArrowLeft, FileCheck, Clock } from 'lucide-react'
+import { ArrowLeft, FileCheck } from 'lucide-react'
 import { useJournalEntry } from '../hooks/useJournalEntries'
 import { usePostJournalEntry } from '../hooks/useJournalEntryMutations'
 import type { JournalEntryStatus } from '../types'
+import { cn } from '../../../lib/utils'
+import { tokens, textColors, borderColors } from '../../../lib/designTokens'
+import { Button } from '../../../components/atoms'
+import {
+  StatusBadge,
+  statusTone,
+  type StatusTone,
+} from '../../../components/atoms/StatusBadge'
+import { PageHeader } from '../../../components/molecules/PageHeader'
 
-function StatusBadge({ status }: { status: JournalEntryStatus }) {
-  const { t } = useTranslation('finance')
-
-  const statusConfig: Record<JournalEntryStatus, { styles: string; icon: React.ReactNode }> = {
-    draft: {
-      styles: 'bg-yellow-100 text-yellow-800',
-      icon: <Clock className="h-3.5 w-3.5" />,
-    },
-    posted: {
-      styles: 'bg-green-100 text-green-800',
-      icon: <FileCheck className="h-3.5 w-3.5" />,
-    },
-  }
-
-  const config = statusConfig[status]
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${config.styles}`}
-    >
-      {config.icon}
-      {t(`journalEntry.status.${status}`)}
-    </span>
-  )
+/**
+ * Journal-entry status tone overrides for the shared StatusBadge.
+ * - `draft`  → `pending` (built-in map already covers it; kept explicit for clarity)
+ * - `posted` → `success` (built-in map has no `posted`, so override to success)
+ * `reversed` is not part of the frontend `JournalEntryStatus` union yet
+ * (see types.ts drift note) — when it lands, map it to `neutral` here.
+ */
+const statusToneOverrides: Record<string, StatusTone> = {
+  posted: 'success',
 }
 
 export function JournalEntryDetailPage() {
@@ -44,21 +38,26 @@ export function JournalEntryDetailPage() {
     }
   }
 
+  const getStatusLabel = (status: JournalEntryStatus) =>
+    t(`finance:journalEntry.status.${status}`)
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <p className="text-gray-500">{t('common:status.loading')}</p>
+      <div className="flex min-h-[400px] items-center justify-center">
+        <p className={textColors.tertiary}>{t('common:status.loading')}</p>
       </div>
     )
   }
 
   if (!entry) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px]">
-        <p className="text-gray-500 mb-4">{t('finance:journalEntry.notFound')}</p>
+      <div className="flex min-h-[400px] flex-col items-center justify-center">
+        <p className={cn('mb-4', textColors.tertiary)}>
+          {t('finance:journalEntry.notFound')}
+        </p>
         <Link
           to="/finance/journal-entries"
-          className="text-blue-600 hover:text-blue-700"
+          className={cn(textColors.brand, textColors.hoverPrimary)}
         >
           {t('finance:journalEntry.backToList')}
         </Link>
@@ -84,141 +83,180 @@ export function JournalEntryDetailPage() {
     }).format(num)
   }
 
+  const backLink = (
+    <Link
+      to="/finance/journal-entries"
+      className={cn(
+        'inline-flex items-center gap-2 text-sm',
+        textColors.tertiary,
+        textColors.hoverPrimary,
+      )}
+    >
+      <ArrowLeft className="h-4 w-4" />
+      {t('common:back')}
+    </Link>
+  )
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link
-            to="/finance/journal-entries"
-            className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700"
-          >
-            <ArrowLeft className="h-4 w-4 me-1" />
-            {t('common:back')}
-          </Link>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900">
-                {entry.entry_number}
-              </h1>
-              <StatusBadge status={entry.status} />
-            </div>
-            <p className="text-gray-500">
-              {entry.description || t('finance:journalEntry.noDescription')}
-            </p>
-          </div>
-        </div>
+      <PageHeader
+        title={entry.entry_number}
+        breadcrumb={backLink}
+        subtitle={
+          entry.description || t('finance:journalEntry.noDescription')
+        }
+        actions={
+          <>
+            <StatusBadge tone={statusTone(entry.status, statusToneOverrides)}>
+              {getStatusLabel(entry.status)}
+            </StatusBadge>
+            {entry.status === 'draft' && (
+              <Button
+                variant="primary"
+                onClick={handlePost}
+                disabled={postMutation.isPending}
+              >
+                <FileCheck className="me-2 h-4 w-4" />
+                {postMutation.isPending
+                  ? t('common:status.processing')
+                  : t('finance:journalEntry.post')}
+              </Button>
+            )}
+          </>
+        }
+      />
 
-        {entry.status === 'draft' && (
-          <button
-            type="button"
-            onClick={handlePost}
-            disabled={postMutation.isPending}
-            className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-          >
-            <FileCheck className="h-4 w-4" />
-            {postMutation.isPending
-              ? t('common:status.processing')
-              : t('finance:journalEntry.post')}
-          </button>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-sm font-medium text-gray-500 mb-1">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div className={tokens.card.base}>
+          <h3 className={cn('mb-1 text-sm font-medium', textColors.tertiary)}>
             {t('finance:journalEntry.entryDate')}
           </h3>
-          <p className="text-lg font-semibold text-gray-900">
+          <p className={cn('text-lg font-semibold', textColors.primary)}>
             {format(new Date(entry.entry_date), 'MMMM d, yyyy')}
           </p>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-sm font-medium text-gray-500 mb-1">
+        <div className={tokens.card.base}>
+          <h3 className={cn('mb-1 text-sm font-medium', textColors.tertiary)}>
             {t('common:fields.created')}
           </h3>
-          <p className="text-lg font-semibold text-gray-900">
+          <p className={cn('text-lg font-semibold', textColors.primary)}>
             {format(new Date(entry.created_at), 'MMMM d, yyyy h:mm a')}
           </p>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-sm font-medium text-gray-500 mb-1">
+        <div className={tokens.card.base}>
+          <h3 className={cn('mb-1 text-sm font-medium', textColors.tertiary)}>
             {t('finance:journalEntry.linesCount')}
           </h3>
-          <p className="text-lg font-semibold text-gray-900">
+          <p className={cn('text-lg font-semibold', textColors.primary)}>
             {entry.lines.length} {t('finance:journalEntry.lines')}
           </p>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">
+      <div
+        className={cn(
+          'overflow-hidden rounded-lg border bg-white',
+          borderColors.light,
+        )}
+      >
+        <div className={cn('border-b px-6 py-4', borderColors.light)}>
+          <h2 className={cn(tokens.heading.section, 'mb-0')}>
             {t('finance:journalEntry.lines')}
           </h2>
         </div>
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+        <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+          <thead className={tokens.table.header}>
             <tr>
-              <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th
+                className={cn(
+                  'px-6 py-3 text-start text-xs font-medium uppercase tracking-wider',
+                  textColors.tertiary,
+                )}
+              >
                 {t('finance:journalEntry.account')}
               </th>
-              <th className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th
+                className={cn(
+                  'px-6 py-3 text-end text-xs font-medium uppercase tracking-wider',
+                  textColors.tertiary,
+                )}
+              >
                 {t('finance:journalEntry.debit')}
               </th>
-              <th className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th
+                className={cn(
+                  'px-6 py-3 text-end text-xs font-medium uppercase tracking-wider',
+                  textColors.tertiary,
+                )}
+              >
                 {t('finance:journalEntry.credit')}
               </th>
-              <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th
+                className={cn(
+                  'px-6 py-3 text-start text-xs font-medium uppercase tracking-wider',
+                  textColors.tertiary,
+                )}
+              >
                 {t('finance:journalEntry.lineDescription')}
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className={cn('divide-y bg-white', borderColors.divideDefault)}>
             {entry.lines.map((line) => (
-              <tr key={line.id} className="hover:bg-gray-50">
+              <tr key={line.id} className={tokens.table.rowHover}>
                 <td className="px-6 py-4">
                   <div>
-                    <span className="font-mono text-sm text-gray-500">
+                    <span className={cn('font-mono text-sm', textColors.tertiary)}>
                       {line.account_code}
                     </span>
-                    <span className="ms-2 text-sm text-gray-900">
+                    <span className={cn('ms-2 text-sm', textColors.primary)}>
                       {line.account_name}
                     </span>
                   </div>
                 </td>
-                <td className="px-6 py-4 text-end text-sm">
+                <td className="px-6 py-4 text-end text-sm tabular-nums">
                   {parseFloat(line.debit) > 0 ? (
-                    <span className="font-medium text-gray-900">
+                    <span className={cn('font-medium', textColors.primary)}>
                       {formatCurrency(line.debit)}
                     </span>
                   ) : (
-                    <span className="text-gray-400">-</span>
+                    <span className={textColors.disabled}>-</span>
                   )}
                 </td>
-                <td className="px-6 py-4 text-end text-sm">
+                <td className="px-6 py-4 text-end text-sm tabular-nums">
                   {parseFloat(line.credit) > 0 ? (
-                    <span className="font-medium text-gray-900">
+                    <span className={cn('font-medium', textColors.primary)}>
                       {formatCurrency(line.credit)}
                     </span>
                   ) : (
-                    <span className="text-gray-400">-</span>
+                    <span className={textColors.disabled}>-</span>
                   )}
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
+                <td className={cn('px-6 py-4 text-sm', textColors.tertiary)}>
                   {line.description || '-'}
                 </td>
               </tr>
             ))}
           </tbody>
-          <tfoot className="bg-gray-50">
+          <tfoot className={tokens.table.header}>
             <tr className="font-medium">
-              <td className="px-6 py-4 text-sm text-gray-900">
+              <td className={cn('px-6 py-4 text-sm', textColors.primary)}>
                 {t('finance:journalEntry.totals')}
               </td>
-              <td className="px-6 py-4 text-end text-sm text-gray-900">
+              <td
+                className={cn(
+                  'px-6 py-4 text-end text-sm tabular-nums',
+                  textColors.primary,
+                )}
+              >
                 {formatCurrency(totalDebits)}
               </td>
-              <td className="px-6 py-4 text-end text-sm text-gray-900">
+              <td
+                className={cn(
+                  'px-6 py-4 text-end text-sm tabular-nums',
+                  textColors.primary,
+                )}
+              >
                 {formatCurrency(totalCredits)}
               </td>
               <td className="px-6 py-4"></td>
@@ -228,13 +266,13 @@ export function JournalEntryDetailPage() {
       </div>
 
       {postMutation.error && (
-        <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+        <div className={cn(tokens.alert.base, tokens.alert.error)}>
           {t('finance:journalEntry.postError')}
         </div>
       )}
 
       {postMutation.isSuccess && (
-        <div className="rounded-lg bg-green-50 p-4 text-sm text-green-700">
+        <div className={cn(tokens.alert.base, tokens.alert.success)}>
           {t('finance:journalEntry.postSuccess')}
         </div>
       )}
