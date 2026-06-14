@@ -16,6 +16,13 @@ import {
 } from '@/lib/db/repositories/locationStockRepository';
 import { deleteDistributionForProducts } from '@/lib/db/repositories/crossLocationStockRepository';
 import { fetchLocationStock, type LocationStockPage } from '@/api/stockApi';
+import { fetchVariants } from '@/api/variantSyncApi';
+import {
+  upsertVariants,
+  deleteVariantsById,
+  deleteVariantsForProducts,
+  type ServerVariantRow,
+} from '@/lib/db/repositories/variantRepository';
 import { flattenMenuToProducts } from '@/api/productApi';
 import {
   upsertPaymentMethods,
@@ -594,6 +601,9 @@ export async function pullProductsCore(
     // Task F5 — tombstone cascade: evict cross-location distribution cache for
     // deleted products so the drawer never shows stale data.
     await deleteDistributionForProducts(db, deletedIdsAccumulator);
+    // FV2 — tombstone cascade: evict product_variants for deleted products so
+    // stale variant data is never surfaced in the picker or barcode scan.
+    await deleteVariantsForProducts(db, deletedIdsAccumulator);
   }
 
   if (totalPulled > 0 || deletedIdsAccumulator.length > 0) {
@@ -970,6 +980,82 @@ export async function pullLocationStock(
   );
 
   return { count: allStock.length };
+}
+
+/**
+ * FV2 — sync_metadata keys for the product variant pull.
+ *
+ * `product_variants_as_of` stores the SERVER-ISSUED `as_of` watermark from
+ * the last successful pull — sent verbatim as `updated_since` on the next
+ * delta pull. NEVER device time (clock skew would drop or replay rows).
+ *
+ * M1 fix H-1: on multi-page pulls, `updated_until` is threaded across pages
+ * (= page-1's as_of) so every page reads from the SAME snapshot window on
+ * the server and no row is silently missed or duplicated.
+ */
+const VARIANTS_CURSOR_KEY = 'product_variants_as_of';
+const VARIANTS_LAST_SYNC_KEY = 'product_variants_last_sync';
+
+/**
+ * FV2 — pull the tenant's product variant catalog from GET /pos/variants
+ * into the local `product_variants` table.
+ *
+ * - Standard tenants: full/delta pagination with tombstone + cascade.
+ * - Menu tenants (and deferred gate): short-circuit to {count: 0}.
+ *
+ * M1 fix H-1 (updated_until snapshot pinning):
+ *   Page 1 omits `updated_until` so the server mints `as_of = now()`.
+ *   Pages 2+ echo page-1's `as_of` as `updated_until` so the entire
+ *   multi-page delta is bounded to a single consistent snapshot window.
+ *   The cursor saved after the pull is ALWAYS page-1's `as_of`.
+ *
+ * Errors are thrown — callers in the sync cycle wrap with swallow-and-log.
+ */
+export async function pullProductVariants(
+  db: Database,
+  opts: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<{ count: number }> {
+  const gate = await resolveCatalogTenantGate();
+  if (gate.decision !== 'standard') return { count: 0 }; // Menu tenants: no retail variants
+
+  const cursor = await getSyncMetadata(db, VARIANTS_CURSOR_KEY);
+  const allVariants: ServerVariantRow[] = [];
+  let deletedIds: string[] = [];
+  let asOf: string | null = null;
+  let page = 1;
+  let lastPage = 1;
+
+  do {
+    const params: { updated_since?: string; updated_until?: string; page?: string } = {
+      page: String(page),
+    };
+    if (cursor !== null) params.updated_since = cursor;
+    // M1 fix H-1: pin the upper bound to page-1's as_of on every subsequent
+    // page so the multi-page delta is read from a single snapshot window.
+    if (asOf !== null) params.updated_until = asOf;
+    const result = await fetchVariants(params, { signal: opts.signal, timeoutMs: opts.timeoutMs });
+    allVariants.push(...result.data.variants);
+    if (page === 1) {
+      deletedIds = result.data.deleted_ids;
+      asOf = result.data.as_of;
+    }
+    lastPage = result.meta.pagination.last_page;
+    page++;
+  } while (page <= lastPage);
+
+  if (allVariants.length > 0) await upsertVariants(db, allVariants);
+  if (deletedIds.length > 0) await deleteVariantsById(db, deletedIds);
+  if (asOf !== null) await setSyncMetadata(db, VARIANTS_CURSOR_KEY, asOf);
+  await setSyncMetadata(db, VARIANTS_LAST_SYNC_KEY, new Date().toISOString());
+  await logSyncOperation(
+    db,
+    'pull',
+    'product_variants',
+    null,
+    'success',
+    `${allVariants.length} upserted, ${deletedIds.length} tombstoned`,
+  );
+  return { count: allVariants.length };
 }
 
 /**
@@ -1866,6 +1952,17 @@ export async function runFullSync(
   const vouchersPulled = await pullVouchers(db, terminalId);
   const voucherLedgerPulled = await pullVoucherLedger(db, terminalId);
   const receiptQrIndexPulled = await pullReceiptQrIndex(db, terminalId);
+
+  // FV2 — variant catalog delta pull. Runs after the receipt QrIndex pull so
+  // the full catalog round-trip completes before stock is refreshed. Swallow-
+  // and-log like pullLocationStock — a variant-pull failure must never block
+  // selling or the rest of the cycle.
+  try {
+    await pullProductVariants(db);
+  } catch (error) {
+    const message = coerceSyncError(error);
+    try { await logSyncOperation(db, 'pull', 'product_variants', null, 'error', message); } catch { /* non-critical */ }
+  }
 
   // Task 9 — location-stock delta pull. Runs in the pull phase, which
   // ALWAYS follows the push phase above, so this single call also serves
