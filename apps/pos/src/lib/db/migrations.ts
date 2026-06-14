@@ -1604,4 +1604,23 @@ export const migrations: Migration[] = [
     name: 'add_is_physical_to_products',
     sql: `ALTER TABLE products ADD COLUMN is_physical INTEGER NOT NULL DEFAULT 1`,
   },
+  {
+    // Cross-location stock distribution cache (server-first, fetch-on-open).
+    // payload = JSON of the /pos/products/{id}/stock-distribution `data` object;
+    // quantities inside stay scale-4 decimal STRINGS. fetched_at = server time.
+    // variant_id '' = product-grain (SQLite PKs reject NULL).
+    version: 52,
+    name: 'create_product_stock_distribution_cache',
+    sql: `
+      CREATE TABLE IF NOT EXISTS product_stock_distribution_cache (
+        product_id TEXT NOT NULL,
+        variant_id TEXT NOT NULL DEFAULT '',
+        variant_label TEXT,
+        payload TEXT NOT NULL,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY (product_id, variant_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_xloc_cache_product ON product_stock_distribution_cache(product_id);
+    `,
+  },
 ];
