@@ -3,10 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
 import { StickyFormFooter } from '../../../components/molecules/StickyFormFooter/StickyFormFooter'
+import { PageHeader } from '../../../components/molecules/PageHeader'
 import { useMenu, useCreateMenu, useUpdateMenu, useCreateMenuCategory, useDeleteMenuCategory } from '../hooks/useMenus'
 import { MenuCategoryItemManager } from '../components/MenuCategoryItemManager'
 import { Input, Textarea, FormField, Button } from '@/components/atoms'
-import { tokens } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
+import { tokens, textColors, colors } from '@/lib/designTokens'
 import type { CreateMenuData, UpdateMenuData, MenuCategoryData } from '../types/menu'
 
 const DAY_OPTIONS = [
@@ -106,7 +108,7 @@ export function MenuFormPage() {
   }
 
   if (isEditing && isLoadingMenu) {
-    return <div className="text-center py-8 text-gray-500">{t('common:loading')}</div>
+    return <div className={cn('text-center py-8', textColors.tertiary)}>{t('common:loading')}</div>
   }
 
   const categories: MenuCategoryData[] = existingMenu?.categories ?? []
@@ -114,23 +116,29 @@ export function MenuFormPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <button
-          type="button"
-          onClick={() => navigate('/catalog/menus')}
-          className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <h1 className="text-2xl font-semibold text-gray-900">
-          {isEditing ? t('menu:editMenu') : t('menu:createMenu')}
-        </h1>
-      </div>
+      <PageHeader
+        title={isEditing ? t('menu:editMenu') : t('menu:createMenu')}
+        breadcrumb={
+          <button
+            type="button"
+            onClick={() => navigate('/catalog/menus')}
+            className={cn(
+              'inline-flex items-center gap-2 text-sm',
+              textColors.tertiary,
+              textColors.hoverPrimary,
+            )}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t('common:back')}
+          </button>
+        }
+        className="mb-0"
+      />
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Info */}
         <div className={tokens.card.base}>
-          <h2 className="text-lg font-medium text-gray-900 mb-4">{t('menu:basicInfo')}</h2>
+          <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('menu:basicInfo')}</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField label={t('menu:name')} htmlFor="menu-name" required className="sm:col-span-2">
               <Input
@@ -165,7 +173,7 @@ export function MenuFormPage() {
                   onChange={(e) => { setIsActive(e.target.checked); }}
                   className={tokens.checkbox.base}
                 />
-                <span className="text-sm text-gray-700">{t('menu:isActive')}</span>
+                <span className={cn('text-sm', textColors.secondary)}>{t('menu:isActive')}</span>
               </label>
               <label className="flex items-center gap-2">
                 <input
@@ -174,7 +182,7 @@ export function MenuFormPage() {
                   onChange={(e) => { setIsDefault(e.target.checked); }}
                   className={tokens.checkbox.base}
                 />
-                <span className="text-sm text-gray-700">{t('menu:isDefault')}</span>
+                <span className={cn('text-sm', textColors.secondary)}>{t('menu:isDefault')}</span>
               </label>
             </div>
           </div>
@@ -182,7 +190,7 @@ export function MenuFormPage() {
 
         {/* Schedule */}
         <div className={tokens.card.base}>
-          <h2 className="text-lg font-medium text-gray-900 mb-4">{t('menu:schedule')}</h2>
+          <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('menu:schedule')}</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField label={t('menu:activeFrom')} htmlFor="active-from">
               <Input
@@ -224,17 +232,18 @@ export function MenuFormPage() {
                     key={day.value}
                     type="button"
                     onClick={() => { toggleDay(day.value); }}
-                    className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                    className={cn(
+                      'rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
                       availableDays.includes(day.value)
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
+                        ? tokens.button.primary
+                        : cn(colors.neutral[100], textColors.tertiary, colors.hover.gray50),
+                    )}
                   >
                     {day.label}
                   </button>
                 ))}
               </div>
-              <p className="mt-1 text-xs text-gray-500">{t('menu:availableDaysHint')}</p>
+              <p className={tokens.helperText.base}>{t('menu:availableDaysHint')}</p>
             </div>
           </div>
         </div>
@@ -242,7 +251,7 @@ export function MenuFormPage() {
         {/* Categories (edit mode only) */}
         {isEditing && (
           <div className={tokens.card.base}>
-            <h2 className="text-lg font-medium text-gray-900 mb-4">{t('menu:categories')}</h2>
+            <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('menu:categories')}</h2>
 
             {categories.length > 0 && (
               <div className="space-y-3 mb-4">
@@ -252,7 +261,7 @@ export function MenuFormPage() {
                       <button
                         type="button"
                         onClick={() => handleDeleteCategory(category.id)}
-                        className="text-gray-400 hover:text-red-500 p-1"
+                        className={cn('p-1', textColors.disabled, textColors.hoverError)}
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
