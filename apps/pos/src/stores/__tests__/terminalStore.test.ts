@@ -531,9 +531,11 @@ describe('terminalStore', () => {
 });
 
 describe('fiscalShiftIdForReceipt', () => {
-  // Fiscal canonical payloads validate shift_id as a lowercase-hex UUID.
-  // Raw shift.id is NOT safe: offline-opened shifts are `offline-<uuid>`
-  // (2026-06-12 live failure: checkout rejected with payload_field_invalid).
+  // One-id model (Phase 1–3): shift.id IS the fiscal shift/session id — a v3
+  // device-minted UUIDv7 or a v<3 server UUID. The legacy `offline-<uuid>`
+  // fork was removed in Phase 1, so resolution collapses onto shift.id.
+  // Fiscal canonical payloads still validate shift_id as a lowercase-hex UUID,
+  // so a non-UUID id must fail loud rather than mis-attribute fiscal data.
   const base: Shift = {
     id: 'shift-1',
     terminal_id: 'term-1',
@@ -544,22 +546,28 @@ describe('fiscalShiftIdForReceipt', () => {
     user: { id: 'user-1', name: 'Jane' },
   };
 
-  it('returns the device-minted fiscal_shift_id when present', () => {
-    const shift = { ...base, fiscal_shift_id: '11111111-1111-4111-8111-111111111111' };
-    expect(fiscalShiftIdForReceipt(shift)).toBe('11111111-1111-4111-8111-111111111111');
-  });
-
-  it('falls back to the shift id when it is already a UUID', () => {
+  it('returns shift.id when it is a UUID', () => {
     const shift = { ...base, id: '33333333-3333-4333-8333-333333333333' };
     expect(fiscalShiftIdForReceipt(shift)).toBe('33333333-3333-4333-8333-333333333333');
   });
 
-  it('derives the UUID from an offline- prefixed shift id', () => {
-    const shift = { ...base, id: 'offline-44444444-4444-4444-8444-444444444444' };
-    expect(fiscalShiftIdForReceipt(shift)).toBe('44444444-4444-4444-8444-444444444444');
+  it('lowercases an upper-case UUID shift.id (payload requires lowercase hex)', () => {
+    const shift = { ...base, id: '33333333-3333-4333-8333-3333333333AB' };
+    expect(fiscalShiftIdForReceipt(shift)).toBe('33333333-3333-4333-8333-3333333333ab');
   });
 
-  it('fails loud on an underivable shift id instead of minting a random one', () => {
+  it('ignores fiscal_shift_id and resolves onto shift.id (one-id model)', () => {
+    // In the one-id model id == fiscal_shift_id == fiscal_session_id, so
+    // returning shift.id is equivalent to the old fiscal_shift_id-first branch.
+    const shift = {
+      ...base,
+      id: '33333333-3333-4333-8333-333333333333',
+      fiscal_shift_id: '33333333-3333-4333-8333-333333333333',
+    };
+    expect(fiscalShiftIdForReceipt(shift)).toBe('33333333-3333-4333-8333-333333333333');
+  });
+
+  it('fails loud on a non-UUID shift id instead of minting a random one', () => {
     // A random UUID here would scatter receipts across phantom shift ids and
     // silently corrupt the Z window — fail-closed is the only safe behavior.
     expect(() => fiscalShiftIdForReceipt(base)).toThrow(/fiscal shift id/i);

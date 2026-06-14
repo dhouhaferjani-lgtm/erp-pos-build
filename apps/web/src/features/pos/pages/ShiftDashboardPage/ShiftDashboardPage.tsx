@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { tokens } from '@/lib/designTokens'
 import { POSButton, MoneyInput } from '../../atoms'
 
 import { bcsub } from '@/lib/decimal'
@@ -40,6 +41,14 @@ export interface Terminal {
 export interface ShiftDashboardPageProps {
   currentShift: Shift | null
   terminal: Terminal
+  /**
+   * When true, the active terminal is device-authoritative (fiscal_schema_version === 3):
+   * shifts open/close ON the POS device, and the web REST open/close endpoints return
+   * 409 SHIFT_DEVICE_AUTHORITY_REQUIRED. The web panel therefore hides the Open Shift /
+   * Close Shift controls and shows a notice. Read-only views (current shift display,
+   * X/Z reports, cash deposit/payout) remain available.
+   */
+  isDeviceAuthoritative?: boolean
   onOpenShift: (openingBalance: string) => void
   onCloseShift: (actualCash: string) => void
   onGenerateXReport: () => void
@@ -57,6 +66,7 @@ type ModalType = 'open' | 'close' | 'deposit' | 'payout' | null
 export function ShiftDashboardPage({
   currentShift,
   terminal,
+  isDeviceAuthoritative = false,
   onOpenShift,
   onCloseShift,
   onGenerateXReport,
@@ -245,17 +255,28 @@ export function ShiftDashboardPage({
               {t('pos:shiftDashboard.xReport')}
             </POSButton>
 
-            <POSButton
-              variant="danger"
-              size={touchOptimized ? 'lg' : 'md'}
-              onClick={() => { setActiveModal('close'); }}
-              icon={<LogOut className="w-5 h-5" />}
-              fullWidth
-              touchOptimized={touchOptimized}
-            >
-              {t('pos:shiftDashboard.closeShift')}
-            </POSButton>
+            {!isDeviceAuthoritative && (
+              <POSButton
+                variant="danger"
+                size={touchOptimized ? 'lg' : 'md'}
+                onClick={() => { setActiveModal('close'); }}
+                icon={<LogOut className="w-5 h-5" />}
+                fullWidth
+                touchOptimized={touchOptimized}
+              >
+                {t('pos:shiftDashboard.closeShift')}
+              </POSButton>
+            )}
           </div>
+
+          {isDeviceAuthoritative && (
+            <div
+              className={cn(tokens.alert.base, tokens.alert.info)}
+              role="status"
+            >
+              {t('pos:shiftDashboard.deviceAuthorityNotice')}
+            </div>
+          )}
         </div>
       ) : (
         <div className="bg-white rounded-lg shadow-sm p-12 text-center">
@@ -264,16 +285,27 @@ export function ShiftDashboardPage({
             {t('pos:shiftDashboard.noActiveShift')}
           </h2>
           <p className="text-gray-600 mb-6">
-            {t('pos:shiftDashboard.noActiveShiftDescription')}
+            {isDeviceAuthoritative
+              ? t('pos:shiftDashboard.deviceAuthorityNoActiveShiftDescription')
+              : t('pos:shiftDashboard.noActiveShiftDescription')}
           </p>
-          <POSButton
-            variant="primary"
-            size={touchOptimized ? 'lg' : 'md'}
-            onClick={() => { setActiveModal('open'); }}
-            touchOptimized={touchOptimized}
-          >
-            {t('pos:shiftDashboard.openShift')}
-          </POSButton>
+          {isDeviceAuthoritative ? (
+            <div
+              className={cn(tokens.alert.base, tokens.alert.info, 'text-left')}
+              role="status"
+            >
+              {t('pos:shiftDashboard.deviceAuthorityNotice')}
+            </div>
+          ) : (
+            <POSButton
+              variant="primary"
+              size={touchOptimized ? 'lg' : 'md'}
+              onClick={() => { setActiveModal('open'); }}
+              touchOptimized={touchOptimized}
+            >
+              {t('pos:shiftDashboard.openShift')}
+            </POSButton>
+          )}
         </div>
       )}
 

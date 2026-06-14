@@ -189,29 +189,27 @@ function fiscalCurrencyScale(currencyCode: string): 0 | 2 | 3 {
 }
 
 function fiscalSessionIdForShift(shift: Shift): string {
-  return shift.fiscal_session_id ?? (isUuid(shift.id) ? shift.id : crypto.randomUUID());
+  return fiscalShiftIdForReceipt(shift);
 }
 
 function fiscalShiftIdForShift(shift: Shift): string {
-  return shift.fiscal_shift_id ?? (isUuid(shift.id) ? shift.id : crypto.randomUUID());
+  return fiscalShiftIdForReceipt(shift);
 }
 
 /**
  * The shift id to stamp into fiscal canonical payloads (SALE_RECEIPT,
- * ACCOUNT_PAYMENT, ACCOUNT_CHARGE). Payload validation requires a
- * lowercase-hex UUID, and raw `shift.id` is NOT one for offline-opened
- * shifts (`offline-<uuid>`). Resolution order:
- *   1. the device-minted `fiscal_shift_id` (matches the SESSION_OPEN event),
- *   2. the shift id itself when it is a UUID (server-opened shifts),
- *   3. the UUID inside an `offline-` prefixed id (deterministic — the same
- *      value on every call, unlike a random fallback which would scatter
- *      receipts across phantom shift ids and corrupt the Z window),
- *   4. fail loud. A blocked sale beats silently mis-attributed fiscal data.
+ * ACCOUNT_PAYMENT, ACCOUNT_CHARGE, SESSION_OPEN, X/Z). Payload validation
+ * requires a lowercase-hex UUID.
+ *
+ * One-id model (Phase 1–3): `shift.id` is now ALWAYS a valid UUID — a v3
+ * device-minted UUIDv7 (where `id == fiscal_shift_id == fiscal_session_id`)
+ * or a v<3 server UUID. The legacy `offline-<uuid>` shift-id fork was removed
+ * in Phase 1, so the old prefix-strip and fiscal_shift_id-first branch are
+ * dead: returning `shift.id` is now equivalent. Fail loud if it is somehow
+ * not a UUID — a blocked sale beats silently mis-attributed fiscal data.
  */
 export function fiscalShiftIdForReceipt(shift: Shift): string {
-  if (shift.fiscal_shift_id) return shift.fiscal_shift_id;
-  const raw = shift.id.startsWith('offline-') ? shift.id.slice('offline-'.length) : shift.id;
-  if (isUuid(raw)) return raw.toLowerCase();
+  if (isUuid(shift.id)) return shift.id.toLowerCase();
   throw new Error(`Shift ${shift.id} has no usable fiscal shift id; cannot author fiscal events.`);
 }
 

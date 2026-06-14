@@ -12,10 +12,11 @@ const storeMocks = vi.hoisted(() => ({
       fiscal_schema_version: 3,
       is_training_mode: false,
     },
+    // One-id model: shift.id IS the fiscal shift/session id.
     shift: {
-      id: 'shift-legacy-1',
+      id: '33333333-3333-4333-8333-333333333333',
       fiscal_shift_id: '33333333-3333-4333-8333-333333333333',
-      fiscal_session_id: '44444444-4444-4444-8444-444444444444',
+      fiscal_session_id: '33333333-3333-4333-8333-333333333333',
       opened_at: '2026-05-24T08:00:00.000Z',
     },
   },
@@ -66,6 +67,13 @@ vi.mock('@/stores/terminalStore', () => ({
   useTerminalStore: {
     getState: vi.fn(() => storeMocks.terminalState),
   },
+  // One-id model: fiscal shift/session id IS shift.id (fail loud on non-UUID).
+  fiscalShiftIdForReceipt: (shift: { id: string }) => {
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(shift.id)) {
+      return shift.id.toLowerCase();
+    }
+    throw new Error(`Shift ${shift.id} has no usable fiscal shift id; cannot author fiscal events.`);
+  },
 }));
 
 vi.mock('@/stores/operatorStore', () => ({
@@ -106,6 +114,13 @@ describe('cashDrawerApi cutover ownership', () => {
       approvalEvidence.approval_fiscal_event_id,
     ]);
     expect(authorZCashDrawerMovement).toHaveBeenCalledOnce();
+    // One-id model: shiftId and sessionId are both shift.id.
+    expect(authorZCashDrawerMovement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shiftId: '33333333-3333-4333-8333-333333333333',
+        sessionId: '33333333-3333-4333-8333-333333333333',
+      }),
+    );
     expect(apiPost).not.toHaveBeenCalled();
     expect(insertCashDrawerOp).not.toHaveBeenCalled();
   });
@@ -140,7 +155,7 @@ describe('cashDrawerApi cutover ownership', () => {
     expect(authorZCashDrawerMovement).not.toHaveBeenCalled();
     expect(apiPost).toHaveBeenCalledWith('/pos/cash-drawer/deposit', expect.objectContaining({
       idempotency_key: 'legacy-op-1',
-      shift_id: 'shift-legacy-1',
+      shift_id: '33333333-3333-4333-8333-333333333333',
       amount: '25.00',
     }));
   });

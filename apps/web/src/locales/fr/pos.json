@@ -363,6 +363,8 @@
     "openShift": "Ouvrir la caisse",
     "noActiveShift": "Aucune caisse ouverte",
     "noActiveShiftDescription": "Ouvrez une caisse pour commencer les opérations",
+    "deviceAuthorityNotice": "Ce terminal ouvre et ferme les caisses sur l'appareil de caisse. Utilisez l'appareil de caisse pour ouvrir ou fermer une caisse.",
+    "deviceAuthorityNoActiveShiftDescription": "Les caisses de ce terminal sont gérées sur l'appareil de caisse.",
     "actualCashCount": "Espèces comptées",
     "variance": "Écart",
     "amount": "Montant",

@@ -188,6 +188,11 @@ export function POSShiftsDashboard() {
     location_name: webTerminal.location?.name ?? '',
   }
 
+  // v3 terminals are device-authoritative: shifts open/close ON the POS device,
+  // and the web REST open/close endpoints return 409 SHIFT_DEVICE_AUTHORITY_REQUIRED.
+  // Source v3-ness from the terminal object the dashboard already fetched.
+  const isDeviceAuthoritative = webTerminal.fiscal_schema_version === 3
+
   // Map API shift to ShiftDashboardPage's Shift type
   const currentShift = shift
     ? {
@@ -208,6 +213,7 @@ export function POSShiftsDashboard() {
       <ShiftDashboardPage
         terminal={terminal}
         currentShift={currentShift}
+        isDeviceAuthoritative={isDeviceAuthoritative}
         onOpenShift={handleOpenShift}
         onCloseShift={handleCloseShift}
         onCashDeposit={handleCashDeposit}

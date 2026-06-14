@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight, BarChart3, Lock, Minimize2, RotateCw, Settings } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
-import { useTerminalStore } from '@/stores/terminalStore';
+import { useTerminalStore, fiscalShiftIdForReceipt } from '@/stores/terminalStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { applyFullscreen } from '@/lib/fullscreen';
 import { useOperatorStore } from '@/stores/operatorStore';
@@ -191,8 +191,8 @@ export function Header() {
       const xOpts: GenerateXReportOpts = shift && tenantId
         ? {
             tenantId,
-            fiscalShiftId: shift.fiscal_shift_id,
-            fiscalSessionId: shift.fiscal_session_id,
+            fiscalShiftId: fiscalShiftIdForReceipt(shift),
+            fiscalSessionId: fiscalShiftIdForReceipt(shift),
             operatorId: shift.user.id,
             operatorName: shift.user.name,
             isTraining: terminal.is_training_mode === true,
@@ -224,8 +224,8 @@ export function Header() {
     // Pass fraudSettings so generateZReport can compute variance_severity.
     const fiscalZOpts: GenerateZReportOpts = {
       tenantId,
-      fiscalShiftId: shift.fiscal_shift_id,
-      fiscalSessionId: shift.fiscal_session_id,
+      fiscalShiftId: fiscalShiftIdForReceipt(shift),
+      fiscalSessionId: fiscalShiftIdForReceipt(shift),
       terminalLabel: terminal.code,
       operatorId: shift.user.id,
       operatorName: shift.user.name,

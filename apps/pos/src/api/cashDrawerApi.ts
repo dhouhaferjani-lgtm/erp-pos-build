@@ -4,7 +4,7 @@ import { bcadd, bcsub } from '@/lib/decimal';
 import { getDatabase } from '@/lib/db';
 import { authorZCashDrawerMovement } from '@/lib/fiscal/zSessionAuthoring';
 import { useAuthStore } from '@/stores/authStore';
-import { useTerminalStore } from '@/stores/terminalStore';
+import { useTerminalStore, fiscalShiftIdForReceipt } from '@/stores/terminalStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import {
   insertCashDrawerOp,
@@ -150,12 +150,17 @@ async function authorCashDrawerMovement(
   if (!auth.user?.tenantId || !auth.companyId) {
     throw new Error('Cannot author cash drawer movement without active tenant and company.');
   }
-  if (!shift || !terminal || !shift.fiscal_shift_id || !shift.fiscal_session_id) {
+  if (!shift || !terminal) {
     throw new Error('Cannot author cash drawer movement without an active fiscal session.');
   }
   if (!operator) {
     throw new Error('Cannot author cash drawer movement without an active operator.');
   }
+
+  // One-id model: shift.id IS the fiscal shift/session id. fiscalShiftIdForReceipt
+  // fails loud if it is not a valid UUID, blocking the movement rather than
+  // mis-attributing fiscal data.
+  const fiscalShiftId = fiscalShiftIdForReceipt(shift);
 
   const company = auth.companies.find((candidate) => candidate.id === auth.companyId);
   const currencyCode = company?.currency ?? 'EUR';
@@ -164,8 +169,8 @@ async function authorCashDrawerMovement(
     tenantId: auth.user.tenantId,
     companyId: auth.companyId,
     terminalId: terminal.id,
-    shiftId: shift.fiscal_shift_id,
-    sessionId: shift.fiscal_session_id,
+    shiftId: fiscalShiftId,
+    sessionId: fiscalShiftId,
     businessDate: shift.opened_at.slice(0, 10),
     operatorId: operator.id,
     operatorName: operator.name,
