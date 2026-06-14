@@ -71,7 +71,9 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
 
 ### Module order (per CANONICALIZATION-SPEC §C)
 - [x] **`documents/DocumentForm.tsx`** → `PageHeader` (back link in breadcrumb slot) + `tokens.card.base` + `<h2>` "Details" section (new `tokens.heading.section` token) + `FormField`+`Input`/`Select`/`Textarea` (settles `rounded-lg`→`rounded-md` drift) + `Button` footer (Cancel→`navigate`, Save submit) + auto-save SVGs→lucide `Loader2`/`Check` with `textColors`. 24 color warnings → 0; 4 Vitest tests; before/after `screens/phase3/documentform-{before,after}.png`. ✅
-- [ ] `documents/DocumentListPage.tsx` → `ListPageLayout`+`DataTable`+`StatusBadge`; add pagination.
+- [x] **`documents/DocumentListPage.tsx`** → `ListPageLayout` (header/subtitle/Add `Button`/filters/pagination slots) + `DataTable` (numeric right-align+`tabular-nums` totals; built-in skeleton + `EmptyState`) + `StatusBadge`/`statusTone` (retired the bespoke `typeColors`/`statusColors`/`paymentStatus.color` maps) + **server pagination** via `OffsetPagination` (page/per_page added to query + key). Fixed a latent i18n bug exposed by the always-rendered table header (`sales:documents.status` is an *object* of values → header now uses `common:fields.status`). Updated `DocumentTenantScope` expected key for the new page/per_page positions. 0 color warnings; web lint 11724→11683 (−41). 4 Vitest tests; tsc clean; before/after `screens/phase3/documentlist-{before,after}.png`. ✅
+  - ⚠ Demo (`cafe-tunis`) has 0 B2B documents, so the live screenshot shows the canonical **empty** path; the populated-table path (rows + status badges + pagination) is covered by the Vitest test. The shared `dist` is contended by the parallel session — verified the served bundle via DOM assertion (`thead` headers + 0 legacy dashed boxes) before capturing.
+  - ⚠ Pre-existing (also red on clean `dev`, NOT touched here): `DocumentForm.tenantScope` cascade test + 2 `DocumentComponents.tenantScope` tests.
 
 ### (original cluster framing — superseded by CANONICALIZATION-SPEC for module order)
 - [ ] 3.1 `documents/` (epicenter: 65 raw controls, 5 bespoke modals, ~50 off-theme)
@@ -107,3 +109,4 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
 | 2026-06-14 | 1.1 | (this commit) | chartColors → Deep Ocean theme (IziPOS); 4 tests; per-vertical caveat logged |
 | 2026-06-14 | 2 | (this commit) | 5 primitives (PageHeader/DataTable/StatusBadge/ListPageLayout/HubCard+HubGrid); 48 tests; tsc clean; 0 new lint warnings; barrels wired |
 | 2026-06-14 | 3 | (this commit) | rebased onto origin/dev; DocumentForm canonicalized → PageHeader/card/section-heading/FormField+atoms/Button; added `tokens.heading.section`; 4 tests; tsc clean; web lint 11747→11724 (−23); before/after screenshots |
+| 2026-06-14 | 3 | (this commit) | DocumentListPage canonicalized → ListPageLayout/DataTable/StatusBadge + server pagination (OffsetPagination); retired type/status color maps; fixed `sales:documents.status`-is-an-object header bug (→`common:fields.status`); 4 tests + tenant-scope key updated; tsc clean; web lint 11724→11683 (−41); before/after screenshots |
