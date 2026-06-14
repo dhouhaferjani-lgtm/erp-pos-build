@@ -197,8 +197,12 @@ class StockDistributionQueryTest extends TestCase
             $this->shop->id,
         );
 
-        // Office + inactive excluded: exactly 2 rows.
+        // Office + inactive excluded: exactly 2 rows, and the excluded
+        // locations never appear by name.
         $this->assertCount(2, $dto->locations);
+        $names = array_map(static fn (StockDistributionRowDTO $r): string => $r->locationName, $dto->locations);
+        $this->assertNotContains('HQ', $names);
+        $this->assertNotContains('Closed', $names);
 
         // Current (shop) first, then warehouse by name.
         /** @var StockDistributionRowDTO $first */
