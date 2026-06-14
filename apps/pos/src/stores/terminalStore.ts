@@ -876,16 +876,23 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
   },
 
   closeShift: async (actualCash: string) => {
-    const { shift } = get();
+    const { terminal, shift } = get();
     if (!shift) throw new Error('No active shift');
 
     set({ isLoading: true });
-    try {
-      await apiPost<Shift>(`/pos/shifts/${shift.id}/close`, {
-        actual_cash: actualCash,
-      });
-    } catch {
-      console.warn('[Terminal] Shift close API failed (offline), closing locally');
+
+    // v3 is device-authoritative: SESSION_CLOSE + Z_REPORT are authored locally
+    // (generateZReport, called before this) and the local_shifts row is already
+    // closed; the server pos_shifts row is closed by the projection. The REST
+    // close is retired (returns 409), so this just clears device state.
+    if (terminal?.fiscal_schema_version !== 3) {
+      try {
+        await apiPost<Shift>(`/pos/shifts/${shift.id}/close`, {
+          actual_cash: actualCash,
+        });
+      } catch {
+        console.warn('[Terminal] Shift close API failed (offline), closing locally');
+      }
     }
     await removeStoredValue(StorageKeys.SHIFT);
     set({ shift: null, isLoading: false });

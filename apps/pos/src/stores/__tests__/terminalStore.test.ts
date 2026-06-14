@@ -325,6 +325,21 @@ describe('terminalStore', () => {
     expect(useTerminalStore.getState().shift).toBeNull();
   });
 
+  it('closeShift (v3) clears device state without calling the REST close endpoint', async () => {
+    // Device-authoritative close: SESSION_CLOSE + Z_REPORT are authored locally
+    // and pos_shifts is closed by the projection; the REST close returns 409.
+    useTerminalStore.setState({
+      terminal: { ...mockTerminal, fiscal_schema_version: 3 },
+      shift: mockShift,
+    });
+
+    await useTerminalStore.getState().closeShift('150.00');
+
+    expect(apiPost).not.toHaveBeenCalled();
+    expect(useTerminalStore.getState().shift).toBeNull();
+    expect(removeStoredValue).toHaveBeenCalledWith('current_shift');
+  });
+
   it('closeShift throws when no active shift', async () => {
     await expect(useTerminalStore.getState().closeShift('150.00')).rejects.toThrow(
       'No active shift',

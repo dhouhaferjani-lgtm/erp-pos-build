@@ -8,6 +8,8 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\ShiftStatus;
+use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -90,5 +92,46 @@ final class ShiftOpenV3GuardTest extends TestCase
 
         $this->assertNotSame('SHIFT_DEVICE_AUTHORITY_REQUIRED', $response->json('error.code'));
         $this->assertNotSame(409, $response->getStatusCode());
+    }
+
+    public function test_v3_terminal_close_returns_device_authority_409(): void
+    {
+        $terminal = $this->makeTerminal(3);
+        $shift = $this->makeOpenShift($terminal);
+        Sanctum::actingAs($this->cashier);
+
+        $response = $this->postJson("/api/v1/pos/shifts/{$shift->id}/close", [
+            'actual_cash' => '100.00',
+        ]);
+
+        $response->assertStatus(409);
+        $response->assertJsonPath('error.code', 'SHIFT_DEVICE_AUTHORITY_REQUIRED');
+    }
+
+    public function test_v3_terminal_sync_close_returns_device_authority_409(): void
+    {
+        $terminal = $this->makeTerminal(3);
+        $shift = $this->makeOpenShift($terminal);
+        Sanctum::actingAs($this->cashier);
+
+        $response = $this->postJson("/api/v1/pos/shifts/{$shift->id}/sync-close", [
+            'actual_cash' => '100.00',
+            'closed_at' => '2026-06-14T18:00:00Z',
+        ]);
+
+        $response->assertStatus(409);
+        $response->assertJsonPath('error.code', 'SHIFT_DEVICE_AUTHORITY_REQUIRED');
+    }
+
+    private function makeOpenShift(Terminal $terminal): Shift
+    {
+        return Shift::create([
+            'terminal_id' => $terminal->id,
+            'cashier_id' => $this->cashier->id,
+            'shift_number' => 1,
+            'opening_cash' => '100.0000',
+            'status' => ShiftStatus::Open,
+            'opened_at' => '2026-06-14 08:00:00',
+        ]);
     }
 }

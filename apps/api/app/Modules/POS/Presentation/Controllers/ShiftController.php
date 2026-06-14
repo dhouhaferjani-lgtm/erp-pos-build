@@ -116,6 +116,22 @@ final class ShiftController extends Controller
             ], 403);
         }
 
+        // Device-authoritative (v3) terminals author SESSION_CLOSE + Z_REPORT
+        // locally; pos_shifts is closed by the projection. The REST close is
+        // retired with a hard 409 so a stray web/admin call can never close a
+        // device shift out from under the device (Decision 3).
+        if ((int) ($shift->terminal->fiscal_schema_version ?? 2) >= 3) {
+            return response()->json([
+                'error' => [
+                    'code' => 'SHIFT_DEVICE_AUTHORITY_REQUIRED',
+                    'message' => sprintf(
+                        'Shift close is retired for device-authoritative terminal %s. The device authors SESSION_CLOSE locally; pos_shifts is a projection.',
+                        $shift->terminal_id,
+                    ),
+                ],
+            ], 409);
+        }
+
         // Require a Z report before the shift can be closed (BG10)
         $zReport = ZReport::query()->where('shift_id', $shift->id)->first();
         if ($zReport === null) {

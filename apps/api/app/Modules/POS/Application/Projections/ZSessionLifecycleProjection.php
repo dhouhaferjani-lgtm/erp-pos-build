@@ -100,6 +100,10 @@ final class ZSessionLifecycleProjection implements FiscalEventProjector
         if ($event->event_type === FiscalEventType::SESSION_OPEN) {
             $this->projectPosShiftOpen($event, $payload, $shiftId);
         }
+
+        if ($event->event_type === FiscalEventType::SESSION_CLOSE) {
+            $this->projectPosShiftClose($event, $payload, $shiftId);
+        }
     }
 
     /**
@@ -162,6 +166,75 @@ final class ZSessionLifecycleProjection implements FiscalEventProjector
             'status' => ShiftStatus::Open,
             'opened_at' => $openedAt,
         ]);
+        $shift->save();
+    }
+
+    /**
+     * Close the projected `pos_shifts` row from a device-authored SESSION_CLOSE.
+     *
+     * Idempotent: re-applying SESSION_CLOSE to an already-CLOSED row is a no-op
+     * (the v3 409 already prevents a competing server-side close), so a
+     * reconnect that re-delivers the close never double-closes or corrupts the
+     * chain (Codex F-12). A SESSION_CLOSE with no projected row (grandfathered
+     * or out-of-order) is skipped — never a phantom row.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function projectPosShiftClose(FiscalEvent $event, array $payload, mixed $shiftId): void
+    {
+        if (! is_string($shiftId) || $shiftId === '') {
+            return;
+        }
+
+        $shift = Shift::query()->whereKey($shiftId)->first();
+        if ($shift === null || $shift->status === ShiftStatus::Closed) {
+            return;
+        }
+
+        $operatorId = $payload['operator_id'] ?? null;
+        if (! is_string($operatorId) || $operatorId === '') {
+            throw new RuntimeException(sprintf(
+                'Cannot close pos_shift for SESSION_CLOSE %s without payload.operator_id.',
+                $event->id,
+            ));
+        }
+
+        $expectedRaw = $payload['expected_cash'] ?? null;
+        $countedRaw = $payload['counted_cash'] ?? null;
+        $expectedCash = is_string($expectedRaw) && is_numeric($expectedRaw) ? $expectedRaw : null;
+        $countedCash = is_string($countedRaw) && is_numeric($countedRaw) ? $countedRaw : null;
+        $varianceSeverity = is_string($payload['variance_severity'] ?? null) ? $payload['variance_severity'] : null;
+
+        $managerApproval = $payload['manager_approval'] ?? null;
+        $managerOverrideBy = is_array($managerApproval) && is_string($managerApproval['supervisor_user_id'] ?? null)
+            ? $managerApproval['supervisor_user_id']
+            : null;
+
+        $shift->status = ShiftStatus::Closed;
+        $shift->closed_at = $payload['generated_at_device'] ?? $event->event_time_device;
+        $shift->closed_by = $operatorId;
+        $shift->expected_cash = $expectedCash;
+
+        // pos_shifts_variance_calc CHECK requires either (variance NULL AND
+        // actual_cash NULL) OR (variance = actual_cash - expected_cash). Only
+        // set the pair when both inputs exist, and recompute the difference so
+        // it matches the column scale exactly (the PG CHECK is not enforced on
+        // the SQLite test DB).
+        if ($countedCash !== null && $expectedCash !== null) {
+            $shift->actual_cash = $countedCash;
+            $shift->variance = bcsub($countedCash, $expectedCash, 4);
+        } else {
+            $shift->actual_cash = null;
+            $shift->variance = null;
+        }
+
+        if ($varianceSeverity !== null) {
+            $shift->variance_severity = $varianceSeverity;
+        }
+        if ($managerOverrideBy !== null) {
+            $shift->manager_override_by = $managerOverrideBy;
+        }
+
         $shift->save();
     }
 }

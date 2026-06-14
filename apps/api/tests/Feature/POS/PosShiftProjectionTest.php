@@ -151,6 +151,50 @@ final class PosShiftProjectionTest extends TestCase
         ]);
     }
 
+    public function test_session_close_closes_the_projected_pos_shift(): void
+    {
+        $shiftId = Str::uuid()->toString();
+        $projector = $this->app->make(ZSessionLifecycleProjection::class);
+        $projector->apply($this->makeSessionOpenEvent($shiftId, shiftNumber: 1));
+
+        $projector->apply($this->makeSessionCloseEvent($shiftId, sequenceNumber: 2));
+
+        $shift = Shift::query()->findOrFail($shiftId);
+        $this->assertSame(ShiftStatus::Closed, $shift->status);
+        // pos_shifts_closed_logic: CLOSED requires closed_at + closed_by set.
+        $this->assertNotNull($shift->closed_at);
+        $this->assertSame($this->cashier->id, $shift->closed_by);
+        $this->assertSame('150.0000', $shift->expected_cash);
+        $this->assertSame('150.0000', $shift->actual_cash);
+        $this->assertSame('0.0000', $shift->variance);
+    }
+
+    public function test_session_close_projection_is_idempotent(): void
+    {
+        $shiftId = Str::uuid()->toString();
+        $projector = $this->app->make(ZSessionLifecycleProjection::class);
+        $projector->apply($this->makeSessionOpenEvent($shiftId, shiftNumber: 1));
+        $closeEvent = $this->makeSessionCloseEvent($shiftId, sequenceNumber: 2);
+
+        $projector->apply($closeEvent);
+        $projector->apply($closeEvent);
+
+        $shift = Shift::query()->findOrFail($shiftId);
+        $this->assertSame(ShiftStatus::Closed, $shift->status);
+        $this->assertSame(1, Shift::query()->where('id', $shiftId)->count());
+    }
+
+    public function test_session_close_for_a_missing_shift_is_a_noop(): void
+    {
+        // SESSION_CLOSE with no projected pos_shift (grandfathered/out-of-order)
+        // must not crash the projector or create a phantom row.
+        $shiftId = Str::uuid()->toString();
+        $this->app->make(ZSessionLifecycleProjection::class)
+            ->apply($this->makeSessionCloseEvent($shiftId, sequenceNumber: 1));
+
+        $this->assertNull(Shift::query()->find($shiftId));
+    }
+
     public function test_shift_resource_exposes_device_reconcile_fields(): void
     {
         $shiftId = Str::uuid()->toString();
@@ -208,6 +252,66 @@ final class PosShiftProjectionTest extends TestCase
             'reference_document_id' => null,
             'source_event_class' => 'pos_session',
             'source_event_id' => $shiftId,
+            'partner_id' => null,
+            'partner_identity_snapshot' => null,
+            'canonical_bytes' => $canonicalBytes,
+            'previous_hash' => str_repeat('a', 64),
+            'current_hash' => hash('sha256', $canonicalBytes),
+            'signature_status' => SignatureStatus::NotRequired,
+            'integrity_status' => IntegrityStatus::Verified,
+            'integrity_exception_class' => null,
+            'integrity_exception_reason' => null,
+            'payload' => $payload,
+            'payload_parse_status' => PayloadParseStatus::Parsed,
+        ], $overrides))->refresh();
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    private function makeSessionCloseEvent(string $shiftId, int $sequenceNumber, array $overrides = []): FiscalEvent
+    {
+        $closeUuid = Str::uuid()->toString();
+        $payload = [
+            'business_date' => '2026-06-14',
+            'closure_status' => 'closed',
+            'counted_cash' => '150.000',
+            'expected_cash' => '150.000',
+            'generated_at_device' => '2026-06-14T18:00:00.000Z',
+            'manager_approval' => null,
+            'operator_id' => $this->cashier->id,
+            'operator_name' => 'Default Cashier',
+            'session_close_uuid' => $closeUuid,
+            'session_id' => $shiftId,
+            'shift_id' => $shiftId,
+            'terminal_id' => $this->terminal->id,
+            'training_flag' => false,
+            'variance_amount' => '0.000',
+            'variance_direction' => 'balanced',
+            'variance_reason' => null,
+            'variance_severity' => 'balanced',
+        ];
+        $canonicalBytes = json_encode(['payload' => $payload], JSON_THROW_ON_ERROR);
+
+        return FiscalEvent::query()->create(array_merge([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'terminal_id' => $this->terminal->id,
+            'operator_id' => $this->cashier->id,
+            'event_type' => FiscalEventType::SESSION_CLOSE,
+            'event_version' => 1,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'sequence_number' => $sequenceNumber,
+            'event_time_device' => '2026-06-14 18:00:00',
+            'business_date' => '2026-06-14',
+            'chain_context' => 'z_session',
+            'last_server_time_seen' => null,
+            'server_received_at' => '2026-06-14 18:00:01',
+            'reference_event_id' => null,
+            'reference_document_id' => null,
+            'source_event_class' => 'pos_session_close',
+            'source_event_id' => $closeUuid,
             'partner_id' => null,
             'partner_identity_snapshot' => null,
             'canonical_bytes' => $canonicalBytes,
