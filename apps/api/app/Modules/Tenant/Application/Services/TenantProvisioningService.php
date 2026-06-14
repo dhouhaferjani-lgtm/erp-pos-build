@@ -17,6 +17,7 @@ use App\Modules\Tenant\Domain\Domain;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Services\TenantTokenRevoker;
 use Closure;
 use DateTimeInterface;
 use Illuminate\Support\Facades\Bus;
@@ -54,6 +55,7 @@ class TenantProvisioningService
     public function __construct(
         private readonly TenantInitializationService $tenantInitializationService,
         private readonly IdentityIndexService $identityIndexService,
+        private readonly TenantTokenRevoker $tokenRevoker,
     ) {}
 
     /**
@@ -211,14 +213,22 @@ class TenantProvisioningService
     }
 
     /**
-     * Roll back a partially-provisioned tenant: revert tenancy, drop the tenant
-     * database, then delete the central rows (children before the tenant row).
+     * Roll back a partially-provisioned tenant: revoke any minted token, revert
+     * tenancy, drop the tenant database, then delete the central rows (children
+     * before the tenant row).
      */
     private function compensate(Tenant $tenant, bool $databaseCreated): void
     {
         if (tenancy()->initialized) {
             tenancy()->end();
         }
+
+        // Revoke any central bearer token already minted for the half-created
+        // owner BEFORE the tenant DB and central_identities rows (the revoker's
+        // two enumeration sources) are destroyed below. This query-builder
+        // rollback fires no Eloquent event, so the TenantObserver never revokes
+        // here — it must be explicit.
+        $this->tokenRevoker->revokeTenantTokens($tenant);
 
         if ($databaseCreated) {
             try {

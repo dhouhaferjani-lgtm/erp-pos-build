@@ -4,14 +4,10 @@ declare(strict_types=1);
 
 namespace App\Observers;
 
-use App\Modules\Identity\Domain\User;
-use App\Modules\Identity\Infrastructure\CentralPersonalAccessToken;
-use App\Modules\Tenant\Domain\CentralIdentity;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Services\CompanyConfigService;
-use Illuminate\Support\Facades\Log;
-use Throwable;
+use App\Services\TenantTokenRevoker;
 
 /**
  * Observer for Tenant model — cache invalidation + Sanctum token revocation
@@ -34,18 +30,16 @@ use Throwable;
  *     tokenable_id), NOT a hard FK to users.id, so DB cascade does not
  *     transitively purge tokens — explicit revocation is required.
  *
- * T6 Phase 0b topology: Users live in the PER-TENANT database; token rows
- * live in the CENTRAL personal_access_tokens table. Enumeration therefore
- * runs inside $tenant->run(); deletion of tokens runs from central context
- * by (tokenable_type, tokenable_id) in chunks of 200. If the tenant DB is
- * unreachable (G1 — broken/unprovisioned tenant being deprovisioned), the
- * implementation falls back to central_identities user_id pointers so the
- * lifecycle hook degrades gracefully instead of aborting.
+ * The revocation mechanics (per-tenant DB user enumeration with a
+ * central_identities fallback, chunked central deletion) live in
+ * {@see TenantTokenRevoker}, shared with the query-builder teardown paths
+ * (deprovision + failed-registration rollback) that fire no Eloquent events.
  */
 class TenantObserver
 {
     public function __construct(
-        private readonly CompanyConfigService $companyConfigService
+        private readonly CompanyConfigService $companyConfigService,
+        private readonly TenantTokenRevoker $tokenRevoker,
     ) {}
 
     /**
@@ -61,7 +55,7 @@ class TenantObserver
         }
 
         if ($tenant->wasChanged('status') && $tenant->status === TenantStatus::Suspended) {
-            $this->revokeAllUserTokens($tenant);
+            $this->tokenRevoker->revokeTenantTokens($tenant);
         }
     }
 
@@ -74,7 +68,7 @@ class TenantObserver
      */
     public function deleting(Tenant $tenant): void
     {
-        $this->revokeAllUserTokens($tenant);
+        $this->tokenRevoker->revokeTenantTokens($tenant);
     }
 
     /**
@@ -85,7 +79,7 @@ class TenantObserver
      */
     public function forceDeleted(Tenant $tenant): void
     {
-        $this->revokeAllUserTokens($tenant);
+        $this->tokenRevoker->revokeTenantTokens($tenant);
     }
 
     /**
@@ -98,50 +92,5 @@ class TenantObserver
     private function invalidateTenantConfigCache(Tenant $tenant): void
     {
         $this->companyConfigService->invalidateForTenant($tenant->id);
-    }
-
-    /**
-     * Revoke every personal access token for every user belonging to the
-     * given tenant.
-     *
-     * Users live in the PER-TENANT database (T6 Phase 0b) — enumeration runs
-     * inside $tenant->run(); token rows live in the CENTRAL
-     * personal_access_tokens table and are deleted from central context by
-     * (tokenable_type, tokenable_id) chunks. If the tenant DB is unreachable
-     * (e.g. deletion of a broken/unprovisioned tenant — G1), fall back to the
-     * central_identities user_id pointers so the lifecycle hook degrades
-     * instead of aborting the suspend/delete.
-     */
-    private function revokeAllUserTokens(Tenant $tenant): void
-    {
-        try {
-            /** @var array<int, string> $userIds */
-            $userIds = $tenant->run(
-                static fn (): array => User::where('tenant_id', $tenant->id)->pluck('id')->all()
-            );
-        } catch (Throwable $e) {
-            Log::warning('Token revocation: tenant DB unreachable, using central identity index', [
-                'tenant_id' => $tenant->id,
-                'error' => $e->getMessage(),
-            ]);
-            /** @var array<int, string> $userIds */
-            $userIds = CentralIdentity::where('tenant_id', $tenant->id)
-                ->whereNotNull('user_id')
-                ->pluck('user_id')
-                ->all();
-        }
-
-        if ($userIds === []) {
-            return;
-        }
-
-        $morphClass = (new User)->getMorphClass();
-
-        foreach (array_chunk($userIds, 200) as $chunk) {
-            CentralPersonalAccessToken::query()
-                ->where('tokenable_type', $morphClass)
-                ->whereIn('tokenable_id', $chunk)
-                ->delete();
-        }
     }
 }

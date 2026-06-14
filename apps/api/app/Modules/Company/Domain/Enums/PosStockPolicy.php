@@ -18,13 +18,30 @@ enum PosStockPolicy: string
     case Off = 'off';
 
     /**
-     * Made-to-order verticals (Menu module in their default set) have no
-     * finished-goods stock rows — hard blocking would freeze their POS.
+     * Made-to-order verticals have no finished-goods stock rows — hard blocking
+     * would freeze their POS — so they default to Off; every other vertical
+     * defaults to Block.
+     *
+     * "Made-to-order" mirrors the verticals whose default module set in
+     * `config/verticals.php` (the single source of truth, read at runtime via
+     * VerticalConfigService) includes the `Menu` module — today exactly
+     * Restaurant and CoffeeShop. This default is deliberately a PURE,
+     * dependency-free domain function: it runs on the registration hot path
+     * (before a tenant's database / central `vertical_configs` overrides are
+     * reachable under database-per-tenant) and from a pure unit test, so it
+     * must resolve without the container, config, or any database. It used to
+     * derive from the `Vertical::defaultModules()` enum helper, which the
+     * parapharmacy reorg deleted to keep module lists config-only; this mapping
+     * replaces that dangling call. The exhaustive
+     * `PosStockPolicyTest::test_full_vertical_to_policy_map` pins the set
+     * against config so a vertical gaining/losing `Menu` surfaces as a
+     * deliberate decision here rather than silent drift.
      */
     public static function defaultForVertical(Vertical $vertical): self
     {
-        return in_array('Menu', $vertical->defaultModules(), true)
-            ? self::Off
-            : self::Block;
+        return match ($vertical) {
+            Vertical::Restaurant, Vertical::CoffeeShop => self::Off,
+            default => self::Block,
+        };
     }
 }
