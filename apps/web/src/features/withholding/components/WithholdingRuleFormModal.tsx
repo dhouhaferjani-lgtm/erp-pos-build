@@ -1,7 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { X } from 'lucide-react'
 import { useCreateWithholdingRule, useUpdateWithholdingRule } from '../hooks/useWithholding'
+import { Button } from '@/components/atoms/Button'
+import { FormField } from '@/components/atoms/FormField'
+import { Input } from '@/components/atoms/Input'
+import { Select } from '@/components/atoms/Select'
+import { Textarea } from '@/components/atoms/Textarea'
+import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal'
+import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
 import type { WithholdingRule, CreateWithholdingRuleRequest } from '../types'
 
 interface WithholdingRuleFormModalProps {
@@ -82,246 +89,199 @@ export function WithholdingRuleFormModal({
         await createMutation.mutateAsync(formData)
       }
       onClose()
-    } catch (error) {
+    } catch {
       // Error handled by mutation hooks
     }
   }
 
-  const handleChange = (field: keyof CreateWithholdingRuleRequest, value: any) => {
+  const handleChange = (
+    field: keyof CreateWithholdingRuleRequest,
+    value: string | number | boolean,
+  ) => {
     setFormData((prev) => ({
       ...prev,
       [field]: value === '' ? undefined : value,
     }))
   }
 
-  if (!isOpen) return null
-
   const isLoading = createMutation.isPending || updateMutation.isPending
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-screen items-center justify-center px-4">
-        {/* Overlay */}
-        <div
-          className="fixed inset-0 bg-black/50 transition-opacity"
-          onClick={onClose}
-        />
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={rule ? t('rules.editRule') : t('rules.createRule')}
+      size="lg"
+    >
+      <form onSubmit={handleSubmit}>
+        <ModalContent className="space-y-6">
+          {/* Basic Info */}
+          <div className="space-y-4">
+            <h3 className={cn('text-sm font-medium', textColors.primary)}>
+              {t('rules.basicInfo')}
+            </h3>
 
-        {/* Modal */}
-        <div className="relative w-full max-w-2xl rounded-lg bg-white shadow-xl">
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-gray-900">
-              {rule ? t('rules.editRule') : t('rules.createRule')}
-            </h2>
-            <button
-              onClick={onClose}
-              className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label={t('rules.code')} htmlFor="rule-code" required>
+                <Input
+                  id="rule-code"
+                  type="text"
+                  value={formData.code}
+                  onChange={(e) => { handleChange('code', e.target.value); }}
+                  required
+                  placeholder={t('withholding:rules.codePlaceholder')}
+                />
+              </FormField>
+
+              <FormField label={t('rules.ratePercentage')} htmlFor="rule-rate" required>
+                <Input
+                  id="rule-rate"
+                  type="number"
+                  value={formData.rate}
+                  onChange={(e) => { handleChange('rate', parseFloat(e.target.value)); }}
+                  required
+                  min="0"
+                  max="100"
+                  step="any"
+                  placeholder="10.00"
+                />
+              </FormField>
+            </div>
+
+            <FormField label={t('rules.name')} htmlFor="rule-name" required>
+              <Input
+                id="rule-name"
+                type="text"
+                value={formData.name}
+                onChange={(e) => { handleChange('name', e.target.value); }}
+                required
+                placeholder={t('rules.namePlaceholder')}
+              />
+            </FormField>
+
+            <FormField label={t('rules.description')} htmlFor="rule-description">
+              <Textarea
+                id="rule-description"
+                value={formData.description}
+                onChange={(e) => { handleChange('description', e.target.value); }}
+                rows={2}
+                placeholder={t('rules.descriptionPlaceholder')}
+              />
+            </FormField>
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="p-6 space-y-6">
-            {/* Basic Info */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium text-gray-900">
-                {t('rules.basicInfo')}
-              </h3>
+          {/* Conditions */}
+          <div className="space-y-4">
+            <h3 className={cn('text-sm font-medium', textColors.primary)}>
+              {t('rules.conditions')}
+            </h3>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('rules.code')} *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.code}
-                    onChange={(e) => { handleChange('code', e.target.value); }}
-                    required
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder={t('withholding:rules.codePlaceholder')}
-                  />
-                </div>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label={t('rules.transactionType')} htmlFor="rule-transaction-type">
+                <Select
+                  id="rule-transaction-type"
+                  value={formData.transaction_type || ''}
+                  onChange={(e) => { handleChange('transaction_type', e.target.value); }}
+                >
+                  <option value="">{t('common:all')}</option>
+                  <option value="services">{t('transactionTypes.services')}</option>
+                  <option value="goods">{t('transactionTypes.goods')}</option>
+                  <option value="professional_services">{t('transactionTypes.professional_services')}</option>
+                  <option value="rent">{t('transactionTypes.rent')}</option>
+                </Select>
+              </FormField>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('rules.ratePercentage')} *
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.rate}
-                    onChange={(e) => { handleChange('rate', parseFloat(e.target.value)); }}
-                    required
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="10.00"
-                  />
-                </div>
-              </div>
+              <FormField label={t('rules.partnerTaxStatus')} htmlFor="rule-partner-tax-status">
+                <Select
+                  id="rule-partner-tax-status"
+                  value={formData.partner_tax_status || ''}
+                  onChange={(e) => { handleChange('partner_tax_status', e.target.value); }}
+                >
+                  <option value="">{t('common:all')}</option>
+                  <option value="REGISTERED">{t('taxStatuses.registered')}</option>
+                  <option value="NON_REGISTERED">{t('taxStatuses.nonRegistered')}</option>
+                  <option value="EXEMPT">{t('taxStatuses.exempt')}</option>
+                </Select>
+              </FormField>
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('rules.name')} *
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => { handleChange('name', e.target.value); }}
+            <FormField
+              label={t('rules.minAmount')}
+              htmlFor="rule-min-amount"
+              helperText={t('rules.minAmountHelp')}
+            >
+              <Input
+                id="rule-min-amount"
+                type="number"
+                value={formData.min_amount}
+                onChange={(e) => { handleChange('min_amount', e.target.value); }}
+                min="0"
+                step="any"
+                placeholder="0.000"
+              />
+            </FormField>
+          </div>
+
+          {/* Validity Period */}
+          <div className="space-y-4">
+            <h3 className={cn('text-sm font-medium', textColors.primary)}>
+              {t('rules.validityPeriod')}
+            </h3>
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label={t('rules.effectiveFrom')} htmlFor="rule-effective-from" required>
+                <Input
+                  id="rule-effective-from"
+                  type="date"
+                  value={formData.effective_from}
+                  onChange={(e) => { handleChange('effective_from', e.target.value); }}
                   required
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                  placeholder={t('rules.namePlaceholder')}
                 />
-              </div>
+              </FormField>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('rules.description')}
-                </label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => { handleChange('description', e.target.value); }}
-                  rows={2}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                  placeholder={t('rules.descriptionPlaceholder')}
-                />
-              </div>
-            </div>
-
-            {/* Conditions */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium text-gray-900">
-                {t('rules.conditions')}
-              </h3>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('rules.transactionType')}
-                  </label>
-                  <select
-                    value={formData.transaction_type || ''}
-                    onChange={(e) => { handleChange('transaction_type', e.target.value); }}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                  >
-                    <option value="">{t('common:all')}</option>
-                    <option value="services">{t('transactionTypes.services')}</option>
-                    <option value="goods">{t('transactionTypes.goods')}</option>
-                    <option value="professional_services">{t('transactionTypes.professional_services')}</option>
-                    <option value="rent">{t('transactionTypes.rent')}</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('rules.partnerTaxStatus')}
-                  </label>
-                  <select
-                    value={formData.partner_tax_status || ''}
-                    onChange={(e) => { handleChange('partner_tax_status', e.target.value); }}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                  >
-                    <option value="">{t('common:all')}</option>
-                    <option value="REGISTERED">{t('taxStatuses.registered')}</option>
-                    <option value="NON_REGISTERED">{t('taxStatuses.nonRegistered')}</option>
-                    <option value="EXEMPT">{t('taxStatuses.exempt')}</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('rules.minAmount')}
-                </label>
-                <input
-                  type="number"
-                  value={formData.min_amount}
-                  onChange={(e) => { handleChange('min_amount', e.target.value); }}
-                  min="0"
-                  step="0.001"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                  placeholder="0.000"
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  {t('rules.minAmountHelp')}
-                </p>
-              </div>
-            </div>
-
-            {/* Validity Period */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium text-gray-900">
-                {t('rules.validityPeriod')}
-              </h3>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('rules.effectiveFrom')} *
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.effective_from}
-                    onChange={(e) => { handleChange('effective_from', e.target.value); }}
-                    required
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('rules.effectiveTo')}
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.effective_to}
-                    onChange={(e) => { handleChange('effective_to', e.target.value); }}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    {t('rules.effectiveToHelp')}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="is_active"
-                  checked={formData.is_active}
-                  onChange={(e) => { handleChange('is_active', e.target.checked); }}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <label htmlFor="is_active" className="text-sm text-gray-700">
-                  {t('rules.isActive')}
-                </label>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={isLoading}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              <FormField
+                label={t('rules.effectiveTo')}
+                htmlFor="rule-effective-to"
+                helperText={t('rules.effectiveToHelp')}
               >
-                {t('common:cancel')}
-              </button>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                {isLoading ? t('common:saving') : rule ? t('common:save') : t('common:actions.create')}
-              </button>
+                <Input
+                  id="rule-effective-to"
+                  type="date"
+                  value={formData.effective_to}
+                  onChange={(e) => { handleChange('effective_to', e.target.value); }}
+                />
+              </FormField>
             </div>
-          </form>
-        </div>
-      </div>
-    </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="is_active"
+                checked={formData.is_active}
+                onChange={(e) => { handleChange('is_active', e.target.checked); }}
+                className={tokens.checkbox.base}
+              />
+              <label htmlFor="is_active" className={cn('text-sm', textColors.secondary)}>
+                {t('rules.isActive')}
+              </label>
+            </div>
+          </div>
+        </ModalContent>
+
+        <ModalFooter className={cn('border-t pt-4', borderColors.light)}>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onClose}
+            disabled={isLoading}
+          >
+            {t('common:cancel')}
+          </Button>
+          <Button type="submit" variant="primary" disabled={isLoading}>
+            {isLoading ? t('common:saving') : rule ? t('common:save') : t('common:actions.create')}
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
   )
 }
