@@ -120,17 +120,24 @@ export const borderColors = {
 
 /**
  * Chart color values for ECharts and other canvas/SVG renderers.
+ *
  * Tailwind class tokens above cannot be passed into chart options, so chart
- * surfaces consume these semantic values from the same token module.
+ * surfaces consume these raw hex values — this is the ONE place chart hex
+ * lives. Every value is derived from the active "Deep Ocean" theme palette
+ * (see `src/index.css :root`); if the theme changes, update both. The keys
+ * double as a categorical sequence for multi-series charts (donuts/pies).
+ *
+ * Guarded by `src/lib/chartColors.theme.test.ts`.
  */
 export const chartColors = {
-  primary: '#2563eb',
-  success: '#16a34a',
-  warning: '#ca8a04',
-  danger: '#dc2626',
-  neutral: '#64748b',
-  cyan: '#0891b2',
-  violet: '#7c3aed',
+  primary: '#1A6FB5', // theme primary-600 (ocean blue) — matches buttons/links
+  success: '#1B7F4E', // theme --theme-success
+  warning: '#D97706', // theme --theme-warning
+  danger: '#C53030', // theme --theme-error
+  neutral: '#6B7A8D', // theme neutral-500 (cool slate)
+  secondary: '#C2703E', // theme secondary-500 (copper accent)
+  cyan: '#2B8C9E', // teal — categorical accent harmonized with the ocean palette
+  violet: '#6E5BAE', // muted violet — categorical accent for the cool palette
 }
 
 /**
