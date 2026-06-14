@@ -101,12 +101,23 @@ export interface Shift {
   };
 }
 
+/**
+ * Advisory remote-close conflict (offline-first shifts Phase 6.2): the device
+ * has this shift OPEN locally but the server projection shows it CLOSED (a
+ * web-admin recovery close). Surfaced as a banner; never auto-closed.
+ */
+export interface RemoteShiftCloseConflict {
+  shiftId: string;
+  shiftNumber: number;
+}
+
 interface TerminalState {
   terminal: Terminal | null;
   pendingTerminalId: string | null;
   shift: Shift | null;
   isLoading: boolean;
   hashChainReady: boolean;
+  remoteShiftCloseConflict: RemoteShiftCloseConflict | null;
 }
 
 interface TerminalActions {
@@ -121,6 +132,8 @@ interface TerminalActions {
   reset: () => void;
   refreshHashChainReady: () => Promise<void>;
   refreshTerminalRecord: () => Promise<void>;
+  flagRemoteShiftClose: (conflict: RemoteShiftCloseConflict) => void;
+  clearRemoteShiftCloseConflict: () => void;
 }
 
 type TerminalStore = TerminalState & TerminalActions;
@@ -139,6 +152,7 @@ const initialState: TerminalState = {
   shift: null,
   isLoading: false,
   hashChainReady: false,
+  remoteShiftCloseConflict: null,
 };
 
 async function refreshOperatorDiscountPermissionsAfterTerminalChange(terminalCode: string): Promise<void> {
@@ -986,5 +1000,17 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     } catch (error) {
       console.error('[Terminal] refreshTerminalRecord failed (non-fatal)', serializeErrorForLog(error));
     }
+  },
+
+  // Phase 6.2: the background reconcile (syncService.runFullSync) surfaces an
+  // advisory banner when the server projection shows this device's open shift
+  // CLOSED (a web-admin recovery close). Advisory only — the local shift is
+  // never auto-closed (a sale may be mid-flight; Decision 4).
+  flagRemoteShiftClose: (conflict: RemoteShiftCloseConflict) => {
+    set({ remoteShiftCloseConflict: conflict });
+  },
+
+  clearRemoteShiftCloseConflict: () => {
+    set({ remoteShiftCloseConflict: null });
   },
 }));

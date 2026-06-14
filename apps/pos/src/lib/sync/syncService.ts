@@ -76,6 +76,7 @@ import {
 } from '@/lib/db/repositories/cashDrawerRepository';
 import { logSyncOperation, getSyncMetadata, setSyncMetadata, cleanupOldSyncLogs } from '@/lib/db/repositories/syncLogRepository';
 import { coerceSyncError } from '@/lib/sync/coerceSyncError';
+import { reconcileOpenShift, applyShiftReconcileVerdict } from '@/lib/sync/shiftReconcile';
 import { withWriteTransaction } from '@/lib/db/writeGate';
 import {
   upsertVouchers,
@@ -1918,6 +1919,34 @@ export async function runFullSync(
     const { useAuthStore } = await import('@/stores/authStore');
     await useAuthStore.getState().refreshCompanyConfig();
   } catch { /* non-critical */ }
+
+  // Phase 6.2: background reconcile (spec §4.c). Detect when the server
+  // projection shows the device's open shift CLOSED (a web-admin recovery
+  // close) while local SQLite still has it OPEN, and surface an advisory,
+  // audited, idempotent banner. NEVER auto-closes the local shift (a sale may
+  // be mid-flight; Decision 4). Non-fatal: a failure here must not break the
+  // sync tick — the next tick re-reconciles.
+  try {
+    const verdict = await reconcileOpenShift(db, terminalId);
+    const { useTerminalStore } = await import('@/stores/terminalStore');
+    const { useAuthStore } = await import('@/stores/authStore');
+    const auth = useAuthStore.getState();
+    await applyShiftReconcileVerdict(
+      db,
+      verdict,
+      {
+        tenantId: auth.user?.tenantId ?? '',
+        companyId: auth.companyId ?? null,
+        operatorId: auth.user?.id ?? null,
+      },
+      {
+        flag: (conflict) => { useTerminalStore.getState().flagRemoteShiftClose(conflict); },
+        clear: () => { useTerminalStore.getState().clearRemoteShiftCloseConflict(); },
+      },
+    );
+  } catch (err) {
+    console.warn('[POS][sync] shift reconcile failed (non-fatal)', serializeErrorForLog(err));
+  }
 
   // Process pending image downloads (non-critical)
   try {

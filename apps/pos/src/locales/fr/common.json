@@ -46,5 +46,9 @@
   "c2Migration": {
     "banner": "Une commande en cours créée avant la dernière mise à jour a été supprimée. Ressaisissez-la si nécessaire.",
     "dismiss": "Compris"
+  },
+  "remoteShiftClose": {
+    "banner": "La session n° {{shiftNumber}} a été clôturée à distance",
+    "subtitle": "Cette session est toujours ouverte sur ce terminal. Vérifiez et rapprochez avant de continuer — elle ne se clôturera pas automatiquement."
   }
 }

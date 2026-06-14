@@ -46,5 +46,9 @@
   "c2Migration": {
     "banner": "An in-progress order from before the last update was cleared. Re-enter it if needed.",
     "dismiss": "Got it"
+  },
+  "remoteShiftClose": {
+    "banner": "Shift #{{shiftNumber}} was closed remotely",
+    "subtitle": "This shift is still open on this terminal. Review and reconcile before continuing — it will not close automatically."
   }
 }
