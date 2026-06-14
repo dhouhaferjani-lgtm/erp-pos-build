@@ -63,7 +63,13 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
 - [x] 2.6 Wired into atoms/molecules barrels. ALL built only from existing baselined tokens → 0 new lint warnings.
 - [ ] 2.7 (follow-up) update `components/README.md` to document the 5 new primitives.
 
-## Phase 3 — Cluster migrations (worst first, 1 PR each)  ☐
+## Phase 3 — Module canonicalization (structural drift — the owner's main concern)  ☐ NOT STARTED
+> **Full spec: [`CANONICALIZATION-SPEC.md`](./CANONICALIZATION-SPEC.md)** — file:line deltas + effort + sequence.
+> Key finding: the same input renders **4 ways** (`rounded-lg` original vs `rounded-md` atom = most visible drift); headers vary `font-bold`/`font-semibold`; 5 different table treatments; forms differ in sectioning/footer. Visual evidence: `screens/drift-A-original-product-form.png` vs `screens/drift-B-composite-item-form.png`.
+> Canonical target: lists → `ListPageLayout`+`DataTable`+`StatusBadge`; forms → `PageHeader`+`tokens.card.base` sections+`FormField`/`Input`+`StickyFormFooter`. **Rule: never raw `<input>` — always the `<Input>` atom.**
+> Suggested order: `documents/DocumentForm` + `DocumentListPage` (the reference originals) → `ProductForm`/`ProductListPage` → catalog/menu drift modules. Fold rule-19 precision fixes in per form.
+
+### (original cluster framing — superseded by CANONICALIZATION-SPEC for module order)
 - [ ] 3.1 `documents/` (epicenter: 65 raw controls, 5 bespoke modals, ~50 off-theme)
 - [ ] 3.2 finance + treasury (11 bespoke modals, tabular-nums, parseFloat-on-money cross-ref)
 - [ ] 3.3 admin/settings (10 bespoke modals, 169 raw controls, 3 settings layouts)
