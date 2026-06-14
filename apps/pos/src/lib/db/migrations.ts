@@ -1623,4 +1623,28 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_xloc_cache_product ON product_stock_distribution_cache(product_id);
     `,
   },
+  {
+    // Offline variant catalog (Spec A). Synced from GET /pos/variants. Only
+    // active variants are stored; deactivated/soft-deleted come back as
+    // deleted_ids and are removed. price_override is a decimal string.
+    version: 53,
+    name: 'create_product_variants',
+    sql: `
+      CREATE TABLE IF NOT EXISTS product_variants (
+        id TEXT PRIMARY KEY,
+        product_id TEXT NOT NULL,
+        sku TEXT NOT NULL,
+        barcode TEXT,
+        name_suffix TEXT NOT NULL DEFAULT '',
+        price_override TEXT,
+        image_url TEXT,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        display_order INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1
+      );
+      CREATE INDEX IF NOT EXISTS idx_product_variants_product ON product_variants(product_id);
+      CREATE INDEX IF NOT EXISTS idx_product_variants_barcode ON product_variants(barcode);
+    `,
+  },
 ];
