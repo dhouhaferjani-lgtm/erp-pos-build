@@ -17,6 +17,7 @@ use App\Modules\POS\Presentation\Controllers\PosAuthController;
 use App\Modules\POS\Presentation\Controllers\PosCustomerSyncController;
 use App\Modules\POS\Presentation\Controllers\PosPendingCustomerController;
 use App\Modules\POS\Presentation\Controllers\PosStockLevelController;
+use App\Modules\POS\Presentation\Controllers\PosVariantController;
 use App\Modules\POS\Presentation\Controllers\ReceiptController;
 use App\Modules\POS\Presentation\Controllers\ReportController;
 use App\Modules\POS\Presentation\Controllers\ShiftController;
@@ -104,6 +105,9 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     // Location stock feed for the device sync (spec 2026-06-11 §4.1)
     Route::get('/pos/stock-levels', [PosStockLevelController::class, 'index']);
+
+    // Product-variant catalog feed for the device sync (offline availability)
+    Route::get('/pos/variants', [PosVariantController::class, 'index']);
 
     // Cross-location stock distribution for one product (Task B5 — gated + variant-aware)
     Route::get('/pos/products/{product}/stock-distribution', [StockDistributionController::class, 'show']);
