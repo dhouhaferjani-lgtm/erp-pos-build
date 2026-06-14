@@ -131,4 +131,33 @@ describe('diffProducts', () => {
     expect(result.changed).toBe(false);
     expect(result.products[0]).toBe(cached); // same reference preserved
   });
+
+  // v51 migration: is_physical must be in COMPARE_FIELDS so a product
+  // flipping is_physical true↔false is re-projected into the in-memory
+  // catalog. Without this, stock enforcement reads the stale flag value.
+  it('v51: detects is_physical flipping false → true on an existing product', () => {
+    // Simulates the v51 re-sync scenario: stale cached row has is_physical
+    // absent (undefined == false); fresh server row returns is_physical: true.
+    // Without is_physical in COMPARE_FIELDS, productEquals would return true
+    // and the in-memory product would keep the stale value — stock enforcement
+    // would treat the product as non-physical and skip reservation checks.
+    const stale: POSProduct = { ...makeProduct('widget', '15.00') };
+    const fresh: POSProduct = { ...makeProduct('widget', '15.00'), is_physical: true };
+    const result = diffProducts([stale], [fresh]);
+    expect(result.changed).toBe(true);
+    expect(result.products[0]).toBe(fresh); // merged carries the server-authoritative flag
+    expect(result.products[0]!.is_physical).toBe(true);
+  });
+
+  it('v51: detects is_physical flipping true → false on an existing product', () => {
+    // Covers the reverse: a product whose is_physical flag is revoked on the
+    // server — cached row has is_physical: true but fresh row returns false.
+    // Without is_physical in COMPARE_FIELDS the stale true value persists.
+    const stale: POSProduct = { ...makeProduct('service-fee', '5.00'), is_physical: true };
+    const fresh: POSProduct = { ...makeProduct('service-fee', '5.00'), is_physical: false };
+    const result = diffProducts([stale], [fresh]);
+    expect(result.changed).toBe(true);
+    expect(result.products[0]).toBe(fresh);
+    expect(result.products[0]!.is_physical).toBe(false);
+  });
 });

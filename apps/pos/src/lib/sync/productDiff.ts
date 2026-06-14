@@ -24,6 +24,10 @@ const COMPARE_FIELDS: (keyof POSProduct)[] = [
   // would read the stale has_variants=false value, bypassing the
   // VariantPickerModal entirely.
   'has_variants',
+  // v51 migration: include is_physical so a product flipping
+  // is_physical true↔false is re-projected into the in-memory catalog;
+  // without this, stock enforcement would read the stale flag value.
+  'is_physical',
 ];
 
 function productEquals(a: POSProduct, b: POSProduct): boolean {
