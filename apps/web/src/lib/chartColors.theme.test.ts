@@ -1,50 +1,48 @@
-import { describe, it, expect } from 'vitest'
-import { chartColors } from './designTokens'
+import { describe, it, expect, afterEach } from 'vitest'
+import { chartColors, readChartColor, chartCategoricalKeys } from './designTokens'
 
 /**
- * Chart colours must be derived from the active "Deep Ocean" theme palette
- * (src/index.css :root). ECharts reads raw hex (it can't consume Tailwind
- * tokens), so this is the ONE place chart hex lives — and it historically
- * drifted off-theme (primary was #2563eb, ≠ theme primary-600 #1A6FB5),
- * making every dashboard chart render in a blue the rest of the app never uses.
- *
- * These values mirror src/index.css. If the theme changes, update both.
+ * Chart colours are resolved AT RUNTIME from the `--chart-*` CSS custom
+ * properties (defined per-vertical in src/index.css), NOT hardcoded hex. This
+ * keeps the theme the single source of truth — a re-theme or vertical switch
+ * updates charts automatically. These tests inject the vars (jsdom doesn't load
+ * the app stylesheet) and assert the resolver reads them.
  */
-const THEME = {
-  primary600: '#1A6FB5',
-  success: '#1B7F4E',
-  warning: '#D97706',
-  error: '#C53030',
-  neutral500: '#6B7A8D',
-  secondary500: '#C2703E',
-} as const
 
-// Off-theme literals that must never reappear in the chart palette.
-const FORBIDDEN = ['#2563eb', '#16a34a', '#ca8a04', '#dc2626', '#64748b', '#7c3aed', '#0891b2']
+const root = document.documentElement
+const KEYS = ['primary', 'success', 'warning', 'danger', 'neutral', 'secondary', 'cyan', 'violet'] as const
 
-describe('chartColors theme alignment', () => {
-  it('anchors the semantic slots to the Deep Ocean theme tokens', () => {
-    expect(chartColors.primary.toLowerCase()).toBe(THEME.primary600.toLowerCase())
-    expect(chartColors.success.toLowerCase()).toBe(THEME.success.toLowerCase())
-    expect(chartColors.warning.toLowerCase()).toBe(THEME.warning.toLowerCase())
-    expect(chartColors.danger.toLowerCase()).toBe(THEME.error.toLowerCase())
-    expect(chartColors.neutral.toLowerCase()).toBe(THEME.neutral500.toLowerCase())
+afterEach(() => {
+  for (const k of KEYS) root.style.removeProperty(`--chart-${k}`)
+})
+
+describe('chartColors (theme-derived, runtime-resolved)', () => {
+  it('resolves each key from its --chart-* CSS variable', () => {
+    root.style.setProperty('--chart-primary', '#1A6FB5')
+    root.style.setProperty('--chart-success', '#1B7F4E')
+    expect(chartColors.primary).toBe('#1A6FB5')
+    expect(chartColors.success).toBe('#1B7F4E')
   })
 
-  it('exposes the copper secondary as a categorical accent', () => {
-    expect(chartColors.secondary.toLowerCase()).toBe(THEME.secondary500.toLowerCase())
+  it('reflects a re-theme without code changes (just swap the CSS var)', () => {
+    root.style.setProperty('--chart-primary', '#1A6FB5')
+    expect(chartColors.primary).toBe('#1A6FB5')
+    // Simulate switching vertical / re-theming: only the CSS var changes.
+    root.style.setProperty('--chart-primary', '#084AA9')
+    expect(chartColors.primary).toBe('#084AA9')
   })
 
-  it('contains no legacy off-theme hex literals', () => {
-    const values = Object.values(chartColors).map((v) => v.toLowerCase())
-    for (const bad of FORBIDDEN) {
-      expect(values).not.toContain(bad.toLowerCase())
-    }
+  it('contains no hardcoded hex — returns empty when the var is unset', () => {
+    expect(readChartColor('violet')).toBe('')
+    expect(chartColors.violet).toBe('')
   })
 
-  it('keeps every categorical slot a valid 6-digit hex', () => {
-    for (const v of Object.values(chartColors)) {
-      expect(v).toMatch(/^#[0-9a-fA-F]{6}$/)
-    }
+  it('exposes an ordered categorical sequence for multi-series charts', () => {
+    expect(chartCategoricalKeys).toEqual(['primary', 'success', 'warning', 'cyan', 'violet', 'neutral'])
+  })
+
+  it('readChartColor returns trimmed values', () => {
+    root.style.setProperty('--chart-warning', '  #D97706  ')
+    expect(readChartColor('warning')).toBe('#D97706')
   })
 })

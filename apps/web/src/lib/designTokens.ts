@@ -119,26 +119,82 @@ export const borderColors = {
 }
 
 /**
- * Chart color values for ECharts and other canvas/SVG renderers.
+ * Chart colors for ECharts and other canvas/SVG renderers.
  *
- * Tailwind class tokens above cannot be passed into chart options, so chart
- * surfaces consume these raw hex values — this is the ONE place chart hex
- * lives. Every value is derived from the active "Deep Ocean" theme palette
- * (see `src/index.css :root`); if the theme changes, update both. The keys
- * double as a categorical sequence for multi-series charts (donuts/pies).
+ * ECharts can't consume Tailwind/CSS-variable tokens directly, so it needs
+ * resolved color strings. Rather than hardcode hex here (which would drift from
+ * the theme and ignore the per-vertical `[data-product]` switch), these are
+ * resolved AT RUNTIME from the `--chart-*` CSS custom properties defined in
+ * `src/index.css`. That keeps the theme the single source of truth: re-theming
+ * or switching vertical updates the charts automatically, with zero hardcoded
+ * hex in app code.
+ *
+ * `chartColors.primary` reads `--chart-primary` from the document root on each
+ * access. In non-DOM contexts (SSR/jsdom without the stylesheet) it returns ''
+ * (ECharts falls back to its own default) — tests inject the vars explicitly.
  *
  * Guarded by `src/lib/chartColors.theme.test.ts`.
  */
-export const chartColors = {
-  primary: '#1A6FB5', // theme primary-600 (ocean blue) — matches buttons/links
-  success: '#1B7F4E', // theme --theme-success
-  warning: '#D97706', // theme --theme-warning
-  danger: '#C53030', // theme --theme-error
-  neutral: '#6B7A8D', // theme neutral-500 (cool slate)
-  secondary: '#C2703E', // theme secondary-500 (copper accent)
-  cyan: '#2B8C9E', // teal — categorical accent harmonized with the ocean palette
-  violet: '#6E5BAE', // muted violet — categorical accent for the cool palette
+export type ChartColorKey =
+  | 'primary'
+  | 'success'
+  | 'warning'
+  | 'danger'
+  | 'neutral'
+  | 'secondary'
+  | 'cyan'
+  | 'violet'
+
+/** Read a `--chart-*` custom property off the document root. Empty string when no DOM. */
+export function readChartColor(key: ChartColorKey): string {
+  if (typeof document === 'undefined') return ''
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue(`--chart-${key}`)
+    .trim()
 }
+
+/**
+ * Live, theme-derived chart palette. Each getter resolves the matching
+ * `--chart-*` CSS variable at access time, so the palette always reflects the
+ * active theme/vertical. Keys also serve as a categorical sequence for
+ * multi-series charts (see `chartCategoricalKeys`).
+ */
+export const chartColors: Record<ChartColorKey, string> = {
+  get primary() {
+    return readChartColor('primary')
+  },
+  get success() {
+    return readChartColor('success')
+  },
+  get warning() {
+    return readChartColor('warning')
+  },
+  get danger() {
+    return readChartColor('danger')
+  },
+  get neutral() {
+    return readChartColor('neutral')
+  },
+  get secondary() {
+    return readChartColor('secondary')
+  },
+  get cyan() {
+    return readChartColor('cyan')
+  },
+  get violet() {
+    return readChartColor('violet')
+  },
+}
+
+/** Ordered categorical sequence for multi-series charts (pies/donuts). */
+export const chartCategoricalKeys: readonly ChartColorKey[] = [
+  'primary',
+  'success',
+  'warning',
+  'cyan',
+  'violet',
+  'neutral',
+]
 
 /**
  * Spacing scale (consistent with Tailwind)

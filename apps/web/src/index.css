@@ -53,6 +53,20 @@
   --theme-warning: #D97706;
   --theme-error:   #C53030;
   --theme-info:    var(--theme-primary-600);
+
+  /* Chart palette — the single source of truth for ECharts/canvas hues, which
+     can't consume Tailwind tokens. All derived from the theme above so charts
+     follow any re-theme automatically; the two categorical accents (no theme
+     equivalent) live here in the theme layer, not in app code. Read at runtime
+     by `chartColors` in lib/designTokens.ts. */
+  --chart-primary:   var(--theme-primary-600);
+  --chart-success:   var(--theme-success);
+  --chart-warning:   var(--theme-warning);
+  --chart-danger:    var(--theme-error);
+  --chart-neutral:   var(--theme-neutral-500);
+  --chart-secondary: var(--theme-secondary-500);
+  --chart-cyan:      #2B8C9E;
+  --chart-violet:    #6E5BAE;
 }
 
 /* ============================================================
@@ -182,6 +196,17 @@ body {
   --theme-warning: #D97706;
   --theme-error:   #E63E6D;
   --theme-info:    var(--theme-primary-600);
+
+  /* Chart palette (Otospex) — derived from this vertical's theme; accents
+     chosen to sit with the deep-blue + pink palette. */
+  --chart-primary:   var(--theme-primary-600);
+  --chart-success:   var(--theme-success);
+  --chart-warning:   var(--theme-warning);
+  --chart-danger:    var(--theme-error);
+  --chart-neutral:   var(--theme-neutral-500);
+  --chart-secondary: var(--theme-secondary-500);
+  --chart-cyan:      #2A8C9E;
+  --chart-violet:    #7C5CBF;
 
   /* Otospex-specific tokens */
   --otospex-accent:       #E63E6D;
