@@ -25,6 +25,11 @@ final class ShiftResource extends JsonResource
             'terminal_id' => $this->terminal_id,
             'cashier_id' => $this->cashier_id,
             'shift_number' => $this->shift_number,
+            // One-id model: a device-authored shift's fiscal session_id == its
+            // id; exposed (with opened_at_device) so the device reconcile read
+            // can round-trip a projected shift (Codex F-6/F-16).
+            'session_id' => $this->id,
+            'opened_at_device' => $this->opened_at->toIso8601String(),
             'opening_cash' => $this->opening_cash,
             'expected_cash' => $this->expected_cash,
             'actual_cash' => $this->actual_cash,
