@@ -9,7 +9,11 @@ vi.mock('react-i18next', () => ({
 const hookMock = vi.fn();
 vi.mock('@/hooks/useCrossLocationStock', () => ({ useCrossLocationStock: (...a: unknown[]) => hookMock(...a) }));
 
-const variantsMock = vi.fn((..._a: unknown[]) => ({ data: [], isLoading: false }));
+const variantsMock = vi.fn((..._a: unknown[]) => ({
+  variants: [] as import('@/types/product').POSProductVariant[],
+  isLoading: false,
+  status: 'idle' as import('@/hooks/useProductVariants').VariantStatus,
+}));
 vi.mock('@/hooks/useProductVariants', () => ({ useProductVariants: (...a: unknown[]) => variantsMock(...a) }));
 
 import { CrossLocationStockSection } from '@/components/organisms/CrossLocationStockSection/CrossLocationStockSection';
@@ -73,12 +77,13 @@ describe('CrossLocationStockSection variant selector', () => {
   it('renders a variant <select> for variant products', () => {
     hookMock.mockReturnValue(idleHook);
     variantsMock.mockReturnValueOnce({
-      data: [
-        { id: 'v1', name_suffix: ' — S', is_default: true, display_order: 1 },
-        { id: 'v2', name_suffix: ' — M', is_default: false, display_order: 2 },
+      variants: [
+        { id: 'v1', product_id: 'p1', variant_code: 'v1', sku: 'v1', barcode: null, name_suffix: ' — S', is_default: true, is_active: true, display_order: 1, price_override: null, image_url: null, stock_quantity: 0 },
+        { id: 'v2', product_id: 'p1', variant_code: 'v2', sku: 'v2', barcode: null, name_suffix: ' — M', is_default: false, is_active: true, display_order: 2, price_override: null, image_url: null, stock_quantity: 0 },
       ],
       isLoading: false,
-    } as unknown as { data: []; isLoading: boolean });
+      status: 'local',
+    });
     const variantProduct = { id: 'p1', name: 'Shoe', has_variants: true } as POSProduct;
     render(<CrossLocationStockSection product={variantProduct} canView currentLocationId="l1" />);
     expect(screen.getByRole('combobox')).toBeInTheDocument();
