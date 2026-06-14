@@ -3,24 +3,26 @@
 # git-dev-push-guard — PreToolUse(Bash) guard against messy local/remote `dev`
 # divergence.
 #
-# Workflow this enforces (see CLAUDE.md "Dev branch sync discipline"):
+# Workflow this enforces (see CLAUDE.md "Dev Branch Sync Discipline"):
 #   - Feature work merges into LOCAL dev first, then gets promoted to remote in
 #     verified batches.
 #   - Promotion to origin/dev must always be a clean FAST-FORWARD. Never rewrite
 #     shared history.
 #
-# It BLOCKS (deny) only `git push` commands that target the `dev` branch when:
+# It BLOCKS (deny) only a real `git push` SUBCOMMAND targeting `dev` when:
 #   1. the push is a force-push (--force / --force-with-lease / -f / +dev), or
 #   2. local `dev` is BEHIND / DIVERGED from origin/dev (so the push would either
-#      be rejected as non-ff or tempt a force-push). In that case it tells the
-#      caller to integrate origin/dev first (fetch + ff-merge / rebase), which
-#      keeps remote dev a clean fast-forward.
+#      be rejected as non-ff or tempt a force-push). In that case it returns the
+#      integrate-first command, keeping remote dev a clean fast-forward.
 #
-# Everything else passes through untouched. The guard is intentionally
-# fail-OPEN: if jq is missing or anything is unparseable it allows the command
-# (a guard must never wedge unrelated work).
+# Detection is deliberately conservative: `git` must appear at a command
+# boundary (start, or after ; & | ( ` && ||) and `push` must be the git
+# SUBCOMMAND. So `echo "git push origin dev"`, `git commit -m "...push...dev"`,
+# and `git log | grep push` are NOT treated as pushes.
 #
-# Reads the PreToolUse payload on stdin; emits a JSON deny decision on stdout.
+# Fail-OPEN: if jq is missing or anything is unparseable it allows the command
+# (a guard must never wedge unrelated work). Reads the PreToolUse payload on
+# stdin; emits a JSON deny decision on stdout.
 
 set -uo pipefail
 
@@ -34,21 +36,27 @@ cwd="$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)"
 [ -n "$cmd" ] || exit 0
 [ -n "$cwd" ] && [ -d "$cwd" ] || cwd="$PWD"
 
-# Only consider `git ... push ...` (and not a "push" that appears after a pipe
-# or in an unrelated subcommand like `git log | grep push`).
-printf '%s' "$cmd" | grep -Eq '\bgit\b[^|&;]*\bpush\b' || exit 0
+# Strip single- and double-quoted spans so a `git push origin dev` mentioned
+# INSIDE a string (echo, commit message, heredoc, docs, a `&&`/`;` that is just
+# text) is never mistaken for a real invocation. All command-shape detection
+# below runs on this quote-stripped skeleton; the real git checks use $cwd.
+skel="$(printf '%s' "$cmd" | sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g")"
+
+# Is this a real `git push` SUBCOMMAND? git at a command boundary, then only
+# global options (-C path, -c x=y, --long ...) before the `push` subcommand.
+printf '%s' "$skel" | grep -Eq '(^|[;&|(`]|&&|\|\|)[[:space:]]*git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+push([[:space:]]|$)' || exit 0
 
 gitc() { git -C "$cwd" "$@" 2>/dev/null; }
 
 # Does this push target the protected branch?
 targets=0
 # explicit refspec/branch token equal to dev or ending in :dev (optional + force)
-if printf '%s' "$cmd" | grep -Eq "(^|[[:space:]])\+?(${PROTECTED}|[^[:space:]]+:${PROTECTED})([[:space:]]|\"|'|\$)"; then
+if printf '%s' "$skel" | grep -Eq "(^|[[:space:]])\+?(${PROTECTED}|[^[:space:]]+:${PROTECTED})([[:space:]]|\$)"; then
   targets=1
 fi
 # bare `git push` (no non-flag ref token after push) -> current branch
 if [ "$targets" -eq 0 ]; then
-  after="$(printf '%s' "$cmd" | sed -E 's/.*\bpush\b//')"
+  after="$(printf '%s' "$skel" | sed -E 's/.*[[:space:]]push//')"
   if ! printf '%s' "$after" | grep -Eq '[[:space:]][^-[:space:]]'; then
     [ "$(gitc rev-parse --abbrev-ref HEAD)" = "$PROTECTED" ] && targets=1
   fi
@@ -62,7 +70,7 @@ deny() {
 }
 
 # 1) Never force-push the shared dev branch.
-if printf '%s' "$cmd" | grep -Eq '(--force-with-lease|--force([^a-z-]|$)|[[:space:]]-f([[:space:]]|$)|\+[^[:space:]]*'"${PROTECTED}"')'; then
+if printf '%s' "$skel" | grep -Eq '(--force-with-lease|--force([^a-z-]|$)|[[:space:]]-f([[:space:]]|$)|\+[^[:space:]]*'"${PROTECTED}"')'; then
   deny "🛑 dev-push-guard: force-pushing the shared '${PROTECTED}' branch is forbidden — never rewrite shared history. Promotions to origin/${PROTECTED} must be clean fast-forwards. If a rewrite is genuinely required, do it deliberately outside Claude."
 fi
 
