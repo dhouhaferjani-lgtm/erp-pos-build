@@ -3,7 +3,8 @@ import { apiGet, apiPost } from '@/lib/api';
 import { getDeviceId } from '@/lib/device';
 import { getStoredValue, setStoredValue, removeStoredValue, StorageKeys } from '@/lib/storage';
 import { getDatabase } from '@/lib/db';
-import { pullTerminalState, pullZChainState, pullLocationStock } from '@/lib/sync/syncService';
+import { pullTerminalState, pullZChainState, pullLocationStock, pullOperatorPins } from '@/lib/sync/syncService';
+import { refreshFraudSettingsCache } from '@/api/fraudSettingsApi';
 import { SyncScheduler } from '@/lib/sync/syncScheduler';
 import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
@@ -469,6 +470,28 @@ export async function seedOfflineHashChain(terminalId: string): Promise<void> {
           serializeErrorForLog(err),
         );
       });
+
+    // Phase 5 / F-8: EAGER operator-PIN sync at activation (online), so a
+    // device that goes offline immediately after login can still authorize an
+    // EOD close from the local operator_pins mirror — rather than waiting for
+    // the first lazy sync tick. Fire-and-forget; the sync scheduler re-pulls.
+    void pullOperatorPins(db).catch((err: unknown) => {
+      console.error(
+        '[POS][terminalStore][preWarm] operator-PIN sync failed',
+        serializeErrorForLog(err),
+      );
+    });
+
+    // Phase 5 / B6: EAGER fraud-settings cache refresh at activation, so the
+    // offline EOD close reads variance thresholds from
+    // company_fraud_settings_cache instead of needing a live fetch. companyId
+    // is guaranteed non-null (guarded at the top of this function).
+    void refreshFraudSettingsCache(db, companyId).catch((err: unknown) => {
+      console.error(
+        '[POS][terminalStore][preWarm] fraud-settings cache refresh failed',
+        serializeErrorForLog(err),
+      );
+    });
 
     // T1.3 Step 4.1: hydrate pendingReceiptCount from SQLite so the
     // header badge reflects the truth from boot. The hydration runs

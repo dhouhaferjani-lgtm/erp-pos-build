@@ -135,11 +135,30 @@ export function Header() {
           });
         }
       } catch {
-        // Offline: keep existing local state from SQLite only
+        // Offline (B6): the live fraud-settings + managers fetch failed.
+        // Read the variance thresholds from the durable
+        // company_fraud_settings_cache (eagerly populated at activation) so the
+        // EOD close still computes severity offline, plus the throttle state.
         if (cancelled) return;
         try {
           const { getDatabase } = await import('@/lib/db');
           const db = await getDatabase(companyId);
+
+          const { getCompanyFraudSettings } = await import(
+            '@/lib/db/repositories/companyFraudSettingsCacheRepository'
+          );
+          const cachedFraud = await getCompanyFraudSettings(db, companyId);
+          if (!cancelled && cachedFraud) {
+            setFraudSettings({
+              cash_variance_over_soft: cachedFraud.cash_variance_over_soft,
+              cash_variance_over_hard: cachedFraud.cash_variance_over_hard,
+              cash_variance_under_soft: cachedFraud.cash_variance_under_soft,
+              cash_variance_under_hard: cachedFraud.cash_variance_under_hard,
+              require_blind_cash_count: cachedFraud.require_blind_cash_count,
+              require_manager_pin_above_hard: cachedFraud.require_manager_pin_above_hard,
+            });
+          }
+
           const ts = await getTerminalState(db, terminal.id);
           if (!cancelled) {
             setManagerPinThrottleState({
