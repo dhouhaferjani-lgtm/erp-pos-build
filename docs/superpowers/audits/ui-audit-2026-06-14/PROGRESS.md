@@ -87,22 +87,26 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
 
 ### (original cluster framing — superseded by CANONICALIZATION-SPEC for module order)
 > **Continuation note (branch `feat/ui-consistency-clusters`, off LOCAL dev `04873f158`):** Phase 3.7
-> done; Phase 3.2 ~40% done (18 files). Lint ratchet 11512 → **10807** (−705), 0 errors, tsc clean,
+> done; Phase 3.2 ~55% done (26 files). Lint ratchet 11512 → **10439** (−1073), 0 errors, tsc clean,
 > all suites green. Pattern proven: parallel subagents on DISJOINT files (presentation-only; preserve
 > every useQuery/mutation key; no shared-file/locale/barrel/test edits), orchestrator runs the
 > authoritative tsc/eslint/vitest + reconciles existing suites + all commits serially.
+> **Recurring gotcha:** existing FEATURE-ROOT suites (treasury.test.tsx, finance/JournalEntryForm.test.tsx)
+> render the migrated pages and assert pre-canonical markup — after each list/detail batch, run them and
+> reconcile (link→Button role, loading-text→`.animate-pulse` DataTable skeleton). Agents must NOT edit
+> these shared suites (conflict risk); the orchestrator reconciles them.
 - [ ] 3.1 `documents/` (epicenter: 65 raw controls, 5 bespoke modals, ~50 off-theme)
 - ◧ 3.2 finance + treasury — **PARTIAL.** ✅ DONE: 5 finance report pages (Aged AR/AP, Trial Balance,
   P&L, Balance Sheet); 5 list pages (Payment/Repository/Instrument/JournalEntry/Expense); 5 forms
   (Payment, SplitPayment, JournalEntry, Expense page+fields); 3 treasury detail pages
-  (Payment/Instrument/Repository — bespoke modals → Modal organism). ⏳ REMAINING: detail pages
-  ExpenseDetailPage (54), JournalEntryDetailPage (43), WithholdingCertificateDetail (91); modals
-  AddPaymentMethodModal (23), WithholdingPreviewModal (49), WithholdingRuleFormModal (46),
-  finance AddAccountModal/EditAccountModal; pages BankReconciliationPage (63), PaymentMethodsPage (53),
-  withholding (SalesWithholdingTrackingPage 50, WithholdingCertificatesList 48, WithholdingRulesPage 38);
-  components AllocationPreview (37), OpenInvoicesList (36), PaymentAllocationForm (30),
-  ToleranceSettingsDisplay (15), ExpenseCard/ExpenseList, finance LedgerTable/LedgerFilters/FinanceWidget,
-  GeneralLedgerPage, ChartOfAccountsPage/AccountTreeView. (~46 files / ~1100 warnings left.)
+  (Payment/Instrument/Repository — bespoke modals → Modal organism); 3 more detail pages
+  (ExpenseDetailPage, JournalEntryDetailPage, WithholdingCertificateDetail); whole withholding feature
+  (CertificatesList, RulesPage, SalesWithholdingTrackingPage + PreviewModal/RuleFormModal → Modal organism).
+  ⏳ REMAINING (~21 files / ~530 warnings): pages BankReconciliationPage (63), PaymentMethodsPage (53),
+  GeneralLedgerPage (9), ChartOfAccountsPage (2); modals AddPaymentMethodModal (23), finance
+  AddAccountModal/EditAccountModal; components AllocationPreview (37), OpenInvoicesList (36),
+  PaymentAllocationForm (30), ToleranceSettingsDisplay (15), ExpenseCard/ExpenseList, finance
+  LedgerTable (18)/LedgerFilters (9)/FinanceWidget (12)/AccountTreeView (2).
 - [ ] 3.3 admin/settings (10 bespoke modals, 169 raw controls, 3 settings layouts)
 - [ ] 3.4 inventory/catalog (8 bespoke modals, rainbow hub, status badges)
 - [ ] 3.5 POS color drift (keep POSButton/touch layout; adopt tokens; kill glassmorphism/dark)
@@ -143,3 +147,6 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
 | 2026-06-14 | 3.2 | `706e988b8` | 5 list pages (treasury Payment/Repository/Instrument, finance JournalEntry, Expense) → ListPageLayout/DataTable/StatusBadge/OffsetPagination (presentation-only, keys preserved); 5 TDD suites; 44 tests incl. tenantScope; web lint 11320→11174 (−146) |
 | 2026-06-14 | 3.2 | `a99495fd4` | 5 form files (treasury Payment/SplitPayment, finance JournalEntry, Expense page+fields) → PageHeader/card/FormField+atoms/MoneyInput/StickyFormFooter; reconciled treasury.test.tsx + finance/JournalEntryForm.test.tsx (link→Button, loading-text→DataTable skeleton); 113 tests; web lint 11174→11028 (−146) |
 | 2026-06-14 | 3.2 | `8d32dfff0` | 3 treasury detail pages (Payment/Instrument/Repository) → PageHeader/StatusBadge/tokenized tables; bespoke modals → Modal organism; 3 TDD suites; 67 tests incl. tenantScope; web lint 11028→10807 (−221) |
+| 2026-06-14 | 3.2 | `75372f309` | 3 detail pages (Expense, JournalEntry, WithholdingCertificate) → PageHeader/StatusBadge/tokenized tables; JournalEntryDetailPage dropped bespoke local StatusBadge; 3 TDD suites; 55 tests incl. finance JournalEntryForm suite + tenantScope; web lint 10807→10641 (−166) |
+| 2026-06-14 | 3.2 | `e31e50edf` | whole withholding feature (CertificatesList, RulesPage, SalesWithholdingTrackingPage lists → ListPageLayout/DataTable; PreviewModal + RuleFormModal → Modal organism); 5 TDD suites; 20 tests incl. tenantScope; web lint 10641→10439 (−202) |
+| 2026-06-14 | docs | `a3f38d44f` (+ this) | PROGRESS handover updates |
