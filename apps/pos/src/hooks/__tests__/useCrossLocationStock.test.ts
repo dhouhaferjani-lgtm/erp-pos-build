@@ -102,6 +102,28 @@ describe('useCrossLocationStock', () => {
     expect(upsertMock).not.toHaveBeenCalled();
   });
 
+  // ── Test 2b: offline + corrupt cache payload → treated as cache miss ──────
+  it('treats a corrupt cache payload as a miss instead of throwing', async () => {
+    onlineState = false;
+    getMock.mockResolvedValue({
+      product_id: 'p1',
+      variant_id: '',
+      variant_label: null,
+      payload: '{not valid json',
+      fetched_at: AS_OF,
+    });
+
+    const { result } = renderHook(() =>
+      useCrossLocationStock('p1', null, 'loc1', true),
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.data).toBeNull();
+    expect(result.current.source).toBeNull();
+    expect(result.current.error).toBe('offline-no-cache');
+  });
+
   // ── Test 3: offline + no cache → offline-no-cache error ───────────────────
   it('reports offline-no-cache error when offline and cache empty', async () => {
     onlineState = false;

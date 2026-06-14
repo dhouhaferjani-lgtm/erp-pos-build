@@ -105,10 +105,22 @@ export function useCrossLocationStock(
       const cached = await getDistribution(db, productId as string, variantId);
       if (cancelled) return;
 
+      let parsed: StockDistribution | null = null;
       if (cached) {
-        setData(JSON.parse(cached.payload) as StockDistribution);
+        try {
+          parsed = JSON.parse(cached.payload) as StockDistribution;
+        } catch {
+          // Corrupt cache row (truncated write / schema drift): treat as a
+          // cache miss rather than letting the parse throw out of load() and
+          // silently swallow the failure into an empty section.
+          parsed = null;
+        }
+      }
+
+      if (parsed) {
+        setData(parsed);
         setSource('cache');
-        setFetchedAt(cached.fetched_at);
+        setFetchedAt(cached!.fetched_at);
         // Only mark fetch-failed when we were online and the request threw;
         // a pure offline path is not an error (data is simply from cache).
         setError(isOnline ? 'fetch-failed' : null);
