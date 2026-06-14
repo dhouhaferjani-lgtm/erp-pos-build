@@ -591,56 +591,65 @@ export async function authorZSessionOpenWithOpeningFloatOnDb(
 }
 
 export async function appendXReport(
-  db: Database | SqlSurface,
+  _db: Database | SqlSurface,
   engine: ZSessionFiscalEventEngine,
   input: AuthorXReportInput,
 ): Promise<AuthorXReportResult> {
   const generatedAtDevice = input.generatedAtDevice ?? new Date();
-  const sessionOpen = await requireSessionOpenEvent(db, input);
-  await assertNoZReportForSession(db, input);
-  const xReportEvent = await engine.append(db, {
-    event_type: 'X_REPORT',
-    tenant_id: input.tenantId,
-    company_id: input.companyId,
-    terminal_id: input.terminalId,
-    operator_id: input.operatorId,
-    event_time_device: isoSecondsUtc(generatedAtDevice),
-    business_date: input.businessDate,
-    chain_context: zChainContext(input.isTraining),
-    payload: buildXReportPayload(input, generatedAtDevice),
-    reference_event_id: sessionOpen.id,
-    source_event_class: 'x_report',
-    source_event_id: input.xReportUuid,
-  });
+  // Single-writer (M1): the SESSION_OPEN/Z guard reads and the X_REPORT append
+  // run as ONE exclusive fiscal write-gate transaction on the single writer
+  // connection — never via the pooled handle (see writeGate.ts).
+  return withWriteTransaction('fiscal', async (tx) => {
+    const sessionOpen = await requireSessionOpenEvent(tx, input);
+    await assertNoZReportForSession(tx, input);
+    const xReportEvent = await engine.append(tx, {
+      event_type: 'X_REPORT',
+      tenant_id: input.tenantId,
+      company_id: input.companyId,
+      terminal_id: input.terminalId,
+      operator_id: input.operatorId,
+      event_time_device: isoSecondsUtc(generatedAtDevice),
+      business_date: input.businessDate,
+      chain_context: zChainContext(input.isTraining),
+      payload: buildXReportPayload(input, generatedAtDevice),
+      reference_event_id: sessionOpen.id,
+      source_event_class: 'x_report',
+      source_event_id: input.xReportUuid,
+    });
 
-  return { xReportEvent };
+    return { xReportEvent };
+  });
 }
 
 export async function appendZCashDrawerMovement(
-  db: Database | SqlSurface,
+  _db: Database | SqlSurface,
   engine: ZSessionFiscalEventEngine,
   input: AuthorZCashDrawerMovementInput,
 ): Promise<AuthorZCashDrawerMovementResult> {
   const eventTimeDevice = input.eventTimeDevice ?? new Date();
   const movementId = input.movementId ?? crypto.randomUUID();
-  await requireSessionOpenEvent(db, input);
-  await assertNoZReportForSession(db, input);
-  const movementEvent = await engine.append(db, {
-    event_type: input.movementType,
-    tenant_id: input.tenantId,
-    company_id: input.companyId,
-    terminal_id: input.terminalId,
-    operator_id: input.operatorId,
-    event_time_device: isoSecondsUtc(eventTimeDevice),
-    business_date: input.businessDate,
-    chain_context: zChainContext(input.isTraining),
-    payload: buildZCashDrawerMovementPayload(input, eventTimeDevice, movementId),
-    reference_event_id: input.approval?.approval_event_id,
-    source_event_class: 'z_cash_drawer_movement',
-    source_event_id: movementId,
-  });
+  // Single-writer (M1): the guard reads and the movement append run as ONE
+  // exclusive fiscal write-gate transaction on the single writer connection.
+  return withWriteTransaction('fiscal', async (tx) => {
+    await requireSessionOpenEvent(tx, input);
+    await assertNoZReportForSession(tx, input);
+    const movementEvent = await engine.append(tx, {
+      event_type: input.movementType,
+      tenant_id: input.tenantId,
+      company_id: input.companyId,
+      terminal_id: input.terminalId,
+      operator_id: input.operatorId,
+      event_time_device: isoSecondsUtc(eventTimeDevice),
+      business_date: input.businessDate,
+      chain_context: zChainContext(input.isTraining),
+      payload: buildZCashDrawerMovementPayload(input, eventTimeDevice, movementId),
+      reference_event_id: input.approval?.approval_event_id,
+      source_event_class: 'z_cash_drawer_movement',
+      source_event_id: movementId,
+    });
 
-  return { movementEvent, movementId };
+    return { movementEvent, movementId };
+  });
 }
 
 export async function appendZSessionCloseAndZReport(
