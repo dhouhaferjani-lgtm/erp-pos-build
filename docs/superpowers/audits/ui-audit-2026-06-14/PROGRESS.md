@@ -11,6 +11,15 @@
 - One PR per phase (or per cluster in Phase 3), each with before/after screenshots.
 - Parallel session active → stay in this worktree; rebase on `origin/dev` before each push.
 
+## 🖥️ Visual testing pipeline (set up 2026-06-14 — USE THIS)
+The Docker stack's web container (`erp-dev-web-1`, nginx) serves a **bind-mounted static `dist/`** from `/Users/houssamr/Projects/syneriva/apps/erp.dev-consolidation/apps/web/dist`. To see THIS branch at `http://localhost:8089`, build this worktree into that `dist/` (its *source* is untouched — `dist/` is a gitignored artifact; API stays reachable because the app's axios `baseURL` is the relative `/api/v1`, proxied by the same nginx):
+```
+DIST=/Users/houssamr/Projects/syneriva/apps/erp.dev-consolidation/apps/web/dist
+cd apps/web && node_modules/.bin/vite build --outDir "$DIST" --emptyOutDir   # ~8s
+# iterate: node_modules/.bin/vite build --watch --outDir "$DIST"
+```
+Then drive `http://localhost:8089` with the Playwright MCP (login `owner@cafe-tunis.tn` / `password`). NOTE: this overwrites what the live stack serves — fine for this work, but coordinate with the parallel session. WebSocket/Pusher console errors at :8089 are pre-existing env noise (Reverb not proxied), not regressions.
+
 ## Verification commands (run from `apps/web/`)
 ```
 node_modules/.bin/tsc --noEmit
