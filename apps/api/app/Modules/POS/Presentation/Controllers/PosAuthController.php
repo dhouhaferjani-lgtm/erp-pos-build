@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
@@ -145,8 +146,14 @@ final class PosAuthController extends Controller
         $terminalIds = is_string($terminalId) && $terminalId !== '' ? [$terminalId] : [];
         $serverTime = now()->toIso8601String();
 
+        // F-3: only ACTIVE company members are mirrored into the device's
+        // operator_pins. A suspended/revoked member who still holds a pos_pin +
+        // approval permission must not appear in the offline operator/approval
+        // list — keeping it in lockstep with the online
+        // AuthorizedManagersController (active-only).
         $companyUserIds = UserCompanyMembership::query()
             ->where('company_id', $company->id)
+            ->where('status', MembershipStatus::Active->value)
             ->pluck('user_id');
 
         $operators = User::where('tenant_id', $currentUser->tenant_id)
