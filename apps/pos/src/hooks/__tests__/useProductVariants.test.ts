@@ -4,6 +4,12 @@
  * The hook reads local SQLite first. Online cold-fetch fires only when the
  * local cache is empty and the device is online. Offline with no cache yields
  * status 'offline-empty'. All mocks are scoped to this file.
+ *
+ * Review fixes (M3):
+ *   FV3-H1 — no background refresh on local hit (fetchProductVariants must NOT
+ *             be called when local rows exist).
+ *   FV3-M1 — db-read failure (getVariantsForProduct rejects) → status 'error',
+ *             variants [], not stuck 'loading'.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
@@ -72,18 +78,40 @@ describe('useProductVariants — local-first contract', () => {
 
   it('returns variants from local cache and status "local" when online + local rows exist', async () => {
     const localVariants = [makeVariant('v1'), makeVariant('v2')];
-    // First call (initial read) returns rows; second call (background re-read after fetch) too.
     getVariantsForProductMock.mockResolvedValue(localVariants);
-    // fetchProductVariants may be called in background but its result doesn't matter here.
-    fetchProductVariantsMock.mockResolvedValue(localVariants);
 
     const { result } = renderHook(() => useProductVariants('prod-1'));
 
     await waitFor(() => expect(result.current.status).toBe('local'));
     expect(result.current.variants).toEqual(localVariants);
     expect(result.current.isLoading).toBe(false);
-    // local-hit path should NOT have triggered a cold-fetch wait
-    // (fetchProductVariants may fire in background but status is already 'local')
+  });
+
+  // FV3-H1: on a local hit, fetchProductVariants must NOT be called at all —
+  // the 60s pullProductVariants sync keeps local fresh; an extra network call
+  // here is a wasted round-trip that violates offline-first.
+  it('FV3-H1: does NOT call fetchProductVariants when local rows exist', async () => {
+    const localVariants = [makeVariant('v1'), makeVariant('v2')];
+    getVariantsForProductMock.mockResolvedValue(localVariants);
+
+    const { result } = renderHook(() => useProductVariants('prod-1'));
+
+    await waitFor(() => expect(result.current.status).toBe('local'));
+    expect(fetchProductVariantsMock).not.toHaveBeenCalled();
+  });
+
+  // FV3-M1: if getVariantsForProduct rejects (db read failure), the hook must
+  // resolve to status 'error' with variants [] — never stay stuck at 'loading'.
+  it('FV3-M1: db read failure → status "error" and variants [], not stuck loading', async () => {
+    getVariantsForProductMock.mockRejectedValue(new Error('SQLite read failed'));
+
+    const { result } = renderHook(() => useProductVariants('prod-1'));
+
+    await waitFor(() => expect(result.current.status).toBe('error'));
+    expect(result.current.variants).toEqual([]);
+    expect(result.current.isLoading).toBe(false);
+    // Must not have attempted a network call after the db failure
+    expect(fetchProductVariantsMock).not.toHaveBeenCalled();
   });
 
   it('cold-fetches from server when online but no local cache, then status "local"', async () => {
