@@ -56,7 +56,7 @@
 - Create: `apps/api/app/Shared/DTOs/PosVariantData.php`, `apps/api/app/Shared/DTOs/PosVariantFeedPageDTO.php`
 - Create: `apps/api/app/Shared/Contracts/PosVariantFeedReader.php`
 - Create: `apps/api/app/Modules/Catalog/Application/Services/PosVariantFeedService.php`
-- Modify: the provider binding `LocationStockReader` (find it: `grep -rn "LocationStockReader::class" apps/api/app --include=*.php | grep bind`)
+- Modify: `apps/api/app/Modules/Catalog/Providers/CatalogServiceProvider.php` (bind the contract here — Catalog owns variants; verified it already binds `ProductVariantLookup` at ~line 42)
 - Test: `apps/api/tests/Unit/Catalog/PosVariantFeedServiceTest.php`
 
 Background: `ProductVariant` (`App\Modules\Catalog\Domain\Entities\ProductVariant`) uses `SoftDeletes`, has `tenant_id, company_id, product_id, variant_code, sku, barcode, name_suffix, is_default, is_active, display_order, price_override, cost_override, image_url, updated_at, deleted_at`. The POS must NOT import this model directly (module boundaries) — it consumes a Shared contract, exactly like `PosStockLevelController` injects `LocationStockReader`.
@@ -189,7 +189,7 @@ final class PosVariantFeedServiceTest extends TestCase
 }
 ```
 
-> Replace the `markTestIncomplete` bodies with the real arrange/act/assert using the project's tenant/company/product test harness (see `tests/Feature/Fiscal/PosCoreReceiptProjectionTest.php` for how Product + ProductVariant are created, and `tests/Feature/POS/SyncShiftCloseTest.php` for tenant/company/CompanyContext setup). Use `CarbonImmutable` cursors. Resolve the reader via `app(PosVariantFeedReader::class)`.
+> Replace the `markTestIncomplete` bodies with the real arrange/act/assert using the project's tenant/company/product test harness. For how `Product` + `ProductVariant` are created, see `tests/Feature/Fiscal/PosCoreReceiptProjectionTest.php`. For the tenant/company + `CompanyContext` bootstrap (the model to copy — it exercises the same `requireTenantId`/`requireCompanyId` path), see **`tests/Feature/POS/PosStockLevelEndpointTest.php`** (NOT `SyncShiftCloseTest`, which doesn't go through `CompanyContext`). Note `ProductVariantFactory` defaults `barcode => null` — set it explicitly when a case needs a non-null barcode. Use `CarbonImmutable` cursors. Resolve the reader via `app(PosVariantFeedReader::class)`.
 
 - [ ] **Step 4: Run — expect FAIL** (binding/class missing). `cd apps/api && ./vendor/bin/phpunit tests/Unit/Catalog/PosVariantFeedServiceTest.php`
 
@@ -281,17 +281,18 @@ final class PosVariantFeedService implements PosVariantFeedReader
 
 > Verify: `ProductVariant` casts `updated_at` to Carbon (it extends Model with default timestamps) so `?->toIso8601String()` works; `onlyTrashed()` is available (SoftDeletes). `is_default`/`is_active`/`display_order` casts exist (confirmed in the model).
 
-- [ ] **Step 6: Bind the contract.** In the provider that binds `LocationStockReader` (the `grep` from Files), add:
+- [ ] **Step 6: Bind the contract** in `apps/api/app/Modules/Catalog/Providers/CatalogServiceProvider.php`, in `register()` alongside the existing `ProductVariantLookup` binding (~line 42). Add the `use` imports for both classes and:
 ```php
 $this->app->bind(\App\Shared\Contracts\PosVariantFeedReader::class, \App\Modules\Catalog\Application\Services\PosVariantFeedService::class);
 ```
+(Bind here, NOT in `InventoryServiceProvider` — `LocationStockReader` lives there but variants are a Catalog concern; a Catalog binding in the Inventory provider would be a module-boundary violation.)
 
 - [ ] **Step 7: Fill in the test arrange/act/assert, run — expect PASS.** `./vendor/bin/phpunit tests/Unit/Catalog/PosVariantFeedServiceTest.php`
 
 - [ ] **Step 8: PHPStan + Pint + Commit**
 ```bash
 cd apps/api && ./vendor/bin/phpstan analyse app/Shared/DTOs/PosVariant*.php app/Shared/Contracts/PosVariantFeedReader.php app/Modules/Catalog/Application/Services/PosVariantFeedService.php && ./vendor/bin/pint app/Shared app/Modules/Catalog/Application/Services/PosVariantFeedService.php
-git add apps/api/app/Shared/DTOs/PosVariant*.php apps/api/app/Shared/Contracts/PosVariantFeedReader.php apps/api/app/Modules/Catalog/Application/Services/PosVariantFeedService.php apps/api/tests/Unit/Catalog/PosVariantFeedServiceTest.php apps/api/app/Providers/*  # the provider you edited
+git add apps/api/app/Shared/DTOs/PosVariant*.php apps/api/app/Shared/Contracts/PosVariantFeedReader.php apps/api/app/Modules/Catalog/Application/Services/PosVariantFeedService.php apps/api/tests/Unit/Catalog/PosVariantFeedServiceTest.php apps/api/app/Modules/Catalog/Providers/CatalogServiceProvider.php
 git commit -m "feat(api): PosVariantFeedReader contract + PosVariantFeedService (snapshot/delta/tombstone)"
 ```
 
@@ -304,7 +305,7 @@ git commit -m "feat(api): PosVariantFeedReader contract + PosVariantFeedService 
 - Modify: `apps/api/app/Modules/POS/routes.php`
 - Test: `apps/api/tests/Feature/POS/PosVariantFeedEndpointTest.php`
 
-- [ ] **Step 1: Write the failing feature test** (mirror `tests/Feature/POS/SyncShiftCloseTest.php` setUp — Tenant/Company/User/UserCompanyMembership/`setPermissionsTeamId`/Permission `pos.operate_terminal`/Sanctum). Cases:
+- [ ] **Step 1: Write the failing feature test** (mirror **`tests/Feature/POS/PosStockLevelEndpointTest.php`** setUp — Tenant/Company/User/UserCompanyMembership/`setPermissionsTeamId`/Permission `pos.operate_terminal`/`CompanyContext`/Sanctum; it's the sibling `/pos/stock-levels` test and exercises the same auth+company path). `ProductVariantFactory` defaults `barcode => null` — set it explicitly per case. Cases:
 
 ```php
 public function test_company_scoped_snapshot_no_terminal_required(): void
@@ -499,12 +500,13 @@ git commit -m "feat(api): GET /pos/variants company-scoped catalog feed (delta +
   },
 ```
 
-- [ ] **Step 2: Write the failing repo test** (reuse the SqliteTestAdapter/applyAllMigrations harness the existing repo tests use — see `locationStockRepository.test.ts` / `crossLocationStockRepository.test.ts`):
+- [ ] **Step 2: Write the failing repo test** (use the REAL harness — verified: `SqliteTestAdapter` + `applyAllMigrations`, exactly as `locationStockRepository.test.ts` does; there is NO `makeTestDb`):
 ```ts
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
+import { applyAllMigrations } from '@/lib/db/__tests__/helpers/migrationTestHelpers';
 import { upsertVariants, getVariantsForProduct, getVariantByBarcode, deleteVariantsById, deleteVariantsForProducts } from '@/lib/db/repositories/variantRepository';
 import { upsertStockRows } from '@/lib/db/repositories/locationStockRepository';
-import { makeTestDb } from '@/lib/db/__tests__/testDb'; // adjust to the real helper
 
 const row = (over: Partial<Parameters<typeof upsertVariants>[1][number]> = {}) => ({
   id: 'v1', product_id: 'p1', sku: 'SKU1', barcode: 'BC1', name_suffix: ' — M',
@@ -512,8 +514,10 @@ const row = (over: Partial<Parameters<typeof upsertVariants>[1][number]> = {}) =
 });
 
 describe('variantRepository', () => {
-  let db: Awaited<ReturnType<typeof makeTestDb>>;
-  beforeEach(async () => { db = await makeTestDb(); });
+  let adapter: SqliteTestAdapter;
+  let db: ReturnType<SqliteTestAdapter['asDatabase']>;
+  beforeEach(async () => { adapter = new SqliteTestAdapter(); db = adapter.asDatabase(); await applyAllMigrations(adapter); });
+  afterEach(() => { adapter.close(); });
 
   it('upserts and lists variants for a product (active, ordered)', async () => {
     await upsertVariants(db, [row({ id: 'v2', display_order: 1, barcode: 'BC2' }), row({ id: 'v1', display_order: 0 })]);
@@ -899,7 +903,7 @@ const { variants, isLoading, status } = useProductVariants(productId);
   <ProductVariantStockView basePrice={product.sale_price} variants={variants} selectedVariantId={selectedVariantId} onSelect={setSelectedVariantId} />
 )}
 ```
-(`handleConfirm` uses `variants.find(...)` — same as today, just from the new `variants` value.)
+Also update `handleConfirm`: the new `variants` is **always an array** (never undefined), so drop the `!variants` guard — `if (selectedVariantId === null) return; const variant = variants.find((v) => v.id === selectedVariantId); if (!variant) return; onConfirm(variant);`. Remove any `variants ?? []` / `isError` references left from the old React-Query contract.
 
 - [ ] **Step 5: Run — expect PASS + typecheck + lint.** `cd apps/pos && pnpm vitest run src/hooks/__tests__/useProductVariants.test.ts && pnpm typecheck && pnpm lint src/components/pos/VariantPickerModal.tsx`
 
@@ -940,23 +944,30 @@ export type ResolveScannedCodeResult =
   | { kind: 'choose'; candidates: POSProduct[] }
   | { kind: 'miss' };
 ```
-In the SQLite tier (where `getProductsByBarcode` is called), first try the variant index. The variant's `product_id` resolves the parent product from the in-memory snapshot or SQLite:
+First add `getProductById` to `productRepository.ts` (verified: it does NOT exist — mirror the existing `getProductByBarcode` at lines 56–63):
+```ts
+export async function getProductById(db: Database, id: string): Promise<POSProduct | null> {
+  const row = await queryOne<ProductRow>(db, 'SELECT * FROM products WHERE id = $1', [id]);
+  return row ? rowToProduct(row) : null;
+}
+```
+Then, in the SQLite tier of `resolveScannedCode` (where `getProductsByBarcode` is called), try the variant index first; the variant's `product_id` resolves the parent product from the in-memory snapshot, then local SQLite:
 ```ts
 import { getVariantByBarcode } from '@/lib/db/repositories/variantRepository';
-import { getProductById } from '@/lib/db/repositories/productRepository'; // verify it exists; else use products.find
-// ... inside the SQLite tier, before/around getProductsByBarcode:
+import { getProductsByBarcode, getProductById } from '@/lib/db/repositories/productRepository';
+// ... inside the SQLite tier:
 const variant = await getVariantByBarcode(deps.db, code);
 if (variant) {
-  // resolve the parent product (in-memory first, then SQLite)
   const product = deps.products.find((p) => p.id === variant.product_id)
-    ?? (await getProductsByBarcodeOrId(deps.db, variant.product_id)); // helper or a getProductById
+    ?? (await getProductById(deps.db, variant.product_id));
   if (product) {
     // Do NOT cache variant-hits in the recent-scan LRU (it stores POSProduct only).
     return { kind: 'variant-hit', product, variant };
   }
+  // parent product not synced → fall through to the existing product tiers (don't crash).
 }
 ```
-> Verify whether `getProductById(db, id)` exists in `productRepository.ts`; if not, add a tiny `getProductById` (mirror `getProductByBarcode`) in this task. If the parent product can't be resolved (not synced), fall through to the existing product tiers (don't crash). Keep the variant query INSIDE the existing SQLite tier so there's still a single logical round-trip and the abort-signal/aborted checks still apply.
+> Keep the variant query INSIDE the existing SQLite tier so there's still one logical round-trip and the abort-signal/aborted checks still apply.
 
 - [ ] **Step 4: Run — expect PASS + typecheck.** `cd apps/pos && pnpm vitest run src/lib/scan/__tests__/resolveScannedCode.variant.test.ts && pnpm typecheck`
 
@@ -1088,3 +1099,13 @@ git commit -m "feat(pos): variants.offlineNoCache i18n (en+fr) + smoke test"
 - No-LRU for variant-hits (the LRU stores `POSProduct` only).
 - Offline pricing (`cartStore` variant `price_override`), fiscal variant signing (`SaleReceiptV2`), and variant-grain stock gating already work — unchanged.
 - Stock for the picker comes from the `location_stock` join (per-variant `available` → `stock_quantity`), consistent with today's number-based display.
+
+## Review notes (Opus + Codex plan reviews, both APPROVE-WITH-EDITS — verified against code, folded in)
+- **Test harness:** the real helper is `SqliteTestAdapter` + `applyAllMigrations` from `@/lib/db/__tests__/helpers/` — there is **no** `makeTestDb` (fixed in FV1).
+- **Binding:** `PosVariantFeedReader` is bound in **`CatalogServiceProvider`** (variants are Catalog's; `LocationStockReader` lives in `InventoryServiceProvider` but binding there would cross module boundaries) — fixed in BV1.
+- **`getProductById`:** verified it does **not** exist in `productRepository.ts` → FV4 adds it (mirrors `getProductByBarcode`). The earlier "verify/maybe" wording is now definitive.
+- **`resolveCatalogTenantGate`:** it is module-private in `syncService.ts:662`; `pullProductVariants` is defined in that **same file**, so it's in scope with **no import** (a reviewer flagged a phantom import — non-issue).
+- **`Number(available)` → `stock_quantity`:** intentional parity with the existing `variantApi.ts:28` (`POSProductVariant.stock_quantity` is typed `number` and used only for advisory in-stock/out-of-stock display). The real, precision-critical stock gate is `addItemGated` (decimal strings) — unchanged. Not a new precision violation; apps/pos ESLint does not flag it.
+- **Backend test bootstrap:** model the feature test on `PosStockLevelEndpointTest` (exercises `CompanyContext`), not `SyncShiftCloseTest`.
+- **Factory:** `ProductVariantFactory` defaults `barcode => null` — set it explicitly in barcode/scan cases.
+- **Gate `!== 'standard'`:** `pullProductVariants` no-ops on Menu/defer tenants (mirrors `pullLocationStock`); harmless, next tick retries.
