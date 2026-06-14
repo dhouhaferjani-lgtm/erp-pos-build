@@ -420,6 +420,12 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       const config = await apiGet<import('@/types/companyConfig').CompanyConfig>('/company/config');
       const { useProductStore } = await import('@/stores/productStore');
       useProductStore.setState({ companyConfig: config });
+      // Persist offline so the cross-location gate survives a restart (H2).
+      const companyId = get().companyId;
+      if (companyId) {
+        const { persistCompanyConfig } = await import('@/lib/companyConfigCache');
+        await persistCompanyConfig(companyId, config).catch(() => {});
+      }
     } catch (error) {
       // Graceful: keep existing cached config; log at debug level only.
       console.debug('[auth] refreshCompanyConfig failed (keeping cached config):', error);
