@@ -1070,6 +1070,16 @@ export async function pullTerminalState(
     }
     const fiscalSchemaVersion: 2 | 3 = rawVersion;
 
+    // Offline-first shifts Phase 6.1: cache the server's per-terminal
+    // MAX(shift_number) so the device's `nextShiftNumber` continues numbering
+    // monotonically after a fresh install / DB reset. Carried INSIDE the
+    // terminal_state upsert so the row and its seed are written in one atomic
+    // statement — a crash between two separate writes can never leave a fresh
+    // row with seed 0 (Codex r1 HIGH). The upsert is monotone (MAX), so a stale
+    // server read can never rewind it. Absent on a pre-6.1 server → 0 (legacy
+    // local-only behaviour).
+    const shiftNumberSeed = state.max_shift_number ?? 0;
+
     const hashState: TerminalHashState = {
       terminal_id: state.id,
       terminal_code: state.code,
@@ -1080,18 +1090,11 @@ export async function pullTerminalState(
       manager_pin_throttle_until: null,
       manager_pin_failed_attempts: 0,
       fiscal_schema_version: fiscalSchemaVersion,
+      shift_number_seed: shiftNumberSeed,
     };
-
-    // Offline-first shifts Phase 6.1: cache the server's per-terminal
-    // MAX(shift_number) so the device's `nextShiftNumber` continues numbering
-    // monotonically after a fresh install / DB reset. `setShiftNumberSeed` is
-    // monotone (MAX of existing + incoming), so a stale server read can never
-    // rewind it. Absent on a pre-6.1 server → 0 (legacy local-only behaviour).
-    const shiftNumberSeed = state.max_shift_number ?? 0;
 
     try {
       await upsertTerminalState(db, hashState);
-      await setShiftNumberSeed(db, terminalId, shiftNumberSeed);
       await logSyncOperation(db, 'pull', 'terminal_state', terminalId, 'success');
       return true;
     } catch (error) {
@@ -1104,8 +1107,9 @@ export async function pullTerminalState(
           local_sequence: error.before,
           server_sequence: error.after,
         });
-        // The local fiscal head is ahead of the server, but the terminal_state
-        // row exists — still refresh the monotone shift-number seed.
+        // The local fiscal head is ahead of the server, so upsertTerminalState
+        // rejected the whole write (seed included). The row already exists —
+        // refresh the monotone shift-number seed on its own.
         await setShiftNumberSeed(db, terminalId, shiftNumberSeed);
         await logSyncOperation(
           db,

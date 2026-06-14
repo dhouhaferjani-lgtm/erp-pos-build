@@ -671,6 +671,7 @@ describe('syncService', () => {
         manager_pin_throttle_until: null,
         manager_pin_failed_attempts: 0,
         fiscal_schema_version: 2,
+        shift_number_seed: 0,
       });
       expect(computeGenesisHash).not.toHaveBeenCalled();
     });
@@ -700,6 +701,7 @@ describe('syncService', () => {
         manager_pin_throttle_until: null,
         manager_pin_failed_attempts: 0,
         fiscal_schema_version: 2,
+        shift_number_seed: 0,
       });
     });
 
@@ -718,7 +720,12 @@ describe('syncService', () => {
       const result = await pullTerminalState(db, 'term-1');
 
       expect(result).toBe(true);
-      expect(setShiftNumberSeed).toHaveBeenCalledWith(db, 'term-1', 42);
+      // Atomic with the row (Codex r1 HIGH): the seed rides the upsert, not a
+      // separate setShiftNumberSeed write, on the success path.
+      expect(upsertTerminalState).toHaveBeenCalledWith(
+        db,
+        expect.objectContaining({ shift_number_seed: 42 }),
+      );
     });
 
     it('Phase 6.1: seeds 0 when the server omits max_shift_number (stale server)', async () => {
@@ -735,7 +742,10 @@ describe('syncService', () => {
       const result = await pullTerminalState(db, 'term-1');
 
       expect(result).toBe(true);
-      expect(setShiftNumberSeed).toHaveBeenCalledWith(db, 'term-1', 0);
+      expect(upsertTerminalState).toHaveBeenCalledWith(
+        db,
+        expect.objectContaining({ shift_number_seed: 0 }),
+      );
     });
 
     it('Codex review B1: projects v3 fiscal_schema_version when the server declares it', async () => {
@@ -791,6 +801,7 @@ describe('syncService', () => {
         genesis_seed: 'seed-abc',
         last_hash: null,
         hash_sequence: 0,
+        max_shift_number: 5,
       });
 
       // Simulate the guard inside upsertTerminalState: make the mock throw
@@ -808,6 +819,9 @@ describe('syncService', () => {
       // and NEVER propagate — a partial pull must not kill the scheduler.
       expect(ok).toBe(true);
       expect(upsertTerminalState).toHaveBeenCalledOnce();
+      // The upsert rejected the whole write (seed included), so the regression
+      // path refreshes the monotone shift-number seed on its own.
+      expect(setShiftNumberSeed).toHaveBeenCalledWith(db, 'terminal-1', 5);
     });
   });
 

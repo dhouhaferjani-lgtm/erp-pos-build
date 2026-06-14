@@ -1706,4 +1706,31 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // Offline-first shifts — Phase 6.1 hardening (2026-06-14, Codex r1 MEDIUM).
+    //
+    // Promote the `(terminal_id, shift_number)` lookup index from v53 to a
+    // UNIQUE index, mirroring the server's
+    // `pos_shifts (terminal_id, shift_number)` unique constraint
+    // (2026_06_14_110000_make_pos_shifts_terminal_shift_number_unique).
+    //
+    // The device mints shift numbers monotonically inside the fiscal write-gate
+    // tx and the Phase-6.1 seed only ever RAISES the floor, so a duplicate is
+    // impossible on the happy path. This is a fail-loud DB backstop: a regressed
+    // caller, manual import, or restore edge case that reused a number for the
+    // same terminal would otherwise silently break the per-register sequence
+    // (NF525 "sans rupture de séquence"). The unique index also still backs the
+    // `nextShiftNumber` MAX lookup, so the old plain index is dropped.
+    //
+    // Clean-slate / pre-live: no existing device has duplicate numbers, so the
+    // unique index builds without remediation. Numbered v55 — migration
+    // versions are a global UNIQUE key.
+    version: 55,
+    name: 'make_local_shifts_terminal_number_unique',
+    sql: `
+      DROP INDEX IF EXISTS idx_local_shifts_terminal_number;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_local_shifts_terminal_number_unique
+        ON local_shifts(terminal_id, shift_number);
+    `,
+  },
 ];

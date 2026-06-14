@@ -57,6 +57,13 @@ export interface TerminalHashState {
   z_chain_genesis_seed?: string;
   training_fiscal_event_genesis_seed?: string;
   training_z_chain_genesis_seed?: string;
+  /**
+   * Offline-first shifts Phase 6.1: the server's `MAX(pos_shifts.shift_number)`
+   * for this terminal. Written atomically inside the terminal_state upsert (one
+   * statement) with a monotone guard so a crash between writes can never leave a
+   * fresh row with the v54 default 0 (Codex r1 HIGH). Absent → 0.
+   */
+  shift_number_seed?: number;
 }
 
 /**
@@ -263,9 +270,9 @@ export async function upsertTerminalState(
        terminal_id, terminal_code, location_code, genesis_seed, last_hash,
        hash_sequence, fiscal_schema_version, fiscal_event_genesis_seed,
        z_chain_genesis_seed, training_fiscal_event_genesis_seed,
-       training_z_chain_genesis_seed, updated_at
+       training_z_chain_genesis_seed, shift_number_seed, updated_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, datetime('now'))
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, datetime('now'))
      ON CONFLICT(terminal_id) DO UPDATE SET
        terminal_code = excluded.terminal_code,
        location_code = excluded.location_code,
@@ -289,6 +296,9 @@ export async function upsertTerminalState(
          WHEN terminal_state.training_z_chain_genesis_seed = '' THEN excluded.training_z_chain_genesis_seed
          ELSE terminal_state.training_z_chain_genesis_seed
        END,
+       -- Phase 6.1: monotone so a stale re-pull never rewinds the seed below a
+       -- number the device has already used (Codex r1 HIGH — atomic with the row).
+       shift_number_seed = MAX(terminal_state.shift_number_seed, excluded.shift_number_seed),
        updated_at = datetime('now')`,
     [
       state.terminal_id,
@@ -302,6 +312,7 @@ export async function upsertTerminalState(
       incomingZSeed,
       incomingTrainingFiscalSeed,
       incomingTrainingZSeed,
+      state.shift_number_seed ?? 0,
     ],
   );
 

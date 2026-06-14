@@ -19,6 +19,8 @@ import { runMigrationsUpTo } from './helpers/migrationTestHelpers';
 import {
   getShiftNumberSeed,
   setShiftNumberSeed,
+  upsertTerminalState,
+  type TerminalHashState,
 } from '@/lib/db/repositories/terminalStateRepository';
 import {
   insertLocalShift,
@@ -112,6 +114,44 @@ describe('migration v54 — terminal_state.shift_number_seed', () => {
       // A stale server read reports a lower MAX — must NOT lower the seed.
       await setShiftNumberSeed(db, TERMINAL_ID, 10);
       expect(await getShiftNumberSeed(db, TERMINAL_ID)).toBe(42);
+    });
+  });
+
+  describe('upsertTerminalState writes the seed atomically (Codex r1 HIGH)', () => {
+    function hashState(seed?: number): TerminalHashState {
+      return {
+        terminal_id: TERMINAL_ID,
+        terminal_code: 'T01',
+        location_code: 'MAIN',
+        genesis_seed: 'seed',
+        last_hash: 'hash',
+        hash_sequence: 0,
+        manager_pin_throttle_until: null,
+        manager_pin_failed_attempts: 0,
+        fiscal_schema_version: 3,
+        shift_number_seed: seed,
+      };
+    }
+
+    it('persists the seed in the same INSERT as the terminal_state row', async () => {
+      const db = adapter.asDatabase();
+      // No separate setShiftNumberSeed call — a crash after this single write
+      // can never leave a fresh row with seed 0.
+      await upsertTerminalState(db, hashState(9));
+      expect(await getShiftNumberSeed(db, TERMINAL_ID)).toBe(9);
+    });
+
+    it('is monotone on conflict — a lower seed never rewinds it', async () => {
+      const db = adapter.asDatabase();
+      await upsertTerminalState(db, hashState(9));
+      await upsertTerminalState(db, hashState(3));
+      expect(await getShiftNumberSeed(db, TERMINAL_ID)).toBe(9);
+    });
+
+    it('defaults to 0 when no seed is supplied', async () => {
+      const db = adapter.asDatabase();
+      await upsertTerminalState(db, hashState(undefined));
+      expect(await getShiftNumberSeed(db, TERMINAL_ID)).toBe(0);
     });
   });
 

@@ -54,6 +54,9 @@ final class TerminalController extends Controller
         $terminals = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->with(['location', 'company'])
             ->withCount(['receipts', 'shifts'])
+            // Phase 6.1: eager-load MAX(shift_number) so TerminalResource's
+            // max_shift_number does not fire a lazy per-row query (N+1).
+            ->withMax('shifts', 'shift_number')
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -306,6 +309,10 @@ final class TerminalController extends Controller
             ->active()
             ->whereNull('hardware_identifier')
             ->with(['location', 'company'])
+            // Phase 6.1: eager-load MAX(shift_number) to avoid a per-row N+1 in
+            // TerminalResource (available terminals have no shifts, so this is
+            // null → 0, but the eager attribute keeps the query count flat).
+            ->withMax('shifts', 'shift_number')
             ->orderBy('name')
             ->get();
 
