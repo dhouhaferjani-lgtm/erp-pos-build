@@ -130,6 +130,27 @@ describe('CompositeItemFormPage', () => {
     expect(screen.queryByRole('button', { name: /common:delete/i })).not.toBeInTheDocument()
   })
 
+  it('renders the page title via a single PageHeader h1', () => {
+    render(<CompositeItemFormPage />)
+    const headings = screen.getAllByRole('heading', { level: 1 })
+    expect(headings).toHaveLength(1)
+  })
+
+  it('computes the cost margin from decimal strings (no parseFloat truncation)', async () => {
+    const user = userEvent.setup()
+    render(<CompositeItemFormPage />)
+
+    // base_price is 3.50 (from mockItem). Typing a cost of 1.17 yields a margin
+    // of (3.50-1.17)/3.50*100 = 66.5714…% -> 66.6% rounded half-up at 1dp.
+    const costInput = screen.getByLabelText(/catalog:manualCost/i)
+    await user.clear(costInput)
+    await user.type(costInput, '1.17')
+
+    await waitFor(() => {
+      expect(screen.getByText(/66\.6%/)).toBeInTheDocument()
+    })
+  })
+
   it('sends base_price as a string (not a JS number) in the update payload', async () => {
     const user = userEvent.setup()
     render(<CompositeItemFormPage />)
