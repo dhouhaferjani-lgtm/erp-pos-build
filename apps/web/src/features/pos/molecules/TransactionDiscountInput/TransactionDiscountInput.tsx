@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { POSButton } from '../../atoms'
-import { textColors, borderColors, tokens } from '@/lib/designTokens'
+import { textColors, borderColors, tokens, focusRing } from '@/lib/designTokens'
 import { bcmul, bcdiv, bccomp, bcsub } from '@/lib/decimal'
 import { useCurrency } from '@/hooks/useCurrency'
 import {
@@ -223,11 +223,12 @@ export function TransactionDiscountInput({
             min="0"
             max={inputMode === 'percentage' ? effectiveLimit.toString() : subtotal}
             className={cn(
-              'w-full px-3 rounded border',
+              'w-full px-3 rounded border tabular-nums',
               touchOptimized ? 'py-4 text-lg' : 'py-2',
               borderColors.default,
-              error && 'border-red-500',
-              'focus:outline-none focus:ring-2 focus:ring-blue-500'
+              error && borderColors.error,
+              'focus:outline-none focus:ring-2',
+              focusRing.primary
             )}
             autoFocus
           />
@@ -237,7 +238,7 @@ export function TransactionDiscountInput({
             </span>
           </div>
         </div>
-        <p className="text-xs text-gray-500 mt-1">
+        <p className={tokens.helperText.base}>
           {t('pos:cart.maxAllowed')}: {effectiveLimit}%
           {parseFloat(amount) > 0 && inputMode === 'fixed' && (
             <span className="ml-2">
@@ -277,7 +278,8 @@ export function TransactionDiscountInput({
               'w-full px-3 py-2 rounded border',
               borderColors.default,
               touchOptimized && 'text-lg',
-              'focus:outline-none focus:ring-2 focus:ring-blue-500'
+              'focus:outline-none focus:ring-2',
+              focusRing.primary
             )}
           />
         </div>
@@ -285,8 +287,8 @@ export function TransactionDiscountInput({
 
       {/* Error Message */}
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded">
-          <p className="text-red-600 text-sm">{error}</p>
+        <div className={cn(tokens.alert.base, 'border', tokens.alert.error)}>
+          <p className="text-sm">{error}</p>
         </div>
       )}
 
@@ -309,7 +311,7 @@ export function TransactionDiscountInput({
               <span className={cn(textColors.tertiary, 'text-sm')}>
                 {t('pos:cart.originalTotal')}:
               </span>
-              <span className={cn(textColors.tertiary, 'text-sm line-through')}>
+              <span className={cn(textColors.tertiary, 'text-sm line-through tabular-nums')}>
                 {subtotal} {currency}
               </span>
             </div>
@@ -317,13 +319,13 @@ export function TransactionDiscountInput({
               <span className={cn(textColors.secondary, 'text-sm')}>
                 {t('pos:cart.discount')}:
               </span>
-              <span className="text-red-600 text-sm font-medium">-{amount} {currency}</span>
+              <span className={cn(textColors.error, 'text-sm font-medium tabular-nums')}>-{amount} {currency}</span>
             </div>
-            <div className="flex justify-between pt-1 border-t border-blue-200">
+            <div className={cn('flex justify-between pt-1 border-t', borderColors.primary)}>
               <span className={cn(textColors.brand, 'font-bold')}>
                 {t('pos:cart.discountedTotal')}:
               </span>
-              <span className={cn(textColors.brand, 'font-bold text-lg')}>
+              <span className={cn(textColors.brand, 'font-bold text-lg tabular-nums')}>
                 {preview} {currency}
               </span>
             </div>

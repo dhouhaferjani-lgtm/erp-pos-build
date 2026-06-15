@@ -86,28 +86,103 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
   - Migrated by 4 parallel subagents (disjoint feature dirs → 0 conflicts); orchestrator ran the authoritative tsc/tests/lint, the single `dist` build, screenshots, and all commits serially.
 
 ### (original cluster framing — superseded by CANONICALIZATION-SPEC for module order)
-- [ ] 3.1 `documents/` (epicenter: 65 raw controls, 5 bespoke modals, ~50 off-theme)
-- [ ] 3.2 finance + treasury (11 bespoke modals, tabular-nums, parseFloat-on-money cross-ref)
-- [ ] 3.3 admin/settings (10 bespoke modals, 169 raw controls, 3 settings layouts)
-- [ ] 3.4 inventory/catalog (8 bespoke modals, rainbow hub, status badges)
-- [ ] 3.5 POS color drift (keep POSButton/touch layout; adopt tokens; kill glassmorphism/dark)
-- [ ] 3.6 workshop-* (close lint gap; status pills → StatusBadge; modals → Modal)
-- [ ] 3.7 Convert 4 hub pages (Finance/Inventory/POS/Marketing) → HubCard/HubGrid
+> **Continuation note (branch `feat/ui-consistency-clusters`, off LOCAL dev `04873f158`):**
+> ✅ Phase 3.7, ✅ 3.2 (finance+treasury ~43 files), ✅ 3.3 light settings, ✅ 3.4 (inventory/catalog/menu),
+> ◧ 3.5 POS (~31/56 files). Lint ratchet 11512 → **8615** (−2897), 0 errors, tsc clean, all suites green
+> (the 4 documented pre-existing fails persist: CompositeItemSearchSelect clear-button ×2,
+> ProductDocuments/MovementsTab error-state ×2). Pattern proven: parallel subagents on DISJOINT files
+> (presentation-only; preserve every useQuery/mutation key; no shared-file/locale/barrel/test edits),
+> orchestrator runs the authoritative tsc/eslint/vitest + reconciles existing suites + all commits serially.
+> Shared a11y fix landed: the `Modal` organism sets `role="dialog"`/`aria-modal`/`aria-label`.
+>
+> **Shared-atom follow-ups flagged by agents (NOT yet done — would touch shared files):**
+> (1) `atoms/Textarea` declares `error?: boolean` but doesn't destructure it → leaks `error` attr to DOM
+> (Input/Select handle it). (2) No `ring`/selection-emphasis token in designTokens — selection UIs use
+> shadow/border instead. (3) POS `OrderStatusBadge`/`TableStatusBadge` still carry their own off-theme
+> status maps + `dark:` variants (left as-is; candidates for a StatusBadge migration). (4)
+> AdvancedPaymentsModal has a pre-existing `step="0.001"` precision warning (line ~520).
+> **Recurring gotcha:** existing FEATURE-ROOT suites (treasury.test.tsx, finance/JournalEntryForm.test.tsx)
+> render the migrated pages and assert pre-canonical markup — after each list/detail batch, run them and
+> reconcile (link→Button role, loading-text→`.animate-pulse` DataTable skeleton). Agents must NOT edit
+> these shared suites (conflict risk); the orchestrator reconciles them.
+- [ ] 3.1 `documents/` (epicenter: 65 raw controls, 5 bespoke modals, ~50 off-theme) — NOTE: the two
+  `documents/*` files (DocumentForm, DocumentListPage) were done in the prior session; the rest of the
+  `documents/` cluster (DocumentLineEditor, detail/print views, etc.) is still open if it exists.
+- [x] **3.2 finance + treasury — ✅ COMPLETE (~43 files).** report pages (Aged AR/AP, Trial Balance,
+  P&L, Balance Sheet); list pages (Payment/Repository/Instrument/JournalEntry/Expense, WithholdingCertificates,
+  WithholdingRules, SalesWithholdingTracking, GeneralLedger, ChartOfAccounts); forms (Payment, SplitPayment,
+  JournalEntry, Expense page+fields); detail pages (Payment/Instrument/Repository/Expense/JournalEntry/
+  WithholdingCertificate); pages BankReconciliation, PaymentMethods; ALL bespoke modals → Modal organism
+  (refund/reverse, deposit/transfer/bounce, AddPaymentMethod, Withholding Preview/RuleForm, Add/EditAccount);
+  components (AllocationPreview, OpenInvoicesList, PaymentAllocationForm, ToleranceSettingsDisplay,
+  Ledger Table/Filters, FinanceWidget, AccountTreeView, ExpenseCard/ExpenseList). lint 11512 → 10123.
+- ◧ 3.3 admin/settings — **PARTIAL.** ✅ DONE (light settings, lint 10123→9809): UsersPage + UserEditModal
+  (+Add/PIN modals), RolesPage, LocationsPage, CompanyPage, TaxSettingsPage — all bespoke modals → Modal
+  organism; tenantScope suites green. ⏳ REMAINING light settings (~5 files): settings/components/
+  InventorySettings (67), CompanyOnboardingPage (64), settings/components/SetupChecklist (24),
+  settings/SettingsPage (22), users/components/UserSelector (18).
+  🚫 DEFERRED BY DESIGN: the entire `admin/*` super-admin panel (MonitoringPage 208, PaymentsPage 175,
+  InvoicesPage 129, SubscriptionsPage 90, BillingDashboard 54, TenantsPage 44, CompanyOwnersPage 43,
+  AuditLogs 35, AdminDashboard 24, AdminLogin 18, AdminLayout 17, TenantDetailModal 67) is an INTENTIONAL
+  separate DARK design language (REPORT M10). Do NOT force it into light tokens. Its English-only
+  localization is the M10 owner decision (Phase 5). If the owner wants the dark shell tokenized, that
+  needs a dark-token scale first — separate workstream.
+- [x] **3.4 inventory/catalog/menu — ✅ COMPLETE.** ProductDetailPage, StockLevels/StockMovements,
+  Product Documents/Movements/StockLevels tabs, ModifierGroup list+form, RecipeLineEditor,
+  CompositeItemSearchSelect, VariantEditor, ModifierGroupAssigner, MenuCategoryItemManager (rule-19
+  override-price → MoneyInput), pricing ProductPricingCard/MarginIndicator/PriceInputWithMargin
+  (m1/m2), + CompositeItemFormPage residuals. inventory/catalog/menu at 0 color warnings.
+- [x] **3.5 POS color drift — ✅ COMPLETE.** All POS pages/organisms/molecules/atoms/components/layouts +
+  smart-prompts (glassmorphism killed, glyph→lucide) + Analytics (shadcn surfaces → opaque token cards).
+  `src/features/pos` now at **0 color warnings + 0 shadcn-surface/backdrop-blur**. POSButton/touch layout +
+  deliberate amber/emerald accents preserved.
+- [x] **3.6 workshop-* — ✅ COMPLETE.** Swept the FULL palette (the dirs exploited the lint GAP) → 0
+  off-theme literals; StatusPill/badges → StatusBadge+statusTone; 6 bespoke modals → Modal organism;
+  work-order + technician pages → primitives. **Lint gap CLOSED:** added a workshop full-palette ERROR
+  override in `eslint.config.js` (mirrors scheduling), verified it fires.
+- [x] **3.7 Convert 4 hub pages (Finance/Inventory/POS/Marketing) → HubCard/HubGrid** ✅
+  (icons as `LucideIcon` refs, per-card rainbow chips removed, gating + Finance sections + POS
+  Open-POS CTA preserved; 17 tests; color 0/file)
 
-## Phase 4 — Kill duplicates  ☐
-- [ ] 4.1 Remove 9 `ui/` re-export shims (update importers)
-- [ ] 4.2 Rename two `LocationSelector` → `LocationField` (ui) / `LocationSwitcher` (organism)
-- [ ] 4.3 Pick one paginator (`Pagination` vs `OffsetPagination`); migrate
-- [ ] 4.4 Collapse `location/` + `locations/` → one dir + one `Location` type
-- [ ] 4.5 Reconcile `channelPageStyles.ts` with atoms/tokens
+## Phase 4 — Kill duplicates  ◧ (4/5 done; 4.4 deferred w/ rationale)
+- [x] **4.1 Remove the `ui/` re-export shims** (`5aecf7f26`) — deleted 5 thin shims
+  (SearchInput/FilterTabs/Tabs/Breadcrumb/LoadingSpinner), repointed ~18 importers to
+  molecules/atoms. (REPORT said "9"; only 5 existed at this branch point.)
+- [x] **4.2 Rename two `LocationSelector`** (`46f5d01c6`) → `LocationField` (ui form field) /
+  `LocationSwitcher` (organism switcher in TopBar). `features/location/LocationSelector.tsx`
+  kept as a feature-local alias wrapper so inventory consumers/mocks are untouched.
+- [x] **4.3 One paginator** (`c6d7c4d0d`) — migrated 3 `Pagination` importers → `OffsetPagination`
+  (from Laravel meta); deleted `ui/Pagination.tsx`.
+- [ ] 4.4 Collapse `location/` + `locations/` — **DEFERRED (deliberate).** They are NOT really one
+  entity: `location/` is the global active-location CONTEXT/provider/switcher (app-shell infra);
+  `locations/` is the locations DATA/CRUD layer (types, useLocations hook, multi-select). Merging +
+  unifying the `Location` type is a large, opinionated, high-risk refactor across providers/contexts
+  for low visual value. Left as-is; revisit only if the owner wants a single locations module.
+- [x] **4.5 Reconcile `channelPageStyles.ts`** (`c15c487a6`) — deleted the channels-local
+  mini-design-system; mapped every constant to PageHeader/Button/atoms/tokens across 6 channel pages.
 
-## Phase 5 — Polish  ☐
-- [ ] 5.1 list footer "showing __ rowsPerPage" label/i18n gap
-- [ ] 5.2 placeholder copy ("Select a customer…"), curly punctuation
-- [ ] 5.3 cookie-consent bar overlap (reserve body space)
-- [ ] 5.4 POS smart-prompts: text-glyph icons → lucide
-- [ ] 5.5 enforce `@/` imports via lint
-- [ ] 5.6 admin localization decision (M10) — confirm with owner
+## Phase 5 — Polish  ◧ (high-value done; micro-items + owner decisions remain)
+- [x] **5.1 list footer label gap (m3)** (`bb2001723`) — OffsetPagination used FLAT i18n keys
+  (t('showing')…) but the strings live under `pagination.*`, so the footer leaked raw key names
+  app-wide ("showing", "rowsPerPage:"). Repointed all t() → `pagination.*` + tokenized the footer +
+  raw `<select>` → Select atom. Fixes every list page.
+- [x] **5.3/m5/m1 cookie bar** (`b5f38f164`) — tokenized the global CookieConsent bar (shadcn
+  `bg-primary-600` → Button atom; dropped dead `dark:`; grays → tokens).
+- [x] **5.4 POS glyph icons → lucide** — DONE in Phase 3.5 (smart-prompts batch); ✦/✕/ℹ/+/⌃ →
+  Sparkles/X/Info/Plus/ChevronUp.
+- [ ] 5.2 curly punctuation / placeholder copy (m4) — cosmetic micro-polish; not done.
+- [ ] m5 reserve body-space for the fixed cookie bar — minor layout (bar dismisses on first
+  interaction); not done.
+- [ ] 5.5 enforce `@/` imports via lint (m7) — DEFERRED: enabling globally would flood the ratchet
+  with the existing relative-import drift; needs a baseline regen + coordination.
+- [ ] m8 `bg-opacity-75` legacy overlay → Modal — minor; not audited this pass.
+- [ ] 5.6 admin localization (M10) — **OWNER DECISION** (the admin dark super-admin panel is
+  intentionally English-only/separate; deferred with the admin cluster).
+
+### Shared-atom follow-ups (flagged by agents across Phase 3 — need an atoms-layer pass)
+- `atoms/Textarea` declares `error?: boolean` but doesn't destructure it → leaks `error` to the DOM.
+- No `ring`/selection-emphasis token in designTokens (selection UIs use shadow/border).
+- No `Checkbox` atom (raw `<input type="checkbox" className={tokens.checkbox.base}>` used throughout).
 
 ---
 
@@ -121,3 +196,21 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
 | 2026-06-14 | 3 | (this commit) | rebased onto origin/dev; DocumentForm canonicalized → PageHeader/card/section-heading/FormField+atoms/Button; added `tokens.heading.section`; 4 tests; tsc clean; web lint 11747→11724 (−23); before/after screenshots |
 | 2026-06-14 | 3 | (this commit) | DocumentListPage canonicalized → ListPageLayout/DataTable/StatusBadge + server pagination (OffsetPagination); retired type/status color maps; fixed `sales:documents.status`-is-an-object header bug (→`common:fields.status`); 4 tests + tenant-scope key updated; tsc clean; web lint 11724→11683 (−41); before/after screenshots |
 | 2026-06-14 | 3 | (8 commits) | inventory (ProductForm, ProductListPage), catalog (CompositeItemListPage, CompositeItemFormPage, ProductVariantMatrixEditor, CategoryManagementPage), menu (MenuListPage, MenuFormPage) — migrated by 4 parallel subagents, serially integrated. tsc clean; +25 TDD tests; 142 pass/4 pre-existing-fail; web lint 11683→11512 (−171); runtime-smoke + before/after screenshots for 7 routes |
+| 2026-06-14 | 3.7 | `8a40dea3b` | **branch `feat/ui-consistency-clusters` off LOCAL dev `04873f158`.** 4 hub pages (Finance/Inventory/POS/Marketing) → PageHeader+HubGrid/HubCard; rainbow chips removed; 17 TDD tests; tsc clean; web lint 11512→11456 (−56) |
+| 2026-06-14 | 3.2 | `02b79390e` | 5 finance report pages (Aged AR/AP, Trial Balance, P&L, Balance Sheet) → PageHeader/Button/FormField + tokenized tables + tabular-nums; 3 parallel subagents; 5 TDD suites, 34 tests; web lint 11456→11320 (−136) |
+| 2026-06-14 | 3.2 | `706e988b8` | 5 list pages (treasury Payment/Repository/Instrument, finance JournalEntry, Expense) → ListPageLayout/DataTable/StatusBadge/OffsetPagination (presentation-only, keys preserved); 5 TDD suites; 44 tests incl. tenantScope; web lint 11320→11174 (−146) |
+| 2026-06-14 | 3.2 | `a99495fd4` | 5 form files (treasury Payment/SplitPayment, finance JournalEntry, Expense page+fields) → PageHeader/card/FormField+atoms/MoneyInput/StickyFormFooter; reconciled treasury.test.tsx + finance/JournalEntryForm.test.tsx (link→Button, loading-text→DataTable skeleton); 113 tests; web lint 11174→11028 (−146) |
+| 2026-06-14 | 3.2 | `8d32dfff0` | 3 treasury detail pages (Payment/Instrument/Repository) → PageHeader/StatusBadge/tokenized tables; bespoke modals → Modal organism; 3 TDD suites; 67 tests incl. tenantScope; web lint 11028→10807 (−221) |
+| 2026-06-14 | 3.2 | `75372f309` | 3 detail pages (Expense, JournalEntry, WithholdingCertificate) → PageHeader/StatusBadge/tokenized tables; JournalEntryDetailPage dropped bespoke local StatusBadge; 3 TDD suites; 55 tests incl. finance JournalEntryForm suite + tenantScope; web lint 10807→10641 (−166) |
+| 2026-06-14 | 3.2 | `e31e50edf` | whole withholding feature (CertificatesList, RulesPage, SalesWithholdingTrackingPage lists → ListPageLayout/DataTable; PreviewModal + RuleFormModal → Modal organism); 5 TDD suites; 20 tests incl. tenantScope; web lint 10641→10439 (−202) |
+| 2026-06-14 | 3.2 | `9575e1f9b` | treasury PaymentMethodsPage + AddPaymentMethodModal + BankReconciliationPage + allocation components (OpenInvoicesList/AllocationPreview/PaymentAllocationForm) → primitives; bespoke modals → Modal organism; 168 treasury tests green; web lint 10439→10210 (−229) |
+| 2026-06-14 | 3.2 | `9a8e6e5f9` | **Phase 3.2 FINISH** — finance GeneralLedger (page+table+filters), ChartOfAccounts (page+tree+Add/EditAccountModal), FinanceWidget, ToleranceSettingsDisplay, ExpenseCard/List. Shared a11y fix: Modal organism `role="dialog"`/`aria-modal`/`aria-label`. Reconciled finance suites (skeleton/eager-filters/dialog-role). 213 tests green; web lint 10210→10123 (−87). **Phase 3.2 done: 11512→10123 (−1389).** |
+| 2026-06-14 | 3.3 | `96b72e559` | core light settings (UsersPage+UserEditModal+Add/PIN modals, RolesPage, LocationsPage, CompanyPage, TaxSettingsPage) → primitives; bespoke modals → Modal organism; 6 TDD suites; 77 settings tests green incl. tenantScope; web lint 10123→9809 (−314). admin/* dark shell deferred by design (M10). |
+| 2026-06-15 | 3.3 | `3387f65da` | finish light settings (InventorySettings, ReceiptSettingsTab, CompanyOnboarding, UserSelector, SettingsPage→HubGrid, SetupChecklist); 92 tests; lint 9809→9620 |
+| 2026-06-15 | 3.4 | `bf7c90639` `368fde8a6` `b7f931e09` | inventory detail/stock + tabs; catalog/menu/pricing components (MenuCategoryItemManager rule-19); CompositeItemFormPage residuals. inventory/catalog/menu → 0 color. lint 9620→9185 |
+| 2026-06-15 | 3.5 | `dc1828837` `00d7d0a6c` `fb6970186` | POS color drift ~31/56 files (reporting, terminals, order/cart, smart-prompts glassmorphism+glyph→lucide, checkout core, kitchen/orders). lint 9185→8615 |
+| 2026-06-15 | 3.5 | `cc7aeeb13` `69c9d0757` | finish POS — 24 atoms/badges/molecules/components/layouts + Analytics de-glassmorphism (shadcn surfaces→tokens). pos at 0 color + 0 shadcn-surface. lint 8615→8478 |
+| 2026-06-15 | 3.6 | `afa2fe5f9` `90b8cb515` | workshop-* full-palette sweep (StatusPill→StatusBadge, 6 modals→Modal, pages→primitives); 92 tests; 0 off-theme literals; CLOSED the lint gap (workshop full-palette ERROR override). lint steady 8478 (gap palettes weren't counted) |
+| 2026-06-15 | 4 | `5aecf7f26` `c15c487a6` `c6d7c4d0d` `46f5d01c6` | Phase 4 kill-duplicates: ui shims removed, channelPageStyles reconciled, one paginator, LocationSelector renamed (4.4 deferred) |
+| 2026-06-15 | 5 | `bb2001723` `b5f38f164` | Phase 5: OffsetPagination i18n+tokenize (m3 app-wide), CookieConsent tokenized (m5/m1) |
+| 2026-06-14/15 | docs | `a3f38d44f` `4b48d0f08` `1122fcfc9` (+ this) | PROGRESS handover updates |

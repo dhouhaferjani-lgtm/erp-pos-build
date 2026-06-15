@@ -5,10 +5,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
   Building2,
-  MapPin,
-  Phone,
-  Mail,
-  Globe,
   Upload,
   Trash2,
   CheckCircle,
@@ -21,6 +17,14 @@ import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { countries } from '../../lib/countries'
+import { cn } from '../../lib/utils'
+import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
+import { Button } from '../../components/atoms/Button'
+import { FormField } from '../../components/atoms/FormField'
+import { Input } from '../../components/atoms/Input'
+import { Select } from '../../components/atoms/Select'
+import { StatusBadge } from '../../components/atoms/StatusBadge'
+import { PageHeader } from '../../components/molecules/PageHeader'
 import { ReceiptSettingsTab } from './components/ReceiptSettingsTab'
 
 interface CompanySettings {
@@ -202,14 +206,14 @@ export function CompanyPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        <Loader2 className={cn('h-8 w-8 animate-spin', textColors.brand)} />
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="rounded-lg bg-red-50 p-4 text-red-700">
+      <div className={cn(tokens.alert.base, tokens.alert.error)}>
         {t('settings:company.messages.loadError')}
       </div>
     )
@@ -219,53 +223,48 @@ export function CompanyPage() {
     <div className="space-y-6">
       {/* Notification */}
       {notification && (
-        <div
-          className={`fixed top-4 right-4 z-50 rounded-lg p-4 shadow-lg ${
-            notification.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-          }`}
-        >
-          <div className="flex items-center gap-2">
+        <div className="fixed top-4 right-4 z-50">
+          <StatusBadge
+            tone={notification.type === 'success' ? 'success' : 'danger'}
+            className="gap-2 px-4 py-3 text-sm shadow-lg"
+          >
             {notification.type === 'success' ? (
               <CheckCircle className="h-5 w-5" />
             ) : (
               <XCircle className="h-5 w-5" />
             )}
             {notification.message}
-          </div>
+          </StatusBadge>
         </div>
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <PageHeader
+        title={t('settings:company.title')}
+        subtitle={t('settings:sections.company.description')}
+        breadcrumb={
           <Link
             to="/settings"
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+            className={cn('inline-flex items-center gap-2 text-sm', textColors.tertiary, textColors.hoverPrimary)}
           >
             <ArrowLeft className="h-4 w-4" />
             {t('common:actions.back')}
           </Link>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <Building2 className="h-6 w-6 text-green-500" />
-              {t('settings:company.title')}
-            </h1>
-            <p className="text-gray-500">{t('settings:sections.company.description')}</p>
-          </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* Tabs */}
-      <div className="border-b border-gray-200">
+      <div className={cn('border-b', borderColors.light)}>
         <nav className="-mb-px flex gap-6" aria-label={t('settings:company.title')}>
           <button
             type="button"
             onClick={() => { setActiveTab('general') }}
-            className={`flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
+            className={cn(
+              'flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-medium transition-colors',
               activeTab === 'general'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-            }`}
+                ? cn(borderColors.primary, textColors.brand)
+                : cn('border-transparent', textColors.tertiary, textColors.hoverSecondary, borderColors.hover),
+            )}
           >
             <Building2 className="h-4 w-4" />
             {t('settings:company.tabs.general')}
@@ -273,11 +272,12 @@ export function CompanyPage() {
           <button
             type="button"
             onClick={() => { setActiveTab('receipt') }}
-            className={`flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
+            className={cn(
+              'flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-medium transition-colors',
               activeTab === 'receipt'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-            }`}
+                ? cn(borderColors.primary, textColors.brand)
+                : cn('border-transparent', textColors.tertiary, textColors.hoverSecondary, borderColors.hover),
+            )}
           >
             <Receipt className="h-4 w-4" />
             {t('settings:company.tabs.receipt')}
@@ -292,118 +292,88 @@ export function CompanyPage() {
       <form onSubmit={handleSubmit}>
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Company Information */}
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('settings:company.sections.information')}</h2>
+          <div className={tokens.card.base}>
+            <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('settings:company.sections.information')}</h2>
             <div className="space-y-4">
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                  {t('settings:company.fields.name')}
-                </label>
-                <input
+              <FormField label={t('settings:company.fields.name')} htmlFor="name">
+                <Input
                   type="text"
                   id="name"
                   value={formData.name ?? ''}
                   onChange={(e) => { handleInputChange('name', e.target.value) }}
                   required
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
-              </div>
-              <div>
-                <label htmlFor="legal_name" className="block text-sm font-medium text-gray-700">
-                  {t('settings:company.fields.legalName')}
-                </label>
-                <input
+              </FormField>
+              <FormField label={t('settings:company.fields.legalName')} htmlFor="legal_name">
+                <Input
                   type="text"
                   id="legal_name"
                   value={formData.legal_name ?? ''}
                   onChange={(e) => { handleInputChange('legal_name', e.target.value || null) }}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
-              </div>
-              <div>
-                <label htmlFor="tax_id" className="block text-sm font-medium text-gray-700">
-                  {t('settings:company.fields.taxId')}
-                </label>
-                <input
+              </FormField>
+              <FormField label={t('settings:company.fields.taxId')} htmlFor="tax_id">
+                <Input
                   type="text"
                   id="tax_id"
                   value={formData.tax_id ?? ''}
                   onChange={(e) => { handleInputChange('tax_id', e.target.value || null) }}
                   placeholder={t('settings:company.placeholders.taxId')}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
-              </div>
-              <div>
-                <label htmlFor="registration_number" className="block text-sm font-medium text-gray-700">
-                  {t('settings:company.fields.registrationNumber')}
-                </label>
-                <input
+              </FormField>
+              <FormField label={t('settings:company.fields.registrationNumber')} htmlFor="registration_number">
+                <Input
                   type="text"
                   id="registration_number"
                   value={formData.registration_number ?? ''}
                   onChange={(e) => { handleInputChange('registration_number', e.target.value || null) }}
                   placeholder={t('settings:company.placeholders.registrationNumber')}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
-              </div>
+              </FormField>
             </div>
           </div>
 
           {/* Contact Information */}
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('settings:company.sections.contact')}</h2>
+          <div className={tokens.card.base}>
+            <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('settings:company.sections.contact')}</h2>
             <div className="space-y-4">
-              <div>
-                <label htmlFor="street" className="block text-sm font-medium text-gray-700">
-                  <MapPin className="inline h-4 w-4 mr-1" />
-                  {t('settings:company.fields.street')}
-                </label>
-                <input
+              <FormField
+                label={t('settings:company.fields.street')}
+                htmlFor="street"
+              >
+                <Input
                   type="text"
                   id="street"
                   value={formData.address?.street ?? ''}
                   onChange={(e) => { handleAddressChange('street', e.target.value) }}
                   placeholder={t('settings:company.placeholders.street')}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
-              </div>
+              </FormField>
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="city" className="block text-sm font-medium text-gray-700">
-                    {t('settings:company.fields.city')}
-                  </label>
-                  <input
+                <FormField label={t('settings:company.fields.city')} htmlFor="city">
+                  <Input
                     type="text"
                     id="city"
                     value={formData.address?.city ?? ''}
                     onChange={(e) => { handleAddressChange('city', e.target.value) }}
                     placeholder={t('settings:company.placeholders.city')}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
-                </div>
-                <div>
-                  <label htmlFor="postal_code" className="block text-sm font-medium text-gray-700">
-                    {t('settings:company.fields.postalCode')}
-                  </label>
-                  <input
+                </FormField>
+                <FormField label={t('settings:company.fields.postalCode')} htmlFor="postal_code">
+                  <Input
                     type="text"
                     id="postal_code"
                     value={formData.address?.postal_code ?? ''}
                     onChange={(e) => { handleAddressChange('postal_code', e.target.value) }}
                     placeholder="75001"
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
-                </div>
+                </FormField>
               </div>
-              <div>
-                <label htmlFor="country" className="block text-sm font-medium text-gray-700">
-                  {t('settings:company.fields.country')}
-                </label>
-                <select
+              <FormField label={t('settings:company.fields.country')} htmlFor="country">
+                <Select
                   id="country"
                   value={formData.address?.country ?? ''}
                   onChange={(e) => { handleAddressChange('country', e.target.value) }}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="">{t('common:selectCountry')}</option>
                   {countries.map((country) => (
@@ -411,101 +381,94 @@ export function CompanyPage() {
                       {country.name}
                     </option>
                   ))}
-                </select>
-              </div>
+                </Select>
+              </FormField>
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                    <Phone className="inline h-4 w-4 mr-1" />
-                    {t('settings:company.fields.phone')}
-                  </label>
-                  <input
+                <FormField label={t('settings:company.fields.phone')} htmlFor="phone">
+                  <Input
                     type="text"
                     id="phone"
                     value={formData.phone ?? ''}
                     onChange={(e) => { handleInputChange('phone', e.target.value || null) }}
                     placeholder="+33 1 23 45 67 89"
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
-                </div>
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                    <Mail className="inline h-4 w-4 mr-1" />
-                    {t('settings:company.fields.email')}
-                  </label>
-                  <input
+                </FormField>
+                <FormField label={t('settings:company.fields.email')} htmlFor="email">
+                  <Input
                     type="email"
                     id="email"
                     value={formData.email ?? ''}
                     onChange={(e) => { handleInputChange('email', e.target.value || null) }}
                     placeholder="contact@company.com"
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
-                </div>
+                </FormField>
               </div>
-              <div>
-                <label htmlFor="website" className="block text-sm font-medium text-gray-700">
-                  <Globe className="inline h-4 w-4 mr-1" />
-                  {t('settings:company.fields.website')}
-                </label>
-                <input
+              <FormField label={t('settings:company.fields.website')} htmlFor="website">
+                <Input
                   type="url"
                   id="website"
                   value={formData.website ?? ''}
                   onChange={(e) => { handleInputChange('website', e.target.value || null) }}
                   placeholder="https://www.company.com"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
-              </div>
+              </FormField>
             </div>
           </div>
 
           {/* Logo & Branding */}
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('settings:company.sections.branding')}</h2>
+          <div className={tokens.card.base}>
+            <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('settings:company.sections.branding')}</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">{t('settings:company.fields.logo')}</label>
+                <label className={cn(tokens.label.base, 'mb-2')}>{t('settings:company.fields.logo')}</label>
                 {settings?.logo_url ? (
                   <div className="flex items-center gap-4">
                     <img
                       src={settings.logo_url}
                       alt={t('settings:company.fields.logo')}
-                      className="h-20 w-20 object-contain rounded-lg border border-gray-200 bg-white p-2"
+                      className={cn('h-20 w-20 object-contain rounded-lg border p-2', borderColors.light, colors.white)}
                     />
                     <div className="flex flex-col gap-2">
-                      <button
+                      <Button
                         type="button"
+                        variant="secondary"
+                        size="sm"
                         onClick={() => { fileInputRef.current?.click() }}
                         disabled={uploadLogoMutation.isPending}
-                        className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        className="gap-2"
                       >
                         <Upload className="h-4 w-4" />
                         {t('settings:company.actions.replaceLogo')}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
+                        variant="danger"
+                        size="sm"
                         onClick={handleDeleteLogo}
                         disabled={deleteLogoMutation.isPending}
-                        className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                        className="gap-2"
                       >
                         <Trash2 className="h-4 w-4" />
                         {t('common:actions.delete')}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ) : (
                   <div
                     onClick={() => { fileInputRef.current?.click() }}
-                    className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                    className={cn(
+                      'rounded-lg border-2 border-dashed p-8 text-center cursor-pointer transition-colors',
+                      borderColors.default,
+                      tokens.card.hoverPrimary,
+                    )}
                   >
                     {uploadLogoMutation.isPending ? (
-                      <Loader2 className="mx-auto h-12 w-12 animate-spin text-blue-600" />
+                      <Loader2 className={cn('mx-auto h-12 w-12 animate-spin', textColors.brand)} />
                     ) : (
                       <>
-                        <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                        <p className="mt-2 text-sm text-gray-600">{t('settings:company.messages.uploadLogo')}</p>
-                        <p className="text-xs text-gray-400">{t('settings:company.messages.logoFormats')}</p>
+                        <Upload className={cn('mx-auto h-12 w-12', textColors.disabled)} />
+                        <p className={cn('mt-2 text-sm', textColors.tertiary)}>{t('settings:company.messages.uploadLogo')}</p>
+                        <p className={cn('text-xs', textColors.disabled)}>{t('settings:company.messages.logoFormats')}</p>
                       </>
                     )}
                   </div>
@@ -518,45 +481,39 @@ export function CompanyPage() {
                   className="hidden"
                 />
               </div>
-              <div>
-                <label htmlFor="primary_color" className="block text-sm font-medium text-gray-700">
-                  {t('settings:company.fields.primaryColor')}
-                </label>
-                <div className="mt-1 flex items-center gap-3">
+              <FormField label={t('settings:company.fields.primaryColor')} htmlFor="primary_color">
+                <div className="flex items-center gap-3">
                   <input
                     type="color"
                     id="primary_color_picker"
+                    aria-label={t('settings:company.fields.primaryColor')}
                     value={formData.primary_color ?? '#2563EB'}
                     onChange={(e) => { handleInputChange('primary_color', e.target.value) }}
-                    className="h-10 w-10 rounded-lg border border-gray-300 cursor-pointer"
+                    className={cn('h-10 w-10 rounded-lg border cursor-pointer', borderColors.default)}
                   />
-                  <input
+                  <Input
                     type="text"
                     id="primary_color"
                     value={formData.primary_color ?? '#2563EB'}
                     onChange={(e) => { handleInputChange('primary_color', e.target.value) }}
                     placeholder={t('settings:company.placeholders.primaryColor')}
                     pattern="^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$"
-                    className="block flex-1 rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="mt-0 flex-1"
                   />
                 </div>
-              </div>
+              </FormField>
             </div>
           </div>
 
           {/* Regional Settings */}
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('settings:company.sections.regional')}</h2>
+          <div className={tokens.card.base}>
+            <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('settings:company.sections.regional')}</h2>
             <div className="space-y-4">
-              <div>
-                <label htmlFor="currency_code" className="block text-sm font-medium text-gray-700">
-                  {t('settings:company.fields.currency')}
-                </label>
-                <select
+              <FormField label={t('settings:company.fields.currency')} htmlFor="currency_code">
+                <Select
                   id="currency_code"
                   value={formData.currency_code ?? 'EUR'}
                   onChange={(e) => { handleInputChange('currency_code', e.target.value) }}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="EUR">{t('settings:company.currencies.EUR')}</option>
                   <option value="USD">{t('settings:company.currencies.USD')}</option>
@@ -564,17 +521,13 @@ export function CompanyPage() {
                   <option value="TND">{t('settings:company.currencies.TND')}</option>
                   <option value="MAD">{t('settings:company.currencies.MAD')}</option>
                   <option value="DZD">{t('settings:company.currencies.DZD')}</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="timezone" className="block text-sm font-medium text-gray-700">
-                  {t('settings:company.fields.timezone')}
-                </label>
-                <select
+                </Select>
+              </FormField>
+              <FormField label={t('settings:company.fields.timezone')} htmlFor="timezone">
+                <Select
                   id="timezone"
                   value={formData.timezone ?? 'Europe/Paris'}
                   onChange={(e) => { handleInputChange('timezone', e.target.value) }}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="Europe/Paris">{t('settings:company.timezones.EuropeParis')}</option>
                   <option value="Europe/London">{t('settings:company.timezones.EuropeLondon')}</option>
@@ -582,38 +535,30 @@ export function CompanyPage() {
                   <option value="Africa/Tunis">{t('settings:company.timezones.AfricaTunis')}</option>
                   <option value="Africa/Casablanca">{t('settings:company.timezones.AfricaCasablanca')}</option>
                   <option value="Africa/Algiers">{t('settings:company.timezones.AfricaAlgiers')}</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="date_format" className="block text-sm font-medium text-gray-700">
-                  {t('settings:company.fields.dateFormat')}
-                </label>
-                <select
+                </Select>
+              </FormField>
+              <FormField label={t('settings:company.fields.dateFormat')} htmlFor="date_format">
+                <Select
                   id="date_format"
                   value={formData.date_format ?? 'DD/MM/YYYY'}
                   onChange={(e) => { handleInputChange('date_format', e.target.value) }}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="DD/MM/YYYY">{t('settings:company.dateFormats.DDMMYYYY')}</option>
                   <option value="MM/DD/YYYY">{t('settings:company.dateFormats.MMDDYYYY')}</option>
                   <option value="YYYY-MM-DD">{t('settings:company.dateFormats.YYYYMMDD')}</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="locale" className="block text-sm font-medium text-gray-700">
-                  {t('settings:company.fields.language')}
-                </label>
-                <select
+                </Select>
+              </FormField>
+              <FormField label={t('settings:company.fields.language')} htmlFor="locale">
+                <Select
                   id="locale"
                   value={formData.locale ?? 'fr'}
                   onChange={(e) => { handleInputChange('locale', e.target.value) }}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="fr">{t('settings:company.languages.fr')}</option>
                   <option value="en">{t('settings:company.languages.en')}</option>
                   <option value="ar">{t('settings:company.languages.ar')}</option>
-                </select>
-              </div>
+                </Select>
+              </FormField>
             </div>
           </div>
         </div>
@@ -621,12 +566,13 @@ export function CompanyPage() {
         {/* Save Button */}
         <div className="mt-6 flex justify-end gap-3">
           {isDirty && (
-            <span className="text-sm text-amber-600 self-center">{t('settings:company.messages.unsavedChanges')}</span>
+            <span className={cn('self-center text-sm', textColors.warningDark)}>{t('settings:company.messages.unsavedChanges')}</span>
           )}
-          <button
+          <Button
             type="submit"
+            size="lg"
             disabled={updateMutation.isPending || !isDirty}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="gap-2"
           >
             {updateMutation.isPending ? (
               <>
@@ -636,7 +582,7 @@ export function CompanyPage() {
             ) : (
               t('common:actions.save')
             )}
-          </button>
+          </Button>
         </div>
       </form>
       )}

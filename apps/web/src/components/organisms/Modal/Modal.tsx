@@ -137,7 +137,12 @@ export function Modal({
 
   return createPortal(
     <div className={tokens.modal.backdrop}>
-      <div className={cn(tokens.modal.container, sizeClasses[size], className)}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        {...(title ? { 'aria-label': title } : {})}
+        className={cn(tokens.modal.container, sizeClasses[size], className)}
+      >
         {/* Auto-render header if title provided */}
         {title && <ModalHeader title={title} onClose={onClose} />}
 

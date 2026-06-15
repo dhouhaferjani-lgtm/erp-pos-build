@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { textColors } from '@/lib/designTokens'
 
 interface KitchenTimerProps {
   startTime: string
@@ -25,9 +26,10 @@ function formatElapsed(ms: number): string {
 }
 
 function getTimerColor(ms: number, warningMs: number, overdueMs: number): string {
-  if (ms >= overdueMs) return 'text-red-600 dark:text-red-400'
-  if (ms >= warningMs) return 'text-yellow-600 dark:text-yellow-400'
-  return 'text-green-600 dark:text-green-400'
+  // Urgency coding: overdue → error, warning → warning, on-time → success.
+  if (ms >= overdueMs) return textColors.error
+  if (ms >= warningMs) return textColors.warningDark
+  return textColors.success
 }
 
 /**

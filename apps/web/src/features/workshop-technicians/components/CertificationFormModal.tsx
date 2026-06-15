@@ -1,8 +1,13 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AxiosError } from 'axios'
-import { X } from 'lucide-react'
-import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { Button } from '@/components/atoms/Button'
+import { FormField } from '@/components/atoms/FormField'
+import { Input } from '@/components/atoms/Input'
+import { Textarea } from '@/components/atoms/Textarea'
+import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal'
+import { borderColors, tokens } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
 import type { TechnicianCertification } from '../api/authoringTypes'
 import {
   useCreateCertification,
@@ -100,148 +105,121 @@ export function CertificationFormModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50"
-      data-testid="certification-form-modal"
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={
+        isEditing
+          ? t('authoring.certifications.modal.editTitle')
+          : t('authoring.certifications.modal.createTitle')
+      }
+      size="md"
     >
-      <div
-        className="relative mx-4 rounded-xl bg-white p-6 shadow-xl"
-        style={{ width: '560px', maxWidth: '100%' }}
-      >
-        <div
-          className={`mb-4 flex items-center justify-between border-b ${borderColors.light} pb-3`}
-        >
-          <h2 className={`text-lg font-semibold ${textColors.primary}`}>
-            {isEditing
-              ? t('authoring.certifications.modal.editTitle')
-              : t('authoring.certifications.modal.createTitle')}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t('authoring.certifications.modal.cancel')}
-            className={tokens.modal.closeButton}
+      <form onSubmit={handleSubmit} data-testid="certification-form-modal">
+        <ModalContent>
+          <FormField
+            label={t('authoring.certifications.fields.name')}
+            htmlFor="certification-name"
+            error={errors.certification_name}
           >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className={tokens.label.base}>
-              {t('authoring.certifications.fields.name')}
-            </label>
-            <input
+            <Input
+              id="certification-name"
               type="text"
-              className={tokens.input.base}
               value={state.certification_name}
               onChange={(e) => {
                 setState((s) => ({ ...s, certification_name: e.target.value }))
               }}
             />
-            {errors.certification_name !== undefined ? (
-              <p className={tokens.helperText.error}>{errors.certification_name}</p>
-            ) : null}
-          </div>
+          </FormField>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={tokens.label.base}>
-                {t('authoring.certifications.fields.issuingBody')}
-              </label>
-              <input
+            <FormField
+              label={t('authoring.certifications.fields.issuingBody')}
+              htmlFor="certification-issuing-body"
+            >
+              <Input
+                id="certification-issuing-body"
                 type="text"
-                className={tokens.input.base}
                 value={state.issuing_body}
                 onChange={(e) => {
                   setState((s) => ({ ...s, issuing_body: e.target.value }))
                 }}
               />
-            </div>
-            <div>
-              <label className={tokens.label.base}>
-                {t('authoring.certifications.fields.certificateNumber')}
-              </label>
-              <input
+            </FormField>
+            <FormField
+              label={t('authoring.certifications.fields.certificateNumber')}
+              htmlFor="certification-number"
+            >
+              <Input
+                id="certification-number"
                 type="text"
-                className={tokens.input.base}
                 value={state.certificate_number}
                 onChange={(e) => {
                   setState((s) => ({ ...s, certificate_number: e.target.value }))
                 }}
               />
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={tokens.label.base}>
-                {t('authoring.certifications.fields.issuedAt')}
-              </label>
-              <input
+            <FormField
+              label={t('authoring.certifications.fields.issuedAt')}
+              htmlFor="certification-issued-at"
+            >
+              <Input
+                id="certification-issued-at"
                 type="date"
-                className={tokens.input.base}
                 value={state.issued_at}
                 onChange={(e) => {
                   setState((s) => ({ ...s, issued_at: e.target.value }))
                 }}
               />
-            </div>
-            <div>
-              <label className={tokens.label.base}>
-                {t('authoring.certifications.fields.expiresAt')}
-              </label>
-              <input
+            </FormField>
+            <FormField
+              label={t('authoring.certifications.fields.expiresAt')}
+              htmlFor="certification-expires-at"
+            >
+              <Input
+                id="certification-expires-at"
                 type="date"
-                className={tokens.input.base}
                 value={state.expires_at}
                 onChange={(e) => {
                   setState((s) => ({ ...s, expires_at: e.target.value }))
                 }}
               />
-            </div>
+            </FormField>
           </div>
 
-          <div>
-            <label className={tokens.label.base}>
-              {t('authoring.certifications.fields.notes')}
-            </label>
-            <textarea
-              className={tokens.input.base}
+          <FormField
+            label={t('authoring.certifications.fields.notes')}
+            htmlFor="certification-notes"
+          >
+            <Textarea
+              id="certification-notes"
               rows={2}
               value={state.notes}
               onChange={(e) => {
                 setState((s) => ({ ...s, notes: e.target.value }))
               }}
             />
-          </div>
+          </FormField>
 
           {errors.form !== undefined ? (
             <div className={`${tokens.alert.base} ${tokens.alert.error}`}>{errors.form}</div>
           ) : null}
+        </ModalContent>
 
-          <div
-            className={`flex items-center justify-end gap-2 border-t ${borderColors.light} pt-4`}
-          >
-            <button
-              type="button"
-              onClick={onClose}
-              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
-            >
-              {t('authoring.certifications.modal.cancel')}
-            </button>
-            <button
-              type="submit"
-              disabled={isPending}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
-            >
-              {isPending
-                ? t('authoring.certifications.modal.saving')
-                : t('authoring.certifications.modal.save')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <ModalFooter className={cn('border-t pt-4', borderColors.light)}>
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+            {t('authoring.certifications.modal.cancel')}
+          </Button>
+          <Button type="submit" variant="primary" size="sm" disabled={isPending}>
+            {isPending
+              ? t('authoring.certifications.modal.saving')
+              : t('authoring.certifications.modal.save')}
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
   )
 }

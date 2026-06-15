@@ -1,8 +1,14 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AxiosError } from 'axios'
-import { X } from 'lucide-react'
+import { Button } from '@/components/atoms/Button'
+import { FormField } from '@/components/atoms/FormField'
+import { Input } from '@/components/atoms/Input'
+import { Select } from '@/components/atoms/Select'
+import { Textarea } from '@/components/atoms/Textarea'
+import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
 import type { TechnicianTimeOff, TimeOffReason } from '../api/authoringTypes'
 import { useCreateTimeOff, useUpdateTimeOff } from '../hooks/useAuthoring'
 
@@ -107,39 +113,24 @@ export function TimeOffFormModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50"
-      data-testid="time-off-form-modal"
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={
+        isEditing
+          ? t('authoring.timeOff.modal.editTitle')
+          : t('authoring.timeOff.modal.createTitle')
+      }
+      size="md"
     >
-      <div
-        className="relative mx-4 rounded-xl bg-white p-6 shadow-xl"
-        style={{ width: '560px', maxWidth: '100%' }}
-      >
-        <div
-          className={`mb-4 flex items-center justify-between border-b ${borderColors.light} pb-3`}
-        >
-          <h2 className={`text-lg font-semibold ${textColors.primary}`}>
-            {isEditing
-              ? t('authoring.timeOff.modal.editTitle')
-              : t('authoring.timeOff.modal.createTitle')}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t('authoring.timeOff.modal.cancel')}
-            className={tokens.modal.closeButton}
+      <form onSubmit={handleSubmit} data-testid="time-off-form-modal">
+        <ModalContent>
+          <FormField
+            label={t('authoring.timeOff.fields.reasonCode')}
+            htmlFor="time-off-reason"
           >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className={tokens.label.base}>
-              {t('authoring.timeOff.fields.reasonCode')}
-            </label>
-            <select
-              className={tokens.input.base}
+            <Select
+              id="time-off-reason"
               value={state.reason_code}
               onChange={(e) => {
                 setState((s) => ({ ...s, reason_code: e.target.value as TimeOffReason }))
@@ -150,40 +141,38 @@ export function TimeOffFormModal({
                   {t(`authoring.timeOff.reason.${r}`)}
                 </option>
               ))}
-            </select>
-          </div>
+            </Select>
+          </FormField>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={tokens.label.base}>
-                {t('authoring.timeOff.fields.startsAt')}
-              </label>
-              <input
+            <FormField
+              label={t('authoring.timeOff.fields.startsAt')}
+              htmlFor="time-off-starts-at"
+              error={errors.starts_at}
+            >
+              <Input
+                id="time-off-starts-at"
                 type="datetime-local"
-                className={tokens.input.base}
                 value={state.starts_at}
                 onChange={(e) => {
                   setState((s) => ({ ...s, starts_at: e.target.value }))
                 }}
               />
-              {errors.starts_at !== undefined ? (
-                <p className={tokens.helperText.error}>{errors.starts_at}</p>
-              ) : null}
-            </div>
-            <div>
-              <label className={tokens.label.base}>{t('authoring.timeOff.fields.endsAt')}</label>
-              <input
+            </FormField>
+            <FormField
+              label={t('authoring.timeOff.fields.endsAt')}
+              htmlFor="time-off-ends-at"
+              error={errors.ends_at}
+            >
+              <Input
+                id="time-off-ends-at"
                 type="datetime-local"
-                className={tokens.input.base}
                 value={state.ends_at}
                 onChange={(e) => {
                   setState((s) => ({ ...s, ends_at: e.target.value }))
                 }}
               />
-              {errors.ends_at !== undefined ? (
-                <p className={tokens.helperText.error}>{errors.ends_at}</p>
-              ) : null}
-            </div>
+            </FormField>
           </div>
 
           <div className="flex items-center gap-2">
@@ -194,50 +183,40 @@ export function TimeOffFormModal({
               onChange={(e) => {
                 setState((s) => ({ ...s, is_full_day: e.target.checked }))
               }}
+              className={tokens.checkbox.base}
             />
-            <label htmlFor="time-off-full-day" className={`text-sm ${textColors.secondary}`}>
+            <label htmlFor="time-off-full-day" className={cn('text-sm', textColors.secondary)}>
               {t('authoring.timeOff.fields.isFullDay')}
             </label>
           </div>
 
-          <div>
-            <label className={tokens.label.base}>{t('authoring.timeOff.fields.notes')}</label>
-            <textarea
-              className={tokens.input.base}
+          <FormField label={t('authoring.timeOff.fields.notes')} htmlFor="time-off-notes">
+            <Textarea
+              id="time-off-notes"
               rows={2}
               value={state.notes}
               onChange={(e) => {
                 setState((s) => ({ ...s, notes: e.target.value }))
               }}
             />
-          </div>
+          </FormField>
 
           {errors.form !== undefined ? (
             <div className={`${tokens.alert.base} ${tokens.alert.error}`}>{errors.form}</div>
           ) : null}
+        </ModalContent>
 
-          <div
-            className={`flex items-center justify-end gap-2 border-t ${borderColors.light} pt-4`}
-          >
-            <button
-              type="button"
-              onClick={onClose}
-              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
-            >
-              {t('authoring.timeOff.modal.cancel')}
-            </button>
-            <button
-              type="submit"
-              disabled={isPending}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
-            >
-              {isPending
-                ? t('authoring.timeOff.modal.saving')
-                : t('authoring.timeOff.modal.save')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <ModalFooter className={cn('border-t pt-4', borderColors.light)}>
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+            {t('authoring.timeOff.modal.cancel')}
+          </Button>
+          <Button type="submit" variant="primary" size="sm" disabled={isPending}>
+            {isPending
+              ? t('authoring.timeOff.modal.saving')
+              : t('authoring.timeOff.modal.save')}
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
   )
 }

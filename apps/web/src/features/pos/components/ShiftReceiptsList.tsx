@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Printer } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { textColors, borderColors } from '@/lib/designTokens'
+import { textColors, borderColors, tokens, colors } from '@/lib/designTokens'
 import { useReceiptPrint } from '../hooks/useReceiptPrint'
 import { useCurrency } from '@/hooks/useCurrency'
 
@@ -46,28 +46,28 @@ export function ShiftReceiptsList({ receipts, className }: ShiftReceiptsListProp
   return (
     <div className={cn('overflow-auto', className)}>
       <table className={cn('min-w-full divide-y', borderColors.default)}>
-        <thead className="bg-gray-50">
+        <thead className={tokens.table.header}>
           <tr>
-            <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
               {t('shift.receiptNumber')}
             </th>
-            <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
               {t('shift.time')}
             </th>
-            <th className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className={cn('px-6 py-3 text-end text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
               {t('shift.total')}
             </th>
-            <th className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className={cn('px-6 py-3 text-end text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
               {t('shift.actions')}
             </th>
           </tr>
         </thead>
-        <tbody className={cn('bg-white divide-y', borderColors.default)}>
+        <tbody className={cn(colors.white, 'divide-y', borderColors.default)}>
           {receipts.map((receipt) => (
             <tr
               key={receipt.id}
               className={cn(
-                'hover:bg-gray-50',
+                tokens.table.rowHover,
                 receipt.is_voided && 'opacity-50 line-through'
               )}
             >
@@ -87,7 +87,7 @@ export function ShiftReceiptsList({ receipts, className }: ShiftReceiptsListProp
                 </span>
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-end">
-                <span className={cn('text-sm font-medium', textColors.primary)}>
+                <span className={cn('text-sm font-medium tabular-nums', textColors.primary)}>
                   {receipt.total} {currency}
                 </span>
               </td>
@@ -101,8 +101,8 @@ export function ShiftReceiptsList({ receipts, className }: ShiftReceiptsListProp
                     'inline-flex items-center gap-1 px-3 py-1 rounded',
                     'text-sm font-medium transition-colors',
                     receipt.is_voided || isPrinting
-                      ? 'text-gray-400 cursor-not-allowed'
-                      : 'text-blue-600 hover:text-blue-800 hover:bg-blue-50'
+                      ? cn(textColors.disabled, 'cursor-not-allowed')
+                      : cn(textColors.brand, colors.hover.gray100)
                   )}
                   title={t('receipt.reprint')}
                 >

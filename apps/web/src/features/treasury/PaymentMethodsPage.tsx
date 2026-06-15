@@ -7,6 +7,15 @@ import { usePaymentMethods } from './hooks/usePaymentMethods'
 import { AddPaymentMethodModal } from './components/AddPaymentMethodModal'
 import { api } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { cn } from '../../lib/utils'
+import { tokens, textColors } from '../../lib/designTokens'
+import { Button, StatusBadge, statusTone } from '../../components/atoms'
+import {
+  DataTable,
+  type DataTableColumn,
+  EmptyState,
+  ListPageLayout,
+} from '../../components/molecules'
 
 interface PaymentMethodExtended {
   id: string
@@ -31,10 +40,13 @@ export function PaymentMethodsPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   // Route-level protection via RequirePermission moduleKey="treasury" handles access control
 
-  const { data: methods = [], isLoading, error } = usePaymentMethods()
+  const { data: rawMethods = [], isLoading, error } = usePaymentMethods()
+
+  // The list endpoint returns the extended shape (code/description/fee fields);
+  // the hook types the narrow shape, so normalize each row to the extended view.
+  const methods = rawMethods.map((m) => m as PaymentMethodExtended)
 
   const activeMethods = methods.filter((m) => m.is_active)
-  const inactiveMethods = methods.filter((m) => !m.is_active)
 
   // Toggle active/inactive mutation
   const toggleActiveMutation = useMutation({
@@ -79,116 +91,196 @@ export function PaymentMethodsPage() {
   const CapabilityBadge = ({ enabled, label }: { enabled: boolean; label: string }) => {
     if (!enabled) return null
     return (
-      <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
-        {label}
-      </span>
+      <span className={cn(tokens.badge.base, tokens.badge.blue)}>{label}</span>
     )
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+  const columns: DataTableColumn<PaymentMethodExtended>[] = [
+    {
+      key: 'name',
+      header: t('treasury:paymentMethods.table.name'),
+      render: (method) => (
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {t('treasury:paymentMethods.title')}
-          </h1>
-          <p className="text-gray-500">
-            {methods.length} {methods.length === 1 ? t('treasury:paymentMethods.singular') : t('treasury:paymentMethods.plural')}
-            {activeMethods.length !== methods.length && ` (${activeMethods.length} ${t('treasury:paymentMethods.active').toLowerCase()})`}
-          </p>
+          <div className={cn('font-medium', textColors.primary)}>{method.name}</div>
+          {method.description && (
+            <div className={cn('text-sm', textColors.tertiary)}>{method.description}</div>
+          )}
         </div>
-        <button
-          onClick={() => { setShowAddModal(true) }}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+      ),
+    },
+    {
+      key: 'code',
+      header: t('treasury:paymentMethods.table.code'),
+      render: (method) => (
+        <span className={cn('font-mono text-sm', textColors.tertiary)}>
+          {method.code || method.id}
+        </span>
+      ),
+    },
+    {
+      key: 'capabilities',
+      header: t('treasury:paymentMethods.table.capabilities'),
+      render: (method) => (
+        <div className="flex flex-wrap gap-1">
+          <CapabilityBadge
+            enabled={method.is_physical}
+            label={t('treasury:paymentMethods.flags.is_physical')}
+          />
+          <CapabilityBadge
+            enabled={method.has_maturity}
+            label={t('treasury:paymentMethods.flags.has_maturity')}
+          />
+          <CapabilityBadge
+            enabled={method.requires_third_party}
+            label={t('treasury:paymentMethods.flags.requires_third_party')}
+          />
+          <CapabilityBadge
+            enabled={method.is_push}
+            label={t('treasury:paymentMethods.flags.is_push')}
+          />
+          <CapabilityBadge
+            enabled={method.has_deducted_fees}
+            label={t('treasury:paymentMethods.flags.has_deducted_fees')}
+          />
+          <CapabilityBadge
+            enabled={method.is_restricted}
+            label={t('treasury:paymentMethods.flags.is_restricted')}
+          />
+        </div>
+      ),
+    },
+    {
+      key: 'fees',
+      header: t('treasury:paymentMethods.table.fees'),
+      render: (method) => (
+        <span className={cn('text-sm', textColors.tertiary)}>{getFeeDisplay(method)}</span>
+      ),
+    },
+    {
+      key: 'status',
+      header: t('treasury:paymentMethods.table.status'),
+      render: (method) => (
+        <StatusBadge tone={statusTone(method.is_active ? 'active' : 'inactive')}>
+          {method.is_active
+            ? t('treasury:paymentMethods.active')
+            : t('treasury:paymentMethods.inactive')}
+        </StatusBadge>
+      ),
+    },
+    {
+      key: 'actions',
+      header: <span className="sr-only">{t('treasury:paymentMethods.table.actions')}</span>,
+      align: 'right',
+      render: (method) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => { handleToggleActive(method.id, method.is_active) }}
+          disabled={toggleActiveMutation.isPending}
         >
+          {method.is_active ? t('common:actions.deactivate') : t('common:actions.activate')}
+        </Button>
+      ),
+    },
+  ]
+
+  return (
+    <ListPageLayout
+      title={t('treasury:paymentMethods.title')}
+      subtitle={`${String(methods.length)} ${
+        methods.length === 1
+          ? t('treasury:paymentMethods.singular')
+          : t('treasury:paymentMethods.plural')
+      }${
+        activeMethods.length !== methods.length
+          ? ` (${String(activeMethods.length)} ${t('treasury:paymentMethods.active').toLowerCase()})`
+          : ''
+      }`}
+      actions={
+        <Button className="gap-2" onClick={() => { setShowAddModal(true) }}>
           <Plus className="h-4 w-4" />
           {t('treasury:paymentMethods.new')}
-        </button>
-      </div>
-
-      {/* Content */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-gray-500">{t('common:status.loading')}</div>
-        </div>
-      ) : error ? (
-        <div className="rounded-lg bg-red-50 p-4 text-red-700">
+        </Button>
+      }
+    >
+      {error ? (
+        <div className={cn(tokens.alert.base, tokens.alert.error)}>
           {t('common:errors.loadingFailed', 'Error loading data. Please try again.')}
         </div>
-      ) : methods.length === 0 ? (
-        <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-          <CreditCard className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-semibold text-gray-900">
-            {t('treasury:paymentMethods.empty.title')}
-          </h3>
-          <p className="mt-1 text-sm text-gray-500">
-            {t('treasury:paymentMethods.empty.description')}
-          </p>
-          <div className="mt-6">
-            <button
-              onClick={() => { setShowAddModal(true) }}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            >
+      ) : !isLoading && methods.length === 0 ? (
+        <div className="py-6">
+          <EmptyState
+            icon={<CreditCard className={cn('mx-auto h-12 w-12', textColors.disabled)} />}
+            title={t('treasury:paymentMethods.empty.title')}
+            description={t('treasury:paymentMethods.empty.description')}
+          />
+          <div className="mt-6 flex justify-center">
+            <Button className="gap-2" onClick={() => { setShowAddModal(true) }}>
               <Plus className="h-4 w-4" />
               {t('treasury:paymentMethods.new')}
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
         <div className="space-y-6">
           {/* Summary Stats */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <div className={tokens.card.base}>
               <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-green-100 p-2 text-green-800">
+                <div className={cn('rounded-lg p-2', tokens.badge.green)}>
                   <Check className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">{t('treasury:paymentMethods.active')}</p>
-                  <p className="text-lg font-semibold text-gray-900">{activeMethods.length}</p>
+                  <p className={cn('text-sm', textColors.tertiary)}>
+                    {t('treasury:paymentMethods.active')}
+                  </p>
+                  <p className={cn('text-lg font-semibold', textColors.primary)}>
+                    {activeMethods.length}
+                  </p>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <div className={tokens.card.base}>
               <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-gray-100 p-2 text-gray-800">
+                <div className={cn('rounded-lg p-2', tokens.badge.gray)}>
                   <CreditCard className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">{t('common:fields.total')}</p>
-                  <p className="text-lg font-semibold text-gray-900">{methods.length}</p>
+                  <p className={cn('text-sm', textColors.tertiary)}>{t('common:fields.total')}</p>
+                  <p className={cn('text-lg font-semibold', textColors.primary)}>
+                    {methods.length}
+                  </p>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <div className={tokens.card.base}>
               <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-purple-100 p-2 text-purple-800">
+                <div className={cn('rounded-lg p-2', tokens.badge.purple)}>
                   <Banknote className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">
+                  <p className={cn('text-sm', textColors.tertiary)}>
                     {t('treasury:paymentMethods.flags.is_physical')}
                   </p>
-                  <p className="text-lg font-semibold text-gray-900">
+                  <p className={cn('text-lg font-semibold', textColors.primary)}>
                     {methods.filter((m) => m.is_physical).length}
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <div className={tokens.card.base}>
               <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-orange-100 p-2 text-orange-800">
+                <div className={cn('rounded-lg p-2', tokens.badge.yellow)}>
                   <CreditCard className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">
+                  <p className={cn('text-sm', textColors.tertiary)}>
                     {t('treasury:paymentMethods.flags.has_maturity')}
                   </p>
-                  <p className="text-lg font-semibold text-gray-900">
+                  <p className={cn('text-lg font-semibold', textColors.primary)}>
                     {methods.filter((m) => m.has_maturity).length}
                   </p>
                 </div>
@@ -197,132 +289,14 @@ export function PaymentMethodsPage() {
           </div>
 
           {/* Payment Methods Table */}
-          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('treasury:paymentMethods.table.name')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('treasury:paymentMethods.table.code')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('treasury:paymentMethods.table.capabilities')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('treasury:paymentMethods.table.fees')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('treasury:paymentMethods.table.status')}
-                  </th>
-                  <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('treasury:paymentMethods.table.actions')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
-                {methods.map((method) => (
-                  <tr key={method.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div>
-                        <div className="font-medium text-gray-900">{method.name}</div>
-                        {(method as PaymentMethodExtended).description && (
-                          <div className="text-sm text-gray-500">
-                            {(method as PaymentMethodExtended).description}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <span className="font-mono text-sm text-gray-600">
-                        {(method as PaymentMethodExtended).code ?? method.id}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-wrap gap-1">
-                        <CapabilityBadge
-                          enabled={method.is_physical}
-                          label={t('treasury:paymentMethods.flags.is_physical')}
-                        />
-                        <CapabilityBadge
-                          enabled={method.has_maturity}
-                          label={t('treasury:paymentMethods.flags.has_maturity')}
-                        />
-                        <CapabilityBadge
-                          enabled={method.requires_third_party}
-                          label={t('treasury:paymentMethods.flags.requires_third_party')}
-                        />
-                        <CapabilityBadge
-                          enabled={method.is_push}
-                          label={t('treasury:paymentMethods.flags.is_push')}
-                        />
-                        <CapabilityBadge
-                          enabled={method.has_deducted_fees}
-                          label={t('treasury:paymentMethods.flags.has_deducted_fees')}
-                        />
-                        <CapabilityBadge
-                          enabled={method.is_restricted}
-                          label={t('treasury:paymentMethods.flags.is_restricted')}
-                        />
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                      {getFeeDisplay(method as PaymentMethodExtended)}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          method.is_active
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}
-                      >
-                        {method.is_active
-                          ? t('treasury:paymentMethods.active')
-                          : t('treasury:paymentMethods.inactive')}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-end text-sm">
-                      <button
-                        onClick={() => { handleToggleActive(method.id, method.is_active) }}
-                        disabled={toggleActiveMutation.isPending}
-                        className="text-blue-600 hover:text-blue-900 disabled:opacity-50"
-                      >
-                        {method.is_active ? t('common:actions.deactivate') : t('common:actions.activate')}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Show inactive methods separately if there are any */}
-          {inactiveMethods.length > 0 && (
-            <details className="rounded-lg border border-gray-200 bg-white p-4">
-              <summary className="cursor-pointer font-medium text-gray-700">
-                {t('treasury:paymentMethods.inactive')} ({inactiveMethods.length})
-              </summary>
-              <div className="mt-4 space-y-2">
-                {inactiveMethods.map((method) => (
-                  <div
-                    key={method.id}
-                    className="flex items-center justify-between rounded-lg bg-gray-50 p-3"
-                  >
-                    <span className="text-sm text-gray-600">{method.name}</span>
-                    <button
-                      onClick={() => { handleToggleActive(method.id, method.is_active) }}
-                      disabled={toggleActiveMutation.isPending}
-                      className="text-sm text-blue-600 hover:text-blue-900 disabled:opacity-50"
-                    >
-                      {t('common:actions.activate')}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </details>
-          )}
+          <DataTable
+            columns={columns}
+            data={methods}
+            keyExtractor={(method) => method.id}
+            isLoading={isLoading}
+            emptyTitle={t('treasury:paymentMethods.empty.title')}
+            emptyDescription={t('treasury:paymentMethods.empty.description')}
+          />
         </div>
       )}
 
@@ -334,6 +308,6 @@ export function PaymentMethodsPage() {
           void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment-methods']) })
         }}
       />
-    </div>
+    </ListPageLayout>
   )
 }

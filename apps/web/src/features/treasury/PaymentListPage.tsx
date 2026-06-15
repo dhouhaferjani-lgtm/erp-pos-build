@@ -1,12 +1,21 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, CreditCard, Calendar } from 'lucide-react'
 import { api } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { cn } from '../../lib/utils'
+import { tokens, textColors } from '../../lib/designTokens'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
+import { Button, StatusBadge, statusTone, type StatusTone } from '../../components/atoms'
+import {
+  DataTable,
+  type DataTableColumn,
+  EmptyState,
+  ListPageLayout,
+} from '../../components/molecules'
 
 interface Payment {
   id: string
@@ -28,16 +37,16 @@ interface PaymentsResponse {
   meta?: { total: number }
 }
 
-const statusColors: Record<Payment['status'], string> = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  completed: 'bg-green-100 text-green-800',
-  cancelled: 'bg-red-100 text-red-800',
-}
-
-// Status labels are loaded from translations
+/**
+ * Payment lifecycle statuses routed through the one sanctioned StatusBadge
+ * palette. `pending`/`completed`/`cancelled` are already in the built-in tone
+ * map, so no overrides are needed — kept here for parity/documentation.
+ */
+const paymentStatusTones: Record<string, StatusTone> = {}
 
 export function PaymentListPage() {
   const { t } = useTranslation(['common', 'treasury'])
+  const navigate = useNavigate()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
@@ -71,139 +80,129 @@ export function PaymentListPage() {
     })
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('treasury:payments.title')}</h1>
-          <p className="text-gray-500">
-            {total} {total === 1 ? t('treasury:payments.singular', 'payment') : t('treasury:payments.plural', 'payments')} {t('total')}
-          </p>
-        </div>
+  const addPath = '/treasury/payments/new'
+
+  const columns: DataTableColumn<Payment>[] = [
+    {
+      key: 'number',
+      header: t('treasury:payments.number'),
+      render: (payment) => (
         <Link
-          to="/treasury/payments/new"
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+          to={`/treasury/payments/${payment.id}`}
+          className={cn('font-medium', textColors.primary, 'hover:underline')}
         >
+          {payment.payment_number}
+        </Link>
+      ),
+    },
+    {
+      key: 'partner',
+      header: t('treasury:payments.partner'),
+      render: (payment) =>
+        payment.partner_id ? (
+          <Link
+            to={
+              payment.partner_type === 'supplier' || payment.payment_type === 'supplier_payment'
+                ? `/purchases/suppliers/${payment.partner_id}`
+                : `/sales/customers/${payment.partner_id}`
+            }
+            className={cn(textColors.brand, 'hover:underline')}
+          >
+            {payment.partner_name ?? t('treasury:payments.messages.noPartnerLinked')}
+          </Link>
+        ) : (
+          <span className={textColors.tertiary}>
+            {payment.partner_name ?? t('treasury:payments.messages.noPartnerLinked')}
+          </span>
+        ),
+    },
+    {
+      key: 'method',
+      header: t('treasury:payments.method'),
+      render: (payment) => (
+        <span className={textColors.tertiary}>{payment.payment_method_name}</span>
+      ),
+    },
+    {
+      key: 'date',
+      header: t('treasury:payments.date'),
+      render: (payment) => (
+        <div className={cn('flex items-center gap-1', textColors.tertiary)}>
+          <Calendar className="h-3.5 w-3.5" />
+          {new Date(payment.payment_date).toLocaleDateString()}
+        </div>
+      ),
+    },
+    {
+      key: 'status',
+      header: t('treasury:payments.status'),
+      render: (payment) => (
+        <StatusBadge tone={statusTone(payment.status, paymentStatusTones)}>
+          {getStatusLabel(payment.status)}
+        </StatusBadge>
+      ),
+    },
+    {
+      key: 'amount',
+      header: t('treasury:payments.amount'),
+      numeric: true,
+      cellClassName: 'font-medium',
+      render: (payment) => formatAmount(payment.amount),
+    },
+    {
+      key: 'actions',
+      header: <span className="sr-only">{t('actions.actions')}</span>,
+      align: 'right',
+      render: (payment) => (
+        <Link to={`/treasury/payments/${payment.id}`} className={textColors.brand}>
+          {t('actions.view')}
+        </Link>
+      ),
+    },
+  ]
+
+  return (
+    <ListPageLayout
+      title={t('treasury:payments.title')}
+      subtitle={`${String(total)} ${
+        total === 1
+          ? t('treasury:payments.singular', 'payment')
+          : t('treasury:payments.plural', 'payments')
+      } ${t('total')}`}
+      actions={
+        <Button className="gap-2" onClick={() => { void navigate(addPath) }}>
           <Plus className="h-4 w-4" />
           {t('treasury:payments.record')}
-        </Link>
-      </div>
-
-      {/* Content */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-gray-500">{t('status.loading')}</div>
-        </div>
-      ) : error ? (
-        <div className="rounded-lg bg-red-50 p-4 text-red-700">
+        </Button>
+      }
+    >
+      {error ? (
+        <div className={cn(tokens.alert.base, tokens.alert.error)}>
           {t('errors.loadingFailed', 'Error loading data. Please try again.')}
         </div>
-      ) : payments.length === 0 ? (
-        <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-          <CreditCard className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-semibold text-gray-900">{t('treasury:payments.empty.title')}</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            {t('treasury:payments.empty.description')}
-          </p>
-          <div className="mt-6">
-            <Link
-              to="/treasury/payments/new"
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              <Plus className="h-4 w-4" />
-              {t('treasury:payments.record')}
-            </Link>
-          </div>
-        </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('treasury:payments.number')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('treasury:payments.partner')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('treasury:payments.method')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('treasury:payments.date')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('treasury:payments.status')}
-                </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('treasury:payments.amount')}
-                </th>
-                <th className="relative px-6 py-3">
-                  <span className="sr-only">{t('actions.actions')}</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
-              {payments.map((payment) => (
-                <tr key={payment.id} className="hover:bg-gray-50">
-                  <td className="whitespace-nowrap px-6 py-4">
-                    <Link
-                      to={`/treasury/payments/${payment.id}`}
-                      className="font-medium text-gray-900 hover:text-blue-600"
-                    >
-                      {payment.payment_number}
-                    </Link>
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                    {payment.partner_id ? (
-                      <Link
-                        to={
-                          payment.partner_type === 'supplier' || payment.payment_type === 'supplier_payment'
-                            ? `/purchases/suppliers/${payment.partner_id}`
-                            : `/sales/customers/${payment.partner_id}`
-                        }
-                        className="text-blue-600 hover:text-blue-800 hover:underline"
-                      >
-                        {payment.partner_name ?? t('treasury:payments.messages.noPartnerLinked')}
-                      </Link>
-                    ) : (
-                      <span className="text-gray-500">{payment.partner_name ?? t('treasury:payments.messages.noPartnerLinked')}</span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    {payment.payment_method_name}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-3.5 w-3.5" />
-                      {new Date(payment.payment_date).toLocaleDateString()}
-                    </div>
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[payment.status]}`}
-                    >
-                      {getStatusLabel(payment.status)}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
-                    {formatAmount(payment.amount)}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-end text-sm">
-                    <Link
-                      to={`/treasury/payments/${payment.id}`}
-                      className="text-blue-600 hover:text-blue-900"
-                    >
-                      {t('actions.view')}
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={columns}
+          data={payments}
+          keyExtractor={(payment) => payment.id}
+          isLoading={isLoading}
+          emptyState={
+            <div className="py-6">
+              <EmptyState
+                icon={<CreditCard className={cn('mx-auto h-12 w-12', textColors.disabled)} />}
+                title={t('treasury:payments.empty.title')}
+                description={t('treasury:payments.empty.description')}
+              />
+              <div className="mt-6 flex justify-center">
+                <Button className="gap-2" onClick={() => { void navigate(addPath) }}>
+                  <Plus className="h-4 w-4" />
+                  {t('treasury:payments.record')}
+                </Button>
+              </div>
+            </div>
+          }
+        />
       )}
-    </div>
+    </ListPageLayout>
   )
 }

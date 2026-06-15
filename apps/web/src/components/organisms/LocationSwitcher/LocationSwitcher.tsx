@@ -34,16 +34,16 @@ function scopedNamespacePredicate(
   }
 }
 
-interface LocationSelectorProps {
+interface LocationSwitcherProps {
   className?: string
 }
 
 /**
- * LocationSelector allows users to switch between locations for inventory operations.
+ * LocationSwitcher allows users to switch between locations for inventory operations.
  *
  * Shows current location with type icon, dropdown to switch, and option to add new locations.
  */
-export function LocationSelector({ className = '' }: LocationSelectorProps) {
+export function LocationSwitcher({ className = '' }: LocationSwitcherProps) {
   const { t } = useTranslation('common')
   const { currentLocation, locations, hasMultipleLocations, switchLocation, isLoading } = useLocation()
   const [isOpen, setIsOpen] = useState(false)

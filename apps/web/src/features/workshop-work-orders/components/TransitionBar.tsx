@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { tokens } from '@/lib/designTokens'
 import type { WorkOrderStatus } from '../types'
 
 interface TransitionBarProps {
@@ -33,12 +34,10 @@ const ALLOWED_NEXT: Record<WorkOrderStatus, WorkOrderStatus[]> = {
   cancelled: [],
 }
 
-const ACTION_BUTTON =
-  'inline-flex items-center gap-1 rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed'
-const SECONDARY_BUTTON =
-  'inline-flex items-center gap-1 rounded-md bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed'
-const DANGER_BUTTON =
-  'inline-flex items-center gap-1 rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed'
+const BUTTON_LAYOUT = 'gap-1 px-3 py-1.5 text-xs shadow-sm'
+const ACTION_BUTTON = `${tokens.button.base} ${tokens.button.primary} ${BUTTON_LAYOUT}`
+const SECONDARY_BUTTON = `${tokens.button.base} ${tokens.button.secondary} ${BUTTON_LAYOUT}`
+const DANGER_BUTTON = `${tokens.button.base} ${tokens.button.danger} ${BUTTON_LAYOUT}`
 
 export function TransitionBar({
   current,

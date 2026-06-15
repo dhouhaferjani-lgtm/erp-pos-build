@@ -1,8 +1,14 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AxiosError } from 'axios'
-import { X } from 'lucide-react'
-import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { Button } from '@/components/atoms/Button'
+import { FormField } from '@/components/atoms/FormField'
+import { Input } from '@/components/atoms/Input'
+import { Select } from '@/components/atoms/Select'
+import { Textarea } from '@/components/atoms/Textarea'
+import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal'
+import { borderColors, tokens } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
 import type { TechnicianTimeEntry, TimeEntryType } from '../api/authoringTypes'
 import { useCreateTimeEntry, useUpdateTimeEntry } from '../hooks/useAuthoring'
 
@@ -106,39 +112,24 @@ export function TimeEntryFormModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50"
-      data-testid="time-entry-form-modal"
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={
+        isEditing
+          ? t('authoring.timeEntries.modal.editTitle')
+          : t('authoring.timeEntries.modal.createTitle')
+      }
+      size="md"
     >
-      <div
-        className="relative mx-4 rounded-xl bg-white p-6 shadow-xl"
-        style={{ width: '560px', maxWidth: '100%' }}
-      >
-        <div
-          className={`mb-4 flex items-center justify-between border-b ${borderColors.light} pb-3`}
-        >
-          <h2 className={`text-lg font-semibold ${textColors.primary}`}>
-            {isEditing
-              ? t('authoring.timeEntries.modal.editTitle')
-              : t('authoring.timeEntries.modal.createTitle')}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t('authoring.timeEntries.modal.cancel')}
-            className={tokens.modal.closeButton}
+      <form onSubmit={handleSubmit} data-testid="time-entry-form-modal">
+        <ModalContent>
+          <FormField
+            label={t('authoring.timeEntries.fields.entryType')}
+            htmlFor="time-entry-type"
           >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className={tokens.label.base}>
-              {t('authoring.timeEntries.fields.entryType')}
-            </label>
-            <select
-              className={tokens.input.base}
+            <Select
+              id="time-entry-type"
               value={state.entry_type}
               onChange={(e) => {
                 setState((s) => ({ ...s, entry_type: e.target.value as TimeEntryType }))
@@ -149,99 +140,85 @@ export function TimeEntryFormModal({
                   {t(`authoring.timeEntries.entryType.${ty}`)}
                 </option>
               ))}
-            </select>
-          </div>
+            </Select>
+          </FormField>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={tokens.label.base}>
-                {t('authoring.timeEntries.fields.startedAt')}
-              </label>
-              <input
+            <FormField
+              label={t('authoring.timeEntries.fields.startedAt')}
+              htmlFor="time-entry-started-at"
+              error={errors.started_at}
+            >
+              <Input
+                id="time-entry-started-at"
                 type="datetime-local"
-                className={tokens.input.base}
                 value={state.started_at}
                 onChange={(e) => {
                   setState((s) => ({ ...s, started_at: e.target.value }))
                 }}
               />
-              {errors.started_at !== undefined ? (
-                <p className={tokens.helperText.error}>{errors.started_at}</p>
-              ) : null}
-            </div>
-            <div>
-              <label className={tokens.label.base}>
-                {t('authoring.timeEntries.fields.endedAt')}
-              </label>
-              <input
+            </FormField>
+            <FormField
+              label={t('authoring.timeEntries.fields.endedAt')}
+              htmlFor="time-entry-ended-at"
+              error={errors.ended_at}
+            >
+              <Input
+                id="time-entry-ended-at"
                 type="datetime-local"
-                className={tokens.input.base}
                 value={state.ended_at}
                 onChange={(e) => {
                   setState((s) => ({ ...s, ended_at: e.target.value }))
                 }}
               />
-              {errors.ended_at !== undefined ? (
-                <p className={tokens.helperText.error}>{errors.ended_at}</p>
-              ) : null}
-            </div>
+            </FormField>
           </div>
 
-          <div>
-            <label className={tokens.label.base}>
-              {t('authoring.timeEntries.fields.workOrderId')}
-            </label>
-            <input
+          <FormField
+            label={t('authoring.timeEntries.fields.workOrderId')}
+            htmlFor="time-entry-work-order-id"
+          >
+            <Input
+              id="time-entry-work-order-id"
               type="text"
-              className={tokens.input.base}
               placeholder="00000000-0000-0000-0000-000000000000"
               value={state.work_order_id}
               onChange={(e) => {
                 setState((s) => ({ ...s, work_order_id: e.target.value }))
               }}
             />
-          </div>
+          </FormField>
 
-          <div>
-            <label className={tokens.label.base}>
-              {t('authoring.timeEntries.fields.notes')}
-            </label>
-            <textarea
-              className={tokens.input.base}
+          <FormField
+            label={t('authoring.timeEntries.fields.notes')}
+            htmlFor="time-entry-notes"
+          >
+            <Textarea
+              id="time-entry-notes"
               rows={2}
               value={state.notes}
               onChange={(e) => {
                 setState((s) => ({ ...s, notes: e.target.value }))
               }}
             />
-          </div>
+          </FormField>
 
           {errors.form !== undefined ? (
             <div className={`${tokens.alert.base} ${tokens.alert.error}`}>{errors.form}</div>
           ) : null}
+        </ModalContent>
 
-          <div
-            className={`flex items-center justify-end gap-2 border-t ${borderColors.light} pt-4`}
-          >
-            <button
-              type="button"
-              onClick={onClose}
-              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
-            >
-              {t('authoring.timeEntries.modal.cancel')}
-            </button>
-            <button
-              type="submit"
-              disabled={isPending}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
-            >
-              {isPending
-                ? t('authoring.timeEntries.modal.saving')
-                : t('authoring.timeEntries.modal.save')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <ModalFooter className={cn('border-t pt-4', borderColors.light)}>
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+            {t('authoring.timeEntries.modal.cancel')}
+          </Button>
+          <Button type="submit" variant="primary" size="sm" disabled={isPending}>
+            {isPending
+              ? t('authoring.timeEntries.modal.saving')
+              : t('authoring.timeEntries.modal.save')}
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
   )
 }

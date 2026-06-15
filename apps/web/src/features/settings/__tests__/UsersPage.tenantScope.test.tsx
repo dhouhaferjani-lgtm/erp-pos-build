@@ -56,13 +56,13 @@ vi.mock('@/components/ui/ActionMenu', () => ({
   ),
 }))
 
-vi.mock('@/components/ui/SearchInput', () => ({
+vi.mock('@/components/molecules/SearchInput', () => ({
   SearchInput: ({ onChange, value }: { onChange: (value: string) => void; value: string }) => (
     <input aria-label="search-users" value={value} onChange={(event) => { onChange(event.target.value) }} />
   ),
 }))
 
-vi.mock('@/components/ui/FilterTabs', () => ({
+vi.mock('@/components/molecules/FilterTabs', () => ({
   FilterTabs: ({ onChange, value }: { onChange: (value: string) => void; value: string }) => (
     <select aria-label="status-filter" value={value} onChange={(event) => { onChange(event.target.value) }}>
       <option value="all">all</option>

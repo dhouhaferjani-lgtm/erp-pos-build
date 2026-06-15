@@ -93,7 +93,9 @@ export interface SyncMenuCategoryItemsData {
 export interface AddMenuCategoryItemData {
   sellable_type: 'product' | 'composite_item'
   sellable_id: string
-  override_price?: number | null
+  // Canonical decimal string (matches MenuItemData.override_price). Never a JS
+  // float — money stays out of the IEEE-754 pipeline (precision contract).
+  override_price?: string | null
   display_order?: number
   is_available?: boolean
 }

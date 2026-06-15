@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { X } from 'lucide-react'
 import { useUpdateAccount } from '../hooks/useAccounts'
-import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { Modal, ModalContent, ModalFooter } from '@/components/organisms'
+import { Button, FormField, Input, Textarea } from '@/components/atoms'
+import { tokens } from '@/lib/designTokens'
 import type { Account } from '../types'
 
 interface EditAccountModalProps {
@@ -18,7 +19,7 @@ export function EditAccountModal({ account, open, onClose, onSuccess }: EditAcco
 
   const [formData, setFormData] = useState({
     name: account.name,
-    description: account.description || '',
+    description: account.description ?? '',
     is_active: account.is_active,
   })
 
@@ -29,7 +30,7 @@ export function EditAccountModal({ account, open, onClose, onSuccess }: EditAcco
   useEffect(() => {
     setFormData({
       name: account.name,
-      description: account.description || '',
+      description: account.description ?? '',
       is_active: account.is_active,
     })
     // Intentionally resetting form when account prop changes
@@ -68,76 +69,48 @@ export function EditAccountModal({ account, open, onClose, onSuccess }: EditAcco
       })
   }
 
-  if (!open) return null
-
   return (
-    <div className={tokens.modal.backdrop}>
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4" role="dialog">
-        <div className={`flex items-center justify-between px-6 py-4 border-b ${borderColors.light}`}>
-          <h2 className={`text-lg font-semibold ${textColors.primary}`}>{t('finance:chartOfAccounts.account.editTitle')}</h2>
-          <button
-            onClick={onClose}
-            className={`${textColors.disabled} ${textColors.hoverSecondary} transition-colors`}
+    <Modal isOpen={open} onClose={onClose} title={t('finance:chartOfAccounts.account.editTitle')}>
+      <form onSubmit={handleSubmit}>
+        <ModalContent>
+          <FormField
+            label={t('finance:chartOfAccounts.account.code')}
+            helperText={t('finance:chartOfAccounts.account.codeReadonly')}
           >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+            <Input type="text" value={account.code} disabled />
+          </FormField>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className={`${tokens.label.base} mb-1`}>
-              {t('finance:chartOfAccounts.account.code')}
-            </label>
-            <input
-              type="text"
-              value={account.code}
-              disabled
-              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg bg-gray-50 ${textColors.disabled}`}
-            />
-            <p className={tokens.helperText.base}>{t('finance:chartOfAccounts.account.codeReadonly')}</p>
-          </div>
+          <FormField
+            label={t('finance:chartOfAccounts.account.type')}
+            helperText={t('finance:chartOfAccounts.account.typeReadonly')}
+          >
+            <Input type="text" value={account.type} disabled className="capitalize" />
+          </FormField>
 
-          <div>
-            <label className={`${tokens.label.base} mb-1`}>
-              {t('finance:chartOfAccounts.account.type')}
-            </label>
-            <input
-              type="text"
-              value={account.type}
-              disabled
-              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg bg-gray-50 ${textColors.disabled} capitalize`}
-            />
-            <p className={tokens.helperText.base}>{t('finance:chartOfAccounts.account.typeReadonly')}</p>
-          </div>
-
-          <div>
-            <label htmlFor="edit-name" className={`${tokens.label.base} mb-1`}>
-              {t('finance:chartOfAccounts.account.name')}
-            </label>
-            <input
+          <FormField
+            label={t('finance:chartOfAccounts.account.name')}
+            htmlFor="edit-name"
+            error={errors['name']}
+          >
+            <Input
               id="edit-name"
               name="name"
               type="text"
               value={formData.name}
-              onChange={(e) => { setFormData({ ...formData, name: e.target.value }); }}
-              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
+              onChange={(e) => { setFormData({ ...formData, name: e.target.value }) }}
+              error={Boolean(errors['name'])}
             />
-            {errors['name'] && <p className={tokens.helperText.error}>{errors['name']}</p>}
-          </div>
+          </FormField>
 
-          <div>
-            <label htmlFor="edit-description" className={`${tokens.label.base} mb-1`}>
-              {t('finance:chartOfAccounts.account.description')}
-            </label>
-            <textarea
+          <FormField label={t('finance:chartOfAccounts.account.description')} htmlFor="edit-description">
+            <Textarea
               id="edit-description"
               name="description"
               rows={3}
               value={formData.description}
-              onChange={(e) => { setFormData({ ...formData, description: e.target.value }); }}
-              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
+              onChange={(e) => { setFormData({ ...formData, description: e.target.value }) }}
             />
-          </div>
+          </FormField>
 
           <div className="flex items-center gap-2">
             <input
@@ -145,34 +118,26 @@ export function EditAccountModal({ account, open, onClose, onSuccess }: EditAcco
               name="is_active"
               type="checkbox"
               checked={formData.is_active}
-              onChange={(e) => { setFormData({ ...formData, is_active: e.target.checked }); }}
+              onChange={(e) => { setFormData({ ...formData, is_active: e.target.checked }) }}
               className={tokens.checkbox.base}
             />
             <label htmlFor="is_active" className={tokens.label.base}>
               {t('finance:chartOfAccounts.account.active')}
             </label>
           </div>
+        </ModalContent>
 
-          <div className="flex gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className={`flex-1 px-4 py-2 border ${borderColors.default} rounded-lg text-sm font-medium ${textColors.secondary} hover:bg-gray-50 transition-colors`}
-            >
-              {t('common:actions.cancel')}
-            </button>
-            <button
-              type="submit"
-              disabled={updateMutation.isPending}
-              className={`flex-1 px-4 py-2 ${tokens.button.primary} rounded-lg text-sm font-medium disabled:opacity-50 transition-colors`}
-            >
-              {updateMutation.isPending
-                ? t('finance:chartOfAccounts.account.saving')
-                : t('finance:chartOfAccounts.account.saveChanges')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <ModalFooter>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            {t('common:actions.cancel')}
+          </Button>
+          <Button type="submit" variant="primary" disabled={updateMutation.isPending}>
+            {updateMutation.isPending
+              ? t('finance:chartOfAccounts.account.saving')
+              : t('finance:chartOfAccounts.account.saveChanges')}
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
   )
 }

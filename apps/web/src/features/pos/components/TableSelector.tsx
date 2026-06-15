@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { colors, textColors, borderColors, tokens } from '@/lib/designTokens'
 import { useFloors } from '../hooks/useTables'
 import { TableStatusBadge } from '../atoms/TableStatusBadge'
 import type { TableData } from '../api/tableApi'
@@ -18,7 +19,7 @@ export function TableSelector({ selectedTableId, onSelectTable }: TableSelectorP
 
   if (isLoading) {
     return (
-      <div className="py-4 text-center text-sm text-gray-400">
+      <div className={`py-4 text-center text-sm ${textColors.disabled}`}>
         {t('common:loading', 'Loading...')}
       </div>
     )
@@ -36,14 +37,14 @@ export function TableSelector({ selectedTableId, onSelectTable }: TableSelectorP
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+        <h3 className={`text-sm font-semibold ${textColors.secondary}`}>
           {t('tables.selectTable')}
         </h3>
         {selectedTableId && (
           <button
             type="button"
             onClick={() => { onSelectTable(null) }}
-            className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400"
+            className={`text-xs ${textColors.brand} ${textColors.hoverPrimary}`}
           >
             {t('tables.clearSelection')}
           </button>
@@ -56,7 +57,7 @@ export function TableSelector({ selectedTableId, onSelectTable }: TableSelectorP
 
         return (
           <div key={floor.id}>
-            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <p className={`mb-2 text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
               {floor.name}
             </p>
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -72,21 +73,21 @@ export function TableSelector({ selectedTableId, onSelectTable }: TableSelectorP
                     onClick={() => { onSelectTable(isSelected ? null : table.id) }}
                     className={`relative rounded-lg border-2 p-3 text-center transition-all ${
                       isSelected
-                        ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/20'
+                        ? `${borderColors.primary} ${colors.primary[50]}`
                         : isAvailable
-                          ? 'border-gray-200 bg-white hover:border-blue-300 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-blue-600'
-                          : 'cursor-not-allowed border-gray-100 bg-gray-50 opacity-50 dark:border-gray-700 dark:bg-gray-900'
+                          ? `${borderColors.light} ${colors.white} ${tokens.card.hoverPrimary}`
+                          : `cursor-not-allowed ${borderColors.light} ${colors.neutral[50]} opacity-50`
                     }`}
                   >
-                    <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                    <div className={`text-sm font-bold ${textColors.primary}`}>
                       {table.table_number}
                     </div>
                     {table.label && (
-                      <div className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
+                      <div className={`mt-0.5 truncate text-xs ${textColors.tertiary}`}>
                         {table.label}
                       </div>
                     )}
-                    <div className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    <div className={`mt-1 text-xs ${textColors.disabled}`}>
                       {table.seats} {t('tables.seats')}
                     </div>
                     <div className="mt-1">

@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { ShoppingBag, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { useHeldOrders, useRecallOrder, useDiscardOrder } from '../../hooks/useHeldOrders'
 import { HeldOrderCard } from '../HeldOrderCard'
 import type { HeldOrderData } from '../../api/heldOrderApi'
@@ -79,13 +80,13 @@ export function HeldOrdersList({
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className={cn('text-lg font-semibold', textColors.primary)}>
             {t('pos:heldOrders.title')}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className={tokens.modal.closeButton}
           >
             <X className="h-5 w-5" />
           </button>
@@ -95,17 +96,17 @@ export function HeldOrdersList({
         <div className="h-full overflow-y-auto pb-20 pt-2">
           {isLoading && (
             <div className="flex items-center justify-center py-12">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+              <div className={cn('h-6 w-6 animate-spin rounded-full border-2 border-t-transparent', borderColors.primary)} />
             </div>
           )}
 
           {!isLoading && (!heldOrders || heldOrders.length === 0) && (
             <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-              <ShoppingBag className="mb-3 h-12 w-12 text-gray-300" />
-              <p className="text-sm font-medium text-gray-500">
+              <ShoppingBag className={cn('mb-3 h-12 w-12', textColors.disabled)} />
+              <p className={cn('text-sm font-medium', textColors.tertiary)}>
                 {t('pos:heldOrders.noHeldOrders')}
               </p>
-              <p className="mt-1 text-xs text-gray-400">
+              <p className={cn('mt-1 text-xs', textColors.disabled)}>
                 {t('pos:heldOrders.noHeldOrdersDescription')}
               </p>
             </div>
