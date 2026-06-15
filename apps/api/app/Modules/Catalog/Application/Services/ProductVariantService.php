@@ -12,12 +12,17 @@ use App\Modules\Catalog\Domain\Events\ProductVariantCreated;
 use App\Modules\Catalog\Domain\Repositories\AttributeRepository;
 use App\Modules\Catalog\Domain\Repositories\AttributeValueRepository;
 use App\Modules\Catalog\Domain\Repositories\ProductVariantRepository;
+use App\Modules\Catalog\Domain\Support\VariantMatrixLimit;
 use App\Modules\Inventory\Application\Services\StockLevelMigrationService;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Domain\Exceptions\DuplicateBarcodeException;
+use App\Shared\Domain\Exceptions\MatrixGenerationLimitException;
 use App\Shared\Domain\Exceptions\MissingVariantException;
 use App\Shared\Domain\Exceptions\VariantRequiredException;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 final class ProductVariantService
@@ -149,37 +154,36 @@ final class ProductVariantService
     }
 
     /**
-     * Generate and persist the full cartesian-product variant matrix for a product.
+     * Generate and persist the variant matrix for a product from a value-subset
+     * selection, idempotently and with restore-on-regenerate.
      *
-     * For each attribute in $attributeIds, all its values are loaded and used as
-     * one axis. The resulting N₁ × N₂ × … combinations are each persisted as a
-     * ProductVariant (via createVariant) with junction rows.
+     * Each axis specifies an attribute and the SUBSET of its value IDs to include
+     * (not "all values" — that is the legacy behaviour). The Cartesian product of
+     * the selected values is computed; for each combination one of three things
+     * happens, keyed by the combination's set of (attribute_id => attribute_value_id)
+     * pairs (the junction rows), which is rename-stable because it uses IDs:
+     *   - an ACTIVE variant already exists for the combo  → skipped (counted)
+     *   - a TRASHED variant exists for the combo          → restored
+     *   - no variant exists for the combo                 → created
      *
-     * The entire creation loop runs inside a single outer DB transaction so that
-     * a failure on any combo rolls back all previously-created variants atomically.
-     * Under PostgreSQL, the nested DB::transaction calls inside createVariant become
-     * savepoints, so nesting is safe.
+     * The whole loop runs in a single outer transaction. Under PostgreSQL the
+     * nested DB::transaction inside createVariant becomes a savepoint, so nesting
+     * is safe and any mid-loop failure rolls everything back atomically.
      *
-     * SKU / variant_code uniqueness guarantee:
-     *   "{product->sku}-{valueCode1}-{valueCode2}-…" uppercased and stripped of
-     *   spaces. The cartesian product guarantees each combination of value codes is
-     *   distinct within this call, so no two generated variants can produce the same
-     *   code. Tenant-global SKU uniqueness additionally relies on product SKUs being
-     *   unique per tenant — this method does not enforce cross-product uniqueness.
+     * variant_code / SKU use machine-readable value CODEs (uppercased, spaces→'_');
+     * name_suffix uses human-readable value LABELs (e.g. "Taille 39 / Noir").
      *
-     * name_suffix uses human-readable value LABELs (e.g. "39 / Noir"), while
-     * variant_code and SKU use the machine-readable value CODEs (e.g. "39-NOIR").
+     * is_default rule: the first combo this run becomes default ONLY when the
+     * product has no existing (active, non-trashed) default and no default has
+     * been assigned yet during this run. Restores never change the default.
      *
-     * is_default rule: the first generated variant is set as default ONLY when
-     * the product currently has zero variants. Subsequent calls therefore never
-     * add a second default.
+     * @param  array<int, array{attributeId: string, valueIds: string[]}>  $axes
+     * @return array{created: Collection<int, ProductVariant>, restored: Collection<int, ProductVariant>, skipped_count: int}
      *
-     * @param  string[]  $attributeIds
-     * @return Collection<int, ProductVariant>
-     *
-     * @throws RuntimeException when the product does not exist.
+     * @throws RuntimeException when the product or an attribute does not exist.
+     * @throws MatrixGenerationLimitException when the gross matrix exceeds the cap.
      */
-    public function generateMatrix(string $productId, array $attributeIds): Collection
+    public function generateMatrix(string $productId, array $axes): array
     {
         /** @var Product|null $product */
         $product = Product::find($productId);
@@ -188,26 +192,29 @@ final class ProductVariantService
             throw new RuntimeException("Product [{$productId}] not found.");
         }
 
-        // Build axes (string codes) AND a parallel ID-lookup map at the same time.
-        // axes:   ['taille' => ['36', '37', …], 'couleur' => ['noir', …]]
-        // lookup: ['taille' => ['36' => {attributeId, attributeValueId, label}, …], …]
+        // Build code-space axes (['attrCode' => ['valCode', …]]) AND an ID lookup
+        // (['attrCode']['valCode'] => {attributeId, attributeValueId, label}).
+        // Values are loaded by ID and filtered to the selected valueIds so the
+        // current codes/labels are used (no stale-rename hazard).
 
-        /** @var array<string, string[]> $axes */
-        $axes = [];
+        /** @var array<string, string[]> $codeAxes */
+        $codeAxes = [];
 
         /**
          * @var array<string, array<string, array{attributeId: string, attributeValueId: string, label: string}>> $lookup
          */
         $lookup = [];
 
-        foreach ($attributeIds as $attributeId) {
-            $attribute = $this->attributeRepo->findById((string) $attributeId);
+        foreach ($axes as $axis) {
+            $attribute = $this->attributeRepo->findById($axis['attributeId']);
 
             if ($attribute === null) {
-                throw new RuntimeException("Attribute [{$attributeId}] not found.");
+                throw new RuntimeException("Attribute [{$axis['attributeId']}] not found.");
             }
 
-            $values = $this->attributeValueRepo->listForAttribute($attribute->id);
+            $values = $this->attributeValueRepo
+                ->listForAttribute($attribute->id)
+                ->whereIn('id', $axis['valueIds']);
 
             /** @var array<string, array{attributeId: string, attributeValueId: string, label: string}> $axisLookup */
             $axisLookup = [];
@@ -225,70 +232,184 @@ final class ProductVariantService
                 ];
             }
 
-            $axes[$attribute->code] = $axisCodes;
+            $codeAxes[$attribute->code] = $axisCodes;
             $lookup[$attribute->code] = $axisLookup;
         }
 
-        $combos = $this->matrixGenerator->cartesian($axes);
+        // Cap guard — fail before any write so the matrix is never partially applied.
+        $gross = (int) array_product(array_map('count', $codeAxes));
+        if ($gross > VariantMatrixLimit::MAX_VARIANTS_PER_GENERATE) {
+            throw MatrixGenerationLimitException::exceeded($gross, VariantMatrixLimit::MAX_VARIANTS_PER_GENERATE);
+        }
 
-        // Determine if this is the first matrix generation (no existing variants).
-        $hasExistingDefault = $this->variantRepo
-            ->listForProduct($productId, onlyActive: false)
+        // Load every existing variant (incl. trashed) WITH its junction rows so we
+        // can decide skip/restore/create per combo, keyed by the ID-based combo key.
+        /** @var Collection<int, ProductVariant> $existing */
+        $existing = ProductVariant::withTrashed()
+            ->where('product_id', $productId)
+            ->with('attributeValues')
+            ->get();
+
+        /** @var array<string, ProductVariant> $byComboKey */
+        $byComboKey = [];
+        foreach ($existing as $variant) {
+            $byComboKey[$this->comboKeyFromJunction($variant)] = $variant;
+        }
+
+        $hasExistingDefault = $existing
+            ->whereNull('deleted_at')
             ->contains('is_default', true);
 
-        // Wrap the entire creation loop in an outer transaction so that any
-        // mid-loop failure (e.g. unique constraint violation) rolls back ALL
-        // previously-created variants atomically.
-        return DB::transaction(function () use ($combos, $product, $productId, $lookup, $hasExistingDefault): Collection {
+        // We deliberately do NOT pass an $excluded list to cartesian(): each combo
+        // needs a 3-way decision (skip active / restore trashed / create missing)
+        // which an exclude-list cannot express.
+        $combos = $this->matrixGenerator->cartesian($codeAxes);
+
+        return DB::transaction(function () use (
+            $combos,
+            $product,
+            $lookup,
+            $byComboKey,
+            $hasExistingDefault
+        ): array {
             $created = collect();
+            $restored = collect();
+            $skipped = 0;
+            $defaultAssigned = false;
 
-            foreach ($combos as $index => $combo) {
-                // Build suffix parts in axis order for deterministic, unique codes.
-                // Uses value CODEs (machine-readable) for variant_code / SKU.
-                $codeParts = array_values($combo);
-                $suffix = implode('-', array_map(
-                    fn (string $part): string => strtoupper(str_replace(' ', '_', $part)),
-                    $codeParts
-                ));
-
-                $variantCode = strtoupper($product->sku).'-'.$suffix;
-                $sku = $variantCode;
-
-                // Build name suffix from human-readable value LABELs (e.g. "39 / Noir").
-                $labelParts = [];
+            foreach ($combos as $combo) {
+                // Translate the code-space combo into ID pairs and an ID-based key.
+                $idPairs = [];
                 foreach ($combo as $axisCode => $valueCode) {
-                    $labelParts[] = $lookup[$axisCode][$valueCode]['label'];
+                    $entry = $lookup[$axisCode][$valueCode];
+                    $idPairs[$entry['attributeId']] = $entry['attributeValueId'];
                 }
-                $nameSuffix = implode(' / ', $labelParts);
+                $key = $this->comboKey($idPairs);
 
-                // Build junction pairs from the lookup.
-                /** @var array<int, array{attributeId: string, attributeValueId: string}> $attributeValues */
-                $attributeValues = [];
-                foreach ($combo as $axisCode => $valueCode) {
-                    $attributeValues[] = [
-                        'attributeId' => $lookup[$axisCode][$valueCode]['attributeId'],
-                        'attributeValueId' => $lookup[$axisCode][$valueCode]['attributeValueId'],
-                    ];
+                if (isset($byComboKey[$key])) {
+                    $match = $byComboKey[$key];
+
+                    if ($match->deleted_at === null) {
+                        $skipped++;
+
+                        continue;
+                    }
+
+                    // Restore the trashed combo under a row lock so a concurrent
+                    // restore cannot race us; map unique violations to 422 errors.
+                    $locked = ProductVariant::withTrashed()->where('id', $match->id)->lockForUpdate()->first();
+
+                    if ($locked === null) {
+                        throw new RuntimeException("Variant [{$match->id}] disappeared during restore.");
+                    }
+
+                    try {
+                        $locked->restore();
+                    } catch (QueryException $e) {
+                        if (DuplicateBarcodeException::isViolationOf($e, 'product_variants_tenant_barcode_unique')) {
+                            throw DuplicateBarcodeException::asValidation('Cannot restore variant: its barcode is now used by another variant.');
+                        }
+                        if (DuplicateBarcodeException::isViolationOf($e, 'product_variants_tenant_sku_unique')) {
+                            throw ValidationException::withMessages(['sku' => ['Cannot restore variant: its SKU is now used by another variant.']]);
+                        }
+                        throw $e;
+                    }
+                    $locked->load('attributeValues');
+                    $restored->push($locked);
+
+                    continue;
                 }
 
-                // First combo becomes default only when the product has no existing default.
-                $isDefault = $index === 0 && ! $hasExistingDefault;
+                // Missing combo → create it. The first created combo this run becomes
+                // default only when the product has no existing default and none has
+                // been assigned yet this run.
+                $isDefault = ! $hasExistingDefault && ! $defaultAssigned;
+                if ($isDefault) {
+                    $defaultAssigned = true;
+                }
 
-                $command = new CreateVariantCommand(
-                    tenantId: $product->tenant_id,
-                    companyId: $product->company_id,
-                    productId: $productId,
-                    variantCode: $variantCode,
-                    sku: $sku,
-                    nameSuffix: $nameSuffix,
-                    isDefault: $isDefault,
-                    attributeValues: $attributeValues,
-                );
-
+                $command = $this->commandFor($product, $combo, $lookup, $isDefault);
                 $created->push($this->createVariant($command));
             }
 
-            return $created;
+            return [
+                'created' => $created,
+                'restored' => $restored,
+                'skipped_count' => $skipped,
+            ];
         });
+    }
+
+    /**
+     * Build a CreateVariantCommand for a single code-space combo.
+     *
+     * @param  array<string, string>  $combo  attribute_code => value_code
+     * @param  array<string, array<string, array{attributeId: string, attributeValueId: string, label: string}>>  $lookup
+     */
+    private function commandFor(Product $product, array $combo, array $lookup, bool $isDefault): CreateVariantCommand
+    {
+        // variant_code / SKU: machine-readable value CODEs (uppercased, spaces → '_').
+        $codeParts = array_values($combo);
+        $suffix = implode('-', array_map(
+            fn (string $part): string => strtoupper(str_replace(' ', '_', $part)),
+            $codeParts
+        ));
+        $variantCode = strtoupper($product->sku).'-'.$suffix;
+
+        // name_suffix: human-readable value LABELs (e.g. "Taille 39 / Noir").
+        $labelParts = [];
+        foreach ($combo as $axisCode => $valueCode) {
+            $labelParts[] = $lookup[$axisCode][$valueCode]['label'];
+        }
+        $nameSuffix = implode(' / ', $labelParts);
+
+        /** @var array<int, array{attributeId: string, attributeValueId: string}> $attributeValues */
+        $attributeValues = [];
+        foreach ($combo as $axisCode => $valueCode) {
+            $attributeValues[] = [
+                'attributeId' => $lookup[$axisCode][$valueCode]['attributeId'],
+                'attributeValueId' => $lookup[$axisCode][$valueCode]['attributeValueId'],
+            ];
+        }
+
+        return new CreateVariantCommand(
+            tenantId: $product->tenant_id,
+            companyId: $product->company_id,
+            productId: $product->id,
+            variantCode: $variantCode,
+            sku: $variantCode,
+            nameSuffix: $nameSuffix,
+            isDefault: $isDefault,
+            attributeValues: $attributeValues,
+        );
+    }
+
+    /**
+     * Order-independent key for a set of (attribute_id => attribute_value_id) pairs.
+     *
+     * @param  array<string, string>  $attributeIdToValueId
+     */
+    private function comboKey(array $attributeIdToValueId): string
+    {
+        ksort($attributeIdToValueId);
+
+        return implode('|', array_map(
+            fn (string $a, string $v): string => "$a:$v",
+            array_keys($attributeIdToValueId),
+            $attributeIdToValueId
+        ));
+    }
+
+    /**
+     * Derive the combo key from a variant's persisted junction rows.
+     */
+    private function comboKeyFromJunction(ProductVariant $variant): string
+    {
+        $pairs = [];
+        foreach ($variant->attributeValues as $row) {
+            $pairs[$row->attribute_id] = $row->attribute_value_id;
+        }
+
+        return $this->comboKey($pairs);
     }
 }
