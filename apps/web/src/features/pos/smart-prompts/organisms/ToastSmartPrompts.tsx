@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ChevronUp, Sparkles, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { borderColors, colors, textColors } from '@/lib/designTokens'
 import { SmartPromptCard } from '../atoms/SmartPromptCard'
 import { ContextQuestion } from '../atoms/ContextQuestion'
 import type { Recommendation } from '../types/recommendations'
@@ -46,30 +49,41 @@ export function ToastSmartPrompts({
       {!expanded && (
         <button
           type="button"
-          className="flex w-full items-center gap-2 border-t border-indigo-500/20 bg-indigo-500/10 px-4 py-2.5 backdrop-blur-sm"
+          className={cn(
+            'flex w-full items-center gap-2 border-t px-4 py-3',
+            borderColors.light,
+            colors.neutral[50]
+          )}
           onClick={() => setExpanded(true)}
         >
-          <span className="text-xs text-indigo-400">✦</span>
-          <span className="text-xs font-medium text-indigo-400">
+          <Sparkles className={cn('h-4 w-4', textColors.brand)} aria-hidden="true" />
+          <span className={cn('text-xs font-medium', textColors.brand)}>
             {t('toast_collapsed', { count: recommendations.length })}
           </span>
-          <span className="ml-auto text-sm text-indigo-400">⌃</span>
+          <ChevronUp className={cn('ml-auto h-5 w-5', textColors.brand)} aria-hidden="true" />
         </button>
       )}
 
       {expanded && (
-        <div className="border-t border-indigo-500/20 bg-gray-900/95 px-4 py-3 backdrop-blur-md">
+        <div className={cn('border-t px-4 py-3', borderColors.light, colors.white)}>
           <div className="mb-2 flex items-center gap-1.5">
-            <span className="text-xs text-indigo-400">✦</span>
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-indigo-400">
+            <Sparkles className={cn('h-4 w-4', textColors.brand)} aria-hidden="true" />
+            <span
+              className={cn('text-[11px] font-semibold uppercase tracking-wide', textColors.brand)}
+            >
               {t('section_title')}
             </span>
             <button
               type="button"
-              className="ml-auto text-[10px] text-gray-500 hover:text-gray-400"
+              className={cn(
+                'ml-auto inline-flex min-h-[32px] items-center',
+                textColors.disabled,
+                textColors.hoverSecondary
+              )}
               onClick={() => setExpanded(false)}
+              aria-label={t('dismiss')}
             >
-              ✕
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
 
