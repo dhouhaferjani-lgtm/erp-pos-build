@@ -5,6 +5,7 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { generateXReport, type CurrentShift, type ShiftBalance } from '../api/shiftApi'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { colors, textColors, borderColors } from '@/lib/designTokens'
 
 export interface ShiftOperationsMenuProps {
   shift: CurrentShift
@@ -33,8 +34,12 @@ function MenuButton({ icon, label, onClick, disabled = false }: MenuButtonProps)
         'flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm',
         'transition-colors duration-150',
         disabled
-          ? 'cursor-not-allowed text-gray-400'
-          : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200'
+          ? cn('cursor-not-allowed', textColors.disabled)
+          : cn(
+              textColors.secondary,
+              colors.hover.gray100,
+              textColors.hoverPrimary
+            )
       )}
     >
       <span className="flex items-center justify-center w-5 h-5">{icon}</span>
@@ -131,7 +136,13 @@ export function ShiftOperationsMenu({
       />
 
       {/* Dropdown Menu */}
-      <div className="absolute top-14 right-4 z-50 w-64 rounded-lg bg-white shadow-xl border border-gray-200">
+      <div
+        className={cn(
+          'absolute top-14 right-4 z-50 w-64 rounded-lg shadow-xl border',
+          colors.white,
+          borderColors.light
+        )}
+      >
         <div className="p-2 space-y-1">
           <MenuButton
             icon={<FileText className="w-5 h-5" />}
@@ -152,7 +163,7 @@ export function ShiftOperationsMenu({
             onClick={handleCashPayout}
           />
 
-          <div className="border-t border-gray-200 my-1" />
+          <div className={cn('border-t my-1', borderColors.light)} />
 
           <MenuButton
             icon={<Pause className="w-5 h-5" />}
@@ -164,28 +175,34 @@ export function ShiftOperationsMenu({
 
         {/* Shift Info Footer */}
         {balance && (
-          <div className="border-t border-gray-200 px-3 py-2 bg-gray-50 rounded-b-lg">
-            <div className="text-xs text-gray-500 mb-1">
+          <div
+            className={cn(
+              'border-t px-3 py-2 rounded-b-lg',
+              borderColors.light,
+              colors.neutral[50]
+            )}
+          >
+            <div className={cn('text-xs mb-1', textColors.tertiary)}>
               {t('common:pos.shiftInfo', { defaultValue: 'Shift Information' })}
             </div>
             <div className="space-y-1 text-xs">
               <div className="flex justify-between">
-                <span className="text-gray-600">
+                <span className={textColors.tertiary}>
                   {t('common:pos.openingCash', { defaultValue: 'Opening' })}:
                 </span>
-                <span className="font-medium text-gray-900">{balance.opening_cash}</span>
+                <span className={cn('font-medium', textColors.primary)}>{balance.opening_cash}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">
+                <span className={textColors.tertiary}>
                   {t('common:pos.totalSales', { defaultValue: 'Sales' })}:
                 </span>
-                <span className="font-medium text-green-600">{balance.total_sales}</span>
+                <span className={cn('font-medium', textColors.success)}>{balance.total_sales}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">
+                <span className={textColors.tertiary}>
                   {t('common:pos.expectedCash', { defaultValue: 'Expected' })}:
                 </span>
-                <span className="font-bold text-blue-600">{balance.expected_cash}</span>
+                <span className={cn('font-bold', textColors.brand)}>{balance.expected_cash}</span>
               </div>
             </div>
           </div>

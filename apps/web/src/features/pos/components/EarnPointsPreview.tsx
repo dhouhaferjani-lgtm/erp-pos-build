@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { textColors, colors, borderColors } from '@/lib/designTokens'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -41,11 +42,13 @@ export function EarnPointsPreview({
 
   return (
     <div className={cn(
-      'flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg',
+      'flex items-center gap-2 px-3 py-2 border rounded-lg',
+      colors.success[50],
+      borderColors.success,
       className,
     )}>
-      <Star className="w-4 h-4 text-green-600 flex-shrink-0" />
-      <span className="text-sm text-green-700">
+      <Star className={cn('w-4 h-4 flex-shrink-0', textColors.success)} />
+      <span className={cn('text-sm', textColors.success)}>
         {t('pos:loyalty.earning.preview', { points: data.points_to_earn })}
       </span>
     </div>

@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Pause } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { colors, textColors } from '@/lib/designTokens'
 import { useHeldOrders } from '../hooks/useHeldOrders'
 
 export interface HeldOrdersBadgeProps {
@@ -28,7 +29,7 @@ export function HeldOrdersBadge({ terminalId, onClick }: HeldOrdersBadgeProps) {
         'relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
         count > 0
           ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
-          : 'text-gray-500 hover:bg-gray-100',
+          : cn(textColors.tertiary, colors.hover.gray100),
       )}
       title={t('pos:heldOrders.title')}
     >

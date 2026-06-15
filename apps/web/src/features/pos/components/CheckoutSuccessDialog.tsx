@@ -3,7 +3,7 @@ import { CheckCircle } from 'lucide-react'
 import { Modal } from '@/components/organisms/Modal'
 import { POSButton } from '../atoms/POSButton'
 import { ReceiptPrintButton } from './ReceiptPrintButton'
-import { textColors } from '@/lib/designTokens'
+import { textColors, colors, borderColors } from '@/lib/designTokens'
 import { useCurrency } from '@/hooks/useCurrency'
 import { cn } from '@/lib/utils'
 
@@ -46,8 +46,8 @@ export function CheckoutSuccessDialog({
     >
       <div className="text-center space-y-6">
         <div className="flex items-center justify-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-            <CheckCircle className="w-10 h-10 text-green-600" />
+          <div className={cn('w-16 h-16 rounded-full flex items-center justify-center', colors.success[100])}>
+            <CheckCircle className={cn('w-10 h-10', textColors.success)} />
           </div>
         </div>
 
@@ -58,13 +58,13 @@ export function CheckoutSuccessDialog({
             </p>
           )}
           {total && (
-            <p className="text-lg font-semibold text-blue-600">
+            <p className={cn('text-lg font-semibold tabular-nums', textColors.brand)}>
               {t('pos:advancedPayments.total')}: {total}
             </p>
           )}
           {changeDue != null && changeDue > 0 && (
-            <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3">
-              <p className="text-lg font-bold text-green-700">
+            <div className={cn('rounded-lg px-4 py-3 border', colors.success[50], borderColors.success)}>
+              <p className={cn('text-lg font-bold tabular-nums', textColors.success)}>
                 {t('pos:payment.changeDue', { amount: changeDue.toFixed(decimals) })}
               </p>
             </div>
