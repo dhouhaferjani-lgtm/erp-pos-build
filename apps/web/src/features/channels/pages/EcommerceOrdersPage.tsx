@@ -1,26 +1,19 @@
 import { useState } from 'react'
 import { ShoppingBag } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { tokens, textColors } from '@/lib/designTokens'
+import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
+import { Button, Select } from '@/components/atoms'
+import { PageHeader } from '@/components/molecules/PageHeader'
 import { useAggregateChannelOrders } from '../hooks/useAggregateChannelOrders'
 import type { AggregateChannelOrderRow, ChannelOrderStatus } from '../types'
-import {
-  header,
-  page as pageClass,
-  panel,
-  secondaryButton,
-  select,
-  subtitle,
-  table,
-  tableShell,
-  td,
-  th,
-  title,
-} from './channelPageStyles'
 
 const PER_PAGE = 25
 
 const ORDER_STATUSES: readonly ChannelOrderStatus[] = ['pending', 'processed', 'failed', 'ignored'] as const
+
+const thClass = cn('px-6 py-3 text-start text-xs font-medium uppercase', textColors.tertiary)
+const tdClass = cn('px-6 py-4 text-sm', textColors.secondary)
 
 const statusBadgeClasses: Record<ChannelOrderStatus, string> = {
   pending: `${tokens.badge.base} ${tokens.badge.yellow}`,
@@ -84,66 +77,65 @@ export function EcommerceOrdersPage() {
   const formatReceivedAt = (value: string): string => new Date(value).toLocaleString(i18n.language)
 
   return (
-    <div className={pageClass}>
-      <div className={header}>
-        <div>
-          <h1 className={title}>{t('channels:aggregateOrders.title')}</h1>
-          <p className={subtitle}>{t('channels:aggregateOrders.subtitle')}</p>
-        </div>
-        <select
-          className={select}
-          aria-label={t('channels:aggregateOrders.filterStatus')}
-          value={statusFilter}
-          onChange={(event) => {
-            const { value } = event.target
-            setStatusFilter(isChannelOrderStatus(value) ? value : '')
-            setPage(1)
-          }}
-        >
-          <option value="">{t('channels:aggregateOrders.allStatuses')}</option>
-          {ORDER_STATUSES.map((status) => (
-            <option key={status} value={status}>
-              {t(`channels:orderStatus.${status}`)}
-            </option>
-          ))}
-        </select>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title={t('channels:aggregateOrders.title')}
+        subtitle={t('channels:aggregateOrders.subtitle')}
+        actions={
+          <Select
+            aria-label={t('channels:aggregateOrders.filterStatus')}
+            value={statusFilter}
+            onChange={(event) => {
+              const { value } = event.target
+              setStatusFilter(isChannelOrderStatus(value) ? value : '')
+              setPage(1)
+            }}
+          >
+            <option value="">{t('channels:aggregateOrders.allStatuses')}</option>
+            {ORDER_STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {t(`channels:orderStatus.${status}`)}
+              </option>
+            ))}
+          </Select>
+        }
+      />
 
       {isLoading ? (
-        <div className={panel}>{t('common:status.loading')}</div>
+        <div className={tokens.card.base}>{t('common:status.loading')}</div>
       ) : error ? (
-        <div className={panel}>{t('channels:aggregateOrders.loadError')}</div>
+        <div className={tokens.card.base}>{t('channels:aggregateOrders.loadError')}</div>
       ) : orders.length === 0 ? (
-        <div className={panel}>
-          <ShoppingBag className={`mb-3 h-6 w-6 ${textColors.tertiary}`} />
+        <div className={tokens.card.base}>
+          <ShoppingBag className={cn('mb-3 h-6 w-6', textColors.tertiary)} />
           {t('channels:aggregateOrders.empty')}
         </div>
       ) : (
-        <div className={tableShell}>
-          <table className={table}>
+        <div className={cn('overflow-hidden rounded-lg border bg-white', borderColors.light)}>
+          <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
             <thead>
               <tr>
-                <th className={th}>{t('channels:orders.externalId')}</th>
-                <th className={th}>{t('channels:aggregateOrders.channel')}</th>
-                <th className={th}>{t('channels:aggregateOrders.customer')}</th>
-                <th className={th}>{t('channels:aggregateOrders.total')}</th>
-                <th className={th}>{t('common:fields.status')}</th>
-                <th className={th}>{t('channels:orders.receivedAt')}</th>
+                <th className={thClass}>{t('channels:orders.externalId')}</th>
+                <th className={thClass}>{t('channels:aggregateOrders.channel')}</th>
+                <th className={thClass}>{t('channels:aggregateOrders.customer')}</th>
+                <th className={thClass}>{t('channels:aggregateOrders.total')}</th>
+                <th className={thClass}>{t('common:fields.status')}</th>
+                <th className={thClass}>{t('channels:orders.receivedAt')}</th>
               </tr>
             </thead>
             <tbody>
               {orders.map((order) => (
                 <tr key={order.id}>
-                  <td className={td}>{order.external_order_id}</td>
-                  <td className={td}>{order.channel.name}</td>
-                  <td className={td}>{customerLabel(order) ?? '—'}</td>
-                  <td className={td}>{totalLabel(order) ?? '—'}</td>
-                  <td className={td}>
+                  <td className={tdClass}>{order.external_order_id}</td>
+                  <td className={tdClass}>{order.channel.name}</td>
+                  <td className={tdClass}>{customerLabel(order) ?? '—'}</td>
+                  <td className={tdClass}>{totalLabel(order) ?? '—'}</td>
+                  <td className={tdClass}>
                     <span className={statusBadgeClasses[order.status]}>
                       {t(`channels:orderStatus.${order.status}`)}
                     </span>
                   </td>
-                  <td className={td}>{formatReceivedAt(order.received_at)}</td>
+                  <td className={tdClass}>{formatReceivedAt(order.received_at)}</td>
                 </tr>
               ))}
             </tbody>
@@ -153,7 +145,7 @@ export function EcommerceOrdersPage() {
 
       {meta && meta.last_page > 1 && (
         <div className="flex items-center justify-between">
-          <p className={subtitle}>
+          <p className={cn('text-sm', textColors.tertiary)}>
             {t('channels:aggregateOrders.pageOf', {
               current: meta.current_page,
               last: meta.last_page,
@@ -161,22 +153,26 @@ export function EcommerceOrdersPage() {
             })}
           </p>
           <div className="flex gap-2">
-            <button
+            <Button
               type="button"
-              className={secondaryButton}
+              variant="secondary"
               disabled={page <= 1}
-              onClick={() => { setPage((current) => Math.max(1, current - 1)) }}
+              onClick={() => {
+                setPage((current) => Math.max(1, current - 1))
+              }}
             >
               {t('common:previous')}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className={secondaryButton}
+              variant="secondary"
               disabled={page >= meta.last_page}
-              onClick={() => { setPage((current) => Math.min(meta.last_page, current + 1)) }}
+              onClick={() => {
+                setPage((current) => Math.min(meta.last_page, current + 1))
+              }}
             >
               {t('common:next')}
-            </button>
+            </Button>
           </div>
         </div>
       )}
