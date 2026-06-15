@@ -130,6 +130,27 @@ final class PosAuthSyncPinsTest extends TestCase
         $this->assertNull($suspended->pos_pin);
     }
 
+    public function test_sync_pins_rejects_a_pending_company_member(): void
+    {
+        $pending = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        UserCompanyMembership::create([
+            'user_id' => $pending->id,
+            'company_id' => $this->company->id,
+            'role' => 'cashier',
+            'status' => MembershipStatus::Pending->value,
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/auth/sync-pins', [
+            'updates' => [
+                ['user_id' => $pending->id, 'pin_hash' => Hash::make('1212')],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $pending->refresh();
+        $this->assertNull($pending->pos_pin);
+    }
+
     // The legit multi-operator offline flow: another operator set up their own
     // PIN on this shared terminal while offline; the batch is pushed under
     // whoever is authenticated at sync time. An ACTIVE company member must still

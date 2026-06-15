@@ -79,6 +79,14 @@ final class CompanyContextActiveMembershipTest extends TestCase
         $this->assertFalse($this->context->userHasAccessToCompany($this->user, $company->id));
     }
 
+    public function test_user_has_access_to_company_is_false_for_a_pending_membership(): void
+    {
+        $company = $this->company();
+        $this->membership($company, MembershipStatus::Pending);
+
+        $this->assertFalse($this->context->userHasAccessToCompany($this->user, $company->id));
+    }
+
     public function test_get_default_company_skips_a_suspended_membership_and_returns_the_active_one(): void
     {
         $suspended = $this->company();
