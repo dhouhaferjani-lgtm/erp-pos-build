@@ -5,8 +5,12 @@ import { ProductVariantMatrixEditor } from '../ProductVariantMatrixEditor'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, second?: unknown) =>
-      typeof second === 'string' ? second : key,
+    t: (key: string, second?: unknown) => {
+      if (second && typeof second === 'object') {
+        return `${key} ${JSON.stringify(second)}`
+      }
+      return typeof second === 'string' ? second : key
+    },
   }),
 }))
 
@@ -39,9 +43,14 @@ const mockUpdateMutate = vi.fn<(arg: UpdateVariantArg) => Promise<unknown>>()
 const mockDeleteMutate = vi.fn()
 let mockAttributes: unknown[] = []
 let mockVariants: unknown[] = []
+let mockAttributeValues: Record<string, unknown[]> = {}
 
 vi.mock('../../hooks/useVariants', () => ({
   useAttributes: () => ({ data: mockAttributes, isLoading: false }),
+  useAttributeValues: (attributeId: string) => ({
+    data: mockAttributeValues[attributeId] ?? [],
+    isLoading: false,
+  }),
   useVariantsForProduct: () => ({ data: mockVariants, isLoading: false, isError: false }),
   useGenerateMatrix: () => ({ mutateAsync: mockGenerateMutate, isPending: false }),
   useUpdateVariant: () => ({ mutateAsync: mockUpdateMutate, isPending: false }),
@@ -64,8 +73,16 @@ function variant(over: Record<string, unknown>) {
     price_override: null,
     cost_override: null,
     image_url: null,
+    attribute_values: [
+      { attribute_id: 'a1', attribute_value_id: 'red' },
+      { attribute_id: 'a2', attribute_value_id: 's' },
+    ],
     ...over,
   }
+}
+
+function attrValue(id: string, label: string, over: Record<string, unknown> = {}) {
+  return { id, code: id, label, hex_color: null, image_url: null, display_order: 0, ...over }
 }
 
 describe('ProductVariantMatrixEditor', () => {
@@ -76,6 +93,9 @@ describe('ProductVariantMatrixEditor', () => {
       { id: 'a1', tenant_id: 't1', code: 'color', name: 'Color', data_type: 'color', is_variant_axis: true, display_order: 0, is_active: true },
     ]
     mockVariants = []
+    mockAttributeValues = {
+      a1: [attrValue('red', 'Red'), attrValue('blue', 'Blue')],
+    }
   })
 
   it('prompts to select axes when there are no variants', () => {
@@ -83,27 +103,133 @@ describe('ProductVariantMatrixEditor', () => {
     expect(screen.getByText('catalog:variants.noVariants')).toBeInTheDocument()
   })
 
-  it('generates a matrix from selected axes', async () => {
-    mockGenerateMutate.mockResolvedValue([])
+  it('reveals value chips when an axis is checked and counts the combinations', async () => {
+    const user = userEvent.setup()
+    render(<ProductVariantMatrixEditor productId="p1" />)
+
+    // No value chips shown until the axis is checked.
+    expect(screen.queryByLabelText('value Red')).not.toBeInTheDocument()
+
+    await user.click(screen.getByLabelText('Color'))
+
+    // Chips revealed; both values auto-selected → combo count = 2.
+    expect(await screen.findByLabelText('value Red')).toBeInTheDocument()
+    expect(screen.getByLabelText('value Blue')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(
+        screen.getByText('catalog:variants.comboCount {"count":2}'),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('generates a matrix posting the selected axes and value ids', async () => {
+    mockGenerateMutate.mockResolvedValue({
+      data: [],
+      meta: { created_count: 2, skipped_count: 0, restored_count: 0 },
+    })
     const user = userEvent.setup()
     render(<ProductVariantMatrixEditor productId="p1" />)
 
     await user.click(screen.getByLabelText('Color'))
+    await screen.findByLabelText('value Red')
     await user.click(screen.getByRole('button', { name: 'catalog:variants.generate' }))
 
     await waitFor(() => {
-      expect(mockGenerateMutate).toHaveBeenCalledWith(['a1'])
+      expect(mockGenerateMutate).toHaveBeenCalledWith([
+        { attribute_id: 'a1', value_ids: ['red', 'blue'] },
+      ])
     })
   })
 
+  it('applies a soft-warn style and message when the combo count is large', async () => {
+    // 60 values → 60 combinations, over the soft-warn threshold of 50.
+    mockAttributeValues = {
+      a1: Array.from({ length: 60 }, (_, i) => attrValue(`v${i}`, `Value ${i}`)),
+    }
+    const user = userEvent.setup()
+    render(<ProductVariantMatrixEditor productId="p1" />)
+
+    await user.click(screen.getByLabelText('Color'))
+
+    const countEl = await screen.findByText('catalog:variants.comboCount {"count":60}')
+    await waitFor(() => {
+      expect(countEl.className).toContain('text-yellow-700')
+    })
+  })
+
+  it('disables Generate with a message when the combo count exceeds the hard cap', async () => {
+    // 201 values → 201 combinations, over MAX_VARIANTS_PER_GENERATE of 200.
+    mockAttributeValues = {
+      a1: Array.from({ length: 201 }, (_, i) => attrValue(`v${i}`, `Value ${i}`)),
+    }
+    const user = userEvent.setup()
+    render(<ProductVariantMatrixEditor productId="p1" />)
+
+    await user.click(screen.getByLabelText('Color'))
+    await screen.findByLabelText('value Value 0')
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'catalog:variants.generate' }),
+      ).toBeDisabled()
+    })
+    expect(
+      screen.getByText('catalog:variants.tooMany {"max":200}'),
+    ).toBeInTheDocument()
+  })
+
   it('renders an editable row per generated variant', () => {
-    mockVariants = [variant({ id: 'v1', sku: 'SKU-RED-S' }), variant({ id: 'v2', sku: 'SKU-RED-M', name_suffix: 'Red / M' })]
+    mockVariants = [
+      variant({ id: 'v1', sku: 'SKU-RED-S' }),
+      variant({ id: 'v2', sku: 'SKU-RED-M', name_suffix: 'Red / M' }),
+    ]
     render(<ProductVariantMatrixEditor productId="p1" />)
     expect(screen.getByDisplayValue('SKU-RED-S')).toBeInTheDocument()
     expect(screen.getByDisplayValue('SKU-RED-M')).toBeInTheDocument()
   })
 
-  it('saves an edited SKU + price for a variant', async () => {
+  it('hydrates the axis/value selection from existing variants', async () => {
+    mockAttributeValues = {
+      a1: [attrValue('red', 'Red'), attrValue('blue', 'Blue')],
+    }
+    mockVariants = [
+      variant({ id: 'v1', attribute_values: [{ attribute_id: 'a1', attribute_value_id: 'red' }] }),
+    ]
+    render(<ProductVariantMatrixEditor productId="p1" />)
+
+    // Axis pre-checked from existing variants → chips visible, red selected.
+    const redChip = await screen.findByLabelText('value Red')
+    expect(redChip).toBeChecked()
+    const blueChip = screen.getByLabelText('value Blue')
+    expect(blueChip).not.toBeChecked()
+  })
+
+  it('shows an orphan badge when a variant falls outside the current selection', async () => {
+    mockAttributeValues = {
+      a1: [attrValue('red', 'Red'), attrValue('blue', 'Blue')],
+    }
+    // Hydration seeds {a1: [red, blue]} from the two existing variants. Once the
+    // user unchecks "Blue", the blue variant (v2) is no longer in the selection
+    // and must be flagged as an orphan.
+    mockVariants = [
+      variant({ id: 'v1', name_suffix: 'Red', attribute_values: [{ attribute_id: 'a1', attribute_value_id: 'red' }] }),
+      variant({ id: 'v2', name_suffix: 'Blue', attribute_values: [{ attribute_id: 'a1', attribute_value_id: 'blue' }] }),
+    ]
+    const user = userEvent.setup()
+    render(<ProductVariantMatrixEditor productId="p1" />)
+
+    // No orphans while the full selection is present.
+    expect(screen.queryByText('catalog:variants.orphan')).not.toBeInTheDocument()
+
+    const blueChip = await screen.findByLabelText('value Blue')
+    await user.click(blueChip)
+
+    await waitFor(() => {
+      expect(screen.getByText('catalog:variants.orphan')).toBeInTheDocument()
+    })
+  })
+
+  it('saves an edited SKU for a variant', async () => {
     mockVariants = [variant({ id: 'v1', sku: 'SKU-RED-S' })]
     mockUpdateMutate.mockResolvedValue(variant({ id: 'v1' }))
     const user = userEvent.setup()
@@ -143,7 +269,6 @@ describe('ProductVariantMatrixEditor', () => {
   it('renders the price override as a precision-safe number (MoneyInput) input', () => {
     mockVariants = [variant({ id: 'v1', price_override: '12.500' })]
     render(<ProductVariantMatrixEditor productId="p1" />)
-    // MoneyInput renders <input type="number"> → exposed as a spinbutton.
     const priceInput = screen.getByLabelText('catalog:variants.price Red / S')
     expect(priceInput).toHaveAttribute('type', 'number')
   })
@@ -163,5 +288,82 @@ describe('ProductVariantMatrixEditor', () => {
     })
     const arg = mockUpdateMutate.mock.calls[0][0]
     expect(arg.payload.price_override).toBe('12.5')
+  })
+
+  it('shows an inline barcode error when save returns a 422', async () => {
+    mockVariants = [variant({ id: 'v1', name_suffix: 'Red / S' })]
+    mockUpdateMutate.mockRejectedValue({
+      response: {
+        status: 422,
+        data: { message: 'invalid', errors: { barcode: ['Barcode already in use.'] } },
+      },
+    })
+    const user = userEvent.setup()
+    render(<ProductVariantMatrixEditor productId="p1" />)
+
+    await user.click(screen.getByRole('button', { name: 'catalog:variants.save' }))
+
+    expect(await screen.findByText('Barcode already in use.')).toBeInTheDocument()
+  })
+
+  it('opens a confirm dialog before deleting, and cancel does not delete', async () => {
+    mockVariants = [variant({ id: 'v1', name_suffix: 'Red / S' })]
+    const user = userEvent.setup()
+    render(<ProductVariantMatrixEditor productId="p1" />)
+
+    await user.click(
+      screen.getByRole('button', { name: 'catalog:variants.delete Red / S' }),
+    )
+    expect(screen.getByText('catalog:variants.deleteTitle')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'actions.cancel' }))
+
+    await waitFor(() => {
+      expect(screen.queryByText('catalog:variants.deleteTitle')).not.toBeInTheDocument()
+    })
+    expect(mockDeleteMutate).not.toHaveBeenCalled()
+  })
+
+  it('confirms delete → calls deleteVariant', async () => {
+    mockVariants = [variant({ id: 'v1', name_suffix: 'Red / S' })]
+    mockDeleteMutate.mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    render(<ProductVariantMatrixEditor productId="p1" />)
+
+    await user.click(
+      screen.getByRole('button', { name: 'catalog:variants.delete Red / S' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'catalog:variants.delete' }))
+
+    await waitFor(() => {
+      expect(mockDeleteMutate).toHaveBeenCalledWith('v1')
+    })
+  })
+
+  it('on a 422 (has stock) the dialog offers deactivate instead', async () => {
+    mockVariants = [variant({ id: 'v1', name_suffix: 'Red / S' })]
+    mockDeleteMutate.mockRejectedValue({ response: { status: 422 } })
+    mockUpdateMutate.mockResolvedValue(variant({ id: 'v1', is_active: false }))
+    const user = userEvent.setup()
+    render(<ProductVariantMatrixEditor productId="p1" />)
+
+    await user.click(
+      screen.getByRole('button', { name: 'catalog:variants.delete Red / S' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'catalog:variants.delete' }))
+
+    // Dialog flips to deactivate body after the 422.
+    expect(
+      await screen.findByText('catalog:variants.deactivateTitle'),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'catalog:variants.deactivate' }))
+
+    await waitFor(() => {
+      expect(mockUpdateMutate).toHaveBeenCalledWith({
+        variantId: 'v1',
+        payload: { is_active: false },
+      })
+    })
   })
 })
