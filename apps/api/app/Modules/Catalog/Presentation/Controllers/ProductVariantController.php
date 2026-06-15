@@ -14,6 +14,7 @@ use App\Modules\Catalog\Presentation\Requests\GenerateMatrixRequest;
 use App\Modules\Catalog\Presentation\Requests\UpdateVariantRequest;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\VariantStockReader;
 use App\Shared\Domain\Exceptions\MatrixGenerationLimitException;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
@@ -32,6 +33,7 @@ class ProductVariantController extends Controller
     public function __construct(
         private readonly ProductVariantService $variantService,
         private readonly CompanyContext $companyContext,
+        private readonly VariantStockReader $stockReader,
     ) {}
 
     /**
@@ -240,6 +242,12 @@ class ProductVariantController extends Controller
 
         if ($variant === null) {
             return response()->json(['message' => 'Variant not found'], 404);
+        }
+
+        if (bccomp($this->stockReader->variantOnHandQuantity($company->tenant_id, $company->id, $variant->id), '0', 4) === 1) {
+            return response()->json([
+                'message' => 'This variant has stock on hand. Deactivate it instead of deleting.',
+            ], 422);
         }
 
         $variant->delete();

@@ -10,6 +10,9 @@ use App\Shared\Domain\QuantityScale;
 
 final class VariantStockReaderService implements VariantStockReader
 {
+    /**
+     * @return numeric-string
+     */
     public function variantOnHandQuantity(string $tenantId, string $companyId, string $variantId): string
     {
         $sum = StockLevel::query()
