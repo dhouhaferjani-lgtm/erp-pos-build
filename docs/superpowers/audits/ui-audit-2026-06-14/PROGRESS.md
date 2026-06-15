@@ -148,7 +148,7 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
 - [x] **4.1 Remove the `ui/` re-export shims** (`5aecf7f26`) — deleted 5 thin shims
   (SearchInput/FilterTabs/Tabs/Breadcrumb/LoadingSpinner), repointed ~18 importers to
   molecules/atoms. (REPORT said "9"; only 5 existed at this branch point.)
-- [x] **4.2 Rename two `LocationSelector`** (`<commit>`) → `LocationField` (ui form field) /
+- [x] **4.2 Rename two `LocationSelector`** (`46f5d01c6`) → `LocationField` (ui form field) /
   `LocationSwitcher` (organism switcher in TopBar). `features/location/LocationSelector.tsx`
   kept as a feature-local alias wrapper so inventory consumers/mocks are untouched.
 - [x] **4.3 One paginator** (`c6d7c4d0d`) — migrated 3 `Pagination` importers → `OffsetPagination`
