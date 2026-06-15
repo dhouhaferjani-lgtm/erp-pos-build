@@ -7,14 +7,17 @@ namespace App\Modules\Catalog\Presentation\Controllers;
 use App\Modules\Catalog\Application\Commands\CreateVariantCommand;
 use App\Modules\Catalog\Application\DTOs\ProductVariantData;
 use App\Modules\Catalog\Application\Services\ProductVariantService;
+use App\Modules\Catalog\Domain\Entities\ProductAttributeValue;
 use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Catalog\Presentation\Requests\CreateVariantRequest;
 use App\Modules\Catalog\Presentation\Requests\GenerateMatrixRequest;
 use App\Modules\Catalog\Presentation\Requests\UpdateVariantRequest;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Domain\Exceptions\MatrixGenerationLimitException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 /**
@@ -107,7 +110,11 @@ class ProductVariantController extends Controller
     }
 
     /**
-     * Generate the full cartesian-product variant matrix for a product.
+     * Generate the variant matrix for a product from a value-subset selection.
+     *
+     * Accepts either the preferred `axes` shape (each axis = attribute + value-id
+     * subset) or the legacy `attribute_ids` shape (all values of each attribute).
+     * Returns the affected variants (created + restored) plus per-bucket meta counts.
      */
     public function generateMatrix(GenerateMatrixRequest $request, string $productId): JsonResponse
     {
@@ -126,14 +133,65 @@ class ProductVariantController extends Controller
             return response()->json(['message' => 'Product not found'], 404);
         }
 
+        $axes = $this->normalizeAxes($request);
+
+        try {
+            $result = $this->variantService->generateMatrix($product->id, $axes);
+        } catch (MatrixGenerationLimitException $e) {
+            return response()->json(['errors' => ['combinations' => [$e->getMessage()]]], 422);
+        }
+
+        /** @var Collection<int, ProductVariant> $affected */
+        $affected = $result['created']->merge($result['restored']);
+
+        return response()->json([
+            'data' => $affected
+                ->map(fn (ProductVariant $v): ProductVariantData => ProductVariantData::fromModel($v->loadMissing('attributeValues')))
+                ->values(),
+            'meta' => [
+                'created_count' => $result['created']->count(),
+                'restored_count' => $result['restored']->count(),
+                'skipped_count' => $result['skipped_count'],
+            ],
+        ], 201);
+    }
+
+    /**
+     * Normalise the validated request into the service's axes shape.
+     *
+     * - `axes` present  → map each {attribute_id, value_ids} → {attributeId, valueIds}.
+     * - legacy `attribute_ids` → expand each attribute to ALL of its value IDs.
+     *
+     * @return array<int, array{attributeId: string, valueIds: string[]}>
+     */
+    private function normalizeAxes(GenerateMatrixRequest $request): array
+    {
+        if ($request->has('axes') && is_array($request->input('axes'))) {
+            /** @var array<int, array{attribute_id: string, value_ids: string[]}> $rawAxes */
+            $rawAxes = $request->input('axes', []);
+
+            return array_map(
+                static fn (array $axis): array => [
+                    'attributeId' => $axis['attribute_id'],
+                    'valueIds' => array_values($axis['value_ids']),
+                ],
+                $rawAxes,
+            );
+        }
+
         /** @var array<int, string> $attributeIds */
         $attributeIds = $request->input('attribute_ids', []);
 
-        $variants = $this->variantService->generateMatrix($product->id, $attributeIds);
-
-        return response()->json([
-            'data' => $variants->map(fn (ProductVariant $v): ProductVariantData => ProductVariantData::fromModel($v))->values(),
-        ], 201);
+        return array_map(
+            static fn (string $attributeId): array => [
+                'attributeId' => $attributeId,
+                'valueIds' => ProductAttributeValue::query()
+                    ->where('attribute_id', $attributeId)
+                    ->pluck('id')
+                    ->all(),
+            ],
+            $attributeIds,
+        );
     }
 
     /**
