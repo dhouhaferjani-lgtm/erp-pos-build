@@ -39,6 +39,7 @@ class GenerateMatrixRequest extends FormRequest
      *   (a) exactly one of axes / attribute_ids must be present.
      *   (b) every value_id in an axis must belong to that axis's attribute.
      *   (c) the gross Cartesian product must not exceed the cap.
+     *   (d) each attribute may appear at most once across axes.
      */
     public function withValidator(Validator $validator): void
     {
@@ -64,6 +65,17 @@ class GenerateMatrixRequest extends FormRequest
 
             /** @var array<int, mixed> $axes */
             $axes = $this->input('axes', []);
+
+            // (d) No attribute may appear more than once across axes.
+            $attributeIds = [];
+            foreach ($axes as $axis) {
+                if (is_array($axis) && is_string($axis['attribute_id'] ?? null)) {
+                    $attributeIds[] = $axis['attribute_id'];
+                }
+            }
+            if (count(array_unique($attributeIds)) < count($axes)) {
+                $v->errors()->add('axes', 'Each attribute may appear only once.');
+            }
 
             $grossCounts = [];
 

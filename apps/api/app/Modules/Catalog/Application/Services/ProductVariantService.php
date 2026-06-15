@@ -237,28 +237,11 @@ final class ProductVariantService
         }
 
         // Cap guard — fail before any write so the matrix is never partially applied.
+        // This MUST stay a pre-write check (do not move it inside the transaction).
         $gross = (int) array_product(array_map('count', $codeAxes));
         if ($gross > VariantMatrixLimit::MAX_VARIANTS_PER_GENERATE) {
             throw MatrixGenerationLimitException::exceeded($gross, VariantMatrixLimit::MAX_VARIANTS_PER_GENERATE);
         }
-
-        // Load every existing variant (incl. trashed) WITH its junction rows so we
-        // can decide skip/restore/create per combo, keyed by the ID-based combo key.
-        /** @var Collection<int, ProductVariant> $existing */
-        $existing = ProductVariant::withTrashed()
-            ->where('product_id', $productId)
-            ->with('attributeValues')
-            ->get();
-
-        /** @var array<string, ProductVariant> $byComboKey */
-        $byComboKey = [];
-        foreach ($existing as $variant) {
-            $byComboKey[$this->comboKeyFromJunction($variant)] = $variant;
-        }
-
-        $hasExistingDefault = $existing
-            ->whereNull('deleted_at')
-            ->contains('is_default', true);
 
         // We deliberately do NOT pass an $excluded list to cartesian(): each combo
         // needs a 3-way decision (skip active / restore trashed / create missing)
@@ -268,10 +251,37 @@ final class ProductVariantService
         return DB::transaction(function () use (
             $combos,
             $product,
-            $lookup,
-            $byComboKey,
-            $hasExistingDefault
+            $productId,
+            $lookup
         ): array {
+            // Serialize concurrent generate calls for the same product: take a row
+            // lock on the product FIRST so the read-then-write below is race-safe.
+            // Without this, two concurrent generates can both see a combo as missing
+            // (→ one inserts, the other hits an uncaught variant_code unique violation)
+            // or both compute is_default=true for an empty product. Mirrors the
+            // per-row lockForUpdate already used on the restore path.
+            Product::query()->whereKey($productId)->lockForUpdate()->first();
+
+            // Load every existing variant (incl. trashed) WITH its junction rows so we
+            // can decide skip/restore/create per combo, keyed by the ID-based combo key.
+            // Read inside the lock so the snapshot reflects any concurrent generate
+            // that committed before we acquired the lock.
+            /** @var Collection<int, ProductVariant> $existing */
+            $existing = ProductVariant::withTrashed()
+                ->where('product_id', $productId)
+                ->with('attributeValues')
+                ->get();
+
+            /** @var array<string, ProductVariant> $byComboKey */
+            $byComboKey = [];
+            foreach ($existing as $variant) {
+                $byComboKey[$this->comboKeyFromJunction($variant)] = $variant;
+            }
+
+            $hasExistingDefault = $existing
+                ->whereNull('deleted_at')
+                ->contains('is_default', true);
+
             $created = collect();
             $restored = collect();
             $skipped = 0;

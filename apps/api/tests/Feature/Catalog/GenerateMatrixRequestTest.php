@@ -203,6 +203,47 @@ class GenerateMatrixRequestTest extends TestCase
     }
 
     /**
+     * Two axes referencing the SAME attribute_id must be rejected with 422 and a
+     * validation error on the 'axes' key — each attribute may appear only once.
+     */
+    public function test_rejects_duplicate_attribute_axis(): void
+    {
+        $product = ProductFactory::new()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        $attr = ProductAttributeFactory::new()->create([
+            'tenant_id' => $this->tenant->id,
+            'code' => 'dup-attr',
+            'is_variant_axis' => true,
+        ]);
+
+        $v1 = ProductAttributeValueFactory::new()->create([
+            'tenant_id' => $this->tenant->id,
+            'attribute_id' => $attr->id,
+            'code' => 'a',
+            'label' => 'A',
+        ]);
+        $v2 = ProductAttributeValueFactory::new()->create([
+            'tenant_id' => $this->tenant->id,
+            'attribute_id' => $attr->id,
+            'code' => 'b',
+            'label' => 'B',
+        ]);
+
+        $resp = $this->postJson("/api/v1/products/{$product->id}/variants/generate-matrix", [
+            'axes' => [
+                ['attribute_id' => $attr->id, 'value_ids' => [$v1->id]],
+                ['attribute_id' => $attr->id, 'value_ids' => [$v2->id]],
+            ],
+        ]);
+
+        $resp->assertStatus(422);
+        $this->assertApiValidationErrors($resp, ['axes']);
+    }
+
+    /**
      * The legacy { attribute_ids: [...] } shape must not produce a validation
      * error — backwards compatibility must be preserved.
      */

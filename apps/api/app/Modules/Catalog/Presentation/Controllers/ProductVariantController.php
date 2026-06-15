@@ -15,9 +15,9 @@ use App\Modules\Catalog\Presentation\Requests\UpdateVariantRequest;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Domain\Exceptions\MatrixGenerationLimitException;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 /**
@@ -141,12 +141,15 @@ class ProductVariantController extends Controller
             return response()->json(['errors' => ['combinations' => [$e->getMessage()]]], 422);
         }
 
-        /** @var Collection<int, ProductVariant> $affected */
-        $affected = $result['created']->merge($result['restored']);
+        /** @var EloquentCollection<int, ProductVariant> $affected */
+        $affected = new EloquentCollection(
+            $result['created']->merge($result['restored'])->all(),
+        );
+        $affected->loadMissing('attributeValues');
 
         return response()->json([
             'data' => $affected
-                ->map(fn (ProductVariant $v): ProductVariantData => ProductVariantData::fromModel($v->loadMissing('attributeValues')))
+                ->map(fn (ProductVariant $v): ProductVariantData => ProductVariantData::fromModel($v))
                 ->values(),
             'meta' => [
                 'created_count' => $result['created']->count(),
