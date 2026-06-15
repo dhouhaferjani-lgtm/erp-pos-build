@@ -23,13 +23,13 @@ class GenerateMatrixRequest extends FormRequest
     {
         return [
             // New axes shape (preferred).
-            'axes'                   => ['nullable', 'array', 'min:1'],
-            'axes.*.attribute_id'    => ['required_with:axes', 'uuid'],
-            'axes.*.value_ids'       => ['required_with:axes', 'array', 'min:1'],
-            'axes.*.value_ids.*'     => ['uuid'],
+            'axes' => ['nullable', 'array', 'min:1'],
+            'axes.*.attribute_id' => ['required_with:axes', 'uuid'],
+            'axes.*.value_ids' => ['required_with:axes', 'array', 'min:1'],
+            'axes.*.value_ids.*' => ['uuid'],
 
             // Legacy shape — still accepted.
-            'attribute_ids'   => ['nullable', 'array', 'min:1'],
+            'attribute_ids' => ['nullable', 'array', 'min:1'],
             'attribute_ids.*' => ['uuid'],
         ];
     }
@@ -48,8 +48,8 @@ class GenerateMatrixRequest extends FormRequest
                 return;
             }
 
-            $hasAxes        = $this->has('axes') && is_array($this->input('axes'));
-            $hasLegacy      = $this->has('attribute_ids') && is_array($this->input('attribute_ids'));
+            $hasAxes = $this->has('axes') && is_array($this->input('axes'));
+            $hasLegacy = $this->has('attribute_ids') && is_array($this->input('attribute_ids'));
 
             if (! $hasAxes && ! $hasLegacy) {
                 $v->errors()->add('axes', 'Either axes or attribute_ids is required.');
@@ -62,15 +62,20 @@ class GenerateMatrixRequest extends FormRequest
                 return;
             }
 
-            /** @var array<int, array{attribute_id: string, value_ids: array<int, string>}> $axes */
+            /** @var array<int, mixed> $axes */
             $axes = $this->input('axes', []);
 
             $grossCounts = [];
 
             foreach ($axes as $i => $axis) {
-                $attributeId = $axis['attribute_id'] ?? null;
-                $valueIds    = isset($axis['value_ids']) && is_array($axis['value_ids'])
-                    ? array_values(array_unique($axis['value_ids']))
+                if (! is_array($axis)) {
+                    continue;
+                }
+
+                $attributeId = is_string($axis['attribute_id'] ?? null) ? $axis['attribute_id'] : null;
+                $rawValueIds = $axis['value_ids'] ?? null;
+                $valueIds = is_array($rawValueIds)
+                    ? array_values(array_unique(array_filter($rawValueIds, 'is_string')))
                     : [];
 
                 if ($attributeId === null || $valueIds === []) {

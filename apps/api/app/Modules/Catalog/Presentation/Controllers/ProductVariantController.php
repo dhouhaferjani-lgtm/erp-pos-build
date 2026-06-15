@@ -183,7 +183,7 @@ class ProductVariantController extends Controller
 
         foreach ($axesInput as $axisInput) {
             $attributeId = $axisInput['attribute_id'];
-            $valueIds    = array_values(array_unique($axisInput['value_ids']));
+            $valueIds = array_values(array_unique($axisInput['value_ids']));
 
             $attribute = $this->attributeRepo->findById($attributeId);
 
@@ -206,9 +206,9 @@ class ProductVariantController extends Controller
             foreach ($values as $value) {
                 $axisCodes[] = $value->code;
                 $axisLookup[$value->code] = [
-                    'attributeId'      => $attribute->id,
+                    'attributeId' => $attribute->id,
                     'attributeValueId' => $value->id,
-                    'label'            => $value->label,
+                    'label' => $value->label,
                 ];
             }
 
@@ -216,7 +216,7 @@ class ProductVariantController extends Controller
                 continue;
             }
 
-            $axes[$attribute->code]   = $axisCodes;
+            $axes[$attribute->code] = $axisCodes;
             $lookup[$attribute->code] = $axisLookup;
         }
 
@@ -232,7 +232,7 @@ class ProductVariantController extends Controller
 
             foreach ($combos as $index => $combo) {
                 $codeParts = array_values($combo);
-                $suffix    = implode('-', array_map(
+                $suffix = implode('-', array_map(
                     fn (string $part): string => strtoupper(str_replace(' ', '_', $part)),
                     $codeParts,
                 ));
@@ -249,7 +249,7 @@ class ProductVariantController extends Controller
                 $attributeValues = [];
                 foreach ($combo as $axisCode => $valueCode) {
                     $attributeValues[] = [
-                        'attributeId'      => $lookup[$axisCode][$valueCode]['attributeId'],
+                        'attributeId' => $lookup[$axisCode][$valueCode]['attributeId'],
                         'attributeValueId' => $lookup[$axisCode][$valueCode]['attributeValueId'],
                     ];
                 }
