@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Presentation\Requests;
 
+use App\Enums\Vertical;
 use App\Modules\Catalog\Presentation\Rules\TaxConfigurationCountryCoherent;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
@@ -44,6 +45,14 @@ class CreateProductRequest extends FormRequest
         $tenantId = $user?->tenant_id;
 
         $company = $this->companyContext->requireCompany();
+
+        // Vertical-specific product metadata is gated by the tenant's vertical:
+        // parapharmacy metadata only for the Parapharmacy vertical, automotive
+        // metadata only for automotive (Otospex) verticals. Disallowed metadata
+        // is rejected (422) rather than silently dropped by the controller.
+        $vertical = $company->tenant->vertical;
+        $parapharmacyAllowed = $vertical === Vertical::Parapharmacy;
+        $automotiveAllowed = $vertical->isAutomotive();
 
         return [
             'name' => ['required', 'string', 'max:255'],
@@ -90,7 +99,7 @@ class CreateProductRequest extends FormRequest
             'cross_references.*.reference' => ['required_with:cross_references', 'string', 'max:100'],
 
             // Parapharmacy metadata (vertical-specific)
-            'parapharmacy_metadata' => ['sometimes', 'array'],
+            'parapharmacy_metadata' => $parapharmacyAllowed ? ['sometimes', 'array'] : ['prohibited'],
             'parapharmacy_metadata.category' => ['required_with:parapharmacy_metadata', new Enum(ParapharmacyCategory::class)],
             'parapharmacy_metadata.dosage_form' => ['nullable', new Enum(DosageForm::class)],
             'parapharmacy_metadata.active_ingredients' => ['nullable', 'array'],
@@ -113,7 +122,7 @@ class CreateProductRequest extends FormRequest
             'parapharmacy_metadata.storage_requirements' => ['nullable', 'string', 'max:500'],
 
             // Automotive metadata (vertical-specific)
-            'automotive_metadata' => ['sometimes', 'array'],
+            'automotive_metadata' => $automotiveAllowed ? ['sometimes', 'array'] : ['prohibited'],
             'automotive_metadata.platform_article_id' => ['nullable', 'uuid'],
             'automotive_metadata.platform_link_status' => ['nullable', new Enum(PlatformLinkStatus::class)],
             'automotive_metadata.article_number' => ['nullable', 'string', 'max:100'],

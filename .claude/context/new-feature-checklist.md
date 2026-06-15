@@ -32,6 +32,13 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 ```
 Missing `'api'` = 401 errors. Missing `SetPermissionsTeam` = permission failures.
 
+**If the feature is vertical-exclusive** (only some verticals should see it — see
+[vertical-module-gating.md](../../docs/architecture/vertical-module-gating.md)):
+- (a) Add `module:<Name>` middleware to its `routes.php` (`<Name>` = a `ModuleName` enum case, case-sensitive).
+- (b) Gate its FE route with `<RequirePermission moduleKey="...">` (or `ModuleGuard`).
+- (c) Gate any vertical-specific fields/sections inline with `hasModule('<Name>')` from `useCompanyConfig()`.
+- (d) Add a module-access-control test asserting a wrong-vertical tenant gets **403** from the backend route.
+
 ### 4. Controller
 - Constructor injection only (never `app()`)
 - `private readonly` for all dependencies

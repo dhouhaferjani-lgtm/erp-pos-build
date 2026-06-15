@@ -10,6 +10,7 @@ import {
   makeStockLevel,
   makeStockLevelsResponse,
 } from '@/features/pos/__fixtures__/productInfo'
+import { parapharmacyCompanyConfig } from '@/test/fixtures/companyConfig'
 import * as api from '@/lib/api'
 
 // Mock useCurrency
@@ -221,11 +222,12 @@ describe('ProductInfoModal', () => {
     })
   })
 
-  it('should render all three tabs when product has parapharmacy data', async () => {
+  it('should render all three tabs when product has parapharmacy data and Parapharmacy module is enabled', async () => {
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProductWithParapharmacy)
 
     renderWithProviders(
-      <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
+      <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />,
+      { companyConfig: parapharmacyCompanyConfig }
     )
 
     await waitFor(() => {
@@ -241,7 +243,8 @@ describe('ProductInfoModal', () => {
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProduct)
 
     renderWithProviders(
-      <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
+      <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />,
+      { companyConfig: parapharmacyCompanyConfig }
     )
 
     await waitFor(() => {
@@ -251,6 +254,23 @@ describe('ProductInfoModal', () => {
       const tabs = screen.getAllByRole('tab')
       expect(tabs).toHaveLength(2)
     })
+  })
+
+  it('should NOT render parapharmacy tab when Parapharmacy module is disabled even if product has parapharmacy data', async () => {
+    vi.mocked(api.apiGet).mockResolvedValueOnce(mockProductWithParapharmacy)
+
+    // defaultCompanyConfig (generic vertical) has no Parapharmacy module enabled
+    renderWithProviders(
+      <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Product')).toBeInTheDocument()
+    })
+
+    // Only two tabs, not three — module gate hides the parapharmacy tab
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs).toHaveLength(2)
   })
 
   it('should switch to stock tab and load stock data', async () => {
@@ -281,7 +301,8 @@ describe('ProductInfoModal', () => {
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProductWithParapharmacy)
 
     renderWithProviders(
-      <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
+      <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />,
+      { companyConfig: parapharmacyCompanyConfig }
     )
 
     await waitFor(() => {

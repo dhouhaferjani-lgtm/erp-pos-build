@@ -4,6 +4,16 @@
 **Last Updated:** December 30, 2025
 **Status:** Production Ready (Milestone 3 Complete)
 
+> **⚠️ CANONICAL DOC + SoT.** For the authoritative vertical/module model — the
+> exact per-vertical `default_modules` / `compatible_extras`, the module catalog,
+> and both-layer gating — see
+> [**vertical-module-gating.md**](vertical-module-gating.md). The **single source
+> of truth** for module lists is `apps/api/config/verticals.php`. The
+> service-architecture and resolution mechanics below are still accurate; the
+> illustrative module lists in this file are *not* — defer to the config and the
+> canonical doc. (Modules named `Communication`, `Media`, and `Recipe` do **not**
+> exist in `App\Enums\ModuleName` and have been removed from the lists below.)
+
 ---
 
 ## Table of Contents
@@ -54,10 +64,10 @@ A **vertical** is the business type/industry of a tenant:
 **Storage:** Vertical is stored on the `tenants.vertical` column
 
 ### 3. Module
-A **module** is a self-contained domain/feature:
-- Core modules: `Identity`, `Tenant`, `Catalog`, `Inventory`, `Accounting`
-- Vertical-specific modules: `Vehicle`, `Workshop`, `Menu`, `Tables`, `BatchExpiry`
-- Optional extras: `Appointments`, `Fleet`, `Prescription`, `Recipe`
+A **module** is a self-contained domain/feature (canonical names: `App\Enums\ModuleName`):
+- Core modules: `Identity`, `Tenant`, `Catalog`, `Partner`, `Sales`, `Treasury`, `Accounting` (and `Inventory` for most verticals)
+- Vertical-specific modules: `Vehicle`, `Workshop`, `PlatformIntegration`, `Menu`, `Tables`, `CompositeItems`, `BatchExpiry`, `Parapharmacy`
+- Optional extras: `Appointments`, `Fleet`, `Prescription`, `Reservation`, `Loyalty`, `Ecommerce`
 
 **Resolution:** Modules available to a tenant = vertical defaults + enabled extras
 
@@ -84,23 +94,27 @@ A **module** is a self-contained domain/feature:
 5. `fashion` - Fashion/apparel retailer
 6. `parapharmacy` - Health/wellness retail without prescriptions
 
-**Default Modules (All IziPOS Verticals):**
-- Identity, Tenant, Catalog, Inventory, Sales, Treasury, Accounting, Communication, Media
+**Common default modules (most IziPOS verticals):**
+- Identity, Tenant, Catalog, Partner, Sales, Treasury, Accounting (plus Inventory — default for all IziPOS verticals **except** `restaurant`/`coffee_shop`, where it is an upgrade extra)
 
 **Vertical-Specific Defaults:**
 | Vertical | Additional Defaults |
 |----------|---------------------|
 | pharmacy | BatchExpiry |
-| restaurant | Menu, Tables |
-| coffee_shop | Menu |
+| restaurant | Menu, Tables, CompositeItems |
+| coffee_shop | Menu, CompositeItems |
 | retail | - |
 | fashion | - |
-| parapharmacy | BatchExpiry |
+| parapharmacy | Parapharmacy |
 
-**Compatible Extras:**
-- `Recipe` - Recipe/formula management (pharmacy, parapharmacy)
-- `Prescription` - Prescription tracking (pharmacy)
-- `Appointments` - Appointment scheduling (all verticals)
+**Compatible Extras (varies per vertical — see the matrix below / the canonical doc):**
+- `Prescription` - Prescription tracking (`pharmacy`)
+- `BatchExpiry` - Batch/expiry tracking (`pharmacy`, `parapharmacy`)
+- `Tables` - Table management (`restaurant`, `coffee_shop`)
+- `Reservation` - Table reservations (`restaurant`)
+- `Loyalty` - Loyalty programs (`coffee_shop`, `retail`, `fashion`, `parapharmacy`)
+- `Ecommerce` - Online sales channel (`pharmacy`, `retail`, `fashion`, `parapharmacy`)
+- `Inventory` - Stock management (`restaurant`, `coffee_shop`)
 
 ---
 
@@ -117,23 +131,27 @@ A **module** is a self-contained domain/feature:
 5. `tire_shop` - Tire sales and service
 6. `service_station` - Quick service/oil change
 
-**Default Modules (All Otospex Verticals):**
-- Identity, Tenant, Catalog, Vehicle, Inventory, Sales, Treasury, Accounting, Communication, Media
+**Common default modules (all Otospex verticals):**
+- Identity, Tenant, Catalog, Partner, Sales, Inventory, Treasury, Accounting, PlatformIntegration (plus Vehicle — default for every Otospex vertical **except** `service_station`)
 
 **Vertical-Specific Defaults:**
 | Vertical | Additional Defaults |
 |----------|---------------------|
-| mechanic | Workshop |
-| body_shop | Workshop |
-| parts_retailer | - |
-| car_glass | Workshop |
-| tire_shop | Workshop |
-| service_station | Workshop |
+| mechanic | Vehicle, Workshop |
+| body_shop | Vehicle, Workshop |
+| car_glass | Vehicle, Workshop |
+| parts_retailer | Vehicle |
+| tire_shop | Vehicle |
+| service_station | - |
 
-**Compatible Extras:**
-- `Workshop` - Work order management (parts_retailer only - others have it by default)
-- `Fleet` - Fleet management (all verticals)
-- `Appointments` - Appointment scheduling (all verticals)
+**Compatible Extras (varies per vertical — see the matrix below / the canonical doc):**
+- `Appointments` - Appointment scheduling (`mechanic`, `body_shop`, `car_glass`, `tire_shop`)
+- `Fleet` - Fleet management (`mechanic`, `body_shop`, `car_glass`)
+- `Ecommerce` - Online parts catalogue (`parts_retailer`)
+- `service_station` has **no** compatible extras.
+
+> Note: `Workshop` is a **default** for `mechanic`/`body_shop`/`car_glass` and is
+> **not** a compatible extra for any vertical. `Vehicle` is a default (not an extra).
 
 ---
 
@@ -141,20 +159,23 @@ A **module** is a self-contained domain/feature:
 
 ### Complete Vertical Matrix
 
+> Reproduced from `config/verticals.php`. The canonical, maintained copy of this
+> table lives in [vertical-module-gating.md](vertical-module-gating.md).
+
 | Vertical | Product | Default Modules | Compatible Extras |
 |----------|---------|-----------------|-------------------|
-| **mechanic** | Otospex | Identity, Tenant, Catalog, Vehicle, Workshop, Inventory, Sales, Treasury, Accounting, Communication, Media | Appointments, Fleet |
-| **body_shop** | Otospex | Identity, Tenant, Catalog, Vehicle, Workshop, Inventory, Sales, Treasury, Accounting, Communication, Media | Appointments, Fleet |
-| **parts_retailer** | Otospex | Identity, Tenant, Catalog, Vehicle, Inventory, Sales, Treasury, Accounting, Communication, Media | Appointments, Fleet, Workshop |
-| **car_glass** | Otospex | Identity, Tenant, Catalog, Vehicle, Workshop, Inventory, Sales, Treasury, Accounting, Communication, Media | Appointments, Fleet |
-| **tire_shop** | Otospex | Identity, Tenant, Catalog, Vehicle, Workshop, Inventory, Sales, Treasury, Accounting, Communication, Media | Appointments, Fleet |
-| **service_station** | Otospex | Identity, Tenant, Catalog, Vehicle, Workshop, Inventory, Sales, Treasury, Accounting, Communication, Media | Appointments, Fleet |
-| **pharmacy** | IziPOS | Identity, Tenant, Catalog, BatchExpiry, Inventory, Sales, Treasury, Accounting, Communication, Media | Appointments, Recipe, Prescription |
-| **restaurant** | IziPOS | Identity, Tenant, Catalog, Menu, Tables, Inventory, Sales, Treasury, Accounting, Communication, Media | Appointments |
-| **coffee_shop** | IziPOS | Identity, Tenant, Catalog, Menu, Inventory, Sales, Treasury, Accounting, Communication, Media | Appointments |
-| **retail** | IziPOS | Identity, Tenant, Catalog, Inventory, Sales, Treasury, Accounting, Communication, Media | Appointments |
-| **fashion** | IziPOS | Identity, Tenant, Catalog, Inventory, Sales, Treasury, Accounting, Communication, Media | Appointments |
-| **parapharmacy** | IziPOS | Identity, Tenant, Catalog, BatchExpiry, Inventory, Sales, Treasury, Accounting, Communication, Media | Appointments, Recipe |
+| **mechanic** | Otospex | Identity, Tenant, Catalog, Vehicle, Partner, Workshop, Sales, Inventory, Treasury, Accounting, PlatformIntegration | Appointments, Fleet |
+| **body_shop** | Otospex | Identity, Tenant, Catalog, Vehicle, Partner, Workshop, Sales, Inventory, Treasury, Accounting, PlatformIntegration | Appointments, Fleet |
+| **car_glass** | Otospex | Identity, Tenant, Catalog, Vehicle, Partner, Workshop, Sales, Inventory, Treasury, Accounting, PlatformIntegration | Appointments, Fleet |
+| **parts_retailer** | Otospex | Identity, Tenant, Catalog, Vehicle, Partner, Sales, Inventory, Treasury, Accounting, PlatformIntegration | Ecommerce |
+| **tire_shop** | Otospex | Identity, Tenant, Catalog, Vehicle, Partner, Sales, Inventory, Treasury, Accounting, PlatformIntegration | Appointments |
+| **service_station** | Otospex | Identity, Tenant, Catalog, Partner, Sales, Inventory, Treasury, Accounting, PlatformIntegration | _(none)_ |
+| **pharmacy** | IziPOS | Identity, Tenant, Catalog, Partner, Sales, Inventory, Treasury, Accounting, BatchExpiry | BatchExpiry, Prescription, Ecommerce |
+| **parapharmacy** | IziPOS | Identity, Tenant, Catalog, Partner, Sales, Inventory, Treasury, Accounting, Parapharmacy | BatchExpiry, Loyalty, Ecommerce |
+| **restaurant** | IziPOS | Identity, Tenant, Catalog, Menu, Partner, Sales, Treasury, Accounting, Tables, CompositeItems | Tables, Reservation, Inventory |
+| **coffee_shop** | IziPOS | Identity, Tenant, Catalog, Menu, Partner, Sales, Treasury, Accounting, CompositeItems | Tables, Loyalty, Inventory |
+| **retail** | IziPOS | Identity, Tenant, Catalog, Partner, Sales, Inventory, Treasury, Accounting | Loyalty, Ecommerce |
+| **fashion** | IziPOS | Identity, Tenant, Catalog, Partner, Sales, Inventory, Treasury, Accounting | Loyalty, Ecommerce |
 
 ### Vertical Attributes
 
@@ -378,30 +399,37 @@ return [
 **Structure for Each Vertical:**
 ```php
 'mechanic' => [
-    'label' => 'Auto Repair Shop',
-    'description' => 'Full-service automotive repair and maintenance',
+    'name' => 'mechanic',
+    'label' => 'Mechanic',
+    'description' => 'Automotive repair and maintenance services',
     'product' => 'otospex',
+    'product_defaults' => [
+        'requires_batch_tracking' => false,
+    ],
     'default_modules' => [
         'Identity',
         'Tenant',
         'Catalog',
         'Vehicle',
+        'Partner',
         'Workshop',
-        'Inventory',
         'Sales',
+        'Inventory',
         'Treasury',
         'Accounting',
-        'Communication',
-        'Media',
+        'PlatformIntegration',
     ],
     'compatible_extras' => [
         'Appointments',
         'Fleet',
     ],
-    'databases' => [],      // Future: specialized databases
-    'features' => [],       // Future: feature flags
 ],
 ```
+
+> The `'databases'` / `'features'` keys shown in older drafts are **not** present
+> in the current `config/verticals.php`. Each vertical has `name`, `label`,
+> `description`, `product`, `compatible_extras`, `product_defaults`, and
+> `default_modules`.
 
 **All 12 Verticals Configured:**
 - mechanic, body_shop, parts_retailer, car_glass, tire_shop, service_station
@@ -862,11 +890,11 @@ Specialized POS interfaces per vertical:
 Automatic dependency resolution:
 
 ```php
-// config/modules.php
+// config/modules.php (illustrative — module dependency resolution is not implemented)
 'dependencies' => [
-    'Recipe' => ['Product', 'Inventory'],
+    'CompositeItems' => ['Catalog', 'Inventory'],
     'Workshop' => ['Vehicle', 'Inventory'],
-    'Fleet' => ['Vehicle', 'Customer'],
+    'Fleet' => ['Vehicle', 'Partner'],
 ],
 ```
 

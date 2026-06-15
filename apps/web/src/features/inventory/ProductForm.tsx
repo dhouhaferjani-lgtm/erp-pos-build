@@ -90,8 +90,8 @@ export function ProductForm() {
   const isEditing = id.length > 0
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
-  const { config } = useCompanyConfig()
-  const isParapharmacy = config?.vertical === 'parapharmacy'
+  const { hasModule } = useCompanyConfig()
+  const isParapharmacy = hasModule('Parapharmacy')
   const { isOtospex } = useProductConfig()
   const { decimals } = useCurrency()
 

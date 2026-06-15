@@ -4,6 +4,15 @@
 **Status:** Production Ready
 **Related:** [Module Loading System](./module-loading.md)
 
+> **⚠️ CANONICAL DOC + SoT.** The authoritative vertical/module model — per-vertical
+> `default_modules`/`compatible_extras`, the module catalog, and both-layer gating
+> — is [**vertical-module-gating.md**](vertical-module-gating.md). The **single
+> source of truth** for module lists is `apps/api/config/verticals.php`. The
+> `RequireModule` mechanics below are accurate; the per-module *which-verticals*
+> annotations are illustrative — defer to the config / canonical doc. (`Recipe`,
+> `Communication`, and `Media` are **not** `App\Enums\ModuleName` cases and have
+> been removed; `Parapharmacy` has been added.)
+
 ---
 
 ## Table of Contents
@@ -130,29 +139,39 @@ Route::middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])
 
 ### Vertical-Specific Modules (Require Module Middleware)
 
+> Vertical/extra annotations below come from `config/verticals.php` (the SoT). See
+> the full matrix in [vertical-module-gating.md](vertical-module-gating.md).
+
 #### Otospex Only (Product: 'otospex')
 
-| Module | Verticals | Middleware | Routes |
+| Module | Default for verticals | Middleware | Routes |
 |--------|-----------|------------|--------|
-| **Vehicle** | mechanic, body_shop, parts_retailer, car_glass, tire_shop, service_station | `'module:Vehicle'` | `/api/v1/vehicles` |
-| **Workshop** | mechanic, body_shop, car_glass, tire_shop, service_station | `'module:Workshop'` | `/api/v1/work-orders` |
+| **Vehicle** | mechanic, body_shop, parts_retailer, car_glass, tire_shop (not service_station) | `'module:Vehicle'` | `/api/v1/vehicles` |
+| **Workshop** | mechanic, body_shop, car_glass | `'module:Workshop'` | `/api/v1/work-orders` |
+| **PlatformIntegration** | all Otospex verticals | `'module:PlatformIntegration'` | platform catalogue link |
 
 #### IziPOS Only (Product: 'izipos')
 
-| Module | Verticals | Middleware | Routes |
+| Module | Default for verticals | Middleware | Routes |
 |--------|-----------|------------|--------|
 | **Menu** | restaurant, coffee_shop | `'module:Menu'` | `/api/v1/menu-items` |
 | **Tables** | restaurant | `'module:Tables'` | `/api/v1/tables` |
-| **BatchExpiry** | pharmacy, parapharmacy | `'module:BatchExpiry'` | `/api/v1/batches` |
+| **CompositeItems** | restaurant, coffee_shop | `'module:CompositeItems'` | composite/recipe products |
+| **BatchExpiry** | pharmacy | `'module:BatchExpiry'` | `/api/v1/batches` |
+| **Parapharmacy** | parapharmacy | `'module:Parapharmacy'` | `/api/v1/parapharmacy/*` master data |
 
 #### Optional Extras (Enabled via `enabled_extras`)
 
-| Module | Available For | Middleware | Routes |
+| Module | Compatible with verticals | Middleware | Routes |
 |--------|---------------|------------|--------|
-| **Fleet** | All Otospex verticals | `'module:Fleet'` | `/api/v1/fleet` |
-| **Appointments** | All verticals (both products) | `'module:Appointments'` | `/api/v1/appointments` |
-| **Recipe** | pharmacy, parapharmacy | `'module:Recipe'` | `/api/v1/recipes` |
+| **Fleet** | mechanic, body_shop, car_glass | `'module:Fleet'` | `/api/v1/fleet` |
+| **Appointments** | mechanic, body_shop, car_glass, tire_shop | `'module:Appointments'` | `/api/v1/appointments` |
 | **Prescription** | pharmacy | `'module:Prescription'` | `/api/v1/prescriptions` |
+| **Reservation** | restaurant | `'module:Reservation'` | reservations |
+| **Loyalty** | coffee_shop, retail, fashion, parapharmacy | `'module:Loyalty'` | loyalty |
+| **Ecommerce** | pharmacy, parts_retailer, retail, fashion, parapharmacy | `'module:Ecommerce'` | ecommerce |
+| **BatchExpiry** | pharmacy, parapharmacy (extra) | `'module:BatchExpiry'` | `/api/v1/batches` |
+| **Inventory** | restaurant, coffee_shop (extra) | `'module:Inventory'` | stock |
 
 **Middleware Pattern:**
 ```php
@@ -552,26 +571,27 @@ As new vertical-specific modules are implemented, they should use this middlewar
 - [ ] `'module:Workshop'` - Work order management
 - [ ] `'module:Menu'` - Restaurant menu items
 - [ ] `'module:Tables'` - Restaurant table management
+- [ ] `'module:CompositeItems'` - Composite/recipe products
 - [ ] `'module:BatchExpiry'` - Pharmacy batch/expiry tracking
+- [ ] `'module:Parapharmacy'` - Parapharmacy master data
 - [ ] `'module:Fleet'` - Fleet management (extra)
 - [ ] `'module:Appointments'` - Appointment scheduling (extra)
-- [ ] `'module:Recipe'` - Recipe/formula management (extra)
 - [ ] `'module:Prescription'` - Prescription management (extra)
 
 ### Module Dependency Resolution (Future)
 
 ```php
-// config/modules.php (planned)
+// config/modules.php (planned — not implemented)
 'dependencies' => [
-    'Recipe' => ['Product', 'Inventory'],
+    'CompositeItems' => ['Catalog', 'Inventory'],
     'Workshop' => ['Vehicle', 'Inventory'],
     'Tables' => ['Menu'],
-    'Fleet' => ['Vehicle', 'Customer'],
+    'Fleet' => ['Vehicle', 'Partner'],
 ]
 ```
 
-The CompanyConfigService will auto-resolve dependencies:
-- If `Recipe` is enabled, automatically include `Product` and `Inventory`
+The CompanyConfigService would auto-resolve dependencies:
+- If `CompositeItems` is enabled, automatically include `Catalog` and `Inventory`
 - Prevents broken module access when dependencies are missing
 
 ---
