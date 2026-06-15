@@ -1,5 +1,7 @@
 import ReactECharts from 'echarts-for-react'
 import { useTranslation } from 'react-i18next'
+import { cn } from '@/lib/utils'
+import { colors, textColors, borderColors } from '@/lib/designTokens'
 import type { DiscountAnalysis } from '../../api/analyticsApi'
 
 interface DiscountBreakdownChartProps {
@@ -35,29 +37,29 @@ export function DiscountBreakdownChart({ data }: DiscountBreakdownChartProps) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-sm text-muted-foreground">{t('pos:analytics.totalDiscounts')}</p>
-          <p className="mt-1 text-2xl font-semibold">{formatCurrency(data.total_discount_amount)}</p>
+        <div className={cn('rounded-lg border p-4', borderColors.light, colors.white)}>
+          <p className={cn('text-sm', textColors.tertiary)}>{t('pos:analytics.totalDiscounts')}</p>
+          <p className={cn('mt-1 text-2xl font-semibold', textColors.primary)}>{formatCurrency(data.total_discount_amount)}</p>
         </div>
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-sm text-muted-foreground">{t('pos:analytics.discountedLines')}</p>
-          <p className="mt-1 text-2xl font-semibold">{data.discount_count}</p>
+        <div className={cn('rounded-lg border p-4', borderColors.light, colors.white)}>
+          <p className={cn('text-sm', textColors.tertiary)}>{t('pos:analytics.discountedLines')}</p>
+          <p className={cn('mt-1 text-2xl font-semibold', textColors.primary)}>{data.discount_count}</p>
         </div>
       </div>
 
       {data.by_reason.length > 0 && (
-        <div className="rounded-lg border bg-card p-4">
-          <h3 className="mb-4 text-lg font-medium">{t('pos:analytics.discountsByReason')}</h3>
+        <div className={cn('rounded-lg border p-4', borderColors.light, colors.white)}>
+          <h3 className={cn('mb-4 text-lg font-medium', textColors.primary)}>{t('pos:analytics.discountsByReason')}</h3>
           <ReactECharts option={option} style={{ height: 300 }} />
         </div>
       )}
 
       {data.top_discounted_products.length > 0 && (
-        <div className="rounded-lg border bg-card p-4">
-          <h3 className="mb-4 text-lg font-medium">{t('pos:analytics.topDiscountedProducts')}</h3>
+        <div className={cn('rounded-lg border p-4', borderColors.light, colors.white)}>
+          <h3 className={cn('mb-4 text-lg font-medium', textColors.primary)}>{t('pos:analytics.topDiscountedProducts')}</h3>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-muted-foreground">
+              <tr className={cn('border-b text-left', borderColors.light, textColors.tertiary)}>
                 <th className="py-2 pr-4">{t('pos:analytics.product')}</th>
                 <th className="py-2 pr-4 text-right">{t('pos:analytics.quantity')}</th>
                 <th className="py-2 text-right">{t('pos:analytics.discountAmount')}</th>
@@ -65,10 +67,10 @@ export function DiscountBreakdownChart({ data }: DiscountBreakdownChartProps) {
             </thead>
             <tbody>
               {data.top_discounted_products.map((p) => (
-                <tr key={p.product_name} className="border-b last:border-0">
-                  <td className="py-2 pr-4">{p.product_name}</td>
-                  <td className="py-2 pr-4 text-right">{p.quantity}</td>
-                  <td className="py-2 text-right">{formatCurrency(p.discount_amount)}</td>
+                <tr key={p.product_name} className={cn('border-b last:border-0', borderColors.light)}>
+                  <td className={cn('py-2 pr-4', textColors.primary)}>{p.product_name}</td>
+                  <td className={cn('py-2 pr-4 text-right', textColors.primary)}>{p.quantity}</td>
+                  <td className={cn('py-2 text-right', textColors.primary)}>{formatCurrency(p.discount_amount)}</td>
                 </tr>
               ))}
             </tbody>
