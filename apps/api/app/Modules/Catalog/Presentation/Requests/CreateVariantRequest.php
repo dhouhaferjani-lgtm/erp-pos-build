@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Catalog\Presentation\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * Validates the payload for creating a single product variant.
@@ -26,10 +27,18 @@ class CreateVariantRequest extends FormRequest
     {
         return [
             'variant_code' => ['required', 'string', 'max:255'],
-            'sku' => ['required', 'string', 'max:255'],
+            'sku' => ['required', 'string', 'max:100'],
             'name_suffix' => ['required', 'string', 'max:255'],
             'is_default' => ['sometimes', 'boolean'],
-            'barcode' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'barcode' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'max:100',
+                Rule::unique('product_variants', 'barcode')->where(
+                    fn ($q) => $q->whereNull('deleted_at')->where('tenant_id', $this->user()->tenant_id)
+                ),
+            ],
             'price_override' => ['sometimes', 'nullable', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
             'cost_override' => ['sometimes', 'nullable', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
             'image_url' => ['sometimes', 'nullable', 'string', 'max:2048'],
