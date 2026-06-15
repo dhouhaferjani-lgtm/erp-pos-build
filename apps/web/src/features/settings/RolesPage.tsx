@@ -9,7 +9,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
-import { Button, FormField, Input } from '../../components/atoms'
+import { Button, Checkbox, FormField, Input } from '../../components/atoms'
 import { Modal, ModalContent, ModalFooter } from '../../components/organisms/Modal'
 import { toast } from 'sonner'
 
@@ -469,11 +469,9 @@ export function RolesPage() {
                             key={permission}
                             className={cn('flex items-center gap-2 text-sm cursor-pointer', textColors.tertiary, textColors.hoverPrimary)}
                           >
-                            <input
-                              type="checkbox"
+                            <Checkbox
                               checked={selectedPermissions.includes(permission)}
                               onChange={() => { togglePermission(permission) }}
-                              className={tokens.checkbox.base}
                             />
                             {translateAction(t, module, permission)}
                           </label>

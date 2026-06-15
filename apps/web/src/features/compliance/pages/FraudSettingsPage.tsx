@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Save, RotateCcw, Mail, Shield } from 'lucide-react'
 import { toast } from 'sonner'
 import { tokens, textColors } from '@/lib/designTokens'
+import { Checkbox } from '@/components/atoms'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -280,12 +281,10 @@ export function FraudSettingsPage() {
 
           <div className="space-y-4">
             <div className="flex items-center">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="alertEnabled"
                 checked={formData.alert_enabled ?? true}
                 onChange={(e) => { setFormData({ ...formData, alert_enabled: e.target.checked }); }}
-                className={tokens.checkbox.base}
               />
               <label htmlFor="alertEnabled" className={`ms-2 text-sm font-medium ${textColors.secondary}`}>
                 {t('compliance:fraudSettings.fields.alertEnabled.label')}
@@ -352,12 +351,11 @@ export function FraudSettingsPage() {
 
           <div className="space-y-3">
             <div className="flex items-start">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="autoCounting"
                 checked={formData.auto_trigger_counting ?? true}
                 onChange={(e) => { setFormData({ ...formData, auto_trigger_counting: e.target.checked }); }}
-                className={`mt-1 ${tokens.checkbox.base}`}
+                className="mt-1"
               />
               <label htmlFor="autoCounting" className="ms-2">
                 <span className={`text-sm font-medium ${textColors.secondary} block`}>
@@ -370,12 +368,11 @@ export function FraudSettingsPage() {
             </div>
 
             <div className="flex items-start">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="autoRestrict"
                 checked={formData.auto_restrict_access ?? false}
                 onChange={(e) => { setFormData({ ...formData, auto_restrict_access: e.target.checked }); }}
-                className={`mt-1 ${tokens.checkbox.base}`}
+                className="mt-1"
               />
               <label htmlFor="autoRestrict" className="ms-2">
                 <span className={`text-sm font-medium ${textColors.secondary} block`}>

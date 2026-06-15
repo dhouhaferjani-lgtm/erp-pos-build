@@ -9,6 +9,7 @@ import {
   type ServicePickerValue,
 } from '@/components/molecules/pickers'
 import { Button } from '@/components/atoms/Button'
+import { Checkbox } from '@/components/atoms'
 import { FormField } from '@/components/atoms/FormField'
 import { Input } from '@/components/atoms/Input'
 import { Select } from '@/components/atoms/Select'
@@ -415,14 +416,12 @@ function BundleComponentFormModalReady({
           </FormField>
 
           <div className="flex items-center gap-2">
-            <input
+            <Checkbox
               id="bundle-component-optional"
-              type="checkbox"
               checked={state.is_optional}
               onChange={(e) => {
                 setState((s) => ({ ...s, is_optional: e.target.checked }))
               }}
-              className={tokens.checkbox.base}
             />
             <label
               htmlFor="bundle-component-optional"

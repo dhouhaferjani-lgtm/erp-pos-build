@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { usePermissions } from '@/hooks/usePermissions'
-import { Input, FormField, Button, Select } from '@/components/atoms'
+import { Input, FormField, Button, Select, Checkbox } from '@/components/atoms'
 import { PageHeader } from '@/components/molecules'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/molecules/Tabs/Tabs'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
@@ -316,20 +316,16 @@ export function CompositeItemFormPage() {
                   />
                   <div className="flex items-center gap-6 pt-6">
                     <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={form.is_active}
                         onChange={(e) => { setForm({ ...form, is_active: e.target.checked }); }}
-                        className={tokens.checkbox.base}
                       />
                       <span className={cn('text-sm', textColors.secondary)}>{t('catalog:isActive')}</span>
                     </label>
                     <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={form.is_available}
                         onChange={(e) => { setForm({ ...form, is_available: e.target.checked }); }}
-                        className={tokens.checkbox.base}
                       />
                       <span className={cn('text-sm', textColors.secondary)}>{t('catalog:isAvailable')}</span>
                     </label>
@@ -529,20 +525,16 @@ export function CompositeItemFormPage() {
               />
               <div className="flex items-center gap-6 pt-6">
                 <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={form.is_active}
                     onChange={(e) => { setForm({ ...form, is_active: e.target.checked }); }}
-                    className={tokens.checkbox.base}
                   />
                   <span className={cn('text-sm', textColors.secondary)}>{t('catalog:isActive')}</span>
                 </label>
                 <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={form.is_available}
                     onChange={(e) => { setForm({ ...form, is_available: e.target.checked }); }}
-                    className={tokens.checkbox.base}
                   />
                   <span className={cn('text-sm', textColors.secondary)}>{t('catalog:isAvailable')}</span>
                 </label>

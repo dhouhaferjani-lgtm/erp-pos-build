@@ -4,7 +4,7 @@ import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { usePermissions } from '@/hooks/usePermissions'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
-import { Button, Input, MoneyInput } from '@/components/atoms'
+import { Button, Checkbox, Input, MoneyInput } from '@/components/atoms'
 import { useCompanyConfig } from '@/contexts'
 import { getErrorMessage } from '@/lib/api'
 import {
@@ -172,9 +172,7 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
             <div className="flex flex-wrap gap-3">
               {variantAxes.map((axis) => (
                 <label key={axis.id} className="inline-flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    className={tokens.checkbox.base}
+                  <Checkbox
                     checked={selectedAxes.includes(axis.id)}
                     onChange={() => { toggleAxis(axis.id) }}
                     aria-label={axis.name}
@@ -275,10 +273,8 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
                       />
                     </td>
                     <td className="px-3 py-2 text-center">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         aria-label={t('catalog:variants.active')}
-                        className={tokens.checkbox.base}
                         checked={draft.is_active}
                         disabled={!canUpdate}
                         onChange={(e) => { updateDraft(variant.id, { is_active: e.target.checked }) }}

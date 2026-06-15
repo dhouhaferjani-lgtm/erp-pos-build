@@ -8,6 +8,7 @@ import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { cn } from '../../../lib/utils'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { Button } from '../../../components/atoms/Button/Button'
+import { Checkbox } from '../../../components/atoms'
 import { FormField } from '../../../components/atoms/FormField'
 import { Input } from '../../../components/atoms/Input'
 import { MoneyInput } from '../../../components/atoms/MoneyInput'
@@ -246,11 +247,10 @@ export function InventorySettings() {
 
         <div className="mt-4">
           <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={settings.allow_below_cost_sales}
               onChange={(e) => { setSettings({ ...settings, allow_below_cost_sales: e.target.checked }); }}
-              className={cn(tokens.checkbox.base, 'mt-0.5')}
+              className="mt-0.5"
             />
             <div className="flex-1">
               <div className={cn('text-sm font-medium', textColors.primary)}>
@@ -380,11 +380,10 @@ export function InventorySettings() {
         {/* Auto-reservation Setting */}
         <div className="mt-6">
           <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={reservationSettings.auto_reserve_on_sales_order}
               onChange={(e) => { setReservationSettings({ ...reservationSettings, auto_reserve_on_sales_order: e.target.checked }); }}
-              className={cn(tokens.checkbox.base, 'mt-0.5')}
+              className="mt-0.5"
             />
             <div className="flex-1">
               <div className={cn('text-sm font-medium', textColors.primary)}>

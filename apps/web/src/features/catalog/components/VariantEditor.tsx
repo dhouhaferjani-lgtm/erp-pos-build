@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { Input, Button, Select, MoneyInput, QuantityInput } from '@/components/atoms'
+import { Input, Button, Checkbox, Select, MoneyInput, QuantityInput } from '@/components/atoms'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { useCompanyConfig } from '@/contexts'
 import type { CompositeItemVariantData, PriceAdjustmentType } from '../types/compositeItem'
@@ -242,11 +242,9 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                 />
               </td>
               <td className="px-3 py-4">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={newVariant.is_default}
                   onChange={(e) => { setNewVariant({ ...newVariant, is_default: e.target.checked }); }}
-                  className={tokens.checkbox.base}
                 />
               </td>
               <td className="px-3 py-4">

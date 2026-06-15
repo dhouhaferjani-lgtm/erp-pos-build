@@ -4,6 +4,7 @@ import { AlertCircle, Calculator } from 'lucide-react'
 import { useWithholdingPreview } from '../hooks/useWithholding'
 import { useCurrency } from '@/hooks/useCurrency'
 import { Button } from '@/components/atoms/Button'
+import { Checkbox } from '@/components/atoms'
 import { FormField } from '@/components/atoms/FormField'
 import { Input } from '@/components/atoms/Input'
 import { Textarea } from '@/components/atoms/Textarea'
@@ -164,8 +165,7 @@ export function WithholdingPreviewModal({
             {/* Manual Override Toggle */}
             <div className={cn('border-t pt-4', borderColors.light)}>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={manualOverride}
                   onChange={(e) => {
                     setManualOverride(e.target.checked)
@@ -173,7 +173,6 @@ export function WithholdingPreviewModal({
                       setManualRate((preview.rate_percentage ?? 0).toString())
                     }
                   }}
-                  className={tokens.checkbox.base}
                 />
                 <span className={cn('text-sm font-medium', textColors.secondary)}>
                   {t('preview.manualOverride')}

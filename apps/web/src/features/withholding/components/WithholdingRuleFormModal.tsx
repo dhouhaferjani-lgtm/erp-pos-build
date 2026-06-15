@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useCreateWithholdingRule, useUpdateWithholdingRule } from '../hooks/useWithholding'
 import { Button } from '@/components/atoms/Button'
+import { Checkbox } from '@/components/atoms'
 import { FormField } from '@/components/atoms/FormField'
 import { Input } from '@/components/atoms/Input'
 import { Select } from '@/components/atoms/Select'
 import { Textarea } from '@/components/atoms/Textarea'
 import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal'
-import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { textColors, borderColors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import type { WithholdingRule, CreateWithholdingRuleRequest } from '../types'
 
@@ -254,12 +255,10 @@ export function WithholdingRuleFormModal({
             </div>
 
             <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="is_active"
                 checked={formData.is_active}
                 onChange={(e) => { handleChange('is_active', e.target.checked); }}
-                className={tokens.checkbox.base}
               />
               <label htmlFor="is_active" className={cn('text-sm', textColors.secondary)}>
                 {t('rules.isActive')}
