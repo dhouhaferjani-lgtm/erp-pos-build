@@ -242,3 +242,5 @@ Review file: `docs/superpowers/reviews/2026-06-15-web-variant-authoring-spec-cod
 **Verification note:** Codex r2's HIGH-N1 cited two tables (`stock_adjustments`, `purchase_order_lines`) that a migration grep proved absent. Trusting it verbatim would have added dead checks; verifying it instead surfaced the *real* ~15-table picture and the insight that soft-delete makes table-enumeration unnecessary — yielding a **simpler** policy than the review proposed.
 
 **Net result:** spec is implementable. Remaining open items are the two owner-decisions (restore semantics §2.2/§3.1; delete-block policy §3.7), not correctness gaps.
+
+**Owner sign-off (2026-06-15):** both decisions **CONFIRMED** — restore-on-regenerate (#1) and block-soft-delete-on-on-hand-stock with steer-to-`is_active=false` (#2). Hard delete is not offered anywhere; the three removal tiers are deactivate / soft-delete (zero-stock only) / restore. Spec approved → proceeding to the implementation plan.
