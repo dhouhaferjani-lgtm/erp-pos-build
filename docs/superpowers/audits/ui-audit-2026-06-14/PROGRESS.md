@@ -161,13 +161,28 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
 - [x] **4.5 Reconcile `channelPageStyles.ts`** (`c15c487a6`) — deleted the channels-local
   mini-design-system; mapped every constant to PageHeader/Button/atoms/tokens across 6 channel pages.
 
-## Phase 5 — Polish  ☐
-- [ ] 5.1 list footer "showing __ rowsPerPage" label/i18n gap
-- [ ] 5.2 placeholder copy ("Select a customer…"), curly punctuation
-- [ ] 5.3 cookie-consent bar overlap (reserve body space)
-- [ ] 5.4 POS smart-prompts: text-glyph icons → lucide
-- [ ] 5.5 enforce `@/` imports via lint
-- [ ] 5.6 admin localization decision (M10) — confirm with owner
+## Phase 5 — Polish  ◧ (high-value done; micro-items + owner decisions remain)
+- [x] **5.1 list footer label gap (m3)** (`bb2001723`) — OffsetPagination used FLAT i18n keys
+  (t('showing')…) but the strings live under `pagination.*`, so the footer leaked raw key names
+  app-wide ("showing", "rowsPerPage:"). Repointed all t() → `pagination.*` + tokenized the footer +
+  raw `<select>` → Select atom. Fixes every list page.
+- [x] **5.3/m5/m1 cookie bar** (`b5f38f164`) — tokenized the global CookieConsent bar (shadcn
+  `bg-primary-600` → Button atom; dropped dead `dark:`; grays → tokens).
+- [x] **5.4 POS glyph icons → lucide** — DONE in Phase 3.5 (smart-prompts batch); ✦/✕/ℹ/+/⌃ →
+  Sparkles/X/Info/Plus/ChevronUp.
+- [ ] 5.2 curly punctuation / placeholder copy (m4) — cosmetic micro-polish; not done.
+- [ ] m5 reserve body-space for the fixed cookie bar — minor layout (bar dismisses on first
+  interaction); not done.
+- [ ] 5.5 enforce `@/` imports via lint (m7) — DEFERRED: enabling globally would flood the ratchet
+  with the existing relative-import drift; needs a baseline regen + coordination.
+- [ ] m8 `bg-opacity-75` legacy overlay → Modal — minor; not audited this pass.
+- [ ] 5.6 admin localization (M10) — **OWNER DECISION** (the admin dark super-admin panel is
+  intentionally English-only/separate; deferred with the admin cluster).
+
+### Shared-atom follow-ups (flagged by agents across Phase 3 — need an atoms-layer pass)
+- `atoms/Textarea` declares `error?: boolean` but doesn't destructure it → leaks `error` to the DOM.
+- No `ring`/selection-emphasis token in designTokens (selection UIs use shadow/border).
+- No `Checkbox` atom (raw `<input type="checkbox" className={tokens.checkbox.base}>` used throughout).
 
 ---
 
@@ -196,4 +211,6 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
 | 2026-06-15 | 3.5 | `dc1828837` `00d7d0a6c` `fb6970186` | POS color drift ~31/56 files (reporting, terminals, order/cart, smart-prompts glassmorphism+glyph→lucide, checkout core, kitchen/orders). lint 9185→8615 |
 | 2026-06-15 | 3.5 | `cc7aeeb13` `69c9d0757` | finish POS — 24 atoms/badges/molecules/components/layouts + Analytics de-glassmorphism (shadcn surfaces→tokens). pos at 0 color + 0 shadcn-surface. lint 8615→8478 |
 | 2026-06-15 | 3.6 | `afa2fe5f9` `90b8cb515` | workshop-* full-palette sweep (StatusPill→StatusBadge, 6 modals→Modal, pages→primitives); 92 tests; 0 off-theme literals; CLOSED the lint gap (workshop full-palette ERROR override). lint steady 8478 (gap palettes weren't counted) |
+| 2026-06-15 | 4 | `5aecf7f26` `c15c487a6` `c6d7c4d0d` `46f5d01c6` | Phase 4 kill-duplicates: ui shims removed, channelPageStyles reconciled, one paginator, LocationSelector renamed (4.4 deferred) |
+| 2026-06-15 | 5 | `bb2001723` `b5f38f164` | Phase 5: OffsetPagination i18n+tokenize (m3 app-wide), CookieConsent tokenized (m5/m1) |
 | 2026-06-14/15 | docs | `a3f38d44f` `4b48d0f08` `1122fcfc9` (+ this) | PROGRESS handover updates |
