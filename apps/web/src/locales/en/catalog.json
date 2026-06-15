@@ -37,7 +37,15 @@
     "loadError": "Failed to load variants",
     "actionsColumn": "Actions",
     "chooseVariant": "Choose a variant",
-    "loading": "Loading variants..."
+    "loading": "Loading variants...",
+    "comboCount": "{{count}} variant combinations",
+    "tooMany": "Too many combinations (max {{max}}). Narrow the selected values before generating.",
+    "generatedSummary": "Variants generated: {{created}} created, {{skipped}} skipped, {{restored}} restored.",
+    "orphan": "Not in current selection",
+    "deactivate": "Deactivate",
+    "deactivated": "Variant deactivated",
+    "deactivateTitle": "Deactivate variant",
+    "deactivateHasStockMessage": "Variant {{name}} has on-hand stock and cannot be deleted. Deactivate it instead?"
   },
   "modifier": "Modifier",
   "modifiers": "Modifiers",

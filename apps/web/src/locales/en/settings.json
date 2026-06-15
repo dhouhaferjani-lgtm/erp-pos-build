@@ -244,7 +244,7 @@
         "nonRegistered": "Not VAT Registered",
         "nonRegisteredDescription": "VAT on purchases is added to inventory cost",
         "vatNumber": "VAT Registration Number",
-      "vatNumberPlaceholder": "TN123456789"
+        "vatNumberPlaceholder": "TN123456789"
       },
       "table": {
         "name": "Name",
@@ -326,7 +326,8 @@
       "payment_methods": "Payment Methods",
       "payment_repositories": "Payment Repositories",
       "pos_terminal": "POS Terminal",
-      "first_product": "First Product"
+      "first_product": "First Product",
+      "product_options": "Set up product options"
     },
     "badges": {
       "required": "Required",
