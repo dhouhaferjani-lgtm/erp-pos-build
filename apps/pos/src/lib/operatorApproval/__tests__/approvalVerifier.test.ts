@@ -89,9 +89,14 @@ describe('isApprovalCacheFresh (FU-1b TTL)', () => {
     expect(isApprovalCacheFresh('not-a-date', T0)).toBe(false);
   });
 
-  it('treats a future fetch time (server ahead of device) as fresh', () => {
+  it('treats a modestly future fetch time (server/clock skew) as fresh', () => {
     const fetchedAt = new Date(T0 + 60_000).toISOString();
     expect(isApprovalCacheFresh(fetchedAt, T0)).toBe(true);
+  });
+
+  it('fails closed on an implausibly future fetch time (gross skew / tampering)', () => {
+    const fetchedAt = new Date(T0 + 365 * 24 * 60 * 60 * 1000).toISOString();
+    expect(isApprovalCacheFresh(fetchedAt, T0)).toBe(false);
   });
 
   it('honours a custom maxAgeMs override', () => {
