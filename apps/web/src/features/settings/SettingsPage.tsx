@@ -1,93 +1,97 @@
-import { Link } from 'react-router-dom'
 import { usePageTitle } from '../../hooks/usePageTitle'
 import { useTranslation } from 'react-i18next'
-import { Settings, Users, Shield, Building2, Upload, Calculator, Package, ChevronRight, Receipt, Ruler, Store, RotateCcw, ShieldAlert } from 'lucide-react'
+import {
+  Users,
+  Shield,
+  Building2,
+  Upload,
+  Calculator,
+  Package,
+  Receipt,
+  Ruler,
+  Store,
+  RotateCcw,
+  ShieldAlert,
+  type LucideIcon,
+} from 'lucide-react'
+import { cn } from '../../lib/utils'
+import { tokens, textColors, colors, borderColors } from '../../lib/designTokens'
+import { PageHeader } from '../../components/molecules/PageHeader'
+import { HubCard, HubGrid } from '../../components/molecules/HubCard'
 
 interface SettingsSection {
   titleKey: string
   descriptionKey: string
-  icon: React.ReactNode
+  icon: LucideIcon
   href: string
-  color: string
 }
 
 const sections: SettingsSection[] = [
   {
     titleKey: 'sections.users.title',
     descriptionKey: 'sections.users.description',
-    icon: <Users className="h-6 w-6" />,
+    icon: Users,
     href: '/settings/users',
-    color: 'bg-blue-100 text-blue-600',
   },
   {
     titleKey: 'sections.roles.title',
     descriptionKey: 'sections.roles.description',
-    icon: <Shield className="h-6 w-6" />,
+    icon: Shield,
     href: '/settings/roles',
-    color: 'bg-purple-100 text-purple-600',
   },
   {
     titleKey: 'sections.company.title',
     descriptionKey: 'sections.company.description',
-    icon: <Building2 className="h-6 w-6" />,
+    icon: Building2,
     href: '/settings/company',
-    color: 'bg-green-100 text-green-600',
   },
   {
     titleKey: 'sections.tax.title',
     descriptionKey: 'sections.tax.description',
-    icon: <Receipt className="h-6 w-6" />,
+    icon: Receipt,
     href: '/settings/tax',
-    color: 'bg-orange-100 text-orange-600',
   },
   {
     titleKey: 'sections.inventory.title',
     descriptionKey: 'sections.inventory.description',
-    icon: <Package className="h-6 w-6" />,
+    icon: Package,
     href: '/settings/inventory',
-    color: 'bg-teal-100 text-teal-600',
   },
   {
     titleKey: 'sections.units.title',
     descriptionKey: 'sections.units.description',
-    icon: <Ruler className="h-6 w-6" />,
+    icon: Ruler,
     href: '/settings/units',
-    color: 'bg-cyan-100 text-cyan-600',
   },
   {
     titleKey: 'sections.import.title',
     descriptionKey: 'sections.import.description',
-    icon: <Upload className="h-6 w-6" />,
+    icon: Upload,
     href: '/settings/import',
-    color: 'bg-amber-100 text-amber-600',
   },
   {
     titleKey: 'sections.openingBalances.title',
     descriptionKey: 'sections.openingBalances.description',
-    icon: <Calculator className="h-6 w-6" />,
+    icon: Calculator,
     href: '/settings/opening-balances',
-    color: 'bg-indigo-100 text-indigo-600',
   },
   {
     titleKey: 'sections.pos.title',
     descriptionKey: 'sections.pos.description',
-    icon: <Store className="h-6 w-6" />,
+    icon: Store,
     href: '/pos/terminals',
-    color: 'bg-emerald-100 text-emerald-600',
   },
   {
     titleKey: 'sections.posRefundPolicies.title',
     descriptionKey: 'sections.posRefundPolicies.description',
-    icon: <RotateCcw className="h-6 w-6" />,
+    icon: RotateCcw,
     href: '/settings/pos-refund-policies',
-    color: 'bg-rose-100 text-rose-600',
   },
   {
     titleKey: 'sections.customerHistoryAudit.title',
     descriptionKey: 'sections.customerHistoryAudit.description',
-    icon: <ShieldAlert className="h-6 w-6" />,
+    icon: ShieldAlert,
     href: '/settings/audit/customer-history',
-    color: 'bg-slate-100 text-slate-600',
   },
 ]
 
@@ -97,64 +101,52 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Settings className="h-6 w-6 text-gray-400" />
-          {t('title')}
-        </h1>
-        <p className="text-gray-500">{t('description')}</p>
-      </div>
+      <PageHeader title={t('title')} subtitle={t('description')} className="mb-0" />
 
       {/* Settings Sections */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <HubGrid>
         {sections.map((section) => (
-          <Link
+          <HubCard
             key={section.href}
             to={section.href}
-            className="group rounded-lg border border-gray-200 bg-white p-6 hover:border-blue-300 hover:shadow-md transition-all"
-          >
-            <div className="flex items-start gap-4">
-              <div className={`rounded-lg p-3 ${section.color}`}>
-                {section.icon}
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
-                    {t(section.titleKey)}
-                  </h3>
-                  <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-blue-600 transition-colors" />
-                </div>
-                <p className="mt-1 text-sm text-gray-500">{t(section.descriptionKey)}</p>
-              </div>
-            </div>
-          </Link>
+            icon={section.icon}
+            title={t(section.titleKey)}
+            description={t(section.descriptionKey)}
+          />
         ))}
-      </div>
+      </HubGrid>
 
       {/* App Info */}
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('appInfo.title')}</h2>
+      <div
+        className={cn(
+          'rounded-lg border p-6',
+          borderColors.light,
+          colors.neutral[50],
+        )}
+      >
+        <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('appInfo.title')}</h2>
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <dt className="text-sm font-medium text-gray-500">{t('appInfo.version')}</dt>
-            <dd className="mt-1 text-sm text-gray-900">1.0.0</dd>
+            <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('appInfo.version')}</dt>
+            <dd className={cn('mt-1 text-sm', textColors.primary)}>1.0.0</dd>
           </div>
           <div>
-            <dt className="text-sm font-medium text-gray-500">{t('appInfo.environment')}</dt>
-            <dd className="mt-1 text-sm text-gray-900">
+            <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('appInfo.environment')}</dt>
+            <dd className={cn('mt-1 text-sm', textColors.primary)}>
               {import.meta.env.MODE}
             </dd>
           </div>
           <div>
-            <dt className="text-sm font-medium text-gray-500">{t('appInfo.apiUrl')}</dt>
-            <dd className="mt-1 text-sm text-gray-900 font-mono text-xs truncate">
-              {(import.meta.env['VITE_API_URL'] as string | undefined) ?? t('appInfo.notConfigured')}
+            <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('appInfo.apiUrl')}</dt>
+            <dd className={cn('mt-1 truncate font-mono text-xs', textColors.primary)}>
+              {typeof import.meta.env['VITE_API_URL'] === 'string'
+                ? import.meta.env['VITE_API_URL']
+                : t('appInfo.notConfigured')}
             </dd>
           </div>
           <div>
-            <dt className="text-sm font-medium text-gray-500">{t('appInfo.buildDate')}</dt>
-            <dd className="mt-1 text-sm text-gray-900">
+            <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('appInfo.buildDate')}</dt>
+            <dd className={cn('mt-1 text-sm', textColors.primary)}>
               {new Date().toLocaleDateString()}
             </dd>
           </div>
