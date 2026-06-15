@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 import { ShieldAlert } from 'lucide-react'
 import { Spinner } from '@/components/atoms/Spinner/Spinner'
-import { Pagination } from '@/components/ui/Pagination'
+import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { PartnerSearchSelect } from '@/components/ui/PartnerSearchSelect'
 import { UserPicker } from '@/components/ui/UserPicker'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -302,12 +302,14 @@ export function CustomerHistoryAuditPage() {
             </div>
 
             {meta && (
-              <Pagination
-                hasPrev={meta.current_page > 1}
-                hasNext={meta.current_page < meta.last_page}
-                onPrev={() => { setPage((p) => Math.max(1, p - 1)) }}
-                onNext={() => { setPage((p) => p + 1) }}
-                perPage={perPage}
+              <OffsetPagination
+                currentPage={meta.current_page}
+                lastPage={meta.last_page}
+                total={meta.total}
+                perPage={meta.per_page}
+                from={null}
+                to={null}
+                onPageChange={(value) => { setPage(value) }}
                 onPerPageChange={(value) => {
                   setPerPage(value)
                   setPage(1)
