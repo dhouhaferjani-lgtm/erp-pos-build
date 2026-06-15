@@ -14,6 +14,22 @@
 
 **Test-run safety (from project memory):** NEVER run the full PHPUnit suite. Always scope with `--filter`. Constraint/restore/race tests need real PostgreSQL — run them against the local PG test DB, not SQLite.
 
+**Execution order (dependency-correct — follow this sequence, not the document order):**
+`A1 → A2 → B1 → A3 → B2 → A4 → C1 → C2 → D1 → D2 → E1 → E2 → F1 → F2 → G1 → G2 → G3 → G4 → G5 → H1`.
+Rationale: A3's matrix service reads the `attributeValues` relation (Task **B1**), and A4's controller response uses both the relation and the DTO `attribute_values` field (Tasks **B1 + B2**). So **B1 must precede A3** and **B2 must precede A4**. Each affected task repeats its `Depends on:` line.
+
+**Test fixtures (backend):** these factories already exist — use them, don't hand-roll inserts:
+`database/factories/Catalog/{ProductAttributeFactory,ProductAttributeValueFactory,ProductVariantFactory,ProductVariantAttributeValueFactory}.php`. Mirror the tenant/auth/seeding setup in the existing `apps/api/tests/Feature/Catalog/ProductVariantServiceMatrixTest.php` and `ProductVariantApiTest.php` (RefreshDatabase + `RolesAndPermissionsSeeder`, real models). A reusable local helper for these tasks:
+
+```php
+// product with one is_variant_axis attribute "Size" (codes 36/37/38) + "Color" (noir/blanc)
+$product = Product::factory()->for($company)->create(['sku' => 'TSHIRT']);
+$size = ProductAttribute::factory()->create(['code' => 'taille', 'name' => 'Size', 'is_variant_axis' => true]);
+[$v36, $v37, $v38] = collect(['36', '37', '38'])
+    ->map(fn ($c) => ProductAttributeValue::factory()->for($size, 'attribute')->create(['code' => $c, 'label' => $c]))->all();
+```
+(Use the same shape for Color. Adjust factory relation names to match the factories above.)
+
 ---
 
 ## File map
@@ -298,6 +314,8 @@ git commit -am "feat(catalog): enforce matrix cap at the service boundary"
 
 ### Task A3: `generateMatrix` — value-subset, junction-keyed exclude, restore-on-regenerate
 
+**Depends on:** Task **B1** (`ProductVariant::attributeValues()` relation — this task reads `$variant->attributeValues`). Run B1 first.
+
 **Files:**
 - Modify: `apps/api/app/Modules/Catalog/Application/Services/ProductVariantService.php`
 - Test: `apps/api/tests/Feature/Catalog/ProductVariantMatrixGenerationTest.php` (**needs PostgreSQL** — uses unique constraints + soft-delete partial indexes)
@@ -452,8 +470,10 @@ public function generateMatrix(string $productId, array $axes): array
                 if ($match->deleted_at === null) {
                     $skipped++;            // active: leave untouched
                 } else {
-                    // Restore the soft-deleted row under a row lock.
-                    $locked = ProductVariant::withTrashed()->lockForUpdate()->find($match->id);
+                    // Restore the soft-deleted row under a row lock. Use the
+                    // explicit where()->lockForUpdate()->first() form so the FOR
+                    // UPDATE clause is unambiguously applied before the row is read.
+                    $locked = ProductVariant::withTrashed()->where('id', $match->id)->lockForUpdate()->first();
                     $locked->restore();    // un-soft-delete; preserves prior edits
                     $locked->load('attributeValues');
                     $restored->push($locked);
@@ -505,6 +525,8 @@ git commit -am "feat(catalog): value-subset, junction-keyed idempotent matrix wi
 ---
 
 ### Task A4: Controller wires axes + meta response
+
+**Depends on:** Tasks **B1 + B2** (`loadMissing('attributeValues')` and the DTO `attribute_values` field). Run B1 and B2 first.
 
 **Files:**
 - Modify: `apps/api/app/Modules/Catalog/Presentation/Controllers/ProductVariantController.php`
@@ -823,7 +845,7 @@ try {
 }
 ```
 
-`isUniqueViolation($e, $name)`: SQLSTATE `23505` (`$e->getCode() === '23505'`) AND constraint name present in `$e->getMessage()`. `barcodeConflictName()`: tenant-scoped query `whereNull('deleted_at')->where('barcode', …)->where('id','!=',$selfId)->value('name_suffix')` — returns null when ambiguous/absent (never throws). Route the controller `update` through `variantService->updateVariant($id, $validated)` so the same catch covers updates.
+`isUniqueViolation($e, $name)`: **gate on SQLSTATE first** — `($e->errorInfo[0] ?? null) === '23505'` (the reliable check) — and only then match the exact index name in the driver message. The four `product_variants` index names are all < 63 bytes (verified against migration `…100003`: `product_variants_tenant_barcode_unique` = 38 chars, `…_tenant_sku_unique`, `…_product_id_variant_code_unique` = 47, `…_default_unique`), so PostgreSQL's 63-byte identifier truncation does not apply and substring matching is safe. A non-barcode violation falls through to `throw $e` unchanged (it is NOT reported as a barcode error). `barcodeConflictName()`: tenant-scoped query `whereNull('deleted_at')->where('barcode', …)->where('id','!=',$selfId)->value('name_suffix')` — returns null when ambiguous/absent (never throws). Route the controller `update` through `variantService->updateVariant($id, $validated)` so the same catch covers updates.
 
 - [ ] **Step 5: Run — expect pass.** PASS.
 
