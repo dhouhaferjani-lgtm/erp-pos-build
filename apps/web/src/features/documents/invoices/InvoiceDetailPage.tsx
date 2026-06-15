@@ -565,7 +565,7 @@ export function InvoiceDetailPage() {
 
       {/* Credit Note Form Modal */}
       {showCreditNoteForm && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-gray-500/75 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
             <CreateCreditNoteForm
               invoice={invoice as unknown as InvoiceForCreditNote}
@@ -595,7 +595,7 @@ export function InvoiceDetailPage() {
 
       {/* Email Modal */}
       {showEmailModal && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-gray-500/75 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4">{t('common:email.title')}</h3>
             <div className="space-y-4">
