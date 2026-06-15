@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Company\Services;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 
@@ -110,23 +111,34 @@ class CompanyContext
 
     /**
      * Get the default company ID for a user.
-     * Returns the first company the user is a member of.
+     * Returns the first company the user is an ACTIVE member of.
+     *
+     * FU-2a: a suspended/revoked membership must not grant a default company —
+     * `getDefaultCompanyForUser` feeds `CompanyContextMiddleware` and an inactive
+     * membership passing here would let a deactivated user keep operating.
      */
     public function getDefaultCompanyForUser(User $user): ?string
     {
         $membership = UserCompanyMembership::where('user_id', $user->id)
+            ->where('status', MembershipStatus::Active->value)
             ->first();
 
         return $membership?->company_id;
     }
 
     /**
-     * Check if a user has access to a specific company.
+     * Check if a user has an ACTIVE membership in a specific company.
+     *
+     * FU-2a: this gates every company-scoped route via `CompanyContextMiddleware`.
+     * It must require an ACTIVE membership, not mere existence — otherwise a
+     * suspended/revoked member who still holds a valid token keeps passing
+     * company context (the root of the FU-2 privilege-escalation finding).
      */
     public function userHasAccessToCompany(User $user, string $companyId): bool
     {
         return UserCompanyMembership::where('user_id', $user->id)
             ->where('company_id', $companyId)
+            ->where('status', MembershipStatus::Active->value)
             ->exists();
     }
 
