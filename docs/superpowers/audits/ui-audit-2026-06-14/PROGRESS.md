@@ -86,12 +86,21 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
   - Migrated by 4 parallel subagents (disjoint feature dirs → 0 conflicts); orchestrator ran the authoritative tsc/tests/lint, the single `dist` build, screenshots, and all commits serially.
 
 ### (original cluster framing — superseded by CANONICALIZATION-SPEC for module order)
-> **Continuation note (branch `feat/ui-consistency-clusters`, off LOCAL dev `04873f158`):** Phase 3.7
-> done; **Phase 3.2 (finance + treasury) COMPLETE — ~43 files.** Lint ratchet 11512 → **10123** (−1389),
-> 0 errors, tsc clean, all suites green. Pattern proven: parallel subagents on DISJOINT files
+> **Continuation note (branch `feat/ui-consistency-clusters`, off LOCAL dev `04873f158`):**
+> ✅ Phase 3.7, ✅ 3.2 (finance+treasury ~43 files), ✅ 3.3 light settings, ✅ 3.4 (inventory/catalog/menu),
+> ◧ 3.5 POS (~31/56 files). Lint ratchet 11512 → **8615** (−2897), 0 errors, tsc clean, all suites green
+> (the 4 documented pre-existing fails persist: CompositeItemSearchSelect clear-button ×2,
+> ProductDocuments/MovementsTab error-state ×2). Pattern proven: parallel subagents on DISJOINT files
 > (presentation-only; preserve every useQuery/mutation key; no shared-file/locale/barrel/test edits),
 > orchestrator runs the authoritative tsc/eslint/vitest + reconciles existing suites + all commits serially.
-> Shared a11y fix landed: the `Modal` organism now sets `role="dialog"`/`aria-modal`/`aria-label`.
+> Shared a11y fix landed: the `Modal` organism sets `role="dialog"`/`aria-modal`/`aria-label`.
+>
+> **Shared-atom follow-ups flagged by agents (NOT yet done — would touch shared files):**
+> (1) `atoms/Textarea` declares `error?: boolean` but doesn't destructure it → leaks `error` attr to DOM
+> (Input/Select handle it). (2) No `ring`/selection-emphasis token in designTokens — selection UIs use
+> shadow/border instead. (3) POS `OrderStatusBadge`/`TableStatusBadge` still carry their own off-theme
+> status maps + `dark:` variants (left as-is; candidates for a StatusBadge migration). (4)
+> AdvancedPaymentsModal has a pre-existing `step="0.001"` precision warning (line ~520).
 > **Recurring gotcha:** existing FEATURE-ROOT suites (treasury.test.tsx, finance/JournalEntryForm.test.tsx)
 > render the migrated pages and assert pre-canonical markup — after each list/detail batch, run them and
 > reconcile (link→Button role, loading-text→`.animate-pulse` DataTable skeleton). Agents must NOT edit
@@ -118,8 +127,22 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
   separate DARK design language (REPORT M10). Do NOT force it into light tokens. Its English-only
   localization is the M10 owner decision (Phase 5). If the owner wants the dark shell tokenized, that
   needs a dark-token scale first — separate workstream.
-- [ ] 3.4 inventory/catalog (8 bespoke modals, rainbow hub, status badges)
-- [ ] 3.5 POS color drift (keep POSButton/touch layout; adopt tokens; kill glassmorphism/dark)
+- [x] **3.4 inventory/catalog/menu — ✅ COMPLETE.** ProductDetailPage, StockLevels/StockMovements,
+  Product Documents/Movements/StockLevels tabs, ModifierGroup list+form, RecipeLineEditor,
+  CompositeItemSearchSelect, VariantEditor, ModifierGroupAssigner, MenuCategoryItemManager (rule-19
+  override-price → MoneyInput), pricing ProductPricingCard/MarginIndicator/PriceInputWithMargin
+  (m1/m2), + CompositeItemFormPage residuals. inventory/catalog/menu at 0 color warnings.
+- ◧ 3.5 POS color drift — **PARTIAL (~31/56 files).** ✅ DONE: ZReport list+detail, Shift dashboard+history,
+  ProductInfoModal, TableManagement, Terminal form/list/selector, TransactionCart, OrderPanel,
+  OrderLineItem, smart-prompts (glassmorphism killed + glyph→lucide), Cash/CashTendered/QuickAddCustomer/
+  OpenShift modals, POSPage, PaymentPanel, ProductGrid, ProductCard, CartLineItem, Calculator,
+  ModifierSelectionModal, AdvancedPaymentsModal, KitchenDisplay, KitchenOrderCard, OrdersPage,
+  ActiveOrdersBoard. ⏳ REMAINING (~25 small files): atoms (StockBadge, TableStatusBadge, OrderStatusBadge,
+  ConsumptionModeToggle, POSButton, KitchenTimer, MoneyInput), molecules (TransactionDiscountInput,
+  CouponCodeInput, AppliedDiscountsBadge, HeldOrderCard, HeldOrdersList, OrderStatusBadge), components
+  (TableSelector, LoyaltyRewardSelector, LoyaltyMemberBadge, EarnPointsPreview, CheckoutSuccessDialog,
+  HoldOrderButton, SendToKitchenButton, HeldOrdersBadge, ShiftReceiptsList, TerminalStatusBadge),
+  layouts (POSLayout, ShiftOperationsMenu), and the `pos/organisms/Analytics/*` charts (glassmorphism).
 - [ ] 3.6 workshop-* (close lint gap; status pills → StatusBadge; modals → Modal)
 - [x] **3.7 Convert 4 hub pages (Finance/Inventory/POS/Marketing) → HubCard/HubGrid** ✅
   (icons as `LucideIcon` refs, per-card rainbow chips removed, gating + Finance sections + POS
@@ -162,4 +185,7 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
 | 2026-06-14 | 3.2 | `9575e1f9b` | treasury PaymentMethodsPage + AddPaymentMethodModal + BankReconciliationPage + allocation components (OpenInvoicesList/AllocationPreview/PaymentAllocationForm) → primitives; bespoke modals → Modal organism; 168 treasury tests green; web lint 10439→10210 (−229) |
 | 2026-06-14 | 3.2 | `9a8e6e5f9` | **Phase 3.2 FINISH** — finance GeneralLedger (page+table+filters), ChartOfAccounts (page+tree+Add/EditAccountModal), FinanceWidget, ToleranceSettingsDisplay, ExpenseCard/List. Shared a11y fix: Modal organism `role="dialog"`/`aria-modal`/`aria-label`. Reconciled finance suites (skeleton/eager-filters/dialog-role). 213 tests green; web lint 10210→10123 (−87). **Phase 3.2 done: 11512→10123 (−1389).** |
 | 2026-06-14 | 3.3 | `96b72e559` | core light settings (UsersPage+UserEditModal+Add/PIN modals, RolesPage, LocationsPage, CompanyPage, TaxSettingsPage) → primitives; bespoke modals → Modal organism; 6 TDD suites; 77 settings tests green incl. tenantScope; web lint 10123→9809 (−314). admin/* dark shell deferred by design (M10). |
-| 2026-06-14 | docs | `a3f38d44f` `4b48d0f08` (+ this) | PROGRESS handover updates |
+| 2026-06-15 | 3.3 | `3387f65da` | finish light settings (InventorySettings, ReceiptSettingsTab, CompanyOnboarding, UserSelector, SettingsPage→HubGrid, SetupChecklist); 92 tests; lint 9809→9620 |
+| 2026-06-15 | 3.4 | `bf7c90639` `368fde8a6` `b7f931e09` | inventory detail/stock + tabs; catalog/menu/pricing components (MenuCategoryItemManager rule-19); CompositeItemFormPage residuals. inventory/catalog/menu → 0 color. lint 9620→9185 |
+| 2026-06-15 | 3.5 | `dc1828837` `00d7d0a6c` `fb6970186` | POS color drift ~31/56 files (reporting, terminals, order/cart, smart-prompts glassmorphism+glyph→lucide, checkout core, kitchen/orders). lint 9185→8615 |
+| 2026-06-14/15 | docs | `a3f38d44f` `4b48d0f08` `1122fcfc9` (+ this) | PROGRESS handover updates |
