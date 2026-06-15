@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Catalog\Presentation\Requests;
 
+use App\Modules\Identity\Domain\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -36,7 +37,7 @@ class CreateVariantRequest extends FormRequest
                 'string',
                 'max:100',
                 Rule::unique('product_variants', 'barcode')->where(
-                    fn ($q) => $q->whereNull('deleted_at')->where('tenant_id', $this->user()->tenant_id)
+                    fn ($q) => $q->whereNull('deleted_at')->where('tenant_id', $this->tenantId())
                 ),
             ],
             'price_override' => ['sometimes', 'nullable', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
@@ -46,6 +47,18 @@ class CreateVariantRequest extends FormRequest
             'attribute_values.*.attribute_id' => ['required_with:attribute_values', 'uuid'],
             'attribute_values.*.attribute_value_id' => ['required_with:attribute_values', 'uuid'],
         ];
+    }
+
+    /**
+     * Tenant id of the authenticated catalog user. authorize() guarantees a
+     * User with catalog.variants.create, so the cast is safe here.
+     */
+    private function tenantId(): string
+    {
+        /** @var User $user */
+        $user = $this->user();
+
+        return $user->tenant_id;
     }
 
     /**

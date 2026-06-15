@@ -217,10 +217,7 @@ class ProductVariantController extends Controller
             return response()->json(['message' => 'Variant not found'], 404);
         }
 
-        $variant->fill($request->validated());
-        $variant->save();
-
-        $variant->loadMissing('attributeValues');
+        $variant = $this->variantService->updateVariant($variant, $request->validated());
 
         return response()->json(['data' => ProductVariantData::fromModel($variant)]);
     }

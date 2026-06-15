@@ -59,7 +59,7 @@ final class ProductVariantService
             $variant->cost_override = $command->costOverride;
             $variant->image_url = $command->imageUrl;
 
-            $this->variantRepo->save($variant);
+            $this->saveBarcodeSafe($variant);
 
             foreach ($command->attributeValues as $pair) {
                 ProductVariantAttributeValue::create([
@@ -98,6 +98,71 @@ final class ProductVariantService
 
             return $variant;
         });
+    }
+
+    /**
+     * Apply a partial update to a variant, mapping any barcode unique-constraint
+     * race (23505) to a 422 validation error instead of a raw 500.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    public function updateVariant(ProductVariant $variant, array $attributes): ProductVariant
+    {
+        $variant->fill($attributes);
+        $this->saveBarcodeSafe($variant);
+        $variant->loadMissing('attributeValues');
+
+        return $variant;
+    }
+
+    /**
+     * Persist a variant, translating a barcode partial-unique violation (the
+     * validate-then-write race window) into a 422 barcode validation error.
+     *
+     * Only the barcode constraint is remapped: SKU / variant_code / default
+     * violations are re-thrown untouched so they are NOT mislabelled as barcode
+     * errors.
+     */
+    private function saveBarcodeSafe(ProductVariant $variant): void
+    {
+        try {
+            $variant->save();
+        } catch (QueryException $e) {
+            if (DuplicateBarcodeException::isViolationOf($e, 'product_variants_tenant_barcode_unique')) {
+                $name = $this->barcodeConflictName($variant->tenant_id, (string) $variant->barcode, $variant->id);
+                throw DuplicateBarcodeException::asValidation(
+                    $name !== null
+                        ? "Barcode already used by another variant ({$name})."
+                        : 'Barcode already used by another variant.'
+                );
+            }
+            throw $e; // sku / variant_code / default violations NOT reported as barcode errors
+        }
+    }
+
+    /**
+     * Best-effort lookup of the conflicting variant's display name for a richer
+     * 422 message. Returns null when no other live variant currently holds the
+     * barcode (e.g. the conflict was already resolved concurrently).
+     *
+     * Strictly best-effort: when the failing write happened inside an enclosing
+     * transaction/savepoint (matrix-generate, or a wrapped test connection), PG
+     * aborts that transaction (25P02) and this follow-up SELECT would itself
+     * throw. Swallow any query failure and fall back to the generic message so
+     * the caller always gets a clean 422 rather than a 500.
+     */
+    private function barcodeConflictName(string $tenantId, string $barcode, string $selfId): ?string
+    {
+        try {
+            return ProductVariant::query()
+                ->whereNull('deleted_at')
+                ->where('tenant_id', $tenantId)
+                ->where('barcode', $barcode)
+                ->where('id', '!=', $selfId)
+                ->value('name_suffix');
+        } catch (QueryException) {
+            return null;
+        }
     }
 
     /**
