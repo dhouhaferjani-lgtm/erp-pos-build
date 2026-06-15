@@ -1,5 +1,6 @@
 # Spec B — Web-Admin Variant Authoring & Onboarding Polish
 
+**Version:** v2 (Codex review round 1 resolved — see §9)
 **Date:** 2026-06-15
 **Branch:** `feat/web-variant-authoring` (off `dev` @ `c8d35b5fd`)
 **Worktree:** `apps/erp.web-variant-authoring`
@@ -57,8 +58,8 @@ Forking off `dev` remains correct: Spec B's touched Catalog files (`generateMatr
 
 ## 2. Decisions (locked with owner, 2026-06-15)
 
-1. **Reusable option-set UX = per-product value subset + idempotent additive generate.** Reuse the existing global attributes; **no new tables**. (Saved option-set *templates* explicitly deferred.)
-2. **Sync semantics = additive-only, never auto-delete.** Generate creates only missing combos; deselected/orphan variants are kept and flagged, removed only via explicit per-combination delete. (No soft-delete-on-sync.)
+1. **Reusable option-set UX = per-product value subset + idempotent additive generate.** Reuse the existing global attributes; **no new tables**. (Saved option-set *templates* explicitly deferred.) The per-product subset is **not separately persisted** — it is the set of attribute-value pairs encoded by the product's existing variants (the junction table). On load the editor **hydrates** its selection from those rows (§3.5); the requirement is inference-based, not a durable per-product whitelist. *(Resolves Codex HIGH-4.)*
+2. **Sync semantics = additive-only, never auto-delete; regenerate restores re-selected soft-deleted combos.** Generate creates only missing combos and **restores** (un-soft-deletes) any soft-deleted variant whose combo is in the current selection — giving delete a recovery path. It never deletes; deselected/orphan variants are kept and flagged, removed only via explicit per-combination delete. (No soft-delete-on-sync.) *(Restore extends this decision per Codex HIGH-1 — owner may override to "keep deleted + report `deleted_skipped_count`".)*
 3. **Explosion guard = soft warn + hard cap.** Soft visual warning at **≥ 50** combos; **Generate disabled > 200**; cap enforced on **both** client and server (422 server-side).
 4. **Barcode enforcement = server 422 + inline frontend field error**, robust to the DB unique-violation race; fix `max` length to 100.
 5. **Onboarding step = "Set up product options", optional**, complete when the tenant has **≥ 1 `ProductAttribute` with `is_variant_axis = true`** (non-deleted).
@@ -80,28 +81,38 @@ Thresholds 50/200 are defined as named constants (backend `const`, frontend expo
 { "attribute_ids": ["<uuid>", …] }
 ```
 
-`GenerateMatrixRequest`:
+`GenerateMatrixRequest` (fast-path HTTP validation only):
 - Accept either `axes` (preferred) or `attribute_ids` (legacy). Validate UUIDs, non-empty, each `attribute_id` is a variant axis, each `value_id` belongs to its attribute.
-- Compute the **selected** combo count = `∏ |value_ids|` (legacy: `∏ |all values|`). Reject with **422** (`combinations` field) when `> MAX_VARIANTS_PER_GENERATE` (**200**). This bounds work *before* any DB write.
+- Compute the **selected** combo count = `∏ |value_ids|` (legacy: `∏ |all values|`). Reject with **422** (`combinations` field) when `> MAX_VARIANTS_PER_GENERATE` (**200**). This is an early HTTP guard.
 
 `ProductVariantService::generateMatrix(string $productId, array $axes)`:
 - Build axes from the **selected** value IDs only (legacy path expands to all values, preserving today's behavior).
-- Load existing variants for the product (incl. soft-deleted — the `variant_code` unique has no `deleted_at` predicate). Derive the set of existing `variant_code`s, map back to the combo shape, and pass as `cartesian()`'s **`$excluded`** → only **missing** combos are produced. **No variant is ever deleted.**
+- **Re-enforce the cap at the service boundary** (`∏ |value_ids| ≤ MAX_VARIANTS_PER_GENERATE`) *before* calling `cartesian()`, throwing a domain exception the controller maps to the same 422. The FormRequest is only a fast-path; the service is the authoritative guard so no future backend caller can bypass it or materialize a runaway cartesian array. *(Resolves Codex MED-6.)*
+- **Idempotency source of truth = the junction table, not `variant_code` strings.** Load existing variants for the product (incl. soft-deleted) **with** their `product_variant_attribute_values` rows, key each by its set of `(attribute_id → attribute_value_id)` pairs, and use those keys to:
+  - **exclude** combos that already exist as an **active** variant (pass to `cartesian()`'s `$excluded`), and
+  - **restore** (un-soft-delete) a soft-deleted variant whose combo is in the current selection instead of attempting a fresh insert — the hard `UNIQUE(product_id, variant_code)` (no `deleted_at` predicate) makes a re-insert impossible, so restore is the only correct path and it preserves the variant's prior edits. Restore reloads the junction before returning. *(Resolves Codex HIGH-1, MED-8.)*
+  - Reconstructing combos from `variant_code` strings is explicitly avoided (brittle if product SKU / value codes change); `variant_code` is treated as an output identifier only.
+- Restore edge case: if reviving a soft-deleted variant would collide with an **active** variant's `sku`/`barcode` (those partial-unique indexes exclude soft-deleted rows), the restore surfaces a **422** naming the conflict rather than 500. (Rare — `sku` is deterministic per product; only manual edits cause it.)
 - Default-variant rule unchanged (first *ever* variant for a product becomes default; idempotent re-runs never add a second default).
-- Return a summary: `{ created: ProductVariantData[], created_count, skipped_count }`. (Controller wraps in `{ data: … }`.)
+- Return a summary `{ created_count, skipped_count, restored_count }` alongside the created/restored variants.
 
-Idempotency guarantee: regenerating with an unchanged or subset selection creates 0 and throws nothing. Adding a value creates exactly the new combos.
+**Response contract (non-breaking):** keep `data` as the array of affected `ProductVariantData` (the current shape) and put counts in `meta`: `{ data: ProductVariantData[], meta: { created_count, skipped_count, restored_count } }`. Existing callers that read `data` as an array keep working. *(Resolves Codex MED-5.)*
+
+Idempotency guarantee: regenerating with an unchanged or subset selection creates 0, restores 0, throws nothing. Adding a value creates exactly the new combos. Re-selecting a previously-deleted combo restores it.
 
 ### 3.2 Backend — variant DTO exposes junction
 
-`ProductVariantData` gains `attribute_values: list<{ attribute_id: string, attribute_value_id: string }>`, sourced from the `product_variant_attribute_values` junction (eager-loaded in `index`/`store`/`update`/`generateMatrix` reads to avoid N+1). Drives the frontend orphan badge. Regenerate TS types via `php artisan typescript:transform`.
+`ProductVariantData` gains `attribute_values: list<{ attribute_id: string, attribute_value_id: string }>`, sourced from the `product_variant_attribute_values` junction. **Relationship contract** *(resolves Codex MED-7)*:
+- Add a named `ProductVariant::attributeValues(): HasMany` relation to `ProductVariantAttributeValue`.
+- `index`/`store`/`update`/`generateMatrix` must `with('attributeValues')` (lists) or `loadMissing('attributeValues')` (single, after write) before transformation.
+- `ProductVariantData::fromModel()` consumes the **loaded** relation only — never queries inside the mapper — so listing 200 variants stays a single query. Regenerate TS types via `php artisan typescript:transform`.
 
 ### 3.3 Backend — barcode uniqueness → 422
 
-- Add a tenant-scoped uniqueness rule to `CreateVariantRequest` and `UpdateVariantRequest`: barcode unique among non-deleted variants, **excluding the current variant** (update) — matching the DB partial index. On update, the variant id comes from the route.
-- Service layer additionally **catches the PG unique-violation** (`23505` on `product_variants_tenant_barcode_unique`) and rethrows a domain `DuplicateBarcodeException` → mapped to **422** `{ errors: { barcode: ["<message naming the conflicting variant>"] } }`. This closes the validate-then-write race.
+- Add a tenant-scoped uniqueness rule to `CreateVariantRequest` and `UpdateVariantRequest`: barcode unique among non-deleted variants, **excluding the current variant** (update) — matching the DB partial index. On update, the variant id comes from the route. This is the **fast-path**.
+- **Race-safety mechanism = a centralized PG unique-violation mapper** for SQLSTATE `23505` on `product_variants_tenant_barcode_unique`, applied so it covers **both** create **and** the update path (which today `fill()`/`save()`s Eloquent directly without a service). Either route the barcode-writing save through a service method that catches the violation, or register a handler that maps this specific constraint to **422** `{ errors: { barcode: [...] } }`. The FormRequest rule is *not* relied on for race safety. *(Resolves Codex HIGH-2.)*
 - Tighten `barcode`/`sku` `max:255` → `max:100` to match the column. Non-breaking (stricter).
-- Message includes the conflicting variant's `name_suffix` (resolve via tenant-scoped lookup).
+- **Conflict-name message is best-effort polish** *(Codex LOW-9)*: the 422 must always carry a `barcode` field error; naming the conflicting variant's `name_suffix` is added on top via a **tenant-scoped** lookup that mirrors the partial index exactly (excludes soft-deleted). If the lookup is ambiguous/empty, fall back to a generic message — never block the 422 on it. (Note: existing `findByBarcode` is `company_id`-scoped, so a new tenant-scoped query is needed.)
 
 ### 3.4 Backend — onboarding step
 
@@ -111,18 +122,30 @@ Idempotency guarantee: regenerating with an unchanged or subset selection create
 
 ### 3.5 Frontend — `ProductVariantMatrixEditor` rework
 
-- **Axis + value selection:** checking an axis reveals its values as toggle chips (fetched via `getAttributeValues(attributeId)`; all selected by default). Deselecting a chip excludes that value. Color-type values render a swatch from `hex_color`.
+- **Selection hydration on load** *(resolves Codex HIGH-4)*: the selected axes + values are **derived from the product's existing variants' `attribute_values`** (now in the DTO), not from any separate store. Initial selection = the union of attribute IDs and value IDs present across active variants. This is the durability mechanism — the variants *are* the persisted subset. (A sparse set of existing combos hydrates to the full cross-product of its values; additive generate then offers to fill any genuinely-missing combos, which is the intended matrix behavior.)
+- **Axis + value selection:** checking an axis reveals its values as toggle chips (fetched via `getAttributeValues(attributeId)`; all selected by default for a *new* axis, or hydrated from existing variants). Deselecting a chip excludes that value. Color-type values render a swatch from `hex_color`.
 - **Live combo count:** `∏ selected value counts`, shown inline. Soft warning styling at **≥ 50**; **Generate disabled with explanatory message > 200** (shared `MAX_VARIANTS_PER_GENERATE` constant).
 - **Generate = "Generate / sync matrix":** posts `{ axes }`; on success a toast reports `created`/`skipped`. Additive — existing edited rows are preserved (server is source of truth; refetch re-baselines).
 - **Orphan badge:** a variant whose junction `attribute_values` is **not** a subset of the current selection shows a "not in current selection" badge; its delete button is the escape hatch (no auto-delete).
 - **Inline barcode error:** on row save, map a `422 errors.barcode` to a per-row field error (not just a toast).
-- **Delete confirm:** per-combination delete opens a fixed-size confirmation dialog (per `feedback_modal_fixed_size`) before calling `deleteVariant`.
+- **Delete confirm:** per-combination delete opens a fixed-size confirmation dialog (per `feedback_modal_fixed_size`) before calling `deleteVariant`. The dialog surfaces the backend delete-policy outcome — if the variant is referenced (§3.7), the API returns 422 and the dialog shows "this variant has stock or sales history; deactivate it instead" with a one-click **Deactivate** (`is_active=false`) action.
 - Design tokens only (no hardcoded Tailwind colors); all strings via `t()`.
 
+### 3.7 Backend — variant delete policy *(resolves Codex HIGH-3)*
+
+`variant_id` is threaded into `stock_levels`, `stock_movements`, `document_lines`, and `pos_receipt_lines` (migrations `…100005/100006/100009/100010`), so a deleted variant carries operational and fiscal weight. Soft-delete preserves the row (historical joins still resolve), but a freely-deletable used variant strands stock and muddies retirement semantics.
+
+Policy for `DELETE product-variants/{id}` (`ProductVariantController@destroy`):
+- **Block** the delete (return **422** with a clear, field-agnostic message) when the variant has **non-zero on-hand stock**, or any **stock movement**, **document line**, or **POS receipt line** referencing it.
+- Steer the user to retire via `is_active=false` (already supported by the update path) — the normal way to remove a used variant from selection without breaking history.
+- Allow soft-delete only for **unused** variants (no references, no stock) — e.g. a freshly-generated combo the user never sold.
+- This check is read-only existence queries across the four reference tables + the stock-on-hand lookup; scope to the tenant DB (per-request connection).
+- *(Owner may relax this to "warn-only" — flagged for review.)*
+
 ### 3.6 Frontend — API client, hooks, types
-- `generateVariantMatrix(productId, axes)` posts `{ axes }`; return type carries `{ created, created_count, skipped_count }`.
-- `useAttributeValues(attributeId)` (or reuse existing) for per-axis chips; `useGenerateMatrix` updated for the new return.
-- `ProductVariant` type picks up `attribute_values` from regenerated DTOs.
+- `generateVariantMatrix(productId, axes)` posts `{ axes }`; reads the affected variants from `data` (array, unchanged) and the `created_count`/`skipped_count`/`restored_count` from `meta` for the result toast. Because the response carries `meta`, the API client must use `api.post` + `response.data` (not `apiPost`, which unwraps `data.data` and would drop `meta`) — per the paginated-endpoint pitfall in MEMORY.
+- `useAttributeValues(attributeId)` (or reuse existing) for per-axis chips; `useGenerateMatrix` updated for the new return + counts.
+- `ProductVariant` type picks up `attribute_values` from regenerated DTOs (drives hydration + orphan badge).
 
 ---
 
@@ -135,22 +158,27 @@ Idempotency guarantee: regenerating with an unchanged or subset selection create
 
 ## 5. Testing (TDD; each milestone → Codex adversarial review, Opus fallback)
 **Backend (PG-aware where constraints matter):**
-- Idempotent regenerate: same selection twice ⇒ `created_count=0`, no exception, no dup rows.
+- Idempotent regenerate: same selection twice ⇒ `created_count=0`, `restored_count=0`, no exception, no dup rows.
 - Value-subset matrix: 2 axes, partial values ⇒ only selected combos created with correct `name_suffix`/`variant_code`.
 - Adding a value ⇒ exactly the new combos created; existing untouched.
-- Combo-count cap: selection of 201 ⇒ 422, **zero** rows written.
-- Barcode dup ⇒ 422 with `barcode` error naming the conflict (store + update); race path (catch 23505) ⇒ 422.
+- **Restore-on-regenerate:** soft-delete a combo, re-select it, regenerate ⇒ same row revived (`restored_count=1`, prior edits preserved), no new row, no `variant_code` collision.
+- **Idempotency keyed by junction, not `variant_code`:** changing a value `code` (relabel) does not cause duplicate generation of an existing combo.
+- Combo-count cap: selection of 201 ⇒ 422 from FormRequest **and** from the service when called directly ⇒ **zero** rows written.
+- Barcode dup ⇒ 422 with `barcode` error (store **and** update); race path (catch 23505 on both create and update) ⇒ 422 not 500; conflict-name best-effort (generic fallback when ambiguous).
 - `barcode`/`sku` `max:100` enforced.
-- DTO includes `attribute_values` with correct pairs; no N+1.
+- DTO includes `attribute_values` with correct pairs via the loaded relation; assert single-query (no N+1) when listing.
+- **Delete policy:** delete a variant with on-hand stock / stock movement / document line / POS receipt line ⇒ 422 (blocked); delete an unused variant ⇒ 204.
+- Response shape: `data` is an array, counts live in `meta`.
 - Onboarding: no axis attribute ⇒ incomplete; one created ⇒ complete; step is optional.
 
 **Frontend (Vitest):**
+- **Hydration:** opening a product with existing variants pre-selects the axes/values encoded by their `attribute_values`.
 - Axis check reveals value chips; deselect updates combo count.
 - Live count math; soft-warn ≥50; Generate disabled >200 with message.
-- Generate posts `{ axes }` with selected value_ids.
+- Generate posts `{ axes }` with selected value_ids; result toast reads `meta` counts (created/skipped/restored).
 - Orphan badge appears for a variant outside the current selection.
 - Inline barcode 422 surfaces on the row.
-- Delete shows fixed-size confirm; confirm calls delete, cancel does not.
+- Delete shows fixed-size confirm; confirm calls delete; a 422 (referenced variant) shows the deactivate-instead path; cancel does nothing.
 
 ## 6. Out of scope (deferred)
 - Saved option-set **templates** (named presets / new tables) — owner option B, deferred.
@@ -164,4 +192,24 @@ Idempotency guarantee: regenerating with an unchanged or subset selection create
 - `VARIANT_COUNT_SOFT_WARN = 50` (frontend warning threshold).
 
 ## 8. Verification gates (per repo CLAUDE.md)
-Backend: scoped PHPUnit (`--filter`, never full suite), PHPStan L8, Pint. Frontend: Vitest (scoped), `pnpm typecheck`, ESLint (color-guard). `php artisan typescript:transform` after the DTO change. End-to-end: author a product with a value subset, generate, edit a barcode to a dup (see 422), delete a combo (confirm), verify onboarding step flips.
+Backend: scoped PHPUnit (`--filter`, never full suite), PHPStan L8, Pint. Frontend: Vitest (scoped), `pnpm typecheck`, ESLint (color-guard). `php artisan typescript:transform` after the DTO change. End-to-end: author a product with a value subset, generate, delete then re-select-and-regenerate (see restore), edit a barcode to a dup (see 422), try to delete a sold variant (see 422 → deactivate), verify onboarding step flips.
+
+---
+
+## 9. Codex review round 1 — resolutions (2026-06-15)
+
+Review file: `docs/superpowers/reviews/2026-06-15-web-variant-authoring-spec-codex-review.md` (verdict: REVISE; 0 BLOCKER, 4 HIGH, 4 MED, 1 LOW). All findings adopted.
+
+| # | Sev | Finding | Resolution | Section |
+|---|-----|---------|-----------|---------|
+| 1 | HIGH | Soft-deleted combos become permanent holes | **Restore-on-regenerate** for re-selected soft-deleted combos (recovery path). *Owner-decision: may instead keep-deleted + report `deleted_skipped_count`.* | §2.2, §3.1 |
+| 2 | HIGH | Barcode race bypasses service on update | Centralized `23505` mapper covering **both** create + update; FormRequest rule = fast-path only | §3.3 |
+| 3 | HIGH | Delete ignores stock/fiscal refs | New **delete policy** (§3.7): block when referenced/stock>0, steer to `is_active=false`. *Owner-decision: could relax to warn-only.* | §3.5, §3.7 |
+| 4 | HIGH | Per-product subset not durable | **Inference-based hydration** from existing variants' junction (no new table); requirement reworded | §2.1, §3.5 |
+| 5 | MED | Response shape breaking change | Keep `data` as array, counts in **`meta`** (non-breaking) | §3.1, §3.6 |
+| 6 | MED | Cap not guarded at service boundary | Re-enforce cap **in the service** before `cartesian()`; FormRequest is fast-path | §3.1 |
+| 7 | MED | DTO junction lacks relationship contract | Add `ProductVariant::attributeValues()`; `with`/`loadMissing`; mapper consumes loaded relation | §3.2 |
+| 8 | MED | `variant_code` brittle for idempotency | Build `$excluded`/match from **junction** `(attribute_id,value_id)` pairs; `variant_code` is output-only | §3.1 |
+| 9 | LOW | Conflict-name adds scope | Conflict-name is **best-effort** on top of the guaranteed 422; tenant-scoped lookup; generic fallback | §3.3 |
+
+Two resolutions extend earlier owner decisions and are flagged inline for confirmation at the spec-review gate: **#1 restore semantics** and **#3 delete-block policy**.
