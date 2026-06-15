@@ -6,7 +6,7 @@ import { useAuthStore } from '../../../stores/authStore'
 import { useLogout } from '../../../features/auth'
 import { languages } from '../../../lib/i18n'
 import { CompanySelector } from '../CompanySelector'
-import { LocationSelector } from '../LocationSelector'
+import { LocationSwitcher } from '../LocationSwitcher'
 import { ConnectionStatusIndicator } from '../../molecules/ConnectionStatusIndicator'
 import { QuickCreateButton } from './QuickCreateButton'
 
@@ -96,7 +96,7 @@ export function TopBar({ onMenuClick, onSearchClick }: TopBarProps) {
         <CompanySelector />
 
         {/* Location selector for multi-location companies */}
-        <LocationSelector className="hidden lg:block" />
+        <LocationSwitcher className="hidden lg:block" />
 
         {/* Language selector */}
         <div className="relative" ref={langMenuRef}>
