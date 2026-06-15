@@ -4,9 +4,11 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Input, FormField, Button, Select, MoneyInput, QuantityInput } from '@/components/atoms'
+import { PageHeader } from '@/components/molecules'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { ProductSearchSelect } from '@/components/ui/ProductSearchSelect'
-import { tokens } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
+import { tokens, textColors } from '@/lib/designTokens'
 import { useCompanyConfig } from '@/contexts'
 
 /** Controlled MoneyInput that only fires onCommit on blur — prevents per-keystroke API calls in table rows. */
@@ -178,28 +180,31 @@ export function ModifierGroupFormPage() {
   }
 
   if (isEdit && isLoading) {
-    return <div className="text-center py-8 text-gray-500">{t('common:loading')}</div>
+    return <div className={cn('text-center py-8', textColors.tertiary)}>{t('common:loading')}</div>
   }
 
   const modifiers = group?.modifiers ?? []
 
+  const pageTitle = isEdit
+    ? `${t('common:actions.edit')} ${getLabel('modifierGroup')}`
+    : `${t('common:actions.create')} ${getLabel('modifierGroup')}`
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <button
-          type="button"
-          onClick={() => navigate('/catalog/modifier-groups')}
-          className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <h1 className="text-2xl font-semibold text-gray-900">
-          {isEdit
-            ? `${t('common:actions.edit')} ${getLabel('modifierGroup')}`
-            : `${t('common:actions.create')} ${getLabel('modifierGroup')}`}
-        </h1>
-      </div>
+      <PageHeader
+        title={pageTitle}
+        breadcrumb={
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => navigate('/catalog/modifier-groups')}
+            aria-label={t('common:back')}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        }
+      />
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className={tokens.card.base}>
@@ -258,7 +263,7 @@ export function ModifierGroupFormPage() {
                   onChange={(e) => { setForm({ ...form, is_required: e.target.checked }); }}
                   className={tokens.checkbox.base}
                 />
-                <span className="text-sm text-gray-700">{t('catalog:isRequired')}</span>
+                <span className={cn('text-sm', textColors.secondary)}>{t('catalog:isRequired')}</span>
               </label>
               <label className="flex items-center gap-2">
                 <input
@@ -267,7 +272,7 @@ export function ModifierGroupFormPage() {
                   onChange={(e) => { setForm({ ...form, is_active: e.target.checked }); }}
                   className={tokens.checkbox.base}
                 />
-                <span className="text-sm text-gray-700">{t('catalog:isActive')}</span>
+                <span className={cn('text-sm', textColors.secondary)}>{t('catalog:isActive')}</span>
               </label>
             </div>
           </div>
@@ -294,23 +299,23 @@ export function ModifierGroupFormPage() {
       {/* Modifiers section (edit mode only) */}
       {isEdit && (
         <div className={tokens.card.base}>
-          <h3 className="text-lg font-medium text-gray-900 mb-4">{t('catalog:modifiers')}</h3>
+          <h3 className={cn(tokens.heading.section, 'mb-4')}>{t('catalog:modifiers')}</h3>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-300">
               <thead>
                 <tr>
-                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:code')}</th>
-                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:name')}</th>
-                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:priceAdjustment')}</th>
-                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:isDefault')}</th>
-                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:inventoryLink')}</th>
+                  <th className={cn('px-3 py-3.5 text-left text-sm font-semibold', textColors.primary)}>{t('catalog:code')}</th>
+                  <th className={cn('px-3 py-3.5 text-left text-sm font-semibold', textColors.primary)}>{t('catalog:name')}</th>
+                  <th className={cn('px-3 py-3.5 text-left text-sm font-semibold', textColors.primary)}>{t('catalog:priceAdjustment')}</th>
+                  <th className={cn('px-3 py-3.5 text-left text-sm font-semibold', textColors.primary)}>{t('catalog:isDefault')}</th>
+                  <th className={cn('px-3 py-3.5 text-left text-sm font-semibold', textColors.primary)}>{t('catalog:inventoryLink')}</th>
                   <th className="px-3 py-3.5"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {modifiers.map((mod: ModifierData) => (
                   <tr key={mod.id}>
-                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">{mod.code}</td>
+                    <td className={cn('whitespace-nowrap px-3 py-4 text-sm', textColors.primary)}>{mod.code}</td>
                     <td className="whitespace-nowrap px-3 py-4 text-sm">
                       <Input
                         type="text"
@@ -363,14 +368,15 @@ export function ModifierGroupFormPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => { handleDeleteModifier(mod.id); }}
-                        className="!p-1 text-red-600 hover:text-red-900 hover:bg-red-50"
+                        aria-label={t('common:delete')}
+                        className={cn('!p-1', textColors.error, textColors.hoverError)}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </td>
                   </tr>
                 ))}
-                <tr className="bg-gray-50">
+                <tr className={tokens.table.header}>
                   <td className="px-3 py-4">
                     <Input
                       type="text"
@@ -406,7 +412,8 @@ export function ModifierGroupFormPage() {
                       size="sm"
                       onClick={handleAddModifier}
                       disabled={!newModifier.code || !newModifier.name || createModifierMutation.isPending}
-                      className="!p-1 text-blue-600 hover:text-blue-700"
+                      aria-label={t('catalog:createModifierGroup')}
+                      className={cn('!p-1', textColors.brand)}
                     >
                       <Plus className="h-4 w-4" />
                     </Button>

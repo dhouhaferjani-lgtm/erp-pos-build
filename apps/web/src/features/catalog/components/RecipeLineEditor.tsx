@@ -37,7 +37,7 @@ import { Textarea } from '@/components/atoms/Textarea/Textarea'
 import { Badge } from '@/components/atoms/Badge/Badge'
 import { ProductSearchSelect } from '@/components/ui/ProductSearchSelect'
 import { CompositeItemSearchSelect } from './CompositeItemSearchSelect'
-import { tokens } from '@/lib/designTokens'
+import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import type { RecipeData, RecipeLineData, RecipeCostData, VerticalType, ComponentType } from '../types/compositeItem'
 import { useVerticalLabels } from '../hooks/useVerticalLabels'
 import {
@@ -77,7 +77,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
 
   if (!recipe) {
     return (
-      <div className="text-center py-8 text-gray-500">
+      <div className={`text-center py-8 ${textColors.tertiary}`}>
         {t('catalog:createRecipe')}
       </div>
     )
@@ -159,7 +159,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
       {/* Recipe info */}
       <div className="flex items-center justify-between">
         <div>
-          <span className="text-sm text-gray-500">
+          <span className={`text-sm ${textColors.tertiary}`}>
             {t('catalog:version')}: {recipe.version}
             {recipe.version_name && ` - ${recipe.version_name}`}
           </span>
@@ -192,7 +192,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
       </div>
 
       {/* Recipe metadata */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+      <div className={`grid grid-cols-1 gap-4 sm:grid-cols-3 rounded-lg border ${borderColors.light} ${colors.neutral[50]} p-4`}>
         <FormField label={t('catalog:prepTime')}>
           <Input
             type="number"
@@ -212,7 +212,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
           />
         </FormField>
         <FormField label={t('catalog:totalTime')}>
-          <div className="mt-1 flex h-[38px] items-center rounded-md bg-gray-100 px-3 text-sm text-gray-600">
+          <div className={`mt-1 flex h-[38px] items-center rounded-md ${colors.neutral[100]} px-3 text-sm ${textColors.tertiary}`}>
             {totalTime > 0 ? totalTime : '-'}
           </div>
         </FormField>
@@ -230,32 +230,32 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
 
       {/* Lines table */}
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-300">
+        <table className={`min-w-full divide-y ${borderColors.divideDefault}`}>
           <thead>
             <tr>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{getLabel('recipeLine')}</th>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:quantity')}</th>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:unit')}</th>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:wastagePercent')}</th>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:optional')}</th>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:unitCost')}</th>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:lineCost')}</th>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900"></th>
+              <th className={`px-3 py-3.5 text-left text-sm font-semibold ${textColors.primary}`}>{getLabel('recipeLine')}</th>
+              <th className={`px-3 py-3.5 text-right text-sm font-semibold ${textColors.primary}`}>{t('catalog:quantity')}</th>
+              <th className={`px-3 py-3.5 text-left text-sm font-semibold ${textColors.primary}`}>{t('catalog:unit')}</th>
+              <th className={`px-3 py-3.5 text-right text-sm font-semibold ${textColors.primary}`}>{t('catalog:wastagePercent')}</th>
+              <th className={`px-3 py-3.5 text-left text-sm font-semibold ${textColors.primary}`}>{t('catalog:optional')}</th>
+              <th className={`px-3 py-3.5 text-right text-sm font-semibold ${textColors.primary}`}>{t('catalog:unitCost')}</th>
+              <th className={`px-3 py-3.5 text-right text-sm font-semibold ${textColors.primary}`}>{t('catalog:lineCost')}</th>
+              <th className={`px-3 py-3.5 text-left text-sm font-semibold ${textColors.primary}`}></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className={`divide-y ${borderColors.divideDefault}`}>
             {lines.map((line: RecipeLineData) => (
               <tr key={line.id}>
-                <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                <td className={`whitespace-nowrap px-3 py-4 text-sm ${textColors.primary}`}>
                   <div className="flex items-center gap-1.5">
                     {line.component_type === 'composite_item' && (
                       <Badge variant="info" className="text-[10px] !px-1 !py-0">{t('catalog:combo')}</Badge>
                     )}
                     {line.component_name ?? line.component_id}
                   </div>
-                  {line.component_sku && <span className="text-gray-500 ml-1 text-xs">({line.component_sku})</span>}
+                  {line.component_sku && <span className={`${textColors.tertiary} ml-1 text-xs`}>({line.component_sku})</span>}
                 </td>
-                <td className="whitespace-nowrap px-3 py-4 text-sm">
+                <td className="whitespace-nowrap px-3 py-4 text-sm text-right tabular-nums">
                   <BlurQuantityInput
                     initialValue={line.quantity}
                     decimalPlaces={4}
@@ -263,8 +263,8 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                     className="!mt-0 w-20"
                   />
                 </td>
-                <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{line.unit_name ?? '-'}</td>
-                <td className="whitespace-nowrap px-3 py-4 text-sm">
+                <td className={`whitespace-nowrap px-3 py-4 text-sm ${textColors.tertiary}`}>{line.unit_name ?? '-'}</td>
+                <td className="whitespace-nowrap px-3 py-4 text-sm text-right tabular-nums">
                   <BlurQuantityInput
                     initialValue={line.wastage_percent}
                     decimalPlaces={1}
@@ -282,15 +282,16 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                     className={tokens.checkbox.base}
                   />
                 </td>
-                <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{line.unit_cost ?? '-'}</td>
-                <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{line.line_cost ?? '-'}</td>
+                <td className={`whitespace-nowrap px-3 py-4 text-sm text-right tabular-nums ${textColors.tertiary}`}>{line.unit_cost ?? '-'}</td>
+                <td className={`whitespace-nowrap px-3 py-4 text-sm text-right tabular-nums ${textColors.tertiary}`}>{line.line_cost ?? '-'}</td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => { handleDeleteLine(line.id); }}
                     disabled={deleteLineMutation.isPending}
-                    className="!p-1 text-red-600 hover:text-red-900 hover:bg-red-50"
+                    aria-label={t('common:delete')}
+                    className={`!p-1 ${textColors.error} ${textColors.hoverError}`}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -298,7 +299,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
               </tr>
             ))}
             {/* Add new line row */}
-            <tr className="bg-gray-50">
+            <tr className={colors.neutral[50]}>
               <td className="px-3 py-4">
                 <div className="space-y-2">
                   <Select
@@ -326,7 +327,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                   )}
                 </div>
               </td>
-              <td className="px-3 py-4">
+              <td className="px-3 py-4 text-right tabular-nums">
                 <QuantityInput
                   decimalPlaces={4}
                   placeholder={t('catalog:quantity')}
@@ -336,7 +337,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                 />
               </td>
               <td className="px-3 py-4">-</td>
-              <td className="px-3 py-4">
+              <td className="px-3 py-4 text-right tabular-nums">
                 <QuantityInput
                   decimalPlaces={1}
                   value={newLine.wastage_percent}
@@ -352,15 +353,16 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                   className={tokens.checkbox.base}
                 />
               </td>
-              <td className="px-3 py-4">-</td>
-              <td className="px-3 py-4">-</td>
+              <td className="px-3 py-4 text-right tabular-nums">-</td>
+              <td className="px-3 py-4 text-right tabular-nums">-</td>
               <td className="px-3 py-4">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleAddLine}
                   disabled={!newLine.component_id || !newLine.quantity || createLineMutation.isPending}
-                  className="!p-1 text-blue-600 hover:text-blue-700"
+                  aria-label={t('catalog:addLine', 'Add line')}
+                  className={`!p-1 ${textColors.brand}`}
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
@@ -372,8 +374,8 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
 
       {/* Cost breakdown */}
       {costData && (
-        <div className="mt-6 rounded-lg bg-gray-50 p-4">
-          <h4 className="text-sm font-medium text-gray-900 mb-3">{t('catalog:costBreakdown')}</h4>
+        <div className={`mt-6 rounded-lg ${colors.neutral[50]} p-4`}>
+          <h4 className={`text-sm font-medium ${textColors.primary} mb-3`}>{t('catalog:costBreakdown')}</h4>
           <table className="min-w-full text-sm">
             <thead>
               <tr>
@@ -396,7 +398,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
               ))}
             </tbody>
             <tfoot>
-              <tr className="font-semibold border-t border-gray-300">
+              <tr className={`font-semibold border-t ${borderColors.default}`}>
                 <td className="py-2">{t('catalog:totalCost')}</td>
                 <td colSpan={3} className="text-right py-2">{costData.total_cost}</td>
                 <td className="text-right py-2">100%</td>
