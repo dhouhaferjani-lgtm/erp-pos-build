@@ -132,18 +132,14 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
   CompositeItemSearchSelect, VariantEditor, ModifierGroupAssigner, MenuCategoryItemManager (rule-19
   override-price → MoneyInput), pricing ProductPricingCard/MarginIndicator/PriceInputWithMargin
   (m1/m2), + CompositeItemFormPage residuals. inventory/catalog/menu at 0 color warnings.
-- ◧ 3.5 POS color drift — **PARTIAL (~31/56 files).** ✅ DONE: ZReport list+detail, Shift dashboard+history,
-  ProductInfoModal, TableManagement, Terminal form/list/selector, TransactionCart, OrderPanel,
-  OrderLineItem, smart-prompts (glassmorphism killed + glyph→lucide), Cash/CashTendered/QuickAddCustomer/
-  OpenShift modals, POSPage, PaymentPanel, ProductGrid, ProductCard, CartLineItem, Calculator,
-  ModifierSelectionModal, AdvancedPaymentsModal, KitchenDisplay, KitchenOrderCard, OrdersPage,
-  ActiveOrdersBoard. ⏳ REMAINING (~25 small files): atoms (StockBadge, TableStatusBadge, OrderStatusBadge,
-  ConsumptionModeToggle, POSButton, KitchenTimer, MoneyInput), molecules (TransactionDiscountInput,
-  CouponCodeInput, AppliedDiscountsBadge, HeldOrderCard, HeldOrdersList, OrderStatusBadge), components
-  (TableSelector, LoyaltyRewardSelector, LoyaltyMemberBadge, EarnPointsPreview, CheckoutSuccessDialog,
-  HoldOrderButton, SendToKitchenButton, HeldOrdersBadge, ShiftReceiptsList, TerminalStatusBadge),
-  layouts (POSLayout, ShiftOperationsMenu), and the `pos/organisms/Analytics/*` charts (glassmorphism).
-- [ ] 3.6 workshop-* (close lint gap; status pills → StatusBadge; modals → Modal)
+- [x] **3.5 POS color drift — ✅ COMPLETE.** All POS pages/organisms/molecules/atoms/components/layouts +
+  smart-prompts (glassmorphism killed, glyph→lucide) + Analytics (shadcn surfaces → opaque token cards).
+  `src/features/pos` now at **0 color warnings + 0 shadcn-surface/backdrop-blur**. POSButton/touch layout +
+  deliberate amber/emerald accents preserved.
+- [x] **3.6 workshop-* — ✅ COMPLETE.** Swept the FULL palette (the dirs exploited the lint GAP) → 0
+  off-theme literals; StatusPill/badges → StatusBadge+statusTone; 6 bespoke modals → Modal organism;
+  work-order + technician pages → primitives. **Lint gap CLOSED:** added a workshop full-palette ERROR
+  override in `eslint.config.js` (mirrors scheduling), verified it fires.
 - [x] **3.7 Convert 4 hub pages (Finance/Inventory/POS/Marketing) → HubCard/HubGrid** ✅
   (icons as `LucideIcon` refs, per-card rainbow chips removed, gating + Finance sections + POS
   Open-POS CTA preserved; 17 tests; color 0/file)
@@ -188,4 +184,6 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
 | 2026-06-15 | 3.3 | `3387f65da` | finish light settings (InventorySettings, ReceiptSettingsTab, CompanyOnboarding, UserSelector, SettingsPage→HubGrid, SetupChecklist); 92 tests; lint 9809→9620 |
 | 2026-06-15 | 3.4 | `bf7c90639` `368fde8a6` `b7f931e09` | inventory detail/stock + tabs; catalog/menu/pricing components (MenuCategoryItemManager rule-19); CompositeItemFormPage residuals. inventory/catalog/menu → 0 color. lint 9620→9185 |
 | 2026-06-15 | 3.5 | `dc1828837` `00d7d0a6c` `fb6970186` | POS color drift ~31/56 files (reporting, terminals, order/cart, smart-prompts glassmorphism+glyph→lucide, checkout core, kitchen/orders). lint 9185→8615 |
+| 2026-06-15 | 3.5 | `cc7aeeb13` `69c9d0757` | finish POS — 24 atoms/badges/molecules/components/layouts + Analytics de-glassmorphism (shadcn surfaces→tokens). pos at 0 color + 0 shadcn-surface. lint 8615→8478 |
+| 2026-06-15 | 3.6 | `afa2fe5f9` `90b8cb515` | workshop-* full-palette sweep (StatusPill→StatusBadge, 6 modals→Modal, pages→primitives); 92 tests; 0 off-theme literals; CLOSED the lint gap (workshop full-palette ERROR override). lint steady 8478 (gap palettes weren't counted) |
 | 2026-06-14/15 | docs | `a3f38d44f` `4b48d0f08` `1122fcfc9` (+ this) | PROGRESS handover updates |
