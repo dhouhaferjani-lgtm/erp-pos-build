@@ -248,29 +248,27 @@ git commit -m "feat(catalog): generate-matrix accepts value-subset axes + gross 
 
 ---
 
-### Task A2: Service-boundary cap exception
+### Task A2: Matrix limit exception class (no service edit)
+
+> **Why exception-only:** the service-boundary cap GUARD and its test live in Task A3 (the rewrite), because the cap must run against A3's new `array $axes` signature. Editing the current `generateMatrix(array $attributeIds)` here would mean A2's test uses a signature that doesn't exist yet (Opus review HIGH). A2 only creates the exception type.
 
 **Files:**
 - Create: `apps/api/app/Shared/Domain/Exceptions/MatrixGenerationLimitException.php`
-- Test: `apps/api/tests/Unit/Catalog/ProductVariantServiceCapTest.php`
+- Test: `apps/api/tests/Unit/Catalog/MatrixGenerationLimitExceptionTest.php`
 
 - [ ] **Step 1: Write the failing test**
 
 ```php
-public function test_generate_matrix_throws_when_gross_exceeds_cap(): void
+public function test_exceeded_builds_message_with_counts(): void
 {
-    // Build axes representing 201 combos and call the service directly.
-    $this->expectException(MatrixGenerationLimitException::class);
-    $service->generateMatrix($productId, $axesOf201);
-    // Assert zero variants written:
-    $this->assertSame(0, ProductVariant::where('product_id', $productId)->count());
+    $e = MatrixGenerationLimitException::exceeded(201, 200);
+    $this->assertInstanceOf(\RuntimeException::class, $e);
+    $this->assertStringContainsString('201', $e->getMessage());
+    $this->assertStringContainsString('200', $e->getMessage());
 }
 ```
 
-- [ ] **Step 2: Run — expect fail**
-
-Run: `cd apps/api && php artisan test --filter=ProductVariantServiceCapTest`
-Expected: FAIL (exception class missing).
+- [ ] **Step 2: Run — expect fail.** `cd apps/api && php artisan test --filter=MatrixGenerationLimitExceptionTest` → FAIL (class missing).
 
 - [ ] **Step 3: Create the exception**
 
@@ -292,22 +290,12 @@ final class MatrixGenerationLimitException extends RuntimeException
 }
 ```
 
-- [ ] **Step 4: Add the guard to `generateMatrix` (top of method, before cartesian).** Implemented fully in Task A3; this step only adds the guard + makes the test pass:
+- [ ] **Step 4: Run — expect pass.** PASS.
 
-```php
-// in ProductVariantService::generateMatrix, after building $axes (string codes):
-$gross = array_product(array_map('count', $axes));
-if ($gross > VariantMatrixLimit::MAX_VARIANTS_PER_GENERATE) {
-    throw MatrixGenerationLimitException::exceeded($gross, VariantMatrixLimit::MAX_VARIANTS_PER_GENERATE);
-}
-```
-
-- [ ] **Step 5: Run — expect pass.** `php artisan test --filter=ProductVariantServiceCapTest` → PASS.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git commit -am "feat(catalog): enforce matrix cap at the service boundary"
+git commit -am "feat(catalog): MatrixGenerationLimitException type"
 ```
 
 ---
@@ -317,10 +305,40 @@ git commit -am "feat(catalog): enforce matrix cap at the service boundary"
 **Depends on:** Task **B1** (`ProductVariant::attributeValues()` relation — this task reads `$variant->attributeValues`). Run B1 first.
 
 **Files:**
+- Create: `apps/api/app/Shared/Domain/Exceptions/DuplicateBarcodeException.php` (the unique-violation→422 mapper; introduced here because the restore path is the first save that can collide. **Task C2 reuses it** for the single create/update paths.)
 - Modify: `apps/api/app/Modules/Catalog/Application/Services/ProductVariantService.php`
 - Test: `apps/api/tests/Feature/Catalog/ProductVariantMatrixGenerationTest.php` (**needs PostgreSQL** — uses unique constraints + soft-delete partial indexes)
 
 The new signature accepts a normalized `$axes` argument: `array<int, array{attributeId: string, valueIds: string[]}>`. The controller (Task A4) builds this from either request shape. Returns an array `['created' => Collection, 'restored' => Collection, 'skipped_count' => int]`.
+
+**On `cartesian()`'s `$excluded` arg:** the generator still accepts it, but this task deliberately does NOT use it. We need a **three-way** per-combo decision — skip (active exists) / restore (soft-deleted exists) / create (missing) — which a pure exclude list cannot express. So we generate the full cartesian product and branch per combo against `$byComboKey`. (Spec §3.1 prose mentions `$excluded`; this is the equivalent, restore-aware realization.)
+
+**Create `DuplicateBarcodeException` first:**
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Shared\Domain\Exceptions;
+
+use Illuminate\Database\QueryException;
+use Illuminate\Validation\ValidationException;
+
+final class DuplicateBarcodeException
+{
+    /** True when $e is a PG unique violation (23505) on the given constraint name. */
+    public static function isViolationOf(QueryException $e, string $constraint): bool
+    {
+        return (($e->errorInfo[0] ?? null) === '23505') && str_contains($e->getMessage(), $constraint);
+    }
+
+    public static function asValidation(string $message): ValidationException
+    {
+        return ValidationException::withMessages(['barcode' => [$message]]);
+    }
+}
+```
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -377,6 +395,31 @@ public function test_idempotency_survives_value_code_rename(): void
     ProductAttributeValue::find($v36)->update(['code' => 'TAILLE_36']);
     $result = $service->generateMatrix($productId, $axesOneCombo);
     $this->assertSame(0, $result['created']->count()); // matched by ID, not code
+}
+
+public function test_generate_matrix_throws_when_gross_exceeds_cap(): void
+{
+    // axes whose product of value counts is 201; call the service directly
+    $this->expectException(MatrixGenerationLimitException::class);
+    try {
+        $service->generateMatrix($productId, $axesOf201);
+    } finally {
+        $this->assertSame(0, ProductVariant::where('product_id', $productId)->count()); // zero written
+    }
+}
+
+public function test_restore_with_conflicting_barcode_maps_to_422_not_500(): void
+{
+    // combo C generated then soft-deleted with barcode B; a DIFFERENT active
+    // variant later takes barcode B; re-selecting C must surface a 422, not a 500.
+    $first = $service->generateMatrix($productId, $axesOneCombo);
+    $deleted = $first['created']->first();
+    $deleted->barcode = '3409999'; $deleted->save(); $deleted->delete();
+    // another active variant grabs 3409999 (partial unique excludes the soft-deleted one)
+    ProductVariant::factory()->for($product)->create(['barcode' => '3409999', 'variant_code' => 'OTHER', 'sku' => 'OTHER']);
+
+    $this->expectException(\Illuminate\Validation\ValidationException::class);
+    $service->generateMatrix($productId, $axesOneCombo);
 }
 ```
 
@@ -474,7 +517,20 @@ public function generateMatrix(string $productId, array $axes): array
                     // explicit where()->lockForUpdate()->first() form so the FOR
                     // UPDATE clause is unambiguously applied before the row is read.
                     $locked = ProductVariant::withTrashed()->where('id', $match->id)->lockForUpdate()->first();
-                    $locked->restore();    // un-soft-delete; preserves prior edits
+                    try {
+                        $locked->restore();    // un-soft-delete; preserves prior edits
+                    } catch (QueryException $e) {
+                        // Reviving the row re-activates its sku/barcode partial-unique
+                        // indexes; if an active variant took the value meanwhile, map to
+                        // 422 instead of letting a raw 500 escape (spec §3.1 restore edge).
+                        if (DuplicateBarcodeException::isViolationOf($e, 'product_variants_tenant_barcode_unique')) {
+                            throw DuplicateBarcodeException::asValidation('Cannot restore variant: its barcode is now used by another variant.');
+                        }
+                        if (DuplicateBarcodeException::isViolationOf($e, 'product_variants_tenant_sku_unique')) {
+                            throw ValidationException::withMessages(['sku' => ['Cannot restore variant: its SKU is now used by another variant.']]);
+                        }
+                        throw $e;
+                    }
                     $locked->load('attributeValues');
                     $restored->push($locked);
                 }
@@ -779,9 +835,10 @@ use Illuminate\Validation\Rule;
 
 ### Task C2: Centralized 23505 mapper (race-safe, both paths)
 
+**Depends on:** Task **A3** (creates `DuplicateBarcodeException` with `isViolationOf()` / `asValidation()` — reused here, not re-created).
+
 **Files:**
-- Create: `apps/api/app/Shared/Domain/Exceptions/DuplicateBarcodeException.php`
-- Modify: `ProductVariantService.php` (wrap saves), `ProductVariantController.php` (update path goes through service or maps the exception)
+- Modify: `ProductVariantService.php` (add a barcode-safe `createVariant` wrap + a new `updateVariant()` method), `ProductVariantController.php` (route `update` through the service so the same catch covers the update race)
 - Test: `apps/api/tests/Feature/Catalog/VariantBarcodeRaceTest.php` (**PG** — relies on the real partial unique index)
 
 - [ ] **Step 1: Failing test** — simulate the race by bypassing FormRequest (call the service/Eloquent path directly with a colliding barcode) and assert a `DuplicateBarcodeException` → 422 mapping, and that a `sku` collision does NOT map to a `barcode` error:
@@ -805,47 +862,45 @@ public function test_sku_violation_is_not_reported_as_barcode(): void
 
 - [ ] **Step 2: Run — expect fail.** FAIL (raw 500 today).
 
-- [ ] **Step 3: Create the exception**
+- [ ] **Step 3: Add a tenant-scoped `updateVariant()` to the service and a barcode-safe save helper.** `DuplicateBarcodeException` already exists (Task A3). Add:
 
 ```php
-<?php
-
-declare(strict_types=1);
-
-namespace App\Shared\Domain\Exceptions;
-
-use Illuminate\Validation\ValidationException;
-
-final class DuplicateBarcodeException
-{
-    public static function asValidation(string $message): ValidationException
-    {
-        return ValidationException::withMessages(['barcode' => [$message]]);
-    }
-}
-```
-
-- [ ] **Step 4: Map 23505 on barcode index.** In the service, wrap the barcode-writing save (create and a new `updateVariant()` method the controller calls) in:
-
-```php
+use App\Shared\Domain\Exceptions\DuplicateBarcodeException;
 use Illuminate\Database\QueryException;
 
-try {
-    $variant->save();
-} catch (QueryException $e) {
-    if ($this->isUniqueViolation($e, 'product_variants_tenant_barcode_unique')) {
-        $conflictName = $this->barcodeConflictName($variant->tenant_id, (string) $variant->barcode, $variant->id); // best-effort
-        throw DuplicateBarcodeException::asValidation(
-            $conflictName !== null
-                ? "Barcode already used by another variant ({$conflictName})."
-                : 'Barcode already used by another variant.'
-        );
+/** @param array<string,mixed> $attributes */
+public function updateVariant(ProductVariant $variant, array $attributes): ProductVariant
+{
+    $variant->fill($attributes);
+    $this->saveBarcodeSafe($variant);          // maps 23505 -> 422
+    $variant->loadMissing('attributeValues');
+
+    return $variant;
+}
+
+private function saveBarcodeSafe(ProductVariant $variant): void
+{
+    try {
+        $variant->save();
+    } catch (QueryException $e) {
+        if (DuplicateBarcodeException::isViolationOf($e, 'product_variants_tenant_barcode_unique')) {
+            $name = $this->barcodeConflictName($variant->tenant_id, (string) $variant->barcode, $variant->id); // best-effort, tenant-scoped, excludes soft-deleted + self; null when ambiguous
+            throw DuplicateBarcodeException::asValidation(
+                $name !== null
+                    ? "Barcode already used by another variant ({$name})."
+                    : 'Barcode already used by another variant.'
+            );
+        }
+        throw $e; // sku / variant_code / default violations are NOT reported as barcode errors
     }
-    throw $e; // sku/variant_code/default violations fall through unchanged
 }
 ```
 
-`isUniqueViolation($e, $name)`: **gate on SQLSTATE first** — `($e->errorInfo[0] ?? null) === '23505'` (the reliable check) — and only then match the exact index name in the driver message. The four `product_variants` index names are all < 63 bytes (verified against migration `…100003`: `product_variants_tenant_barcode_unique` = 38 chars, `…_tenant_sku_unique`, `…_product_id_variant_code_unique` = 47, `…_default_unique`), so PostgreSQL's 63-byte identifier truncation does not apply and substring matching is safe. A non-barcode violation falls through to `throw $e` unchanged (it is NOT reported as a barcode error). `barcodeConflictName()`: tenant-scoped query `whereNull('deleted_at')->where('barcode', …)->where('id','!=',$selfId)->value('name_suffix')` — returns null when ambiguous/absent (never throws). Route the controller `update` through `variantService->updateVariant($id, $validated)` so the same catch covers updates.
+`isViolationOf()` (defined in A3) gates on SQLSTATE first (`errorInfo[0] === '23505'`) then matches the exact index name. The four `product_variants` index names are all < 63 bytes (verified against migration `…100003`: `product_variants_tenant_barcode_unique`=38, `…_tenant_sku_unique`, `…_product_id_variant_code_unique`=47, `…_default_unique`), so PG's 63-byte identifier truncation never applies. `barcodeConflictName()`: `ProductVariant::whereNull('deleted_at')->where('tenant_id',$t)->where('barcode',$b)->where('id','!=',$selfId)->value('name_suffix')` — returns null when absent/ambiguous (never throws).
+
+Also wrap the `createVariant()` save in `saveBarcodeSafe()` (single-variant create path).
+
+- [ ] **Step 4: Route the controller `update` through the service.** Replace the controller's `$variant->fill(...)->save()` with `$variant = $this->variantService->updateVariant($variant, $request->validated());` so the update race is covered by the same catch. `barcodeConflictName()`: tenant-scoped query `whereNull('deleted_at')->where('barcode', …)->where('id','!=',$selfId)->value('name_suffix')` — returns null when ambiguous/absent (never throws). Route the controller `update` through `variantService->updateVariant($id, $validated)` so the same catch covers updates.
 
 - [ ] **Step 5: Run — expect pass.** PASS.
 
@@ -879,7 +934,8 @@ public function test_returns_total_on_hand_quantity_for_variant(): void
 
 public function test_returns_zero_when_no_stock(): void
 {
-    $this->assertSame('0', app(VariantStockReader::class)->variantOnHandQuantity($tenantId, $companyId, $variantId));
+    // scale-4 string; bccomp in the delete guard treats '0.0000' as zero
+    $this->assertSame('0.0000', app(VariantStockReader::class)->variantOnHandQuantity($tenantId, $companyId, $variantId));
 }
 ```
 
@@ -916,6 +972,7 @@ namespace App\Modules\Inventory\Application\Services;
 
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Shared\Contracts\VariantStockReader;
+use App\Shared\Domain\QuantityScale;
 
 final class VariantStockReaderService implements VariantStockReader
 {
@@ -927,7 +984,9 @@ final class VariantStockReaderService implements VariantStockReader
             ->where('variant_id', $variantId)
             ->sum('quantity');
 
-        return (string) $sum;
+        // Return a quantity-scale-4 string per the precision contract (mirrors
+        // LocationStockQueryService). NEVER let a float represent quantity.
+        return QuantityScale::round((string) $sum, 4, QuantityScale::FLOOR);
     }
 }
 ```
@@ -1169,7 +1228,35 @@ it('disables generate above the hard cap', async () => {
 
 - [ ] **Step 2: Run — expect fail.** `pnpm test ProductVariantMatrixEditor` → FAIL.
 
-- [ ] **Step 3: Implement.** Add a constant `export const VARIANT_COUNT_SOFT_WARN = 50` and `export const MAX_VARIANTS_PER_GENERATE = 200` (mirror backend). Replace `selectedAxes: string[]` with `selectedValues: Record<string /*attrId*/, string[] /*valueIds*/>`. For each checked axis, fetch values with `useAttributeValues(axisId)` and render value chips (default all selected; color swatch from `hex_color`). Compute `comboCount = Object.values(selectedValues).reduce((n, ids) => n * ids.length, 1)` (0 axes ⇒ 0). Show count text; warn class when `>= SOFT_WARN`; disable Generate when `> MAX`. On generate, build `axes` from `selectedValues` and call `generateMatrix.mutateAsync(axes)`; toast reads `meta` counts.
+- [ ] **Step 3: Implement.** Add a constant `export const VARIANT_COUNT_SOFT_WARN = 50` and `export const MAX_VARIANTS_PER_GENERATE = 200` (mirror backend). Replace `selectedAxes: string[]` with `selectedValues: Record<string /*attrId*/, string[] /*valueIds*/>`.
+
+  **Rules of Hooks:** do NOT call `useAttributeValues(axisId)` in a `.map()` over checked axes. Extract a child component rendered once per checked axis:
+
+  ```tsx
+  function AxisValueChips({ attributeId, selectedValueIds, onToggleValue }: {
+    attributeId: string
+    selectedValueIds: string[]
+    onToggleValue: (attributeId: string, valueId: string) => void
+  }) {
+    const { data: values } = useAttributeValues(attributeId) // one hook call, fixed position
+    return (
+      <div className="flex flex-wrap gap-2">
+        {(values ?? []).map((v) => (
+          <label key={v.id} className="inline-flex items-center gap-1">
+            <input type="checkbox" className={tokens.checkbox.base}
+              aria-label={`value ${v.label}`}
+              checked={selectedValueIds.includes(v.id)}
+              onChange={() => { onToggleValue(attributeId, v.id) }} />
+            {v.hex_color ? <span style={{ backgroundColor: v.hex_color }} className="inline-block h-3 w-3 rounded-full" /> : null}
+            <span className={`text-sm ${textColors.secondary}`}>{v.label}</span>
+          </label>
+        ))}
+      </div>
+    )
+  }
+  ```
+
+  The parent renders `<AxisValueChips … />` for each **checked** axis (a stable list ⇒ stable hook order). Default a newly-checked axis to all values selected (seed `selectedValues[axisId]` when its values first load — inside the child via an effect, or eagerly when the axis is toggled on). Compute `comboCount = Object.values(selectedValues).reduce((n, ids) => n * ids.length, 1)` (0 axes ⇒ 0). Show count text; warn class when `>= VARIANT_COUNT_SOFT_WARN`; disable Generate when `> MAX_VARIANTS_PER_GENERATE`. On generate, build `axes: GenerateMatrixAxis[]` from `selectedValues` and call `generateMatrix.mutateAsync(axes)`; toast reads `meta` counts.
 
 - [ ] **Step 4: Run — expect pass.** PASS.
 
