@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api'
+import { api, apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api'
 
 /**
  * Type aliases over the backend-generated DTOs (source of truth lives in
@@ -84,14 +84,41 @@ export async function getVariantsForProduct(
   return apiGet<ProductVariant[]>(`/products/${productId}/variants`)
 }
 
+/**
+ * One axis of the generate-matrix request: an attribute plus the subset of its
+ * value ids the user wants to include in the cartesian product. Sending only the
+ * checked values (rather than every value of the axis) lets the user generate a
+ * bounded subset of the full matrix.
+ */
+export interface GenerateMatrixAxis {
+  attribute_id: string
+  value_ids: string[]
+}
+
+/**
+ * Result envelope for generate-matrix. Unlike the unwrapped `apiPost` helper we
+ * preserve `meta` here: the backend reports how many variants were created,
+ * skipped (already existed), or restored (previously soft-deleted) so the UI can
+ * surface an accurate success toast.
+ */
+export interface GenerateMatrixResult {
+  data: ProductVariant[]
+  meta: {
+    created_count: number
+    skipped_count: number
+    restored_count: number
+  }
+}
+
 export async function generateVariantMatrix(
   productId: string,
-  attributeIds: string[],
-): Promise<ProductVariant[]> {
-  return apiPost<ProductVariant[]>(
+  axes: GenerateMatrixAxis[],
+): Promise<GenerateMatrixResult> {
+  const response = await api.post(
     `/products/${productId}/variants/generate-matrix`,
-    { attribute_ids: attributeIds },
+    { axes },
   )
+  return response.data as GenerateMatrixResult
 }
 
 export async function updateVariant(
