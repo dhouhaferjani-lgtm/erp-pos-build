@@ -4,7 +4,7 @@
   "plural": "vehicules",
   "registered": "enregistre(s)",
   "new": "Ajouter un vehicule",
-  "searchPlaceholder": "Rechercher par plaque, VIN, marque ou modele...",
+  "searchPlaceholder": "Rechercher par plaque, VIN, marque ou modele…",
   "table": {
     "vehicle": "Vehicule",
     "fuel": "Carburant"
@@ -51,7 +51,7 @@
     "color": "Bleu",
     "year": "2020",
     "engineCode": "K9K 608",
-    "notes": "Notes supplémentaires sur le véhicule..."
+    "notes": "Notes supplémentaires sur le véhicule…"
   },
   "empty": {
     "title": "Aucun vehicule",

@@ -8,7 +8,7 @@
     },
     "form": {
       "title": "New Journal Entry",
-      "descriptionPlaceholder": "Enter entry description..."
+      "descriptionPlaceholder": "Enter entry description…"
     },
     "new": "New Entry",
     "entryNumber": "Entry Number",
@@ -71,9 +71,9 @@
         "revenue": "Revenue",
         "expense": "Expense"
       },
-      "creating": "Creating...",
+      "creating": "Creating…",
       "create": "Create Account",
-      "saving": "Saving...",
+      "saving": "Saving…",
       "saveChanges": "Save Changes"
     }
   },
@@ -116,7 +116,7 @@
     "agedPayables": "Aged Payables",
     "common": {
       "export": "Export",
-      "loading": "Loading...",
+      "loading": "Loading…",
       "asOfDate": "As of Date",
       "from": "From",
       "to": "To",

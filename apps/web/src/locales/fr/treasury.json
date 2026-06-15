@@ -41,7 +41,7 @@
       "paymentDate": "Date de paiement",
       "paymentDateRequired": "La date de paiement est requise",
       "referencePlaceholder": "Numéro de chèque, ID de transaction, etc.",
-      "notesPlaceholder": "Notes supplémentaires...",
+      "notesPlaceholder": "Notes supplémentaires…",
       "paymentForInvoice": "Paiement de la facture {{invoiceNumber}}"
     },
     "statuses": {
@@ -64,8 +64,8 @@
     "paymentRecorded": "Paiement enregistré avec succès",
     "recordedSuccess": "Paiement enregistré avec succès",
     "amountPositive": "Le montant doit être positif",
-    "referencePlaceholder": "Numéro de chèque, ID de transaction...",
-    "notesPlaceholder": "Notes supplémentaires...",
+    "referencePlaceholder": "Numéro de chèque, ID de transaction…",
+    "notesPlaceholder": "Notes supplémentaires…",
     "invoice": "Facture",
     "balanceBefore": "Solde avant",
     "allocated": "Affecté",
@@ -108,7 +108,7 @@
       "history": "Historique des remboursements",
       "remaining": "Restant",
       "reason": "Motif",
-      "reasonPlaceholder": "Entrez le motif de ce remboursement...",
+      "reasonPlaceholder": "Entrez le motif de ce remboursement…",
       "refundTitle": "Rembourser le paiement",
       "refundMessage": "Cela remboursera {{amount}} au client.",
       "partialRefundTitle": "Remboursement partiel",
@@ -419,7 +419,7 @@
       "feePercentage": "Pourcentage des frais",
       "feeAmountPlaceholder": "0.00",
       "feePercentagePlaceholder": "0.00",
-      "descriptionPlaceholder": "Informations supplémentaires sur ce mode de paiement...",
+      "descriptionPlaceholder": "Informations supplémentaires sur ce mode de paiement…",
       "namePlaceholder": "Espèces"
     },
     "flagDescriptions": {

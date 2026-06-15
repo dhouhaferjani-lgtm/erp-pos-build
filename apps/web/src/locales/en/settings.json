@@ -107,7 +107,7 @@
         "contact": "Contact",
         "review": "Review"
       },
-      "loading": "Loading companies...",
+      "loading": "Loading companies…",
       "noCompaniesTitle": "No Companies Found",
       "noCompaniesMessage": "You don't have access to any companies. Please contact your administrator."
     },
@@ -347,7 +347,7 @@
     "maxDiscountPercent": "Maximum discount percentage",
     "maxDiscountHelp": "Leave empty for no individual limit (terminal limit applies)",
     "save": "Save Changes",
-    "saving": "Saving...",
+    "saving": "Saving…",
     "success": "User updated successfully"
   },
   "admin": {

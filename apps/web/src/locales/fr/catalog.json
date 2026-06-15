@@ -37,7 +37,7 @@
     "loadError": "Échec du chargement des variantes",
     "actionsColumn": "Actions",
     "chooseVariant": "Choisir une variante",
-    "loading": "Chargement des variantes..."
+    "loading": "Chargement des variantes…"
   },
   "modifier": "Modificateur",
   "modifiers": "Modificateurs",
@@ -119,9 +119,9 @@
   "madeToOrder": "Sur commande",
   "batch": "Production par lot",
   "stock": "Stock",
-  "searchIngredient": "Rechercher un ingrédient...",
-  "searchComponent": "Rechercher un composant...",
-  "searchCompositeItem": "Rechercher un article composé...",
+  "searchIngredient": "Rechercher un ingrédient…",
+  "searchComponent": "Rechercher un composant…",
+  "searchCompositeItem": "Rechercher un article composé…",
   "noCompositeItemsFound": "Aucun article composé trouvé",
   "pricingMode": "Mode de tarification",
   "pricingModes": {

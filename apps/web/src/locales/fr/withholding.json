@@ -5,7 +5,7 @@
 
   "preview": {
     "title": "Aperçu de la Retenue",
-    "calculating": "Calcul de la retenue...",
+    "calculating": "Calcul de la retenue…",
     "noRuleFound": "Aucune règle de retenue trouvée",
     "noRuleFoundHelp": "Vous pouvez spécifier manuellement un taux de retenue en utilisant l'option de remplacement ci-dessous.",
     "suggestedRate": "Taux suggéré : {{rate}}%",
@@ -13,7 +13,7 @@
     "applyWithholding": "Appliquer la retenue",
     "manualOverride": "Remplacement manuel",
     "manualRate": "Taux manuel (%)",
-    "overrideReasonPlaceholder": "Saisissez la raison du remplacement du taux..."
+    "overrideReasonPlaceholder": "Saisissez la raison du remplacement du taux…"
   },
 
   "form": {
@@ -76,7 +76,7 @@
       "batch": "Exporter par Lot",
       "batchTEJ": "Exporter Lot TEJ XML",
       "selectPeriod": "Sélectionner la Période",
-      "downloading": "Téléchargement..."
+      "downloading": "Téléchargement…"
     }
   },
 
