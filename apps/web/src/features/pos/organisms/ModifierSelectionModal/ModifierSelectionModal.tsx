@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Modal, ModalContent, ModalFooter, ModalHeader } from '@/components/organisms/Modal'
 import { FilterTabs } from '@/components/molecules/FilterTabs/FilterTabs'
 import { cn } from '@/lib/utils'
-import { tokens, textColors } from '@/lib/designTokens'
+import { tokens, textColors, colors, borderColors } from '@/lib/designTokens'
 import { useCurrency } from '@/hooks/useCurrency'
 import { bcadd, bccomp } from '@/lib/decimal'
 import { POSButton } from '../../atoms'
@@ -174,7 +174,7 @@ export function ModifierSelectionModal({
                       className="relative flex-1"
                       style={{ visibility: group.id === activeTab ? 'visible' : 'visible' }}
                     >
-                      <span className="absolute -top-1 -end-1 w-2.5 h-2.5 bg-red-500 rounded-full" />
+                      <span className={cn('absolute -top-1 -end-1 w-2.5 h-2.5 rounded-full', colors.error[600])} />
                     </div>
                   )
                 })}
@@ -209,7 +209,7 @@ export function ModifierSelectionModal({
       </ModalContent>
       <ModalFooter>
         <div className="flex w-full items-center justify-between">
-          <div className="text-lg font-bold text-gray-900">
+          <div className={cn('text-lg font-bold tabular-nums', textColors.primary)}>
             {totalPrice} {currency}
           </div>
           <POSButton
@@ -256,7 +256,7 @@ function ModifierGroupSection({
           </span>
         )}
         {group.selection_type === 'multiple' && group.max_selections > 1 && (
-          <span className="text-xs text-gray-500">
+          <span className={cn('text-xs', textColors.tertiary)}>
             ({t('pos:modifiers.selectUpTo', { max: group.max_selections })})
           </span>
         )}
@@ -275,8 +275,8 @@ function ModifierGroupSection({
                 // Touch-friendly sizing
                 'px-5 py-4 min-h-[56px]',
                 isSelected
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300',
+                  ? cn(borderColors.primary, colors.primary[50])
+                  : cn(borderColors.light, colors.white, borderColors.hover),
               )}
             >
               <div className="flex items-center gap-3">

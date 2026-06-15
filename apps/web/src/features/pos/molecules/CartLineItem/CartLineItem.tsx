@@ -3,7 +3,7 @@ import { POSButton } from '../../atoms'
 import { Plus, Minus, Trash2, Tag } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { tokens, textColors } from '@/lib/designTokens'
+import { tokens, textColors, colors, borderColors } from '@/lib/designTokens'
 import { formatCurrency } from '@/lib/decimal'
 import { useCurrency } from '@/hooks/useCurrency'
 
@@ -112,7 +112,9 @@ export function CartLineItem({
       onTouchEnd={handleTouchEnd}
       className={cn(
         'relative flex items-center gap-3',
-        'bg-white rounded-lg border border-gray-200',
+        colors.white,
+        'rounded-lg border',
+        borderColors.light,
         'transition-all duration-150',
         touchOptimized ? 'p-4' : 'p-3',
         disabled && 'opacity-50',
@@ -123,7 +125,8 @@ export function CartLineItem({
       <div className="flex-1 min-w-0">
         <h4
           className={cn(
-            'font-semibold text-gray-900 truncate',
+            'font-semibold truncate',
+            textColors.primary,
             touchOptimized ? 'text-lg' : 'text-base'
           )}
         >
@@ -131,7 +134,8 @@ export function CartLineItem({
         </h4>
         <p
           className={cn(
-            'text-gray-500 font-mono',
+            textColors.tertiary,
+            'font-mono',
             touchOptimized ? 'text-sm' : 'text-xs'
           )}
         >
@@ -166,7 +170,8 @@ export function CartLineItem({
         <div className="flex items-center gap-2 mt-1">
           <span
             className={cn(
-              'text-gray-600',
+              'tabular-nums',
+              textColors.tertiary,
               touchOptimized ? 'text-base' : 'text-sm'
             )}
           >
@@ -175,7 +180,8 @@ export function CartLineItem({
           {showTax && item.tax_amount && (
             <span
               className={cn(
-                'text-gray-500',
+                'tabular-nums',
+                textColors.tertiary,
                 touchOptimized ? 'text-sm' : 'text-xs'
               )}
             >
@@ -232,7 +238,8 @@ export function CartLineItem({
 
         <span
           className={cn(
-            'font-bold text-gray-900 min-w-[2rem] text-center',
+            'font-bold tabular-nums min-w-[2rem] text-center',
+            textColors.primary,
             touchOptimized ? 'text-xl' : 'text-lg'
           )}
         >
@@ -254,7 +261,8 @@ export function CartLineItem({
       <div className="flex items-center gap-3">
         <span
           className={cn(
-            'font-bold text-blue-600 min-w-[6rem] text-end',
+            'font-bold tabular-nums min-w-[6rem] text-end',
+            textColors.brand,
             touchOptimized ? 'text-xl' : 'text-lg'
           )}
         >
