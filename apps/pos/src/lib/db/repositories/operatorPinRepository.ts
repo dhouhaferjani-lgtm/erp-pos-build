@@ -300,34 +300,31 @@ export async function hasOperatorPins(db: Database): Promise<boolean> {
  * client-side bcrypt against this store and never reaches the server
  * `PinVerifier`. Pruning omitted operators on a full pull closes that window.
  *
- * `activeOperatorId` (the currently-logged-in operator) is NEVER pruned, so a
- * transient scope/response edge case can't lock the live session out of its own
- * terminal. Returns the number of rows deleted.
+ * Returns the number of rows deleted.
+ *
+ * Deliberately NO active-operator exception: the server (`PosAuthController::
+ * pinData`) returns EVERY active company member with a `pos_pin` and does not
+ * filter by terminal, so a legitimate active operator is always in `keepIds`
+ * and never at risk of being pruned. An `id != activeOperatorId` carve-out
+ * would only ever fire when the active operator is OMITTED — i.e. they were
+ * just suspended/revoked — and would then SHIELD that suspended operator's
+ * local PIN (Codex review, FU-1 HIGH). So we prune strictly by `keepIds`.
  *
  * Callers MUST only invoke this after a confirmed full, current-terminal pull
- * (status-200, non-empty response) — pruning on a partial/empty/failed pull
- * would drop legitimately-offline operators and break offline approvals.
+ * (status-200, non-empty response). An empty `keepIds` is treated as a
+ * defensive no-op: the sole caller already gates on a non-empty pull, and
+ * wiping every operator would break ALL offline approvals.
  */
-export async function pruneOperatorsExcept(
-  db: Database,
-  keepIds: string[],
-  activeOperatorId?: string | null,
-): Promise<number> {
-  const clauses: string[] = [];
-  const params: unknown[] = [];
-
-  if (keepIds.length > 0) {
-    const placeholders = keepIds.map((_, i) => `$${params.length + i + 1}`).join(', ');
-    clauses.push(`id NOT IN (${placeholders})`);
-    params.push(...keepIds);
+export async function pruneOperatorsExcept(db: Database, keepIds: string[]): Promise<number> {
+  if (keepIds.length === 0) {
+    return 0;
   }
 
-  if (activeOperatorId) {
-    clauses.push(`id != $${params.length + 1}`);
-    params.push(activeOperatorId);
-  }
-
-  const where = clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : '';
-  const result = await execute(db, `DELETE FROM operator_pins${where}`, params);
+  const placeholders = keepIds.map((_, i) => `$${i + 1}`).join(', ');
+  const result = await execute(
+    db,
+    `DELETE FROM operator_pins WHERE id NOT IN (${placeholders})`,
+    keepIds,
+  );
   return result.rowsAffected;
 }

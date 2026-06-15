@@ -10,9 +10,10 @@
  * offline overrides.
  *
  * `pruneOperatorsExcept` makes a confirmed-full pull authoritative: any local
- * operator NOT present in the pull is removed — except the actively-logged-in
- * operator, which is never pruned (so a scope/response edge case can't lock the
- * current session out of its own terminal).
+ * operator NOT present in the pull is removed. There is deliberately no
+ * active-operator carve-out — the server returns every active member with a
+ * `pos_pin`, so a legitimate active operator is always in `keepIds`; a carve-out
+ * would only ever shield a just-suspended operator (Codex review, FU-1 HIGH).
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
@@ -77,27 +78,33 @@ describe('operatorPinRepository — pruneOperatorsExcept (FU-1)', () => {
     expect(await ids()).toEqual(['op-a', 'op-b']);
   });
 
-  it('never deletes the active operator even when it is omitted from keepIds', async () => {
-    const db = adapter.asDatabase();
-    await upsertOperators(db, [makeOperator('op-active'), makeOperator('op-stale')]);
-
-    const deleted = await pruneOperatorsExcept(db, ['someone-else'], 'op-active');
-
-    expect(deleted).toBe(1);
-    expect(await ids()).toEqual(['op-active']);
-  });
-
-  it('with empty keepIds, removes all operators except the active one', async () => {
+  // Proves the positional `$1, $2, …` placeholder binding for keepIds.length > 1
+  // while still deleting the operators outside the keep-set.
+  it('keeps multiple operators and deletes the rest', async () => {
     const db = adapter.asDatabase();
     await upsertOperators(db, [
-      makeOperator('op-active'),
-      makeOperator('op-x'),
-      makeOperator('op-y'),
+      makeOperator('op-a'),
+      makeOperator('op-b'),
+      makeOperator('op-stale-1'),
+      makeOperator('op-stale-2'),
     ]);
 
-    const deleted = await pruneOperatorsExcept(db, [], 'op-active');
+    const deleted = await pruneOperatorsExcept(db, ['op-a', 'op-b']);
 
     expect(deleted).toBe(2);
-    expect(await ids()).toEqual(['op-active']);
+    expect(await ids()).toEqual(['op-a', 'op-b']);
+  });
+
+  // Defensive: an empty keep-list must NEVER mass-wipe the cache (that would
+  // break ALL offline approvals). The sole caller gates on a non-empty pull,
+  // so this only guards against a programming error.
+  it('treats an empty keepIds as a no-op and deletes nothing', async () => {
+    const db = adapter.asDatabase();
+    await upsertOperators(db, [makeOperator('op-a'), makeOperator('op-b')]);
+
+    const deleted = await pruneOperatorsExcept(db, []);
+
+    expect(deleted).toBe(0);
+    expect(await ids()).toEqual(['op-a', 'op-b']);
   });
 });

@@ -1013,15 +1013,8 @@ export async function pullPaymentConfig(db: Database): Promise<boolean> {
 
 /**
  * Pull operator PIN hashes for offline verification.
- *
- * `activeOperatorId` (the currently-logged-in operator) is forwarded to the
- * FU-1 prune so the live session is never pruned out of its own terminal.
  */
-export async function pullOperatorPins(
-  db: Database,
-  terminalId: string,
-  activeOperatorId?: string | null,
-): Promise<number> {
+export async function pullOperatorPins(db: Database, terminalId: string): Promise<number> {
   try {
     // terminal_id is REQUIRED: the server scopes each mirrored operator's
     // approval to the requesting terminal (terminal_ids = [terminal_id]).
@@ -1035,13 +1028,13 @@ export async function pullOperatorPins(
     // FU-1 — make this confirmed-full pull authoritative: delete any cached
     // operator NOT in the response so a suspended-then-omitted manager can no
     // longer approve offline overrides against a stale local PIN. Gate on a
-    // NON-EMPTY response only: a `/pin-data` pull can be partial, and a real
-    // terminal always returns at least the operator driving the sync, so an
-    // empty result is treated as non-authoritative and never prunes (which
-    // would otherwise wipe legitimately-offline operators). A failed pull
-    // throws before reaching here, so it never prunes either.
+    // NON-EMPTY response only: a real terminal always returns at least the
+    // operator driving the sync, so an empty result is treated as
+    // non-authoritative and never prunes (which would otherwise wipe
+    // legitimately-offline operators). A failed pull throws before reaching
+    // here, so it never prunes either.
     if (operators.length > 0) {
-      await pruneOperatorsExcept(db, operators.map((op) => op.id), activeOperatorId);
+      await pruneOperatorsExcept(db, operators.map((op) => op.id));
     }
     await setSyncMetadata(db, 'operators_last_sync', new Date().toISOString());
     await logSyncOperation(db, 'pull', 'operators', null, 'success', `${operators.length} operators`);
@@ -1908,14 +1901,7 @@ export async function runFullSync(
   // Then pull (always pull even if push had failures, to keep local data fresh)
   const productsPulled = await pullProducts(db);
   const paymentConfigPulled = await pullPaymentConfig(db);
-  // FU-1 — pass the active operator so the authoritative prune never deletes
-  // the live session's own operator row.
-  let activeOperatorId: string | null = null;
-  try {
-    const { useAuthStore } = await import('@/stores/authStore');
-    activeOperatorId = useAuthStore.getState().user?.id ?? null;
-  } catch { /* non-critical — prune just won't special-case an active operator */ }
-  const operatorsPulled = await pullOperatorPins(db, terminalId, activeOperatorId);
+  const operatorsPulled = await pullOperatorPins(db, terminalId);
   const terminalStatePulled = await pullTerminalState(db, terminalId);
   await pullZChainState(db, terminalId);
   const tablesPulled = await pullTables(db);

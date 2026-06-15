@@ -650,19 +650,15 @@ describe('syncService', () => {
     // FU-1 — a confirmed full pull is authoritative: any cached operator NOT in
     // the response is pruned so a suspended-then-omitted manager can no longer
     // approve offline overrides against the stale local PIN.
-    it('prunes operators omitted from a successful non-empty pull, protecting the active operator', async () => {
+    it('prunes operators omitted from a successful non-empty pull', async () => {
       vi.mocked(apiGet).mockResolvedValue([
         { id: 'op-1', name: 'Jane', pin_hash: 'hash123' },
         { id: 'op-2', name: 'Bob', pin_hash: 'hash456' },
       ]);
 
-      await pullOperatorPins(db, 'term-1', 'op-active');
+      await pullOperatorPins(db, 'term-1');
 
-      expect(vi.mocked(pruneOperatorsExcept)).toHaveBeenCalledWith(
-        db,
-        ['op-1', 'op-2'],
-        'op-active',
-      );
+      expect(vi.mocked(pruneOperatorsExcept)).toHaveBeenCalledWith(db, ['op-1', 'op-2']);
     });
 
     // Pruning on a failed pull would wipe legitimately-offline operators and
@@ -670,7 +666,7 @@ describe('syncService', () => {
     it('does NOT prune when the pull fails', async () => {
       vi.mocked(apiGet).mockRejectedValue(new Error('Unauthorized'));
 
-      await pullOperatorPins(db, 'term-1', 'op-active');
+      await pullOperatorPins(db, 'term-1');
 
       expect(vi.mocked(pruneOperatorsExcept)).not.toHaveBeenCalled();
     });
@@ -680,7 +676,7 @@ describe('syncService', () => {
     it('does NOT prune on an empty response', async () => {
       vi.mocked(apiGet).mockResolvedValue([]);
 
-      await pullOperatorPins(db, 'term-1', 'op-active');
+      await pullOperatorPins(db, 'term-1');
 
       expect(vi.mocked(pruneOperatorsExcept)).not.toHaveBeenCalled();
     });
