@@ -144,12 +144,22 @@ The single highest-impact fix; deferred to its own visually-verified step becaus
   (icons as `LucideIcon` refs, per-card rainbow chips removed, gating + Finance sections + POS
   Open-POS CTA preserved; 17 tests; color 0/file)
 
-## Phase 4 — Kill duplicates  ☐
-- [ ] 4.1 Remove 9 `ui/` re-export shims (update importers)
-- [ ] 4.2 Rename two `LocationSelector` → `LocationField` (ui) / `LocationSwitcher` (organism)
-- [ ] 4.3 Pick one paginator (`Pagination` vs `OffsetPagination`); migrate
-- [ ] 4.4 Collapse `location/` + `locations/` → one dir + one `Location` type
-- [ ] 4.5 Reconcile `channelPageStyles.ts` with atoms/tokens
+## Phase 4 — Kill duplicates  ◧ (4/5 done; 4.4 deferred w/ rationale)
+- [x] **4.1 Remove the `ui/` re-export shims** (`5aecf7f26`) — deleted 5 thin shims
+  (SearchInput/FilterTabs/Tabs/Breadcrumb/LoadingSpinner), repointed ~18 importers to
+  molecules/atoms. (REPORT said "9"; only 5 existed at this branch point.)
+- [x] **4.2 Rename two `LocationSelector`** (`<commit>`) → `LocationField` (ui form field) /
+  `LocationSwitcher` (organism switcher in TopBar). `features/location/LocationSelector.tsx`
+  kept as a feature-local alias wrapper so inventory consumers/mocks are untouched.
+- [x] **4.3 One paginator** (`c6d7c4d0d`) — migrated 3 `Pagination` importers → `OffsetPagination`
+  (from Laravel meta); deleted `ui/Pagination.tsx`.
+- [ ] 4.4 Collapse `location/` + `locations/` — **DEFERRED (deliberate).** They are NOT really one
+  entity: `location/` is the global active-location CONTEXT/provider/switcher (app-shell infra);
+  `locations/` is the locations DATA/CRUD layer (types, useLocations hook, multi-select). Merging +
+  unifying the `Location` type is a large, opinionated, high-risk refactor across providers/contexts
+  for low visual value. Left as-is; revisit only if the owner wants a single locations module.
+- [x] **4.5 Reconcile `channelPageStyles.ts`** (`c15c487a6`) — deleted the channels-local
+  mini-design-system; mapped every constant to PageHeader/Button/atoms/tokens across 6 channel pages.
 
 ## Phase 5 — Polish  ☐
 - [ ] 5.1 list footer "showing __ rowsPerPage" label/i18n gap
