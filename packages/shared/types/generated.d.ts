@@ -407,6 +407,7 @@ display_order: number;
 price_override: string | null;
 cost_override: string | null;
 image_url: string | null;
+attribute_values: Array<App.Modules.Catalog.Application.DTOs.VariantAttributeValueData>;
 };
 export type RecipeCostData = {
 total_cost: string;
@@ -445,6 +446,10 @@ wastage_percent: string;
 unit_cost: string | null;
 line_cost: string | null;
 display_order: number;
+};
+export type VariantAttributeValueData = {
+attribute_id: string;
+attribute_value_id: string;
 };
 }
 declare namespace App.Modules.Catalog.Domain.Enums {

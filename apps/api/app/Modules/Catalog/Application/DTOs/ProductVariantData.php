@@ -19,6 +19,9 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 #[TypeScript]
 class ProductVariantData extends Data
 {
+    /**
+     * @param  array<int, VariantAttributeValueData>  $attribute_values
+     */
     public function __construct(
         public string $id,
         public string $tenant_id,
@@ -34,6 +37,7 @@ class ProductVariantData extends Data
         public ?string $price_override,
         public ?string $cost_override,
         public ?string $image_url,
+        public array $attribute_values = [],
     ) {}
 
     public static function fromModel(ProductVariant $variant): self
@@ -53,6 +57,9 @@ class ProductVariantData extends Data
             price_override: $variant->price_override,
             cost_override: $variant->cost_override,
             image_url: $variant->image_url,
+            attribute_values: $variant->relationLoaded('attributeValues')
+                ? $variant->attributeValues->map(fn ($r) => new VariantAttributeValueData($r->attribute_id, $r->attribute_value_id))->all()
+                : [],
         );
     }
 }

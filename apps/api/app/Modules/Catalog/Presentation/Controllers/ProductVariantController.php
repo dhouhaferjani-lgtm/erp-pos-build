@@ -46,6 +46,7 @@ class ProductVariantController extends Controller
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->where('product_id', $productId)
+            ->with('attributeValues')
             ->orderBy('display_order')
             ->get();
 
@@ -99,6 +100,8 @@ class ProductVariantController extends Controller
             imageUrl: $request->input('image_url') !== null ? $request->string('image_url')->toString() : null,
             attributeValues: $attributeValues,
         ));
+
+        $variant->loadMissing('attributeValues');
 
         return response()->json(['data' => ProductVariantData::fromModel($variant)], 201);
     }
@@ -155,6 +158,8 @@ class ProductVariantController extends Controller
 
         $variant->fill($request->validated());
         $variant->save();
+
+        $variant->loadMissing('attributeValues');
 
         return response()->json(['data' => ProductVariantData::fromModel($variant)]);
     }
