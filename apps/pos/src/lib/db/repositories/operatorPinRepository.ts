@@ -289,3 +289,45 @@ export async function hasOperatorPins(db: Database): Promise<boolean> {
   const result = await queryOne<{ count: number }>(db, 'SELECT COUNT(*) as count FROM operator_pins');
   return (result?.count ?? 0) > 0;
 }
+
+/**
+ * FU-1 — make a confirmed-full `/pos/auth/pin-data` pull authoritative by
+ * deleting any cached operator NOT present in the pull (`keepIds`).
+ *
+ * The device previously only ever upserted operator PINs, so a manager
+ * mirrored BEFORE suspension kept a valid local PIN + cached `approval_scopes`
+ * and could still approve offline overrides — the offline approval path checks
+ * client-side bcrypt against this store and never reaches the server
+ * `PinVerifier`. Pruning omitted operators on a full pull closes that window.
+ *
+ * `activeOperatorId` (the currently-logged-in operator) is NEVER pruned, so a
+ * transient scope/response edge case can't lock the live session out of its own
+ * terminal. Returns the number of rows deleted.
+ *
+ * Callers MUST only invoke this after a confirmed full, current-terminal pull
+ * (status-200, non-empty response) — pruning on a partial/empty/failed pull
+ * would drop legitimately-offline operators and break offline approvals.
+ */
+export async function pruneOperatorsExcept(
+  db: Database,
+  keepIds: string[],
+  activeOperatorId?: string | null,
+): Promise<number> {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+
+  if (keepIds.length > 0) {
+    const placeholders = keepIds.map((_, i) => `$${params.length + i + 1}`).join(', ');
+    clauses.push(`id NOT IN (${placeholders})`);
+    params.push(...keepIds);
+  }
+
+  if (activeOperatorId) {
+    clauses.push(`id != $${params.length + 1}`);
+    params.push(activeOperatorId);
+  }
+
+  const where = clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : '';
+  const result = await execute(db, `DELETE FROM operator_pins${where}`, params);
+  return result.rowsAffected;
+}

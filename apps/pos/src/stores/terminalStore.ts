@@ -489,12 +489,16 @@ export async function seedOfflineHashChain(terminalId: string): Promise<void> {
     // device that goes offline immediately after login can still authorize an
     // EOD close from the local operator_pins mirror — rather than waiting for
     // the first lazy sync tick. Fire-and-forget; the sync scheduler re-pulls.
-    void pullOperatorPins(db, terminalId).catch((err: unknown) => {
-      console.error(
-        '[POS][terminalStore][preWarm] operator-PIN sync failed',
-        serializeErrorForLog(err),
-      );
-    });
+    // FU-1 — forward the active operator so the authoritative prune never
+    // deletes the live session's own operator row.
+    void pullOperatorPins(db, terminalId, useAuthStore.getState().user?.id ?? null).catch(
+      (err: unknown) => {
+        console.error(
+          '[POS][terminalStore][preWarm] operator-PIN sync failed',
+          serializeErrorForLog(err),
+        );
+      },
+    );
 
     // Phase 5 / B6: EAGER fraud-settings cache refresh at activation, so the
     // offline EOD close reads variance thresholds from
