@@ -223,10 +223,36 @@ final class PosAuthController extends Controller
             ->get()
             ->keyBy('id');
 
-        if ($usersInTenant->count() !== count($userIds)) {
+        if ($usersInTenant->count() !== count(array_unique($userIds))) {
             throw ValidationException::withMessages([
                 'updates' => ['One or more users are outside the current tenant.'],
             ]);
+        }
+
+        // FU-2b: restrict PIN writes to ACTIVE members of the CURRENT company,
+        // narrowing the blast radius from "any tenant user" to "active members
+        // of this company". The legit offline flow only ever queues an
+        // operator's OWN PIN, pushed under whoever is authenticated at sync time
+        // (a shared terminal), so other active company members are still
+        // accepted. NOTE (residual): this does not prove per-update authorship,
+        // so a same-company member with pos.operate_terminal could still rewrite
+        // another active member's PIN via a crafted request — closing that
+        // requires per-update authorship proof / a trusted device-sync identity
+        // and is tracked as a deeper follow-up.
+        $company = $this->companyContext->requireCompany();
+        $activeCompanyMemberIds = UserCompanyMembership::query()
+            ->where('company_id', $company->id)
+            ->where('status', MembershipStatus::Active->value)
+            ->whereIn('user_id', $userIds)
+            ->pluck('user_id')
+            ->flip();
+
+        foreach ($userIds as $targetId) {
+            if (! $activeCompanyMemberIds->has($targetId)) {
+                throw ValidationException::withMessages([
+                    'updates' => ['One or more users are not active members of the current company.'],
+                ]);
+            }
         }
 
         $synced = 0;

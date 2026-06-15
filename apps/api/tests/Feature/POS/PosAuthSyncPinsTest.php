@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
@@ -23,16 +24,18 @@ final class PosAuthSyncPinsTest extends TestCase
 
     private User $user;
 
+    private Company $company;
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->tenant = Tenant::factory()->create();
-        $company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+        $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
         $this->user = User::factory()->create(['tenant_id' => $this->tenant->id]);
 
         UserCompanyMembership::create([
             'user_id' => $this->user->id,
-            'company_id' => $company->id,
+            'company_id' => $this->company->id,
             'role' => 'admin',
         ]);
 
@@ -85,6 +88,72 @@ final class PosAuthSyncPinsTest extends TestCase
         ]);
 
         $response->assertStatus(422);
+    }
+
+    // FU-2b — a target must be an ACTIVE member of the CURRENT company. A
+    // same-tenant user who is not a member of this company must be rejected,
+    // narrowing the blast radius from "any tenant user" to "active members of
+    // this company".
+    public function test_sync_pins_rejects_a_same_tenant_non_company_member(): void
+    {
+        $outsider = User::factory()->create(['tenant_id' => $this->tenant->id]);
+
+        $response = $this->postJson('/api/v1/pos/auth/sync-pins', [
+            'updates' => [
+                ['user_id' => $outsider->id, 'pin_hash' => Hash::make('2468')],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $outsider->refresh();
+        $this->assertNull($outsider->pos_pin);
+    }
+
+    public function test_sync_pins_rejects_a_suspended_company_member(): void
+    {
+        $suspended = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        UserCompanyMembership::create([
+            'user_id' => $suspended->id,
+            'company_id' => $this->company->id,
+            'role' => 'cashier',
+            'status' => MembershipStatus::Suspended->value,
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/auth/sync-pins', [
+            'updates' => [
+                ['user_id' => $suspended->id, 'pin_hash' => Hash::make('1357')],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $suspended->refresh();
+        $this->assertNull($suspended->pos_pin);
+    }
+
+    // The legit multi-operator offline flow: another operator set up their own
+    // PIN on this shared terminal while offline; the batch is pushed under
+    // whoever is authenticated at sync time. An ACTIVE company member must still
+    // be accepted (do NOT over-restrict to self-only).
+    public function test_sync_pins_allows_another_active_company_member(): void
+    {
+        $colleague = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        UserCompanyMembership::create([
+            'user_id' => $colleague->id,
+            'company_id' => $this->company->id,
+            'role' => 'cashier',
+            'status' => MembershipStatus::Active->value,
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/auth/sync-pins', [
+            'updates' => [
+                ['user_id' => $colleague->id, 'pin_hash' => Hash::make('8642')],
+            ],
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('data.synced', 1);
+        $colleague->refresh();
+        $this->assertTrue(Hash::check('8642', $colleague->pos_pin));
     }
 
     public function test_sync_pins_requires_permission(): void
