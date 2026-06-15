@@ -85,6 +85,12 @@ function attrValue(id: string, label: string, over: Record<string, unknown> = {}
   return { id, code: id, label, hex_color: null, image_url: null, display_order: 0, ...over }
 }
 
+// The value-chip aria-label is i18n'd via t('catalog:variants.valueLabel', { label }).
+// Under the test's `t` mock (key + JSON-stringified options), it renders as below.
+function valueLabel(label: string) {
+  return `catalog:variants.valueLabel {"label":"${label}"}`
+}
+
 describe('ProductVariantMatrixEditor', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -108,13 +114,13 @@ describe('ProductVariantMatrixEditor', () => {
     render(<ProductVariantMatrixEditor productId="p1" />)
 
     // No value chips shown until the axis is checked.
-    expect(screen.queryByLabelText('value Red')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(valueLabel('Red'))).not.toBeInTheDocument()
 
     await user.click(screen.getByLabelText('Color'))
 
     // Chips revealed; both values auto-selected → combo count = 2.
-    expect(await screen.findByLabelText('value Red')).toBeInTheDocument()
-    expect(screen.getByLabelText('value Blue')).toBeInTheDocument()
+    expect(await screen.findByLabelText(valueLabel('Red'))).toBeInTheDocument()
+    expect(screen.getByLabelText(valueLabel('Blue'))).toBeInTheDocument()
     await waitFor(() => {
       expect(
         screen.getByText('catalog:variants.comboCount {"count":2}'),
@@ -131,7 +137,7 @@ describe('ProductVariantMatrixEditor', () => {
     render(<ProductVariantMatrixEditor productId="p1" />)
 
     await user.click(screen.getByLabelText('Color'))
-    await screen.findByLabelText('value Red')
+    await screen.findByLabelText(valueLabel('Red'))
     await user.click(screen.getByRole('button', { name: 'catalog:variants.generate' }))
 
     await waitFor(() => {
@@ -166,7 +172,7 @@ describe('ProductVariantMatrixEditor', () => {
     render(<ProductVariantMatrixEditor productId="p1" />)
 
     await user.click(screen.getByLabelText('Color'))
-    await screen.findByLabelText('value Value 0')
+    await screen.findByLabelText(valueLabel('Value 0'))
 
     await waitFor(() => {
       expect(
@@ -198,9 +204,9 @@ describe('ProductVariantMatrixEditor', () => {
     render(<ProductVariantMatrixEditor productId="p1" />)
 
     // Axis pre-checked from existing variants → chips visible, red selected.
-    const redChip = await screen.findByLabelText('value Red')
+    const redChip = await screen.findByLabelText(valueLabel('Red'))
     expect(redChip).toBeChecked()
-    const blueChip = screen.getByLabelText('value Blue')
+    const blueChip = screen.getByLabelText(valueLabel('Blue'))
     expect(blueChip).not.toBeChecked()
   })
 
@@ -221,11 +227,54 @@ describe('ProductVariantMatrixEditor', () => {
     // No orphans while the full selection is present.
     expect(screen.queryByText('catalog:variants.orphan')).not.toBeInTheDocument()
 
-    const blueChip = await screen.findByLabelText('value Blue')
+    const blueChip = await screen.findByLabelText(valueLabel('Blue'))
     await user.click(blueChip)
 
     await waitFor(() => {
       expect(screen.getByText('catalog:variants.orphan')).toBeInTheDocument()
+    })
+  })
+
+  it('does NOT auto-refill an axis after the user deselects all of its values', async () => {
+    // Regression: seedAxisValues must seed exactly once per axis. After the user
+    // empties an axis (length → 0), a subsequent parent render must NOT treat it
+    // as "not yet seeded" and refill every value.
+    mockAttributeValues = {
+      a1: [attrValue('red', 'Red'), attrValue('blue', 'Blue')],
+    }
+    const user = userEvent.setup()
+    render(<ProductVariantMatrixEditor productId="p1" />)
+
+    await user.click(screen.getByLabelText('Color'))
+
+    const redChip = await screen.findByLabelText(valueLabel('Red'))
+    const blueChip = screen.getByLabelText(valueLabel('Blue'))
+
+    // Both auto-seeded → 2 combinations.
+    expect(redChip).toBeChecked()
+    expect(blueChip).toBeChecked()
+    await waitFor(() => {
+      expect(
+        screen.getByText('catalog:variants.comboCount {"count":2}'),
+      ).toBeInTheDocument()
+    })
+
+    // Deselect ALL values of the axis.
+    await user.click(redChip)
+    await user.click(blueChip)
+
+    // The axis stays empty: neither value is refilled and the combo count is 0.
+    expect(redChip).not.toBeChecked()
+    expect(blueChip).not.toBeChecked()
+    await waitFor(() => {
+      expect(
+        screen.getByText('catalog:variants.comboCount {"count":0}'),
+      ).toBeInTheDocument()
+    })
+    // Give any stray seed effect a chance to (wrongly) re-fire, then re-assert.
+    await waitFor(() => {
+      expect(redChip).not.toBeChecked()
+      expect(blueChip).not.toBeChecked()
     })
   })
 

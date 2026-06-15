@@ -42,6 +42,7 @@
     "tooMany": "Too many combinations (max {{max}}). Narrow the selected values before generating.",
     "generatedSummary": "Variants generated: {{created}} created, {{skipped}} skipped, {{restored}} restored.",
     "orphan": "Not in current selection",
+    "valueLabel": "value {{label}}",
     "deactivate": "Deactivate",
     "deactivated": "Variant deactivated",
     "deactivateTitle": "Deactivate variant",

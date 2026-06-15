@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -115,6 +115,7 @@ function AxisValueChips({
   onToggleValue: (attributeId: string, valueId: string) => void
   onSeedValues: (attributeId: string, valueIds: string[]) => void
 }) {
+  const { t } = useTranslation()
   const { data: values } = useAttributeValues(attributeId)
 
   useEffect(() => {
@@ -133,7 +134,7 @@ function AxisValueChips({
           <input
             type="checkbox"
             className={tokens.checkbox.base}
-            aria-label={`value ${v.label}`}
+            aria-label={t('catalog:variants.valueLabel', { label: v.label })}
             checked={selectedValueIds.includes(v.id)}
             onChange={() => {
               onToggleValue(attributeId, v.id)
@@ -183,6 +184,11 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
   const [deleteTarget, setDeleteTarget] = useState<ProductVariant | null>(null)
   const [deleteHasStock, setDeleteHasStock] = useState(false)
 
+  // Axes that have already been seeded (default-all on first value-load, or via
+  // hydration from existing variants). Seeding happens exactly ONCE per axis, so
+  // a user who deselects all of an axis's values is never auto-refilled.
+  const seededAxesRef = useRef<Set<string>>(new Set())
+
   const variantAxes = (attributes ?? []).filter((a) => a.is_variant_axis)
 
   const draftFor = (variant: ProductVariant): VariantDraft => ({
@@ -207,9 +213,17 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
     })
   }
 
-  const seedAxisValues = (attributeId: string, valueIds: string[]) => {
+  // Memoized so the child effect (deps include this callback) does not re-fire on
+  // every parent render. The "seed once per axis" guard keys on a ref Set rather
+  // than the current length, so deselecting all values does NOT re-trigger a
+  // refill. Only uses the functional-updater form of setSelectedValues + the
+  // ref, so empty deps are correct and stable.
+  const seedAxisValues = useCallback((attributeId: string, valueIds: string[]) => {
+    if (seededAxesRef.current.has(attributeId)) return
+    seededAxesRef.current.add(attributeId)
     setSelectedValues((prev) => {
-      // Only seed when the axis is checked but still empty (one-shot per axis).
+      // Only seed when the axis is checked (its key is present). If hydration
+      // already populated it, leave that selection untouched.
       if (
         !Object.prototype.hasOwnProperty.call(prev, attributeId) ||
         prev[attributeId].length > 0
@@ -218,7 +232,7 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
       }
       return { ...prev, [attributeId]: valueIds }
     })
-  }
+  }, [])
 
   const toggleValue = (attributeId: string, valueId: string) => {
     setSelectedValues((prev) => {
@@ -249,6 +263,12 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
       }
     }
     if (Object.keys(grouped).length > 0) {
+      // Mark hydrated axes as seeded so the default-all seed in AxisValueChips
+      // doesn't fight hydration (e.g. refill values the user intentionally
+      // didn't include / later deselects).
+      for (const attributeId of Object.keys(grouped)) {
+        seededAxesRef.current.add(attributeId)
+      }
       setSelectedValues(grouped)
     }
   }, [variants])

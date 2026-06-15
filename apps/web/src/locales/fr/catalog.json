@@ -42,6 +42,7 @@
     "tooMany": "Trop de combinaisons (max {{max}}). Réduisez les valeurs sélectionnées avant de générer.",
     "generatedSummary": "Variantes générées : {{created}} créées, {{skipped}} ignorées, {{restored}} restaurées.",
     "orphan": "Hors de la sélection actuelle",
+    "valueLabel": "valeur {{label}}",
     "deactivate": "Désactiver",
     "deactivated": "Variante désactivée",
     "deactivateTitle": "Désactiver la variante",
