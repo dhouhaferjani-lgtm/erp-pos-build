@@ -17,13 +17,21 @@
 import type Database from '@tauri-apps/plugin-sql';
 import { apiGet, ApiRequestError } from '@/lib/api';
 import { getCurrentOpenShift } from '@/lib/db/repositories/localShiftRepository';
-import {
-  auditEventExistsForAggregate,
-  enqueueAuditEvent,
-} from '@/lib/db/repositories/queuedAuditEventRepository';
+import { enqueueAuditEvent } from '@/lib/db/repositories/queuedAuditEventRepository';
+import { getSyncMetadata, setSyncMetadata } from '@/lib/db/repositories/syncLogRepository';
 
-/** Event type for the advisory remote-close audit (outbox + dedup key). */
+/** Event type for the advisory remote-close audit (outbox row). */
 export const REMOTE_CLOSE_AUDIT_EVENT_TYPE = 'pos.shift.remote_close_detected';
+
+/**
+ * Durable per-shift dedup key (Codex r1 MEDIUM). Stored in `sync_metadata`,
+ * which — unlike the `queued_audit_events` outbox — is never pruned, so the
+ * advisory audit fires once per shift even after the outbox row syncs+prunes
+ * and across app restarts.
+ */
+function remoteCloseAuditMarkerKey(shiftId: string): string {
+  return `remote_close_audited:${shiftId}`;
+}
 
 /**
  * The outcome of reconciling the device's local OPEN shift against the server's
@@ -109,14 +117,25 @@ export async function applyShiftReconcileVerdict(
 ): Promise<void> {
   switch (verdict.kind) {
     case 'closed_remotely':
-      if (ctx.tenantId) {
-        await recordRemoteCloseConflict(
-          db,
-          { shiftId: verdict.shiftId, shiftNumber: verdict.shiftNumber },
-          ctx,
-        );
-      }
+      // Flag the banner FIRST (Codex r1 HIGH): it is the primary operator-facing
+      // safety surface and must not depend on the audit write succeeding. The
+      // audit is best-effort below — a failed enqueue logs but never suppresses
+      // the banner (and leaves the dedup marker unset so the next tick retries).
       banner.flag({ shiftId: verdict.shiftId, shiftNumber: verdict.shiftNumber });
+      if (ctx.tenantId) {
+        try {
+          await recordRemoteCloseConflict(
+            db,
+            { shiftId: verdict.shiftId, shiftNumber: verdict.shiftNumber },
+            ctx,
+          );
+        } catch (err) {
+          console.warn(
+            '[POS][reconcile] remote-close audit enqueue failed (non-fatal)',
+            err instanceof Error ? err.message : String(err),
+          );
+        }
+      }
       break;
     case 'healthy':
     case 'none':
@@ -131,16 +150,21 @@ export async function applyShiftReconcileVerdict(
 
 /**
  * Enqueue the advisory remote-close audit event, idempotently. Returns true
- * when an event was newly enqueued, false when one already exists for the shift
- * (so a persistent conflict is audited once, not once per sync tick). The DB
- * dedup also survives app restarts, unlike the in-memory banner.
+ * when an event was newly enqueued, false when this shift was already audited.
+ *
+ * Dedup is keyed on a durable `sync_metadata` marker (Codex r1 MEDIUM) rather
+ * than the prunable `queued_audit_events` outbox, so the event fires exactly
+ * once per shift even after the outbox row syncs+prunes and across restarts.
+ * The marker is set only AFTER a successful enqueue, so a failed write is
+ * retried on the next tick (no marker-without-event gap).
  */
 export async function recordRemoteCloseConflict(
   db: Database,
   conflict: { shiftId: string; shiftNumber: number },
   ctx: { tenantId: string; companyId: string | null; operatorId: string | null },
 ): Promise<boolean> {
-  if (await auditEventExistsForAggregate(db, REMOTE_CLOSE_AUDIT_EVENT_TYPE, conflict.shiftId)) {
+  const markerKey = remoteCloseAuditMarkerKey(conflict.shiftId);
+  if ((await getSyncMetadata(db, markerKey)) !== null) {
     return false;
   }
 
@@ -164,5 +188,7 @@ export async function recordRemoteCloseConflict(
     status: 'pending',
     retryCount: 0,
   });
+  // Marker set only after a successful enqueue (durable once-per-shift dedup).
+  await setSyncMetadata(db, markerKey, occurredAt);
   return true;
 }

@@ -99,27 +99,6 @@ export async function enqueueAuditEvent(
   );
 }
 
-/**
- * Whether an audit event of the given type already exists in the outbox for the
- * aggregate (any status — pending/syncing/synced/failed — until pruned). Used to
- * make once-per-aggregate advisory events idempotent across repeated detection
- * ticks (offline-first shifts Phase 6.2: the remote-close reconcile must not
- * re-enqueue an event every sync cycle while the conflict persists).
- */
-export async function auditEventExistsForAggregate(
-  db: Database,
-  eventType: string,
-  aggregateId: string,
-): Promise<boolean> {
-  const row = await queryOne<{ n: number }>(
-    db,
-    `SELECT COUNT(*) AS n FROM queued_audit_events
-      WHERE event_type = $1 AND aggregate_id = $2`,
-    [eventType, aggregateId],
-  );
-  return (row?.n ?? 0) > 0;
-}
-
 export async function getPendingAuditEvents(
   db: Database,
   limit = 100,

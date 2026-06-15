@@ -25,7 +25,7 @@ export function RemoteShiftCloseBanner() {
       role="alert"
       aria-live="assertive"
       data-testid="remote-shift-close-banner"
-      className="flex shrink-0 items-center justify-center gap-3 border-b-2 border-red-500 bg-red-100 px-4 py-2 text-red-900"
+      className="flex shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b-2 border-red-500 bg-red-100 px-4 py-2 text-center text-red-900"
     >
       <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
       <span className="text-sm font-semibold uppercase tracking-wide">

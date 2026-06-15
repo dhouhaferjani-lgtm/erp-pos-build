@@ -167,6 +167,18 @@ describe('recordRemoteCloseConflict (idempotent audit)', () => {
     expect(second).toBe(false);
     expect(await getPendingAuditEvents(db)).toHaveLength(1);
   });
+
+  it('dedup survives outbox pruning (Codex r1 MEDIUM — durable marker)', async () => {
+    const db = adapter.asDatabase();
+    await recordRemoteCloseConflict(db, { shiftId: SHIFT_ID, shiftNumber: 7 }, ctx);
+    // Simulate the audit outbox being synced + pruned away.
+    await adapter.execute('DELETE FROM queued_audit_events');
+
+    const afterPrune = await recordRemoteCloseConflict(db, { shiftId: SHIFT_ID, shiftNumber: 7 }, ctx);
+
+    expect(afterPrune).toBe(false);
+    expect(await getPendingAuditEvents(db)).toHaveLength(0);
+  });
 });
 
 describe('applyShiftReconcileVerdict (banner + audit orchestration)', () => {
@@ -263,5 +275,24 @@ describe('applyShiftReconcileVerdict (banner + audit orchestration)', () => {
 
     expect(banner.flagged).toHaveLength(0);
     expect(banner.cleared).toBe(0);
+  });
+
+  it('still flags the banner even when the audit write fails (Codex r1 HIGH)', async () => {
+    // A broken db makes the audit dedup/enqueue throw; the banner is the primary
+    // safety surface and must be shown regardless.
+    const brokenDb = {
+      select: () => Promise.reject(new Error('db down')),
+      execute: () => Promise.reject(new Error('db down')),
+    } as unknown as import('@tauri-apps/plugin-sql').default;
+    const banner = makeBanner();
+
+    await applyShiftReconcileVerdict(
+      brokenDb,
+      { kind: 'closed_remotely', shiftId: SHIFT_ID, shiftNumber: 7 },
+      ctx,
+      banner,
+    );
+
+    expect(banner.flagged).toEqual([{ shiftId: SHIFT_ID, shiftNumber: 7 }]);
   });
 });
