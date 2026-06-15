@@ -11,7 +11,7 @@ import {
   type DataTableColumn,
   ListPageLayout,
 } from '@/components/molecules'
-import { SearchInput } from '@/components/ui/SearchInput'
+import { SearchInput } from '@/components/molecules/SearchInput'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { cn } from '@/lib/utils'

@@ -42,11 +42,11 @@ vi.mock('@/components/ui/ActionMenu', () => ({
   ActionMenu: () => <div data-testid="action-menu" />,
 }))
 
-vi.mock('@/components/ui/SearchInput', () => ({
+vi.mock('@/components/molecules/SearchInput', () => ({
   SearchInput: () => <input aria-label="search-users" />,
 }))
 
-vi.mock('@/components/ui/FilterTabs', () => ({
+vi.mock('@/components/molecules/FilterTabs', () => ({
   FilterTabs: () => <div data-testid="filter-tabs" />,
 }))
 

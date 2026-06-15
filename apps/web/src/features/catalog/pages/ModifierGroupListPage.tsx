@@ -10,7 +10,7 @@ import {
   type DataTableColumn,
   ListPageLayout,
 } from '@/components/molecules'
-import { SearchInput } from '@/components/ui/SearchInput'
+import { SearchInput } from '@/components/molecules/SearchInput'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { cn } from '@/lib/utils'
 import { textColors } from '@/lib/designTokens'
