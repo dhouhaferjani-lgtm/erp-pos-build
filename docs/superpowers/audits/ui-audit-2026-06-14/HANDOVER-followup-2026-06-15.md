@@ -4,6 +4,18 @@
 
 > **Goal of the follow-up session:** test the merged UI work on dev/local, then promote LOCAL `dev` → `origin/dev`.
 
+> ## ⚠ SCOPE UPDATE (owner, 2026-06-15): web POS sale/checkout is being ABANDONED
+> The **desktop Tauri app (`apps/pos`) is the sole, device-authoritative POS** (for NF525 & similar
+> fiscal certification — a parallel web sale path would double the cert/complexity). Decision:
+> **only the web sale/checkout terminal is killed** (POSPage + cart + payment flow). The **back-office
+> POS management & reporting screens STAY** in the web admin to view device-authored data: Terminals,
+> Shift History, Z-Reports, Kitchen Display, Orders, Table Management, Analytics.
+> - The Phase-3.5 commits are **LEFT in place** (owner-confirmed) — harmless presentation-only; the
+>   checkout-flow files will be deleted when the web sale path is removed, the reporting screens stay.
+> - **`apps/pos` (the desktop POS) was NEVER touched by this remediation** — certification target safe.
+> - **Follow-up testing:** SKIP the web checkout (`/pos/transactions` POSPage) — it's going away. DO
+>   verify the back-office POS reporting screens still render (they're keepers).
+
 ---
 
 ## 1. Current state (where everything is)
@@ -41,8 +53,27 @@ node_modules/.bin/vitest run <path>        # scope to a feature; see §3 for the
 ```
 **Do NOT run the full PHPUnit/preflight suite** (crashes the laptop — CLAUDE rule / memory). Frontend gates only.
 
-### C. Highest-risk areas to test first (most-changed / business-critical)
-1. **POS checkout (live sale)** — heavily color-migrated (POSPage, ProductGrid, CartLineItem, PaymentPanel, AdvancedPaymentsModal, Calculator). Verify a full sale completes. *(POS offline sale/PIN/Z is Tauri-only; the web demo can't run the offline layer.)*
+### Live smoke already done (2026-06-15, Playwright on :8089, merged dev)
+Built the merged dev into the served dist and drove it. **All green, no error boundaries** (the only
+console errors are the known Reverb/Pusher WebSocket 502s — env noise, ws not proxied). Verified:
+- **Settings** → HubGrid: uniform brand-chip HubCards, no rainbow (`followup-01-settings-hubgrid.png`)
+- **Products list** → PageHeader + StatCards + DataTable, right-aligned `tabular-nums` prices, green
+  "Active" StatusBadge pills (`followup-02-products-list.png`)
+- **m3 pagination fix (app-wide)** → footer reads **"Showing 1 to 25 of 35 results" · "Rows per page:" ·
+  "Page 1 of 2"** (no raw-key leak) — the bug is fixed in the live app
+- **Back-office POS Shift History** (a keeper) → PageHeader + tokenized Select/Input filters +
+  EmptyState (`followup-03-shift-history.png`)
+- **User Management** → PageHeader + FilterTabs + SearchInput + DataTable + role/status StatusBadges
+  (`followup-04-users.png`)
+- **Modal organism** → Add-User modal: `role="dialog"` + `aria-modal="true"` + `aria-label="Add New
+  User"`, FormField/Input/Select atoms, Cancel/Create-User Button footer; **closes cleanly on Cancel**
+  (`followup-05-modal-dialog.png`)
+Screenshots are in the repo root (`followup-0*.png`) — move/delete as you like. Re-run the build-into-dist
+step (§2.A) if a parallel session rebuilt the shared dist.
+
+### C. Highest-risk areas still worth a manual pass (most-changed / business-critical)
+1. ~~POS web checkout~~ — **SKIP, being abandoned** (see scope update). The back-office POS reporting
+   screens (Z-Reports, Kitchen, Orders, Table Management, Analytics) ARE keepers — give them a look.
 2. **Z-reports & shift reports** — money columns got `tabular-nums`; **no math was changed**, only display. Confirm totals still correct (ZReportList/Detail, ShiftDashboard/History).
 3. **Pagination footer (app-wide)** — the m3 fix: it used to leak raw key names ("showing", "rowsPerPage:"). Now every list page should show **"Showing 1 to 25 of N results"** + a working rows-per-page Select. Check a few list pages (documents, partners, stock, vouchers, loyalty members).
 4. **Modals → Modal organism** — many bespoke modals were swapped to the shared `Modal` (now `role="dialog"`): refund/reverse, deposit, add-payment-method, withholding preview/rule-form, finance add/edit-account, workshop time-entry/time-off/certification/bundle-component, settings user/role/location modals, POS modals (kept POS-native). Open/close/submit each.
