@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Tenant\Application\Services;
 
+use App\Modules\Catalog\Domain\Entities\ProductAttribute;
 use App\Modules\Company\Domain\Company;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
@@ -33,6 +34,7 @@ final class OnboardingChecklistService
                 OnboardingStep::PaymentRepositories => $this->checkPaymentRepositories($companyId),
                 OnboardingStep::PosTerminal => $this->checkPosTerminal($companyId),
                 OnboardingStep::FirstProduct => $this->checkFirstProduct($companyId),
+                OnboardingStep::ProductOptions => $this->checkProductOptions(),
             };
 
             $result[] = [
@@ -94,5 +96,10 @@ final class OnboardingChecklistService
         return Product::where('company_id', $companyId)
             ->where('is_active', true)
             ->exists();
+    }
+
+    private function checkProductOptions(): bool
+    {
+        return ProductAttribute::query()->where('is_variant_axis', true)->exists();
     }
 }
