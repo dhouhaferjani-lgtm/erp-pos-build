@@ -37,6 +37,11 @@ class ProductVariantMatrixGenerationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        if (\DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Requires PostgreSQL: relies on partial unique indexes / SQLSTATE 23505 conflict mapping not reproduced by SQLite.');
+        }
+
         $this->service = app(ProductVariantService::class);
     }
 

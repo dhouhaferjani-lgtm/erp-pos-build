@@ -40,6 +40,10 @@ class VariantBarcodeRaceTest extends TestCase
     {
         parent::setUp();
 
+        if (\DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Requires PostgreSQL: relies on partial unique indexes / SQLSTATE 23505 conflict mapping not reproduced by SQLite.');
+        }
+
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->for($this->tenant)->create();
         $this->product = ProductFactory::new()->create([

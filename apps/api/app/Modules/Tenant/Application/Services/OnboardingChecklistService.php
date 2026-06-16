@@ -34,7 +34,7 @@ final class OnboardingChecklistService
                 OnboardingStep::PaymentRepositories => $this->checkPaymentRepositories($companyId),
                 OnboardingStep::PosTerminal => $this->checkPosTerminal($companyId),
                 OnboardingStep::FirstProduct => $this->checkFirstProduct($companyId),
-                OnboardingStep::ProductOptions => $this->checkProductOptions(),
+                OnboardingStep::ProductOptions => $this->checkProductOptions($company),
             };
 
             $result[] = [
@@ -98,8 +98,15 @@ final class OnboardingChecklistService
             ->exists();
     }
 
-    private function checkProductOptions(): bool
+    private function checkProductOptions(?Company $company): bool
     {
-        return ProductAttribute::query()->where('is_variant_axis', true)->exists();
+        if ($company === null) {
+            return false;
+        }
+
+        return ProductAttribute::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('is_variant_axis', true)
+            ->exists();
     }
 }

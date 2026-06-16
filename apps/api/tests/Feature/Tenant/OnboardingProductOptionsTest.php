@@ -13,6 +13,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -52,6 +53,7 @@ final class OnboardingProductOptionsTest extends TestCase
     public function test_product_options_complete_with_a_variant_axis_attribute(): void
     {
         ProductAttribute::factory()->create([
+            'tenant_id' => $this->company->tenant_id,
             'is_variant_axis' => true,
         ]);
 
@@ -60,6 +62,22 @@ final class OnboardingProductOptionsTest extends TestCase
         $this->assertTrue(
             $step['completed'],
             'product_options step must be completed when a variant-axis attribute exists'
+        );
+    }
+
+    public function test_product_options_not_completed_by_attribute_belonging_to_different_tenant(): void
+    {
+        // A variant-axis attribute for a DIFFERENT tenant must not satisfy this company's step.
+        ProductAttribute::factory()->create([
+            'tenant_id' => (string) Str::uuid(),
+            'is_variant_axis' => true,
+        ]);
+
+        $step = $this->findProductOptionsStep($this->checklist->getStatus($this->company->id));
+
+        $this->assertFalse(
+            $step['completed'],
+            'product_options step must stay incomplete when the only variant-axis attribute belongs to a different tenant'
         );
     }
 
