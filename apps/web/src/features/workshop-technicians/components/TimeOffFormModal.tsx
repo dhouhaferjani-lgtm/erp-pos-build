@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AxiosError } from 'axios'
 import { Button } from '@/components/atoms/Button'
+import { Checkbox } from '@/components/atoms'
 import { FormField } from '@/components/atoms/FormField'
 import { Input } from '@/components/atoms/Input'
 import { Select } from '@/components/atoms/Select'
@@ -176,14 +177,12 @@ export function TimeOffFormModal({
           </div>
 
           <div className="flex items-center gap-2">
-            <input
+            <Checkbox
               id="time-off-full-day"
-              type="checkbox"
               checked={state.is_full_day}
               onChange={(e) => {
                 setState((s) => ({ ...s, is_full_day: e.target.checked }))
               }}
-              className={tokens.checkbox.base}
             />
             <label htmlFor="time-off-full-day" className={cn('text-sm', textColors.secondary)}>
               {t('authoring.timeOff.fields.isFullDay')}

@@ -17,9 +17,9 @@
     "amount": "Amount",
     "amountPositive": "Amount must be positive",
     "reference": "Reference",
-    "referencePlaceholder": "Check number, transaction ID...",
+    "referencePlaceholder": "Check number, transaction ID…",
     "notes": "Notes",
-    "notesPlaceholder": "Additional notes...",
+    "notesPlaceholder": "Additional notes…",
     "created": "Created",
     "invoice": "Invoice",
     "balanceBefore": "Balance Before",
@@ -63,7 +63,7 @@
       "paymentDate": "Payment Date",
       "paymentDateRequired": "Payment date is required",
       "referencePlaceholder": "Check number, transaction ID, etc.",
-      "notesPlaceholder": "Additional notes...",
+      "notesPlaceholder": "Additional notes…",
       "paymentForInvoice": "Payment for invoice {{invoiceNumber}}"
     },
     "statuses": {
@@ -108,7 +108,7 @@
       "history": "Refund History",
       "remaining": "Remaining",
       "reason": "Reason",
-      "reasonPlaceholder": "Enter the reason for this refund...",
+      "reasonPlaceholder": "Enter the reason for this refund…",
       "refundTitle": "Refund Payment",
       "refundMessage": "This will refund {{amount}} to the customer.",
       "partialRefundTitle": "Partial Refund",
@@ -419,7 +419,7 @@
       "feePercentage": "Fee Percentage",
       "feeAmountPlaceholder": "0.00",
       "feePercentagePlaceholder": "0.00",
-      "descriptionPlaceholder": "Additional information about this payment method...",
+      "descriptionPlaceholder": "Additional information about this payment method…",
       "namePlaceholder": "Cash"
     },
     "flagDescriptions": {

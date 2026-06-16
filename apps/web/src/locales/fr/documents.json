@@ -15,7 +15,7 @@
       "placeholder": "ex. 2.5h × 60/h par le mécanicien Jean"
     },
     "variant": "Variante",
-    "variantLoading": "Chargement des variantes...",
+    "variantLoading": "Chargement des variantes…",
     "variantPlaceholder": "Sélectionner une variante"
   },
   "taxMention": {
@@ -34,7 +34,7 @@
     "title": "Pièces jointes",
     "dropzone": "Glissez-déposez des fichiers ici, ou cliquez pour parcourir",
     "allowedTypes": "Autorisés : {{types}} (max {{maxSize}}Mo)",
-    "uploading": "Téléchargement en cours...",
+    "uploading": "Téléchargement en cours…",
     "noAttachments": "Aucune pièce jointe",
     "errors": {
       "fileTooLarge": "Le fichier dépasse la taille maximale de {{maxSize}}Mo",
@@ -87,7 +87,7 @@
     },
     "additionalCosts": {
       "title": "Coûts supplémentaires",
-      "loading": "Chargement des coûts...",
+      "loading": "Chargement des coûts…",
       "total": "Total : {{amount}}",
       "costTypeLabel": "Type de coût",
       "amountLabel": "Montant",

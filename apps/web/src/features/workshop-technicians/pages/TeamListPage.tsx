@@ -4,7 +4,7 @@ import { Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { PageHeader } from '@/components/molecules'
-import { Select } from '@/components/atoms'
+import { Checkbox, Select } from '@/components/atoms'
 import { useTechnicians } from '../hooks/useTechnicians'
 import type { SpecialtyCode, TechnicianListFilters } from '../api/types'
 import { TechnicianRow } from '../components/TechnicianRow'
@@ -58,13 +58,11 @@ export function TeamListPage() {
         )}
       >
         <label className={cn('inline-flex items-center gap-2 text-sm', textColors.secondary)}>
-          <input
-            type="checkbox"
+          <Checkbox
             checked={activeOnly}
             onChange={(e) => {
               setActiveOnly(e.target.checked)
             }}
-            className={tokens.checkbox.base}
           />
           {t('filters.activeOnly')}
         </label>

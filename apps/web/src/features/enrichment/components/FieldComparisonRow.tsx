@@ -1,4 +1,5 @@
-import { tokens, textColors, colors } from '@/lib/designTokens'
+import { textColors, colors } from '@/lib/designTokens'
+import { Checkbox } from '@/components/atoms'
 
 interface FieldComparisonRowProps {
   label: string
@@ -28,11 +29,10 @@ export function FieldComparisonRow({
       <div
         className={`border-b px-3.5 py-3 flex items-start gap-2 ${highlight ? colors.success[50] : ''}`}
       >
-        <input
-          type="checkbox"
+        <Checkbox
           checked={checked}
           onChange={onToggle}
-          className={`mt-1 ${tokens.checkbox.base}`}
+          className="mt-1"
         />
         <div className="flex-1">
           <div className={`mb-1 text-xs ${textColors.secondary}`}>{label}</div>

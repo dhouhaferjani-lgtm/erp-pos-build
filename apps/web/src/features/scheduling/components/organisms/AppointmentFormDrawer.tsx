@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { textColors, tokens } from '@/lib/designTokens'
+import { Checkbox } from '@/components/atoms'
 import {
   PartnerPicker,
   VehiclePicker,
@@ -242,9 +243,7 @@ function AppointmentFormDrawerContent({
                 {t('drawer.sectionCustomer')}
               </legend>
               <label className={`flex items-center gap-2 text-xs ${textColors.tertiary}`}>
-                <input
-                  type="checkbox"
-                  className={tokens.checkbox.base}
+                <Checkbox
                   checked={isWalkIn}
                   onChange={(e) => {
                     setIsWalkIn(e.target.checked)

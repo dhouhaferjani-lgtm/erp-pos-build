@@ -45,7 +45,7 @@
   "ownerDashboard": {
     "title": "Tableau de Bord Propriétaire",
     "subtitle": "Ventes, stock, paiements et contrôle caisse par site.",
-    "loading": "Chargement du rapport...",
+    "loading": "Chargement du rapport…",
     "error": "Rapport indisponible.",
     "noData": "Aucune donnée pour cette période.",
     "filters": {

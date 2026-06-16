@@ -10,7 +10,7 @@ import { cn } from '../../lib/utils'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
-import { Button, FormField, Input, Select, StatusBadge } from '../../components/atoms'
+import { Button, Checkbox, FormField, Input, Select, StatusBadge } from '../../components/atoms'
 import { Modal, ModalContent, ModalFooter } from '../../components/organisms/Modal'
 import { EmptyState } from '../../components/molecules'
 
@@ -475,12 +475,10 @@ export function LocationsPage() {
 
             {/* POS Enabled */}
             <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="posEnabled"
                 checked={formData.posEnabled}
                 onChange={(e) => { setFormData({ ...formData, posEnabled: e.target.checked }) }}
-                className={tokens.checkbox.base}
               />
               <label htmlFor="posEnabled" className={cn('text-sm', textColors.secondary)}>
                 {t('locations.form.posEnabled')}

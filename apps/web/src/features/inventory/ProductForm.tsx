@@ -14,7 +14,7 @@ import { colors, tokens, textColors } from '../../lib/designTokens'
 import { CategorySelect } from '../../components/catalog/CategorySelect'
 import { StickyFormFooter } from '../../components/molecules/StickyFormFooter/StickyFormFooter'
 import { PageHeader } from '../../components/molecules/PageHeader'
-import { Button, FormField, Input, Textarea, MoneyInput } from '../../components/atoms'
+import { Button, Checkbox, FormField, Input, Textarea, MoneyInput } from '../../components/atoms'
 import { BarcodeLookupInput } from './components/BarcodeLookupInput'
 import { CatalogBanner } from './components/CatalogBanner'
 import { useProductSubmission } from './api/platformQueries'
@@ -395,11 +395,9 @@ export function ProductForm() {
 
             <div>
               <div className="flex items-center gap-2 mt-6">
-                <input
-                  type="checkbox"
+                <Checkbox
                   id="is_physical"
                   {...register('is_physical')}
-                  className={tokens.checkbox.base}
                 />
                 <label htmlFor="is_physical" className={tokens.label.base}>
                   {t('inventory:products.isPhysical')}
@@ -438,12 +436,10 @@ export function ProductForm() {
               {/* Enrichment opt-in checkbox */}
               {lookupState === 'not_found' && (
                 <div className={cn('mt-3 flex items-center gap-2.5 rounded-lg px-3.5 py-3', colors.neutral[100])}>
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     id="enrichment-opt-in"
                     checked={enrichmentOptIn}
                     onChange={(e) => setEnrichmentOptIn(e.target.checked)}
-                    className={tokens.checkbox.base}
                   />
                   <label htmlFor="enrichment-opt-in" className="text-sm">
                     <span className="font-medium">{t('inventory:barcodeLookup.enrichmentCheckbox')}</span>
@@ -455,11 +451,9 @@ export function ProductForm() {
             </div>
 
             <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="is_active"
                 {...register('is_active')}
-                className={tokens.checkbox.base}
               />
               <label htmlFor="is_active" className={tokens.label.base}>
                 {t('active')}
@@ -661,9 +655,7 @@ export function ProductForm() {
                 </h2>
               </div>
               <label className="inline-flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  className={tokens.checkbox.base}
+                <Checkbox
                   checked={showVariants}
                   onChange={(e) => { setShowVariants(e.target.checked) }}
                 />

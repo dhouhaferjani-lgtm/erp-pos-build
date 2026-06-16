@@ -6,6 +6,7 @@ import { useActivePaymentRepositories } from '../../../treasury/hooks/usePayment
 import { useCurrency } from '../../../../hooks/useCurrency'
 import {
   Button,
+  Checkbox,
   FormField,
   Input,
   MoneyInput,
@@ -230,11 +231,9 @@ export function ExpenseFormFields({
         </FormField>
 
         <div className="flex items-center">
-          <input
-            type="checkbox"
+          <Checkbox
             {...register('is_paid')}
             id="is_paid"
-            className={tokens.checkbox.base}
           />
           <label htmlFor="is_paid" className={`ms-2 text-sm ${textColors.secondary}`}>
             {t('expenses:form.isPaid')}

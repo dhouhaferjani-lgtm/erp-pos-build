@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { Input, Button, FormField, Select, QuantityInput } from '@/components/atoms'
+import { Input, Button, Checkbox, FormField, Select, QuantityInput } from '@/components/atoms'
 
 /** Controlled QuantityInput that only fires onCommit on blur — prevents per-keystroke API calls in table rows. */
 function BlurQuantityInput({
@@ -37,7 +37,7 @@ import { Textarea } from '@/components/atoms/Textarea/Textarea'
 import { Badge } from '@/components/atoms/Badge/Badge'
 import { ProductSearchSelect } from '@/components/ui/ProductSearchSelect'
 import { CompositeItemSearchSelect } from './CompositeItemSearchSelect'
-import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
+import { textColors, borderColors, colors } from '@/lib/designTokens'
 import type { RecipeData, RecipeLineData, RecipeCostData, VerticalType, ComponentType } from '../types/compositeItem'
 import { useVerticalLabels } from '../hooks/useVerticalLabels'
 import {
@@ -275,11 +275,9 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                   />
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     defaultChecked={line.is_optional}
                     onChange={(e) => { handleUpdateLine(line.id, 'is_optional', e.target.checked); }}
-                    className={tokens.checkbox.base}
                   />
                 </td>
                 <td className={`whitespace-nowrap px-3 py-4 text-sm text-right tabular-nums ${textColors.tertiary}`}>{line.unit_cost ?? '-'}</td>
@@ -346,11 +344,9 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                 />
               </td>
               <td className="px-3 py-4">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={newLine.is_optional}
                   onChange={(e) => { setNewLine({ ...newLine, is_optional: e.target.checked }); }}
-                  className={tokens.checkbox.base}
                 />
               </td>
               <td className="px-3 py-4 text-right tabular-nums">-</td>

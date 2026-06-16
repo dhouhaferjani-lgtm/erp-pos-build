@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useUpdateAccount } from '../hooks/useAccounts'
 import { Modal, ModalContent, ModalFooter } from '@/components/organisms'
-import { Button, FormField, Input, Textarea } from '@/components/atoms'
+import { Button, Checkbox, FormField, Input, Textarea } from '@/components/atoms'
 import { tokens } from '@/lib/designTokens'
 import type { Account } from '../types'
 
@@ -113,13 +113,11 @@ export function EditAccountModal({ account, open, onClose, onSuccess }: EditAcco
           </FormField>
 
           <div className="flex items-center gap-2">
-            <input
+            <Checkbox
               id="is_active"
               name="is_active"
-              type="checkbox"
               checked={formData.is_active}
               onChange={(e) => { setFormData({ ...formData, is_active: e.target.checked }) }}
-              className={tokens.checkbox.base}
             />
             <label htmlFor="is_active" className={tokens.label.base}>
               {t('finance:chartOfAccounts.account.active')}

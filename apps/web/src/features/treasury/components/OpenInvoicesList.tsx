@@ -10,6 +10,7 @@ import type { OpenInvoice, AllocationMethod, ManualAllocation } from '@/types/tr
 import { useCurrency } from '@/hooks/useCurrency'
 import { cn } from '@/lib/utils'
 import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
+import { Checkbox } from '@/components/atoms'
 import { Spinner } from '@/components/atoms/Spinner'
 import { Select } from '@/components/atoms/Select'
 import { Button } from '@/components/atoms/Button'
@@ -259,11 +260,9 @@ export function OpenInvoicesList({
                 <tr key={invoice.id} className={selected ? tokens.alert.info : tokens.table.rowHover}>
                   {isManualMode && (
                     <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={selected}
                         onChange={(e) => { handleSelectInvoice(invoice, e.target.checked); }}
-                        className={tokens.checkbox.base}
                       />
                     </td>
                   )}

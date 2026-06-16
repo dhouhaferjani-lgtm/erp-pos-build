@@ -72,7 +72,7 @@
       "Ceil": "Arrondi supérieur"
     },
     "save": "Enregistrer",
-    "saving": "Enregistrement...",
+    "saving": "Enregistrement…",
     "saved": "Paramètres de précision enregistrés.",
     "saveError": "Échec de l'enregistrement des paramètres de précision.",
     "narrowingWarning": "Cette modification peut rendre inexactes certaines valeurs de quantité existantes. Consultez le rapport d'impact après l'enregistrement."

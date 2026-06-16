@@ -11,6 +11,7 @@ import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { tokens, textColors } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
 import { Button } from '../../../components/atoms/Button/Button'
+import { Checkbox } from '../../../components/atoms'
 import { Input } from '../../../components/atoms/Input'
 import { Textarea } from '../../../components/atoms/Textarea'
 import { useAuthStore } from '../../../stores/authStore'
@@ -413,12 +414,10 @@ function ToggleField({
   return (
     <div className="flex items-start gap-3">
       <div className="flex h-6 items-center">
-        <input
-          type="checkbox"
+        <Checkbox
           id={id}
           {...register(id)}
           disabled={override.isForced}
-          className={tokens.checkbox.base}
         />
       </div>
       <div className="flex-1">

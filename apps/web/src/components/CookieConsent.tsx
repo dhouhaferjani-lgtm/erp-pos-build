@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { cn } from '../lib/utils'
@@ -10,6 +10,7 @@ const COOKIE_CONSENT_KEY = 'autoerp-cookie-consent'
 export function CookieConsent() {
   const { t } = useTranslation('common')
   const [visible, setVisible] = useState(false)
+  const barRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const consent = localStorage.getItem(COOKIE_CONSENT_KEY)
@@ -17,6 +18,27 @@ export function CookieConsent() {
       setVisible(true)
     }
   }, [])
+
+  // Reserve body space equal to the fixed bar's height so it never overlaps the
+  // last bit of page content. Cleaned up when dismissed or unmounted.
+  useEffect(() => {
+    if (!visible) {
+      return
+    }
+
+    const syncPadding = () => {
+      const height = barRef.current?.offsetHeight ?? 0
+      document.body.style.paddingBottom = `${height}px`
+    }
+
+    syncPadding()
+    window.addEventListener('resize', syncPadding)
+
+    return () => {
+      window.removeEventListener('resize', syncPadding)
+      document.body.style.paddingBottom = ''
+    }
+  }, [visible])
 
   function handleAccept() {
     localStorage.setItem(COOKIE_CONSENT_KEY, 'accepted')
@@ -28,7 +50,7 @@ export function CookieConsent() {
   }
 
   return (
-    <div className={cn('fixed inset-x-0 bottom-0 z-50 border-t p-4 shadow-lg', borderColors.light, colors.white)}>
+    <div ref={barRef} className={cn('fixed inset-x-0 bottom-0 z-50 border-t p-4 shadow-lg', borderColors.light, colors.white)}>
       <div className="mx-auto flex max-w-4xl flex-col items-center gap-3 sm:flex-row sm:justify-between">
         <p className={cn('text-sm', textColors.tertiary)}>
           {t('legal.cookieConsent.message')}

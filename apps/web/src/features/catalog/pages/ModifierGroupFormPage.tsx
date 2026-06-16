@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { Input, FormField, Button, Select, MoneyInput, QuantityInput } from '@/components/atoms'
+import { Input, FormField, Button, Select, MoneyInput, QuantityInput, Checkbox } from '@/components/atoms'
 import { PageHeader } from '@/components/molecules'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { ProductSearchSelect } from '@/components/ui/ProductSearchSelect'
@@ -257,20 +257,16 @@ export function ModifierGroupFormPage() {
             </div>
             <div className="flex items-center gap-6 pt-6">
               <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={form.is_required}
                   onChange={(e) => { setForm({ ...form, is_required: e.target.checked }); }}
-                  className={tokens.checkbox.base}
                 />
                 <span className={cn('text-sm', textColors.secondary)}>{t('catalog:isRequired')}</span>
               </label>
               <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={form.is_active}
                   onChange={(e) => { setForm({ ...form, is_active: e.target.checked }); }}
-                  className={tokens.checkbox.base}
                 />
                 <span className={cn('text-sm', textColors.secondary)}>{t('catalog:isActive')}</span>
               </label>
@@ -337,11 +333,9 @@ export function ModifierGroupFormPage() {
                       />
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-sm">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         defaultChecked={mod.is_default}
                         onChange={(e) => { handleUpdateModifier(mod.id, 'is_default', e.target.checked); }}
-                        className={tokens.checkbox.base}
                       />
                     </td>
                     <td className="px-3 py-4 text-sm">

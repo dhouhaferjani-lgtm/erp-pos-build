@@ -8,6 +8,7 @@ import { FormField } from '../../../components/atoms/FormField'
 import { Input } from '../../../components/atoms/Input'
 import { Select } from '../../../components/atoms/Select'
 import { Button } from '../../../components/atoms/Button'
+import { Checkbox } from '../../../components/atoms'
 import { Textarea } from '../../../components/atoms/Textarea'
 import { apiPost } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
@@ -215,10 +216,9 @@ export function AddPaymentMethodModal({
               <div className="space-y-3">
                 {CAPABILITY_FLAGS.map((flag) => (
                   <label key={flag} className="flex items-start gap-3">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       {...register(flag)}
-                      className={cn('mt-1', tokens.checkbox.base)}
+                      className={cn('mt-1')}
                     />
                     <div className="flex-1">
                       <div className={cn('text-sm font-medium', textColors.secondary)}>
