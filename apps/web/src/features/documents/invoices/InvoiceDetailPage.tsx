@@ -21,6 +21,9 @@ import { PaymentHistorySection, OutstandingAmountSection } from '../components'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail, useCreditNotes } from '../hooks'
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
+import { Modal } from '../../../components/organisms/Modal'
+import { Button, Input, Textarea } from '../../../components/atoms'
+import { tokens } from '../../../lib/designTokens'
 import { CloseWithWriteoffSection } from './components/CloseWithWriteoffSection'
 import { useCompany } from '../../../hooks/useCompany'
 import { useAuthStore } from '../../../stores/authStore'
@@ -564,17 +567,18 @@ export function InvoiceDetailPage() {
       />
 
       {/* Credit Note Form Modal */}
-      {showCreditNoteForm && (
-        <div className="fixed inset-0 bg-gray-500/75 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
-            <CreateCreditNoteForm
-              invoice={invoice as unknown as InvoiceForCreditNote}
-              onSuccess={handleCreditNoteCreated}
-              onCancel={() => { setShowCreditNoteForm(false); }}
-            />
-          </div>
-        </div>
-      )}
+      <Modal
+        isOpen={showCreditNoteForm}
+        onClose={() => { setShowCreditNoteForm(false); }}
+        size="xl"
+        className="max-h-[90vh] overflow-y-auto"
+      >
+        <CreateCreditNoteForm
+          invoice={invoice as unknown as InvoiceForCreditNote}
+          onSuccess={handleCreditNoteCreated}
+          onCancel={() => { setShowCreditNoteForm(false); }}
+        />
+      </Modal>
 
       {/* Record Payment Modal */}
       {invoice.partner_id && (
@@ -594,57 +598,50 @@ export function InvoiceDetailPage() {
       )}
 
       {/* Email Modal */}
-      {showEmailModal && (
-        <div className="fixed inset-0 bg-gray-500/75 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">{t('common:email.title')}</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">{t('common:email.recipientEmail')}</label>
-                <input
-                  type="email"
-                  value={emailForm.recipientEmail}
-                  onChange={(e) => { setEmailForm({ ...emailForm, recipientEmail: e.target.value }); }}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">{t('common:email.subject')}</label>
-                <input
-                  type="text"
-                  value={emailForm.subject}
-                  onChange={(e) => { setEmailForm({ ...emailForm, subject: e.target.value }); }}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">{t('common:email.message')}</label>
-                <textarea
-                  value={emailForm.message}
-                  onChange={(e) => { setEmailForm({ ...emailForm, message: e.target.value }); }}
-                  rows={4}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                />
-              </div>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => { setShowEmailModal(false); }}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  {t('common:cancel')}
-                </button>
-                <button
-                  onClick={handleSendEmail}
-                  disabled={sendEmailMutation.isPending || !emailForm.recipientEmail}
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {t('common:send')}
-                </button>
-              </div>
-            </div>
+      <Modal
+        isOpen={showEmailModal}
+        onClose={() => { setShowEmailModal(false); }}
+        title={t('common:email.title')}
+        size="md"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className={tokens.label.base}>{t('common:email.recipientEmail')}</label>
+            <Input
+              type="email"
+              value={emailForm.recipientEmail}
+              onChange={(e) => { setEmailForm({ ...emailForm, recipientEmail: e.target.value }); }}
+            />
+          </div>
+          <div>
+            <label className={tokens.label.base}>{t('common:email.subject')}</label>
+            <Input
+              type="text"
+              value={emailForm.subject}
+              onChange={(e) => { setEmailForm({ ...emailForm, subject: e.target.value }); }}
+            />
+          </div>
+          <div>
+            <label className={tokens.label.base}>{t('common:email.message')}</label>
+            <Textarea
+              value={emailForm.message}
+              onChange={(e) => { setEmailForm({ ...emailForm, message: e.target.value }); }}
+              rows={4}
+            />
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" onClick={() => { setShowEmailModal(false); }}>
+              {t('common:cancel')}
+            </Button>
+            <Button
+              onClick={handleSendEmail}
+              disabled={sendEmailMutation.isPending || !emailForm.recipientEmail}
+            >
+              {t('common:send')}
+            </Button>
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   )
 }
