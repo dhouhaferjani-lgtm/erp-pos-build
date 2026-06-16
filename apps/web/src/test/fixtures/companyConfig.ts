@@ -62,9 +62,12 @@ export const parapharmacyCompanyConfig: TestCompanyConfig = {
 
 /**
  * Non-parapharmacy vertical that has the Parapharmacy module enabled as an
- * opt-in extra. Exercises the "robust to extras" property: module-based gating
- * (hasModule('Parapharmacy')) must show parapharmacy UI here, whereas the old
- * `vertical === 'parapharmacy'` string check would (incorrectly) hide it.
+ * opt-in extra. Exercises the KEY discriminating case for vertical-based
+ * gating: the backend authorizes parapharmacy metadata by
+ * `vertical === 'parapharmacy'` (not by module), so the parapharmacy UI must be
+ * HIDDEN here even though the module is enabled — otherwise the UI would invite
+ * input the API then 422-rejects. Module-based gating would (incorrectly) show
+ * it.
  */
 export const genericWithParapharmacyExtraCompanyConfig: TestCompanyConfig = {
   vertical: 'generic',

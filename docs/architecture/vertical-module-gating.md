@@ -184,23 +184,34 @@ layers:
   Restaurant (or any non-matching vertical) never receives this metadata in the
   product payload.
 - **Backend write — validation guard** (`CreateProductRequest` /
-  `UpdateProductRequest`): the request **rejects** `parapharmacy_metadata` with
-  HTTP **422** unless `vertical === Vertical::Parapharmacy`, and
-  `automotive_metadata` unless `vertical->isAutomotive()` (the disallowed field
-  is given a `prohibited` rule). A mismatched tenant gets a clear validation
-  error rather than a silently-discarded payload. The controller
-  (`ProductController` `store`/`update`) additionally only persists the metadata
-  when the vertical matches, as defence-in-depth. Regression coverage:
-  `tests/Feature/Product/ProductMetadataVerticalGuardTest.php` (422 rejection +
-  allow paths) plus `ParapharmacyProductTest` / `AutomotiveProductTest`
-  (`it_does_not_load_*_metadata_for_non_*_vertical`).
+  `UpdateProductRequest`): a `withValidator` hook **rejects** any presence of
+  `parapharmacy_metadata` with HTTP **422** unless `vertical ===
+  Vertical::Parapharmacy`, and `automotive_metadata` unless
+  `vertical->isAutomotive()`. It checks `exists()` (key present), so `null` and
+  `[]` are rejected too — a bare `prohibited` rule would let those through. A
+  mismatched tenant gets a clear validation error rather than a
+  silently-discarded payload. The controller (`ProductController`
+  `store`/`update`) additionally only persists the metadata when the vertical
+  matches, as defence-in-depth. Regression coverage:
+  `tests/Feature/Product/ProductMetadataVerticalGuardTest.php` (422 rejection
+  incl. null/`[]`, plus allow paths) and `ParapharmacyProductTest` /
+  `AutomotiveProductTest`.
+- **Why vertical, not module, for this metadata:** automotive metadata spans six
+  verticals via `isAutomotive()` and has **no single "Automotive" module**, so
+  product metadata is authorised by **vertical** on every layer (read, write,
+  frontend). Do not gate these specific fields by `hasModule(...)` — that would
+  diverge from the backend authority. (Module gating is the right tool for whole
+  features/routes such as the master data below, not for this metadata.)
 - **Parapharmacy master data** (ingredients, certifications, health-claims,
-  key-components endpoints) is additionally gated behind `module:Parapharmacy`
-  in `app/Modules/Product/routes.php` — only the parapharmacy vertical (whose
-  `default_modules` include `Parapharmacy`) can reach those routes; everyone
-  else gets **403**.
-- **Frontend:** the parapharmacy fields are gated on `hasModule('Parapharmacy')`,
-  so the product form/detail UI only shows them to parapharmacy tenants.
+  key-components endpoints) is a distinct feature gated behind `module:Parapharmacy`
+  in `app/Modules/Product/routes.php`. Under the current static config only the
+  parapharmacy vertical has that module by default, so only it can reach those
+  routes; everyone else gets **403**. The web routes mirror this with
+  `<ModuleGuard module="Parapharmacy">`.
+- **Frontend:** the parapharmacy product-metadata fields (the `ProductForm`
+  section and the POS `ProductInfoModal` tab) are gated on
+  `config.vertical === 'parapharmacy'`, matching the backend write authority, so
+  the UI never invites input the API would 422-reject.
 
 > If you find vertical-specific product fields rendering for the wrong vertical,
 > the bug is a missing gate on one of these layers — not "bad seed data."
@@ -339,10 +350,30 @@ holes.
 - **Per-product batch tracking (product decision).** `requires_batch_tracking`
   is a vertical-level `product_defaults` flag (true for restaurant / coffee_shop
   / pharmacy / parapharmacy). The agreed direction is to make batch/expiry
-  tracking an **opt-in per-product flag** and/or a **paid upgrade module**
-  rather than forced on every physical product. Note the current inconsistency:
-  restaurant has `requires_batch_tracking=true` but its `default_modules`
-  include neither `Inventory` nor `BatchExpiry`.
+  tracking an **opt-in per-product flag** and/or a **paid upgrade module** that
+  follows the Inventory upgrade (below) rather than being forced on every
+  physical product. (Today the flag defaults on for restaurant/coffee_shop even
+  before Inventory is enabled — it should track the upgrade instead.)
+
+### Restaurant / coffee_shop inventory is an opt-in upgrade (by design)
+
+This is **not** a gap — it is the intended model, confirmed in code:
+
+- `Inventory` is a **`compatible_extra`** for `restaurant` (`['Tables',
+  'Reservation', 'Inventory']`) and `coffee_shop` (`['Tables', 'Loyalty',
+  'Inventory']`), **not** a default module. A restaurant/coffee shop can operate
+  **without** inventory tracking and later **upgrade into** proper inventory
+  tracking via `enabled_extras` (see "Upgrading into more modules" above).
+- Once on inventory, sellable dishes/drinks are modelled as **composite items
+  with recipes**: `CompositeItem` → `Recipe` (`yield_quantity` / `yield_unit`) →
+  `RecipeLine` (each line is a component `product`/`variant` with a `quantity`
+  and `unit`). Ingredients are ordinary catalog **products** (including
+  primary ingredients that live in other verticals' product space).
+- `CompositeItemAvailabilityService::checkAvailability($item, $locationId)`
+  computes the **maximum producible quantity** of a dish from on-hand ingredient
+  stock — `min(available_stock / recipe_quantity)` across all required *leaf*
+  components, recursing through nested composite items down to primary
+  ingredients, per location. (`app/Modules/Catalog/Application/Services/`.)
 
 ## Related code (quick links)
 

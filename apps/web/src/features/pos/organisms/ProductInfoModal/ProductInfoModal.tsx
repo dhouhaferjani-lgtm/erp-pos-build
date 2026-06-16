@@ -161,14 +161,15 @@ export function ProductInfoModal({
 
   const stockLevels = stockData?.locations
 
-  // Gate the parapharmacy tab on BOTH the vertical capability (the Parapharmacy
-  // module being enabled for this tenant) AND the product carrying parapharmacy
-  // metadata. useCompanyConfigOptional returns null if this modal is ever
-  // mounted outside a CompanyConfigProvider (e.g. a standalone POS shell); in
-  // that case we fail closed and hide the parapharmacy-flavored UI.
+  // Gate the parapharmacy tab on BOTH the tenant vertical (the backend
+  // authorizes parapharmacy metadata by vertical === 'parapharmacy', not by
+  // module) AND the product carrying parapharmacy metadata.
+  // useCompanyConfigOptional returns null if this modal is ever mounted outside
+  // a CompanyConfigProvider (e.g. a standalone POS shell); in that case we fail
+  // closed and hide the parapharmacy-flavored UI.
   const companyConfig = useCompanyConfigOptional()
-  const isParapharmacyEnabled = companyConfig?.hasModule('Parapharmacy') ?? false
-  const showParapharmacyTab = isParapharmacyEnabled && !!product?.parapharmacy_metadata
+  const isParapharmacyVertical = companyConfig?.config?.vertical === 'parapharmacy'
+  const showParapharmacyTab = isParapharmacyVertical && !!product?.parapharmacy_metadata
 
   // Get current language for translations
   const currentLang = i18n.language as 'en' | 'fr' | 'ar'

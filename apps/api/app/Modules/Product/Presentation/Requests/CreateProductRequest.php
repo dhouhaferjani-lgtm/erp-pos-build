@@ -21,6 +21,7 @@ use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
+use Illuminate\Validation\Validator;
 
 class CreateProductRequest extends FormRequest
 {
@@ -36,6 +37,35 @@ class CreateProductRequest extends FormRequest
     }
 
     /**
+     * Reject vertical-specific metadata the tenant's vertical does not permit —
+     * including empty/null payloads that a bare `prohibited` rule would let
+     * through (Laravel treats `prohibited` as "not required", so null and `[]`
+     * pass). Parapharmacy metadata is allowed only for the Parapharmacy
+     * vertical; automotive metadata only for automotive verticals (there is no
+     * single "Automotive" module, so the vertical is the authority).
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $vertical = $this->companyContext->requireCompany()->tenant->vertical;
+
+        $validator->after(function (Validator $validator) use ($vertical): void {
+            if ($vertical !== Vertical::Parapharmacy && $this->exists('parapharmacy_metadata')) {
+                $validator->errors()->add(
+                    'parapharmacy_metadata',
+                    'Parapharmacy metadata is not allowed for this business type.'
+                );
+            }
+
+            if (! $vertical->isAutomotive() && $this->exists('automotive_metadata')) {
+                $validator->errors()->add(
+                    'automotive_metadata',
+                    'Automotive metadata is not allowed for this business type.'
+                );
+            }
+        });
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function rules(): array
@@ -45,14 +75,6 @@ class CreateProductRequest extends FormRequest
         $tenantId = $user?->tenant_id;
 
         $company = $this->companyContext->requireCompany();
-
-        // Vertical-specific product metadata is gated by the tenant's vertical:
-        // parapharmacy metadata only for the Parapharmacy vertical, automotive
-        // metadata only for automotive (Otospex) verticals. Disallowed metadata
-        // is rejected (422) rather than silently dropped by the controller.
-        $vertical = $company->tenant->vertical;
-        $parapharmacyAllowed = $vertical === Vertical::Parapharmacy;
-        $automotiveAllowed = $vertical->isAutomotive();
 
         return [
             'name' => ['required', 'string', 'max:255'],
@@ -99,7 +121,7 @@ class CreateProductRequest extends FormRequest
             'cross_references.*.reference' => ['required_with:cross_references', 'string', 'max:100'],
 
             // Parapharmacy metadata (vertical-specific)
-            'parapharmacy_metadata' => $parapharmacyAllowed ? ['sometimes', 'array'] : ['prohibited'],
+            'parapharmacy_metadata' => ['sometimes', 'array'],
             'parapharmacy_metadata.category' => ['required_with:parapharmacy_metadata', new Enum(ParapharmacyCategory::class)],
             'parapharmacy_metadata.dosage_form' => ['nullable', new Enum(DosageForm::class)],
             'parapharmacy_metadata.active_ingredients' => ['nullable', 'array'],
@@ -122,7 +144,7 @@ class CreateProductRequest extends FormRequest
             'parapharmacy_metadata.storage_requirements' => ['nullable', 'string', 'max:500'],
 
             // Automotive metadata (vertical-specific)
-            'automotive_metadata' => $automotiveAllowed ? ['sometimes', 'array'] : ['prohibited'],
+            'automotive_metadata' => ['sometimes', 'array'],
             'automotive_metadata.platform_article_id' => ['nullable', 'uuid'],
             'automotive_metadata.platform_link_status' => ['nullable', new Enum(PlatformLinkStatus::class)],
             'automotive_metadata.article_number' => ['nullable', 'string', 'max:100'],

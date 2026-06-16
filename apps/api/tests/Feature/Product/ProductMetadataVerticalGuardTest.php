@@ -103,6 +103,28 @@ class ProductMetadataVerticalGuardTest extends TestCase
         $this->assertApiValidationErrors($response, ['parapharmacy_metadata']);
     }
 
+    /**
+     * @test
+     *
+     * A bare `prohibited` rule treats null / `[]` as "empty" and lets them
+     * through; the guard must reject any PRESENCE of the disallowed key.
+     */
+    public function it_rejects_empty_parapharmacy_metadata_for_a_non_parapharmacy_vertical(): void
+    {
+        foreach (['null' => null, 'empty-array' => []] as $label => $value) {
+            $ctx = $this->makeContext(Vertical::Retail, "retail-pp-{$label}");
+
+            $response = $this->actingAs($ctx['user'], 'sanctum')
+                ->postJson('/api/v1/products', [
+                    'name' => 'Generic Widget',
+                    'sku' => "WIDGET-PP-{$label}",
+                    'parapharmacy_metadata' => $value,
+                ]);
+
+            $this->assertApiValidationErrors($response, ['parapharmacy_metadata']);
+        }
+    }
+
     /** @test */
     public function it_rejects_automotive_metadata_for_a_non_automotive_vertical(): void
     {

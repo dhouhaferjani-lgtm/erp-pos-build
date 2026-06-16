@@ -10,9 +10,12 @@ import {
 import { ProductForm } from '../ProductForm'
 
 /**
- * Locks the module-based gate for the parapharmacy metadata section in
- * ProductForm: the section renders only when the Parapharmacy module is
- * enabled for the tenant (hasModule('Parapharmacy')), not for other verticals.
+ * Locks the vertical-based gate for the parapharmacy metadata section in
+ * ProductForm: the section renders only when the tenant vertical is
+ * `parapharmacy` (config.vertical === 'parapharmacy'), matching the backend
+ * which authorizes parapharmacy metadata by vertical (not by module). Enabling
+ * the Parapharmacy module on another vertical must NOT show the section,
+ * because the API would 422-reject the metadata.
  */
 
 // i18n: echo the key so we can assert on stable keys regardless of catalog state.
@@ -63,7 +66,7 @@ vi.mock('@/components/molecules/TaxConfigurationField', () => ({
 
 const PARAPHARMACY_SECTION_KEY = 'products:parapharmacy.title'
 
-describe('ProductForm parapharmacy module gate', () => {
+describe('ProductForm parapharmacy vertical gate', () => {
   beforeEach(() => {
     seedAuth()
   })
@@ -73,7 +76,7 @@ describe('ProductForm parapharmacy module gate', () => {
     vi.clearAllMocks()
   })
 
-  it('renders the parapharmacy metadata section when the Parapharmacy module is enabled', async () => {
+  it('renders the parapharmacy metadata section when the tenant vertical is parapharmacy', async () => {
     renderWithProviders(<ProductForm />, {
       route: '/inventory/products/new',
       companyConfig: parapharmacyCompanyConfig,
@@ -84,7 +87,7 @@ describe('ProductForm parapharmacy module gate', () => {
     })
   })
 
-  it('does NOT render the parapharmacy metadata section when the Parapharmacy module is disabled', async () => {
+  it('does NOT render the parapharmacy metadata section on a non-parapharmacy vertical', async () => {
     renderWithProviders(<ProductForm />, {
       route: '/inventory/products/new',
       companyConfig: defaultCompanyConfig,
@@ -98,14 +101,20 @@ describe('ProductForm parapharmacy module gate', () => {
     expect(screen.queryByText(PARAPHARMACY_SECTION_KEY)).not.toBeInTheDocument()
   })
 
-  it('renders the section based on the module, not the vertical name (Parapharmacy enabled as an extra on a non-parapharmacy vertical)', async () => {
+  it('does NOT render the section based on the module when the vertical is not parapharmacy (Parapharmacy enabled as an extra on a non-parapharmacy vertical)', async () => {
     renderWithProviders(<ProductForm />, {
       route: '/inventory/products/new',
       companyConfig: genericWithParapharmacyExtraCompanyConfig,
     })
 
+    // Form name field renders for both verticals; wait for the form to mount.
     await waitFor(() => {
-      expect(screen.getByText(PARAPHARMACY_SECTION_KEY)).toBeInTheDocument()
+      expect(screen.getByText(/inventory:products\.name/)).toBeInTheDocument()
     })
+
+    // Vertical-based gate: the module being enabled as an extra is not enough —
+    // the backend authorizes parapharmacy metadata by vertical and would
+    // 422-reject it here, so the section must stay hidden.
+    expect(screen.queryByText(PARAPHARMACY_SECTION_KEY)).not.toBeInTheDocument()
   })
 })
