@@ -335,18 +335,26 @@ These are tracked hardening items from the 2026-06-15 vertical/module gating
 audit. They do **not** change the model above; they close defence-in-depth
 holes.
 
-- **Ungated vertical-exclusive routes (HIGH).** Several modules expose API
-  routes that are reachable by any vertical because their `routes.php` group
-  lacks a `module:` gate — confirmed for **Menu** (`Menu/Presentation/routes.php`),
-  **BatchExpiry** (`BatchExpiry/Presentation/routes.php`), **Loyalty**
-  (`Loyalty/Presentation/routes.php`), and **composite-items** in
-  `Catalog/Presentation/routes.php`. They should be wrapped with
-  `module:Menu` / `module:BatchExpiry` / `module:Loyalty` / `module:CompositeItems`
-  respectively, with matching `*ModuleAccessControlTest` coverage. This is a
-  broad change: ~14 existing feature tests create tenants via
-  `Tenant::factory()` (which defaults to the `retail` vertical, lacking these
-  modules) and would need their setup updated to the module-enabling vertical
-  before the gates can land green. Scoped as its own PR.
+- **Ungated vertical-exclusive routes (HIGH) — DONE (2026-06-17).** Menu,
+  BatchExpiry, Loyalty, and composite-items routes are now gated with
+  `module:Menu` / `module:BatchExpiry` / `module:Loyalty` / `module:CompositeItems`,
+  each with a `*ModuleAccessControlTest` (`tests/Feature/Security/`). Existing
+  feature tests were updated to provision the enabling module/vertical.
+- **CompositeItems vs Inventory split — DONE (2026-06-17), industry-researched.**
+  A deep-research pass on F&B POS / ERP norms (Toast, Lightspeed, MarketMan,
+  Odoo, NetSuite, Cin7, Katana) established: items sell without recipes/inventory;
+  recipe authoring is coupled to the inventory capability; one composite/BOM
+  primitive is reused cross-vertical with relabeling. So Catalog routes now split:
+  composite-item CRUD + availability + **menu modifiers** → `module:CompositeItems`
+  (no inventory needed); recipes + recipe-lines + recipe-cost + composite-item
+  variants → **`module:Inventory`** (ingredient BOMs drive depletion/costing). See
+  `docs/superpowers/research/2026-06-16-composite-items-recipe-inventory-industry-standards.md`.
+- **Cross-vertical CompositeItems / BOM (follow-up, config + i18n).** The
+  composite-item/recipe infrastructure is a general bill-of-materials. Offer
+  `CompositeItems` (and, where relevant, `Inventory`) as a `compatible_extra` to
+  non-F&B verticals that assemble goods — e.g. apparel manufacturing (a shirt =
+  fabric + buttons + thread) — and relabel per vertical via i18n
+  ("Recipe" / "Bill of Materials" / "Kit" / "Assembly"). Not yet implemented.
 - **Per-product batch tracking (product decision).** `requires_batch_tracking`
   is a vertical-level `product_defaults` flag (true for restaurant / coffee_shop
   / pharmacy / parapharmacy). The agreed direction is to make batch/expiry
