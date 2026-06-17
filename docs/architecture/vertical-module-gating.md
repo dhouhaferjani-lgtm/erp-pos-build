@@ -349,19 +349,29 @@ holes.
   (no inventory needed); recipes + recipe-lines + recipe-cost + composite-item
   variants → **`module:Inventory`** (ingredient BOMs drive depletion/costing). See
   `docs/superpowers/research/2026-06-16-composite-items-recipe-inventory-industry-standards.md`.
-- **Cross-vertical CompositeItems / BOM (follow-up, config + i18n).** The
-  composite-item/recipe infrastructure is a general bill-of-materials. Offer
-  `CompositeItems` (and, where relevant, `Inventory`) as a `compatible_extra` to
-  non-F&B verticals that assemble goods — e.g. apparel manufacturing (a shirt =
-  fabric + buttons + thread) — and relabel per vertical via i18n
-  ("Recipe" / "Bill of Materials" / "Kit" / "Assembly"). Not yet implemented.
-- **Per-product batch tracking (product decision).** `requires_batch_tracking`
-  is a vertical-level `product_defaults` flag (true for restaurant / coffee_shop
-  / pharmacy / parapharmacy). The agreed direction is to make batch/expiry
-  tracking an **opt-in per-product flag** and/or a **paid upgrade module** that
-  follows the Inventory upgrade (below) rather than being forced on every
-  physical product. (Today the flag defaults on for restaurant/coffee_shop even
-  before Inventory is enabled — it should track the upgrade instead.)
+- **Cross-vertical CompositeItems / BOM — DONE (2026-06-18).** `CompositeItems`
+  is now a `compatible_extra` for **retail** (kits/bundles), **fashion** (garment
+  BOM — a shirt = fabric + buttons + thread) and **parapharmacy** (gift sets);
+  those verticals already have `Inventory` as a default module, so recipes/costing
+  work once the extra is enabled. The frontend `useVerticalLabels` hook maps
+  `fashion → 'sewing'` and relabels "recipe" as "Bill of Materials" (i18n
+  `vertical.sewing.*`). The composite/recipe/BOM domain + services + the label
+  hook already existed — this was config + i18n only.
+- **Per-product batch tracking — DONE (2026-06-18).** `requires_batch_tracking`
+  now **defaults `false`** for restaurant/coffee_shop (opt-in), and is exposed as
+  a per-product **"Track batches / expiry"** checkbox in `ProductForm` (shown only
+  when the tenant has `BatchExpiry` or `Inventory`). The per-product column +
+  `default_shelf_life_days` already existed. Pharmacy/parapharmacy keep the
+  default on. Model = module gates availability (the upgrade); per-product flag
+  controls granularity — matching the industry per-item toggle.
+- **Frontend ModuleGuard parity — DONE (2026-06-18).** Web routes for menus
+  (Menu), batches (BatchExpiry), composite-items + modifier-groups
+  (CompositeItems) and loyalty (Loyalty) are wrapped in `<ModuleGuard>`; the
+  Sidebar Batches nav now gates on `BatchExpiry` (matching the backend).
+- **Parapharmacy gets `BatchExpiry` as a default module (2026-06-18).** Its
+  products are expiry-tracked, so batch management is a default capability (was
+  only a compatible_extra, which the `module:BatchExpiry` gate would have locked
+  out).
 
 ### Restaurant / coffee_shop inventory is an opt-in upgrade (by design)
 
