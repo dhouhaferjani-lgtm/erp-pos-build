@@ -12,12 +12,13 @@ enum OnboardingStep: string
     case PaymentRepositories = 'payment_repositories';
     case PosTerminal = 'pos_terminal';
     case FirstProduct = 'first_product';
+    case ProductOptions = 'product_options';
 
     public function isRequired(): bool
     {
         return match ($this) {
             self::CompanyInfo, self::TaxConfig, self::PaymentMethods, self::PaymentRepositories => true,
-            self::PosTerminal, self::FirstProduct => false,
+            self::PosTerminal, self::FirstProduct, self::ProductOptions => false,
         };
     }
 
@@ -30,6 +31,7 @@ enum OnboardingStep: string
             self::PaymentRepositories => 'Payment Repositories',
             self::PosTerminal => 'POS Terminal',
             self::FirstProduct => 'First Product',
+            self::ProductOptions => 'Set up product options',
         };
     }
 
@@ -42,6 +44,7 @@ enum OnboardingStep: string
             self::PaymentRepositories => '/treasury/repositories',
             self::PosTerminal => '/pos/terminals',
             self::FirstProduct => '/inventory/products',
+            self::ProductOptions => '/catalog/attributes',
         };
     }
 }

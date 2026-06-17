@@ -326,7 +326,8 @@
       "payment_methods": "Modes de paiement",
       "payment_repositories": "Dépôts de paiement",
       "pos_terminal": "Terminal de caisse",
-      "first_product": "Premier produit"
+      "first_product": "Premier produit",
+      "product_options": "Configurer les options de produit"
     },
     "badges": {
       "required": "Requis",

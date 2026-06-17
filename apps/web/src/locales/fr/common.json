@@ -46,7 +46,8 @@
     "import": "Importer",
     "export": "Exporter",
     "actions": "Actions",
-    "newPurchaseOrder": "Nouvelle commande fournisseur"
+    "newPurchaseOrder": "Nouvelle commande fournisseur",
+    "processing": "Traitement…"
   },
   "common": {
     "create": "Créer",

@@ -11,6 +11,7 @@ import {
   updateVariant,
   type AddAttributeValuePayload,
   type CreateAttributePayload,
+  type GenerateMatrixAxis,
   type UpdateVariantPayload,
 } from '../api/variantApi'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
@@ -101,8 +102,8 @@ export function useVariantsForProduct(productId: string) {
 export function useGenerateMatrix(productId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (attributeIds: string[]) =>
-      generateVariantMatrix(productId, attributeIds),
+    mutationFn: (axes: GenerateMatrixAxis[]) =>
+      generateVariantMatrix(productId, axes),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: variantKeys.forProduct(productId),

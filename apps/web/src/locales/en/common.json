@@ -46,7 +46,8 @@
     "retry": "Retry",
     "import": "Import",
     "export": "Export",
-    "actions": "Actions"
+    "actions": "Actions",
+    "processing": "Processing…"
   },
   "common": {
     "create": "Create",

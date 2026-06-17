@@ -47,10 +47,23 @@ export async function enqueuePinUpdate(
   );
 }
 
+/**
+ * Dead-letter cap. A row that has failed this many times stops being retried
+ * (it stays in the table for a recovery/inspection path rather than retrying
+ * forever). Matches the fiscal-event / cash-drawer / audit outbox cap.
+ */
+export const MAX_PIN_UPDATE_RETRIES = 5;
+
 export async function getPendingPinUpdates(db: Database): Promise<QueuedPinUpdate[]> {
+  // Include `failed` rows under the retry cap so a transient push failure is
+  // retried instead of stranded — `markPinUpdateFailed` flips the row to
+  // `failed`, and selecting only `pending` would never re-attempt it.
   const rows = await queryAll<QueuedPinUpdateRow>(
     db,
-    `SELECT * FROM queued_pin_updates WHERE status = 'pending' ORDER BY id ASC`,
+    `SELECT * FROM queued_pin_updates
+     WHERE status IN ('pending', 'failed') AND retry_count < $1
+     ORDER BY id ASC`,
+    [MAX_PIN_UPDATE_RETRIES],
   );
   return rows.map(rowToUpdate);
 }

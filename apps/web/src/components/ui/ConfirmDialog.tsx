@@ -65,7 +65,14 @@ export function ConfirmDialog({
           <div className={`flex-shrink-0 ${styles.icon}`}>
             <AlertTriangle className="h-6 w-6" />
           </div>
-          <div className="flex-1">
+          {/*
+            min-h floors the body height so swapping a short message for a longer
+            one (e.g. delete → "has stock, deactivate instead") does not visibly
+            resize the modal. min-h only sets a floor: shorter content in other
+            dialogs is unaffected since it never shrinks below it, and longer
+            content still grows past it.
+          */}
+          <div className="min-h-[4.5rem] flex-1">
             <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
             <p className="mt-2 text-sm text-gray-600">{message}</p>
           </div>
