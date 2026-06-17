@@ -10,6 +10,10 @@ import {
   makeStockLevel,
   makeStockLevelsResponse,
 } from '@/features/pos/__fixtures__/productInfo'
+import {
+  parapharmacyCompanyConfig,
+  genericWithParapharmacyExtraCompanyConfig,
+} from '@/test/fixtures/companyConfig'
 import * as api from '@/lib/api'
 
 // Mock useCurrency
@@ -221,11 +225,12 @@ describe('ProductInfoModal', () => {
     })
   })
 
-  it('should render all three tabs when product has parapharmacy data', async () => {
+  it('should render all three tabs when product has parapharmacy data and the tenant vertical is parapharmacy', async () => {
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProductWithParapharmacy)
 
     renderWithProviders(
-      <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
+      <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />,
+      { companyConfig: parapharmacyCompanyConfig }
     )
 
     await waitFor(() => {
@@ -241,7 +246,8 @@ describe('ProductInfoModal', () => {
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProduct)
 
     renderWithProviders(
-      <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
+      <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />,
+      { companyConfig: parapharmacyCompanyConfig }
     )
 
     await waitFor(() => {
@@ -251,6 +257,42 @@ describe('ProductInfoModal', () => {
       const tabs = screen.getAllByRole('tab')
       expect(tabs).toHaveLength(2)
     })
+  })
+
+  it('should NOT render parapharmacy tab when the tenant vertical is not parapharmacy even if product has parapharmacy data', async () => {
+    vi.mocked(api.apiGet).mockResolvedValueOnce(mockProductWithParapharmacy)
+
+    // No companyConfig provided → fail closed (vertical unknown)
+    renderWithProviders(
+      <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Product')).toBeInTheDocument()
+    })
+
+    // Only two tabs, not three — vertical gate hides the parapharmacy tab
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs).toHaveLength(2)
+  })
+
+  it('should NOT render parapharmacy tab when the Parapharmacy module is enabled as an extra but the vertical is not parapharmacy', async () => {
+    vi.mocked(api.apiGet).mockResolvedValueOnce(mockProductWithParapharmacy)
+
+    // genericWithParapharmacyExtraCompanyConfig: module enabled, vertical=generic.
+    // The backend authorizes by vertical and would 422-reject this metadata, so
+    // the tab must stay hidden despite the module being enabled.
+    renderWithProviders(
+      <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />,
+      { companyConfig: genericWithParapharmacyExtraCompanyConfig }
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Product')).toBeInTheDocument()
+    })
+
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs).toHaveLength(2)
   })
 
   it('should switch to stock tab and load stock data', async () => {
@@ -281,7 +323,8 @@ describe('ProductInfoModal', () => {
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProductWithParapharmacy)
 
     renderWithProviders(
-      <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
+      <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />,
+      { companyConfig: parapharmacyCompanyConfig }
     )
 
     await waitFor(() => {

@@ -12,6 +12,7 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { useTaxConfigName } from '@/hooks/useTaxConfigName'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import { useCompanyConfigOptional } from '@/contexts/CompanyConfigContext'
 
 /**
  * Product Info Modal Props
@@ -160,7 +161,15 @@ export function ProductInfoModal({
 
   const stockLevels = stockData?.locations
 
-  const hasParapharmacyData = !!product?.parapharmacy_metadata
+  // Gate the parapharmacy tab on BOTH the tenant vertical (the backend
+  // authorizes parapharmacy metadata by vertical === 'parapharmacy', not by
+  // module) AND the product carrying parapharmacy metadata.
+  // useCompanyConfigOptional returns null if this modal is ever mounted outside
+  // a CompanyConfigProvider (e.g. a standalone POS shell); in that case we fail
+  // closed and hide the parapharmacy-flavored UI.
+  const companyConfig = useCompanyConfigOptional()
+  const isParapharmacyVertical = companyConfig?.config?.vertical === 'parapharmacy'
+  const showParapharmacyTab = isParapharmacyVertical && !!product?.parapharmacy_metadata
 
   // Get current language for translations
   const currentLang = i18n.language as 'en' | 'fr' | 'ar'
@@ -208,7 +217,7 @@ export function ProductInfoModal({
             <TabsList>
               <TabsTrigger value="details">{t('pos:productInfo.tabs.details')}</TabsTrigger>
               <TabsTrigger value="stock">{t('pos:productInfo.tabs.stock')}</TabsTrigger>
-              {hasParapharmacyData && (
+              {showParapharmacyTab && (
                 <TabsTrigger value="parapharmacy">
                   {t('pos:productInfo.tabs.parapharmacy')}
                 </TabsTrigger>
@@ -401,7 +410,7 @@ export function ProductInfoModal({
             </TabsContent>
 
             {/* Parapharmacy Tab */}
-            {hasParapharmacyData && (
+            {showParapharmacyTab && (
               <TabsContent value="parapharmacy" className="pt-4">
                 <div className="space-y-6">
                   {/* Ingredients */}

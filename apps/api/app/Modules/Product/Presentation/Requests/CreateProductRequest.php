@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Presentation\Requests;
 
+use App\Enums\Vertical;
 use App\Modules\Catalog\Presentation\Rules\TaxConfigurationCountryCoherent;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
@@ -20,6 +21,7 @@ use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
+use Illuminate\Validation\Validator;
 
 class CreateProductRequest extends FormRequest
 {
@@ -32,6 +34,35 @@ class CreateProductRequest extends FormRequest
     public function authorize(): bool
     {
         return true;
+    }
+
+    /**
+     * Reject vertical-specific metadata the tenant's vertical does not permit —
+     * including empty/null payloads that a bare `prohibited` rule would let
+     * through (Laravel treats `prohibited` as "not required", so null and `[]`
+     * pass). Parapharmacy metadata is allowed only for the Parapharmacy
+     * vertical; automotive metadata only for automotive verticals (there is no
+     * single "Automotive" module, so the vertical is the authority).
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $vertical = $this->companyContext->requireCompany()->tenant->vertical;
+
+        $validator->after(function (Validator $validator) use ($vertical): void {
+            if ($vertical !== Vertical::Parapharmacy && $this->exists('parapharmacy_metadata')) {
+                $validator->errors()->add(
+                    'parapharmacy_metadata',
+                    'Parapharmacy metadata is not allowed for this business type.'
+                );
+            }
+
+            if (! $vertical->isAutomotive() && $this->exists('automotive_metadata')) {
+                $validator->errors()->add(
+                    'automotive_metadata',
+                    'Automotive metadata is not allowed for this business type.'
+                );
+            }
+        });
     }
 
     /**

@@ -2151,129 +2151,155 @@ export function AppRoutes() {
           />
         </Route>
 
-        {/* Parapharmacy Module */}
+        {/* Parapharmacy Module — vertical-gated via ModuleGuard (Parapharmacy
+            module enabled for the tenant) in addition to the settings.manage
+            permission requirement. */}
         <Route path="parapharmacy">
           <Route
             path="ingredients"
             element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <IngredientListPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Parapharmacy">
+                <RequirePermission permission="settings.manage">
+                  <SuspenseWrapper>
+                    <IngredientListPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="ingredients/new"
             element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <IngredientFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Parapharmacy">
+                <RequirePermission permission="settings.manage">
+                  <SuspenseWrapper>
+                    <IngredientFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="ingredients/:id"
             element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <IngredientFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Parapharmacy">
+                <RequirePermission permission="settings.manage">
+                  <SuspenseWrapper>
+                    <IngredientFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
 
           <Route
             path="certifications"
             element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <CertificationListPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Parapharmacy">
+                <RequirePermission permission="settings.manage">
+                  <SuspenseWrapper>
+                    <CertificationListPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="certifications/new"
             element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <CertificationFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Parapharmacy">
+                <RequirePermission permission="settings.manage">
+                  <SuspenseWrapper>
+                    <CertificationFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="certifications/:id"
             element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <CertificationFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Parapharmacy">
+                <RequirePermission permission="settings.manage">
+                  <SuspenseWrapper>
+                    <CertificationFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
 
           <Route
             path="health-claims"
             element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <HealthClaimListPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Parapharmacy">
+                <RequirePermission permission="settings.manage">
+                  <SuspenseWrapper>
+                    <HealthClaimListPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="health-claims/new"
             element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <HealthClaimFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Parapharmacy">
+                <RequirePermission permission="settings.manage">
+                  <SuspenseWrapper>
+                    <HealthClaimFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="health-claims/:id"
             element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <HealthClaimFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Parapharmacy">
+                <RequirePermission permission="settings.manage">
+                  <SuspenseWrapper>
+                    <HealthClaimFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
 
           <Route
             path="key-components"
             element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <KeyComponentListPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Parapharmacy">
+                <RequirePermission permission="settings.manage">
+                  <SuspenseWrapper>
+                    <KeyComponentListPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="key-components/new"
             element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <KeyComponentFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Parapharmacy">
+                <RequirePermission permission="settings.manage">
+                  <SuspenseWrapper>
+                    <KeyComponentFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="key-components/:id"
             element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <KeyComponentFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Parapharmacy">
+                <RequirePermission permission="settings.manage">
+                  <SuspenseWrapper>
+                    <KeyComponentFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
         </Route>
