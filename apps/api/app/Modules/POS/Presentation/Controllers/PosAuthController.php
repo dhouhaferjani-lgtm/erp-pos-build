@@ -229,28 +229,21 @@ final class PosAuthController extends Controller
             ]);
         }
 
-        // FU-2b: restrict PIN writes to ACTIVE members of the CURRENT company,
-        // narrowing the blast radius from "any tenant user" to "active members
-        // of this company". The legit offline flow only ever queues an
-        // operator's OWN PIN, pushed under whoever is authenticated at sync time
-        // (a shared terminal), so other active company members are still
-        // accepted. NOTE (residual): this does not prove per-update authorship,
-        // so a same-company member with pos.operate_terminal could still rewrite
-        // another active member's PIN via a crafted request — closing that
-        // requires per-update authorship proof / a trusted device-sync identity
-        // and is tracked as a deeper follow-up.
-        $company = $this->companyContext->requireCompany();
-        $activeCompanyMemberIds = UserCompanyMembership::query()
-            ->where('company_id', $company->id)
-            ->where('status', MembershipStatus::Active->value)
-            ->whereIn('user_id', $userIds)
-            ->pluck('user_id')
-            ->flip();
-
+        // SELF-ONLY: sync-pins may set ONLY the authenticated operator's own PIN.
+        // The legit offline flow only ever queues an operator's OWN PIN
+        // (`operatorStore.setupPin` enqueues `authStore.user.id`); the client
+        // drains each operator's queued rows under that operator's own auth, so
+        // this seam never needs to write another user's PIN. Enforcing self-only
+        // here closes the same-company authorship gap (a member with
+        // pos.operate_terminal could otherwise rewrite another active member's
+        // PIN via a crafted request). Subsumes the earlier active-company-member
+        // gate (the authenticated user already passed the active-membership
+        // CompanyContext check).
+        $currentUserId = (string) $currentUser->id;
         foreach ($userIds as $targetId) {
-            if (! $activeCompanyMemberIds->has($targetId)) {
+            if ((string) $targetId !== $currentUserId) {
                 throw ValidationException::withMessages([
-                    'updates' => ['One or more users are not active members of the current company.'],
+                    'updates' => ['sync-pins may only set the authenticated operator\'s own PIN.'],
                 ]);
             }
         }
