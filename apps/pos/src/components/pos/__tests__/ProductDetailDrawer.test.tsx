@@ -19,7 +19,7 @@ vi.mock('@/hooks/useCrossLocationStock', () => ({
   }),
 }));
 vi.mock('@/hooks/useProductVariants', () => ({
-  useProductVariants: () => ({ data: [], isLoading: false }),
+  useProductVariants: () => ({ variants: [], isLoading: false, status: 'idle' }),
 }));
 
 const product = { id: 'p1', name: 'Widget', sku: 'W1', sale_price: '9.99', stock_quantity: 999 } as POSProduct;

@@ -16,10 +16,11 @@ export interface VariantPickerModalProps {
 
 /**
  * Cashier-facing modal that lets a specific VARIANT of a product be selected
- * before it is sold. Fetches the product's variants on open, lists them with
- * their per-variant stock via {@link ProductVariantStockView}, and emits the
- * chosen variant on confirm. The caller stamps the variant identity onto the
- * cart line — this modal never touches the cart, cost, or fiscal payload.
+ * before it is sold. Reads variants from local SQLite first (local-first via
+ * useProductVariants / FV3), lists them with their per-variant stock via
+ * {@link ProductVariantStockView}, and emits the chosen variant on confirm.
+ * The caller stamps the variant identity onto the cart line — this modal never
+ * touches the cart, cost, or fiscal payload.
  */
 export function VariantPickerModal({
   isOpen,
@@ -29,7 +30,7 @@ export function VariantPickerModal({
 }: VariantPickerModalProps) {
   const { t } = useTranslation('pos');
   const productId = isOpen && product ? product.id : null;
-  const { data: variants, isLoading, isError } = useProductVariants(productId);
+  const { variants, isLoading, status } = useProductVariants(productId);
 
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
 
@@ -46,7 +47,7 @@ export function VariantPickerModal({
   }
 
   const handleConfirm = useCallback(() => {
-    if (!variants || selectedVariantId === null) return;
+    if (selectedVariantId === null) return;
     const variant = variants.find((v) => v.id === selectedVariantId);
     if (!variant) return;
     onConfirm(variant);
@@ -67,14 +68,18 @@ export function VariantPickerModal({
             <p className="py-6 text-center text-sm text-gray-600">
               {t('variants.loading')}
             </p>
-          ) : isError ? (
+          ) : status === 'offline-empty' ? (
+            <p className="py-6 text-center text-sm text-gray-600">
+              {t('variants.offlineNoCache')}
+            </p>
+          ) : status === 'error' ? (
             <p className="py-6 text-center text-sm text-red-600">
               {t('variants.loadError')}
             </p>
           ) : (
             <ProductVariantStockView
               basePrice={product.sale_price}
-              variants={variants ?? []}
+              variants={variants}
               selectedVariantId={selectedVariantId}
               onSelect={setSelectedVariantId}
             />

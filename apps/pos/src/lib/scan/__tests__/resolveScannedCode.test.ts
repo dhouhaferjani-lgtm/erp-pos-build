@@ -20,12 +20,21 @@ import { FetchTimeoutError } from '@/lib/fetchWithTimeout';
 const getProductByBarcodeSpy = vi.fn();
 const upsertProductsSpy = vi.fn();
 const fetchProductByBarcodeSpy = vi.fn();
+// FV4 — variantRepository is now called inside the SQLite tier.
+// Default to null (no variant match) so the pre-FV4 product-barcode
+// tests are unaffected.
+const getVariantByBarcodeSpy = vi.fn().mockResolvedValue(null);
+
+vi.mock('@/lib/db/repositories/variantRepository', () => ({
+  getVariantByBarcode: (...args: unknown[]) => getVariantByBarcodeSpy(...args),
+}));
 
 vi.mock('@/lib/db/repositories/productRepository', () => ({
   // C2 Day 1 — resolveScannedCode now uses the plural lookup; the spy is
   // kept named `getProductByBarcodeSpy` for diff continuity but maps to
   // the new export.
   getProductsByBarcode: (...args: unknown[]) => getProductByBarcodeSpy(...args),
+  getProductById: vi.fn().mockResolvedValue(null),
   upsertProducts: (...args: unknown[]) => upsertProductsSpy(...args),
 }));
 
@@ -56,6 +65,9 @@ describe('resolveScannedCode — T2.1 Step B', () => {
     getProductByBarcodeSpy.mockReset();
     upsertProductsSpy.mockReset();
     fetchProductByBarcodeSpy.mockReset();
+    // FV4 — reset variant spy; default = no variant (pre-FV4 tests unaffected).
+    getVariantByBarcodeSpy.mockReset();
+    getVariantByBarcodeSpy.mockResolvedValue(null);
     // Tier 0 LRU is module-level state — clear between tests so a
     // hit cached by an earlier test doesn't leak into a "miss"
     // assertion.

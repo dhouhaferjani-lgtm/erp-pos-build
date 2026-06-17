@@ -37,7 +37,7 @@ export function ProductDetailDrawer({
   const canViewCrossLocation = useOperatorStore(
     (s) => s.operator?.permissions?.includes('pos.view_cross_location_stock') ?? false,
   );
-  const currentLocationId = useTerminalStore((s) => s.terminal?.location.id ?? null);
+  const currentLocationId = useTerminalStore((s) => s.terminal?.location?.id ?? null);
 
   if (!product) return null;
 

@@ -42,6 +42,7 @@ class ProductData extends Data
         public ?string $minimum_margin_override,
         public string $created_at,
         public ?string $updated_at,
+        public bool $has_variants = false,
         public ?string $primary_image_url = null,
         public array $media = [],
         public ?ParapharmacyProductMetadataData $parapharmacy_metadata = null,
@@ -73,6 +74,7 @@ class ProductData extends Data
             minimum_margin_override: $product->minimum_margin_override !== null ? (string) $product->minimum_margin_override : null,
             created_at: $product->created_at?->toIso8601String() ?? '',
             updated_at: $product->updated_at?->toIso8601String(),
+            has_variants: $product->has_variants,
             primary_image_url: $media !== null ? $media->primary_image_url : null,
             media: $media !== null ? $media->media : [],
             parapharmacy_metadata: $product->relationLoaded('parapharmacyMetadata') && $product->parapharmacyMetadata !== null
