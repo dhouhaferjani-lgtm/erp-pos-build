@@ -47,6 +47,7 @@ final class CompositeItemDefaultTaxTest extends TestCase
             'slug' => 'composite-tax-test-'.uniqid(),
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
+            'enabled_extras' => ['CompositeItems'],
         ]);
 
         // TN company with a known company-level default (19.00 mimics Tunisia TVA).

@@ -50,7 +50,7 @@ class CompositeItemComboTest extends TestCase
     {
         parent::setUp();
 
-        $this->tenant = Tenant::factory()->create();
+        $this->tenant = Tenant::factory()->create(['enabled_extras' => ['CompositeItems']]);
         $this->company = Company::factory()->for($this->tenant)->create();
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);

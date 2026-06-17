@@ -14,8 +14,15 @@ use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Support\Facades\Route;
 
-// Group 1: Composite items — ungated (no Inventory module required)
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {
+// Group 1: Composite items + menu modifiers — gated behind the CompositeItems module.
+// Defining sellable composite items (dishes/combos/bundles) and their menu
+// modifiers is a CompositeItems concern (a default module for restaurant /
+// coffee_shop). It does NOT require inventory tracking — composites can be built
+// and sold with no stock ledger. Ingredient recipes (which drive stock
+// depletion/costing) live in the Inventory-gated group below. This mirrors the
+// industry split (e.g. Lightspeed/MarketMan author recipes inside the inventory
+// capability, while item + modifier definition is base catalog/menu).
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'module:CompositeItems'])->group(function () {
     // Composite Items
     Route::get('composite-items', [CompositeItemController::class, 'index'])->middleware('can:composite-items.view');
     Route::post('composite-items', [CompositeItemController::class, 'store'])->middleware('can:composite-items.create');
@@ -24,6 +31,22 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::delete('composite-items/{id}', [CompositeItemController::class, 'destroy'])->middleware('can:composite-items.delete');
     Route::post('composite-items/{id}/duplicate', [CompositeItemController::class, 'duplicate'])->middleware('can:composite-items.create');
     Route::get('composite-items/{id}/availability', [CompositeItemController::class, 'checkAvailability'])->middleware('can:composite-items.view');
+
+    // Modifier Group assignment to composite items
+    Route::post('composite-items/{compositeItemId}/modifier-groups', [ModifierGroupController::class, 'assignToItem'])->middleware('can:composite-items.update');
+    Route::delete('composite-items/{compositeItemId}/modifier-groups/{modifierGroupId}', [ModifierGroupController::class, 'removeFromItem'])->middleware('can:composite-items.update');
+
+    // Modifier Groups (standalone CRUD)
+    Route::get('modifier-groups', [ModifierGroupController::class, 'index'])->middleware('can:modifier-groups.view');
+    Route::post('modifier-groups', [ModifierGroupController::class, 'store'])->middleware('can:modifier-groups.manage');
+    Route::get('modifier-groups/{id}', [ModifierGroupController::class, 'show'])->middleware('can:modifier-groups.view');
+    Route::patch('modifier-groups/{id}', [ModifierGroupController::class, 'update'])->middleware('can:modifier-groups.manage');
+    Route::delete('modifier-groups/{id}', [ModifierGroupController::class, 'destroy'])->middleware('can:modifier-groups.manage');
+
+    // Modifiers (nested under groups for creation)
+    Route::post('modifier-groups/{groupId}/modifiers', [ModifierController::class, 'store'])->middleware('can:modifier-groups.manage');
+    Route::patch('modifiers/{id}', [ModifierController::class, 'update'])->middleware('can:modifier-groups.manage');
+    Route::delete('modifiers/{id}', [ModifierController::class, 'destroy'])->middleware('can:modifier-groups.manage');
 });
 
 // Group 1b: Product attributes + product variants (T2) — ungated catalog configuration.
@@ -52,7 +75,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::delete('product-variants/{id}', [ProductVariantController::class, 'destroy'])->middleware('can:catalog.variants.delete');
 });
 
-// Group 2: Recipes, recipe lines, variants, modifier groups — gated behind Inventory module
+// Group 2: Recipes, recipe lines, composite-item variants — gated behind the Inventory module.
+// Ingredient recipes (bills of materials) drive stock depletion and costing, so
+// they require the Inventory module (the stock-tracking upgrade). This matches the
+// industry standard: recipe authoring/depletion is part of the inventory
+// capability (Toast requires a recipe + recorded stock baseline to deplete;
+// Lightspeed/MarketMan author recipes inside the inventory product).
 Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'module:Inventory'])->group(function () {
     // Recipes (nested under composite items for creation, standalone for show/update)
     Route::get('composite-items/{compositeItemId}/recipes', [RecipeController::class, 'index'])->middleware('can:composite-items.manage-recipes');
@@ -72,20 +100,4 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('composite-items/{compositeItemId}/variants', [CompositeItemVariantController::class, 'store'])->middleware('can:composite-items.update');
     Route::patch('variants/{id}', [CompositeItemVariantController::class, 'update'])->middleware('can:composite-items.update');
     Route::delete('variants/{id}', [CompositeItemVariantController::class, 'destroy'])->middleware('can:composite-items.update');
-
-    // Modifier Group assignment to composite items
-    Route::post('composite-items/{compositeItemId}/modifier-groups', [ModifierGroupController::class, 'assignToItem'])->middleware('can:composite-items.update');
-    Route::delete('composite-items/{compositeItemId}/modifier-groups/{modifierGroupId}', [ModifierGroupController::class, 'removeFromItem'])->middleware('can:composite-items.update');
-
-    // Modifier Groups (standalone CRUD)
-    Route::get('modifier-groups', [ModifierGroupController::class, 'index'])->middleware('can:modifier-groups.view');
-    Route::post('modifier-groups', [ModifierGroupController::class, 'store'])->middleware('can:modifier-groups.manage');
-    Route::get('modifier-groups/{id}', [ModifierGroupController::class, 'show'])->middleware('can:modifier-groups.view');
-    Route::patch('modifier-groups/{id}', [ModifierGroupController::class, 'update'])->middleware('can:modifier-groups.manage');
-    Route::delete('modifier-groups/{id}', [ModifierGroupController::class, 'destroy'])->middleware('can:modifier-groups.manage');
-
-    // Modifiers (nested under groups for creation)
-    Route::post('modifier-groups/{groupId}/modifiers', [ModifierController::class, 'store'])->middleware('can:modifier-groups.manage');
-    Route::patch('modifiers/{id}', [ModifierController::class, 'update'])->middleware('can:modifier-groups.manage');
-    Route::delete('modifiers/{id}', [ModifierController::class, 'destroy'])->middleware('can:modifier-groups.manage');
 });
