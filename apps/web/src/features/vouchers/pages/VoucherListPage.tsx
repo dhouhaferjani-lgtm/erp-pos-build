@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Ticket, Plus, MoreHorizontal, Ban, CalendarClock } from 'lucide-react'
 import { Button } from '@/components/atoms'
 import { Spinner } from '@/components/atoms/Spinner/Spinner'
-import { Pagination } from '@/components/ui/Pagination'
+import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { tokens, colors, textColors, borderColors } from '@/lib/designTokens'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useVouchers } from '../hooks/useVouchers'
@@ -252,17 +252,18 @@ export function VoucherListPage() {
             </div>
 
             {meta && (
-              <Pagination
-                hasPrev={meta.current_page > 1}
-                hasNext={meta.current_page < meta.last_page}
-                onPrev={() => { setPage((p) => Math.max(1, p - 1)) }}
-                onNext={() => { setPage((p) => p + 1) }}
-                perPage={perPage}
+              <OffsetPagination
+                currentPage={meta.current_page}
+                lastPage={meta.last_page}
+                total={meta.total}
+                perPage={meta.per_page}
+                from={null}
+                to={null}
+                onPageChange={(value) => { setPage(value) }}
                 onPerPageChange={(value) => {
                   setPerPage(value)
                   setPage(1)
                 }}
-                isLoading={isLoading}
               />
             )}
           </>

@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Clock, ShoppingCart, Trash2, RotateCcw, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import type { HeldOrderData } from '../../api/heldOrderApi'
 
 export interface HeldOrderCardProps {
@@ -87,22 +88,22 @@ export function HeldOrderCard({
         'rounded-lg border bg-white p-4 shadow-sm transition-all',
         'hover:shadow-md',
         expiryInfo?.isNearExpiry && 'border-amber-300 bg-amber-50/50',
-        expiryInfo?.expired && 'border-red-300 bg-red-50/50 opacity-75',
+        expiryInfo?.expired && cn(borderColors.error, tokens.alert.error, 'opacity-75'),
       )}
     >
       {/* Header */}
       <div className="mb-3 flex items-start justify-between">
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-semibold text-gray-900">
+          <h3 className={cn('truncate text-sm font-semibold', textColors.primary)}>
             {displayLabel}
           </h3>
-          <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
+          <div className={cn('mt-1 flex items-center gap-3 text-xs', textColors.tertiary)}>
             <span className="flex items-center gap-1">
               <ShoppingCart className="h-3 w-3" />
               {t('pos:heldOrders.lineCount', { count: order.line_count })}
             </span>
             {order.total !== null && (
-              <span className="font-medium text-gray-700">
+              <span className={cn('font-medium tabular-nums', textColors.secondary)}>
                 {order.total}
               </span>
             )}
@@ -111,7 +112,7 @@ export function HeldOrderCard({
       </div>
 
       {/* Time info */}
-      <div className="mb-3 flex items-center gap-3 text-xs text-gray-500">
+      <div className={cn('mb-3 flex items-center gap-3 text-xs', textColors.tertiary)}>
         <span className="flex items-center gap-1">
           <Clock className="h-3 w-3" />
           {t('pos:heldOrders.heldAgo', { time: timeHeld })}
@@ -120,7 +121,7 @@ export function HeldOrderCard({
           <span
             className={cn(
               'flex items-center gap-1',
-              expiryInfo.expired && 'font-medium text-red-600',
+              expiryInfo.expired && cn('font-medium', textColors.error),
               expiryInfo.isNearExpiry && !expiryInfo.expired && 'font-medium text-amber-600',
             )}
           >
@@ -135,13 +136,13 @@ export function HeldOrderCard({
       {/* Actions */}
       {showConfirmDiscard ? (
         <div className="flex items-center gap-2">
-          <span className="flex-1 text-xs text-red-600">
+          <span className={cn('flex-1 text-xs', textColors.error)}>
             {t('pos:heldOrders.confirmDiscard')}
           </span>
           <button
             type="button"
             onClick={() => { setShowConfirmDiscard(false); }}
-            className="rounded px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100"
+            className={cn('rounded px-3 py-1.5 text-xs', tokens.button.ghost)}
           >
             {t('common:cancel')}
           </button>
@@ -149,7 +150,7 @@ export function HeldOrderCard({
             type="button"
             onClick={handleDiscard}
             disabled={isDiscarding}
-            className="rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            className={cn('rounded px-3 py-1.5 text-xs font-medium disabled:opacity-50', tokens.button.danger)}
           >
             {t('pos:heldOrders.discardOrder')}
           </button>
@@ -162,7 +163,7 @@ export function HeldOrderCard({
             disabled={isRecalling || expiryInfo?.expired === true}
             className={cn(
               'flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium',
-              'bg-blue-600 text-white hover:bg-blue-700',
+              tokens.button.primary,
               'disabled:cursor-not-allowed disabled:opacity-50',
             )}
           >
@@ -175,7 +176,7 @@ export function HeldOrderCard({
             disabled={isDiscarding}
             className={cn(
               'flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium',
-              'border border-gray-300 text-gray-700 hover:bg-gray-50',
+              tokens.button.secondary,
               'disabled:cursor-not-allowed disabled:opacity-50',
             )}
           >

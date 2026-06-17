@@ -5,6 +5,8 @@ import { POSButton } from '../atoms/POSButton'
 import { MoneyInput } from '@/components/atoms/MoneyInput'
 import { useCurrency } from '@/hooks/useCurrency'
 import { Banknote } from 'lucide-react'
+import { tokens, colors, textColors, borderColors, focusRing } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
 
 export interface CashTenderedModalProps {
   isOpen: boolean
@@ -62,22 +64,22 @@ export function CashTenderedModal({
     >
       <div className="space-y-6">
         {/* Amount Due */}
-        <div className="text-center bg-gray-50 rounded-xl p-4">
-          <p className="text-sm font-medium text-gray-500 mb-1">
+        <div className={cn('text-center rounded-xl p-4', colors.neutral[50])}>
+          <p className={cn('text-sm font-medium mb-1', textColors.tertiary)}>
             {t('pos:cashTendered.amountDue')}
           </p>
-          <p className="text-3xl font-bold text-gray-900">
+          <p className={cn('text-3xl font-bold tabular-nums', textColors.primary)}>
             {formatMoney(totalNum)}
           </p>
         </div>
 
         {/* Tendered Amount Input */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={cn('block text-sm font-medium mb-2', textColors.secondary)}>
             {t('pos:cashTendered.tenderedAmount')}
           </label>
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-lg font-medium">
+            <span className={cn('absolute left-3 top-1/2 -translate-y-1/2 text-lg font-medium', textColors.disabled)}>
               {currency}
             </span>
             <MoneyInput
@@ -90,7 +92,7 @@ export function CashTenderedModal({
                   handleConfirm()
                 }
               }}
-              className="w-full pl-14 pr-4 py-3 text-2xl font-semibold text-right border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className={cn('w-full pl-14 pr-4 py-3 text-2xl font-semibold text-right tabular-nums border rounded-lg focus:ring-2', borderColors.default, focusRing.primary)}
               autoFocus
             />
           </div>
@@ -101,7 +103,7 @@ export function CashTenderedModal({
           <button
             type="button"
             onClick={handleExact}
-            className="flex-1 min-w-[80px] px-3 py-2.5 text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+            className={cn('flex-1 min-w-[80px] px-3 py-2.5 text-sm font-medium rounded-lg transition-colors', tokens.button.primary)}
           >
             {t('pos:cashTendered.exactAmount')}
           </button>
@@ -110,7 +112,7 @@ export function CashTenderedModal({
               key={amount}
               type="button"
               onClick={() => { handleDenomination(amount); }}
-              className="flex-1 min-w-[60px] px-3 py-2.5 text-sm font-medium bg-gray-50 text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+              className={cn('flex-1 min-w-[60px] px-3 py-2.5 text-sm font-medium tabular-nums rounded-lg transition-colors', tokens.button.secondary)}
             >
               {formatMoney(amount)}
             </button>
@@ -119,11 +121,11 @@ export function CashTenderedModal({
 
         {/* Change Due */}
         {tenderedNum > totalNum && (
-          <div className="text-center bg-green-50 border border-green-200 rounded-xl p-4">
-            <p className="text-sm font-medium text-green-600 mb-1">
+          <div className={cn('text-center border rounded-xl p-4', tokens.alert.success, borderColors.success)}>
+            <p className={cn('text-sm font-medium mb-1', textColors.success)}>
               {t('pos:cashTendered.changeDue')}
             </p>
-            <p className="text-2xl font-bold text-green-700">
+            <p className={cn('text-2xl font-bold tabular-nums', textColors.success)}>
               {formatMoney(changeDue)}
             </p>
           </div>

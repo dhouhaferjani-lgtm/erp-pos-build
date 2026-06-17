@@ -1,5 +1,6 @@
 import { Tag, Ticket, Star, Percent } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { tokens, borderColors } from '@/lib/designTokens'
 import { useCurrency } from '@/hooks/useCurrency'
 import type { DiscountLineData } from '../../api/discountApi'
 
@@ -10,11 +11,12 @@ const SOURCE_ICONS = {
   manual: Percent,
 } as const
 
+// Source-identity tint (bg + text) via semantic badge tokens, neutral border.
 const SOURCE_COLORS = {
-  promotion: 'text-purple-600 bg-purple-50 border-purple-200',
-  coupon: 'text-emerald-600 bg-emerald-50 border-emerald-200',
-  loyalty: 'text-amber-600 bg-amber-50 border-amber-200',
-  manual: 'text-blue-600 bg-blue-50 border-blue-200',
+  promotion: cn(tokens.badge.purple, borderColors.light),
+  coupon: cn(tokens.badge.green, borderColors.light),
+  loyalty: cn(tokens.badge.yellow, borderColors.light),
+  manual: cn(tokens.badge.blue, borderColors.light),
 } as const
 
 export interface AppliedDiscountsBadgeProps {

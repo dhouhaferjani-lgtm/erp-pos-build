@@ -8,7 +8,7 @@
   "postExpense": "Comptabiliser la Dépense",
   "noExpenses": "Aucune dépense trouvée",
   "noExpensesDescription": "Commencez par créer votre première dépense",
-  "searchPlaceholder": "Rechercher des dépenses par fournisseur, numéro de reçu...",
+  "searchPlaceholder": "Rechercher des dépenses par fournisseur, numéro de reçu…",
   "confirmDelete": "Êtes-vous sûr de vouloir supprimer cette dépense ?",
   "confirmPost": "Êtes-vous sûr de vouloir comptabiliser cette dépense ? Cette action est irréversible.",
   "paid": "Payé",

@@ -1,4 +1,5 @@
 import { AlertCircle, CheckCircle, AlertTriangle, XCircle } from 'lucide-react'
+import { colors, textColors, borderColors } from '@/lib/designTokens'
 
 type MarginLevel = 'green' | 'yellow' | 'orange' | 'red'
 
@@ -10,34 +11,37 @@ interface MarginIndicatorProps {
   size?: 'sm' | 'md' | 'lg'
 }
 
+// Semantic color mapping per margin level. The `orange` ("very low") level
+// shares the warning palette with `yellow` ("low") — both surface as the
+// warning token rather than an ad-hoc orange/amber literal.
 const LEVEL_CONFIGS = {
   green: {
     icon: CheckCircle,
-    bgColor: 'bg-green-100',
-    textColor: 'text-green-800',
-    borderColor: 'border-green-300',
-    iconColor: 'text-green-600',
+    bgColor: colors.success[100],
+    textColor: textColors.success,
+    borderColor: borderColors.success,
+    iconColor: textColors.success,
   },
   yellow: {
     icon: AlertTriangle,
-    bgColor: 'bg-yellow-100',
-    textColor: 'text-yellow-800',
-    borderColor: 'border-yellow-300',
-    iconColor: 'text-yellow-600',
+    bgColor: colors.warning[100],
+    textColor: textColors.warning,
+    borderColor: borderColors.warning,
+    iconColor: textColors.warningDark,
   },
   orange: {
     icon: AlertCircle,
-    bgColor: 'bg-orange-100',
-    textColor: 'text-orange-800',
-    borderColor: 'border-orange-300',
-    iconColor: 'text-orange-600',
+    bgColor: colors.warning[100],
+    textColor: textColors.warning,
+    borderColor: borderColors.warning,
+    iconColor: textColors.warningDark,
   },
   red: {
     icon: XCircle,
-    bgColor: 'bg-red-100',
-    textColor: 'text-red-800',
-    borderColor: 'border-red-300',
-    iconColor: 'text-red-600',
+    bgColor: colors.error[100],
+    textColor: textColors.error,
+    borderColor: borderColors.error,
+    iconColor: textColors.error,
   },
 }
 

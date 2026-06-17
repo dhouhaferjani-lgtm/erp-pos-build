@@ -12,13 +12,17 @@ describe('StatusPill', () => {
     expect(screen.getByText('status.in_progress')).toBeInTheDocument()
   })
 
-  it('applies status-specific styling for each WorkOrderStatus', () => {
+  it('applies the canonical success tone for approved and danger tone for cancelled', () => {
     const { container, rerender } = render(<StatusPill status="approved" />)
     const approvedSpan = container.querySelector('span')
-    expect(approvedSpan?.className).toContain('emerald')
+    // Canonical StatusBadge success tone resolves to the green alert palette.
+    expect(approvedSpan?.className).toContain('green')
+    expect(approvedSpan?.className).not.toContain('red')
 
     rerender(<StatusPill status="cancelled" />)
     const cancelledSpan = container.querySelector('span')
-    expect(cancelledSpan?.className).toContain('rose')
+    // Canonical StatusBadge danger tone resolves to the red alert palette.
+    expect(cancelledSpan?.className).toContain('red')
+    expect(cancelledSpan?.className).not.toContain('green')
   })
 })

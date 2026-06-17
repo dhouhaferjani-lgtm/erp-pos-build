@@ -5,10 +5,14 @@ import { Plus, MapPin, Edit, Trash2, Star, Building2, Warehouse, Briefcase, Truc
 import { fetchLocations, createLocation, updateLocation, deleteLocation, setDefaultLocation } from '../location/api'
 import type { LocationApiResponse, CreateLocationInput, UpdateLocationInput } from '../location/api'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
-import { tokens } from '../../lib/designTokens'
+import { tokens, textColors, borderColors } from '../../lib/designTokens'
+import { cn } from '../../lib/utils'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { Button, Checkbox, FormField, Input, Select, StatusBadge } from '../../components/atoms'
+import { Modal, ModalContent, ModalFooter } from '../../components/organisms/Modal'
+import { EmptyState } from '../../components/molecules'
 
 type LocationType = 'shop' | 'warehouse' | 'office' | 'mobile'
 
@@ -19,11 +23,11 @@ const typeIcons: Record<LocationType, typeof Building2> = {
   mobile: Truck,
 }
 
-const typeColors: Record<LocationType, string> = {
-  shop: 'bg-blue-100 text-blue-800',
-  warehouse: 'bg-green-100 text-green-800',
-  office: 'bg-purple-100 text-purple-800',
-  mobile: 'bg-orange-100 text-orange-800',
+const typeBadgeTones: Record<LocationType, string> = {
+  shop: tokens.badge.blue,
+  warehouse: tokens.badge.green,
+  office: tokens.badge.purple,
+  mobile: tokens.badge.yellow,
 }
 
 const BRANCH_TAX_REQUIRED_COUNTRIES = new Set(['FR', 'TN', 'MA'])
@@ -215,7 +219,7 @@ export function LocationsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <p className="text-gray-500">{t('status.loading')}</p>
+        <p className={textColors.tertiary}>{t('status.loading')}</p>
       </div>
     )
   }
@@ -225,31 +229,29 @@ export function LocationsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('locations.title')}</h1>
-          <p className="mt-1 text-sm text-gray-500">{t('locations.subtitle')}</p>
+          <h1 className={cn('text-2xl font-bold', textColors.primary)}>{t('locations.title')}</h1>
+          <p className={cn('mt-1 text-sm', textColors.tertiary)}>{t('locations.subtitle')}</p>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
+        <Button className="gap-2" onClick={openCreateModal}>
           <Plus className="h-4 w-4" />
           {t('locations.addLocation')}
-        </button>
+        </Button>
       </div>
 
       {/* Locations List */}
       {(!locations || locations.length === 0) ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-12 text-center">
-          <MapPin className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-4 text-lg font-medium text-gray-900">{t('locations.empty.title')}</h3>
-          <p className="mt-2 text-sm text-gray-500">{t('locations.empty.description')}</p>
-          <button
-            onClick={openCreateModal}
-            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            <Plus className="h-4 w-4" />
-            {t('locations.addLocation')}
-          </button>
+        <div className="py-6">
+          <EmptyState
+            icon={<MapPin className={cn('mx-auto h-12 w-12', textColors.disabled)} />}
+            title={t('locations.empty.title')}
+            description={t('locations.empty.description')}
+          />
+          <div className="mt-6 flex justify-center">
+            <Button className="gap-2" onClick={openCreateModal}>
+              <Plus className="h-4 w-4" />
+              {t('locations.addLocation')}
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -259,73 +261,79 @@ export function LocationsPage() {
             return (
               <div
                 key={location.id}
-                className="rounded-lg border border-gray-200 bg-white p-6 hover:border-gray-300 transition-colors"
+                className={cn(tokens.card.base, borderColors.hover, 'transition-colors')}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3">
-                    <div className={`rounded-lg p-2 ${typeColors[location.type as LocationType]}`}>
+                    <div className={cn('rounded-lg p-2', tokens.badge.base, typeBadgeTones[location.type as LocationType])}>
                       <TypeIcon className="h-5 w-5" />
                     </div>
                     <div>
-                      <h3 className="font-medium text-gray-900">{location.name}</h3>
-                      <p className="text-sm text-gray-500">{location.code}</p>
+                      <h3 className={cn('font-medium', textColors.primary)}>{location.name}</h3>
+                      <p className={cn('text-sm', textColors.tertiary)}>{location.code}</p>
                     </div>
                   </div>
                   {location.is_default && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800">
+                    <StatusBadge tone="warning" className="gap-1">
                       <Star className="h-3 w-3" />
                       {t('locations.default')}
-                    </span>
+                    </StatusBadge>
                   )}
                 </div>
 
                 <div className="mt-4 space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${typeColors[location.type as LocationType]}`}>
+                  <div className={cn('flex items-center gap-2', textColors.tertiary)}>
+                    <span className={cn(tokens.badge.base, typeBadgeTones[location.type as LocationType])}>
                       {t(`locations.types.${location.type}`)}
                     </span>
                     {location.pos_enabled && (
-                      <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                      <StatusBadge tone="success">
                         {t('locations.posEnabled')}
-                      </span>
+                      </StatusBadge>
                     )}
                   </div>
-                  {(location.address_city || location.address_country) && (
-                    <p className="text-gray-500">
+                  {(location.address_city ?? location.address_country) && (
+                    <p className={textColors.tertiary}>
                       {[location.address_city, location.address_country].filter(Boolean).join(', ')}
                     </p>
                   )}
                   {location.phone && (
-                    <p className="text-gray-500">{location.phone}</p>
+                    <p className={textColors.tertiary}>{location.phone}</p>
                   )}
                 </div>
 
                 {/* Actions */}
-                <div className="mt-4 flex items-center gap-2 border-t border-gray-100 pt-4">
-                  <button
+                <div className={cn('mt-4 flex items-center gap-2 border-t pt-4', borderColors.light)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1"
                     onClick={() => { openEditModal(location) }}
-                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
                   >
                     <Edit className="h-3.5 w-3.5" />
                     {t('actions.edit')}
-                  </button>
+                  </Button>
                   {!location.is_default && (
                     <>
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1"
                         onClick={() => { setDefaultMutation.mutate(location.id) }}
                         disabled={setDefaultMutation.isPending}
-                        className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-yellow-700 hover:bg-yellow-50"
                       >
                         <Star className="h-3.5 w-3.5" />
                         {t('locations.setDefault')}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1"
                         onClick={() => { setDeleteTarget(location) }}
-                        className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                         {t('actions.delete')}
-                      </button>
+                      </Button>
                     </>
                   )}
                 </div>
@@ -336,217 +344,159 @@ export function LocationsPage() {
       )}
 
       {/* Create/Edit Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
-            <h2 className="text-lg font-semibold text-gray-900">
-              {editingLocation ? t('locations.editLocation') : t('locations.addLocation')}
-            </h2>
+      <Modal
+        isOpen={isModalOpen}
+        onClose={closeModal}
+        title={editingLocation ? t('locations.editLocation') : t('locations.addLocation')}
+      >
+        <form onSubmit={handleSubmit}>
+          <ModalContent>
+            {/* Name */}
+            <FormField label={t('locations.form.name')} htmlFor="name" required>
+              <Input
+                type="text"
+                id="name"
+                required
+                value={formData.name}
+                onChange={(e) => { setFormData({ ...formData, name: e.target.value }) }}
+                placeholder={t('locations.form.namePlaceholder')}
+              />
+            </FormField>
 
-            <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-              {/* Name */}
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                  {t('locations.form.name')} *
-                </label>
-                <input
-                  type="text"
-                  id="name"
+            {/* Type & Code */}
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label={t('locations.form.type')} htmlFor="type" required>
+                <Select
+                  id="type"
                   required
-                  value={formData.name}
-                  onChange={(e) => { setFormData({ ...formData, name: e.target.value }) }}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder={t('locations.form.namePlaceholder')}
-                />
-              </div>
-
-              {/* Type & Code */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="type" className="block text-sm font-medium text-gray-700">
-                    {t('locations.form.type')} *
-                  </label>
-                  <select
-                    id="type"
-                    required
-                    value={formData.type}
-                    onChange={(e) => { setFormData({ ...formData, type: e.target.value as LocationType }) }}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="shop">{t('locations.types.shop')}</option>
-                    <option value="warehouse">{t('locations.types.warehouse')}</option>
-                    <option value="office">{t('locations.types.office')}</option>
-                    <option value="mobile">{t('locations.types.mobile')}</option>
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="code" className="block text-sm font-medium text-gray-700">
-                    {t('locations.form.code')}
-                  </label>
-                  <input
-                    type="text"
-                    id="code"
-                    value={formData.code}
-                    onChange={(e) => { setFormData({ ...formData, code: e.target.value }) }}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder={t('locations.form.codePlaceholder')}
-                  />
-                </div>
-              </div>
-
-              {/* Contact */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                    {t('locations.form.phone')}
-                  </label>
-                  <input
-                    type="tel"
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => { setFormData({ ...formData, phone: e.target.value }) }}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                    {t('locations.form.email')}
-                  </label>
-                  <input
-                    type="email"
-                    id="email"
-                    value={formData.email}
-                    onChange={(e) => { setFormData({ ...formData, email: e.target.value }) }}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              {/* Address */}
-              <div>
-                <label htmlFor="address" className="block text-sm font-medium text-gray-700">
-                  {t('locations.form.address')}
-                </label>
-                <input
+                  value={formData.type}
+                  onChange={(e) => { setFormData({ ...formData, type: e.target.value as LocationType }) }}
+                >
+                  <option value="shop">{t('locations.types.shop')}</option>
+                  <option value="warehouse">{t('locations.types.warehouse')}</option>
+                  <option value="office">{t('locations.types.office')}</option>
+                  <option value="mobile">{t('locations.types.mobile')}</option>
+                </Select>
+              </FormField>
+              <FormField label={t('locations.form.code')} htmlFor="code">
+                <Input
                   type="text"
-                  id="address"
-                  value={formData.addressStreet}
-                  onChange={(e) => { setFormData({ ...formData, addressStreet: e.target.value }) }}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  id="code"
+                  value={formData.code}
+                  onChange={(e) => { setFormData({ ...formData, code: e.target.value }) }}
+                  placeholder={t('locations.form.codePlaceholder')}
                 />
-              </div>
+              </FormField>
+            </div>
 
-              {/* City, Postal, Country */}
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label htmlFor="city" className="block text-sm font-medium text-gray-700">
-                    {t('locations.form.city')}
-                  </label>
-                  <input
-                    type="text"
-                    id="city"
-                    value={formData.addressCity}
-                    onChange={(e) => { setFormData({ ...formData, addressCity: e.target.value }) }}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="postal" className="block text-sm font-medium text-gray-700">
-                    {t('locations.form.postalCode')}
-                  </label>
-                  <input
-                    type="text"
-                    id="postal"
-                    value={formData.addressPostalCode}
-                    onChange={(e) => { setFormData({ ...formData, addressPostalCode: e.target.value }) }}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="country" className="block text-sm font-medium text-gray-700">
-                    {t('locations.form.country')}
-                  </label>
-                  <input
-                    type="text"
-                    id="country"
-                    value={formData.addressCountry}
-                    onChange={(e) => { setFormData({ ...formData, addressCountry: e.target.value }) }}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              {/* Tax Identity */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="taxId" className={tokens.label.base}>
-                    {t('locations.form.taxId')}
-                    {isTaxIdRequiredHint && ' *'}
-                  </label>
-                  <input
-                    type="text"
-                    id="taxId"
-                    value={formData.taxId}
-                    onChange={(e) => { setFormData({ ...formData, taxId: e.target.value }) }}
-                    aria-required={isTaxIdRequiredHint}
-                    aria-describedby={isTaxIdRequiredHint ? 'taxId-required-hint' : undefined}
-                    className={tokens.input.base}
-                  />
-                  {isTaxIdRequiredHint && (
-                    <p id="taxId-required-hint" className={tokens.helperText.base}>
-                      {t('locations.form.taxIdRequiredHint')}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label htmlFor="vatNumber" className={tokens.label.base}>
-                    {t('locations.form.vatNumber')}
-                  </label>
-                  <input
-                    type="text"
-                    id="vatNumber"
-                    value={formData.vatNumber}
-                    onChange={(e) => { setFormData({ ...formData, vatNumber: e.target.value }) }}
-                    className={tokens.input.base}
-                  />
-                </div>
-              </div>
-
-              {/* POS Enabled */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="posEnabled"
-                  checked={formData.posEnabled}
-                  onChange={(e) => { setFormData({ ...formData, posEnabled: e.target.checked }) }}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            {/* Contact */}
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label={t('locations.form.phone')} htmlFor="phone">
+                <Input
+                  type="tel"
+                  id="phone"
+                  value={formData.phone}
+                  onChange={(e) => { setFormData({ ...formData, phone: e.target.value }) }}
                 />
-                <label htmlFor="posEnabled" className="text-sm text-gray-700">
-                  {t('locations.form.posEnabled')}
-                </label>
-              </div>
+              </FormField>
+              <FormField label={t('locations.form.email')} htmlFor="email">
+                <Input
+                  type="email"
+                  id="email"
+                  value={formData.email}
+                  onChange={(e) => { setFormData({ ...formData, email: e.target.value }) }}
+                />
+              </FormField>
+            </div>
 
-              {/* Actions */}
-              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  {t('cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isMutating}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {isMutating ? t('saving') : t('save')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            {/* Address */}
+            <FormField label={t('locations.form.address')} htmlFor="address">
+              <Input
+                type="text"
+                id="address"
+                value={formData.addressStreet}
+                onChange={(e) => { setFormData({ ...formData, addressStreet: e.target.value }) }}
+              />
+            </FormField>
+
+            {/* City, Postal, Country */}
+            <div className="grid grid-cols-3 gap-4">
+              <FormField label={t('locations.form.city')} htmlFor="city">
+                <Input
+                  type="text"
+                  id="city"
+                  value={formData.addressCity}
+                  onChange={(e) => { setFormData({ ...formData, addressCity: e.target.value }) }}
+                />
+              </FormField>
+              <FormField label={t('locations.form.postalCode')} htmlFor="postal">
+                <Input
+                  type="text"
+                  id="postal"
+                  value={formData.addressPostalCode}
+                  onChange={(e) => { setFormData({ ...formData, addressPostalCode: e.target.value }) }}
+                />
+              </FormField>
+              <FormField label={t('locations.form.country')} htmlFor="country">
+                <Input
+                  type="text"
+                  id="country"
+                  value={formData.addressCountry}
+                  onChange={(e) => { setFormData({ ...formData, addressCountry: e.target.value }) }}
+                />
+              </FormField>
+            </div>
+
+            {/* Tax Identity */}
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                label={isTaxIdRequiredHint ? `${t('locations.form.taxId')} *` : t('locations.form.taxId')}
+                htmlFor="taxId"
+                helperText={isTaxIdRequiredHint ? t('locations.form.taxIdRequiredHint') : undefined}
+              >
+                <Input
+                  type="text"
+                  id="taxId"
+                  value={formData.taxId}
+                  onChange={(e) => { setFormData({ ...formData, taxId: e.target.value }) }}
+                  aria-required={isTaxIdRequiredHint}
+                  aria-describedby={isTaxIdRequiredHint ? 'taxId-required-hint' : undefined}
+                />
+              </FormField>
+              <FormField label={t('locations.form.vatNumber')} htmlFor="vatNumber">
+                <Input
+                  type="text"
+                  id="vatNumber"
+                  value={formData.vatNumber}
+                  onChange={(e) => { setFormData({ ...formData, vatNumber: e.target.value }) }}
+                />
+              </FormField>
+            </div>
+
+            {/* POS Enabled */}
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="posEnabled"
+                checked={formData.posEnabled}
+                onChange={(e) => { setFormData({ ...formData, posEnabled: e.target.checked }) }}
+              />
+              <label htmlFor="posEnabled" className={cn('text-sm', textColors.secondary)}>
+                {t('locations.form.posEnabled')}
+              </label>
+            </div>
+          </ModalContent>
+
+          {/* Actions */}
+          <ModalFooter>
+            <Button type="button" variant="secondary" onClick={closeModal}>
+              {t('cancel')}
+            </Button>
+            <Button type="submit" disabled={isMutating}>
+              {isMutating ? t('saving') : t('save')}
+            </Button>
+          </ModalFooter>
+        </form>
+      </Modal>
 
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog

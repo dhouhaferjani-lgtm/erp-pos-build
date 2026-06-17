@@ -1,5 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import { Edit2, Trash2, Power, PowerOff, Archive, GraduationCap } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { StatusBadge } from '@/components/atoms/StatusBadge'
 import { TerminalStatusBadge } from './TerminalStatusBadge'
 import type { Terminal } from '../hooks/useTerminals'
 
@@ -32,7 +35,7 @@ export function TerminalList({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-500">{t('common.loading')}</div>
+        <div className={textColors.tertiary}>{t('common.loading')}</div>
       </div>
     )
   }
@@ -40,10 +43,10 @@ export function TerminalList({
   if (terminals.length === 0) {
     return (
       <div className="text-center py-12">
-        <div className="text-gray-900 text-lg font-medium">
+        <div className={cn('text-lg font-medium', textColors.primary)}>
           {t('pos.terminal.noTerminals')}
         </div>
-        <p className="mt-1 text-gray-500">
+        <p className={cn('mt-1', textColors.tertiary)}>
           {t('pos.terminal.noTerminalsDescription')}
         </p>
       </div>
@@ -52,68 +55,68 @@ export function TerminalList({
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
+      <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+        <thead className={tokens.table.header}>
           <tr>
             <th
               scope="col"
-              className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider"
+              className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}
             >
               {t('pos.terminal.code')}
             </th>
             <th
               scope="col"
-              className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider"
+              className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}
             >
               {t('pos.terminal.name')}
             </th>
             <th
               scope="col"
-              className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider"
+              className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}
             >
               {t('pos.terminal.location')}
             </th>
             <th
               scope="col"
-              className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider"
+              className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}
             >
               {t('pos.terminal.status')}
             </th>
             <th
               scope="col"
-              className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider"
+              className={cn('px-6 py-3 text-end text-xs font-medium uppercase tracking-wider', textColors.tertiary)}
             >
               {t('common.actions')}
             </th>
           </tr>
         </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
+        <tbody className={cn('divide-y', borderColors.divideDefault)}>
           {terminals.map((terminal) => (
-            <tr key={terminal.id} className="hover:bg-gray-50">
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+            <tr key={terminal.id} className={tokens.table.rowHover}>
+              <td className={cn('px-6 py-4 whitespace-nowrap text-sm font-medium', textColors.primary)}>
                 {terminal.code}
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <div className="text-sm font-medium text-gray-900">
+                <div className={cn('text-sm font-medium', textColors.primary)}>
                   {terminal.name}
                 </div>
                 {terminal.description && (
-                  <div className="text-sm text-gray-500">
+                  <div className={cn('text-sm', textColors.tertiary)}>
                     {terminal.description}
                   </div>
                 )}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                {terminal.location?.name || '-'}
+              <td className={cn('px-6 py-4 whitespace-nowrap text-sm', textColors.primary)}>
+                {terminal.location?.name ?? '-'}
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="flex items-center gap-2">
                   <TerminalStatusBadge isActive={terminal.is_active} />
                   {terminal.is_training_mode && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                    <StatusBadge tone="warning" className="gap-1">
                       <GraduationCap className="h-3 w-3" />
                       {t('pos.terminal.trainingMode')}
-                    </span>
+                    </StatusBadge>
                   )}
                 </div>
               </td>
@@ -122,7 +125,7 @@ export function TerminalList({
                   <button
                     type="button"
                     onClick={() => { onEdit(terminal) }}
-                    className="text-blue-600 hover:text-blue-900"
+                    className={cn(textColors.brand, textColors.hoverPrimary)}
                     title={t('common.edit')}
                   >
                     <Edit2 className="h-4 w-4" />
@@ -132,7 +135,7 @@ export function TerminalList({
                     <button
                       type="button"
                       onClick={() => { onDeactivate(terminal) }}
-                      className="text-orange-600 hover:text-orange-900"
+                      className={cn(textColors.warningDark, textColors.hoverPrimary)}
                       title={t('pos.terminal.deactivate')}
                     >
                       <PowerOff className="h-4 w-4" />
@@ -141,7 +144,7 @@ export function TerminalList({
                     <button
                       type="button"
                       onClick={() => { onActivate(terminal) }}
-                      className="text-green-600 hover:text-green-900"
+                      className={cn(textColors.success, textColors.hoverPrimary)}
                       title={t('pos.terminal.activate')}
                     >
                       <Power className="h-4 w-4" />
@@ -151,11 +154,10 @@ export function TerminalList({
                   <button
                     type="button"
                     onClick={() => { onToggleTraining(terminal) }}
-                    className={
-                      terminal.is_training_mode
-                        ? 'text-amber-600 hover:text-amber-900'
-                        : 'text-gray-400 hover:text-amber-600'
-                    }
+                    className={cn(
+                      terminal.is_training_mode ? textColors.warningDark : textColors.disabled,
+                      textColors.hoverPrimary
+                    )}
                     title={
                       terminal.is_training_mode
                         ? t('pos.terminal.disableTraining')
@@ -168,7 +170,7 @@ export function TerminalList({
                   <button
                     type="button"
                     onClick={() => { onArchive(terminal) }}
-                    className="text-amber-600 hover:text-amber-900"
+                    className={cn(textColors.warningDark, textColors.hoverPrimary)}
                     title={t('pos.terminal.archive')}
                   >
                     <Archive className="h-4 w-4" />
@@ -180,8 +182,8 @@ export function TerminalList({
                     disabled={terminal.has_history}
                     className={
                       terminal.has_history
-                        ? 'text-gray-300 cursor-not-allowed'
-                        : 'text-red-600 hover:text-red-900'
+                        ? cn(textColors.disabled, 'cursor-not-allowed')
+                        : cn(textColors.error, textColors.hoverError)
                     }
                     title={
                       terminal.has_history

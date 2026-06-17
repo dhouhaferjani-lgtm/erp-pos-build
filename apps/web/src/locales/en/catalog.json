@@ -37,7 +37,7 @@
     "loadError": "Failed to load variants",
     "actionsColumn": "Actions",
     "chooseVariant": "Choose a variant",
-    "loading": "Loading variants..."
+    "loading": "Loading variants…"
   },
   "modifier": "Modifier",
   "modifiers": "Modifiers",
@@ -119,9 +119,9 @@
   "madeToOrder": "Made to Order",
   "batch": "Batch Production",
   "stock": "Stock",
-  "searchIngredient": "Search ingredient...",
-  "searchComponent": "Search component...",
-  "searchCompositeItem": "Search composite item...",
+  "searchIngredient": "Search ingredient…",
+  "searchComponent": "Search component…",
+  "searchCompositeItem": "Search composite item…",
   "noCompositeItemsFound": "No composite items found",
   "pricingMode": "Pricing Mode",
   "pricingModes": {

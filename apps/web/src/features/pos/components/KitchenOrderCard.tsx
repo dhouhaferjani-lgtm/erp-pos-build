@@ -1,6 +1,9 @@
 import { useTranslation } from 'react-i18next'
 import { KitchenTimer } from '../atoms/KitchenTimer'
 import { OrderStatusBadge } from '../molecules/OrderStatusBadge'
+import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
+import { statusTone } from '@/components/atoms/StatusBadge/statusTone'
+import { colors, textColors, borderColors, tokens } from '@/lib/designTokens'
 import type { OrderData, OrderLineData } from '../api/orderApi'
 
 interface KitchenOrderCardProps {
@@ -10,11 +13,17 @@ interface KitchenOrderCardProps {
   isBumping: boolean
 }
 
-const LINE_STATUS_COLORS: Record<string, string> = {
-  sent: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-  preparing: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
-  ready: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-  cancelled: 'bg-red-100 text-red-800 line-through dark:bg-red-900/30 dark:text-red-400',
+/**
+ * Kitchen line states are intentionally color-coded for at-a-glance triage.
+ * Map each to a semantic StatusBadge tone (preserves the visual coding without
+ * raw color literals): sent/preparing → warning (in-flight), ready → success,
+ * cancelled → danger.
+ */
+const LINE_STATUS_TONES: Record<string, StatusTone> = {
+  sent: 'warning',
+  preparing: 'warning',
+  ready: 'success',
+  cancelled: 'danger',
 }
 
 function getNextStatus(current: string): string | null {
@@ -47,11 +56,11 @@ export function KitchenOrderCard({
   )
 
   return (
-    <div className="flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+    <div className={`flex flex-col rounded-xl border ${borderColors.light} ${colors.white} shadow-sm`}>
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+      <div className={`flex items-center justify-between border-b ${borderColors.light} px-4 py-3`}>
         <div className="flex items-center gap-3">
-          <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
+          <span className={`text-lg font-bold ${textColors.primary}`}>
             {order.order_number}
           </span>
           <OrderStatusBadge status={order.status} />
@@ -60,19 +69,19 @@ export function KitchenOrderCard({
       </div>
 
       {/* Table + Mode info */}
-      <div className="flex flex-wrap items-center gap-2 px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
+      <div className={`flex flex-wrap items-center gap-2 px-4 py-2 text-xs ${textColors.tertiary}`}>
         {tableInfo && (
-          <span className="rounded bg-blue-100 px-2 py-0.5 font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+          <StatusBadge tone="info">
             {tableInfo.table_number}
             {tableInfo.label ? ` - ${tableInfo.label}` : ''}
-          </span>
+          </StatusBadge>
         )}
         {order.consumption_mode && (
-          <span className="rounded bg-gray-100 px-2 py-0.5 dark:bg-gray-700">
+          <StatusBadge tone="neutral">
             {order.consumption_mode === 'SUR_PLACE'
               ? t('consumptionMode.dineIn')
               : t('consumptionMode.takeaway')}
-          </span>
+          </StatusBadge>
         )}
         {order.customer_name && (
           <span>{order.customer_name}</span>
@@ -84,6 +93,7 @@ export function KitchenOrderCard({
         {order.lines.map((line) => {
           const nextStatus = getNextStatus(line.status)
           const canTap = nextStatus !== null
+          const lineTone = statusTone(line.status, LINE_STATUS_TONES)
 
           return (
             <button
@@ -92,33 +102,30 @@ export function KitchenOrderCard({
               disabled={!canTap}
               onClick={() => { handleLineTap(line) }}
               className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-colors ${
-                canTap
-                  ? 'hover:bg-gray-50 active:bg-gray-100 dark:hover:bg-gray-700 dark:active:bg-gray-600'
-                  : ''
+                canTap ? `${colors.hover.gray50} active:${colors.neutral[100]}` : ''
               }`}
             >
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                  <span className={`font-medium ${textColors.primary}`}>
                     {line.quantity}x
                   </span>
-                  <span className="text-sm text-gray-800 dark:text-gray-200">
+                  <span className={`text-sm ${textColors.secondary}`}>
                     {line.product_name}
                   </span>
                 </div>
                 {line.special_instructions && (
-                  <p className="mt-0.5 text-xs italic text-gray-500 dark:text-gray-400">
+                  <p className={`mt-0.5 text-xs italic ${textColors.tertiary}`}>
                     {line.special_instructions}
                   </p>
                 )}
               </div>
-              <span
-                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                  LINE_STATUS_COLORS[line.status] ?? 'bg-gray-100 text-gray-800'
-                }`}
+              <StatusBadge
+                tone={lineTone}
+                className={line.status === 'cancelled' ? 'line-through' : ''}
               >
                 {t(`kitchen.lineStatus.${line.status}`)}
-              </span>
+              </StatusBadge>
             </button>
           )
         })}
@@ -126,12 +133,12 @@ export function KitchenOrderCard({
 
       {/* Actions */}
       {hasPendingLines && (
-        <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
+        <div className={`border-t ${borderColors.light} px-4 py-3`}>
           <button
             type="button"
             onClick={() => { onBump(order.id) }}
             disabled={isBumping}
-            className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+            className={`w-full rounded-lg ${tokens.button.base} ${colors.success[600]} px-4 py-2 text-sm font-semibold ${textColors.inverse} hover:${colors.success[700]} disabled:opacity-50`}
           >
             {t('kitchen.bump')}
           </button>

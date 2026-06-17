@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
+import { tokens, colors, textColors, borderColors } from '@/lib/designTokens'
 import { ProductGrid, TransactionCart, Calculator } from '../../organisms'
 import { ModifierSelectionModal } from '../../organisms/ModifierSelectionModal'
 import { POSLayout } from '../../layouts'
@@ -466,7 +467,7 @@ export function POSPage({
       >
         <div className="flex h-full items-center justify-center">
           <div className="text-center">
-            <div className="text-lg font-medium text-gray-600">{t('common:loading')}</div>
+            <div className={cn('text-lg font-medium', textColors.tertiary)}>{t('common:loading')}</div>
           </div>
         </div>
       </POSLayout>
@@ -480,7 +481,8 @@ export function POSPage({
     >
       <div
         className={cn(
-          'h-full overflow-hidden bg-gray-50',
+          'h-full overflow-hidden',
+          colors.neutral[50],
           isNarrowScreen ? 'flex flex-col' : 'flex',
           touchOptimized ? 'p-6' : 'p-4',
           className
@@ -586,12 +588,12 @@ export function POSPage({
         {/* Barcode Multi-Match Selection Modal */}
         {barcodeMatchProducts.length > 1 && (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-                <h3 className="text-lg font-semibold text-gray-900">
+            <div className={cn('rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden', colors.white)}>
+              <div className={cn('px-6 py-4 border-b', borderColors.light, colors.neutral[50])}>
+                <h3 className={cn('text-lg font-semibold', textColors.primary)}>
                   {t('pos:barcode.selectProduct')}
                 </h3>
-                <p className="text-sm text-gray-500 mt-1">
+                <p className={cn('text-sm mt-1', textColors.tertiary)}>
                   {t('pos:barcode.multipleMatchesDetail', { code: barcodeMatchCode })}
                 </p>
               </div>
@@ -600,10 +602,10 @@ export function POSPage({
                   <button
                     key={product.id}
                     onClick={() => { handleBarcodeMatchSelect(product); }}
-                    className="w-full px-6 py-4 text-start hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                    className={cn('w-full px-6 py-4 text-start border-b last:border-b-0 transition-colors', borderColors.light, colors.hover.gray50)}
                   >
-                    <div className="font-medium text-gray-900">{product.name}</div>
-                    <div className="text-sm text-gray-500 mt-1">
+                    <div className={cn('font-medium', textColors.primary)}>{product.name}</div>
+                    <div className={cn('text-sm mt-1', textColors.tertiary)}>
                       {t('pos:barcode.matchSku', { sku: product.sku })}
                       {product.barcode && (
                         <span className="ms-3">
@@ -612,17 +614,17 @@ export function POSPage({
                       )}
                     </div>
                     {product.sale_price && (
-                      <div className="text-sm font-medium text-emerald-600 mt-1">
+                      <div className={cn('text-sm font-medium mt-1 tabular-nums', textColors.success)}>
                         {product.sale_price}
                       </div>
                     )}
                   </button>
                 ))}
               </div>
-              <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 flex justify-end">
+              <div className={cn('px-6 py-3 border-t flex justify-end', borderColors.light, colors.neutral[50])}>
                 <button
                   onClick={handleBarcodeMatchClose}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                  className={cn(tokens.button.base, tokens.button.secondary, tokens.button.sizes.md, 'rounded-lg')}
                 >
                   {t('pos:barcode.cancel')}
                 </button>

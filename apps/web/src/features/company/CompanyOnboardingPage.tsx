@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, ArrowRight, Check, Building2, MapPin, Globe, Phone, Mail, Loader2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Building2, Globe, Mail, Loader2 } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import { createCompany, type CreateCompanyInput } from './api'
 import { useInvalidateCompanies } from './CompanyProvider'
 import { getErrorMessage } from '../../lib/api'
 import { useCompanyStore } from '../../stores/companyStore'
 import { cn } from '@/lib/utils'
+import { tokens, textColors, colors, borderColors } from '@/lib/designTokens'
+import { Button, FormField, Input } from '../../components/atoms'
+import { PageHeader } from '../../components/molecules/PageHeader'
 
 const STEPS = ['country', 'company', 'contact', 'review'] as const
 type Step = (typeof STEPS)[number]
@@ -121,23 +124,25 @@ export function CompanyOnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className={cn('min-h-screen py-12 px-4 sm:px-6 lg:px-8', tokens.table.header)}>
       <div className="max-w-3xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <Link
-            to="/dashboard"
-            className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4"
-          >
-            <ArrowLeft className="w-4 h-4 me-1" />
-            {t('common:back')}
-          </Link>
-          <div className="flex items-center gap-3 mb-2">
-            <Building2 className="w-8 h-8 text-blue-600" />
-            <h1 className="text-3xl font-bold">{t('settings:company.modal.title')}</h1>
-          </div>
-          <p className="text-gray-500">{t('settings:company.modal.subtitle')}</p>
-        </div>
+        <Link
+          to="/dashboard"
+          className={cn(
+            'inline-flex items-center text-sm mb-4',
+            textColors.tertiary,
+            textColors.hoverSecondary
+          )}
+        >
+          <ArrowLeft className="w-4 h-4 me-1" />
+          {t('common:back')}
+        </Link>
+        <PageHeader
+          title={t('settings:company.modal.title')}
+          subtitle={t('settings:company.modal.subtitle')}
+          breadcrumb={<Building2 className={cn('w-8 h-8', textColors.brand)} />}
+        />
 
         {/* Progress Steps */}
         <div className="mb-8">
@@ -150,9 +155,11 @@ export function CompanyOnboardingPage() {
                   <div
                     className={cn(
                       'w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium',
-                      isActive && 'bg-blue-600 text-white',
-                      isCompleted && 'bg-green-600 text-white',
-                      !isActive && !isCompleted && 'bg-gray-200 text-gray-600'
+                      isActive && cn(colors.primary[600], textColors.inverse),
+                      isCompleted && cn(colors.success[600], textColors.inverse),
+                      !isActive &&
+                        !isCompleted &&
+                        cn(colors.neutral[200], textColors.tertiary)
                     )}
                   >
                     {isCompleted ? <Check className="w-5 h-5" /> : index + 1}
@@ -160,9 +167,9 @@ export function CompanyOnboardingPage() {
                   <span
                     className={cn(
                       'ms-2 text-sm font-medium hidden sm:inline',
-                      isActive && 'text-blue-600',
-                      isCompleted && 'text-green-600',
-                      !isActive && !isCompleted && 'text-gray-500'
+                      isActive && textColors.brand,
+                      isCompleted && textColors.success,
+                      !isActive && !isCompleted && textColors.tertiary
                     )}
                   >
                     {t(`settings:company.modal.steps.${step}`)}
@@ -171,7 +178,7 @@ export function CompanyOnboardingPage() {
                     <div
                       className={cn(
                         'flex-1 h-0.5 mx-4',
-                        isCompleted ? 'bg-green-600' : 'bg-gray-200'
+                        isCompleted ? colors.success[600] : colors.neutral[200]
                       )}
                     />
                   )}
@@ -183,22 +190,22 @@ export function CompanyOnboardingPage() {
 
         {/* Error Alert */}
         {error && (
-          <div className="mb-6 rounded-lg bg-red-50 p-4 text-sm text-red-700 border border-red-200">
+          <div className={cn('mb-6', tokens.alert.base, tokens.alert.error)}>
             {error}
           </div>
         )}
 
         {/* Step Content */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-8 mb-6">
+        <div className={cn(tokens.card.base, 'p-8 mb-6')}>
           {/* Step 1: Country Selection */}
           {currentStep === 'country' && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                  <Globe className="w-6 h-6 text-blue-600" />
+                <h2 className={cn(tokens.heading.section, 'mb-2 flex items-center gap-2')}>
+                  <Globe className={cn('w-6 h-6', textColors.brand)} />
                   {t('settings:company.modal.selectCountry')}
                 </h2>
-                <p className="text-gray-500 text-sm">
+                <p className={cn('text-sm', textColors.tertiary)}>
                   {t('settings:company.modal.selectCountryHint')}
                 </p>
               </div>
@@ -212,19 +219,19 @@ export function CompanyOnboardingPage() {
                     className={cn(
                       'w-full text-start p-4 rounded-lg border-2 transition-all',
                       formData.countryCode === country.code
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:border-gray-300'
+                        ? cn(borderColors.primary, colors.primary[50])
+                        : cn(borderColors.light, borderColors.hover)
                     )}
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-medium text-gray-900">{country.name}</p>
-                        <p className="text-sm text-gray-500">
+                        <p className={cn('font-medium', textColors.primary)}>{country.name}</p>
+                        <p className={cn('text-sm', textColors.tertiary)}>
                           {country.currency} • {country.timezone}
                         </p>
                       </div>
                       {formData.countryCode === country.code && (
-                        <Check className="w-5 h-5 text-blue-600" />
+                        <Check className={cn('w-5 h-5', textColors.brand)} />
                       )}
                     </div>
                   </button>
@@ -237,61 +244,57 @@ export function CompanyOnboardingPage() {
           {currentStep === 'company' && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                  <Building2 className="w-6 h-6 text-blue-600" />
+                <h2 className={cn(tokens.heading.section, 'mb-2 flex items-center gap-2')}>
+                  <Building2 className={cn('w-6 h-6', textColors.brand)} />
                   {t('settings:company.sections.information')}
                 </h2>
-                <p className="text-gray-500 text-sm">
+                <p className={cn('text-sm', textColors.tertiary)}>
                   {t('settings:company.modal.enterCompanyDetails')}
                 </p>
               </div>
 
               <div className="space-y-4">
-                <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('settings:company.fields.companyName')} <span className="text-red-500">*</span>
-                  </label>
-                  <input
+                <FormField
+                  label={t('settings:company.fields.companyName')}
+                  htmlFor="name"
+                  required
+                >
+                  <Input
                     type="text"
                     id="name"
                     value={formData.name}
                     onChange={(e) => { setFormData({ ...formData, name: e.target.value }); }}
                     placeholder={t('settings:company.modal.namePlaceholder')}
-                    className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     autoFocus
                   />
-                </div>
+                </FormField>
 
-                <div>
-                  <label htmlFor="legalName" className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('settings:company.fields.legalName')}
-                  </label>
-                  <input
+                <FormField
+                  label={t('settings:company.fields.legalName')}
+                  htmlFor="legalName"
+                  helperText={t('settings:company.modal.legalNameHint')}
+                >
+                  <Input
                     type="text"
                     id="legalName"
                     value={formData.legalName}
                     onChange={(e) => { setFormData({ ...formData, legalName: e.target.value }); }}
                     placeholder={t('settings:company.modal.legalNamePlaceholder')}
-                    className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
-                  <p className="mt-1 text-xs text-gray-500">
-                    {t('settings:company.modal.legalNameHint')}
-                  </p>
-                </div>
+                </FormField>
 
-                <div>
-                  <label htmlFor="taxId" className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('settings:company.fields.taxId')}
-                  </label>
-                  <input
+                <FormField
+                  label={t('settings:company.fields.taxId')}
+                  htmlFor="taxId"
+                >
+                  <Input
                     type="text"
                     id="taxId"
                     value={formData.taxId}
                     onChange={(e) => { setFormData({ ...formData, taxId: e.target.value }); }}
                     placeholder={t('settings:company.modal.taxIdPlaceholder')}
-                    className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
-                </div>
+                </FormField>
               </div>
             </div>
           )}
@@ -300,91 +303,71 @@ export function CompanyOnboardingPage() {
           {currentStep === 'contact' && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                  <Mail className="w-6 h-6 text-blue-600" />
+                <h2 className={cn(tokens.heading.section, 'mb-2 flex items-center gap-2')}>
+                  <Mail className={cn('w-6 h-6', textColors.brand)} />
                   {t('settings:company.sections.contact')}
                 </h2>
-                <p className="text-gray-500 text-sm">
+                <p className={cn('text-sm', textColors.tertiary)}>
                   {t('settings:company.modal.contactInfoHint')}
                 </p>
               </div>
 
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                      <Mail className="w-4 h-4" />
-                      {t('settings:company.fields.email')}
-                    </label>
-                    <input
+                  <FormField label={t('settings:company.fields.email')} htmlFor="email">
+                    <Input
                       type="email"
                       id="email"
                       value={formData.email}
                       onChange={(e) => { setFormData({ ...formData, email: e.target.value }); }}
                       placeholder={t('settings:company.modal.emailPlaceholder')}
-                      className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                  </div>
+                  </FormField>
 
-                  <div>
-                    <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                      <Phone className="w-4 h-4" />
-                      {t('settings:company.fields.phone')}
-                    </label>
-                    <input
+                  <FormField label={t('settings:company.fields.phone')} htmlFor="phone">
+                    <Input
                       type="tel"
                       id="phone"
                       value={formData.phone}
                       onChange={(e) => { setFormData({ ...formData, phone: e.target.value }); }}
                       placeholder={t('settings:company.modal.phonePlaceholder')}
-                      className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                  </div>
+                  </FormField>
                 </div>
 
-                <div>
-                  <label htmlFor="addressStreet" className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                    <MapPin className="w-4 h-4" />
-                    {t('settings:company.fields.street')}
-                  </label>
-                  <input
+                <FormField label={t('settings:company.fields.street')} htmlFor="addressStreet">
+                  <Input
                     type="text"
                     id="addressStreet"
                     value={formData.addressStreet}
                     onChange={(e) => { setFormData({ ...formData, addressStreet: e.target.value }); }}
                     placeholder={t('settings:company.modal.streetPlaceholder')}
-                    className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
-                </div>
+                </FormField>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="addressCity" className="block text-sm font-medium text-gray-700 mb-1">
-                      {t('settings:company.fields.city')}
-                    </label>
-                    <input
+                  <FormField label={t('settings:company.fields.city')} htmlFor="addressCity">
+                    <Input
                       type="text"
                       id="addressCity"
                       value={formData.addressCity}
                       onChange={(e) => { setFormData({ ...formData, addressCity: e.target.value }); }}
                       placeholder={t('settings:company.modal.cityPlaceholder')}
-                      className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                  </div>
+                  </FormField>
 
-                  <div>
-                    <label htmlFor="addressPostalCode" className="block text-sm font-medium text-gray-700 mb-1">
-                      {t('settings:company.fields.postalCode')}
-                    </label>
-                    <input
+                  <FormField
+                    label={t('settings:company.fields.postalCode')}
+                    htmlFor="addressPostalCode"
+                  >
+                    <Input
                       type="text"
                       id="addressPostalCode"
                       value={formData.addressPostalCode}
                       onChange={(e) => { setFormData({ ...formData, addressPostalCode: e.target.value }); }}
                       placeholder={t('settings:company.modal.postalCodePlaceholder')}
-                      className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                  </div>
+                  </FormField>
                 </div>
               </div>
             </div>
@@ -394,50 +377,50 @@ export function CompanyOnboardingPage() {
           {currentStep === 'review' && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                  <Check className="w-6 h-6 text-blue-600" />
+                <h2 className={cn(tokens.heading.section, 'mb-2 flex items-center gap-2')}>
+                  <Check className={cn('w-6 h-6', textColors.brand)} />
                   {t('settings:company.modal.reviewTitle')}
                 </h2>
-                <p className="text-gray-500 text-sm">
+                <p className={cn('text-sm', textColors.tertiary)}>
                   {t('settings:company.modal.reviewHint')}
                 </p>
               </div>
 
               <div className="space-y-4">
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-semibold text-gray-900 mb-3">{t('settings:company.modal.regionalSettings')}</h3>
+                <div className={cn('rounded-lg p-4', colors.neutral[50])}>
+                  <h3 className={cn('font-semibold mb-3', textColors.primary)}>{t('settings:company.modal.regionalSettings')}</h3>
                   <dl className="grid grid-cols-1 gap-2 text-sm">
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">{t('settings:company.fields.country')}:</dt>
+                      <dt className={textColors.tertiary}>{t('settings:company.fields.country')}:</dt>
                       <dd className="font-medium">{selectedCountry.name}</dd>
                     </div>
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">{t('settings:company.fields.currency')}:</dt>
+                      <dt className={textColors.tertiary}>{t('settings:company.fields.currency')}:</dt>
                       <dd className="font-medium">{selectedCountry.currency}</dd>
                     </div>
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">{t('settings:company.fields.timezone')}:</dt>
+                      <dt className={textColors.tertiary}>{t('settings:company.fields.timezone')}:</dt>
                       <dd className="font-medium">{selectedCountry.timezone}</dd>
                     </div>
                   </dl>
                 </div>
 
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-semibold text-gray-900 mb-3">{t('settings:company.sections.information')}</h3>
+                <div className={cn('rounded-lg p-4', colors.neutral[50])}>
+                  <h3 className={cn('font-semibold mb-3', textColors.primary)}>{t('settings:company.sections.information')}</h3>
                   <dl className="grid grid-cols-1 gap-2 text-sm">
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">{t('settings:company.fields.companyName')}:</dt>
+                      <dt className={textColors.tertiary}>{t('settings:company.fields.companyName')}:</dt>
                       <dd className="font-medium">{formData.name}</dd>
                     </div>
                     {formData.legalName && (
                       <div className="flex justify-between">
-                        <dt className="text-gray-500">{t('settings:company.fields.legalName')}:</dt>
+                        <dt className={textColors.tertiary}>{t('settings:company.fields.legalName')}:</dt>
                         <dd className="font-medium">{formData.legalName}</dd>
                       </div>
                     )}
                     {formData.taxId && (
                       <div className="flex justify-between">
-                        <dt className="text-gray-500">{t('settings:company.fields.taxId')}:</dt>
+                        <dt className={textColors.tertiary}>{t('settings:company.fields.taxId')}:</dt>
                         <dd className="font-medium">{formData.taxId}</dd>
                       </div>
                     )}
@@ -445,24 +428,24 @@ export function CompanyOnboardingPage() {
                 </div>
 
                 {(formData.email || formData.phone || formData.addressStreet) && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-semibold text-gray-900 mb-3">{t('settings:company.sections.contact')}</h3>
+                  <div className={cn('rounded-lg p-4', colors.neutral[50])}>
+                    <h3 className={cn('font-semibold mb-3', textColors.primary)}>{t('settings:company.sections.contact')}</h3>
                     <dl className="grid grid-cols-1 gap-2 text-sm">
                       {formData.email && (
                         <div className="flex justify-between">
-                          <dt className="text-gray-500">{t('settings:company.fields.email')}:</dt>
+                          <dt className={textColors.tertiary}>{t('settings:company.fields.email')}:</dt>
                           <dd className="font-medium">{formData.email}</dd>
                         </div>
                       )}
                       {formData.phone && (
                         <div className="flex justify-between">
-                          <dt className="text-gray-500">{t('settings:company.fields.phone')}:</dt>
+                          <dt className={textColors.tertiary}>{t('settings:company.fields.phone')}:</dt>
                           <dd className="font-medium">{formData.phone}</dd>
                         </div>
                       )}
                       {formData.addressStreet && (
                         <div>
-                          <dt className="text-gray-500 mb-1">{t('settings:company.fields.street')}:</dt>
+                          <dt className={cn('mb-1', textColors.tertiary)}>{t('settings:company.fields.street')}:</dt>
                           <dd className="font-medium">
                             {formData.addressStreet}
                             {(formData.addressCity || formData.addressPostalCode) && (
@@ -484,36 +467,39 @@ export function CompanyOnboardingPage() {
 
         {/* Navigation */}
         <div className="flex justify-between">
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="lg"
             onClick={prevStep}
             disabled={stepIndex === 0 || mutation.isPending}
-            className="inline-flex items-center px-6 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <ArrowLeft className="w-4 h-4 me-2" />
             {t('common:previous')}
-          </button>
+          </Button>
 
           {currentStep === 'review' ? (
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="lg"
               onClick={handleSubmit}
               disabled={!canProceed() || mutation.isPending}
-              className="inline-flex items-center px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {mutation.isPending && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
               {mutation.isPending ? t('common:status.creating') : t('settings:company.modal.createButton')}
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="lg"
               onClick={nextStep}
               disabled={!canProceed()}
-              className="inline-flex items-center px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {t('common:next')}
               <ArrowRight className="w-4 h-4 ms-2" />
-            </button>
+            </Button>
           )}
         </div>
       </div>

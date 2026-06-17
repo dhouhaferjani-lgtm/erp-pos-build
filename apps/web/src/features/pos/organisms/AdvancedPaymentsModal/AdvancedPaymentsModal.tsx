@@ -486,14 +486,14 @@ export function AdvancedPaymentsModal({
                                   'active:scale-95 transform',
                                   touchOptimized && 'min-h-[80px]',
                                   isSelected
-                                    ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-500 text-blue-700'
+                                    ? cn('shadow-md', colors.primary[50], borderColors.primary, textColors.brand)
                                     : cn(
-                                      'border-gray-200 bg-white text-gray-700',
-                                      'hover:border-gray-300 hover:bg-gray-50'
+                                      borderColors.light, colors.white, textColors.secondary,
+                                      borderColors.hover, colors.hover.gray50
                                     )
                                 )}
                               >
-                                <Icon className={cn('h-6 w-6', isSelected ? 'text-blue-600' : 'text-gray-500')} />
+                                <Icon className={cn('h-6 w-6', isSelected ? textColors.brand : textColors.tertiary)} />
                                 <span className="text-sm leading-tight text-center">{method.name}</span>
                               </button>
                             )
@@ -670,7 +670,7 @@ export function AdvancedPaymentsModal({
                                 className={cn(
                                   'p-2 rounded-md transition-colors shrink-0',
                                   textColors.disabled,
-                                  'hover:text-red-500 hover:bg-red-50'
+                                  textColors.hoverError, colors.hover.red50
                                 )}
                                 aria-label={t('advancedPayments.removeLine')}
                               >
@@ -823,20 +823,20 @@ export function AdvancedPaymentsModal({
                     <div className={cn('border-t pt-3', borderColors.light)}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
-                          <Tag className="w-3.5 h-3.5 text-gray-500" />
+                          <Tag className={cn('w-3.5 h-3.5', textColors.tertiary)} />
                           <span className={cn('text-xs font-medium', textColors.secondary)}>
                             {t('cart.transactionDiscount')}
                           </span>
                         </div>
                         {transactionDiscount && parseFloat(transactionDiscount.amount) > 0 ? (
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold text-red-600">
+                            <span className={cn('text-xs font-semibold tabular-nums', textColors.error)}>
                               -{toFixedCurrency(parseFloat(transactionDiscount.amount))} {currency}
                             </span>
                             <button
                               type="button"
                               onClick={() => { setShowDiscountModal(true) }}
-                              className={cn('text-xs px-2 py-0.5 rounded border', borderColors.default, 'hover:bg-gray-50')}
+                              className={cn('text-xs px-2 py-0.5 rounded border', borderColors.default, colors.hover.gray50)}
                             >
                               {t('common:edit', { defaultValue: 'Edit' })}
                             </button>
@@ -848,7 +848,7 @@ export function AdvancedPaymentsModal({
                             className={cn(
                               'flex items-center gap-1 text-xs px-2 py-1 rounded-md border transition-colors',
                               borderColors.default,
-                              'hover:bg-gray-50',
+                              colors.hover.gray50,
                               textColors.secondary,
                             )}
                           >
@@ -885,7 +885,7 @@ export function AdvancedPaymentsModal({
                   {parseFloat(discount) > 0 && (
                     <div className="flex justify-between text-xs">
                       <span className={textColors.tertiary}>{t('advancedPayments.discount')}</span>
-                      <span className="font-medium text-red-600">
+                      <span className={cn('font-medium tabular-nums', textColors.error)}>
                         -{discount} {currency}
                       </span>
                     </div>

@@ -1,7 +1,8 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../lib/utils'
-import { Button } from '../atoms'
+import { colors, textColors } from '../../lib/designTokens'
+import { Button, Select } from '../atoms'
 
 export interface OffsetPaginationProps {
   currentPage: number
@@ -46,47 +47,47 @@ export function OffsetPagination({
   }
 
   return (
-    <div className={cn('flex items-center justify-between px-4 py-3 border-t bg-white', className)}>
+    <div className={cn('flex items-center justify-between px-4 py-3 border-t', colors.white, className)}>
       {/* Showing info */}
       <div className="flex items-center gap-4">
-        <span className="text-sm text-gray-600">
+        <span className={cn('text-sm', textColors.tertiary)}>
           {from && to ? (
-            t('showing', { from, to, total })
+            t('pagination.showing', { from, to, total })
           ) : (
-            `${total} ${total === 1 ? t('item') : t('items')}`
+            `${total} ${total === 1 ? t('pagination.item') : t('pagination.items')}`
           )}
         </span>
 
         {/* Per page selector */}
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">{t('rowsPerPage')}:</span>
-          <select
+          <span className={cn('text-sm', textColors.tertiary)}>{t('pagination.rowsPerPage')}:</span>
+          <Select
             value={perPage}
             onChange={(e) => { onPerPageChange(Number(e.target.value)); }}
-            className="rounded-md border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
+            className="w-auto text-sm"
           >
             {PER_PAGE_OPTIONS.map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 
       {/* Navigation */}
       <div className="flex items-center gap-2">
-        <span className="text-sm text-gray-600">
-          {t('page')} {currentPage} {t('of')} {lastPage}
+        <span className={cn('text-sm', textColors.tertiary)}>
+          {t('pagination.page')} {currentPage} {t('pagination.of')} {lastPage}
         </span>
         <div className="flex gap-1">
           <Button variant="secondary" size="sm" onClick={handlePrev} disabled={!hasPrev}>
             <ChevronLeft className="h-4 w-4" />
-            <span className="sr-only">{t('previous')}</span>
+            <span className="sr-only">{t('pagination.previous')}</span>
           </Button>
           <Button variant="secondary" size="sm" onClick={handleNext} disabled={!hasNext}>
             <ChevronRight className="h-4 w-4" />
-            <span className="sr-only">{t('next')}</span>
+            <span className="sr-only">{t('pagination.next')}</span>
           </Button>
         </div>
       </div>

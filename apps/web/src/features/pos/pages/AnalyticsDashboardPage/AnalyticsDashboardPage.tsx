@@ -21,6 +21,8 @@ import { CashierComparisonChart } from '../../organisms/Analytics/CashierCompari
 import { DiscountBreakdownChart } from '../../organisms/Analytics/DiscountBreakdownChart'
 import { CustomerInsightsPanel } from '../../organisms/Analytics/CustomerInsightsPanel'
 import { FnbMetricsPanel } from '../../organisms/Analytics/FnbMetricsPanel'
+import { cn } from '@/lib/utils'
+import { textColors, borderColors } from '@/lib/designTokens'
 
 type Tab = 'summary' | 'products' | 'cashiers' | 'discounts' | 'customers' | 'fnb'
 
@@ -109,18 +111,19 @@ export function AnalyticsDashboardPage() {
         <AnalyticsDateFilter filters={filters} onChange={setFilters} />
       </div>
 
-      <div className="border-b">
+      <div className={cn('border-b', borderColors.light)}>
         <nav className="-mb-px flex gap-4 overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab}
               type="button"
               onClick={() => { setActiveTab(tab); }}
-              className={`whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
+              className={cn(
+                'whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors',
                 activeTab === tab
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:border-muted-foreground/30 hover:text-foreground'
-              }`}
+                  ? cn(borderColors.primary, textColors.brand)
+                  : cn('border-transparent', textColors.tertiary, textColors.hoverPrimary),
+              )}
             >
               {t(`pos:analytics.tabs.${tab}`)}
             </button>

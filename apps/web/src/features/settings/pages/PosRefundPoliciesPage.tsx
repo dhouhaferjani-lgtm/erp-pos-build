@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { ArrowLeft, Loader2, ShieldX, RotateCcw, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { tokens, textColors, borderColors, colors, focusRing } from '@/lib/designTokens'
+import { Checkbox } from '@/components/atoms'
 import { usePermissions } from '@/hooks/usePermissions'
 import { usePosRefundPolicies } from '../hooks/usePosRefundPolicies'
 import { useUpdatePosRefundPolicies } from '../hooks/useUpdatePosRefundPolicies'
@@ -308,14 +309,12 @@ export function PosRefundPoliciesPage() {
                     {(['original_payment', 'cash', 'store_voucher'] as RefundDestination[]).map(
                       (dest) => (
                         <label key={dest} className="flex items-center gap-3 cursor-pointer">
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             data-testid={`destination-${dest}`}
                             checked={(field.value ?? []).includes(dest)}
                             onChange={() => {
                               toggleDestination(dest, field.value ?? [], field.onChange)
                             }}
-                            className={tokens.checkbox.base}
                           />
                           <span className={`text-sm ${textColors.secondary}`}>
                             {t(`refund-policies:fields.allowed_refund_destinations.options.${dest}`)}
@@ -430,15 +429,13 @@ export function PosRefundPoliciesPage() {
                 return (
                   <>
                     <div className="flex items-center gap-3 mb-2">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         id="daily-cap-cashier-enable-ctrl"
                         data-testid="daily-cap-cashier-enable"
                         checked={isEnabled}
                         onChange={(e) => {
                           field.onChange(e.target.checked ? '' : null)
                         }}
-                        className={tokens.checkbox.base}
                       />
                       <label
                         htmlFor="daily-cap-cashier-enable-ctrl"
@@ -681,15 +678,13 @@ export function PosRefundPoliciesPage() {
                 return (
                   <>
                     <div className="flex items-center gap-3 mb-2">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         id="goodwill-daily-cap-enable"
                         data-testid="goodwill-daily-cap-enable"
                         checked={isEnabled}
                         onChange={(e) => {
                           field.onChange(e.target.checked ? '' : null)
                         }}
-                        className={tokens.checkbox.base}
                       />
                       <label
                         htmlFor="goodwill-daily-cap-enable"

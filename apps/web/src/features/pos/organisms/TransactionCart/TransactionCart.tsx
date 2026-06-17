@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import { CartLineItem, type CartItem, TransactionDiscountInput, DiscountInput, AppliedDiscountsBadge, CouponCodeInput } from '../../molecules'
 import { POSButton } from '../../atoms'
 import { ShoppingCart, Trash2, User, UserPlus, Tag, Sparkles } from 'lucide-react'
@@ -98,7 +99,9 @@ export function TransactionCart({
   return (
     <div
       className={cn(
-        'flex flex-col h-full bg-gray-50 rounded-lg border border-gray-200',
+        'flex flex-col h-full rounded-lg border',
+        colors.neutral[50],
+        borderColors.light,
         touchOptimized ? 'p-6' : 'p-4',
         className
       )}
@@ -106,10 +109,11 @@ export function TransactionCart({
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <ShoppingCart className="w-6 h-6 text-gray-700" />
+          <ShoppingCart className={cn('w-6 h-6', textColors.secondary)} />
           <h2
             className={cn(
-              'font-bold text-gray-900',
+              'font-bold',
+              textColors.primary,
               touchOptimized ? 'text-2xl' : 'text-xl'
             )}
           >
@@ -118,7 +122,8 @@ export function TransactionCart({
           {!isEmpty && (
             <span
               className={cn(
-                'px-2 py-1 bg-blue-100 text-blue-800 rounded-full font-medium',
+                'px-2 py-1 rounded-full font-medium',
+                tokens.badge.blue,
                 touchOptimized ? 'text-base' : 'text-sm'
               )}
             >
@@ -145,26 +150,26 @@ export function TransactionCart({
         <div
           className={cn(
             'flex items-center justify-between p-3 bg-white rounded-lg border',
-            selectedCustomer ? 'border-green-300' : 'border-gray-300'
+            selectedCustomer ? borderColors.success : borderColors.default
           )}
         >
           <div className="flex items-center gap-3">
             {selectedCustomer ? (
-              <User className="w-5 h-5 text-green-600" />
+              <User className={cn('w-5 h-5', textColors.success)} />
             ) : (
-              <UserPlus className="w-5 h-5 text-gray-400" />
+              <UserPlus className={cn('w-5 h-5', textColors.disabled)} />
             )}
             <div>
               <div
                 className={cn(
                   'font-medium',
-                  selectedCustomer ? 'text-gray-900' : 'text-gray-500'
+                  selectedCustomer ? textColors.primary : textColors.tertiary
                 )}
               >
                 {selectedCustomer ? selectedCustomer.name : t('pos:cart.walkInCustomer')}
               </div>
               {selectedCustomer?.phone && (
-                <div className="text-sm text-gray-500">
+                <div className={cn('text-sm', textColors.tertiary)}>
                   {selectedCustomer.phone}
                 </div>
               )}
@@ -215,9 +220,9 @@ export function TransactionCart({
       <div className="flex-1 overflow-y-auto space-y-3 mb-4">
         {isEmpty ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <ShoppingCart className="w-16 h-16 text-gray-300 mb-4" />
-            <p className="text-gray-500 text-lg font-medium">{t('pos:cart.empty')}</p>
-            <p className="text-gray-400 text-sm mt-2">
+            <ShoppingCart className={cn('w-16 h-16 mb-4', textColors.disabled)} />
+            <p className={cn('text-lg font-medium', textColors.tertiary)}>{t('pos:cart.empty')}</p>
+            <p className={cn('text-sm mt-2', textColors.disabled)}>
               {t('pos:cart.addProducts')}
             </p>
           </div>
@@ -245,22 +250,22 @@ export function TransactionCart({
 
       {/* Transaction Discount Section */}
       {!isEmpty && permissions?.canApplyTransactionDiscounts && onUpdateTransactionDiscount && (
-        <div className="border-t border-gray-200 pt-3 pb-3">
+        <div className={cn('border-t pt-3 pb-3', borderColors.light)}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Tag className="w-4 h-4 text-gray-600" />
-              <span className="text-sm font-medium text-gray-700">
+              <Tag className={cn('w-4 h-4', textColors.tertiary)} />
+              <span className={cn('text-sm font-medium', textColors.secondary)}>
                 {t('pos:cart.transactionDiscount')}
               </span>
             </div>
             {transactionDiscount && parseFloat(transactionDiscount.amount) > 0 ? (
               <div className="flex items-center gap-3">
                 <div className="text-right">
-                  <div className="text-red-600 font-semibold">
+                  <div className={cn('font-semibold tabular-nums', textColors.error)}>
                     -{toFixedCurrency(parseFloat(transactionDiscount.amount))} {currency}
                   </div>
                   {transactionDiscount.reason && (
-                    <div className="text-xs text-gray-500 italic">
+                    <div className={cn('text-xs italic', textColors.tertiary)}>
                       {transactionDiscount.reason}
                     </div>
                   )}
@@ -294,7 +299,7 @@ export function TransactionCart({
 
       {/* Coupon Code Input */}
       {!isEmpty && onCouponApplied && onCouponRemoved && (
-        <div className="border-t border-gray-200 pt-3 pb-3">
+        <div className={cn('border-t pt-3 pb-3', borderColors.light)}>
           <CouponCodeInput
             subtotal={subtotal}
             {...(selectedCustomer?.id ? { customerId: selectedCustomer.id } : {})}
@@ -307,7 +312,7 @@ export function TransactionCart({
 
       {/* Applied Discounts (promotions, coupons, loyalty — not manual) */}
       {!isEmpty && discountBreakdown && discountBreakdown.lines.filter((l) => l.source !== 'manual').length > 0 && (
-        <div className="border-t border-gray-200 pt-3 pb-3 space-y-2">
+        <div className={cn('border-t pt-3 pb-3 space-y-2', borderColors.light)}>
           {discountBreakdown.lines
             .filter((l) => l.source !== 'manual')
             .map((line, idx) => (
@@ -315,11 +320,11 @@ export function TransactionCart({
             ))}
           {parseFloat(discountSavings ?? '0') > 0 && (
             <div className="flex items-center justify-between px-3 py-1.5 text-sm">
-              <span className="flex items-center gap-1.5 text-green-700 font-medium">
+              <span className={cn('flex items-center gap-1.5 font-medium', textColors.success)}>
                 <Sparkles className="w-4 h-4" />
                 {t('pos:cart.totalSavings')}
               </span>
-              <span className="font-semibold text-green-700">
+              <span className={cn('font-semibold tabular-nums', textColors.success)}>
                 -{toFixedCurrency(parseFloat(discountSavings ?? '0'))} {currency}
               </span>
             </div>
@@ -329,7 +334,7 @@ export function TransactionCart({
 
       {/* Payment Panel - Fixed at bottom of cart section */}
       {!isEmpty && (
-        <div className="border-t border-gray-200 pt-4">
+        <div className={cn('border-t pt-4', borderColors.light)}>
           <PaymentPanel
             items={items}
             onQuickCheckout={onQuickCheckout}

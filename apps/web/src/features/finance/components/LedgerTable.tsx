@@ -1,80 +1,81 @@
 import { useTranslation } from 'react-i18next'
+import { cn } from '../../../lib/utils'
+import { textColors } from '../../../lib/designTokens'
+import { DataTable, type DataTableColumn } from '../../../components/molecules'
 import type { LedgerLine } from '../types'
 
 interface LedgerTableProps {
   lines: LedgerLine[]
+  isLoading?: boolean
 }
 
-export function LedgerTable({ lines }: LedgerTableProps) {
+function formatAmount(value: string): string {
+  if (value === '0.00' || value === '0') return ''
+  return `$${value}`
+}
+
+export function LedgerTable({ lines, isLoading = false }: LedgerTableProps) {
   const { t } = useTranslation(['finance'])
 
-  if (lines.length === 0) {
-    return (
-      <div className="px-6 py-12 text-center text-sm text-gray-500">
-        {t('finance:ledger.empty')}
-      </div>
-    )
-  }
+  const columns: DataTableColumn<LedgerLine>[] = [
+    {
+      key: 'date',
+      header: t('finance:ledger.columns.date'),
+      cellClassName: 'whitespace-nowrap',
+      render: (line) => new Date(line.date).toLocaleDateString(),
+    },
+    {
+      key: 'entry_number',
+      header: t('finance:ledger.columns.entryNumber'),
+      cellClassName: 'whitespace-nowrap',
+      render: (line) => line.entry_number,
+    },
+    {
+      key: 'account',
+      header: t('finance:ledger.columns.account'),
+      cellClassName: 'whitespace-nowrap',
+      render: (line) => (
+        <div>
+          <div className="font-medium">{line.account_code}</div>
+          <div className={textColors.tertiary}>{line.account_name}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'description',
+      header: t('finance:ledger.columns.description'),
+      render: (line) => line.description,
+    },
+    {
+      key: 'debit',
+      header: t('finance:ledger.columns.debit'),
+      numeric: true,
+      cellClassName: 'whitespace-nowrap font-mono',
+      render: (line) => formatAmount(line.debit),
+    },
+    {
+      key: 'credit',
+      header: t('finance:ledger.columns.credit'),
+      numeric: true,
+      cellClassName: 'whitespace-nowrap font-mono',
+      render: (line) => formatAmount(line.credit),
+    },
+    {
+      key: 'balance',
+      header: t('finance:ledger.columns.balance'),
+      numeric: true,
+      cellClassName: cn('whitespace-nowrap font-mono', textColors.primary),
+      render: (line) => `$${line.balance}`,
+    },
+  ]
 
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-              {t('finance:ledger.columns.date')}
-            </th>
-            <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-              {t('finance:ledger.columns.entryNumber')}
-            </th>
-            <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-              {t('finance:ledger.columns.account')}
-            </th>
-            <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-              {t('finance:ledger.columns.description')}
-            </th>
-            <th className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">
-              {t('finance:ledger.columns.debit')}
-            </th>
-            <th className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">
-              {t('finance:ledger.columns.credit')}
-            </th>
-            <th className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">
-              {t('finance:ledger.columns.balance')}
-            </th>
-          </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {lines.map((line) => (
-            <tr key={line.id} className="hover:bg-gray-50">
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                {new Date(line.date).toLocaleDateString()}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                {line.entry_number}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                <div>
-                  <div className="font-medium">{line.account_code}</div>
-                  <div className="text-gray-500">{line.account_name}</div>
-                </div>
-              </td>
-              <td className="px-6 py-4 text-sm text-gray-900">
-                {line.description}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-end font-mono">
-                {line.debit !== '0.00' && line.debit !== '0' ? `$${line.debit}` : ''}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-end font-mono">
-                {line.credit !== '0.00' && line.credit !== '0' ? `$${line.credit}` : ''}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-end font-mono">
-                ${line.balance}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      columns={columns}
+      data={lines}
+      keyExtractor={(line) => line.id}
+      isLoading={isLoading}
+      emptyTitle={t('finance:ledger.empty')}
+    />
   )
 }

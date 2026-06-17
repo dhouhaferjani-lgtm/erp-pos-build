@@ -35,6 +35,6 @@
   "noResults": "Aucune recherche trouvée",
   "empty": "Aucune recherche d'historique client ne correspond aux filtres sélectionnés.",
   "accessDenied": "Accès refusé — rôle Manager ou Admin requis.",
-  "loading": "Chargement du journal d'audit...",
+  "loading": "Chargement du journal d'audit…",
   "errorLoading": "Échec du chargement du journal d'audit. Veuillez réessayer."
 }

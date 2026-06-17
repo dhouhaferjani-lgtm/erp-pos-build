@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { X, UserPlus, XCircle, CheckCircle } from 'lucide-react'
+import { UserPlus, XCircle, CheckCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import { Modal, ModalHeader, ModalContent, ModalFooter } from '@/components/organisms/Modal'
 import { assignFraudAlert, dismissFraudAlert, resolveFraudAlert, getUsersWithAdminRole } from '../api/fraudApi'
 import {
   fraudAlertStatisticsInvalidationPredicate,
@@ -61,29 +61,21 @@ export function AssignAlertModal({ alert, onClose }: AssignModalProps) {
     assignMutation.mutate(selectedUserId)
   }
 
-  return createPortal(
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-md w-full">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg p-2 bg-blue-100 border border-blue-200">
-              <UserPlus className="h-5 w-5 text-blue-600" />
-            </div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              {t('compliance:fraudAlerts.modals.assign.title')}
-            </h2>
+  return (
+    <Modal isOpen onClose={onClose} size="md">
+      <ModalHeader onClose={onClose} className="border-b border-gray-200 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg p-2 bg-blue-100 border border-blue-200">
+            <UserPlus className="h-5 w-5 text-blue-600" />
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <h2 className="text-lg font-semibold text-gray-900">
+            {t('compliance:fraudAlerts.modals.assign.title')}
+          </h2>
         </div>
+      </ModalHeader>
 
-        {/* Content */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+      <form onSubmit={handleSubmit}>
+        <ModalContent className="space-y-4">
           <p className="text-sm text-gray-600">
             {t('compliance:fraudAlerts.modals.assign.selectUser')}
           </p>
@@ -113,28 +105,26 @@ export function AssignAlertModal({ alert, onClose }: AssignModalProps) {
               </select>
             )}
           </div>
+        </ModalContent>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              {t('common:actions.cancel')}
-            </button>
-            <button
-              type="submit"
-              disabled={assignMutation.isPending || !selectedUserId}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              {assignMutation.isPending ? t('common:actions.saving') : t('compliance:fraudAlerts.actions.assign')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>,
-    document.body,
+        <ModalFooter>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            {t('common:actions.cancel')}
+          </button>
+          <button
+            type="submit"
+            disabled={assignMutation.isPending || !selectedUserId}
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            {assignMutation.isPending ? t('common:actions.saving') : t('compliance:fraudAlerts.actions.assign')}
+          </button>
+        </ModalFooter>
+      </form>
+    </Modal>
   )
 }
 
@@ -175,29 +165,21 @@ export function DismissAlertModal({ alert, onClose }: DismissModalProps) {
     dismissMutation.mutate(notes)
   }
 
-  return createPortal(
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-md w-full">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg p-2 bg-gray-100 border border-gray-200">
-              <XCircle className="h-5 w-5 text-gray-600" />
-            </div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              {t('compliance:fraudAlerts.modals.dismiss.title')}
-            </h2>
+  return (
+    <Modal isOpen onClose={onClose} size="md">
+      <ModalHeader onClose={onClose} className="border-b border-gray-200 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg p-2 bg-gray-100 border border-gray-200">
+            <XCircle className="h-5 w-5 text-gray-600" />
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <h2 className="text-lg font-semibold text-gray-900">
+            {t('compliance:fraudAlerts.modals.dismiss.title')}
+          </h2>
         </div>
+      </ModalHeader>
 
-        {/* Content */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+      <form onSubmit={handleSubmit}>
+        <ModalContent className="space-y-4">
           <div>
             <label htmlFor="dismissNotes" className="block text-sm font-medium text-gray-700 mb-2">
               {t('compliance:fraudAlerts.modals.dismiss.notesLabel')}
@@ -212,28 +194,26 @@ export function DismissAlertModal({ alert, onClose }: DismissModalProps) {
               required
             />
           </div>
+        </ModalContent>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              {t('common:actions.cancel')}
-            </button>
-            <button
-              type="submit"
-              disabled={dismissMutation.isPending || !notes.trim()}
-              className="px-4 py-2 text-sm font-medium text-white bg-gray-600 rounded-lg hover:bg-gray-700 disabled:opacity-50"
-            >
-              {dismissMutation.isPending ? t('common:actions.saving') : t('compliance:fraudAlerts.actions.dismiss')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>,
-    document.body,
+        <ModalFooter>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            {t('common:actions.cancel')}
+          </button>
+          <button
+            type="submit"
+            disabled={dismissMutation.isPending || !notes.trim()}
+            className="px-4 py-2 text-sm font-medium text-white bg-gray-600 rounded-lg hover:bg-gray-700 disabled:opacity-50"
+          >
+            {dismissMutation.isPending ? t('common:actions.saving') : t('compliance:fraudAlerts.actions.dismiss')}
+          </button>
+        </ModalFooter>
+      </form>
+    </Modal>
   )
 }
 
@@ -274,29 +254,21 @@ export function ResolveAlertModal({ alert, onClose }: ResolveModalProps) {
     resolveMutation.mutate(notes)
   }
 
-  return createPortal(
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-md w-full">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg p-2 bg-green-100 border border-green-200">
-              <CheckCircle className="h-5 w-5 text-green-600" />
-            </div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              {t('compliance:fraudAlerts.modals.resolve.title')}
-            </h2>
+  return (
+    <Modal isOpen onClose={onClose} size="md">
+      <ModalHeader onClose={onClose} className="border-b border-gray-200 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg p-2 bg-green-100 border border-green-200">
+            <CheckCircle className="h-5 w-5 text-green-600" />
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <h2 className="text-lg font-semibold text-gray-900">
+            {t('compliance:fraudAlerts.modals.resolve.title')}
+          </h2>
         </div>
+      </ModalHeader>
 
-        {/* Content */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+      <form onSubmit={handleSubmit}>
+        <ModalContent className="space-y-4">
           <div>
             <label htmlFor="resolveNotes" className="block text-sm font-medium text-gray-700 mb-2">
               {t('compliance:fraudAlerts.modals.resolve.notesLabel')}
@@ -311,27 +283,25 @@ export function ResolveAlertModal({ alert, onClose }: ResolveModalProps) {
               required
             />
           </div>
+        </ModalContent>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              {t('common:actions.cancel')}
-            </button>
-            <button
-              type="submit"
-              disabled={resolveMutation.isPending || !notes.trim()}
-              className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
-            >
-              {resolveMutation.isPending ? t('common:actions.saving') : t('compliance:fraudAlerts.actions.resolve')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>,
-    document.body,
+        <ModalFooter>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            {t('common:actions.cancel')}
+          </button>
+          <button
+            type="submit"
+            disabled={resolveMutation.isPending || !notes.trim()}
+            className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
+          >
+            {resolveMutation.isPending ? t('common:actions.saving') : t('compliance:fraudAlerts.actions.resolve')}
+          </button>
+        </ModalFooter>
+      </form>
+    </Modal>
   )
 }

@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { tokens, colors } from '@/lib/designTokens'
 
 export interface StockBadgeProps {
   quantity: number
@@ -28,25 +29,22 @@ export function StockBadge({
 
   const status = getStockStatus()
 
-  // Status configuration
+  // Status configuration — semantic tokens (badge bg+text, dot fill)
   const statusConfig = {
     'in-stock': {
       label: 'In Stock',
-      bgColor: 'bg-green-100',
-      textColor: 'text-green-800',
-      dotColor: 'bg-green-600',
+      badgeColor: tokens.badge.green,
+      dotColor: colors.success[600],
     },
     'low-stock': {
       label: 'Low Stock',
-      bgColor: 'bg-yellow-100',
-      textColor: 'text-yellow-800',
-      dotColor: 'bg-yellow-600',
+      badgeColor: tokens.badge.yellow,
+      dotColor: colors.warning[600],
     },
     'out-of-stock': {
       label: 'Out of Stock',
-      bgColor: 'bg-red-100',
-      textColor: 'text-red-800',
-      dotColor: 'bg-red-600',
+      badgeColor: tokens.badge.red,
+      dotColor: colors.error[600],
     },
   }
 
@@ -66,8 +64,7 @@ export function StockBadge({
         'inline-flex items-center gap-1.5 rounded-full font-medium',
 
         // Status colors
-        config.bgColor,
-        config.textColor,
+        config.badgeColor,
 
         // Size
         sizeClasses[size],

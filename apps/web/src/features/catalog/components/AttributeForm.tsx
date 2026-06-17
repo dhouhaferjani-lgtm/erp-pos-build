@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { tokens, textColors } from '@/lib/designTokens'
+import { Checkbox } from '@/components/atoms'
 import { getErrorMessage } from '@/lib/api'
 import { useCreateAttribute } from '../hooks/useVariants'
 import type { AttributeDataType, CreateAttributePayload } from '../api/variantApi'
@@ -130,9 +131,7 @@ export function AttributeForm({ onCreated, onCancel }: AttributeFormProps) {
 
         <div className="flex items-center">
           <label className="mt-6 inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              className={tokens.checkbox.base}
+            <Checkbox
               {...register('is_variant_axis')}
             />
             <span className={`text-sm ${textColors.secondary}`}>

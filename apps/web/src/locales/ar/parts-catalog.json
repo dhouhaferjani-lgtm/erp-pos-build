@@ -13,8 +13,8 @@
     "selectManufacturer": "اختر الشركة المصنعة",
     "selectModel": "اختر سلسلة الطراز",
     "selectVehicle": "اختر المركبة",
-    "searchManufacturer": "ابحث عن شركة مصنعة...",
-    "searchModel": "ابحث عن طراز...",
+    "searchManufacturer": "ابحث عن شركة مصنعة…",
+    "searchModel": "ابحث عن طراز…",
     "allManufacturers": "جميع الشركات المصنعة",
     "allModels": "جميع الطرازات",
     "allVehicles": "جميع المركبات",
@@ -28,7 +28,7 @@
   },
   "partNumber": {
     "title": "البحث حسب رقم القطعة",
-    "placeholder": "أدخل رقم القطعة أو مرجع OEM أو الباركود...",
+    "placeholder": "أدخل رقم القطعة أو مرجع OEM أو الباركود…",
     "hint": "نصيحة: ابدأ باسم العلامة التجارية (مثل \"TRW GDB1550\") للتصفية حسب المورد",
     "detectedBrand": "العلامة التجارية المكتشفة: {{brand}}",
     "searchMethods": "تم البحث بواسطة: {{methods}}",
@@ -60,7 +60,7 @@
     "title": "نتائج البحث",
     "showing": "عرض {{count}} نتيجة",
     "loadMore": "تحميل المزيد",
-    "loadingMore": "جاري التحميل...",
+    "loadingMore": "جاري التحميل…",
     "noResults": "لم يتم العثور على مقالات",
     "noResultsHint": "جرب بحثاً مختلفاً أو عدّل الفلاتر",
     "filterByBrand": "تصفية حسب العلامة التجارية"

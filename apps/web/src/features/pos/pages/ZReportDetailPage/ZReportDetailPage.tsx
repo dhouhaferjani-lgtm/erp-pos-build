@@ -15,6 +15,8 @@ import {
   Hash,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
+import { POSButton } from '../../atoms/POSButton'
 import { useCurrency } from '@/hooks/useCurrency'
 import { usePosTenantScope } from '../../hooks/usePosTenantScope'
 
@@ -57,8 +59,8 @@ export function ZReportDetailPage() {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <AlertTriangle className="h-12 w-12 text-yellow-400 mx-auto mb-3" />
-          <p className="text-gray-500">{t('pos:zReports.selectTerminal')}</p>
+          <AlertTriangle className={`h-12 w-12 ${textColors.warningDark} mx-auto mb-3`} />
+          <p className={textColors.tertiary}>{t('pos:zReports.selectTerminal')}</p>
         </div>
       </div>
     )
@@ -67,7 +69,7 @@ export function ZReportDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        <Loader2 className={`h-8 w-8 animate-spin ${textColors.brand}`} />
       </div>
     )
   }
@@ -78,14 +80,14 @@ export function ZReportDetailPage() {
         <button
           type="button"
           onClick={() => navigate('/pos/z-reports')}
-          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+          className={`inline-flex items-center gap-2 text-sm ${textColors.tertiary} ${textColors.hoverPrimary}`}
         >
           <ArrowLeft className="h-4 w-4" />
           {t('common:back')}
         </button>
-        <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center">
-          <AlertTriangle className="h-12 w-12 text-red-400 mx-auto mb-3" />
-          <p className="text-red-700">{t('pos:zReports.loadError')}</p>
+        <div className={`rounded-lg border ${borderColors.error} ${tokens.alert.error} p-6 text-center`}>
+          <AlertTriangle className={`h-12 w-12 ${textColors.error} mx-auto mb-3`} />
+          <p className={textColors.error}>{t('pos:zReports.loadError')}</p>
         </div>
       </div>
     )
@@ -101,17 +103,17 @@ export function ZReportDetailPage() {
           <button
             type="button"
             onClick={() => navigate('/pos/z-reports')}
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+            className={`inline-flex items-center gap-2 text-sm ${textColors.tertiary} ${textColors.hoverPrimary}`}
           >
             <ArrowLeft className="h-4 w-4" />
             {t('common:back')}
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <FileCheck className="h-6 w-6 text-gray-400" />
+            <h1 className={`text-2xl font-bold ${textColors.primary} flex items-center gap-2`}>
+              <FileCheck className={`h-6 w-6 ${textColors.disabled}`} />
               {t('pos:zReports.detailTitle', { zNumber: report.formatted_z_number })}
             </h1>
-            <p className="text-gray-500">
+            <p className={textColors.tertiary}>
               {new Date(report.generated_at).toLocaleString()}
               {report.generated_by_user && ` — ${report.generated_by_user.name}`}
             </p>
@@ -119,40 +121,43 @@ export function ZReportDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
+          <POSButton
+            variant="secondary"
+            size="sm"
             onClick={() => { downloadPdfMutation.mutate(); }}
             disabled={downloadPdfMutation.isPending}
-            className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            icon={
+              downloadPdfMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )
+            }
           >
-            {downloadPdfMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4" />
-            )}
             {t('pos:zReports.downloadPdf')}
-          </button>
-          <button
-            type="button"
+          </POSButton>
+          <POSButton
+            variant="secondary"
+            size="sm"
             onClick={() => { window.print(); }}
-            className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            icon={<Printer className="h-4 w-4" />}
           >
-            <Printer className="h-4 w-4" />
             {t('pos:zReports.print')}
-          </button>
-          <button
-            type="button"
+          </POSButton>
+          <POSButton
+            size="sm"
             onClick={() => { verifyChainMutation.mutate(terminalId); }}
             disabled={verifyChainMutation.isPending}
-            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            icon={
+              verifyChainMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ShieldCheck className="h-4 w-4" />
+              )
+            }
           >
-            {verifyChainMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ShieldCheck className="h-4 w-4" />
-            )}
             {verifyChainMutation.isPending ? t('pos:zReports.verifying') : t('pos:zReports.verifyChain')}
-          </button>
+          </POSButton>
         </div>
       </div>
 
@@ -160,20 +165,18 @@ export function ZReportDetailPage() {
       {verifyChainMutation.isSuccess && (
         <div
           className={`rounded-lg p-4 flex items-center gap-3 ${
-            verifyChainMutation.data.is_valid
-              ? 'bg-green-50 border border-green-200'
-              : 'bg-red-50 border border-red-200'
+            verifyChainMutation.data.is_valid ? tokens.alert.success : tokens.alert.error
           }`}
         >
           {verifyChainMutation.data.is_valid ? (
             <>
-              <ShieldCheck className="h-5 w-5 text-green-600 shrink-0" />
-              <p className="text-sm text-green-800">{t('pos:zReports.chainValid')}</p>
+              <ShieldCheck className={`h-5 w-5 ${textColors.success} shrink-0`} />
+              <p className="text-sm">{t('pos:zReports.chainValid')}</p>
             </>
           ) : (
             <>
-              <ShieldAlert className="h-5 w-5 text-red-600 shrink-0" />
-              <p className="text-sm text-red-800">{t('pos:zReports.chainInvalid')}</p>
+              <ShieldAlert className={`h-5 w-5 ${textColors.error} shrink-0`} />
+              <p className="text-sm">{t('pos:zReports.chainInvalid')}</p>
             </>
           )}
         </div>
@@ -219,9 +222,9 @@ function SummaryCard({
       : (0).toFixed(decimals)
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('pos:zReports.detail.salesSummary')}</h3>
-      <div className="divide-y divide-gray-100">
+    <div className={tokens.card.base}>
+      <h3 className={`text-lg font-semibold ${textColors.primary} mb-4`}>{t('pos:zReports.detail.salesSummary')}</h3>
+      <div className={`divide-y ${borderColors.divideLight}`}>
         <SummaryRow label={t('pos:zReports.detail.receiptCount')} value={String(report.sales_count)} />
         <SummaryRow label={t('pos:zReports.detail.averageTicket')} value={averageTicket} mono />
         <SummaryRow label={t('pos:zReports.detail.grossSales')} value={report.gross_sales} mono />
@@ -240,21 +243,21 @@ function CashSummaryCard({ report }: { report: ZReportItem }) {
   const varianceValue = parseFloat(report.variance)
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('pos:zReports.detail.cashSummary')}</h3>
-      <div className="divide-y divide-gray-100">
+    <div className={tokens.card.base}>
+      <h3 className={`text-lg font-semibold ${textColors.primary} mb-4`}>{t('pos:zReports.detail.cashSummary')}</h3>
+      <div className={`divide-y ${borderColors.divideLight}`}>
         <SummaryRow label={t('pos:zReports.detail.openingCash')} value={report.opening_cash} mono />
         <SummaryRow label={t('pos:zReports.detail.expectedCash')} value={report.expected_cash} mono />
         <SummaryRow label={t('pos:zReports.detail.actualCash')} value={report.actual_cash} mono />
         <div className="flex justify-between py-3">
-          <span className="text-sm text-gray-600">{t('pos:zReports.detail.variance')}</span>
+          <span className={`text-sm ${textColors.tertiary}`}>{t('pos:zReports.detail.variance')}</span>
           <span
-            className={`text-sm font-mono font-medium ${
+            className={`text-sm font-mono font-medium tabular-nums ${
               varianceValue === 0
-                ? 'text-green-600'
+                ? textColors.success
                 : varianceValue > 0
-                  ? 'text-blue-600'
-                  : 'text-red-600'
+                  ? textColors.brand
+                  : textColors.error
             }`}
           >
             {report.variance}
@@ -273,11 +276,11 @@ function VatBreakdownCard({
   const { t } = useTranslation(['pos'])
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('pos:zReports.detail.vatBreakdown')}</h3>
+    <div className={tokens.card.base}>
+      <h3 className={`text-lg font-semibold ${textColors.primary} mb-4`}>{t('pos:zReports.detail.vatBreakdown')}</h3>
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-gray-500 border-b">
+          <tr className={`text-left ${textColors.tertiary} border-b`}>
             <th className="pb-2 font-medium">{t('pos:xReport.rate')}</th>
             <th className="pb-2 font-medium text-right">{t('pos:xReport.net')}</th>
             <th className="pb-2 font-medium text-right">{t('pos:xReport.vat')}</th>
@@ -286,11 +289,11 @@ function VatBreakdownCard({
         </thead>
         <tbody>
           {vatBreakdown.map((entry) => (
-            <tr key={entry.rate} className="border-b border-gray-100">
+            <tr key={entry.rate} className={`border-b ${borderColors.light}`}>
               <td className="py-2">{entry.rate}%</td>
-              <td className="py-2 text-right font-mono">{entry.net}</td>
-              <td className="py-2 text-right font-mono">{entry.vat}</td>
-              <td className="py-2 text-right font-mono">{entry.gross}</td>
+              <td className="py-2 text-right font-mono tabular-nums">{entry.net}</td>
+              <td className="py-2 text-right font-mono tabular-nums">{entry.vat}</td>
+              <td className="py-2 text-right font-mono tabular-nums">{entry.gross}</td>
             </tr>
           ))}
         </tbody>
@@ -307,11 +310,11 @@ function PaymentMethodsCard({
   const { t } = useTranslation(['pos'])
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('pos:zReports.detail.paymentMethods')}</h3>
+    <div className={tokens.card.base}>
+      <h3 className={`text-lg font-semibold ${textColors.primary} mb-4`}>{t('pos:zReports.detail.paymentMethods')}</h3>
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-gray-500 border-b">
+          <tr className={`text-left ${textColors.tertiary} border-b`}>
             <th className="pb-2 font-medium">{t('pos:xReport.method')}</th>
             <th className="pb-2 font-medium text-right">{t('pos:xReport.count')}</th>
             <th className="pb-2 font-medium text-right">{t('pos:xReport.amount')}</th>
@@ -319,10 +322,10 @@ function PaymentMethodsCard({
         </thead>
         <tbody>
           {paymentMethods.map((entry) => (
-            <tr key={entry.type} className="border-b border-gray-100">
+            <tr key={entry.type} className={`border-b ${borderColors.light}`}>
               <td className="py-2">{entry.type}</td>
-              <td className="py-2 text-right font-mono">{entry.count}</td>
-              <td className="py-2 text-right font-mono">{entry.amount}</td>
+              <td className="py-2 text-right font-mono tabular-nums">{entry.count}</td>
+              <td className="py-2 text-right font-mono tabular-nums">{entry.amount}</td>
             </tr>
           ))}
         </tbody>
@@ -335,28 +338,28 @@ function HashInfoCard({ report }: { report: ZReportItem }) {
   const { t } = useTranslation(['pos'])
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-        <Hash className="h-5 w-5 text-gray-400" />
+    <div className={tokens.card.base}>
+      <h3 className={`text-lg font-semibold ${textColors.primary} mb-4 flex items-center gap-2`}>
+        <Hash className={`h-5 w-5 ${textColors.disabled}`} />
         {t('pos:zReports.detail.fiscalHash')}
       </h3>
       <div className="space-y-3">
         <div>
-          <p className="text-xs font-medium text-gray-500 uppercase mb-1">{t('pos:zReports.detail.currentHash')}</p>
-          <p className="text-xs font-mono text-gray-700 bg-gray-50 rounded px-3 py-2 break-all">
+          <p className={`text-xs font-medium ${textColors.tertiary} uppercase mb-1`}>{t('pos:zReports.detail.currentHash')}</p>
+          <p className={`text-xs font-mono ${textColors.secondary} ${colors.neutral[50]} rounded px-3 py-2 break-all`}>
             {report.fiscal_hash}
           </p>
         </div>
         {report.previous_z_hash && (
           <div>
-            <p className="text-xs font-medium text-gray-500 uppercase mb-1">{t('pos:zReports.detail.previousHash')}</p>
-            <p className="text-xs font-mono text-gray-700 bg-gray-50 rounded px-3 py-2 break-all">
+            <p className={`text-xs font-medium ${textColors.tertiary} uppercase mb-1`}>{t('pos:zReports.detail.previousHash')}</p>
+            <p className={`text-xs font-mono ${textColors.secondary} ${colors.neutral[50]} rounded px-3 py-2 break-all`}>
               {report.previous_z_hash}
             </p>
           </div>
         )}
         {report.is_first_z_report && (
-          <p className="text-xs text-blue-600 font-medium">{t('pos:zReports.detail.genesisReport')}</p>
+          <p className={`text-xs ${textColors.brand} font-medium`}>{t('pos:zReports.detail.genesisReport')}</p>
         )}
       </div>
     </div>
@@ -374,8 +377,8 @@ function SummaryRow({
 }) {
   return (
     <div className="flex justify-between py-3">
-      <span className="text-sm text-gray-600">{label}</span>
-      <span className={`text-sm font-medium text-gray-900 ${mono ? 'font-mono' : ''}`}>{value}</span>
+      <span className={`text-sm ${textColors.tertiary}`}>{label}</span>
+      <span className={`text-sm font-medium ${textColors.primary} ${mono ? 'font-mono tabular-nums' : ''}`}>{value}</span>
     </div>
   )
 }

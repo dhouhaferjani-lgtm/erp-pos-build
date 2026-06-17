@@ -4,7 +4,18 @@ import { ExpenseCategorySelect } from '../molecules/ExpenseCategorySelect'
 import { useActivePaymentMethods } from '../../../treasury/hooks/usePaymentMethods'
 import { useActivePaymentRepositories } from '../../../treasury/hooks/usePaymentRepositories'
 import { useCurrency } from '../../../../hooks/useCurrency'
-import { MoneyInput } from '../../../../components/atoms/MoneyInput'
+import {
+  Button,
+  Checkbox,
+  FormField,
+  Input,
+  MoneyInput,
+  Select,
+  Textarea,
+} from '../../../../components/atoms'
+import { StickyFormFooter } from '../../../../components/molecules/StickyFormFooter/StickyFormFooter'
+import { tokens, textColors } from '../../../../lib/designTokens'
+import { bccomp } from '../../../../lib/decimal'
 import type { CreateExpenseDTO, Expense } from '../../types'
 
 interface ExpenseFormFieldsProps {
@@ -75,33 +86,25 @@ export function ExpenseFormFields({
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       {/* Vendor Information */}
       <div className="space-y-4">
-        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
-          {t('expenses:form.vendorInfo')}
-        </h3>
+        <h2 className={tokens.heading.section}>{t('expenses:form.vendorInfo')}</h2>
 
-        <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {t('expenses:form.vendorName')}
-          </label>
-          <input
+        <FormField label={t('expenses:form.vendorName')} htmlFor="vendor_name">
+          <Input
+            id="vendor_name"
             type="text"
             {...register('vendor_name')}
-            className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
             placeholder={t('expenses:form.vendorNamePlaceholder')}
           />
-        </div>
+        </FormField>
 
-        <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {t('expenses:form.receiptNumber')}
-          </label>
-          <input
+        <FormField label={t('expenses:form.receiptNumber')} htmlFor="receipt_number">
+          <Input
+            id="receipt_number"
             type="text"
             {...register('receipt_number')}
-            className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
             placeholder={t('expenses:form.receiptNumberPlaceholder')}
           />
-        </div>
+        </FormField>
       </div>
 
       {/* Category */}
@@ -116,139 +119,123 @@ export function ExpenseFormFields({
 
       {/* Amount and Date */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {t('expenses:form.amount')} *
-          </label>
+        <FormField
+          label={t('expenses:form.amount')}
+          htmlFor="total"
+          required
+          error={errors.total?.message}
+        >
           <MoneyInput
+            id="total"
             {...register('total', {
               required: t('common:validation.required'),
-              validate: (v) => parseFloat(v) >= 0.01 || t('common:validation.minAmount', { amount: '0.01' }),
+              validate: (v) =>
+                bccomp(v ?? '0', '0.01') >= 0 ||
+                t('common:validation.minAmount', { amount: '0.01' }),
             })}
             currency={currency}
             value={totalValue}
-            onChange={(v) => { setValue('total', v) }}
+            onChange={(v) => {
+              setValue('total', v)
+            }}
             min="0.01"
             error={!!errors.total}
-            className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
           />
-          {errors.total && (
-            <p className="mt-1 text-sm text-red-600">{errors.total.message}</p>
-          )}
-        </div>
+        </FormField>
 
-        <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {t('expenses:form.date')} *
-          </label>
-          <input
+        <FormField
+          label={t('expenses:form.date')}
+          htmlFor="document_date"
+          required
+          error={errors.document_date?.message}
+        >
+          <Input
+            id="document_date"
             type="date"
             {...register('document_date', {
               required: t('common:validation.required'),
             })}
-            className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            error={!!errors.document_date}
           />
-          {errors.document_date && (
-            <p className="mt-1 text-sm text-red-600">{errors.document_date.message}</p>
-          )}
-        </div>
+        </FormField>
       </div>
 
       {/* Payment Details */}
       <div className="space-y-4">
-        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+        <h2 className={tokens.heading.section}>
           {t('expenses:form.paymentDetails')}
-        </h3>
+        </h2>
 
-        <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {t('expenses:form.paymentDate')}
-          </label>
-          <input
-            type="date"
-            {...register('payment_date')}
-            className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-          />
-        </div>
+        <FormField label={t('expenses:form.paymentDate')} htmlFor="payment_date">
+          <Input id="payment_date" type="date" {...register('payment_date')} />
+        </FormField>
 
         {/* Payment Method */}
-        <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {t('expenses:form.paymentMethod')}
-          </label>
-          <select
+        <FormField
+          label={t('expenses:form.paymentMethod')}
+          htmlFor="payment_method_id"
+          {...(methodsError ? { error: t('common:error') } : {})}
+          {...(!isLoadingMethods && !methodsError && paymentMethods.length === 0
+            ? { helperText: t('expenses:form.noPaymentMethodsDescription') }
+            : {})}
+        >
+          <Select
+            id="payment_method_id"
             {...register('payment_method_id')}
             disabled={isLoadingMethods || paymentMethods.length === 0}
-            className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:disabled:bg-gray-900"
           >
             <option value="">
               {isLoadingMethods
                 ? t('common:loading')
                 : paymentMethods.length === 0
-                ? t('expenses:form.noPaymentMethods')
-                : t('common:select')}
+                  ? t('expenses:form.noPaymentMethods')
+                  : t('common:select')}
             </option>
             {paymentMethods.map((method) => (
               <option key={method.id} value={method.id}>
                 {method.name}
               </option>
             ))}
-          </select>
-          {methodsError && (
-            <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-              {t('common:error')}
-            </p>
-          )}
-          {!isLoadingMethods && !methodsError && paymentMethods.length === 0 && (
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {t('expenses:form.noPaymentMethodsDescription')}
-            </p>
-          )}
-        </div>
+          </Select>
+        </FormField>
 
         {/* Payment Repository */}
-        <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {t('expenses:form.paymentRepository')}
-          </label>
-          <select
+        <FormField
+          label={t('expenses:form.paymentRepository')}
+          htmlFor="payment_repository_id"
+          {...(repositoriesError ? { error: t('common:error') } : {})}
+          {...(!isLoadingRepositories &&
+          !repositoriesError &&
+          paymentRepositories.length === 0
+            ? { helperText: t('expenses:form.noRepositoriesDescription') }
+            : {})}
+        >
+          <Select
+            id="payment_repository_id"
             {...register('payment_repository_id')}
             disabled={isLoadingRepositories || paymentRepositories.length === 0}
-            className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:disabled:bg-gray-900"
           >
             <option value="">
               {isLoadingRepositories
                 ? t('common:loading')
                 : paymentRepositories.length === 0
-                ? t('expenses:form.noRepositories')
-                : t('common:select')}
+                  ? t('expenses:form.noRepositories')
+                  : t('common:select')}
             </option>
             {paymentRepositories.map((repo) => (
               <option key={repo.id} value={repo.id}>
                 {repo.name} ({repo.code})
               </option>
             ))}
-          </select>
-          {repositoriesError && (
-            <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-              {t('common:error')}
-            </p>
-          )}
-          {!isLoadingRepositories && !repositoriesError && paymentRepositories.length === 0 && (
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {t('expenses:form.noRepositoriesDescription')}
-            </p>
-          )}
-        </div>
+          </Select>
+        </FormField>
 
         <div className="flex items-center">
-          <input
-            type="checkbox"
+          <Checkbox
             {...register('is_paid')}
             id="is_paid"
-            className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
           />
-          <label htmlFor="is_paid" className="ms-2 text-sm text-gray-700 dark:text-gray-300">
+          <label htmlFor="is_paid" className={`ms-2 text-sm ${textColors.secondary}`}>
             {t('expenses:form.isPaid')}
           </label>
         </div>
@@ -256,51 +243,41 @@ export function ExpenseFormFields({
 
       {/* Notes */}
       <div className="space-y-4">
-        <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {t('expenses:form.notes')}
-          </label>
-          <textarea
+        <FormField label={t('expenses:form.notes')} htmlFor="notes">
+          <Textarea
+            id="notes"
             {...register('notes')}
             rows={3}
-            className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
             placeholder={t('expenses:form.notesPlaceholder')}
           />
-        </div>
+        </FormField>
 
-        <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {t('expenses:form.internalNotes')}
-          </label>
-          <textarea
+        <FormField label={t('expenses:form.internalNotes')} htmlFor="internal_notes">
+          <Textarea
+            id="internal_notes"
             {...register('internal_notes')}
             rows={2}
-            className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
             placeholder={t('expenses:form.internalNotesPlaceholder')}
           />
-        </div>
+        </FormField>
       </div>
 
       {/* Actions */}
-      <div className="flex items-center justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+      <StickyFormFooter>
         {onCancel && (
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={onCancel}
             disabled={isSubmitting}
-            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
           >
             {t('common:cancel')}
-          </button>
+          </Button>
         )}
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-        >
+        <Button type="submit" variant="primary" disabled={isSubmitting}>
           {isSubmitting ? t('common:saving') : t('common:save')}
-        </button>
-      </div>
+        </Button>
+      </StickyFormFooter>
     </form>
   )
 }

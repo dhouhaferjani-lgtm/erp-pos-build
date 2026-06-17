@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Award, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { textColors } from '@/lib/designTokens'
 import type { LoyaltyMember, LoyaltyEnrollment } from '../api/loyaltyApi'
 
 export interface LoyaltyMemberBadgeProps {
@@ -32,7 +33,7 @@ export function LoyaltyMemberBadge({
         <Award className="w-4 h-4 text-amber-600" />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-gray-900 truncate">
+        <div className={cn('text-sm font-medium truncate', textColors.primary)}>
           {displayName}
         </div>
         {programName && (

@@ -1,4 +1,7 @@
 import { useTranslation } from 'react-i18next'
+import { cn } from '@/lib/utils'
+import { textColors, borderColors, colors } from '@/lib/designTokens'
+import { StatusBadge, statusTone, type StatusTone } from '@/components/atoms/StatusBadge'
 import type { OrderLineData } from '../../api/orderApi'
 
 export interface OrderLineItemProps {
@@ -8,13 +11,18 @@ export interface OrderLineItemProps {
   onRemove?: (lineId: string) => void
 }
 
-const lineStatusColors: Record<string, string> = {
-  pending: 'text-gray-500',
-  sent: 'text-amber-600',
-  preparing: 'text-orange-600',
-  ready: 'text-green-600',
-  served: 'text-blue-600',
-  cancelled: 'text-red-600 line-through',
+/**
+ * Domain line-status → semantic tone overrides for the status pill.
+ * `sent`/`preparing` map to `warning`, `served` to `info`, `ready` to
+ * `success`, `cancelled` to `danger`; everything else falls back to neutral.
+ */
+const lineStatusToneOverrides: Record<string, StatusTone> = {
+  pending: 'neutral',
+  sent: 'warning',
+  preparing: 'warning',
+  ready: 'success',
+  served: 'info',
+  cancelled: 'danger',
 }
 
 /**
@@ -28,41 +36,44 @@ export function OrderLineItem({
 }: OrderLineItemProps) {
   const { t } = useTranslation('pos')
 
-  const statusColor = lineStatusColors[line.status] ?? 'text-gray-500'
+  const tone = statusTone(line.status, lineStatusToneOverrides)
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+    <div className={cn('flex items-center justify-between gap-3 rounded-lg border p-3', borderColors.light)}>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-gray-900 dark:text-gray-100">
+          <span className={cn('font-medium', textColors.primary)}>
             {line.product_name}
           </span>
-          <span className={`text-xs font-medium ${statusColor}`}>
+          <StatusBadge
+            tone={tone}
+            className={cn(line.status === 'cancelled' && 'line-through')}
+          >
             {t(`orders.lineStatus.${line.status}`)}
-          </span>
+          </StatusBadge>
         </div>
 
-        <div className="mt-1 flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+        <div className={cn('mt-1 flex items-center gap-3 text-sm', textColors.tertiary)}>
           <span>
-            {t('orders.quantity')}: {line.quantity}
+            {t('orders.quantity')}: <span className="tabular-nums">{line.quantity}</span>
           </span>
-          <span>@ {line.unit_price}</span>
+          <span className="tabular-nums">@ {line.unit_price}</span>
           {parseFloat(line.discount_amount) > 0 && (
-            <span className="text-red-600">
+            <span className={cn('tabular-nums', textColors.error)}>
               -{line.discount_amount}
             </span>
           )}
         </div>
 
         {line.special_instructions && (
-          <p className="mt-1 text-xs italic text-gray-400 dark:text-gray-500">
+          <p className={cn('mt-1 text-xs italic', textColors.disabled)}>
             {line.special_instructions}
           </p>
         )}
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="whitespace-nowrap font-semibold text-gray-900 dark:text-gray-100">
+        <span className={cn('whitespace-nowrap font-semibold tabular-nums', textColors.primary)}>
           {line.line_total}
         </span>
 
@@ -72,7 +83,7 @@ export function OrderLineItem({
               <button
                 type="button"
                 onClick={() => { onModify(line.id); }}
-                className="rounded p-1 text-sm text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+                className={cn('rounded p-1 text-sm', textColors.brand, colors.hover.gray100)}
               >
                 {t('orders.actions.modifyLine')}
               </button>
@@ -81,7 +92,7 @@ export function OrderLineItem({
               <button
                 type="button"
                 onClick={() => { onRemove(line.id); }}
-                className="rounded p-1 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
+                className={cn('rounded p-1 text-sm', textColors.error, colors.hover.red50)}
               >
                 {t('orders.actions.removeLine')}
               </button>

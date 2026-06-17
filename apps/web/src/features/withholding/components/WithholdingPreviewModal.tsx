@@ -1,8 +1,17 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { X, AlertCircle, Calculator } from 'lucide-react'
+import { AlertCircle, Calculator } from 'lucide-react'
 import { useWithholdingPreview } from '../hooks/useWithholding'
 import { useCurrency } from '@/hooks/useCurrency'
+import { Button } from '@/components/atoms/Button'
+import { Checkbox } from '@/components/atoms'
+import { FormField } from '@/components/atoms/FormField'
+import { Input } from '@/components/atoms/Input'
+import { Textarea } from '@/components/atoms/Textarea'
+import { Spinner } from '@/components/atoms/Spinner'
+import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal'
+import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
 import type { TransactionType } from '../types'
 
 interface WithholdingPreviewModalProps {
@@ -65,197 +74,167 @@ export function WithholdingPreviewModal({
     ? (parseFloat(amount) - parseFloat(calculatedWithholding)).toFixed(decimals)
     : preview?.net_amount ?? amount
 
-  if (!isOpen) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-      <div className="w-full max-w-2xl rounded-lg bg-white shadow-xl">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">
-            {t('preview.title')}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={t('preview.title')}
+      size="lg"
+    >
+      <ModalContent className="space-y-6">
+        {/* Loading State */}
+        {previewMutation.isPending && (
+          <div className="flex items-center justify-center py-8">
+            <Spinner size="md" message={t('preview.calculating')} />
+          </div>
+        )}
 
-        {/* Content */}
-        <div className="space-y-6 px-6 py-4">
-          {/* Loading State */}
-          {previewMutation.isPending && (
-            <div className="flex items-center justify-center py-8">
-              <div className="text-center">
-                <div className="mx-auto mb-2 h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
-                <p className="text-sm text-gray-600">{t('preview.calculating')}</p>
+        {/* Error State */}
+        {previewMutation.isError && (
+          <div className={cn('rounded-lg border p-4', borderColors.error, tokens.alert.error)}>
+            <div className="flex items-start gap-3">
+              <AlertCircle className={cn('h-5 w-5 flex-shrink-0 mt-0.5', textColors.error)} />
+              <div>
+                <h3 className={cn('text-sm font-medium', textColors.error)}>
+                  {t('messages.calculationFailed')}
+                </h3>
+                <p className={cn('mt-1 text-sm', textColors.error)}>
+                  {previewMutation.error?.message || t('messages.noApplicableRule')}
+                </p>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Error State */}
-          {previewMutation.isError && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="text-sm font-medium text-red-900">
-                    {t('messages.calculationFailed')}
-                  </h3>
-                  <p className="mt-1 text-sm text-red-700">
-                    {previewMutation.error?.message || t('messages.noApplicableRule')}
-                  </p>
+        {/* Success State - Show Preview */}
+        {preview && !previewMutation.isPending && (
+          <>
+            {/* Automatic Calculation */}
+            {!manualOverride && (
+              <div className={cn('rounded-lg border p-4', borderColors.primary, tokens.alert.info)}>
+                <div className="flex items-start gap-3">
+                  <Calculator className={cn('h-5 w-5 flex-shrink-0 mt-0.5', textColors.brand)} />
+                  <div className="flex-1">
+                    <h3 className={cn('text-sm font-medium', textColors.brand)}>
+                      {t('preview.recommendedAlert')}
+                    </h3>
+                    {preview.rule && (
+                      <div className="mt-2 space-y-1">
+                        <p className={cn('text-sm', textColors.brand)}>
+                          <span className="font-medium">{t('rules.name')}:</span> {preview.rule.name}
+                        </p>
+                        <p className={cn('text-sm', textColors.brand)}>
+                          <span className="font-medium">{t('rules.code')}:</span> {preview.rule.code}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Amount Breakdown */}
+            <div className={cn('rounded-lg border p-4', borderColors.light, tokens.alert.base, colors.neutral[50])}>
+              <h3 className={cn('mb-3 text-sm font-medium', textColors.primary)}>
+                {t('preview.amountBreakdown')}
+              </h3>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className={textColors.tertiary}>{t('certificates.grossAmount')}</span>
+                  <span className={cn('font-mono font-semibold', textColors.primary)}>
+                    {parseFloat(amount).toFixed(decimals)} {currency}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className={textColors.tertiary}>
+                    {t('certificates.rate')} ({manualOverride ? manualRate : (preview.rate_percentage ?? 0)}%)
+                  </span>
+                  <span className={cn('font-mono font-semibold', textColors.error)}>
+                    - {calculatedWithholding} {currency}
+                  </span>
+                </div>
+                <div className={cn('flex items-center justify-between border-t pt-2 text-base', borderColors.default)}>
+                  <span className={cn('font-semibold', textColors.primary)}>{t('certificates.netAmount')}</span>
+                  <span className={cn('font-mono text-lg font-bold', textColors.primary)}>
+                    {calculatedNet} {currency}
+                  </span>
                 </div>
               </div>
             </div>
-          )}
 
-          {/* Success State - Show Preview */}
-          {preview && !previewMutation.isPending && (
-            <>
-              {/* Automatic Calculation */}
-              {!manualOverride && (
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-                  <div className="flex items-start gap-3">
-                    <Calculator className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <h3 className="text-sm font-medium text-blue-900">
-                        {t('preview.recommendedAlert')}
-                      </h3>
-                      {preview.rule && (
-                        <div className="mt-2 space-y-1">
-                          <p className="text-sm text-blue-800">
-                            <span className="font-medium">{t('rules.name')}:</span> {preview.rule.name}
-                          </p>
-                          <p className="text-sm text-blue-800">
-                            <span className="font-medium">{t('rules.code')}:</span> {preview.rule.code}
-                          </p>
-                        </div>
-                      )}
+            {/* Manual Override Toggle */}
+            <div className={cn('border-t pt-4', borderColors.light)}>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={manualOverride}
+                  onChange={(e) => {
+                    setManualOverride(e.target.checked)
+                    if (e.target.checked && preview) {
+                      setManualRate((preview.rate_percentage ?? 0).toString())
+                    }
+                  }}
+                />
+                <span className={cn('text-sm font-medium', textColors.secondary)}>
+                  {t('preview.manualOverride')}
+                </span>
+              </label>
+
+              {/* Manual Override Fields */}
+              {manualOverride && (
+                <div className={cn('mt-4 space-y-4 rounded-lg border p-4', borderColors.light, colors.neutral[50])}>
+                  <FormField label={t('preview.manualRate')} htmlFor="withholding-manual-rate">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="withholding-manual-rate"
+                        type="number"
+                        step="any"
+                        min="0"
+                        max="100"
+                        value={manualRate}
+                        onChange={(e) => { setManualRate(e.target.value); }}
+                        className="w-32"
+                      />
+                      <span className={cn('text-sm', textColors.tertiary)}>%</span>
                     </div>
-                  </div>
+                  </FormField>
+                  <FormField label={t('details.overrideReason')} htmlFor="withholding-override-reason">
+                    <Textarea
+                      id="withholding-override-reason"
+                      value={overrideReason}
+                      onChange={(e) => { setOverrideReason(e.target.value); }}
+                      rows={2}
+                      placeholder={t('preview.overrideReasonPlaceholder')}
+                    />
+                  </FormField>
                 </div>
               )}
-
-              {/* Amount Breakdown */}
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <h3 className="mb-3 text-sm font-medium text-gray-900">
-                  {t('preview.amountBreakdown')}
-                </h3>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">{t('certificates.grossAmount')}</span>
-                    <span className="font-mono font-semibold text-gray-900">
-                      {parseFloat(amount).toFixed(decimals)} {currency}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">
-                      {t('certificates.rate')} ({manualOverride ? manualRate : (preview.rate_percentage ?? 0)}%)
-                    </span>
-                    <span className="font-mono font-semibold text-red-600">
-                      - {calculatedWithholding} {currency}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between border-t border-gray-300 pt-2 text-base">
-                    <span className="font-semibold text-gray-900">{t('certificates.netAmount')}</span>
-                    <span className="font-mono text-lg font-bold text-gray-900">
-                      {calculatedNet} {currency}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Manual Override Toggle */}
-              <div className="border-t border-gray-200 pt-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={manualOverride}
-                    onChange={(e) => {
-                      setManualOverride(e.target.checked)
-                      if (e.target.checked && preview) {
-                        setManualRate((preview.rate_percentage ?? 0).toString())
-                      }
-                    }}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm font-medium text-gray-700">
-                    {t('preview.manualOverride')}
-                  </span>
-                </label>
-
-                {/* Manual Override Fields */}
-                {manualOverride && (
-                  <div className="mt-4 space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('preview.manualRate')}
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max="100"
-                          value={manualRate}
-                          onChange={(e) => { setManualRate(e.target.value); }}
-                          className="block w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                        />
-                        <span className="text-sm text-gray-600">%</span>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('details.overrideReason')}
-                      </label>
-                      <textarea
-                        value={overrideReason}
-                        onChange={(e) => { setOverrideReason(e.target.value); }}
-                        rows={2}
-                        className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                        placeholder={t('preview.overrideReasonPlaceholder')}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
-          {/* No Rule Found */}
-          {!preview && !previewMutation.isPending && !previewMutation.isError && (
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-center">
-              <p className="text-sm text-gray-600">{t('preview.noRuleFound')}</p>
-              <p className="mt-1 text-xs text-gray-500">
-                {t('preview.noRuleFoundHelp')}
-              </p>
             </div>
-          )}
-        </div>
+          </>
+        )}
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-gray-200 px-6 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            {t('common:cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={handleApply}
-            disabled={!preview && !manualOverride}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {t('preview.applyWithholding')}
-          </button>
-        </div>
-      </div>
-    </div>
+        {/* No Rule Found */}
+        {!preview && !previewMutation.isPending && !previewMutation.isError && (
+          <div className={cn('rounded-lg border p-4 text-center', borderColors.light, tokens.alert.base, colors.neutral[50])}>
+            <p className={cn('text-sm', textColors.tertiary)}>{t('preview.noRuleFound')}</p>
+            <p className={cn('mt-1 text-xs', textColors.disabled)}>
+              {t('preview.noRuleFoundHelp')}
+            </p>
+          </div>
+        )}
+      </ModalContent>
+
+      <ModalFooter>
+        <Button variant="secondary" onClick={onClose}>
+          {t('common:cancel')}
+        </Button>
+        <Button
+          variant="primary"
+          onClick={handleApply}
+          disabled={!preview && !manualOverride}
+        >
+          {t('preview.applyWithholding')}
+        </Button>
+      </ModalFooter>
+    </Modal>
   )
 }
