@@ -201,7 +201,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         { key: 'stockMovements', href: '/inventory/movements', icon: ArrowLeftRight },
         { key: 'stockTransfers', href: '/inventory/stock-transfers', icon: Repeat },
         { key: 'counting', href: '/inventory/counting', icon: ClipboardCheck },
-        { key: 'batches', href: '/inventory/batches', icon: Pill, module: ['BatchExpiry', 'Parapharmacy'] },
+        { key: 'batches', href: '/inventory/batches', icon: Pill, module: 'BatchExpiry' },
         { key: 'enrichmentQueue', href: '/inventory/enrichment-results', icon: Sparkles },
       ],
     },

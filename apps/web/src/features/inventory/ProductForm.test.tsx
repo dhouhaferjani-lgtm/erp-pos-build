@@ -45,7 +45,10 @@ vi.mock('../../stores/companyStore', () => {
 })
 
 vi.mock('../../contexts/CompanyConfigContext', () => ({
-  useCompanyConfig: () => ({ config: { vertical: 'generic' } }),
+  useCompanyConfig: () => ({
+    config: { vertical: 'generic' },
+    hasModule: (name: string) => name === 'Inventory',
+  }),
 }))
 vi.mock('../../contexts/ProductConfigContext', () => ({
   useProductConfig: () => ({ isOtospex: false }),

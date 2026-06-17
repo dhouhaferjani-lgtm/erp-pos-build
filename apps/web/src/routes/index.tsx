@@ -908,45 +908,53 @@ export function AppRoutes() {
             }
           />
 
-          {/* Batches */}
+          {/* Batches — vertical-gated via ModuleGuard (BatchExpiry) */}
           <Route
             path="batches"
             element={
-              <RequirePermission moduleKey="inventory">
-                <SuspenseWrapper>
-                  <BatchListPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="BatchExpiry">
+                <RequirePermission moduleKey="inventory">
+                  <SuspenseWrapper>
+                    <BatchListPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="batches/new"
             element={
-              <RequirePermission moduleKey="inventory">
-                <SuspenseWrapper>
-                  <CreateBatchPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="BatchExpiry">
+                <RequirePermission moduleKey="inventory">
+                  <SuspenseWrapper>
+                    <CreateBatchPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="batches/:uuid/edit"
             element={
-              <RequirePermission moduleKey="inventory">
-                <SuspenseWrapper>
-                  <EditBatchPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="BatchExpiry">
+                <RequirePermission moduleKey="inventory">
+                  <SuspenseWrapper>
+                    <EditBatchPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="batches/:uuid"
             element={
-              <RequirePermission moduleKey="inventory">
-                <SuspenseWrapper>
-                  <BatchDetailPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="BatchExpiry">
+                <RequirePermission moduleKey="inventory">
+                  <SuspenseWrapper>
+                    <BatchDetailPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
 
@@ -2052,91 +2060,109 @@ export function AppRoutes() {
           <Route
             path="composite-items"
             element={
-              <RequirePermission permission="composite-items.view">
-                <SuspenseWrapper>
-                  <CompositeItemListPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="CompositeItems">
+                <RequirePermission permission="composite-items.view">
+                  <SuspenseWrapper>
+                    <CompositeItemListPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="composite-items/new"
             element={
-              <RequirePermission permission="composite-items.create">
-                <SuspenseWrapper>
-                  <CompositeItemFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="CompositeItems">
+                <RequirePermission permission="composite-items.create">
+                  <SuspenseWrapper>
+                    <CompositeItemFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="composite-items/:id/edit"
             element={
-              <RequirePermission permission="composite-items.view">
-                <SuspenseWrapper>
-                  <CompositeItemFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="CompositeItems">
+                <RequirePermission permission="composite-items.view">
+                  <SuspenseWrapper>
+                    <CompositeItemFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="modifier-groups"
             element={
-              <RequirePermission permission="modifier-groups.view">
-                <SuspenseWrapper>
-                  <ModifierGroupListPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="CompositeItems">
+                <RequirePermission permission="modifier-groups.view">
+                  <SuspenseWrapper>
+                    <ModifierGroupListPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="modifier-groups/new"
             element={
-              <RequirePermission permission="modifier-groups.manage">
-                <SuspenseWrapper>
-                  <ModifierGroupFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="CompositeItems">
+                <RequirePermission permission="modifier-groups.manage">
+                  <SuspenseWrapper>
+                    <ModifierGroupFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="modifier-groups/:id/edit"
             element={
-              <RequirePermission permission="modifier-groups.manage">
-                <SuspenseWrapper>
-                  <ModifierGroupFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="CompositeItems">
+                <RequirePermission permission="modifier-groups.manage">
+                  <SuspenseWrapper>
+                    <ModifierGroupFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="menus"
             element={
-              <RequirePermission permission="composite-items.view">
-                <SuspenseWrapper>
-                  <MenuListPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Menu">
+                <RequirePermission permission="composite-items.view">
+                  <SuspenseWrapper>
+                    <MenuListPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="menus/new"
             element={
-              <RequirePermission permission="composite-items.create">
-                <SuspenseWrapper>
-                  <MenuFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Menu">
+                <RequirePermission permission="composite-items.create">
+                  <SuspenseWrapper>
+                    <MenuFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="menus/:id/edit"
             element={
-              <RequirePermission permission="composite-items.view">
-                <SuspenseWrapper>
-                  <MenuFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Menu">
+                <RequirePermission permission="composite-items.view">
+                  <SuspenseWrapper>
+                    <MenuFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
@@ -2546,86 +2572,102 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
-          {/* Loyalty Programs */}
+          {/* Loyalty Programs — vertical-gated via ModuleGuard (Loyalty) */}
           <Route
             path="loyalty/programs"
             element={
-              <RequirePermission permission="loyalty.view">
-                <SuspenseWrapper>
-                  <LoyaltyProgramListPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Loyalty">
+                <RequirePermission permission="loyalty.view">
+                  <SuspenseWrapper>
+                    <LoyaltyProgramListPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="loyalty/programs/new"
             element={
-              <RequirePermission permission="loyalty.manage">
-                <SuspenseWrapper>
-                  <LoyaltyProgramFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Loyalty">
+                <RequirePermission permission="loyalty.manage">
+                  <SuspenseWrapper>
+                    <LoyaltyProgramFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="loyalty/programs/:id"
             element={
-              <RequirePermission permission="loyalty.view">
-                <SuspenseWrapper>
-                  <LoyaltyProgramDetailPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Loyalty">
+                <RequirePermission permission="loyalty.view">
+                  <SuspenseWrapper>
+                    <LoyaltyProgramDetailPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="loyalty/programs/:id/edit"
             element={
-              <RequirePermission permission="loyalty.manage">
-                <SuspenseWrapper>
-                  <LoyaltyProgramFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Loyalty">
+                <RequirePermission permission="loyalty.manage">
+                  <SuspenseWrapper>
+                    <LoyaltyProgramFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
-          {/* Loyalty Members */}
+          {/* Loyalty Members — vertical-gated via ModuleGuard (Loyalty) */}
           <Route
             path="loyalty/members"
             element={
-              <RequirePermission permission="loyalty.view">
-                <SuspenseWrapper>
-                  <LoyaltyMemberListPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Loyalty">
+                <RequirePermission permission="loyalty.view">
+                  <SuspenseWrapper>
+                    <LoyaltyMemberListPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="loyalty/members/new"
             element={
-              <RequirePermission permission="loyalty.manage">
-                <SuspenseWrapper>
-                  <LoyaltyMemberFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Loyalty">
+                <RequirePermission permission="loyalty.manage">
+                  <SuspenseWrapper>
+                    <LoyaltyMemberFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="loyalty/members/:id"
             element={
-              <RequirePermission permission="loyalty.view">
-                <SuspenseWrapper>
-                  <LoyaltyMemberDetailPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Loyalty">
+                <RequirePermission permission="loyalty.view">
+                  <SuspenseWrapper>
+                    <LoyaltyMemberDetailPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="loyalty/members/:id/edit"
             element={
-              <RequirePermission permission="loyalty.manage">
-                <SuspenseWrapper>
-                  <LoyaltyMemberFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Loyalty">
+                <RequirePermission permission="loyalty.manage">
+                  <SuspenseWrapper>
+                    <LoyaltyMemberFormPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           {/* Vouchers & Credits */}

@@ -179,7 +179,7 @@
     "sewing": {
       "compositeItem": "Garment",
       "compositeItems": "Garments",
-      "recipe": "Pattern",
+      "recipe": "Bill of Materials",
       "recipeLine": "Material",
       "variant": "Size",
       "modifier": "Customization",

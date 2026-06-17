@@ -179,7 +179,7 @@
     "sewing": {
       "compositeItem": "Vêtement",
       "compositeItems": "Vêtements",
-      "recipe": "Patron",
+      "recipe": "Nomenclature",
       "recipeLine": "Matériau",
       "variant": "Taille",
       "modifier": "Personnalisation",

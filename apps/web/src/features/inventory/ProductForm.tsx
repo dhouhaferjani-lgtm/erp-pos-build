@@ -45,6 +45,8 @@ interface Product {
   oem_numbers: string[] | null
   cross_references: Array<{ brand: string; reference: string }> | null
   parapharmacy_metadata: ParapharmacyMetadata | null
+  requires_batch_tracking: boolean
+  default_shelf_life_days: number | null
   created_at: string
   updated_at: string | null
 }
@@ -82,6 +84,8 @@ interface ProductFormData {
   oem_numbers: string[]
   cross_references: Array<{ brand: string; reference: string }>
   parapharmacy_metadata: ParapharmacyMetadata
+  requires_batch_tracking: boolean
+  default_shelf_life_days: number | null
 }
 
 export function ProductForm() {
@@ -92,8 +96,9 @@ export function ProductForm() {
   const isEditing = id.length > 0
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
-  const { config } = useCompanyConfig()
+  const { config, hasModule } = useCompanyConfig()
   const isParapharmacy = config?.vertical === 'parapharmacy'
+  const showBatchTracking = hasModule('BatchExpiry') || hasModule('Inventory')
   const { isOtospex } = useProductConfig()
   const { currency, decimals } = useCurrency()
 
@@ -142,6 +147,8 @@ export function ProductForm() {
         regulatory_code: null,
         storage_requirements: null,
       },
+      requires_batch_tracking: false,
+      default_shelf_life_days: null,
     },
   })
 
@@ -172,6 +179,7 @@ export function ProductForm() {
 
   const oemNumbers = watch('oem_numbers')
   const categoryId = watch('category_id')
+  const requiresBatchTracking = watch('requires_batch_tracking')
 
   const { fields: crossRefFields, append: appendCrossRef, remove: removeCrossRef } = useFieldArray({
     control,
@@ -234,6 +242,8 @@ export function ProductForm() {
           regulatory_code: null,
           storage_requirements: null,
         },
+        requires_batch_tracking: product.requires_batch_tracking ?? false,
+        default_shelf_life_days: product.default_shelf_life_days ?? null,
       })
     }
   }, [product, reset])
@@ -407,6 +417,42 @@ export function ProductForm() {
                 {t('inventory:products.isPhysicalHelper')}
               </p>
             </div>
+
+            {showBatchTracking && (
+              <div data-testid="batch-tracking-section">
+                <div className="flex items-center gap-2 mt-6">
+                  <Checkbox
+                    id="requires_batch_tracking"
+                    {...register('requires_batch_tracking')}
+                  />
+                  <label htmlFor="requires_batch_tracking" className={tokens.label.base}>
+                    {t('inventory:products.requiresBatchTracking')}
+                  </label>
+                </div>
+                <p className={tokens.helperText.base}>
+                  {t('inventory:products.requiresBatchTrackingHelper')}
+                </p>
+
+                {requiresBatchTracking && (
+                  <FormField
+                    label={t('inventory:products.defaultShelfLifeDays')}
+                    htmlFor="default_shelf_life_days"
+                    className="mt-3"
+                  >
+                    <Input
+                      type="number"
+                      id="default_shelf_life_days"
+                      min={0}
+                      placeholder={t('inventory:products.defaultShelfLifeDaysPlaceholder')}
+                      {...register('default_shelf_life_days', {
+                        setValueAs: (value: string): number | null =>
+                          value === '' || value === null ? null : Number(value),
+                      })}
+                    />
+                  </FormField>
+                )}
+              </div>
+            )}
 
             <FormField label={t('catalog.products.category')} htmlFor="category">
               <CategorySelect
