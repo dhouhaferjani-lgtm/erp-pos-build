@@ -6,6 +6,8 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { fetchShiftHistory, type ShiftHistoryFilters } from '../../api/shiftHistoryApi'
 import { Clock, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { tokens, textColors, colors, borderColors } from '@/lib/designTokens'
+import { StatusBadge, statusTone } from '@/components/atoms/StatusBadge'
 import { usePosTenantScope } from '../../hooks/usePosTenantScope'
 
 interface Terminal {
@@ -46,21 +48,21 @@ export function ShiftHistoryPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Clock className="h-6 w-6 text-gray-400" />
+        <h1 className={cn('text-2xl font-bold flex items-center gap-2', textColors.primary)}>
+          <Clock className={cn('h-6 w-6', textColors.disabled)} />
           {t('pos:shiftHistory.title')}
         </h1>
-        <p className="text-gray-500">{t('pos:shiftHistory.description')}</p>
+        <p className={textColors.disabled}>{t('pos:shiftHistory.description')}</p>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-4 rounded-lg border border-gray-200 bg-white p-4">
+      <div className={cn('flex flex-wrap gap-4 rounded-lg border p-4', borderColors.light, colors.white)}>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className={cn('block text-sm font-medium mb-1', textColors.secondary)}>
             {t('pos:shiftHistory.filters.terminal')}
           </label>
           <select
-            className="rounded-md border-gray-300 text-sm"
+            className={cn('rounded-md text-sm', borderColors.default)}
             value={filters.terminal_id ?? ''}
             onChange={(e) =>
               { setFilters((prev) => ({
@@ -80,11 +82,11 @@ export function ShiftHistoryPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className={cn('block text-sm font-medium mb-1', textColors.secondary)}>
             {t('pos:shiftHistory.filters.status')}
           </label>
           <select
-            className="rounded-md border-gray-300 text-sm"
+            className={cn('rounded-md text-sm', borderColors.default)}
             value={filters.status ?? ''}
             onChange={(e) =>
               { setFilters((prev) => ({
@@ -101,12 +103,12 @@ export function ShiftHistoryPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className={cn('block text-sm font-medium mb-1', textColors.secondary)}>
             {t('pos:shiftHistory.filters.from')}
           </label>
           <input
             type="date"
-            className="rounded-md border-gray-300 text-sm"
+            className={cn('rounded-md text-sm', borderColors.default)}
             value={filters.from_date ?? ''}
             onChange={(e) =>
               { setFilters((prev) => ({ ...prev, from_date: e.target.value || undefined, page: 1 })); }
@@ -115,12 +117,12 @@ export function ShiftHistoryPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className={cn('block text-sm font-medium mb-1', textColors.secondary)}>
             {t('pos:shiftHistory.filters.to')}
           </label>
           <input
             type="date"
-            className="rounded-md border-gray-300 text-sm"
+            className={cn('rounded-md text-sm', borderColors.default)}
             value={filters.to_date ?? ''}
             onChange={(e) =>
               { setFilters((prev) => ({ ...prev, to_date: e.target.value || undefined, page: 1 })); }
@@ -130,79 +132,76 @@ export function ShiftHistoryPage() {
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      <div className={cn('rounded-lg border overflow-hidden', borderColors.light, colors.white)}>
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            <Loader2 className={cn('h-8 w-8 animate-spin', textColors.brand)} />
           </div>
         ) : shifts.length === 0 ? (
           <div className="text-center py-12">
-            <Clock className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">{t('pos:shiftHistory.noShifts')}</p>
-            <p className="text-gray-400 text-sm mt-1">{t('pos:shiftHistory.noShiftsDescription')}</p>
+            <Clock className={cn('h-12 w-12 mx-auto mb-3', textColors.disabled)} />
+            <p className={cn('font-medium', textColors.disabled)}>{t('pos:shiftHistory.noShifts')}</p>
+            <p className={cn('text-sm mt-1', textColors.disabled)}>{t('pos:shiftHistory.noShiftsDescription')}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+              <thead className={tokens.table.header}>
                 <tr>
-                  <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase">{t('pos:shiftHistory.shiftNumber')}</th>
-                  <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase">{t('pos:shiftHistory.terminal')}</th>
-                  <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase">{t('pos:shiftHistory.cashier')}</th>
-                  <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase">{t('pos:shiftHistory.openedAt')}</th>
-                  <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase">{t('pos:shiftHistory.closedAt')}</th>
-                  <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase">{t('pos:shiftHistory.duration')}</th>
-                  <th className="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase">{t('pos:shiftHistory.openingCash')}</th>
-                  <th className="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase">{t('pos:shiftHistory.variance')}</th>
-                  <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase">{t('pos:shiftHistory.status')}</th>
+                  <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase', textColors.disabled)}>{t('pos:shiftHistory.shiftNumber')}</th>
+                  <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase', textColors.disabled)}>{t('pos:shiftHistory.terminal')}</th>
+                  <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase', textColors.disabled)}>{t('pos:shiftHistory.cashier')}</th>
+                  <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase', textColors.disabled)}>{t('pos:shiftHistory.openedAt')}</th>
+                  <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase', textColors.disabled)}>{t('pos:shiftHistory.closedAt')}</th>
+                  <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase', textColors.disabled)}>{t('pos:shiftHistory.duration')}</th>
+                  <th className={cn('px-4 py-3 text-end text-xs font-medium uppercase', textColors.disabled)}>{t('pos:shiftHistory.openingCash')}</th>
+                  <th className={cn('px-4 py-3 text-end text-xs font-medium uppercase', textColors.disabled)}>{t('pos:shiftHistory.variance')}</th>
+                  <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase', textColors.disabled)}>{t('pos:shiftHistory.status')}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className={cn('divide-y', borderColors.divideDefault)}>
                 {shifts.map((shift) => (
-                  <tr key={shift.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-mono font-medium text-gray-900">
+                  <tr key={shift.id} className={tokens.table.rowHover}>
+                    <td className={cn('px-4 py-3 text-sm font-mono font-medium tabular-nums', textColors.primary)}>
                       #{shift.shift_number}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className={cn('px-4 py-3 text-sm', textColors.tertiary)}>
                       {shift.terminal_name ?? shift.terminal_code}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className={cn('px-4 py-3 text-sm', textColors.tertiary)}>
                       {shift.cashier_name}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className={cn('px-4 py-3 text-sm', textColors.tertiary)}>
                       {new Date(shift.opened_at).toLocaleString()}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className={cn('px-4 py-3 text-sm', textColors.tertiary)}>
                       {shift.closed_at ? new Date(shift.closed_at).toLocaleString() : '—'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className={cn('px-4 py-3 text-sm', textColors.tertiary)}>
                       {formatDuration(shift.opened_at, shift.closed_at)}
                     </td>
-                    <td className="px-4 py-3 text-sm text-end font-mono text-gray-900">
+                    <td className={cn('px-4 py-3 text-sm text-end font-mono tabular-nums', textColors.primary)}>
                       {shift.opening_cash}
                     </td>
-                    <td className="px-4 py-3 text-sm text-end font-mono">
+                    <td className="px-4 py-3 text-sm text-end font-mono tabular-nums">
                       {shift.variance != null ? (
                         <span className={cn(
                           parseFloat(shift.variance) === 0
-                            ? 'text-green-600'
+                            ? textColors.success
                             : parseFloat(shift.variance) > 0
-                            ? 'text-blue-600'
-                            : 'text-red-600'
+                            ? textColors.brand
+                            : textColors.error
                         )}>
                           {parseFloat(shift.variance) > 0 ? '+' : ''}{shift.variance}
                         </span>
                       ) : '—'}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={cn(
-                        'inline-flex items-center rounded-full px-2 py-1 text-xs font-medium',
-                        shift.status === 'OPEN'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-gray-100 text-gray-600'
-                      )}>
+                      <StatusBadge
+                        tone={statusTone(shift.status, { open: 'success', closed: 'neutral' })}
+                      >
                         {shift.status === 'OPEN' ? t('pos:shiftHistory.open') : t('pos:shiftHistory.closed')}
-                      </span>
+                      </StatusBadge>
                     </td>
                   </tr>
                 ))}
@@ -213,8 +212,8 @@ export function ShiftHistoryPage() {
 
         {/* Pagination */}
         {meta && meta.last_page > 1 && (
-          <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3 bg-gray-50">
-            <p className="text-sm text-gray-500">
+          <div className={cn('flex items-center justify-between border-t px-4 py-3', borderColors.light, colors.neutral[50])}>
+            <p className={cn('text-sm', textColors.disabled)}>
               {t('common:pagination.showing', {
                 from: (meta.current_page - 1) * meta.per_page + 1,
                 to: Math.min(meta.current_page * meta.per_page, meta.total),
@@ -226,7 +225,7 @@ export function ShiftHistoryPage() {
                 type="button"
                 disabled={meta.current_page <= 1}
                 onClick={() => { setFilters((prev) => ({ ...prev, page: (prev.page ?? 1) - 1 })); }}
-                className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
+                className={cn('rounded-md border px-3 py-1 text-sm disabled:opacity-50', borderColors.default, colors.white)}
               >
                 {t('common:pagination.previous')}
               </button>
@@ -234,7 +233,7 @@ export function ShiftHistoryPage() {
                 type="button"
                 disabled={meta.current_page >= meta.last_page}
                 onClick={() => { setFilters((prev) => ({ ...prev, page: (prev.page ?? 1) + 1 })); }}
-                className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
+                className={cn('rounded-md border px-3 py-1 text-sm disabled:opacity-50', borderColors.default, colors.white)}
               >
                 {t('common:pagination.next')}
               </button>

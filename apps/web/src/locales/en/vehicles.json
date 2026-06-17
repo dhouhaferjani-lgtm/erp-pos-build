@@ -4,7 +4,7 @@
   "plural": "vehicles",
   "registered": "registered",
   "new": "Add Vehicle",
-  "searchPlaceholder": "Search by license plate, VIN, brand, or model...",
+  "searchPlaceholder": "Search by license plate, VIN, brand, or model…",
   "table": {
     "vehicle": "Vehicle",
     "fuel": "Fuel"
@@ -51,7 +51,7 @@
     "color": "Blue",
     "year": "2020",
     "engineCode": "K9K 608",
-    "notes": "Additional notes about the vehicle..."
+    "notes": "Additional notes about the vehicle…"
   },
   "empty": {
     "title": "No vehicles yet",

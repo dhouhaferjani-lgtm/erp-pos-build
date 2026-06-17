@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AxiosError } from 'axios'
-import { X } from 'lucide-react'
 import {
   BundlePicker,
   ProductPicker,
@@ -9,8 +8,16 @@ import {
   type ProductPickerValue,
   type ServicePickerValue,
 } from '@/components/molecules/pickers'
+import { Button } from '@/components/atoms/Button'
+import { Checkbox } from '@/components/atoms'
+import { FormField } from '@/components/atoms/FormField'
+import { Input } from '@/components/atoms/Input'
+import { Select } from '@/components/atoms/Select'
+import { Textarea } from '@/components/atoms/Textarea'
+import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal'
 import { bccomp } from '@/lib/decimal'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
 import type { ApplicableBundleData } from '@/features/workshop-bundles/types'
 import type {
   BundleComponentType,
@@ -275,34 +282,21 @@ function BundleComponentFormModalReady({
   const excludeBundleIds = useMemo<string[]>(() => [bundle.id], [bundle.id])
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50"
-      data-testid="bundle-component-form-modal"
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={isEditing ? t('authoring.modal.editTitle') : t('authoring.modal.createTitle')}
+      size="md"
     >
-      <div
-        className="relative mx-4 rounded-xl bg-white p-6 shadow-xl"
-        style={{ width: '560px', maxWidth: '100%' }}
-      >
-        <div className={`mb-4 flex items-center justify-between border-b ${borderColors.light} pb-3`}>
-          <h2 className={`text-lg font-semibold ${textColors.primary}`}>
-            {isEditing ? t('authoring.modal.editTitle') : t('authoring.modal.createTitle')}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t('authoring.modal.close')}
-            className={tokens.modal.closeButton}
+      <form onSubmit={handleSubmit} data-testid="bundle-component-form-modal">
+        <ModalContent>
+          <FormField
+            label={t('authoring.fields.componentType')}
+            htmlFor="bundle-component-type-select"
           >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className={tokens.label.base}>{t('authoring.fields.componentType')}</label>
-            <select
+            <Select
+              id="bundle-component-type-select"
               data-testid="bundle-component-type-select"
-              className={tokens.input.base}
               value={state.component_type}
               disabled={isEditing}
               onChange={(e) => {
@@ -319,8 +313,8 @@ function BundleComponentFormModalReady({
               <option value="part">{t('authoring.componentType.part')}</option>
               <option value="labor">{t('authoring.componentType.labor')}</option>
               <option value="nested_bundle">{t('authoring.componentType.nestedBundle')}</option>
-            </select>
-          </div>
+            </Select>
+          </FormField>
 
           {state.component_type === 'part' ? (
             <div>
@@ -365,27 +359,30 @@ function BundleComponentFormModalReady({
           )}
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={tokens.label.base}>{t('authoring.fields.quantity')}</label>
-              <input
+            <FormField
+              label={t('authoring.fields.quantity')}
+              htmlFor="bundle-component-quantity"
+              error={errors.quantity}
+            >
+              <Input
+                id="bundle-component-quantity"
                 data-testid="bundle-component-quantity"
                 type="text"
                 inputMode="decimal"
-                className={tokens.input.base}
                 value={state.quantity}
                 onChange={(e) => {
                   setState((s) => ({ ...s, quantity: e.target.value }))
                 }}
               />
-              {errors.quantity !== undefined ? (
-                <p className={tokens.helperText.error}>{errors.quantity}</p>
-              ) : null}
-            </div>
-            <div>
-              <label className={tokens.label.base}>{t('authoring.fields.unit')}</label>
-              <select
+            </FormField>
+            <FormField
+              label={t('authoring.fields.unit')}
+              htmlFor="bundle-component-unit-select"
+              error={errors.unit_id}
+            >
+              <Select
+                id="bundle-component-unit-select"
                 data-testid="bundle-component-unit-select"
-                className={tokens.input.base}
                 value={state.unit_id}
                 onChange={(e) => {
                   setState((s) => ({ ...s, unit_id: e.target.value }))
@@ -397,81 +394,69 @@ function BundleComponentFormModalReady({
                     {u.symbol} — {u.name}
                   </option>
                 ))}
-              </select>
-              {errors.unit_id !== undefined ? (
-                <p className={tokens.helperText.error}>{errors.unit_id}</p>
-              ) : null}
-            </div>
+              </Select>
+            </FormField>
           </div>
 
-          <div>
-            <label className={tokens.label.base}>
-              {t('authoring.fields.overridePrice', { currency: bundle.currency })}
-            </label>
-            <input
+          <FormField
+            label={t('authoring.fields.overridePrice', { currency: bundle.currency })}
+            htmlFor="bundle-component-override-price"
+            error={errors.override_unit_price}
+          >
+            <Input
+              id="bundle-component-override-price"
               type="text"
               inputMode="decimal"
-              className={tokens.input.base}
               value={state.override_unit_price}
               placeholder={t('authoring.fields.overridePricePlaceholder')}
               onChange={(e) => {
                 setState((s) => ({ ...s, override_unit_price: e.target.value }))
               }}
             />
-            {errors.override_unit_price !== undefined ? (
-              <p className={tokens.helperText.error}>{errors.override_unit_price}</p>
-            ) : null}
-          </div>
+          </FormField>
 
           <div className="flex items-center gap-2">
-            <input
+            <Checkbox
               id="bundle-component-optional"
-              type="checkbox"
               checked={state.is_optional}
               onChange={(e) => {
                 setState((s) => ({ ...s, is_optional: e.target.checked }))
               }}
             />
-            <label htmlFor="bundle-component-optional" className={`text-sm ${textColors.secondary}`}>
+            <label
+              htmlFor="bundle-component-optional"
+              className={cn('text-sm', textColors.secondary)}
+            >
               {t('authoring.fields.isOptional')}
             </label>
           </div>
 
-          <div>
-            <label className={tokens.label.base}>{t('authoring.fields.notes')}</label>
-            <textarea
-              className={tokens.input.base}
+          <FormField label={t('authoring.fields.notes')} htmlFor="bundle-component-notes">
+            <Textarea
+              id="bundle-component-notes"
               rows={2}
               value={state.notes}
               onChange={(e) => {
                 setState((s) => ({ ...s, notes: e.target.value }))
               }}
             />
-          </div>
+          </FormField>
 
           {errors.form !== undefined ? (
             <div className={`${tokens.alert.base} ${tokens.alert.error}`}>{errors.form}</div>
           ) : null}
+        </ModalContent>
 
-          <div className={`flex items-center justify-end gap-2 border-t ${borderColors.light} pt-4`}>
-            <button
-              type="button"
-              onClick={onClose}
-              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
-            >
-              {t('authoring.modal.cancel')}
-            </button>
-            <button
-              type="submit"
-              disabled={isPending}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
-            >
-              {isPending ? t('authoring.modal.saving') : t('authoring.modal.save')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <ModalFooter className={cn('border-t pt-4', borderColors.light)}>
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+            {t('authoring.modal.cancel')}
+          </Button>
+          <Button type="submit" variant="primary" size="sm" disabled={isPending}>
+            {isPending ? t('authoring.modal.saving') : t('authoring.modal.save')}
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
   )
 }
 
@@ -484,31 +469,15 @@ function BundleComponentFormModalReady({
 function BundleComponentFormModalLoading({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation('workshop-bundles')
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50"
-      data-testid="bundle-component-form-modal"
-    >
-      <div
-        className="relative mx-4 rounded-xl bg-white p-6 shadow-xl"
-        style={{ width: '560px', maxWidth: '100%' }}
-      >
-        <div className={`mb-4 flex items-center justify-between border-b ${borderColors.light} pb-3`}>
-          <h2 className={`text-lg font-semibold ${textColors.primary}`}>
-            {t('authoring.modal.editTitle')}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t('authoring.modal.close')}
-            className={tokens.modal.closeButton}
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <div className={`py-8 text-center text-sm ${textColors.tertiary}`}>
+    <Modal isOpen onClose={onClose} title={t('authoring.modal.editTitle')} size="md">
+      <ModalContent>
+        <div
+          className={cn('py-8 text-center text-sm', textColors.tertiary)}
+          data-testid="bundle-component-form-modal"
+        >
           {t('authoring.modal.loading')}
         </div>
-      </div>
-    </div>
+      </ModalContent>
+    </Modal>
   )
 }

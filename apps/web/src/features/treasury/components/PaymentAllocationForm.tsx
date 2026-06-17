@@ -11,6 +11,10 @@ import { AllocationPreview } from './AllocationPreview'
 import { usePaymentAllocationPreview, useApplyAllocation } from '../hooks/useSmartPayment'
 import { AllocationMethod, type OpenInvoice, type ManualAllocation } from '@/types/treasury'
 import { useCurrency } from '@/hooks/useCurrency'
+import { Button } from '@/components/atoms/Button'
+import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
+import { bcadd, bccomp, formatCurrency } from '@/lib/decimal'
 
 interface PaymentAllocationFormProps {
   paymentId: string
@@ -40,7 +44,7 @@ export function PaymentAllocationForm({
   onCancel,
 }: PaymentAllocationFormProps) {
   const { t } = useTranslation(['treasury', 'common'])
-  const { decimals } = useCurrency()
+  const { currency, decimals } = useCurrency()
 
   // State
   const [allocationMethod, setAllocationMethod] = useState<AllocationMethod>(AllocationMethod.FIFO)
@@ -55,22 +59,22 @@ export function PaymentAllocationForm({
     previewMutation.reset?.()
   }, [allocationMethod])
 
-  // Calculate total manual allocations
+  // Calculate total manual allocations (canonical decimal string — never a float)
   const totalManualAllocations = useMemo(() => {
-    return manualAllocations.reduce((sum, allocation) => {
-      return sum + parseFloat(allocation.amount || '0')
-    }, 0)
-  }, [manualAllocations])
+    return manualAllocations.reduce<string>((sum, allocation) => {
+      return bcadd(sum, allocation.amount || '0', decimals)
+    }, '0')
+  }, [manualAllocations, decimals])
 
   // Format amount to currency-aware decimals
   const formatAmount = (amount: string | number): string => {
-    return parseFloat(String(amount)).toFixed(decimals)
+    return formatCurrency(amount, false, currency, decimals)
   }
 
   // Validation: Check if manual allocations exceed payment amount
   const exceedsPaymentAmount = useMemo(() => {
     if (allocationMethod !== AllocationMethod.MANUAL) return false
-    return totalManualAllocations > parseFloat(paymentAmount)
+    return bccomp(totalManualAllocations, paymentAmount) > 0
   }, [allocationMethod, totalManualAllocations, paymentAmount])
 
   // Validation: Check if apply button should be disabled
@@ -113,88 +117,78 @@ export function PaymentAllocationForm({
     )
   }
 
+  const methodOptions: readonly {
+    method: AllocationMethod
+    label: string
+    description: string
+  }[] = [
+    {
+      method: AllocationMethod.FIFO,
+      label: t('treasury:smartPayment.allocation.fifo'),
+      description: t('treasury:smartPayment.allocation.fifoDescription'),
+    },
+    {
+      method: AllocationMethod.DUE_DATE,
+      label: t('treasury:smartPayment.allocation.dueDate'),
+      description: t('treasury:smartPayment.allocation.dueDateDescription'),
+    },
+    {
+      method: AllocationMethod.MANUAL,
+      label: t('treasury:smartPayment.allocation.manual'),
+      description: t('treasury:smartPayment.allocation.manualDescription'),
+    },
+  ]
+
   return (
     <div className="space-y-6">
       {/* Header with Payment Amount */}
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className={cn('rounded-lg border bg-white p-4', borderColors.light)}>
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className={tokens.heading.section}>
             {t('treasury:smartPayment.allocation.title')}
           </h2>
           <div className="text-right">
-            <p className="text-sm text-gray-600">
+            <p className={cn('text-sm', textColors.tertiary)}>
               {t('treasury:smartPayment.allocation.paymentAmount')}
             </p>
-            <p className="text-xl font-bold text-gray-900">{formatAmount(paymentAmount)}</p>
+            <p className={cn('text-xl font-bold tabular-nums', textColors.primary)}>
+              {formatAmount(paymentAmount)}
+            </p>
           </div>
         </div>
       </div>
 
       {/* Allocation Method Selection */}
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="mb-4 text-sm font-medium text-gray-900">
+      <div className={cn('rounded-lg border bg-white p-4', borderColors.light)}>
+        <h3 className={cn('mb-4 text-sm font-medium', textColors.primary)}>
           {t('treasury:smartPayment.allocation.method')}
         </h3>
         <div className="space-y-3">
-          {/* FIFO Option */}
-          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 transition-colors hover:bg-gray-50">
-            <input
-              type="radio"
-              name="allocation-method"
-              value={AllocationMethod.FIFO}
-              checked={allocationMethod === AllocationMethod.FIFO}
-              onChange={() => { handleMethodChange(AllocationMethod.FIFO); }}
-              className="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            <div className="flex-1">
-              <p className="font-medium text-gray-900">
-                {t('treasury:smartPayment.allocation.fifo')}
-              </p>
-              <p className="text-sm text-gray-600">
-                {t('treasury:smartPayment.allocation.fifoDescription')}
-              </p>
-            </div>
-          </label>
-
-          {/* Due Date Option */}
-          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 transition-colors hover:bg-gray-50">
-            <input
-              type="radio"
-              name="allocation-method"
-              value={AllocationMethod.DUE_DATE}
-              checked={allocationMethod === AllocationMethod.DUE_DATE}
-              onChange={() => { handleMethodChange(AllocationMethod.DUE_DATE); }}
-              className="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            <div className="flex-1">
-              <p className="font-medium text-gray-900">
-                {t('treasury:smartPayment.allocation.dueDate')}
-              </p>
-              <p className="text-sm text-gray-600">
-                {t('treasury:smartPayment.allocation.dueDateDescription')}
-              </p>
-            </div>
-          </label>
-
-          {/* Manual Option */}
-          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 transition-colors hover:bg-gray-50">
-            <input
-              type="radio"
-              name="allocation-method"
-              value={AllocationMethod.MANUAL}
-              checked={allocationMethod === AllocationMethod.MANUAL}
-              onChange={() => { handleMethodChange(AllocationMethod.MANUAL); }}
-              className="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            <div className="flex-1">
-              <p className="font-medium text-gray-900">
-                {t('treasury:smartPayment.allocation.manual')}
-              </p>
-              <p className="text-sm text-gray-600">
-                {t('treasury:smartPayment.allocation.manualDescription')}
-              </p>
-            </div>
-          </label>
+          {methodOptions.map(({ method, label, description }) => (
+            <label
+              key={method}
+              className={cn(
+                'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
+                borderColors.light,
+                colors.hover.gray50
+              )}
+            >
+              <input
+                type="radio"
+                name="allocation-method"
+                value={method}
+                checked={allocationMethod === method}
+                onChange={() => {
+                  handleMethodChange(method)
+                }}
+                className={cn('mt-1', tokens.radio.base)}
+              />
+              <div className="flex-1">
+                <p className={cn('font-medium', textColors.primary)}>{label}</p>
+                <p className={cn('text-sm', textColors.tertiary)}>{description}</p>
+              </div>
+            </label>
+          ))}
         </div>
       </div>
 
@@ -209,15 +203,15 @@ export function PaymentAllocationForm({
 
       {/* Manual Allocations Summary */}
       {allocationMethod === 'manual' && manualAllocations.length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className={cn('rounded-lg border bg-white p-4', borderColors.light)}>
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">
+            <span className={cn('text-sm font-medium', textColors.secondary)}>
               {t('treasury:smartPayment.allocation.totalAllocated', {
                 amount: formatAmount(totalManualAllocations),
               })}
             </span>
             {exceedsPaymentAmount && (
-              <div className="flex items-center gap-2 text-red-600">
+              <div className={cn('flex items-center gap-2', textColors.error)}>
                 <AlertCircle className="h-4 w-4" />
                 <span className="text-sm font-medium">
                   {t('treasury:smartPayment.allocation.exceedsPayment')}
@@ -237,50 +231,39 @@ export function PaymentAllocationForm({
       <div className="flex items-center justify-between gap-4">
         <div className="flex gap-3">
           {/* Preview Button */}
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={handlePreview}
             disabled={previewMutation.isPending}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {previewMutation.isPending
               ? t('common:status.loading')
               : t('treasury:smartPayment.allocation.previewButton')}
-          </button>
+          </Button>
 
           {/* Apply Button */}
-          <button
-            type="button"
-            onClick={handleApply}
-            disabled={isApplyDisabled}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          <Button type="button" variant="primary" onClick={handleApply} disabled={isApplyDisabled}>
             {applyMutation.isPending
               ? t('common:status.loading')
               : t('treasury:smartPayment.allocation.applyButton')}
-          </button>
+          </Button>
         </div>
 
         {/* Cancel Button */}
         {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
-          >
+          <Button type="button" variant="secondary" onClick={onCancel}>
             {t('common:actions.cancel')}
-          </button>
+          </Button>
         )}
       </div>
 
       {/* Validation Error for Manual Mode */}
       {allocationMethod === 'manual' && manualAllocations.length === 0 && (
-        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3">
+        <div className={cn(tokens.alert.base, tokens.alert.warning)}>
           <div className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-yellow-600" />
-            <p className="text-sm text-yellow-800">
-              {t('treasury:smartPayment.allocation.noInvoicesSelected')}
-            </p>
+            <AlertCircle className="h-5 w-5" />
+            <p className="text-sm">{t('treasury:smartPayment.allocation.noInvoicesSelected')}</p>
           </div>
         </div>
       )}

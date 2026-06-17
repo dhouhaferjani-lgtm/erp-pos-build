@@ -61,7 +61,9 @@ function operator(overrides: Partial<CachedOperator> = {}): CachedOperator {
     company_ids: ['company-1'],
     terminal_ids: ['terminal-1'],
     approval_scopes: ['discount_limit_override'],
-    approval_scope_permissions_fetched_at: '2026-05-23T08:00:00.000Z',
+    // Fresh by default (relative to now) so the offline-fallback tests pass the
+    // FU-1b TTL; the stale-cache test overrides this with an old timestamp.
+    approval_scope_permissions_fetched_at: new Date(Date.now() - 60_000).toISOString(),
     approval_mirror_status: 'fresh',
     can_discount: true,
     max_discount_percent: 50,
@@ -176,6 +178,23 @@ describe('verifyScopedManagerPin', () => {
     });
     // Genuine offline → straight to local fallback, NO retry.
     expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(1);
+  });
+
+  it('FAILS CLOSED on offline fallback when the approval cache is stale (FU-1b TTL)', async () => {
+    // Genuinely offline, but the cached approval metadata is older than the TTL.
+    // FU-1's prune can't revoke a suspended operator on a device that never
+    // re-syncs, so the offline approval must be refused (the terminal must come
+    // back online to re-establish trust) rather than honoured indefinitely.
+    mockConnectivityOnline(false);
+    vi.mocked(getAllOperators).mockResolvedValue([
+      operator({ approval_scope_permissions_fetched_at: '2026-01-01T00:00:00.000Z' }),
+    ]);
+    vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
+
+    await expect(verifyScopedManagerPin(input)).rejects.toMatchObject({
+      status: 503,
+      code: 'MANAGER_OVERRIDE_STALE_OFFLINE_CACHE',
+    });
   });
 
   it('falls back to local approval on a read timeout (FetchTimeoutError)', async () => {

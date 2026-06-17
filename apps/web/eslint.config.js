@@ -248,6 +248,25 @@ export default tseslint.config(
       ],
     },
   },
+  // Workshop-specific tightening (UI-consistency Phase 3.6) — the workshop
+  // dirs previously exploited the base color rule's GAP (it only flags
+  // red/blue/green/yellow/gray/purple/pink/indigo) to ship saturated with
+  // off-theme palettes. They were swept to 0 off-theme literals (StatusPill →
+  // StatusBadge, bespoke modals → Modal organism, all colors → tokens), so the
+  // full palette is now banned as ERROR here to prevent the gap from reopening.
+  {
+    files: ['src/features/workshop-{work-orders,technicians,bundles}/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'Literal[value=/\\b(bg|text|border|ring)-(red|blue|green|yellow|gray|purple|pink|indigo|slate|sky|amber|violet|emerald|stone|rose|zinc|teal|cyan|lime|orange|fuchsia|neutral)-(\\d{2,3})\\b/]',
+          message: 'Hardcoded Tailwind color classes are not allowed in workshop-*. Use design tokens from lib/designTokens.ts (StatusBadge/statusTone, tokens.*, colors.*, textColors.*, borderColors.*).',
+        },
+      ],
+    },
+  },
   // i18n-clean dirs — fully EN/FR translated in the 2026-06 sweep; no
   // untranslated user-facing literal may regress here. The internal
   // super-admin panel (src/features/admin) is intentionally NOT listed yet

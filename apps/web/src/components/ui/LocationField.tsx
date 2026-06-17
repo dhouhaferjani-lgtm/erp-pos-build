@@ -9,7 +9,7 @@ import { useCompanyStore } from '../../stores/companyStore'
 import { getLocations } from '../../features/locations/api/locations'
 import type { Location } from '../../features/locations/types'
 
-interface LocationSelectorProps {
+interface LocationFieldProps {
   value: string
   onChange: (locationId: string) => void
   placeholder?: string
@@ -19,7 +19,7 @@ interface LocationSelectorProps {
   nullLabel?: string
 }
 
-export function LocationSelector({
+export function LocationField({
   value,
   onChange,
   placeholder,
@@ -27,7 +27,7 @@ export function LocationSelector({
   disabled = false,
   allowNull = false,
   nullLabel,
-}: LocationSelectorProps) {
+}: LocationFieldProps) {
   const { t } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')

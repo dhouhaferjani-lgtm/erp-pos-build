@@ -45,7 +45,7 @@
   "ownerDashboard": {
     "title": "Owner Dashboard",
     "subtitle": "Sales, stock, payments, and cash controls across locations.",
-    "loading": "Loading report...",
+    "loading": "Loading report…",
     "error": "Report unavailable.",
     "noData": "No data for this period.",
     "filters": {

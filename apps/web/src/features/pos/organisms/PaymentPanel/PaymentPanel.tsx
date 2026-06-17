@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { colors, textColors, borderColors } from '@/lib/designTokens'
 import { POSButton } from '../../atoms'
 import { type CartItem } from '../../molecules'
 import { Calculator, Banknote, CreditCard } from 'lucide-react'
@@ -83,7 +84,10 @@ export function PaymentPanel({
   const innerClasses = inline
     ? '' // Inline mode: no special wrapper
     : cn(
-        'bg-white border-2 border-gray-300 shadow-2xl',
+        colors.white,
+        'border-2',
+        borderColors.default,
+        'shadow-2xl',
         isNarrowScreen ? 'rounded-t-lg' : 'rounded-lg'
       ) // Floating mode: card styling
 
@@ -92,11 +96,11 @@ export function PaymentPanel({
       <div className={innerClasses}>
         {/* Totals Summary */}
         {!isEmpty && (
-          <div className={cn('space-y-2', inline ? 'mb-4' : 'border-b border-gray-200', isNarrowScreen ? 'p-3' : inline ? '' : 'p-4')}>
+          <div className={cn('space-y-2', inline ? 'mb-4' : cn('border-b', borderColors.light), isNarrowScreen ? 'p-3' : inline ? '' : 'p-4')}>
             <div className="flex justify-between">
               <span
                 className={cn(
-                  'text-gray-600',
+                  textColors.tertiary,
                   touchOptimized ? 'text-lg' : 'text-base'
                 )}
               >
@@ -104,7 +108,8 @@ export function PaymentPanel({
               </span>
               <span
                 className={cn(
-                  'font-medium text-gray-900',
+                  'font-medium tabular-nums',
+                  textColors.primary,
                   touchOptimized ? 'text-lg' : 'text-base'
                 )}
               >
@@ -116,7 +121,7 @@ export function PaymentPanel({
               <div className="flex justify-between">
                 <span
                   className={cn(
-                    'text-gray-600',
+                    textColors.tertiary,
                     touchOptimized ? 'text-lg' : 'text-base'
                   )}
                 >
@@ -124,7 +129,8 @@ export function PaymentPanel({
                 </span>
                 <span
                   className={cn(
-                    'font-medium text-red-600',
+                    'font-medium tabular-nums',
+                    textColors.error,
                     touchOptimized ? 'text-lg' : 'text-base'
                   )}
                 >
@@ -136,7 +142,7 @@ export function PaymentPanel({
             <div className="flex justify-between">
               <span
                 className={cn(
-                  'text-gray-600',
+                  textColors.tertiary,
                   touchOptimized ? 'text-lg' : 'text-base'
                 )}
               >
@@ -144,7 +150,8 @@ export function PaymentPanel({
               </span>
               <span
                 className={cn(
-                  'font-medium text-gray-900',
+                  'font-medium tabular-nums',
+                  textColors.primary,
                   touchOptimized ? 'text-lg' : 'text-base'
                 )}
               >
@@ -152,11 +159,12 @@ export function PaymentPanel({
               </span>
             </div>
 
-            <div className="pt-2 border-t border-gray-200">
+            <div className={cn('pt-2 border-t', borderColors.light)}>
               <div className="flex justify-between items-center">
                 <span
                   className={cn(
-                    'font-bold text-gray-900',
+                    'font-bold',
+                    textColors.primary,
                     touchOptimized ? 'text-2xl' : 'text-xl'
                   )}
                 >
@@ -164,7 +172,8 @@ export function PaymentPanel({
                 </span>
                 <span
                   className={cn(
-                    'font-bold text-blue-600',
+                    'font-bold tabular-nums',
+                    textColors.brand,
                     touchOptimized ? 'text-2xl' : 'text-xl'
                   )}
                 >

@@ -8,8 +8,8 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { useCompany } from '../../hooks/useCompany'
-import { SearchInput } from '../../components/ui/SearchInput'
-import { FilterTabs } from '../../components/ui/FilterTabs'
+import { SearchInput } from '../../components/molecules/SearchInput'
+import { FilterTabs } from '../../components/molecules/FilterTabs'
 import type { ServicesResponse, PricingType, CategoriesResponse } from './types'
 
 const pricingTypeColors: Record<PricingType, string> = {

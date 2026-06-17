@@ -144,7 +144,7 @@
   "actions": {
     "save": "Enregistrer les modifications",
     "reset": "Réinitialiser les valeurs par défaut",
-    "saving": "Enregistrement..."
+    "saving": "Enregistrement…"
   },
   "validation": {
     "min": "Le minimum est {{min}}",

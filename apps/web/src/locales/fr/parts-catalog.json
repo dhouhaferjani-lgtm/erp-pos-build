@@ -13,8 +13,8 @@
     "selectManufacturer": "Sélectionner le constructeur",
     "selectModel": "Sélectionner la série",
     "selectVehicle": "Sélectionner le véhicule",
-    "searchManufacturer": "Rechercher un constructeur...",
-    "searchModel": "Rechercher un modèle...",
+    "searchManufacturer": "Rechercher un constructeur…",
+    "searchModel": "Rechercher un modèle…",
     "allManufacturers": "Tous les constructeurs",
     "allModels": "Tous les modèles",
     "allVehicles": "Tous les véhicules",
@@ -28,7 +28,7 @@
   },
   "partNumber": {
     "title": "Recherche par référence",
-    "placeholder": "Saisir la référence, numéro OEM ou code-barres...",
+    "placeholder": "Saisir la référence, numéro OEM ou code-barres…",
     "hint": "Astuce : Préfixez avec la marque (ex. « TRW GDB1550 ») pour filtrer par fournisseur",
     "detectedBrand": "Marque détectée : {{brand}}",
     "searchMethods": "Recherché par : {{methods}}",
@@ -60,7 +60,7 @@
     "title": "Résultats de recherche",
     "showing": "{{count}} résultats affichés",
     "loadMore": "Charger plus",
-    "loadingMore": "Chargement...",
+    "loadingMore": "Chargement…",
     "noResults": "Aucun article trouvé",
     "noResultsHint": "Essayez une autre recherche ou modifiez vos filtres",
     "filterByBrand": "Filtrer par marque"

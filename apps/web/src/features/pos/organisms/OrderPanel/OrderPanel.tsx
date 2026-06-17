@@ -1,4 +1,6 @@
 import { useTranslation } from 'react-i18next'
+import { cn } from '@/lib/utils'
+import { tokens, textColors, borderColors } from '@/lib/designTokens'
 // §14.2 — `useCloseOrder` + `CloseOrderButton` imports removed: the
 // order-close → SALE_RECEIPT path is retired. Order cancellation is the
 // remaining termination path.
@@ -66,16 +68,16 @@ export function OrderPanel({
   }
 
   return (
-    <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+    <div className={cn('flex h-full flex-col rounded-xl border bg-white', borderColors.light)}>
       {/* Header */}
-      <div className="border-b border-gray-200 p-4 dark:border-gray-700">
+      <div className={cn('border-b p-4', borderColors.light)}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            <h2 className={cn('text-lg font-semibold', textColors.primary)}>
               {t('orders.orderNumber', { number: order.order_number })}
             </h2>
             {order.customer_name && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className={cn('text-sm', textColors.tertiary)}>
                 {t('orders.detail.customer')}: {order.customer_name}
               </p>
             )}
@@ -83,7 +85,7 @@ export function OrderPanel({
           <OrderStatusBadge status={order.status} />
         </div>
 
-        <div className="mt-2 flex flex-wrap gap-4 text-sm text-gray-500 dark:text-gray-400">
+        <div className={cn('mt-2 flex flex-wrap gap-4 text-sm', textColors.tertiary)}>
           <span>
             {t('orders.detail.cashier')}: {order.cashier_name}
           </span>
@@ -101,12 +103,12 @@ export function OrderPanel({
         {/* Table info */}
         {order.table && (
           <div className="mt-2 flex items-center gap-2">
-            <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+            <span className={cn(tokens.badge.base, tokens.badge.blue)}>
               {t('orders.detail.table')}: {order.table.table_number}
               {order.table.label ? ` - ${order.table.label}` : ''}
             </span>
             {order.table.floor_name && (
-              <span className="text-xs text-gray-400 dark:text-gray-500">
+              <span className={cn('text-xs', textColors.disabled)}>
                 ({order.table.floor_name})
               </span>
             )}
@@ -114,7 +116,7 @@ export function OrderPanel({
         )}
 
         {/* Timing */}
-        <div className="mt-2 flex flex-wrap gap-4 text-xs text-gray-400 dark:text-gray-500">
+        <div className={cn('mt-2 flex flex-wrap gap-4 text-xs', textColors.disabled)}>
           {order.ready_at && (
             <span>
               {t('orders.detail.readyAt')}: {new Date(order.ready_at).toLocaleTimeString()}
@@ -128,7 +130,7 @@ export function OrderPanel({
         </div>
 
         {order.notes && (
-          <p className="mt-2 text-sm italic text-gray-400 dark:text-gray-500">
+          <p className={cn('mt-2 text-sm italic', textColors.disabled)}>
             {t('orders.detail.notes')}: {order.notes}
           </p>
         )}
@@ -136,12 +138,12 @@ export function OrderPanel({
 
       {/* Lines */}
       <div className="flex-1 overflow-y-auto p-4">
-        <h3 className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+        <h3 className={cn('mb-3 text-sm font-medium', textColors.secondary)}>
           {t('orders.detail.items')} ({order.lines.length})
         </h3>
 
         {order.lines.length === 0 ? (
-          <p className="text-center text-sm text-gray-400 dark:text-gray-500">
+          <p className={cn('text-center text-sm', textColors.disabled)}>
             {t('orders.noOrders')}
           </p>
         ) : (
@@ -160,32 +162,32 @@ export function OrderPanel({
       </div>
 
       {/* Totals */}
-      <div className="border-t border-gray-200 p-4 dark:border-gray-700">
+      <div className={cn('border-t p-4', borderColors.light)}>
         <div className="space-y-1 text-sm">
-          <div className="flex justify-between text-gray-500 dark:text-gray-400">
+          <div className={cn('flex justify-between', textColors.tertiary)}>
             <span>{t('orders.detail.subtotal')}</span>
-            <span>{order.subtotal} {order.currency}</span>
+            <span className="tabular-nums">{order.subtotal} {order.currency}</span>
           </div>
-          <div className="flex justify-between text-gray-500 dark:text-gray-400">
+          <div className={cn('flex justify-between', textColors.tertiary)}>
             <span>{t('orders.detail.tax')}</span>
-            <span>{order.tax_amount} {order.currency}</span>
+            <span className="tabular-nums">{order.tax_amount} {order.currency}</span>
           </div>
           {parseFloat(order.discount_amount) > 0 && (
-            <div className="flex justify-between text-red-600">
+            <div className={cn('flex justify-between', textColors.error)}>
               <span>{t('orders.detail.discount')}</span>
-              <span>-{order.discount_amount} {order.currency}</span>
+              <span className="tabular-nums">-{order.discount_amount} {order.currency}</span>
             </div>
           )}
-          <div className="flex justify-between border-t border-gray-100 pt-1 text-base font-bold text-gray-900 dark:border-gray-600 dark:text-gray-100">
+          <div className={cn('flex justify-between border-t pt-1 text-base font-bold', borderColors.light, textColors.primary)}>
             <span>{t('orders.detail.total')}</span>
-            <span>{order.total} {order.currency}</span>
+            <span className="tabular-nums">{order.total} {order.currency}</span>
           </div>
         </div>
       </div>
 
       {/* Actions */}
       {(canCancel || canMarkServed) && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-gray-200 p-4 dark:border-gray-700">
+        <div className={cn('flex flex-wrap items-center gap-2 border-t p-4', borderColors.light)}>
           {canSendToKitchen && (
             <SendToKitchenButton
               onConfirm={handleSendToKitchen}
@@ -197,7 +199,7 @@ export function OrderPanel({
               type="button"
               onClick={handleMarkServed}
               disabled={markServed.isPending}
-              className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+              className={cn(tokens.button.base, tokens.button.primary, tokens.button.sizes.md)}
             >
               {t('orders.actions.markServed')}
             </button>
@@ -210,7 +212,7 @@ export function OrderPanel({
               type="button"
               onClick={handleCancel}
               disabled={cancelOrder.isPending}
-              className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+              className={cn(tokens.button.base, tokens.button.dangerOutline, tokens.button.sizes.md)}
             >
               {t('orders.actions.cancelOrder')}
             </button>

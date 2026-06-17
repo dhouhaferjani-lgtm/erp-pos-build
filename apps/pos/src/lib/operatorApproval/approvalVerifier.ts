@@ -1,5 +1,68 @@
 import type { CachedOperator } from '@/lib/db/repositories/operatorPinRepository';
 
+/**
+ * FU-1b — offline approval-scope cache TTL.
+ *
+ * The offline manager-approval fallback (`scopedManagerPin` Case 5) bypasses the
+ * server's revocation/caps checks and trusts the device-cached operator row.
+ * FU-1's prune revokes a SUSPENDED operator on the next successful `/pin-data`
+ * pull, but a device that goes offline and NEVER re-syncs would retain that
+ * authority indefinitely. This TTL bounds that window: an offline approval is
+ * refused once the cached approval-scope metadata is older than the TTL, forcing
+ * the terminal back online to re-establish trust.
+ *
+ * 7 days balances offline-first resilience (a shop must keep operating through a
+ * multi-day outage) against stale-authority exposure. Cf. SSSD
+ * `offline_credentials_expiration` (days since last online login) and the
+ * bounded-offline-window principle in EMV velocity / cached-credential policy.
+ */
+export const APPROVAL_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Maximum tolerated FORWARD skew — how far the server-stamped `fetchedAt` may
+ * sit ahead of the device clock before we stop trusting it. A fetch time stamped
+ * implausibly in the future (a misconfigured server clock, or local DB
+ * tampering setting it years ahead) would otherwise keep the cache "fresh"
+ * indefinitely. 1 day comfortably absorbs legitimate server/device clock skew
+ * (a device whose clock lags reality makes a fresh server stamp look future)
+ * while failing closed on gross future-stamping.
+ */
+export const APPROVAL_CACHE_MAX_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * True when the cached approval-scope metadata was fetched within `maxAgeMs` of
+ * `now`. Fails closed (returns false) on a missing or unparseable fetch time,
+ * and on a fetch time more than `APPROVAL_CACHE_MAX_FUTURE_SKEW_MS` in the
+ * future.
+ *
+ * Clock-trust caveat: compares the device's `now` (`Date.now()` ms) against the
+ * server-stamped `fetchedAt`. A backward-skewed device clock weakens the bound
+ * (keeps the cache "fresh"); a forward skew only fails safe. A modestly future
+ * `fetchedAt` (normal server/device clock skew) is treated as fresh, but a
+ * grossly future one fails closed. This is the same system-clock model used by
+ * SSSD / Windows cached credentials; a monotonic/signed-time source is out of
+ * scope.
+ */
+export function isApprovalCacheFresh(
+  fetchedAt: string | null | undefined,
+  now: number,
+  maxAgeMs: number = APPROVAL_CACHE_MAX_AGE_MS,
+): boolean {
+  if (!fetchedAt) {
+    return false;
+  }
+  const fetchedMs = Date.parse(fetchedAt);
+  if (Number.isNaN(fetchedMs)) {
+    return false;
+  }
+  const age = now - fetchedMs;
+  // age < 0 ⇒ fetchedAt is in the future; reject gross forward skew.
+  if (age < -APPROVAL_CACHE_MAX_FUTURE_SKEW_MS) {
+    return false;
+  }
+  return age <= maxAgeMs;
+}
+
 export type ApprovalScope =
   | 'close_shift_variance'
   | 'credit_limit_override'

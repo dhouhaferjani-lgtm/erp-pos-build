@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { Monitor, MapPin, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { tokens, colors, textColors, borderColors } from '@/lib/designTokens'
 
 interface Terminal {
   id: string
@@ -42,10 +43,10 @@ export function TerminalSelector({ onSelect, lastUsedCode }: TerminalSelectorPro
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
+      <div className={cn('flex items-center justify-center h-screen', colors.neutral[50])}>
         <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">{t('pos:terminal.loadingTerminals')}</p>
+          <Loader2 className={cn('h-12 w-12 animate-spin mx-auto mb-4', textColors.brand)} />
+          <p className={textColors.tertiary}>{t('pos:terminal.loadingTerminals')}</p>
         </div>
       </div>
     )
@@ -53,13 +54,13 @@ export function TerminalSelector({ onSelect, lastUsedCode }: TerminalSelectorPro
 
   if (activeTerminals.length === 0) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
+      <div className={cn('flex items-center justify-center h-screen', colors.neutral[50])}>
         <div className="text-center max-w-md">
-          <Monitor className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">
+          <Monitor className={cn('h-16 w-16 mx-auto mb-4', textColors.disabled)} />
+          <h2 className={cn('text-xl font-bold mb-2', textColors.primary)}>
             {t('pos:terminal.noTerminals')}
           </h2>
-          <p className="text-gray-500">
+          <p className={textColors.tertiary}>
             {t('pos:terminal.noTerminalsDescription')}
           </p>
         </div>
@@ -68,13 +69,13 @@ export function TerminalSelector({ onSelect, lastUsedCode }: TerminalSelectorPro
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50 p-6">
+    <div className={cn('flex items-center justify-center min-h-screen p-6', colors.neutral[50])}>
       <div className="max-w-3xl w-full">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className={cn('text-2xl font-bold', textColors.primary)}>
             {t('pos:terminal.selectTitle')}
           </h1>
-          <p className="text-gray-500 mt-1">
+          <p className={cn('mt-1', textColors.tertiary)}>
             {t('pos:terminal.selectDescription')}
           </p>
         </div>
@@ -88,23 +89,25 @@ export function TerminalSelector({ onSelect, lastUsedCode }: TerminalSelectorPro
                 type="button"
                 onClick={() => { onSelect(terminal.code); }}
                 className={cn(
-                  'relative flex flex-col items-center gap-3 rounded-xl border-2 bg-white p-6 transition-all hover:shadow-lg hover:border-blue-400',
+                  'relative flex flex-col items-center gap-3 rounded-xl border-2 p-6 transition-all hover:shadow-lg',
+                  colors.white,
+                  tokens.card.hoverPrimary,
                   isLastUsed
-                    ? 'border-blue-500 ring-2 ring-blue-200'
-                    : 'border-gray-200'
+                    ? cn(borderColors.primary, 'shadow-md')
+                    : borderColors.light
                 )}
               >
                 {isLastUsed && (
-                  <span className="absolute top-2 end-2 text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                  <span className={cn('absolute top-2 end-2 px-2 py-0.5 rounded-full text-xs font-medium', textColors.brand, colors.primary[50])}>
                     {t('pos:terminal.lastUsed')}
                   </span>
                 )}
-                <Monitor className={cn('h-10 w-10', isLastUsed ? 'text-blue-600' : 'text-gray-400')} />
+                <Monitor className={cn('h-10 w-10', isLastUsed ? textColors.brand : textColors.disabled)} />
                 <div className="text-center">
-                  <div className="font-bold text-gray-900 text-lg">{terminal.name}</div>
-                  <div className="text-sm text-gray-500 font-mono">{terminal.code}</div>
+                  <div className={cn('font-bold text-lg', textColors.primary)}>{terminal.name}</div>
+                  <div className={cn('text-sm font-mono', textColors.tertiary)}>{terminal.code}</div>
                   {terminal.location_name && (
-                    <div className="flex items-center justify-center gap-1 mt-1 text-xs text-gray-400">
+                    <div className={cn('flex items-center justify-center gap-1 mt-1 text-xs', textColors.disabled)}>
                       <MapPin className="h-3 w-3" />
                       {terminal.location_name}
                     </div>

@@ -8,9 +8,12 @@ import { FormField } from '../../../components/atoms/FormField'
 import { Input } from '../../../components/atoms/Input'
 import { Select } from '../../../components/atoms/Select'
 import { Button } from '../../../components/atoms/Button'
+import { Checkbox } from '../../../components/atoms'
 import { Textarea } from '../../../components/atoms/Textarea'
 import { apiPost } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { cn } from '../../../lib/utils'
+import { tokens, textColors } from '../../../lib/designTokens'
 
 interface PaymentMethod {
   id: string
@@ -49,6 +52,23 @@ export interface AddPaymentMethodModalProps {
   onClose: () => void
   onSuccess?: (method: PaymentMethod) => void
 }
+
+type CapabilityFlag =
+  | 'is_physical'
+  | 'has_maturity'
+  | 'requires_third_party'
+  | 'is_push'
+  | 'has_deducted_fees'
+  | 'is_restricted'
+
+const CAPABILITY_FLAGS: readonly CapabilityFlag[] = [
+  'is_physical',
+  'has_maturity',
+  'requires_third_party',
+  'is_push',
+  'has_deducted_fees',
+  'is_restricted',
+]
 
 export function AddPaymentMethodModal({
   isOpen,
@@ -142,7 +162,7 @@ export function AddPaymentMethodModal({
           <div className="space-y-6">
             {/* Basic Information */}
             <div className="space-y-4">
-              <h3 className="text-sm font-medium text-gray-900">
+              <h3 className={tokens.heading.section}>
                 {t('common:fields.basicInfo')}
               </h3>
 
@@ -189,112 +209,33 @@ export function AddPaymentMethodModal({
 
             {/* Capabilities */}
             <div className="space-y-4">
-              <h3 className="text-sm font-medium text-gray-900">
+              <h3 className={tokens.heading.section}>
                 {t('treasury:paymentMethods.capabilities')}
               </h3>
 
               <div className="space-y-3">
-                <label className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    {...register('is_physical')}
-                    className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-gray-700">
-                      {t('treasury:paymentMethods.flags.is_physical')}
+                {CAPABILITY_FLAGS.map((flag) => (
+                  <label key={flag} className="flex items-start gap-3">
+                    <Checkbox
+                      {...register(flag)}
+                      className={cn('mt-1')}
+                    />
+                    <div className="flex-1">
+                      <div className={cn('text-sm font-medium', textColors.secondary)}>
+                        {t(`treasury:paymentMethods.flags.${flag}`)}
+                      </div>
+                      <div className={cn('text-xs', textColors.tertiary)}>
+                        {t(`treasury:paymentMethods.flagDescriptions.${flag}`)}
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500">
-                      {t('treasury:paymentMethods.flagDescriptions.is_physical')}
-                    </div>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    {...register('has_maturity')}
-                    className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-gray-700">
-                      {t('treasury:paymentMethods.flags.has_maturity')}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {t('treasury:paymentMethods.flagDescriptions.has_maturity')}
-                    </div>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    {...register('requires_third_party')}
-                    className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-gray-700">
-                      {t('treasury:paymentMethods.flags.requires_third_party')}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {t('treasury:paymentMethods.flagDescriptions.requires_third_party')}
-                    </div>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    {...register('is_push')}
-                    className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-gray-700">
-                      {t('treasury:paymentMethods.flags.is_push')}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {t('treasury:paymentMethods.flagDescriptions.is_push')}
-                    </div>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    {...register('has_deducted_fees')}
-                    className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-gray-700">
-                      {t('treasury:paymentMethods.flags.has_deducted_fees')}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {t('treasury:paymentMethods.flagDescriptions.has_deducted_fees')}
-                    </div>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    {...register('is_restricted')}
-                    className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-gray-700">
-                      {t('treasury:paymentMethods.flags.is_restricted')}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {t('treasury:paymentMethods.flagDescriptions.is_restricted')}
-                    </div>
-                  </div>
-                </label>
+                  </label>
+                ))}
               </div>
             </div>
 
             {/* Fee Configuration */}
             <div className="space-y-4">
-              <h3 className="text-sm font-medium text-gray-900">
+              <h3 className={tokens.heading.section}>
                 {t('treasury:paymentMethods.feeConfig')}
               </h3>
 
@@ -346,7 +287,7 @@ export function AddPaymentMethodModal({
           </div>
 
           {mutation.isError && (
-            <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            <div className={cn('mt-4', tokens.alert.base, tokens.alert.error)}>
               {mutation.error instanceof Error
                 ? mutation.error.message
                 : t('common:errors.generic')}

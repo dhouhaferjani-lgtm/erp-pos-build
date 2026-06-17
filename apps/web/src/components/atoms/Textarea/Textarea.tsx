@@ -29,9 +29,13 @@ export interface TextareaProps
  * ```
  */
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, ...props }, ref) => {
-    // Compose classes: base + custom
-    const classes = cn(tokens.textarea.base, className)
+  ({ className, error, ...props }, ref) => {
+    // Compose classes: base + error state + custom
+    const classes = cn(
+      tokens.textarea.base,
+      error && tokens.textarea.error,
+      className
+    )
 
     return <textarea ref={ref} className={classes} {...props} />
   }

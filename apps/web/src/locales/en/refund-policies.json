@@ -144,7 +144,7 @@
   "actions": {
     "save": "Save changes",
     "reset": "Reset to defaults",
-    "saving": "Saving..."
+    "saving": "Saving…"
   },
   "validation": {
     "min": "Minimum is {{min}}",

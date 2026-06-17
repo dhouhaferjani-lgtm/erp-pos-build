@@ -8,7 +8,7 @@
   "postExpense": "Post Expense",
   "noExpenses": "No expenses found",
   "noExpensesDescription": "Get started by creating your first expense",
-  "searchPlaceholder": "Search expenses by vendor, receipt number...",
+  "searchPlaceholder": "Search expenses by vendor, receipt number…",
   "confirmDelete": "Are you sure you want to delete this expense?",
   "confirmPost": "Are you sure you want to post this expense? This action cannot be undone.",
   "paid": "Paid",

@@ -8,6 +8,14 @@ import { useTranslation } from 'react-i18next'
 import { AlertCircle } from 'lucide-react'
 import type { OpenInvoice, AllocationMethod, ManualAllocation } from '@/types/treasury'
 import { useCurrency } from '@/hooks/useCurrency'
+import { cn } from '@/lib/utils'
+import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
+import { Checkbox } from '@/components/atoms'
+import { Spinner } from '@/components/atoms/Spinner'
+import { Select } from '@/components/atoms/Select'
+import { Button } from '@/components/atoms/Button'
+import { MoneyInput } from '@/components/atoms/MoneyInput'
+import { StatusBadge } from '@/components/atoms/StatusBadge'
 
 interface OpenInvoicesListProps {
   partnerId: string
@@ -40,7 +48,7 @@ export function OpenInvoicesList({
   isLoading,
 }: OpenInvoicesListProps) {
   const { t } = useTranslation(['treasury', 'common'])
-  const { decimals } = useCurrency()
+  const { currency, decimals } = useCurrency()
   const [sortField, setSortField] = useState<SortField>('due_date')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
@@ -85,7 +93,7 @@ export function OpenInvoicesList({
   // Get allocation amount for invoice
   const getAllocationAmount = (invoiceId: string): string => {
     const allocation = selectedAllocations.find((a) => a.document_id === invoiceId)
-    return allocation?.amount || ''
+    return allocation?.amount ?? ''
   }
 
   // Handle invoice selection (checkbox)
@@ -151,10 +159,10 @@ export function OpenInvoicesList({
   // Loading state
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className={cn('rounded-lg border bg-white p-4', borderColors.light)}>
         <div className="flex items-center gap-2">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
-          <span className="text-sm text-gray-600">{t('common:status.loading')}</span>
+          <Spinner size="sm" />
+          <span className={cn('text-sm', textColors.tertiary)}>{t('common:status.loading')}</span>
         </div>
       </div>
     )
@@ -163,9 +171,9 @@ export function OpenInvoicesList({
   // Empty state
   if (invoices.length === 0) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center">
-        <AlertCircle className="mx-auto h-12 w-12 text-gray-400" />
-        <p className="mt-2 text-sm text-gray-600">
+      <div className={cn('rounded-lg border p-8 text-center', colors.neutral[50], borderColors.light)}>
+        <AlertCircle className={cn('mx-auto h-12 w-12', textColors.disabled)} />
+        <p className={cn('mt-2 text-sm', textColors.tertiary)}>
           {t('treasury:smartPayment.openInvoices.noInvoices')}
         </p>
       </div>
@@ -173,22 +181,22 @@ export function OpenInvoicesList({
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white">
+    <div className={cn('rounded-lg border bg-white', borderColors.light)}>
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-3">
-        <h3 className="text-sm font-medium text-gray-900">
+      <div className={cn('flex items-center justify-between border-b px-4 py-3', borderColors.light, tokens.table.header)}>
+        <h3 className={cn('text-sm font-medium', textColors.primary)}>
           {t('treasury:smartPayment.openInvoices.title')}
         </h3>
         <div className="flex items-center gap-3">
           {/* Sort Dropdown */}
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600">
+            <label className={cn('text-sm', textColors.tertiary)}>
               {t('treasury:smartPayment.openInvoices.sortBy')}:
             </label>
-            <select
+            <Select
               value={sortField}
               onChange={(e) => { handleSort(e.target.value as SortField); }}
-              className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+              className="mt-0 w-auto px-2 py-1 text-sm"
             >
               <option value="date">
                 {t('treasury:smartPayment.openInvoices.sortByDate')}
@@ -199,27 +207,19 @@ export function OpenInvoicesList({
               <option value="amount">
                 {t('treasury:smartPayment.openInvoices.sortByAmount')}
               </option>
-            </select>
+            </Select>
           </div>
 
           {/* Select All / Deselect All (Manual mode only) */}
           {isManualMode && (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleSelectAll}
-                className="text-sm text-blue-600 hover:text-blue-700"
-              >
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={handleSelectAll}>
                 {t('treasury:smartPayment.openInvoices.selectAll')}
-              </button>
-              <span className="text-gray-400">|</span>
-              <button
-                type="button"
-                onClick={handleDeselectAll}
-                className="text-sm text-blue-600 hover:text-blue-700"
-              >
+              </Button>
+              <span className={textColors.disabled}>|</span>
+              <Button variant="ghost" size="sm" onClick={handleDeselectAll}>
                 {t('treasury:smartPayment.openInvoices.deselectAll')}
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -227,29 +227,29 @@ export function OpenInvoicesList({
 
       {/* Invoice Table */}
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+        <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+          <thead className={tokens.table.header}>
             <tr>
               {isManualMode && (
                 <th className="w-12 px-4 py-3"></th>
               )}
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                 {t('treasury:smartPayment.allocation.invoice')}
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={cn('px-4 py-3 text-end text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                 {t('treasury:smartPayment.allocation.originalBalance')}
               </th>
               {isManualMode && (
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                   {t('treasury:smartPayment.allocation.amountToAllocate')}
                 </th>
               )}
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                 {t('common:fields.status')}
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
+          <tbody className={cn('divide-y bg-white', borderColors.divideDefault)}>
             {sortedInvoices.map((invoice) => {
               const isOverdue = (invoice.days_overdue || 0) > 0
               const selected = isSelected(invoice.id)
@@ -257,53 +257,50 @@ export function OpenInvoicesList({
               const invoiceBalance = parseFloat(invoice.balance_due)
 
               return (
-                <tr key={invoice.id} className={selected ? 'bg-blue-50' : 'hover:bg-gray-50'}>
+                <tr key={invoice.id} className={selected ? tokens.alert.info : tokens.table.rowHover}>
                   {isManualMode && (
                     <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={selected}
                         onChange={(e) => { handleSelectInvoice(invoice, e.target.checked); }}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                     </td>
                   )}
-                  <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
+                  <td className={cn('whitespace-nowrap px-4 py-3 text-sm font-medium', textColors.primary)}>
                     {invoice.document_number}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
+                  <td className={cn('whitespace-nowrap px-4 py-3 text-end text-sm tabular-nums', textColors.secondary)}>
                     {formatAmount(invoice.balance_due)}
                   </td>
                   {isManualMode && (
                     <td className="whitespace-nowrap px-4 py-3">
-                      <input
-                        type="number"
-                        step="0.01"
+                      <MoneyInput
+                        value={allocationAmount}
+                        onChange={(value) => { handleAmountChange(invoice.id, value); }}
+                        currency={currency}
                         min="0"
                         max={invoiceBalance}
-                        value={allocationAmount}
-                        onChange={(e) => { handleAmountChange(invoice.id, e.target.value); }}
                         disabled={!selected}
-                        className="w-32 rounded-md border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100"
+                        className="mt-0 w-32 px-2 py-1 text-sm"
                       />
                     </td>
                   )}
                   <td className="whitespace-nowrap px-4 py-3 text-sm">
                     {isOverdue ? (
                       <div className="flex items-center gap-2">
-                        <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800">
+                        <StatusBadge tone="danger">
                           {t('common:status.overdue')}
-                        </span>
-                        <span className="text-xs text-red-600">
+                        </StatusBadge>
+                        <span className={cn('text-xs', textColors.error)}>
                           {t('treasury:smartPayment.allocation.daysOverdue', {
                             days: invoice.days_overdue,
                           })}
                         </span>
                       </div>
                     ) : (
-                      <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                      <StatusBadge tone="success">
                         {t('common:status.current')}
-                      </span>
+                      </StatusBadge>
                     )}
                   </td>
                 </tr>
@@ -314,9 +311,9 @@ export function OpenInvoicesList({
       </div>
 
       {/* Footer with Total */}
-      <div className="border-t border-gray-200 bg-gray-50 px-4 py-3">
+      <div className={cn('border-t px-4 py-3', borderColors.light, tokens.table.header)}>
         <div className="flex justify-between text-sm">
-          <span className="font-medium text-gray-700">
+          <span className={cn('font-medium tabular-nums', textColors.secondary)}>
             {t('treasury:smartPayment.openInvoices.totalBalance', {
               amount: formatAmount(totalBalance),
             })}

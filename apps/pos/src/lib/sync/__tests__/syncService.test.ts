@@ -89,6 +89,7 @@ vi.mock('@/lib/db/repositories/paymentRepository', () => ({
 
 vi.mock('@/lib/db/repositories/operatorPinRepository', () => ({
   upsertOperators: vi.fn().mockResolvedValue(undefined),
+  pruneOperatorsExcept: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock('@/lib/db/repositories/queuedPinUpdateRepository', () => ({
@@ -167,6 +168,7 @@ import {
   runFullSync,
 } from '../syncService';
 import { apiGet, apiPost, apiPostRaw, ApiRequestError } from '@/lib/api';
+import { pruneOperatorsExcept } from '@/lib/db/repositories/operatorPinRepository';
 import { getUnsyncedZReports, markZReportSynced } from '@/lib/db/repositories/zReportRepository';
 import { updateReceiptStatus } from '@/lib/db/repositories/offlineReceiptRepository';
 import {
@@ -643,6 +645,40 @@ describe('syncService', () => {
       const count = await pullOperatorPins(db, 'term-1');
 
       expect(count).toBe(0);
+    });
+
+    // FU-1 — a confirmed full pull is authoritative: any cached operator NOT in
+    // the response is pruned so a suspended-then-omitted manager can no longer
+    // approve offline overrides against the stale local PIN.
+    it('prunes operators omitted from a successful non-empty pull', async () => {
+      vi.mocked(apiGet).mockResolvedValue([
+        { id: 'op-1', name: 'Jane', pin_hash: 'hash123' },
+        { id: 'op-2', name: 'Bob', pin_hash: 'hash456' },
+      ]);
+
+      await pullOperatorPins(db, 'term-1');
+
+      expect(vi.mocked(pruneOperatorsExcept)).toHaveBeenCalledWith(db, ['op-1', 'op-2']);
+    });
+
+    // Pruning on a failed pull would wipe legitimately-offline operators and
+    // break ALL offline approvals — must NOT prune when apiGet throws.
+    it('does NOT prune when the pull fails', async () => {
+      vi.mocked(apiGet).mockRejectedValue(new Error('Unauthorized'));
+
+      await pullOperatorPins(db, 'term-1');
+
+      expect(vi.mocked(pruneOperatorsExcept)).not.toHaveBeenCalled();
+    });
+
+    // An empty 200 response is treated as a non-authoritative/partial pull (a
+    // real terminal always has at least the operator pulling) — do NOT prune.
+    it('does NOT prune on an empty response', async () => {
+      vi.mocked(apiGet).mockResolvedValue([]);
+
+      await pullOperatorPins(db, 'term-1');
+
+      expect(vi.mocked(pruneOperatorsExcept)).not.toHaveBeenCalled();
     });
   });
 

@@ -7,6 +7,8 @@ import { useTranslation } from 'react-i18next'
 import { Info } from 'lucide-react'
 import { useToleranceSettings } from '../hooks/useSmartPayment'
 import { useCurrency } from '@/hooks/useCurrency'
+import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { StatusBadge } from '@/components/atoms/StatusBadge'
 
 /**
  * Display-only component showing effective tolerance settings
@@ -24,10 +26,10 @@ export function ToleranceSettingsDisplay() {
 
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className={`rounded-lg border ${borderColors.light} bg-white p-4`}>
         <div className="flex items-center gap-2">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
-          <span className="text-sm text-gray-600">{t('loading', 'Loading...')}</span>
+          <div className={`h-5 w-5 animate-spin rounded-full border-2 ${borderColors.default} border-t-transparent`} />
+          <span className={`text-sm ${textColors.tertiary}`}>{t('loading', 'Loading...')}</span>
         </div>
       </div>
     )
@@ -35,10 +37,10 @@ export function ToleranceSettingsDisplay() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+      <div className={`rounded-lg border ${borderColors.error} ${tokens.alert.error} p-4`}>
         <div className="flex items-center gap-2">
-          <Info className="h-5 w-5 text-red-600" />
-          <span className="text-sm text-red-800">
+          <Info className={`h-5 w-5 ${textColors.error}`} />
+          <span className={`text-sm ${textColors.error}`}>
             {t('error', 'Error loading tolerance settings')}
           </span>
         </div>
@@ -55,35 +57,30 @@ export function ToleranceSettingsDisplay() {
   const maxAmountValue = parseFloat(settings.max_amount).toFixed(decimals)
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
+    <div className={`rounded-lg border ${borderColors.light} bg-white p-4`}>
       <div className="flex items-start gap-3">
-        <Info className="h-5 w-5 text-blue-600 mt-0.5" />
+        <Info className={`h-5 w-5 ${textColors.brand} mt-0.5`} />
         <div className="flex-1">
-          <h3 className="text-sm font-medium text-gray-900">
+          <h3 className={`text-sm font-medium ${textColors.primary}`}>
             {t('smartPayment.tolerance.title')}
           </h3>
           <div className="mt-2 space-y-1">
             <div className="flex items-center gap-2">
-              <div
-                className={`h-2 w-2 rounded-full ${
-                  settings.enabled ? 'bg-green-500' : 'bg-gray-400'
-                }`}
-              />
-              <span className="text-sm text-gray-700">
+              <StatusBadge tone={settings.enabled ? 'success' : 'neutral'}>
                 {settings.enabled
                   ? t('smartPayment.tolerance.enabled')
                   : t('smartPayment.tolerance.disabled')}
-              </span>
+              </StatusBadge>
             </div>
             {settings.enabled && (
-              <p className="text-sm text-gray-600 pl-4">
+              <p className={`text-sm ${textColors.tertiary} pl-4`}>
                 {t('smartPayment.tolerance.threshold', {
                   percentage: percentageValue,
                   maxAmount: maxAmountValue,
                 })}
               </p>
             )}
-            <p className="text-xs text-gray-500 pl-4">
+            <p className={`text-xs ${textColors.disabled} pl-4`}>
               {t(`smartPayment.tolerance.source.${settings.source}`)}
             </p>
           </div>

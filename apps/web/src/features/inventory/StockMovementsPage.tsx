@@ -4,14 +4,24 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ArrowDownCircle, ArrowUpCircle, RefreshCw, ArrowRightLeft, Package } from 'lucide-react'
 import { api } from '../../lib/api'
+import { cn } from '../../lib/utils'
+import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { formatQuantity } from '../../lib/format'
+import { bccomp } from '../../lib/decimal'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
-import { SearchInput } from '../../components/ui/SearchInput'
-import { FilterTabs } from '../../components/ui/FilterTabs'
+import { SearchInput } from '../../components/molecules/SearchInput'
+import { FilterTabs } from '../../components/molecules/FilterTabs'
 import { LocationSelector } from '../location/LocationSelector'
 import { useLocation } from '../../hooks/useLocation'
+import { StatusBadge, type StatusTone } from '../../components/atoms'
+import { PageHeader } from '../../components/molecules/PageHeader'
+import {
+  DataTable,
+  type DataTableColumn,
+  EmptyState,
+} from '../../components/molecules'
 
 interface StockMovement {
   id: string
@@ -36,12 +46,17 @@ interface StockMovementsResponse {
 
 type MovementFilter = 'all' | 'receipt' | 'issue' | 'adjustment' | 'transfer'
 
-const movementTypeConfig: Record<string, { color: string; icon: typeof ArrowDownCircle }> = {
-  receipt: { color: 'bg-green-100 text-green-800', icon: ArrowDownCircle },
-  issue: { color: 'bg-red-100 text-red-800', icon: ArrowUpCircle },
-  adjustment: { color: 'bg-blue-100 text-blue-800', icon: RefreshCw },
-  transfer_in: { color: 'bg-purple-100 text-purple-800', icon: ArrowRightLeft },
-  transfer_out: { color: 'bg-orange-100 text-orange-800', icon: ArrowRightLeft },
+/**
+ * Per-movement-type presentation: semantic tone for the {@link StatusBadge} pill
+ * and the leading lucide icon. Tones come from the sanctioned {@link StatusTone}
+ * set so no off-theme color literals are introduced.
+ */
+const movementTypeConfig: Record<string, { tone: StatusTone; icon: typeof ArrowDownCircle }> = {
+  receipt: { tone: 'success', icon: ArrowDownCircle },
+  issue: { tone: 'danger', icon: ArrowUpCircle },
+  adjustment: { tone: 'info', icon: RefreshCw },
+  transfer_in: { tone: 'success', icon: ArrowRightLeft },
+  transfer_out: { tone: 'warning', icon: ArrowRightLeft },
 }
 
 export function StockMovementsPage() {
@@ -110,31 +125,110 @@ export function StockMovementsPage() {
   }
 
   const getMovementConfig = (type: string) => {
-    const base = movementTypeConfig[type] ?? { color: 'bg-gray-100 text-gray-800', icon: Package }
+    const base = movementTypeConfig[type] ?? { tone: 'neutral' as StatusTone, icon: Package }
     return { ...base, label: movementTypeLabels[type] ?? type }
   }
 
+  const columns: DataTableColumn<StockMovement>[] = [
+    {
+      key: 'date',
+      header: t('products.movementsTab.columns.date'),
+      cellClassName: cn('whitespace-nowrap text-sm', textColors.tertiary),
+      render: (movement) => formatDate(movement.created_at),
+    },
+    {
+      key: 'type',
+      header: t('products.movementsTab.columns.type'),
+      render: (movement) => {
+        const config = getMovementConfig(movement.movement_type)
+        const Icon = config.icon
+        const isPositive = bccomp(movement.quantity, '0') >= 0
+        return (
+          <div className="flex items-center gap-2">
+            <Icon className={cn('h-4 w-4', isPositive ? textColors.success : textColors.error)} />
+            <StatusBadge tone={config.tone}>{config.label}</StatusBadge>
+          </div>
+        )
+      },
+    },
+    {
+      key: 'product',
+      header: t('movements.columns.product'),
+      render: (movement) => (
+        <Link
+          to={`/inventory/products/${movement.product_id}`}
+          className={cn('font-medium', textColors.primary, textColors.hoverPrimary)}
+        >
+          {movement.product_name}
+        </Link>
+      ),
+    },
+    {
+      key: 'location',
+      header: t('products.movementsTab.columns.location'),
+      cellClassName: cn('whitespace-nowrap text-sm', textColors.tertiary),
+      render: (movement) => movement.location_name,
+    },
+    {
+      key: 'quantity',
+      numeric: true,
+      header: t('products.movementsTab.columns.quantity'),
+      render: (movement) => {
+        const isPositive = bccomp(movement.quantity, '0') >= 0
+        return (
+          <span className={cn('text-sm font-semibold', isPositive ? textColors.success : textColors.error)}>
+            {isPositive ? '+' : ''}{formatQuantity(movement.quantity)}
+          </span>
+        )
+      },
+    },
+    {
+      key: 'before',
+      numeric: true,
+      header: t('products.movementsTab.columns.before'),
+      cellClassName: cn('text-sm', textColors.tertiary),
+      render: (movement) => formatQuantity(movement.quantity_before),
+    },
+    {
+      key: 'after',
+      numeric: true,
+      header: t('products.movementsTab.columns.after'),
+      cellClassName: cn('text-sm font-medium', textColors.primary),
+      render: (movement) => formatQuantity(movement.quantity_after),
+    },
+    {
+      key: 'reference',
+      header: t('products.movementsTab.columns.reference'),
+      cellClassName: cn('text-sm max-w-xs truncate', textColors.tertiary),
+      render: (movement) => (
+        <span title={movement.reference}>{movement.reference}</span>
+      ),
+    },
+    {
+      key: 'user',
+      header: t('movements.columns.user'),
+      cellClassName: cn('whitespace-nowrap text-sm', textColors.tertiary),
+      render: (movement) => movement.user_name ?? t('movements.system'),
+    },
+  ]
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <PageHeader
+        title={t('movements.title')}
+        subtitle={t('movements.subtitle', { count: movements.length })}
+        breadcrumb={
           <Link
             to="/inventory/stock"
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+            className={cn('inline-flex items-center gap-2 text-sm', textColors.tertiary, textColors.hoverPrimary)}
           >
             <ArrowLeft className="h-4 w-4" />
             {t('common:actions.back')}
           </Link>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{t('movements.title')}</h1>
-            <p className="text-gray-500">
-              {t('movements.subtitle', { count: movements.length })}
-            </p>
-          </div>
-        </div>
-        <LocationSelector />
-      </div>
+        }
+        actions={<LocationSelector />}
+        className="mb-0"
+      />
 
       {/* Filters */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -148,116 +242,37 @@ export function StockMovementsPage() {
       </div>
 
       {/* Content */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-gray-500">{t('common:status.loading')}</div>
-        </div>
-      ) : error ? (
-        <div className="rounded-lg bg-red-50 p-4 text-red-700">
+      {error ? (
+        <div className={cn(tokens.alert.base, tokens.alert.error)}>
           {t('common:errors.operationFailed')}
         </div>
-      ) : movements.length === 0 ? (
-        <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-          <RefreshCw className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-semibold text-gray-900">
-            {searchQuery || movementFilter !== 'all' ? t('common:status.noResults') : t('movements.noMovements')}
-          </h3>
-          <p className="mt-1 text-sm text-gray-500">
-            {searchQuery
-              ? t('common:status.tryDifferentSearch')
-              : movementFilter !== 'all'
-                ? t('movements.noMatchFilter')
-                : t('movements.emptyDescription')}
-          </p>
-        </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('products.movementsTab.columns.date')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('products.movementsTab.columns.type')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('movements.columns.product')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('products.movementsTab.columns.location')}
-                </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('products.movementsTab.columns.quantity')}
-                </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('products.movementsTab.columns.before')}
-                </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('products.movementsTab.columns.after')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('products.movementsTab.columns.reference')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('movements.columns.user')}
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
-              {movements.map((movement) => {
-                const config = getMovementConfig(movement.movement_type)
-                const Icon = config.icon
-                const qty = parseFloat(movement.quantity)
-                const isPositive = qty >= 0
-
-                return (
-                  <tr key={movement.id} className="hover:bg-gray-50">
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                      {formatDate(movement.created_at)}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <Icon className={`h-4 w-4 ${isPositive ? 'text-green-600' : 'text-red-600'}`} />
-                        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${config.color}`}>
-                          {config.label}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <Link
-                        to={`/inventory/products/${movement.product_id}`}
-                        className="font-medium text-gray-900 hover:text-blue-600"
-                      >
-                        {movement.product_name}
-                      </Link>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                      {movement.location_name}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-end">
-                      <span className={`text-sm font-semibold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                        {isPositive ? '+' : ''}{formatQuantity(movement.quantity)}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-500">
-                      {formatQuantity(movement.quantity_before)}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
-                      {formatQuantity(movement.quantity_after)}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={movement.reference}>
-                      {movement.reference}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                      {movement.user_name ?? t('movements.system')}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={columns}
+          data={movements}
+          keyExtractor={(movement) => movement.id}
+          isLoading={isLoading}
+          className={cn('rounded-lg border bg-white', borderColors.light)}
+          emptyState={
+            <div className="py-6">
+              <EmptyState
+                icon={<RefreshCw className={cn('mx-auto h-12 w-12', textColors.disabled)} />}
+                title={
+                  searchQuery || movementFilter !== 'all'
+                    ? t('common:status.noResults')
+                    : t('movements.noMovements')
+                }
+                description={
+                  searchQuery
+                    ? t('common:status.tryDifferentSearch')
+                    : movementFilter !== 'all'
+                      ? t('movements.noMatchFilter')
+                      : t('movements.emptyDescription')
+                }
+              />
+            </div>
+          }
+        />
       )}
     </div>
   )

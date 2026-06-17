@@ -10,6 +10,8 @@ import {
 import { Check, ChevronDown, User as UserIcon } from 'lucide-react'
 import { useUsers } from '../hooks/useUsers'
 import { cn } from '@/lib/utils'
+import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
+import { StatusBadge } from '../../../components/atoms'
 
 interface UserSelectorProps {
   /**
@@ -112,19 +114,14 @@ export function UserSelector({
       >
         {({ open }: { open: boolean }) => (
           <>
-            <Label className="block text-sm font-medium text-gray-700 mb-2">
+            <Label className={cn(tokens.label.base, 'mb-2')}>
               {label}
-              {required && <span className="text-red-500 ms-1">*</span>}
+              {required && <span className={cn(tokens.label.required, 'ms-1')}>*</span>}
             </Label>
 
             <div className="relative">
               <ComboboxInput
-                className={cn(
-                  'w-full px-3 py-2 pe-10 border border-gray-300 rounded-md',
-                  'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500',
-                  'disabled:bg-gray-100 disabled:cursor-not-allowed',
-                  'transition-colors'
-                )}
+                className={cn(tokens.input.base, 'pe-10')}
                 displayValue={() => selectedUser?.name ?? ''}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setQuery(e.target.value); }}
                 placeholder={t('users:selectUser')}
@@ -133,11 +130,12 @@ export function UserSelector({
               {/* Icon container */}
               <div className="absolute inset-y-0 end-0 flex items-center pe-2 pointer-events-none">
                 {isLoading ? (
-                  <div className="animate-spin h-4 w-4 border-2 border-gray-300 border-t-blue-600 rounded-full" />
+                  <div className={cn('animate-spin h-4 w-4 border-2 rounded-full', borderColors.default, 'border-t-blue-600')} />
                 ) : (
                   <ChevronDown
                     className={cn(
-                      'h-5 w-5 text-gray-400 transition-transform',
+                      'h-5 w-5 transition-transform',
+                      textColors.disabled,
                       open && 'transform rotate-180'
                     )}
                   />
@@ -148,15 +146,17 @@ export function UserSelector({
                 className={cn(
                   'absolute z-10 mt-1 w-full',
                   'max-h-60 overflow-auto',
-                  'rounded-md bg-white shadow-lg',
-                  'border border-gray-200',
+                  'rounded-md shadow-lg',
+                  colors.white,
+                  'border',
+                  borderColors.light,
                   'py-1',
                   'text-base',
                   'focus:outline-none'
                 )}
               >
                 {filteredUsers.length === 0 ? (
-                  <div className="px-4 py-2 text-sm text-gray-500">
+                  <div className={cn('px-4 py-2 text-sm', textColors.tertiary)}>
                     {query
                       ? t('users:noUsersFound')
                       : t('users:noActiveUsers')}
@@ -169,15 +169,17 @@ export function UserSelector({
                       className={({ active }: { active: boolean }) =>
                         cn(
                           'cursor-pointer select-none px-4 py-2',
-                          active ? 'bg-blue-50 text-blue-900' : 'text-gray-900'
+                          active
+                            ? tokens.alert.info
+                            : textColors.primary
                         )
                       }
                     >
                       {({ selected }: { selected: boolean }) => (
                         <div className="flex items-center gap-3">
                           {/* Avatar placeholder */}
-                          <div className="flex-shrink-0 h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
-                            <UserIcon className="h-4 w-4 text-gray-500" />
+                          <div className={cn('flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center', colors.neutral[200])}>
+                            <UserIcon className={cn('h-4 w-4', textColors.tertiary)} />
                           </div>
 
                           {/* User info */}
@@ -190,19 +192,19 @@ export function UserSelector({
                                 {user.name}
                               </span>
                               {user.roles.length > 0 && (
-                                <span className="text-xs text-gray-500 px-2 py-0.5 bg-gray-100 rounded">
+                                <StatusBadge tone="neutral">
                                   {user.roles[0]}
-                                </span>
+                                </StatusBadge>
                               )}
                             </div>
-                            <div className="text-sm text-gray-500 truncate">
+                            <div className={cn('text-sm truncate', textColors.tertiary)}>
                               {user.email}
                             </div>
                           </div>
 
                           {/* Selected indicator */}
                           {selected && (
-                            <Check className="h-5 w-5 text-blue-600 flex-shrink-0" />
+                            <Check className={cn('h-5 w-5 flex-shrink-0', textColors.brand)} />
                           )}
                         </div>
                       )}
@@ -214,7 +216,7 @@ export function UserSelector({
 
             {/* Helper text */}
             {helperText && (
-              <p className="mt-1 text-sm text-gray-500">
+              <p className={cn('mt-1 text-sm', textColors.tertiary)}>
                 {helperText}
               </p>
             )}

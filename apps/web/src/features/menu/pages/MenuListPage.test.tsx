@@ -40,7 +40,7 @@ vi.mock('../../../hooks/useTableState', () => ({
 vi.mock('../../../components/ui/filters/SearchFilter', () => ({
   SearchFilter: () => <div data-testid="search-filter" />,
 }))
-vi.mock('../../../components/ui/FilterTabs', () => ({
+vi.mock('../../../components/molecules/FilterTabs', () => ({
   FilterTabs: () => <div data-testid="filter-tabs" />,
 }))
 vi.mock('../../../components/ui/OffsetPagination', () => ({
