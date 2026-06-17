@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Menu;
 
+use App\Enums\Vertical;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -39,7 +40,7 @@ final class MenuCrudTest extends TestCase
 
     private function setupTestData(): void
     {
-        $this->tenant = Tenant::factory()->create();
+        $this->tenant = Tenant::factory()->create(['vertical' => Vertical::Restaurant]);
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
         $this->user = User::factory()->create(['tenant_id' => $this->tenant->id]);
 
