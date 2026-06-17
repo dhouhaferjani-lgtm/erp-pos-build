@@ -5,11 +5,20 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Vault, Building2, CreditCard, Wallet } from 'lucide-react'
 import { api } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { cn } from '../../lib/utils'
+import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
 import { usePermissions } from '../../hooks/usePermissions'
 import { AddRepositoryModal } from '../../components/organisms'
+import { Button, StatusBadge, type StatusTone } from '../../components/atoms'
+import {
+  DataTable,
+  type DataTableColumn,
+  EmptyState,
+  ListPageLayout,
+} from '../../components/molecules'
 
 interface Repository {
   id: string
@@ -35,14 +44,23 @@ const typeIcons: Record<Repository['type'], React.ComponentType<{ className?: st
   virtual: Wallet,
 }
 
-// Type labels are now loaded from translations
-
-const typeColors: Record<Repository['type'], string> = {
-  cash_register: 'bg-green-100 text-green-800',
-  safe: 'bg-purple-100 text-purple-800',
-  bank_account: 'bg-blue-100 text-blue-800',
-  virtual: 'bg-gray-100 text-gray-800',
+/**
+ * Repository types mapped to design-token badge palettes (replacing the bespoke
+ * `bg-x-100 text-x-800` map) for both the summary-card icon chips and the
+ * type pills. Each value is an existing `tokens.badge.*` class.
+ */
+const typeBadge: Record<Repository['type'], string> = {
+  cash_register: tokens.badge.green,
+  safe: tokens.badge.purple,
+  bank_account: tokens.badge.blue,
+  virtual: tokens.badge.gray,
 }
+
+/**
+ * Active/inactive toggle routed through the one sanctioned StatusBadge palette.
+ */
+const activeTone: StatusTone = 'success'
+const inactiveTone: StatusTone = 'neutral'
 
 export function RepositoryListPage() {
   const { t } = useTranslation(['common', 'treasury'])
@@ -103,170 +121,159 @@ export function RepositoryListPage() {
     0
   )
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('navigation.repositories', 'Repositories')}</h1>
-          <p className="text-gray-500">
-            {repositories.length} {repositories.length === 1 ? t('treasury:repositories.singular') : t('treasury:repositories.plural')} | {t('common:fields.total')}: {formatAmount(totalBalance)}
-          </p>
-        </div>
-        {canManageRepositories && (
-          <button
-            onClick={() => { setShowAddModal(true) }}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            {t('treasury:repositories.add')}
-          </button>
-        )}
-      </div>
-
-      {/* Content */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-gray-500">{t('status.loading')}</div>
-        </div>
-      ) : error ? (
-        <div className="rounded-lg bg-red-50 p-4 text-red-700">
-          {t('errors.loadingFailed', 'Error loading data. Please try again.')}
-        </div>
-      ) : repositories.length === 0 ? (
-        <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-          <Vault className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-semibold text-gray-900">{t('treasury:repositories.empty.title')}</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            {canManageRepositories
-              ? t('treasury:repositories.empty.description')
-              : t('treasury:repositories.empty.descriptionNoPermission')}
-          </p>
-          {canManageRepositories && (
-            <div className="mt-6">
-              <button
-                onClick={() => { setShowAddModal(true) }}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              >
-                <Plus className="h-4 w-4" />
-                {t('treasury:repositories.add')}
-              </button>
+  const columns: DataTableColumn<Repository>[] = [
+    {
+      key: 'repository',
+      header: t('treasury:repositories.table.repository'),
+      render: (repo) => {
+        const Icon = typeIcons[repo.type]
+        return (
+          <div className="flex items-center gap-3">
+            <div className={cn('rounded-lg p-2', typeBadge[repo.type])}>
+              <Icon className="h-4 w-4" />
             </div>
-          )}
+            <div>
+              <Link
+                to={`/treasury/repositories/${repo.id}`}
+                className={cn('font-medium', textColors.primary, 'hover:underline')}
+              >
+                {repo.name}
+              </Link>
+              <p className={cn('text-sm font-mono', textColors.tertiary)}>{repo.code}</p>
+            </div>
+          </div>
+        )
+      },
+    },
+    {
+      key: 'type',
+      header: t('treasury:repositories.table.type'),
+      render: (repo) => (
+        <span className={cn(tokens.badge.base, typeBadge[repo.type])}>
+          {getTypeLabel(repo.type)}
+        </span>
+      ),
+    },
+    {
+      key: 'bankInfo',
+      header: t('treasury:repositories.table.bankInfo'),
+      render: (repo) =>
+        repo.bank_name ? (
+          <div className={cn('text-sm', textColors.tertiary)}>
+            <p>{repo.bank_name}</p>
+            {repo.account_number && (
+              <p className="font-mono text-xs">{repo.account_number}</p>
+            )}
+          </div>
+        ) : (
+          <span className={textColors.disabled}>-</span>
+        ),
+    },
+    {
+      key: 'status',
+      header: t('treasury:repositories.table.status'),
+      render: (repo) => (
+        <StatusBadge tone={repo.is_active ? activeTone : inactiveTone}>
+          {repo.is_active ? t('status.active') : t('status.inactive')}
+        </StatusBadge>
+      ),
+    },
+    {
+      key: 'balance',
+      header: t('treasury:repositories.table.balance'),
+      numeric: true,
+      cellClassName: 'font-semibold',
+      render: (repo) => (
+        <span className={parseFloat(repo.balance) >= 0 ? textColors.success : textColors.error}>
+          {formatAmount(repo.balance)}
+        </span>
+      ),
+    },
+  ]
+
+  const addButton = canManageRepositories ? (
+    <Button className="gap-2" onClick={() => { setShowAddModal(true) }}>
+      <Plus className="h-4 w-4" />
+      {t('treasury:repositories.add')}
+    </Button>
+  ) : undefined
+
+  return (
+    <ListPageLayout
+      title={t('navigation.repositories', 'Repositories')}
+      subtitle={`${String(repositories.length)} ${
+        repositories.length === 1
+          ? t('treasury:repositories.singular')
+          : t('treasury:repositories.plural')
+      } | ${t('common:fields.total')}: ${formatAmount(totalBalance)}`}
+      {...(addButton !== undefined ? { actions: addButton } : {})}
+    >
+      {error ? (
+        <div className={cn(tokens.alert.base, tokens.alert.error)}>
+          {t('errors.loadingFailed', 'Error loading data. Please try again.')}
         </div>
       ) : (
         <div className="space-y-6">
           {/* Summary Cards */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {(['cash_register', 'safe', 'bank_account', 'virtual'] as const).map((type) => {
-              const repos = groupedRepos[type] ?? [] as Repository[]
-              const Icon = typeIcons[type]
-              const typeBalance = repos.reduce((sum, r) => sum + parseFloat(r.balance), 0)
-              return (
-                <div key={type} className="rounded-lg border border-gray-200 bg-white p-4">
-                  <div className="flex items-center gap-3">
-                    <div className={`rounded-lg p-2 ${typeColors[type]}`}>
-                      <Icon className="h-5 w-5" />
+          {repositories.length > 0 && (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {(['cash_register', 'safe', 'bank_account', 'virtual'] as const).map((type) => {
+                const repos = groupedRepos[type] ?? ([] as Repository[])
+                const Icon = typeIcons[type]
+                const typeBalance = repos.reduce((sum, r) => sum + parseFloat(r.balance), 0)
+                return (
+                  <div key={type} className={cn('rounded-lg border bg-white p-4', borderColors.light)}>
+                    <div className="flex items-center gap-3">
+                      <div className={cn('rounded-lg p-2', typeBadge[type])}>
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className={cn('text-sm', textColors.tertiary)}>{getTypeLabel(type)}</p>
+                        <p className={cn('text-lg font-semibold', textColors.primary)}>
+                          {formatAmount(typeBalance)}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm text-gray-500">{getTypeLabel(type)}</p>
-                      <p className="text-lg font-semibold text-gray-900">
-                        {formatAmount(typeBalance)}
-                      </p>
-                    </div>
+                    <p className={cn('mt-2 text-xs', textColors.tertiary)}>
+                      {repos.length}{' '}
+                      {repos.length === 1
+                        ? t('treasury:repositories.account')
+                        : t('treasury:repositories.accounts')}
+                    </p>
                   </div>
-                  <p className="mt-2 text-xs text-gray-500">
-                    {repos.length} {repos.length === 1 ? t('treasury:repositories.account') : t('treasury:repositories.accounts')}
-                  </p>
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          )}
 
           {/* Repository List */}
-          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('treasury:repositories.table.repository')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('treasury:repositories.table.type')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('treasury:repositories.table.bankInfo')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('treasury:repositories.table.status')}
-                  </th>
-                  <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('treasury:repositories.table.balance')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
-                {repositories.map((repo) => {
-                  const Icon = typeIcons[repo.type]
-                  return (
-                    <tr key={repo.id} className="hover:bg-gray-50">
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`rounded-lg p-2 ${typeColors[repo.type]}`}>
-                            <Icon className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <Link
-                              to={`/treasury/repositories/${repo.id}`}
-                              className="font-medium text-gray-900 hover:text-blue-600"
-                            >
-                              {repo.name}
-                            </Link>
-                            <p className="text-sm text-gray-500 font-mono">{repo.code}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${typeColors[repo.type]}`}>
-                          {getTypeLabel(repo.type)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {repo.bank_name ? (
-                          <div>
-                            <p>{repo.bank_name}</p>
-                            {repo.account_number && (
-                              <p className="font-mono text-xs">{repo.account_number}</p>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            repo.is_active
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}
-                        >
-                          {repo.is_active ? t('status.active') : t('status.inactive')}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-end">
-                        <span className={`text-sm font-semibold ${
-                          parseFloat(repo.balance) >= 0 ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          {formatAmount(repo.balance)}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={columns}
+            data={repositories}
+            keyExtractor={(repo) => repo.id}
+            isLoading={isLoading}
+            emptyState={
+              <div className="py-6">
+                <EmptyState
+                  icon={<Vault className={cn('mx-auto h-12 w-12', textColors.disabled)} />}
+                  title={t('treasury:repositories.empty.title')}
+                  description={
+                    canManageRepositories
+                      ? t('treasury:repositories.empty.description')
+                      : t('treasury:repositories.empty.descriptionNoPermission')
+                  }
+                />
+                {canManageRepositories && (
+                  <div className="mt-6 flex justify-center">
+                    <Button className="gap-2" onClick={() => { setShowAddModal(true) }}>
+                      <Plus className="h-4 w-4" />
+                      {t('treasury:repositories.add')}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            }
+          />
         </div>
       )}
 
@@ -278,6 +285,6 @@ export function RepositoryListPage() {
           void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment-repositories']) })
         }}
       />
-    </div>
+    </ListPageLayout>
   )
 }

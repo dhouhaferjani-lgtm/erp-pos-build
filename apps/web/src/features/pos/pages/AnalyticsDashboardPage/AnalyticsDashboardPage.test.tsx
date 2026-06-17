@@ -76,7 +76,8 @@ describe('AnalyticsDashboardPage', () => {
 
     // After switching to products tab, summary cards should not be visible
     // The products tab content should render (even if empty)
-    expect(productsTab.className).toContain('border-primary')
+    // active tab uses the brand border token (borderColors.primary → blue-500)
+    expect(productsTab.className).toContain('blue-500')
   })
 
   it('renders date filter presets', () => {
@@ -94,6 +95,7 @@ describe('AnalyticsDashboardPage', () => {
     const todayBtn = getByText('today')
     fireEvent.click(todayBtn)
 
-    expect(todayBtn.className).toContain('bg-primary')
+    // active preset uses the brand fill token (colors.primary[600] → blue-600)
+    expect(todayBtn.className).toContain('blue-600')
   })
 })

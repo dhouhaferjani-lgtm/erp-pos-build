@@ -8,7 +8,7 @@
  *   - A re-upsert with a changed value overwrites the stored value (ON CONFLICT path).
  *
  * Uses the real SQLite engine via SqliteTestAdapter + applyAllMigrations so
- * migration v54 (ALTER TABLE products ADD COLUMN has_variants) is exercised
+ * migration v57 (ALTER TABLE products ADD COLUMN has_variants) is exercised
  * against the actual schema with all prior migrations applied.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

@@ -7,10 +7,12 @@ namespace App\Modules\Catalog\Domain\Entities;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Product;
 use Database\Factories\Catalog\ProductVariantFactory;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -34,6 +36,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $deleted_at
  * @property-read Product $product
  * @property-read Company $company
+ * @property-read Collection<int, ProductVariantAttributeValue> $attributeValues
  */
 class ProductVariant extends Model
 {
@@ -94,6 +97,12 @@ class ProductVariant extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    /** @return HasMany<ProductVariantAttributeValue, $this> */
+    public function attributeValues(): HasMany
+    {
+        return $this->hasMany(ProductVariantAttributeValue::class, 'variant_id');
     }
 
     protected static function newFactory(): ProductVariantFactory

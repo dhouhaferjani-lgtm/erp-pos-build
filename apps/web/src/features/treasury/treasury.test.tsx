@@ -153,9 +153,10 @@ describe('Treasury Management', () => {
         () => new Promise((resolve) => setTimeout(resolve, 1000))
       )
 
-      render(<PaymentListPage />, { wrapper: TestWrapper })
+      const { container } = render(<PaymentListPage />, { wrapper: TestWrapper })
 
-      expect(screen.getByText(/loading/i)).toBeInTheDocument()
+      // DataTable renders an animated skeleton body while loading.
+      expect(container.querySelector('.animate-pulse')).toBeInTheDocument()
     })
 
     it('displays list of payments', async () => {
@@ -184,7 +185,7 @@ describe('Treasury Management', () => {
 
       render(<PaymentListPage />, { wrapper: TestWrapper })
 
-      expect(screen.getByRole('link', { name: /record payment/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /record payment/i })).toBeInTheDocument()
     })
 
     it('displays payment method for each payment', async () => {
@@ -251,7 +252,7 @@ describe('Treasury Management', () => {
 
       render(<PaymentForm />, { wrapper: TestWrapper })
 
-      expect(screen.getByRole('link', { name: /cancel/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
     })
 
     it('allows selecting payment method', async () => {
@@ -286,9 +287,10 @@ describe('Treasury Management', () => {
         () => new Promise((resolve) => setTimeout(resolve, 1000))
       )
 
-      render(<InstrumentListPage />, { wrapper: TestWrapper })
+      const { container } = render(<InstrumentListPage />, { wrapper: TestWrapper })
 
-      expect(screen.getByText(/loading/i)).toBeInTheDocument()
+      // DataTable renders an animated skeleton body while loading.
+      expect(container.querySelector('.animate-pulse')).toBeInTheDocument()
     })
 
     it('displays list of instruments', async () => {

@@ -1,7 +1,7 @@
 {
   "barcodeLookup": {
-    "placeholder": "Scan or type barcode...",
-    "searching": "Looking up...",
+    "placeholder": "Scan or type barcode…",
+    "searching": "Looking up…",
     "catalogFound": "Data from Syneriva Catalog",
     "confidence": "Confidence: {{tier}}",
     "notInCatalog": "Not in catalog — fill in details manually",
@@ -39,7 +39,7 @@
     "singular": "product",
     "plural": "products",
     "new": "Add Product",
-    "searchPlaceholder": "Search products...",
+    "searchPlaceholder": "Search products…",
     "addQuick": "Add Product (Quick)",
     "edit": "Edit Product",
     "tabs": {
@@ -113,7 +113,7 @@
     "quickCreateNote": "This creates a basic product. Edit the product later to add more details.",
     "nameRequired": "Name is required",
     "skuRequired": "SKU is required",
-    "unitPlaceholder": "pcs, kg, hours...",
+    "unitPlaceholder": "pcs, kg, hours…",
     "costWac": "Cost (WAC)",
     "costWacHelper": "Automatically calculated from purchase operations",
     "oemPlaceholder": "Enter OEM number",
@@ -212,7 +212,7 @@
       "location": "Location",
       "fromLocation": "From Location",
       "toLocation": "To Location",
-      "selectDestination": "Select destination...",
+      "selectDestination": "Select destination…",
       "currentQuantity": "Current Quantity",
       "newQuantity": "New Quantity",
       "enterNewQuantity": "Enter new quantity",
@@ -220,10 +220,10 @@
       "reason": "Reason",
       "notes": "Notes (optional)",
       "reference": "Reference",
-      "enterReference": "Enter transfer reference...",
-      "addNotes": "Add any additional notes...",
+      "enterReference": "Enter transfer reference…",
+      "addNotes": "Add any additional notes…",
       "change": "Change",
-      "saving": "Saving...",
+      "saving": "Saving…",
       "save": "Save"
     },
     "reasons": {
@@ -249,7 +249,7 @@
     "type": "Type",
     "reference": "Reference",
     "date": "Date",
-    "searchPlaceholder": "Search movements...",
+    "searchPlaceholder": "Search movements…",
     "noMovements": "No movements",
     "noMatchFilter": "No movements match the selected filter.",
     "emptyDescription": "Stock movements will appear here when inventory changes.",
@@ -337,7 +337,7 @@
     "neverUpdated": "Never",
     "costLastUpdated": "Cost last updated: {{date}}",
     "belowTargetHint": "Below target: Consider raising price to {{price}}",
-    "checkingMargin": "Checking margin...",
+    "checkingMargin": "Checking margin…",
     "targetMarginShort": "Target",
     "minimumMarginShort": "Minimum",
     "suggestedPriceButton": "Suggested Price (Target Margin)",
@@ -507,7 +507,7 @@
     "list": {
       "title": "All Counting Operations",
       "description": "View and manage all inventory counting operations",
-      "searchPlaceholder": "Search by ID or description...",
+      "searchPlaceholder": "Search by ID or description…",
       "empty": "No counting operations found",
       "createFirst": "Create your first counting operation",
       "errorLoading": "Failed to load counting operations",
@@ -558,7 +558,7 @@
       "allowUnexpectedItems": "Allow unexpected items",
       "allowUnexpectedItemsHelp": "Counters can add items not in the expected list",
       "instructions": "Instructions for Counters",
-      "instructionsPlaceholder": "Enter any special instructions for the counters...",
+      "instructionsPlaceholder": "Enter any special instructions for the counters…",
       "assignmentTitle": "Assign Counters",
       "assignmentDescription": "Select who will perform the counts",
       "counter1": "Primary Counter",
@@ -601,7 +601,7 @@
       "title": "Cancel Counting Operation?",
       "description": "This will permanently cancel this counting operation. All progress will be lost and cannot be recovered.",
       "reason": "Cancellation Reason",
-      "reasonPlaceholder": "Enter the reason for cancellation...",
+      "reasonPlaceholder": "Enter the reason for cancellation…",
       "confirm": "Cancel Counting"
     },
     "reconciliation": {
@@ -627,7 +627,7 @@
       "manualOverride": "Manual Override",
       "finalQuantity": "Final Quantity",
       "overrideReason": "Reason for Override",
-      "overrideReasonPlaceholder": "Explain why you are overriding the count...",
+      "overrideReasonPlaceholder": "Explain why you are overriding the count…",
       "applyOverride": "Apply Override"
     },
     "review": {
@@ -687,7 +687,7 @@
     "plural": "categories",
     "new": "New Category",
     "edit": "Edit Category",
-    "searchPlaceholder": "Search categories...",
+    "searchPlaceholder": "Search categories…",
     "name": "Name",
     "namePlaceholder": "Enter category name",
     "description": "Description",
@@ -747,7 +747,7 @@
       "title": "Category Tree",
       "description": "Organize and manage your product categories",
       "dragToReorder": "Drag to reorder",
-      "loading": "Loading categories..."
+      "loading": "Loading categories…"
     },
     "form": {
       "basicInfo": "Basic Information",
@@ -756,7 +756,7 @@
       "nameRequired": "Category name is required",
       "save": "Save Category",
       "cancel": "Cancel",
-      "saving": "Saving..."
+      "saving": "Saving…"
     },
     "stats": {
       "total": "Total Categories",

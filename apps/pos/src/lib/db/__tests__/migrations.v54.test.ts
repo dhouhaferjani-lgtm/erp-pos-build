@@ -1,176 +1,177 @@
 /**
- * Real-SQLite replay test for migration v54 — `add_has_variants_to_products`.
+ * Migration v54 — `terminal_state.shift_number_seed` (offline-first shifts
+ * Phase 6.1).
  *
- * HIGH-1 adversarial-review fix: v54 must:
- *   1. Add `has_variants INTEGER NOT NULL DEFAULT 0` to the `products` table.
- *   2. Delete the `products_last_sync` cursor from `sync_metadata` so the
- *      next pullProductsCore does a FULL product re-fetch and writes the
- *      server-authoritative `has_variants` value to all existing rows.
- *      Without the cursor reset, unchanged variant products stay stuck at
- *      `has_variants = 0` because the delta-keyed sync never re-fetches them.
+ * On a freshly-installed device, `local_shifts` is empty so `nextShiftNumber`
+ * would restart the per-terminal counter at 1 — colliding with shift numbers
+ * the server already projected from a prior install. The device caches the
+ * server's current `MAX(pos_shifts.shift_number)` (carried on the terminal
+ * payload) into this column so numbering continues monotonically.
  *
- * Uses `better-sqlite3` via `SqliteTestAdapter` (the canonical pattern since
- * T32-P3 migrated away from node:sqlite, which required Node 22+ and silently
- * skipped on CI's Node 20).
+ * The seed is consulted by `nextShiftNumber` (MAX of the local rows and the
+ * seed) and written by `setShiftNumberSeed` with a monotone guard so a stale
+ * server read can never rewind it below a number the device has already used.
  */
-
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { SqliteTestAdapter } from './helpers/sqliteTestAdapter';
 import { migrations } from '@/lib/db/migrations';
-
-async function runMigrationsUpTo(adapter: SqliteTestAdapter, maxVersion: number): Promise<void> {
-  for (const m of migrations) {
-    if (m.version > maxVersion) continue;
-    if (m.run) {
-      await m.run(adapter.asDatabase());
-    } else if (m.sql) {
-      await adapter.execute(m.sql);
-    }
-  }
-}
+import { SqliteTestAdapter } from './helpers/sqliteTestAdapter';
+import { runMigrationsUpTo } from './helpers/migrationTestHelpers';
+import {
+  getShiftNumberSeed,
+  setShiftNumberSeed,
+  upsertTerminalState,
+  type TerminalHashState,
+} from '@/lib/db/repositories/terminalStateRepository';
+import {
+  insertLocalShift,
+  nextShiftNumber,
+  type LocalShiftInput,
+} from '@/lib/db/repositories/localShiftRepository';
 
 interface ColumnInfo {
   name: string;
   type: string;
   notnull: number;
-  dflt_value: string | number | null;
+  dflt_value: string | null;
 }
 
-describe('Migration v54 — add_has_variants_to_products', () => {
+const TERMINAL_ID = 'term-1';
+
+async function seedTerminalStateRow(adapter: SqliteTestAdapter, terminalId: string): Promise<void> {
+  await adapter.execute(
+    `INSERT INTO terminal_state (terminal_id, terminal_code, genesis_seed, last_hash)
+     VALUES ($1, 'T01', 'seed', 'hash')`,
+    [terminalId],
+  );
+}
+
+function makeOpenShift(overrides: Partial<LocalShiftInput> = {}): LocalShiftInput {
+  return {
+    id: '019700aa-bbbb-7ccc-8ddd-eeeeffff0001',
+    terminal_id: TERMINAL_ID,
+    session_id: '019700aa-bbbb-7ccc-8ddd-eeeeffff0001',
+    shift_number: 1,
+    opening_cash: '100.000',
+    opened_at: '2026-06-14T08:00:00Z',
+    cashier_id: 'cashier-1',
+    cashier_name: 'Alice',
+    ...overrides,
+  };
+}
+
+describe('migration v54 — terminal_state.shift_number_seed', () => {
   let adapter: SqliteTestAdapter;
 
   beforeEach(async () => {
     adapter = new SqliteTestAdapter();
+    await runMigrationsUpTo(adapter, 54);
   });
 
   afterEach(() => {
     adapter.close();
   });
 
-  it('adds has_variants column (INTEGER NOT NULL DEFAULT 0) to products', async () => {
-    await runMigrationsUpTo(adapter, 54);
-
-    const cols = await adapter.select<ColumnInfo[]>('PRAGMA table_info(products)');
-    const col = cols.find((c) => c.name === 'has_variants');
-
-    expect(col, 'products.has_variants must exist after v54').toBeDefined();
-    expect(col?.type).toBe('INTEGER');
+  it('adds the shift_number_seed column defaulting to 0', async () => {
+    const columns = await adapter.select<ColumnInfo[]>("PRAGMA table_info('terminal_state')");
+    const col = columns.find((c) => c.name === 'shift_number_seed');
+    expect(col, 'shift_number_seed column exists').toBeDefined();
     expect(col?.notnull).toBe(1);
-    expect(String(col?.dflt_value)).toBe('0');
+    expect(col?.dflt_value).toBe('0');
   });
 
-  it('HIGH-1: clears products_last_sync cursor from sync_metadata so the next sync is a full re-fetch', async () => {
-    // Apply v1..v53 to set up the products + sync_metadata tables, then seed
-    // a products_last_sync cursor that simulates an existing install that has
-    // already performed a delta sync. v54 must DELETE this row so pullProductsCore
-    // fetches ALL products (including variant ones) and writes has_variants.
-    await runMigrationsUpTo(adapter, 53);
-
-    // Seed the cursor that v53 installs left in place after the last delta sync.
-    await adapter.execute(
-      `INSERT INTO sync_metadata (key, value, updated_at)
-       VALUES ($1, $2, datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
-      ['products_last_sync', '2026-06-01T10:00:00Z'],
-    );
-
-    // Confirm it exists before v54.
-    const before = await adapter.select<Array<{ value: string }>>(
-      "SELECT value FROM sync_metadata WHERE key = 'products_last_sync'",
-    );
-    expect(before).toHaveLength(1);
-
-    // Apply only v54 (not the full runMigrationsUpTo which would re-use the
-    // cached instance — we manually run the v54 sql directly to isolate the delta).
+  it('is re-runnable (duplicate-column guard)', async () => {
     const v54 = migrations.find((m) => m.version === 54);
-    expect(v54, 'v54 must exist in migrations array').toBeDefined();
-    expect(v54!.sql, 'v54 must use sql field for multi-statement execution').toBeTruthy();
-    await adapter.execute(v54!.sql);
-
-    // The cursor MUST be gone.
-    const after = await adapter.select<Array<{ value: string }>>(
-      "SELECT value FROM sync_metadata WHERE key = 'products_last_sync'",
-    );
-    expect(
-      after,
-      'v54 must DELETE products_last_sync from sync_metadata to trigger a full product re-fetch',
-    ).toHaveLength(0);
+    expect(v54?.run).toBeDefined();
+    // beforeEach already applied v54; running its hook again must be a no-op.
+    await expect(v54!.run!(adapter.asDatabase())).resolves.toBeUndefined();
   });
 
-  it('HIGH-1: products.has_variants column is usable after the cursor-clearing v54 run', async () => {
-    // Run v1..v53, seed a cursor, run v54, then verify both effects hold together:
-    // the column exists AND the cursor is gone, so a product can be upserted
-    // with has_variants=1.
-    await runMigrationsUpTo(adapter, 53);
+  describe('getShiftNumberSeed', () => {
+    it('returns 0 when no terminal_state row exists', async () => {
+      const db = adapter.asDatabase();
+      expect(await getShiftNumberSeed(db, 'unknown-terminal')).toBe(0);
+    });
 
-    await adapter.execute(
-      `INSERT INTO sync_metadata (key, value, updated_at)
-       VALUES ($1, $2, datetime('now'))`,
-      ['products_last_sync', '2026-06-01T10:00:00Z'],
-    );
-
-    const v54 = migrations.find((m) => m.version === 54)!;
-    await adapter.execute(v54.sql);
-
-    // Cursor cleared.
-    const cursor = await adapter.select<Array<{ value: string }>>(
-      "SELECT value FROM sync_metadata WHERE key = 'products_last_sync'",
-    );
-    expect(cursor).toHaveLength(0);
-
-    // Column usable — upsert a variant product and read it back.
-    await adapter.execute(
-      `INSERT INTO products (id, name, sku, sale_price, stock_quantity, has_variants)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      ['prod-with-variants', 'Tire 205/55 R16', 'TIRE-205-55-R16', '89.000', 0, 1],
-    );
-
-    const rows = await adapter.select<Array<{ id: string; has_variants: number }>>(
-      "SELECT id, has_variants FROM products WHERE id = $1",
-      ['prod-with-variants'],
-    );
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.has_variants).toBe(1);
+    it('returns 0 for a row that has never been seeded', async () => {
+      const db = adapter.asDatabase();
+      await seedTerminalStateRow(adapter, TERMINAL_ID);
+      expect(await getShiftNumberSeed(db, TERMINAL_ID)).toBe(0);
+    });
   });
 
-  it('existing products default to has_variants=0 (non-destructive backfill)', async () => {
-    // Verify pre-v54 rows are unaffected: a product inserted before v54 runs
-    // gets has_variants=0 by default — the standard-retail path stays intact.
-    await runMigrationsUpTo(adapter, 53);
+  describe('setShiftNumberSeed', () => {
+    it('persists a seed and reads it back', async () => {
+      const db = adapter.asDatabase();
+      await seedTerminalStateRow(adapter, TERMINAL_ID);
+      await setShiftNumberSeed(db, TERMINAL_ID, 42);
+      expect(await getShiftNumberSeed(db, TERMINAL_ID)).toBe(42);
+    });
 
-    await adapter.execute(
-      `INSERT INTO products (id, name, sku, sale_price, stock_quantity)
-       VALUES ($1, $2, $3, $4, $5)`,
-      ['prod-no-variants', 'Oil Filter', 'OIL-FILTER', '12.000', 100],
-    );
-
-    const v54 = migrations.find((m) => m.version === 54)!;
-    await adapter.execute(v54.sql);
-
-    const rows = await adapter.select<Array<{ id: string; has_variants: number }>>(
-      "SELECT id, has_variants FROM products WHERE id = $1",
-      ['prod-no-variants'],
-    );
-    expect(rows).toHaveLength(1);
-    expect(
-      rows[0]!.has_variants,
-      'pre-existing standard-retail product must default to has_variants = 0',
-    ).toBe(0);
+    it('is monotone — never rewinds below an existing seed', async () => {
+      const db = adapter.asDatabase();
+      await seedTerminalStateRow(adapter, TERMINAL_ID);
+      await setShiftNumberSeed(db, TERMINAL_ID, 42);
+      // A stale server read reports a lower MAX — must NOT lower the seed.
+      await setShiftNumberSeed(db, TERMINAL_ID, 10);
+      expect(await getShiftNumberSeed(db, TERMINAL_ID)).toBe(42);
+    });
   });
 
-  it('does not error when products_last_sync cursor is absent (fresh install path)', async () => {
-    // On a brand-new install, sync_metadata has no products_last_sync row yet.
-    // The DELETE in v54 must be a no-op (zero rows affected), not an error.
-    await runMigrationsUpTo(adapter, 53);
+  describe('upsertTerminalState writes the seed atomically (Codex r1 HIGH)', () => {
+    function hashState(seed?: number): TerminalHashState {
+      return {
+        terminal_id: TERMINAL_ID,
+        terminal_code: 'T01',
+        location_code: 'MAIN',
+        genesis_seed: 'seed',
+        last_hash: 'hash',
+        hash_sequence: 0,
+        manager_pin_throttle_until: null,
+        manager_pin_failed_attempts: 0,
+        fiscal_schema_version: 3,
+        shift_number_seed: seed,
+      };
+    }
 
-    // No cursor seeded — fresh install.
-    const before = await adapter.select<Array<{ value: string }>>(
-      "SELECT value FROM sync_metadata WHERE key = 'products_last_sync'",
-    );
-    expect(before).toHaveLength(0);
+    it('persists the seed in the same INSERT as the terminal_state row', async () => {
+      const db = adapter.asDatabase();
+      // No separate setShiftNumberSeed call — a crash after this single write
+      // can never leave a fresh row with seed 0.
+      await upsertTerminalState(db, hashState(9));
+      expect(await getShiftNumberSeed(db, TERMINAL_ID)).toBe(9);
+    });
 
-    const v54 = migrations.find((m) => m.version === 54)!;
-    // Must resolve without throwing even when no cursor row exists.
-    await expect(adapter.execute(v54.sql)).resolves.toBeDefined();
+    it('is monotone on conflict — a lower seed never rewinds it', async () => {
+      const db = adapter.asDatabase();
+      await upsertTerminalState(db, hashState(9));
+      await upsertTerminalState(db, hashState(3));
+      expect(await getShiftNumberSeed(db, TERMINAL_ID)).toBe(9);
+    });
+
+    it('defaults to 0 when no seed is supplied', async () => {
+      const db = adapter.asDatabase();
+      await upsertTerminalState(db, hashState(undefined));
+      expect(await getShiftNumberSeed(db, TERMINAL_ID)).toBe(0);
+    });
+  });
+
+  describe('nextShiftNumber honours the seed', () => {
+    it('continues from the seed when local_shifts is empty', async () => {
+      const db = adapter.asDatabase();
+      // Fresh device: no local shifts, but the server had reached 5.
+      expect(await nextShiftNumber(db, TERMINAL_ID, 5)).toBe(6);
+    });
+
+    it('uses the local MAX when it exceeds the seed', async () => {
+      const db = adapter.asDatabase();
+      await insertLocalShift(db, makeOpenShift({ id: 's1', shift_number: 7 }));
+      expect(await nextShiftNumber(db, TERMINAL_ID, 5)).toBe(8);
+    });
+
+    it('defaults to the local-only MAX when no seed is passed', async () => {
+      const db = adapter.asDatabase();
+      await insertLocalShift(db, makeOpenShift({ id: 's1', shift_number: 3 }));
+      expect(await nextShiftNumber(db, TERMINAL_ID)).toBe(4);
+    });
   });
 });

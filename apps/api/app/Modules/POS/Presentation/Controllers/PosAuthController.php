@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
@@ -145,8 +146,14 @@ final class PosAuthController extends Controller
         $terminalIds = is_string($terminalId) && $terminalId !== '' ? [$terminalId] : [];
         $serverTime = now()->toIso8601String();
 
+        // F-3: only ACTIVE company members are mirrored into the device's
+        // operator_pins. A suspended/revoked member who still holds a pos_pin +
+        // approval permission must not appear in the offline operator/approval
+        // list — keeping it in lockstep with the online
+        // AuthorizedManagersController (active-only).
         $companyUserIds = UserCompanyMembership::query()
             ->where('company_id', $company->id)
+            ->where('status', MembershipStatus::Active->value)
             ->pluck('user_id');
 
         $operators = User::where('tenant_id', $currentUser->tenant_id)
@@ -216,10 +223,29 @@ final class PosAuthController extends Controller
             ->get()
             ->keyBy('id');
 
-        if ($usersInTenant->count() !== count($userIds)) {
+        if ($usersInTenant->count() !== count(array_unique($userIds))) {
             throw ValidationException::withMessages([
                 'updates' => ['One or more users are outside the current tenant.'],
             ]);
+        }
+
+        // SELF-ONLY: sync-pins may set ONLY the authenticated operator's own PIN.
+        // The legit offline flow only ever queues an operator's OWN PIN
+        // (`operatorStore.setupPin` enqueues `authStore.user.id`); the client
+        // drains each operator's queued rows under that operator's own auth, so
+        // this seam never needs to write another user's PIN. Enforcing self-only
+        // here closes the same-company authorship gap (a member with
+        // pos.operate_terminal could otherwise rewrite another active member's
+        // PIN via a crafted request). Subsumes the earlier active-company-member
+        // gate (the authenticated user already passed the active-membership
+        // CompanyContext check).
+        $currentUserId = (string) $currentUser->id;
+        foreach ($userIds as $targetId) {
+            if ((string) $targetId !== $currentUserId) {
+                throw ValidationException::withMessages([
+                    'updates' => ['sync-pins may only set the authenticated operator\'s own PIN.'],
+                ]);
+            }
         }
 
         $synced = 0;

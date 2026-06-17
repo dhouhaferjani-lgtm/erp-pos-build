@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { tokens, colors, textColors, borderColors } from '@/lib/designTokens'
 import { StockBadge } from '../../atoms'
 import { Info, Package, SlidersHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -63,7 +64,8 @@ export function ProductCard({
       className={cn(
         // Base styles
         'relative flex flex-col',
-        'bg-white rounded-lg border-2',
+        colors.white,
+        'rounded-lg border-2',
         'transition-all duration-150',
 
         // Touch optimized
@@ -72,7 +74,8 @@ export function ProductCard({
         // Interactive states
         !isOutOfStock && [
           'cursor-pointer',
-          'border-gray-200 hover:border-blue-500',
+          borderColors.light,
+          tokens.card.hoverPrimary,
           'hover:shadow-lg',
           'active:scale-98',
         ],
@@ -81,11 +84,11 @@ export function ProductCard({
         isOutOfStock && [
           'opacity-60',
           'cursor-not-allowed',
-          'border-gray-200',
+          borderColors.light,
         ],
 
         // In cart indicator
-        isInCart && 'border-green-500 bg-green-50',
+        isInCart && cn(borderColors.success, colors.success[50]),
 
         // Custom classes
         className
@@ -102,9 +105,9 @@ export function ProductCard({
         ) : (
           <div
             data-testid="image-placeholder"
-            className="w-full h-32 bg-gray-100 rounded-md flex items-center justify-center"
+            className={cn('w-full h-32 rounded-md flex items-center justify-center', colors.neutral[100])}
           >
-            <Package className="w-12 h-12 text-gray-400" />
+            <Package className={cn('w-12 h-12', textColors.disabled)} />
           </div>
         )}
 
@@ -121,19 +124,19 @@ export function ProductCard({
           )}
           aria-label={t('pos.productInfo')}
         >
-          <Info className={cn('text-gray-700', touchOptimized ? 'w-6 h-6' : 'w-5 h-5')} />
+          <Info className={cn(textColors.secondary, touchOptimized ? 'w-6 h-6' : 'w-5 h-5')} />
         </button>
 
         {/* Category Badge (Top Left) */}
         {product.category && (
-          <span className="absolute top-2 start-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
+          <span className={cn('absolute top-2 start-2 px-2 py-1 text-xs font-medium rounded', tokens.badge.blue)}>
             {product.category}
           </span>
         )}
 
         {/* In Cart Indicator */}
         {isInCart && (
-          <div className="absolute bottom-2 start-2 px-2 py-1 bg-green-600 text-white text-xs font-bold rounded">
+          <div className={cn('absolute bottom-2 start-2 px-2 py-1 text-xs font-bold rounded', colors.success[600], textColors.inverse)}>
             {t('pos.inCart')}
           </div>
         )}
@@ -145,14 +148,14 @@ export function ProductCard({
             className={cn(
               'absolute bottom-2 end-2',
               'p-2 rounded-full',
-              'bg-blue-600/90 hover:bg-blue-700',
+              tokens.button.primary,
               'shadow-md hover:shadow-lg',
               'transition-all duration-150',
               touchOptimized && 'p-3'
             )}
             aria-label={t('pos.customizeProduct')}
           >
-            <SlidersHorizontal className={cn('text-white', touchOptimized ? 'w-5 h-5' : 'w-4 h-4')} />
+            <SlidersHorizontal className={cn(textColors.inverse, touchOptimized ? 'w-5 h-5' : 'w-4 h-4')} />
           </button>
         )}
       </div>
@@ -162,7 +165,8 @@ export function ProductCard({
         {/* Product Name */}
         <h3
           className={cn(
-            'font-semibold text-gray-900 line-clamp-2',
+            'font-semibold line-clamp-2',
+            textColors.primary,
             touchOptimized ? 'text-lg' : 'text-base'
           )}
         >
@@ -172,7 +176,8 @@ export function ProductCard({
         {/* SKU */}
         <p
           className={cn(
-            'text-gray-500 font-mono',
+            'font-mono',
+            textColors.tertiary,
             touchOptimized ? 'text-sm' : 'text-xs'
           )}
         >
@@ -183,7 +188,8 @@ export function ProductCard({
         <div className="flex items-center justify-between mt-auto">
           <span
             className={cn(
-              'font-bold text-blue-600',
+              'font-bold tabular-nums',
+              textColors.brand,
               touchOptimized ? 'text-xl' : 'text-lg'
             )}
           >

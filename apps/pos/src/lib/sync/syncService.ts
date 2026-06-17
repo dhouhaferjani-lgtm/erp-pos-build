@@ -28,10 +28,11 @@ import {
   upsertPaymentMethods,
   upsertPaymentRepositories,
 } from '@/lib/db/repositories/paymentRepository';
-import { upsertOperators } from '@/lib/db/repositories/operatorPinRepository';
+import { upsertOperators, pruneOperatorsExcept } from '@/lib/db/repositories/operatorPinRepository';
 import Big from 'big.js';
 import {
   upsertTerminalState,
+  setShiftNumberSeed,
   upsertZChainState,
   getZChainState,
   type TerminalHashState,
@@ -82,6 +83,7 @@ import {
 } from '@/lib/db/repositories/cashDrawerRepository';
 import { logSyncOperation, getSyncMetadata, setSyncMetadata, cleanupOldSyncLogs } from '@/lib/db/repositories/syncLogRepository';
 import { coerceSyncError } from '@/lib/sync/coerceSyncError';
+import { reconcileOpenShift, applyShiftReconcileVerdict } from '@/lib/sync/shiftReconcile';
 import { withWriteTransaction } from '@/lib/db/writeGate';
 import {
   upsertVouchers,
@@ -127,6 +129,14 @@ interface TerminalStateResponse {
    * server roll-out adds the field.
    */
   fiscal_schema_version?: number;
+  /**
+   * Offline-first shifts Phase 6.1: the server's current
+   * `MAX(pos_shifts.shift_number)` for this terminal. Cached into
+   * `terminal_state.shift_number_seed` so a freshly-installed device continues
+   * numbering monotonically instead of restarting at 1. Optional in the wire
+   * shape so a stale server (pre-6.1) does not break the pull; absent → seed 0.
+   */
+  max_shift_number?: number;
 }
 
 export interface SyncResult {
@@ -1090,10 +1100,28 @@ export async function pullPaymentConfig(db: Database): Promise<boolean> {
 /**
  * Pull operator PIN hashes for offline verification.
  */
-export async function pullOperatorPins(db: Database): Promise<number> {
+export async function pullOperatorPins(db: Database, terminalId: string): Promise<number> {
   try {
-    const operators = await apiGet<OperatorPinData[]>('/pos/auth/pin-data');
+    // terminal_id is REQUIRED: the server scopes each mirrored operator's
+    // approval to the requesting terminal (terminal_ids = [terminal_id]).
+    // Omitting it returns terminal_ids: [], and verifyOfflineApprovalPin then
+    // rejects every operator (scope_mismatch) — breaking ALL offline approvals
+    // (cash-drawer, discount, and the B7 EOD manager-PIN close).
+    const operators = await apiGet<OperatorPinData[]>(
+      `/pos/auth/pin-data?terminal_id=${encodeURIComponent(terminalId)}`,
+    );
     await upsertOperators(db, operators);
+    // FU-1 — make this confirmed-full pull authoritative: delete any cached
+    // operator NOT in the response so a suspended-then-omitted manager can no
+    // longer approve offline overrides against a stale local PIN. Gate on a
+    // NON-EMPTY response only: a real terminal always returns at least the
+    // operator driving the sync, so an empty result is treated as
+    // non-authoritative and never prunes (which would otherwise wipe
+    // legitimately-offline operators). A failed pull throws before reaching
+    // here, so it never prunes either.
+    if (operators.length > 0) {
+      await pruneOperatorsExcept(db, operators.map((op) => op.id));
+    }
     await setSyncMetadata(db, 'operators_last_sync', new Date().toISOString());
     await logSyncOperation(db, 'pull', 'operators', null, 'success', `${operators.length} operators`);
     return operators.length;
@@ -1140,6 +1168,16 @@ export async function pullTerminalState(
     }
     const fiscalSchemaVersion: 2 | 3 = rawVersion;
 
+    // Offline-first shifts Phase 6.1: cache the server's per-terminal
+    // MAX(shift_number) so the device's `nextShiftNumber` continues numbering
+    // monotonically after a fresh install / DB reset. Carried INSIDE the
+    // terminal_state upsert so the row and its seed are written in one atomic
+    // statement — a crash between two separate writes can never leave a fresh
+    // row with seed 0 (Codex r1 HIGH). The upsert is monotone (MAX), so a stale
+    // server read can never rewind it. Absent on a pre-6.1 server → 0 (legacy
+    // local-only behaviour).
+    const shiftNumberSeed = state.max_shift_number ?? 0;
+
     const hashState: TerminalHashState = {
       terminal_id: state.id,
       terminal_code: state.code,
@@ -1150,6 +1188,7 @@ export async function pullTerminalState(
       manager_pin_throttle_until: null,
       manager_pin_failed_attempts: 0,
       fiscal_schema_version: fiscalSchemaVersion,
+      shift_number_seed: shiftNumberSeed,
     };
 
     try {
@@ -1166,6 +1205,10 @@ export async function pullTerminalState(
           local_sequence: error.before,
           server_sequence: error.after,
         });
+        // The local fiscal head is ahead of the server, so upsertTerminalState
+        // rejected the whole write (seed included). The row already exists —
+        // refresh the monotone shift-number seed on its own.
+        await setShiftNumberSeed(db, terminalId, shiftNumberSeed);
         await logSyncOperation(
           db,
           'pull',
@@ -1322,18 +1365,31 @@ export async function pushQueuedPinUpdates(db: Database): Promise<number> {
   const pending = await getPendingPinUpdates(db);
   if (pending.length === 0) return 0;
 
+  // Self-only: the server (`PosAuthController::syncPins`) accepts ONLY the
+  // authenticated user's own PIN. A shared device can accumulate PIN-setup rows
+  // authored by different users across login sessions, so push ONLY the rows
+  // authored by the current authStore user; leave the rest pending so they
+  // drain later under their own author. This satisfies the server's self-only
+  // invariant and never drops a queued row.
+  const { useAuthStore } = await import('@/stores/authStore');
+  const currentUserId = useAuthStore.getState().user?.id ?? null;
+  const mine = currentUserId === null
+    ? []
+    : pending.filter((p) => p.userId === currentUserId);
+  if (mine.length === 0) return 0;
+
   try {
     await apiPost<{ synced: number; skipped: number }>('/pos/auth/sync-pins', {
-      updates: pending.map((p) => ({ user_id: p.userId, pin_hash: p.pinHash })),
+      updates: mine.map((p) => ({ user_id: p.userId, pin_hash: p.pinHash })),
     });
-    for (const row of pending) {
+    for (const row of mine) {
       await markPinUpdateSynced(db, row.id);
     }
-    await logSyncOperation(db, 'push', 'pin_update', null, 'success', `${pending.length} pin updates`);
-    return pending.length;
+    await logSyncOperation(db, 'push', 'pin_update', null, 'success', `${mine.length} pin updates`);
+    return mine.length;
   } catch (error) {
     const message = coerceSyncError(error);
-    for (const row of pending) {
+    for (const row of mine) {
       await markPinUpdateFailed(db, row.id, message);
     }
     await logSyncOperation(db, 'push', 'pin_update', null, 'error', message);
@@ -1944,7 +2000,7 @@ export async function runFullSync(
   // Then pull (always pull even if push had failures, to keep local data fresh)
   const productsPulled = await pullProducts(db);
   const paymentConfigPulled = await pullPaymentConfig(db);
-  const operatorsPulled = await pullOperatorPins(db);
+  const operatorsPulled = await pullOperatorPins(db, terminalId);
   const terminalStatePulled = await pullTerminalState(db, terminalId);
   await pullZChainState(db, terminalId);
   const tablesPulled = await pullTables(db);
@@ -1984,6 +2040,34 @@ export async function runFullSync(
     const { useAuthStore } = await import('@/stores/authStore');
     await useAuthStore.getState().refreshCompanyConfig();
   } catch { /* non-critical */ }
+
+  // Phase 6.2: background reconcile (spec §4.c). Detect when the server
+  // projection shows the device's open shift CLOSED (a web-admin recovery
+  // close) while local SQLite still has it OPEN, and surface an advisory,
+  // audited, idempotent banner. NEVER auto-closes the local shift (a sale may
+  // be mid-flight; Decision 4). Non-fatal: a failure here must not break the
+  // sync tick — the next tick re-reconciles.
+  try {
+    const verdict = await reconcileOpenShift(db, terminalId);
+    const { useTerminalStore } = await import('@/stores/terminalStore');
+    const { useAuthStore } = await import('@/stores/authStore');
+    const auth = useAuthStore.getState();
+    await applyShiftReconcileVerdict(
+      db,
+      verdict,
+      {
+        tenantId: auth.user?.tenantId ?? '',
+        companyId: auth.companyId ?? null,
+        operatorId: auth.user?.id ?? null,
+      },
+      {
+        flag: (conflict) => { useTerminalStore.getState().flagRemoteShiftClose(conflict); },
+        clear: () => { useTerminalStore.getState().clearRemoteShiftCloseConflict(); },
+      },
+    );
+  } catch (err) {
+    console.warn('[POS][sync] shift reconcile failed (non-fatal)', serializeErrorForLog(err));
+  }
 
   // Process pending image downloads (non-critical)
   try {

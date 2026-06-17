@@ -8,8 +8,8 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 
 import { AddVehicleModal } from '../organisms/AddVehicleModal/AddVehicleModal'
-import { LocationSelector as HeaderLocationSelector } from '../organisms/LocationSelector/LocationSelector'
-import { LocationSelector } from '../ui/LocationSelector'
+import { LocationSwitcher } from '../organisms/LocationSwitcher/LocationSwitcher'
+import { LocationField } from '../ui/LocationField'
 import { PartnerSearchSelect } from '../ui/PartnerSearchSelect'
 import { ProductSearchSelect } from '../ui/ProductSearchSelect'
 
@@ -179,7 +179,7 @@ describe('shared selector tenant scope', () => {
     queryClient.setQueryData(['stock-movements', 'tenant-A', 'company-1'], ['tenant-A-movements'])
     queryClient.setQueryData(['stock-levels', 'tenant-B', 'company-2'], ['tenant-B-stock'])
 
-    render(<HeaderLocationSelector />, { wrapper: wrapper(queryClient) })
+    render(<LocationSwitcher />, { wrapper: wrapper(queryClient) })
 
     await user.click(screen.getByRole('button', { name: 'Select location' }))
     await user.click(screen.getByRole('button', { name: /Warehouse/ }))
@@ -196,7 +196,7 @@ describe('shared selector tenant scope', () => {
 
     render(
       <div>
-        <LocationSelector value="loc-1" onChange={vi.fn()} />
+        <LocationField value="loc-1" onChange={vi.fn()} />
         <PartnerSearchSelect value="partner-1" onChange={vi.fn()} partnerType="customer" />
         <ProductSearchSelect value="product-1" onChange={vi.fn()} />
       </div>,

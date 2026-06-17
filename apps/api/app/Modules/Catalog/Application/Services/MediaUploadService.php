@@ -28,6 +28,8 @@ use Illuminate\Validation\ValidationException;
  *  2. Compute SHA-256 checksum.
  *  3. Build deterministic storage path: products/{tenant}/{product}/{assetUuid}/original.{ext}
  *  4. PUT the file on S3 BEFORE the DB transaction (avoids a committed row pointing to a missing file).
+ *     4a. If putFileAs() returns false (write failure), throw RuntimeException immediately —
+ *         no DB row is created, no orphan is possible.
  *  5. Open a DB::transaction and create the MediaAsset row (status = UPLOADED).
  *  6. After commit, dispatch GenerateRenditions (the job transitions UPLOADED → PROCESSING → READY).
  *  7. On any Throwable, delete the orphaned S3 object and rethrow.
@@ -101,8 +103,18 @@ final class MediaUploadService
         [$width, $height] = getimagesize($file->getRealPath()) ?: [null, null];
 
         // 1. Store on S3 BEFORE the transaction so a committed DB row always has its file.
+        // putFileAs() returns the stored path on success or false on failure; treat false
+        // as a hard error so we never create an orphaned asset row pointing to a missing
+        // object.  Throw BEFORE opening the transaction to keep the error boundary clean.
         $disk = Storage::disk('s3');
-        $disk->putFileAs(dirname($path), $file, basename($path), 'private');
+        $stored = $disk->putFileAs(dirname($path), $file, basename($path), 'private');
+
+        if ($stored === false) {
+            throw new \RuntimeException(
+                "Object storage write failed — could not store image at '{$path}'. "
+                .'Check S3/MinIO connectivity and bucket permissions before retrying.',
+            );
+        }
 
         try {
             /** @var MediaAsset $asset */

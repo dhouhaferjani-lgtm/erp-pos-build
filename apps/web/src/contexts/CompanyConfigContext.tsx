@@ -108,3 +108,15 @@ export function useCompanyConfig(): CompanyConfigContextValue {
 
   return context
 }
+
+/**
+ * Safe variant of {@link useCompanyConfig} that returns `null` when rendered
+ * outside a {@link CompanyConfigProvider} instead of throwing.
+ *
+ * Use this for components that may be mounted in contexts without the provider
+ * (e.g. shared POS organisms). Treat a `null` return as "capability unknown" —
+ * gate optimistically or pessimistically per the call site's needs.
+ */
+export function useCompanyConfigOptional(): CompanyConfigContextValue | null {
+  return useContext(CompanyConfigContext) ?? null
+}

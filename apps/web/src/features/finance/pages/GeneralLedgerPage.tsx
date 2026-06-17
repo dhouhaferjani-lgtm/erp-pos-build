@@ -6,6 +6,8 @@ import { useAccounts } from '../hooks/useAccounts'
 import { LedgerFilters } from '../components/LedgerFilters'
 import { LedgerTable } from '../components/LedgerTable'
 import { QueryError } from '@/components/QueryError'
+import { Button } from '../../../components/atoms'
+import { ListPageLayout } from '../../../components/molecules'
 import type { LedgerFilters as LedgerFiltersType } from '../types'
 
 export function GeneralLedgerPage() {
@@ -16,14 +18,6 @@ export function GeneralLedgerPage() {
 
   const handleExport = () => {
     // Export functionality to be implemented
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <p className="text-gray-500">{t('finance:reports.common.loading')}</p>
-      </div>
-    )
   }
 
   if (error) {
@@ -37,32 +31,24 @@ export function GeneralLedgerPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('finance:ledger.title')}</h1>
-          <p className="text-gray-500">{t('finance:ledger.description')}</p>
-        </div>
-        <button
-          onClick={handleExport}
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-        >
+    <ListPageLayout
+      title={t('finance:ledger.title')}
+      subtitle={t('finance:ledger.description')}
+      actions={
+        <Button variant="secondary" className="gap-2" onClick={handleExport}>
           <Download className="h-4 w-4" />
           {t('finance:reports.common.export')}
-        </button>
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        </Button>
+      }
+      filters={
         <LedgerFilters
           filters={filters}
-          accounts={accounts || []}
+          accounts={accounts ?? []}
           onFiltersChange={setFilters}
         />
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200">
-        <LedgerTable lines={ledgerData?.lines || []} />
-      </div>
-    </div>
+      }
+    >
+      <LedgerTable lines={ledgerData?.lines ?? []} isLoading={isLoading} />
+    </ListPageLayout>
   )
 }

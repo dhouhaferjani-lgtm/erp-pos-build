@@ -1,9 +1,15 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, ClipboardList } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import { getErrorMessage } from '@/lib/api'
+import { PageHeader } from '@/components/molecules/PageHeader'
+import { FormField } from '@/components/atoms/FormField/FormField'
+import { Select } from '@/components/atoms/Select/Select'
+import { Input } from '@/components/atoms/Input/Input'
+import { Textarea } from '@/components/atoms/Textarea/Textarea'
+import { Button } from '@/components/atoms/Button/Button'
 import {
   PartnerPicker,
   VehiclePicker,
@@ -79,45 +85,36 @@ export function WorkOrderCreatePage() {
     <div className="max-w-2xl space-y-6 p-6">
       <Link
         to="/workshop/work-orders"
-        className={`inline-flex items-center gap-1 text-sm ${textColors.tertiary} hover:text-slate-900`}
+        className={`inline-flex items-center gap-1 text-sm ${textColors.tertiary} ${textColors.hoverPrimary}`}
       >
         <ArrowLeft className="h-4 w-4" aria-hidden />
         {t('detail.backToList')}
       </Link>
 
-      <div>
-        <h1 className={`flex items-center gap-2 text-2xl font-semibold ${textColors.primary}`}>
-          <ClipboardList className={`h-6 w-6 ${textColors.tertiary}`} aria-hidden />
-          {t('create.title')}
-        </h1>
-        <p className={`mt-1 text-sm ${textColors.tertiary}`}>{t('create.subtitle')}</p>
-      </div>
+      <PageHeader title={t('create.title')} subtitle={t('create.subtitle')} />
 
       <form
         onSubmit={handleSubmit}
         className={`space-y-4 rounded-lg border bg-white p-6 ${borderColors.light}`}
       >
-        <div>
-          <label className={`block text-sm font-medium ${textColors.secondary}`}>
-            {t('fields.type')}
-            <select
-              value={form.type}
-              onChange={(e) => {
-                const value = e.target.value
-                if (isWorkOrderType(value)) {
-                  setForm({ ...form, type: value })
-                }
-              }}
-              className={tokens.select.base}
-            >
-              {WORK_ORDER_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {t(`workOrderType.${type}`)}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+        <FormField label={t('fields.type')} htmlFor="work-order-type">
+          <Select
+            id="work-order-type"
+            value={form.type}
+            onChange={(e) => {
+              const value = e.target.value
+              if (isWorkOrderType(value)) {
+                setForm({ ...form, type: value })
+              }
+            }}
+          >
+            {WORK_ORDER_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {t(`workOrderType.${type}`)}
+              </option>
+            ))}
+          </Select>
+        </FormField>
         <div>
           <PartnerPicker
             value={customer}
@@ -139,35 +136,29 @@ export function WorkOrderCreatePage() {
             testId="work-order-vehicle-picker"
           />
         </div>
-        <div>
-          <label className={`block text-sm font-medium ${textColors.secondary}`}>
-            {t('fields.currency')}
-            <input
-              type="text"
-              value={form.currency}
-              onChange={(e) => {
-                setForm({ ...form, currency: e.target.value.toUpperCase() })
-              }}
-              maxLength={3}
-              minLength={3}
-              className={tokens.input.base}
-              required
-            />
-          </label>
-        </div>
-        <div>
-          <label className={`block text-sm font-medium ${textColors.secondary}`}>
-            {t('fields.customerComplaint')}
-            <textarea
-              value={form.customer_complaint ?? ''}
-              onChange={(e) => {
-                setForm({ ...form, customer_complaint: e.target.value })
-              }}
-              className={tokens.input.base}
-              rows={3}
-            />
-          </label>
-        </div>
+        <FormField label={t('fields.currency')} htmlFor="work-order-currency">
+          <Input
+            id="work-order-currency"
+            type="text"
+            value={form.currency}
+            onChange={(e) => {
+              setForm({ ...form, currency: e.target.value.toUpperCase() })
+            }}
+            maxLength={3}
+            minLength={3}
+            required
+          />
+        </FormField>
+        <FormField label={t('fields.customerComplaint')} htmlFor="work-order-complaint">
+          <Textarea
+            id="work-order-complaint"
+            value={form.customer_complaint ?? ''}
+            onChange={(e) => {
+              setForm({ ...form, customer_complaint: e.target.value })
+            }}
+            rows={3}
+          />
+        </FormField>
 
         {validationError !== null && (
           <div className={`${tokens.alert.base} ${tokens.alert.error}`} role="alert">
@@ -176,10 +167,7 @@ export function WorkOrderCreatePage() {
         )}
 
         {submitError !== null && (
-          <div
-            role="alert"
-            className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"
-          >
+          <div role="alert" className={`${tokens.alert.base} ${tokens.alert.error}`}>
             {submitError}
           </div>
         )}
@@ -187,17 +175,13 @@ export function WorkOrderCreatePage() {
         <div className="flex justify-end gap-2">
           <Link
             to="/workshop/work-orders"
-            className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50"
+            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
           >
             {t('actions.cancel')}
           </Link>
-          <button
-            type="submit"
-            disabled={create.isPending}
-            className="inline-flex items-center rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-800 disabled:opacity-50"
-          >
+          <Button type="submit" variant="primary" disabled={create.isPending}>
             {create.isPending ? t('actions.creating') : t('actions.create')}
-          </button>
+          </Button>
         </div>
       </form>
     </div>

@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAgedPayables } from '../hooks/useAgedPayables'
+import { PageHeader } from '../../../components/molecules/PageHeader'
+import { Button, FormField, Input } from '../../../components/atoms'
+import { tokens, textColors, borderColors } from '../../../lib/designTokens'
+import { cn } from '../../../lib/utils'
 import type { AgedPayablesLine } from '../types'
 
 export function AgedPayablesPage() {
@@ -32,105 +36,120 @@ export function AgedPayablesPage() {
     total: parseFloat(payablesData?.grand_total || '0'),
   }
 
+  const headCell = 'px-6 py-3 text-xs font-medium uppercase tracking-wider'
+  const headCellStart = cn(headCell, 'text-start', textColors.tertiary)
+  const headCellNum = cn(headCell, 'text-end tabular-nums', textColors.tertiary)
+  const numCell = cn(
+    'whitespace-nowrap px-6 py-4 text-end tabular-nums text-sm',
+    textColors.primary
+  )
+  const nameCell = cn(
+    'whitespace-nowrap px-6 py-4 text-sm',
+    textColors.primary
+  )
+
   return (
     <div className="p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t('finance:reports.agedPayablesReport.title')}</h1>
-        <button className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
-          {t('finance:reports.common.export')}
-        </button>
-      </div>
+      <PageHeader
+        title={t('finance:reports.agedPayablesReport.title')}
+        actions={
+          <Button variant="secondary">
+            {t('finance:reports.common.export')}
+          </Button>
+        }
+      />
 
       {/* Filters */}
       <div className="mb-6">
-        <label htmlFor="as-of-date" className="mb-2 block text-sm font-medium">
-          {t('finance:reports.common.asOfDate')}
-        </label>
-        <input
-          id="as-of-date"
-          type="date"
-          value={asOfDate}
-          onChange={(e) => { setAsOfDate(e.target.value); }}
-          className="rounded border border-gray-300 px-3 py-2"
-        />
+        <FormField
+          label={t('finance:reports.common.asOfDate')}
+          htmlFor="as-of-date"
+        >
+          <Input
+            id="as-of-date"
+            type="date"
+            value={asOfDate}
+            onChange={(e) => { setAsOfDate(e.target.value); }}
+          />
+        </FormField>
       </div>
 
       {/* Report */}
       {isLoading ? (
-        <div>{t('finance:reports.common.loading')}</div>
+        <div className={textColors.tertiary}>{t('finance:reports.common.loading')}</div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+            <thead className={tokens.table.header}>
               <tr>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={headCellStart}>
                   {t('finance:reports.agedPayablesReport.vendor')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={headCellNum}>
                   {t('finance:reports.agedPayablesReport.current')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={headCellNum}>
                   {t('finance:reports.agedPayablesReport.days30')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={headCellNum}>
                   {t('finance:reports.agedPayablesReport.days60')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={headCellNum}>
                   {t('finance:reports.agedPayablesReport.days90')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={headCellNum}>
                   {t('finance:reports.agedPayablesReport.over90')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={headCellNum}>
                   {t('finance:reports.common.total')}
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
+            <tbody className={cn('divide-y bg-white', borderColors.divideDefault)}>
               {lines.map((line: AgedPayablesLine) => (
                 <tr key={line.vendor_id}>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                  <td className={nameCell}>
                     {line.vendor_name}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+                  <td className={numCell}>
                     {formatCurrency(line.current)}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+                  <td className={numCell}>
                     {formatCurrency(line.days_30)}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+                  <td className={numCell}>
                     {formatCurrency(line.days_60)}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+                  <td className={numCell}>
                     {formatCurrency(line.days_90)}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+                  <td className={numCell}>
                     {formatCurrency(line.over_90)}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
+                  <td className={cn(numCell, 'font-medium')}>
                     {formatCurrency(line.total)}
                   </td>
                 </tr>
               ))}
               {/* Totals Row */}
-              <tr className="bg-gray-100 font-bold">
-                <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">{t('finance:reports.common.total')}</td>
-                <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+              <tr className={cn(tokens.table.header, 'font-bold')}>
+                <td className={nameCell}>{t('finance:reports.common.total')}</td>
+                <td className={numCell}>
                   {formatCurrency(totals.current)}
                 </td>
-                <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+                <td className={numCell}>
                   {formatCurrency(totals.days_30)}
                 </td>
-                <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+                <td className={numCell}>
                   {formatCurrency(totals.days_60)}
                 </td>
-                <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+                <td className={numCell}>
                   {formatCurrency(totals.days_90)}
                 </td>
-                <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+                <td className={numCell}>
                   {formatCurrency(totals.over_90)}
                 </td>
-                <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+                <td className={numCell}>
                   {formatCurrency(totals.total)}
                 </td>
               </tr>

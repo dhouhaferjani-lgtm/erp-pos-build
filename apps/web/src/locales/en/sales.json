@@ -233,7 +233,7 @@
     "sealed": "Sealed",
     "deliveryDate": "Delivery Date",
     "returnDate": "Return Date",
-    "notesPlaceholder": "Additional notes...",
+    "notesPlaceholder": "Additional notes…",
     "draftSavedAt": "Draft saved {{time}}"
   },
   "lineItems": {
@@ -261,13 +261,13 @@
       "clickToEdit": "Click to edit",
       "removeLine": "Remove line",
       "searchProducts": "Search Products",
-      "searchProductsPlaceholder": "Search products...",
-      "searchServicesPlaceholder": "Search services...",
+      "searchProductsPlaceholder": "Search products…",
+      "searchServicesPlaceholder": "Search services…",
       "createNewProduct": "Create New Product",
       "addBlankLine": "Add Blank Line",
       "close": "Close"
     },
-    "loading": "Loading...",
+    "loading": "Loading…",
     "noProductsFound": "No products found matching your search",
     "noProductsAvailable": "No products available",
     "noServicesFound": "No services found matching your search",
@@ -337,7 +337,7 @@
     "creditNotes": "Credit Notes",
     "post": "Post Invoice",
     "createCreditNote": "Create Credit Note",
-    "searchInvoicePlaceholder": "Search by invoice number or partner...",
+    "searchInvoicePlaceholder": "Search by invoice number or partner…",
     "noInvoicesFound": "No invoices found",
     "noPostedInvoices": "No posted invoices available",
     "invoice": "Invoice",
@@ -385,7 +385,7 @@
       "step3": "Delivery notes will be added to the fiscal hash chain",
       "step4": "Invoice will be posted and finalized",
       "confirmAndPost": "Confirm & Post Invoice",
-      "confirming": "Confirming...",
+      "confirming": "Confirming…",
       "success": "Invoice posted successfully with confirmed delivery notes"
     }
   },
@@ -393,7 +393,7 @@
     "title": "Delivery Notes",
     "singular": "delivery note",
     "plural": "delivery notes",
-    "searchPlaceholder": "Search by delivery note number or partner...",
+    "searchPlaceholder": "Search by delivery note number or partner…",
     "noResults": "No delivery notes found",
     "noConfirmed": "No confirmed delivery notes available",
     "consolidation": {
@@ -445,7 +445,7 @@
       "other": "Other"
     },
     "notes": "Notes",
-    "notesPlaceholder": "Reason for credit note...",
+    "notesPlaceholder": "Reason for credit note…",
     "form": {
       "selectInvoice": "Select Invoice",
       "invoiceRequired": "Invoice is required",
@@ -592,7 +592,7 @@
       "none": "No Refund (Inspection/Repair)"
     },
     "notes": "Return Notes",
-    "notesPlaceholder": "Details about the return...",
+    "notesPlaceholder": "Details about the return…",
     "form": {
       "selectSource": "Select Source Document",
       "sourceRequired": "Source document is required",
@@ -698,7 +698,7 @@
   },
   "pos": {
     "title": "Point of Sale",
-    "searchProducts": "Search products...",
+    "searchProducts": "Search products…",
     "noProducts": "No products to display",
     "cart": "Cart",
     "items": "items",

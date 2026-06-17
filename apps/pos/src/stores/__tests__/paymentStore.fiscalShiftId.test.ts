@@ -7,11 +7,15 @@ import { useTerminalStore, type Terminal, type Shift } from '@/stores/terminalSt
 import { makeCartItem, makePaymentMethod, makePaymentRepository } from '@/test/helpers';
 
 /**
- * 2026-06-12 live failure: fiscal canonical payloads validate shift_id as a
- * lowercase-hex UUID, but checkout passed raw `shift.id` — `offline-<uuid>`
- * for offline-opened shifts — so every sale on an offline shift was rejected
- * with payload_field_invalid. The payload must carry the device-minted
- * fiscal shift id (the same id the SESSION_OPEN event was authored with).
+ * One-id model (Phase 1–3): shift.id IS the fiscal shift id (a v3 device-minted
+ * UUIDv7, or a v<3 server UUID); the legacy `offline-<uuid>` fork was removed.
+ * SALE_RECEIPT payloads validate shift_id as a lowercase-hex UUID, so checkout
+ * must stamp shift.id (resolved via fiscalShiftIdForReceipt) and fail loud on a
+ * non-UUID id rather than mis-attribute fiscal data.
+ *
+ * Historical context — 2026-06-12 live failure: checkout passed a raw
+ * `offline-<uuid>` shift.id, rejected with payload_field_invalid. That fork no
+ * longer exists, but the lowercase-hex-UUID contract is unchanged.
  */
 
 vi.mock('@/api/receiptApi', () => ({
@@ -158,13 +162,13 @@ describe('paymentStore fiscal shift id in SALE_RECEIPT payloads', () => {
     });
   });
 
-  it('stamps the device-minted fiscal_shift_id, not the raw offline- shift id', async () => {
+  it('stamps shift.id (one-id model: id == fiscal_shift_id == fiscal_session_id)', async () => {
     const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
     useTerminalStore.setState({
       shift: shiftState({
-        id: 'offline-44444444-4444-4444-8444-444444444444',
+        id: '11111111-1111-4111-8111-111111111111',
         fiscal_shift_id: '11111111-1111-4111-8111-111111111111',
-        fiscal_session_id: '22222222-2222-4222-8222-222222222222',
+        fiscal_session_id: '11111111-1111-4111-8111-111111111111',
       }),
     });
 
@@ -174,22 +178,6 @@ describe('paymentStore fiscal shift id in SALE_RECEIPT payloads', () => {
       expect.anything(),
       expect.objectContaining({
         shiftId: '11111111-1111-4111-8111-111111111111',
-      }),
-    );
-  });
-
-  it('derives the UUID from an offline- prefixed shift id when no fiscal_shift_id exists (legacy shift)', async () => {
-    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
-    useTerminalStore.setState({
-      shift: shiftState({ id: 'offline-44444444-4444-4444-8444-444444444444' }),
-    });
-
-    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 50);
-
-    expect(createOfflineReceipt).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        shiftId: '44444444-4444-4444-8444-444444444444',
       }),
     );
   });

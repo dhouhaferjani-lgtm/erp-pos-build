@@ -1,17 +1,20 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm, useFieldArray } from 'react-hook-form'
+import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Plus, X, Layers } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost, apiPatch } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { cn } from '../../lib/utils'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
-import { colors } from '../../lib/designTokens'
+import { colors, tokens, textColors } from '../../lib/designTokens'
 import { CategorySelect } from '../../components/catalog/CategorySelect'
 import { StickyFormFooter } from '../../components/molecules/StickyFormFooter/StickyFormFooter'
+import { PageHeader } from '../../components/molecules/PageHeader'
+import { Button, Checkbox, FormField, Input, Textarea, MoneyInput } from '../../components/atoms'
 import { BarcodeLookupInput } from './components/BarcodeLookupInput'
 import { CatalogBanner } from './components/CatalogBanner'
 import { useProductSubmission } from './api/platformQueries'
@@ -19,7 +22,6 @@ import type { LookupState, SuggestedProduct } from './types/platform'
 import { ProductImageSection, ParapharmacyMetadataFields } from '../products/components'
 import { ProductVariantMatrixEditor } from '../catalog/components/ProductVariantMatrixEditor'
 import { useVariantsForProduct } from '../catalog/hooks/useVariants'
-import { tokens, textColors } from '../../lib/designTokens'
 import { useCompanyConfig } from '../../contexts/CompanyConfigContext'
 import { useCurrency } from '../../hooks/useCurrency'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
@@ -93,7 +95,7 @@ export function ProductForm() {
   const { config } = useCompanyConfig()
   const isParapharmacy = config?.vertical === 'parapharmacy'
   const { isOtospex } = useProductConfig()
-  const { decimals } = useCurrency()
+  const { currency, decimals } = useCurrency()
 
   const [showVariants, setShowVariants] = useState(false)
   const [oemInput, setOemInput] = useState('')
@@ -312,7 +314,7 @@ export function ProductForm() {
   if (isEditing && isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-500">{t('status.loading')}</div>
+        <div className={textColors.tertiary}>{t('status.loading')}</div>
       </div>
     )
   }
@@ -320,18 +322,23 @@ export function ProductForm() {
   return (
     <div className="flex min-h-full flex-col gap-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Link
-          to="/inventory/products"
-          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          {t('actions.back')}
-        </Link>
-        <h1 className="text-2xl font-bold text-gray-900">
-          {isEditing ? t('inventory:products.edit') : t('inventory:products.new')}
-        </h1>
-      </div>
+      <PageHeader
+        title={isEditing ? t('inventory:products.edit') : t('inventory:products.new')}
+        breadcrumb={
+          <Link
+            to="/inventory/products"
+            className={cn(
+              'inline-flex items-center gap-2 text-sm',
+              textColors.tertiary,
+              textColors.hoverPrimary,
+            )}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t('actions.back')}
+          </Link>
+        }
+        className="mb-0"
+      />
 
       {/* Form */}
       <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="flex flex-1 flex-col gap-6">
@@ -346,16 +353,19 @@ export function ProductForm() {
         />
 
         {/* Basic Information */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">{t('inventory:products.sections.basicInfo')}</h2>
+        <div className={tokens.card.base}>
+          <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('inventory:products.sections.basicInfo')}</h2>
           <div className="grid gap-6 sm:grid-cols-2">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                {t('inventory:products.name')} *
-              </label>
-              <input
+            <FormField
+              label={`${t('inventory:products.name')} *`}
+              htmlFor="name"
+              error={errors.name?.message}
+            >
+              <Input
                 type="text"
                 id="name"
+                error={Boolean(errors.name)}
+                className={prefilledFields.has('name') ? colors.success[50] : ''}
                 {...register('name', {
                   required: t('inventory:products.nameRequired'),
                   onChange: () => {
@@ -367,68 +377,53 @@ export function ProductForm() {
                     })
                   },
                 })}
-                className={`mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${prefilledFields.has('name') ? colors.success[50] : ''}`}
               />
-              {errors.name && (
-                <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
-              )}
-            </div>
+            </FormField>
 
-            <div>
-              <label htmlFor="sku" className="block text-sm font-medium text-gray-700">
-                {t('inventory:products.sku')} *
-              </label>
-              <input
+            <FormField
+              label={`${t('inventory:products.sku')} *`}
+              htmlFor="sku"
+              error={errors.sku?.message}
+            >
+              <Input
                 type="text"
                 id="sku"
+                error={Boolean(errors.sku)}
                 {...register('sku', { required: t('inventory:products.skuRequired') })}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
-              {errors.sku && (
-                <p className="mt-1 text-sm text-red-600">{errors.sku.message}</p>
-              )}
-            </div>
+            </FormField>
 
             <div>
               <div className="flex items-center gap-2 mt-6">
-                <input
-                  type="checkbox"
+                <Checkbox
                   id="is_physical"
                   {...register('is_physical')}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <label htmlFor="is_physical" className="text-sm font-medium text-gray-700">
+                <label htmlFor="is_physical" className={tokens.label.base}>
                   {t('inventory:products.isPhysical')}
                 </label>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className={tokens.helperText.base}>
                 {t('inventory:products.isPhysicalHelper')}
               </p>
             </div>
 
-            <div>
-              <label htmlFor="category" className="block text-sm font-medium text-gray-700">
-                {t('catalog.products.category')}
-              </label>
+            <FormField label={t('catalog.products.category')} htmlFor="category">
               <CategorySelect
                 value={categoryId}
                 onChange={(id) => { setValue('category_id', id); }}
                 className="mt-1"
               />
-            </div>
+            </FormField>
 
-            <div>
-              <label htmlFor="unit" className="block text-sm font-medium text-gray-700">
-                {t('inventory:products.unit')}
-              </label>
-              <input
+            <FormField label={t('inventory:products.unit')} htmlFor="unit">
+              <Input
                 type="text"
                 id="unit"
-                {...register('unit')}
                 placeholder={t('inventory:products.unitPlaceholder')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                {...register('unit')}
               />
-            </div>
+            </FormField>
 
             <div>
               <BarcodeLookupInput
@@ -440,13 +435,11 @@ export function ProductForm() {
 
               {/* Enrichment opt-in checkbox */}
               {lookupState === 'not_found' && (
-                <div className="mt-3 flex items-center gap-2.5 rounded-lg bg-neutral-100 px-3.5 py-3">
-                  <input
-                    type="checkbox"
+                <div className={cn('mt-3 flex items-center gap-2.5 rounded-lg px-3.5 py-3', colors.neutral[100])}>
+                  <Checkbox
                     id="enrichment-opt-in"
                     checked={enrichmentOptIn}
                     onChange={(e) => setEnrichmentOptIn(e.target.checked)}
-                    className="h-4 w-4 rounded"
                   />
                   <label htmlFor="enrichment-opt-in" className="text-sm">
                     <span className="font-medium">{t('inventory:barcodeLookup.enrichmentCheckbox')}</span>
@@ -458,24 +451,24 @@ export function ProductForm() {
             </div>
 
             <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="is_active"
                 {...register('is_active')}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              <label htmlFor="is_active" className="text-sm font-medium text-gray-700">
+              <label htmlFor="is_active" className={tokens.label.base}>
                 {t('active')}
               </label>
             </div>
 
-            <div className="sm:col-span-2">
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                {t('inventory:products.description')}
-              </label>
-              <textarea
+            <FormField
+              className="sm:col-span-2"
+              label={t('inventory:products.description')}
+              htmlFor="description"
+            >
+              <Textarea
                 id="description"
                 rows={3}
+                className={prefilledFields.has('description') ? colors.success[50] : ''}
                 {...register('description', {
                   onChange: () => {
                     setPrefilledFields((prev) => {
@@ -486,55 +479,46 @@ export function ProductForm() {
                     })
                   },
                 })}
-                className={`mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${prefilledFields.has('description') ? colors.success[50] : ''}`}
               />
-            </div>
+            </FormField>
           </div>
         </div>
 
         {/* Pricing */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">{t('inventory:products.sections.pricing')}</h2>
+        <div className={tokens.card.base}>
+          <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('inventory:products.sections.pricing')}</h2>
           <div className="grid gap-6 sm:grid-cols-3">
-            <div>
-              <label htmlFor="sale_price" className="block text-sm font-medium text-gray-700">
-                {t('inventory:products.salePrice')}
-              </label>
-              <div className="relative mt-1">
-                <span className="absolute inset-y-0 start-0 flex items-center ps-3 text-gray-500">
-                  $
-                </span>
-                <input
-                  type="number"
-                  step="0.01"
-                  id="sale_price"
-                  {...register('sale_price')}
-                  className="block w-full rounded-lg border border-gray-300 ps-7 pe-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-            </div>
+            <FormField label={t('inventory:products.salePrice')} htmlFor="sale_price">
+              <Controller
+                name="sale_price"
+                control={control}
+                render={({ field }) => (
+                  <MoneyInput
+                    id="sale_price"
+                    currency={currency}
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                  />
+                )}
+              />
+            </FormField>
 
             {/* Cost (WAC) - Read-only when editing */}
             {isEditing && product && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  {t('inventory:products.costWac')}
-                </label>
-                <div className="relative mt-1">
-                  <span className="absolute inset-y-0 start-0 flex items-center ps-3 text-gray-500">
-                    $
-                  </span>
-                  <input
-                    type="text"
-                    value={product.cost_price ? parseFloat(product.cost_price).toFixed(decimals) : (0).toFixed(decimals)}
-                    readOnly
-                    className="block w-full rounded-lg border border-gray-200 bg-gray-50 ps-7 pe-3 py-2 text-gray-600 cursor-not-allowed"
-                  />
-                </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  {t('inventory:products.costWacHelper')}
-                </p>
-              </div>
+              <FormField
+                label={t('inventory:products.costWac')}
+                htmlFor="cost_wac"
+                helperText={t('inventory:products.costWacHelper')}
+              >
+                <Input
+                  id="cost_wac"
+                  type="text"
+                  value={product.cost_price ? parseFloat(product.cost_price).toFixed(decimals) : (0).toFixed(decimals)}
+                  readOnly
+                  className={cn(colors.neutral[50], textColors.tertiary, 'cursor-not-allowed')}
+                />
+              </FormField>
             )}
 
             <TaxConfigurationField
@@ -550,44 +534,45 @@ export function ProductForm() {
 
         {/* Automotive Information - Otospex only */}
         {isOtospex && (
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="mb-4 text-lg font-semibold text-gray-900">{t('inventory:products.sections.automotiveInfo')}</h2>
+          <div className={tokens.card.base}>
+            <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('inventory:products.sections.automotiveInfo')}</h2>
 
             {/* OEM Numbers */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className={cn(tokens.label.base, 'mb-2')}>
                 {t('inventory:products.oemNumbers')}
               </label>
               <div className="flex gap-2">
-                <input
+                <Input
                   type="text"
+                  className="mt-0 flex-1"
                   value={oemInput}
                   onChange={(e) => { setOemInput(e.target.value) }}
                   onKeyDown={handleOemKeyDown}
                   placeholder={t('inventory:products.oemPlaceholder')}
-                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  className="gap-1"
                   onClick={handleAddOem}
-                  className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                   <Plus className="h-4 w-4" />
                   {t('actions.add')}
-                </button>
+                </Button>
               </div>
               {oemNumbers.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {oemNumbers.map((oem, index) => (
                     <span
                       key={index}
-                      className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1 text-sm font-mono text-gray-700"
+                      className={cn('inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-sm font-mono', colors.neutral[100], textColors.secondary)}
                     >
                       {oem}
                       <button
                         type="button"
                         onClick={() => { handleRemoveOem(index) }}
-                        className="text-gray-400 hover:text-gray-600"
+                        className={cn(textColors.disabled, textColors.hoverSecondary)}
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -599,40 +584,41 @@ export function ProductForm() {
 
             {/* Cross References */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className={cn(tokens.label.base, 'mb-2')}>
                 {t('inventory:products.crossReferences')}
               </label>
               <div className="space-y-2">
                 {crossRefFields.map((field, index) => (
                   <div key={field.id} className="flex gap-2">
-                    <input
+                    <Input
                       type="text"
+                      className="mt-0 flex-1"
                       // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
                       {...register(`cross_references.${index}.brand` as const)}
                       placeholder={t('inventory:products.brand')}
-                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
-                    <input
+                    <Input
                       type="text"
+                      className="mt-0 flex-1"
                       // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
                       {...register(`cross_references.${index}.reference` as const)}
                       placeholder={t('inventory:products.reference')}
-                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
-                    <button
+                    <Button
                       type="button"
+                      variant="secondary"
+                      className="p-2"
                       onClick={() => { removeCrossRef(index) }}
-                      className="inline-flex items-center rounded-lg border border-gray-300 bg-white p-2 text-gray-400 hover:bg-gray-50 hover:text-gray-600"
                     >
                       <X className="h-4 w-4" />
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
               <button
                 type="button"
                 onClick={() => { appendCrossRef({ brand: '', reference: '' }) }}
-                className="mt-2 inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+                className={cn('mt-2 inline-flex items-center gap-1 text-sm', textColors.brand)}
               >
                 <Plus className="h-4 w-4" />
                 {t('inventory:products.addCrossReference')}
@@ -653,7 +639,7 @@ export function ProductForm() {
         {/* Product Images Section - Only when editing. ProductImageSection
             renders its own (translated) section header. */}
         {isEditing && id && (
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
+          <div className={tokens.card.base}>
             <ProductImageSection productId={id} />
           </div>
         )}
@@ -663,19 +649,17 @@ export function ProductForm() {
           <div className={tokens.card.base}>
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Layers className={`h-5 w-5 ${textColors.disabled}`} />
-                <h2 className={`text-lg font-semibold ${textColors.primary}`}>
+                <Layers className={cn('h-5 w-5', textColors.disabled)} />
+                <h2 className={tokens.heading.section}>
                   {t('catalog:variants.title')}
                 </h2>
               </div>
               <label className="inline-flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  className={tokens.checkbox.base}
+                <Checkbox
                   checked={showVariants}
                   onChange={(e) => { setShowVariants(e.target.checked) }}
                 />
-                <span className={`text-sm ${textColors.secondary}`}>
+                <span className={cn('text-sm', textColors.secondary)}>
                   {t('catalog:variants.hasVariants')}
                 </span>
               </label>
@@ -686,19 +670,16 @@ export function ProductForm() {
 
         {/* Form Actions */}
         <StickyFormFooter>
-          <Link
-            to="/inventory/products"
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => { void navigate('/inventory/products') }}
           >
             {t('actions.cancel')}
-          </Link>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
+          </Button>
+          <Button type="submit" variant="primary" disabled={isSubmitting}>
             {isSubmitting ? t('status.saving') : t('actions.save')}
-          </button>
+          </Button>
         </StickyFormFooter>
       </form>
     </div>

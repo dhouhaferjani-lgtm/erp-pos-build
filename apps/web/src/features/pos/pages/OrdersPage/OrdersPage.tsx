@@ -4,6 +4,7 @@ import { useOrders } from '../../hooks/useOrders'
 import { ActiveOrdersBoard } from '../../organisms/ActiveOrdersBoard'
 import { OrderPanel } from '../../organisms/OrderPanel'
 import type { OrderData } from '../../api/orderApi'
+import { textColors, borderColors } from '@/lib/designTokens'
 
 export interface OrdersPageProps {
   terminalId?: string
@@ -51,7 +52,7 @@ export function OrdersPage({ terminalId, shiftId }: OrdersPageProps) {
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-gray-500 dark:text-gray-400">
+        <p className={textColors.tertiary}>
           {t('products.loading')}
         </p>
       </div>
@@ -61,8 +62,8 @@ export function OrdersPage({ terminalId, shiftId }: OrdersPageProps) {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+      <div className={`flex items-center justify-between border-b ${borderColors.light} px-6 py-4`}>
+        <h1 className={`text-xl font-bold ${textColors.primary}`}>
           {t('orders.title')}
         </h1>
 
@@ -70,7 +71,7 @@ export function OrdersPage({ terminalId, shiftId }: OrdersPageProps) {
           <select
             value={statusFilter}
             onChange={(e) => { setStatusFilter(e.target.value); }}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+            className={`rounded-lg border ${borderColors.default} px-3 py-1.5 text-sm`}
           >
             <option value="">{t('orders.filters.allStatuses')}</option>
             <option value="open">{t('orders.status.open')}</option>
@@ -87,10 +88,10 @@ export function OrdersPage({ terminalId, shiftId }: OrdersPageProps) {
       {/* Content */}
       {orders.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2">
-          <p className="text-lg font-medium text-gray-500 dark:text-gray-400">
+          <p className={`text-lg font-medium ${textColors.tertiary}`}>
             {t('orders.noOrders')}
           </p>
-          <p className="text-sm text-gray-400 dark:text-gray-500">
+          <p className={`text-sm ${textColors.disabled}`}>
             {t('orders.noOrdersDescription')}
           </p>
         </div>
@@ -107,7 +108,7 @@ export function OrdersPage({ terminalId, shiftId }: OrdersPageProps) {
 
           {/* Detail Panel */}
           {selectedOrder && (
-            <div className="w-96 border-l border-gray-200 dark:border-gray-700">
+            <div className={`w-96 border-l ${borderColors.light}`}>
               <OrderPanel
                 order={selectedOrder}
                 onOrderUpdated={handleOrderUpdated}

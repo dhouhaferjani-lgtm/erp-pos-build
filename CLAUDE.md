@@ -46,7 +46,7 @@ Run `./scripts/preflight.sh` (PHPStan, Pint, PHPUnit, TypeScript check, ESLint) 
 All user-facing text must use `t()` translation keys via react-i18next. See [i18n reference](.claude/context/i18n.md).
 
 ### 12. Module Routes Must Follow Middleware Pattern
-All `routes.php` must use `['api', 'auth:sanctum', SetPermissionsTeam::class]`. Missing `'api'` causes 401 errors. Missing `SetPermissionsTeam` causes permission failures. See [docs/conventions/03-AUTHORIZATION.md](docs/conventions/03-AUTHORIZATION.md).
+All `routes.php` must use `['api', 'auth:sanctum', SetPermissionsTeam::class]`. Missing `'api'` causes 401 errors. Missing `SetPermissionsTeam` causes permission failures. See [docs/conventions/03-AUTHORIZATION.md](docs/conventions/03-AUTHORIZATION.md). **Vertical-exclusive routes AND fields must be module-gated** on both layers: add `module:<Name>` middleware on the backend route and gate the FE route/fields with `RequirePermission moduleKey`/`hasModule(...)`. See [docs/architecture/vertical-module-gating.md](docs/architecture/vertical-module-gating.md).
 
 ### 13. Constructor Injection Only
 All dependencies via constructor with `private readonly`. Never use `app()` helper. See [docs/conventions/07-DEPENDENCY-INJECTION.md](docs/conventions/07-DEPENDENCY-INJECTION.md).
@@ -82,6 +82,15 @@ The POS spans device SQLite, server projections, and queue workers — each laye
 - **New named queues:** every `onQueue('x')` needs a matching entry in `apps/api/config/horizon.php` `defaults.*.queue` — an unlisted queue is silently never consumed. CI-guarded by `HorizonQueueCoverageTest`.
 - **Queued jobs / fiscal projections run with NO CompanyContext:** pass explicit currency to scale resolution (rule 19). Projection tests must `app(CompanyContext::class)->clear()` before `apply()` — binding context in setUp masks the worker reality.
 - **Retiring/gating a server endpoint** (e.g. fiscal v3 retired server X reports): the client's fallback path becomes the PRIMARY path — audit and test that path with same-day data before shipping the retirement.
+
+### 21. Dev Branch Sync Discipline — local-first, batched, fast-forward-only (post-2026-06-14 divergence incident)
+`dev` is shared and other sessions push to it constantly. Keep local and remote `dev` from drifting into a messy diverge:
+- **Work in a `git worktree` off `dev`** — never edit/commit directly in a shared `dev` worktree. Parallel sessions mutate branch refs between commands; on 2026-06-14 a session fast-forwarded local `dev` onto a feature branch and it silently diverged from `origin/dev`.
+- **Merge into LOCAL `dev` first, promote to `origin/dev` in verified batches** (e.g. end of day) — and ONLY as a clean **fast-forward**.
+- **Before every promotion:** `git fetch origin dev`; if local `dev` is behind/diverged, `git merge origin/dev` (or rebase your local commits onto it) FIRST, then push. This keeps `origin/dev` a pure fast-forward.
+- **Never force-push `dev`**, and never `reset --hard` / `branch -f` the shared `dev` pointer onto a feature branch. To discard accidental local-`dev` commits, first confirm they live on their own feature branch, then `git reset --hard origin/dev`.
+- **To land a small change without dragging a contaminated local `dev`:** base your branch on `origin/dev`, then `git push origin <branch>:dev` (clean ff of just your commit).
+- Enforced by the **`dev-push-guard`** PreToolUse hook (`.claude/hooks/git-dev-push-guard.sh`, wired in `.claude/settings.json`): it BLOCKS force-pushes to `dev` and pushes of a behind/diverged local `dev`, with the exact reconcile command. Review/disable via `/hooks`.
 
 ---
 
@@ -162,6 +171,7 @@ pnpm typecheck             # TypeScript strict
 | Document | Purpose |
 |----------|---------|
 | [`docs/architecture/database.md`](docs/architecture/database.md) | Complete schema documentation |
+| [`docs/architecture/vertical-module-gating.md`](docs/architecture/vertical-module-gating.md) | Vertical/module model: two apps (Otospex/IziPOS), default modules, upgrade extras, both-layer gating. `config/verticals.php` is the SoT |
 | [`docs/architecture/frontend.md`](docs/architecture/frontend.md) | React patterns and components |
 | [`docs/architecture/design-system.md`](docs/architecture/design-system.md) | Visual design tokens |
 | [`docs/modules/treasury.md`](docs/modules/treasury.md) | Payment method configuration |

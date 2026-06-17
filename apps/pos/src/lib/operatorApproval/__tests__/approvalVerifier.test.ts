@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { verifyOfflineApprovalPin } from '../approvalVerifier';
+import {
+  verifyOfflineApprovalPin,
+  isApprovalCacheFresh,
+  APPROVAL_CACHE_MAX_AGE_MS,
+} from '../approvalVerifier';
 import type { CachedOperator } from '@/lib/db/repositories/operatorPinRepository';
 
 function operator(overrides: Partial<CachedOperator> = {}): CachedOperator {
@@ -55,5 +59,49 @@ describe('verifyOfflineApprovalPin', () => {
     })).resolves.toEqual({ ok: true, operatorId: 'supervisor-1' });
 
     expect(bcryptCheck).toHaveBeenCalledWith('1234', '$2a$10$known');
+  });
+});
+
+describe('isApprovalCacheFresh (FU-1b TTL)', () => {
+  const T0 = Date.parse('2026-06-15T12:00:00.000Z');
+
+  it('is fresh when the cache was fetched within the TTL', () => {
+    const fetchedAt = new Date(T0 - (APPROVAL_CACHE_MAX_AGE_MS - 60_000)).toISOString();
+    expect(isApprovalCacheFresh(fetchedAt, T0)).toBe(true);
+  });
+
+  it('is stale once the cache is older than the TTL', () => {
+    const fetchedAt = new Date(T0 - (APPROVAL_CACHE_MAX_AGE_MS + 60_000)).toISOString();
+    expect(isApprovalCacheFresh(fetchedAt, T0)).toBe(false);
+  });
+
+  it('treats exactly-at-the-boundary as fresh', () => {
+    const fetchedAt = new Date(T0 - APPROVAL_CACHE_MAX_AGE_MS).toISOString();
+    expect(isApprovalCacheFresh(fetchedAt, T0)).toBe(true);
+  });
+
+  it('fails closed on a null/missing fetch time', () => {
+    expect(isApprovalCacheFresh(null, T0)).toBe(false);
+    expect(isApprovalCacheFresh(undefined, T0)).toBe(false);
+  });
+
+  it('fails closed on an unparseable fetch time', () => {
+    expect(isApprovalCacheFresh('not-a-date', T0)).toBe(false);
+  });
+
+  it('treats a modestly future fetch time (server/clock skew) as fresh', () => {
+    const fetchedAt = new Date(T0 + 60_000).toISOString();
+    expect(isApprovalCacheFresh(fetchedAt, T0)).toBe(true);
+  });
+
+  it('fails closed on an implausibly future fetch time (gross skew / tampering)', () => {
+    const fetchedAt = new Date(T0 + 365 * 24 * 60 * 60 * 1000).toISOString();
+    expect(isApprovalCacheFresh(fetchedAt, T0)).toBe(false);
+  });
+
+  it('honours a custom maxAgeMs override', () => {
+    const fetchedAt = new Date(T0 - 2 * 60_000).toISOString();
+    expect(isApprovalCacheFresh(fetchedAt, T0, 60_000)).toBe(false);
+    expect(isApprovalCacheFresh(fetchedAt, T0, 5 * 60_000)).toBe(true);
   });
 });

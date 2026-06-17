@@ -52,6 +52,16 @@ final class TerminalResource extends JsonResource
             'deactivation_reason' => $this->deactivation_reason,
             'has_history' => ($this->receipts_count ?? $this->receipts()->count()) > 0
                 || ($this->shifts_count ?? $this->shifts()->count()) > 0,
+            // Offline-first shifts Phase 6.1: the device seeds its per-terminal
+            // `shift_number` counter from this so a fresh install continues
+            // numbering from the server's MAX rather than restarting at 1 (which
+            // would collide with server-projected numbers from a prior install).
+            // `withMax('shifts', 'shift_number')` populates the eager attribute
+            // when the caller opts in; otherwise we fall back to a lazy MAX, the
+            // same pattern `has_history` uses above. Null (no shifts) → 0.
+            'max_shift_number' => (int) ($this->shifts_max_shift_number
+                ?? $this->shifts()->max('shift_number')
+                ?? 0),
             'genesis_seed' => $this->genesis_seed,
             'last_hash' => $this->last_hash,
             'hash_sequence' => max(0, $this->current_sequence - 1),

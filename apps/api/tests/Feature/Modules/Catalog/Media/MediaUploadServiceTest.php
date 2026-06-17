@@ -9,6 +9,7 @@ use App\Modules\Catalog\Application\Services\MediaUploadService;
 use App\Modules\Catalog\Domain\Enums\MediaSource;
 use App\Modules\Catalog\Domain\Enums\MediaStatus;
 use App\Modules\Catalog\Domain\Media\MediaAsset;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Bus;
@@ -96,7 +97,7 @@ final class MediaUploadServiceTest extends TestCase
 
         // Path structure: products/{tenantId}/{productId}/{uuid}/original.png
         self::assertMatchesRegularExpression(
-            '#^products/' . preg_quote($tenantId, '#') . '/' . preg_quote($productId, '#') . '/[0-9a-f\-]{36}/original\.png$#',
+            '#^products/'.preg_quote($tenantId, '#').'/'.preg_quote($productId, '#').'/[0-9a-f\-]{36}/original\.png$#',
             $asset->storage_path,
         );
     }
@@ -168,7 +169,7 @@ final class MediaUploadServiceTest extends TestCase
             self::assertStringContainsString('Simulated DB failure', $e->getMessage());
         } finally {
             // Detach only the listener we added so service-provider observers survive.
-            MediaAsset::getEventDispatcher()?->forget('eloquent.creating: ' . MediaAsset::class);
+            MediaAsset::getEventDispatcher()?->forget('eloquent.creating: '.MediaAsset::class);
         }
 
         // The orphaned S3 file must have been removed by the catch block.
@@ -216,7 +217,7 @@ final class MediaUploadServiceTest extends TestCase
         $tenantId = (string) Str::uuid();
         $productId = (string) Str::uuid();
 
-        $longUrl = 'https://cdn.example.com/' . str_repeat('a', 2048);
+        $longUrl = 'https://cdn.example.com/'.str_repeat('a', 2048);
 
         $this->expectException(ValidationException::class);
 
@@ -274,5 +275,53 @@ final class MediaUploadServiceTest extends TestCase
         $this->expectException(ValidationException::class);
 
         $this->service->registerExternalUrl($tenantId, $productId, 'https://[::1]/image.jpg');
+    }
+
+    // -----------------------------------------------------------------------
+    // Fix #4 — fail-loud when object storage write fails (putFileAs → false)
+    // -----------------------------------------------------------------------
+
+    public function test_upload_throws_runtime_exception_and_creates_no_asset_when_putfileas_fails(): void
+    {
+        Bus::fake();
+
+        // Use a real fake disk but intercept putFileAs() so it returns false,
+        // simulating a MinIO connectivity failure or bucket-not-found condition.
+        $fakeDisk = Storage::fake('s3');
+
+        // Partially mock the disk: put/putFileAs returns false.
+        // Storage::fake() returns a FilesystemAdapter backed by an in-memory
+        // League disk; wrap it so the next putFileAs call returns false.
+        // We use Storage::shouldReceive() on a mocked disk by swapping the
+        // 's3' disk with a mock that returns false for put/putFileAs.
+        Storage::shouldReceive('disk')
+            ->with('s3')
+            ->once()
+            ->andReturn(
+                tap(\Mockery::mock(Filesystem::class), function ($mock): void {
+                    $mock->shouldReceive('putFileAs')->once()->andReturn(false);
+                }),
+            );
+
+        $tenantId = (string) Str::uuid();
+        $productId = (string) Str::uuid();
+        $file = UploadedFile::fake()->image('photo.jpg', 100, 100);
+
+        $assetCountBefore = MediaAsset::count();
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/Object storage write failed/');
+
+        try {
+            $this->service->uploadForProduct($tenantId, $productId, $file, null);
+        } finally {
+            // No media_assets row must have been created — the exception fires BEFORE
+            // the DB transaction, so the count must remain unchanged.
+            self::assertSame(
+                $assetCountBefore,
+                MediaAsset::count(),
+                'No media_assets row must be created when S3 write fails',
+            );
+        }
     }
 }

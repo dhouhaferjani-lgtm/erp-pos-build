@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { cn } from '@/lib/utils'
+import { textColors, borderColors, colors } from '@/lib/designTokens'
 
 export interface SendToKitchenButtonProps {
   onConfirm: () => void
@@ -34,7 +36,7 @@ export function SendToKitchenButton({
   if (showConfirm) {
     return (
       <div className="flex items-center gap-2">
-        <span className="text-sm text-gray-600 dark:text-gray-400">
+        <span className={cn('text-sm', textColors.tertiary)}>
           {t('orders.confirmSend')}
         </span>
         <button
@@ -48,7 +50,12 @@ export function SendToKitchenButton({
         <button
           type="button"
           onClick={handleCancel}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+          className={cn(
+            'rounded-lg border px-3 py-1.5 text-sm font-medium',
+            borderColors.default,
+            textColors.secondary,
+            colors.hover.gray50,
+          )}
         >
           {t('barcode.cancel')}
         </button>

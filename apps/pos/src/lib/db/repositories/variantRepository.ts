@@ -1,5 +1,5 @@
 /**
- * FV1 — Offline product_variants repository (migration v53).
+ * FV1 — Offline product_variants repository (migration v56).
  *
  * Caches the variant catalog pulled from GET /pos/variants. Only active
  * variants are stored; deleted variants are removed via deleteVariantsById.

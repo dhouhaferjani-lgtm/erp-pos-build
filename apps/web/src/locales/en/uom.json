@@ -72,7 +72,7 @@
       "Ceil": "Ceiling"
     },
     "save": "Save",
-    "saving": "Saving...",
+    "saving": "Saving…",
     "saved": "Precision settings saved.",
     "saveError": "Failed to save precision settings.",
     "narrowingWarning": "Changing this may render existing quantity values inexact. Review the impact report after save."

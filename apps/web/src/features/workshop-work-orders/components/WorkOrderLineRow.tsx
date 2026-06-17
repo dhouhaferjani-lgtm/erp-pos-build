@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { borderColors, textColors } from '@/lib/designTokens'
+import { StatusBadge } from '@/components/atoms/StatusBadge'
 import { LineTypeIcon } from './LineTypeIcon'
 import type { WorkOrderLine } from '../types'
 
@@ -35,8 +36,8 @@ export function WorkOrderLineRow({ line, currency, redactFinancials }: WorkOrder
       <div className={`col-span-2 text-xs ${textColors.tertiary}`}>
         {line.quantity} {line.unit}
       </div>
-      <div className={`col-span-2 text-right text-xs ${textColors.tertiary}`}>{unitPrice}</div>
-      <div className="col-span-2 text-right text-sm font-semibold text-slate-900">
+      <div className={`col-span-2 text-right text-xs tabular-nums ${textColors.tertiary}`}>{unitPrice}</div>
+      <div className={`col-span-2 text-right text-sm font-semibold tabular-nums ${textColors.primary}`}>
         {totalIncl}
         {!redactFinancials && line.line_total_incl_tax !== null && (
           <span className={`ml-1 text-xs ${textColors.tertiary}`}>{currency}</span>
@@ -44,9 +45,9 @@ export function WorkOrderLineRow({ line, currency, redactFinancials }: WorkOrder
       </div>
       <div className="col-span-1 text-right">
         {line.is_completed && (
-          <span className="inline-flex items-center rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+          <StatusBadge tone="success" className="px-1.5 text-[10px]">
             {t('labels.done')}
-          </span>
+          </StatusBadge>
         )}
       </div>
     </div>

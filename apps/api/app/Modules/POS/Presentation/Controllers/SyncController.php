@@ -172,6 +172,21 @@ final class SyncController extends Controller
             })
             ->findOrFail($id);
 
+        // Device-authoritative (v3) terminals author SESSION_CLOSE locally;
+        // pos_shifts is closed by the projection. The legacy sync-close mirror
+        // is retired with a hard 409 (Decision 3; mirrors ZReportSyncController).
+        if ((int) ($shift->terminal->fiscal_schema_version ?? 2) >= 3) {
+            return response()->json([
+                'error' => [
+                    'code' => 'SHIFT_DEVICE_AUTHORITY_REQUIRED',
+                    'message' => sprintf(
+                        'Shift sync-close is retired for device-authoritative terminal %s. The device authors SESSION_CLOSE locally; pos_shifts is a projection.',
+                        $shift->terminal_id,
+                    ),
+                ],
+            ], 409);
+        }
+
         if (! $shift->isOpen()) {
             return response()->json([
                 'error' => [

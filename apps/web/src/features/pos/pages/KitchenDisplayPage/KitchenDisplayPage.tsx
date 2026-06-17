@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { useKitchenOrders, useUpdateLineStatus, useBumpOrder } from '../../hooks/useKitchenOrders'
 import { useKitchenChannel } from '../../hooks/useKitchenChannel'
 import { KitchenOrderCard } from '../../components/KitchenOrderCard'
+import { colors, textColors } from '@/lib/designTokens'
 
 /**
  * Full-screen Kitchen Display System page.
@@ -27,20 +28,20 @@ export function KitchenDisplayPage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-100 dark:bg-gray-900">
-        <div className="text-lg text-gray-500">{t('common:loading', 'Loading...')}</div>
+      <div className={`flex h-screen items-center justify-center ${colors.neutral[100]}`}>
+        <div className={`text-lg ${textColors.tertiary}`}>{t('common:loading', 'Loading...')}</div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-screen flex-col bg-gray-100 dark:bg-gray-900">
+    <div className={`flex h-screen flex-col ${colors.neutral[100]}`}>
       {/* Header */}
-      <div className="flex items-center justify-between bg-white px-6 py-3 shadow-sm dark:bg-gray-800">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+      <div className={`flex items-center justify-between ${colors.white} px-6 py-3 shadow-sm`}>
+        <h1 className={`text-xl font-bold ${textColors.primary}`}>
           {t('kitchen.title')}
         </h1>
-        <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+        <div className={`flex items-center gap-4 text-sm ${textColors.tertiary}`}>
           <span>
             {orders?.length ?? 0} {t('kitchen.activeOrders')}
           </span>
@@ -55,10 +56,10 @@ export function KitchenDisplayPage() {
         {!orders || orders.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
-              <p className="text-2xl font-semibold text-gray-400 dark:text-gray-500">
+              <p className={`text-2xl font-semibold ${textColors.disabled}`}>
                 {t('kitchen.noOrders')}
               </p>
-              <p className="mt-2 text-sm text-gray-400 dark:text-gray-500">
+              <p className={`mt-2 text-sm ${textColors.disabled}`}>
                 {t('kitchen.waitingForOrders')}
               </p>
             </div>

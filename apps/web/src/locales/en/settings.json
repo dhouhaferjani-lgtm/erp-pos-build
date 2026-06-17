@@ -107,7 +107,7 @@
         "contact": "Contact",
         "review": "Review"
       },
-      "loading": "Loading companies...",
+      "loading": "Loading companies…",
       "noCompaniesTitle": "No Companies Found",
       "noCompaniesMessage": "You don't have access to any companies. Please contact your administrator."
     },
@@ -244,7 +244,7 @@
         "nonRegistered": "Not VAT Registered",
         "nonRegisteredDescription": "VAT on purchases is added to inventory cost",
         "vatNumber": "VAT Registration Number",
-      "vatNumberPlaceholder": "TN123456789"
+        "vatNumberPlaceholder": "TN123456789"
       },
       "table": {
         "name": "Name",
@@ -326,7 +326,8 @@
       "payment_methods": "Payment Methods",
       "payment_repositories": "Payment Repositories",
       "pos_terminal": "POS Terminal",
-      "first_product": "First Product"
+      "first_product": "First Product",
+      "product_options": "Set up product options"
     },
     "badges": {
       "required": "Required",
@@ -347,7 +348,7 @@
     "maxDiscountPercent": "Maximum discount percentage",
     "maxDiscountHelp": "Leave empty for no individual limit (terminal limit applies)",
     "save": "Save Changes",
-    "saving": "Saving...",
+    "saving": "Saving…",
     "success": "User updated successfully"
   },
   "admin": {

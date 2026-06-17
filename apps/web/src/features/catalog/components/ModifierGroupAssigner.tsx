@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import { Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/atoms'
+import { Button, StatusBadge } from '@/components/atoms'
+import { textColors, borderColors } from '@/lib/designTokens'
 import type { ModifierGroupData } from '../types/compositeItem'
 import { useModifierGroups, useAssignModifierGroup, useRemoveModifierGroup } from '../hooks/useModifierGroups'
 
@@ -38,22 +39,22 @@ export function ModifierGroupAssigner({ compositeItemId, assignedGroups }: Modif
     <div className="space-y-6">
       {/* Assigned groups */}
       <div>
-        <h4 className="text-sm font-medium text-gray-900 mb-3">{t('catalog:assignedGroups')}</h4>
+        <h4 className={`text-sm font-medium ${textColors.primary} mb-3`}>{t('catalog:assignedGroups')}</h4>
         {assignedGroups.length === 0 ? (
-          <p className="text-sm text-gray-500">{t('catalog:noModifierGroups')}</p>
+          <p className={`text-sm ${textColors.tertiary}`}>{t('catalog:noModifierGroups')}</p>
         ) : (
           <div className="space-y-2">
             {assignedGroups.map((group) => (
-              <div key={group.id} className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
-                <div>
+              <div key={group.id} className={`flex items-center justify-between rounded-lg border ${borderColors.light} p-3`}>
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium text-sm">{group.name}</span>
-                  <span className="text-gray-500 text-xs ml-2">({group.code})</span>
-                  <span className="text-gray-400 text-xs ml-2">
+                  <span className={`${textColors.tertiary} text-xs`}>({group.code})</span>
+                  <StatusBadge tone="info">
                     {group.selection_type === 'single' ? t('catalog:single') : t('catalog:multiple')}
                     {group.is_required && ` - ${t('catalog:isRequired')}`}
-                  </span>
+                  </StatusBadge>
                   {group.modifiers && group.modifiers.length > 0 && (
-                    <div className="text-xs text-gray-400 mt-1">
+                    <div className={`text-xs ${textColors.disabled} w-full`}>
                       {group.modifiers.map((m) => m.name).join(', ')}
                     </div>
                   )}
@@ -63,7 +64,7 @@ export function ModifierGroupAssigner({ compositeItemId, assignedGroups }: Modif
                   size="sm"
                   onClick={() => { handleRemove(group.id); }}
                   disabled={removeMutation.isPending}
-                  className="!p-1 text-red-600 hover:text-red-900 hover:bg-red-50"
+                  className={`!p-1 ${textColors.error} ${textColors.hoverError}`}
                 >
                   <X className="h-4 w-4" />
                 </Button>
@@ -76,20 +77,20 @@ export function ModifierGroupAssigner({ compositeItemId, assignedGroups }: Modif
       {/* Available groups */}
       {availableGroups.length > 0 && (
         <div>
-          <h4 className="text-sm font-medium text-gray-900 mb-3">{t('catalog:availableGroups')}</h4>
+          <h4 className={`text-sm font-medium ${textColors.primary} mb-3`}>{t('catalog:availableGroups')}</h4>
           <div className="space-y-2">
             {availableGroups.map((group) => (
-              <div key={group.id} className="flex items-center justify-between rounded-lg border border-dashed border-gray-300 p-3">
+              <div key={group.id} className={`flex items-center justify-between rounded-lg border border-dashed ${borderColors.default} p-3`}>
                 <div>
                   <span className="text-sm">{group.name}</span>
-                  <span className="text-gray-500 text-xs ml-2">({group.code})</span>
+                  <span className={`${textColors.tertiary} text-xs ml-2`}>({group.code})</span>
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => { handleAssign(group.id); }}
                   disabled={assignMutation.isPending}
-                  className="!p-1 text-blue-600 hover:text-blue-700"
+                  className={`!p-1 ${textColors.brand}`}
                 >
                   <Plus className="h-4 w-4" />
                 </Button>

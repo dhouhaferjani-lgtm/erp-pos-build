@@ -1,4 +1,6 @@
 import { useTranslation } from 'react-i18next'
+import { cn } from '@/lib/utils'
+import { colors, textColors, borderColors } from '@/lib/designTokens'
 import type { SalesSummary } from '../../api/analyticsApi'
 
 interface SalesSummaryCardsProps {
@@ -25,9 +27,9 @@ export function SalesSummaryCards({ data }: SalesSummaryCardsProps) {
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
       {cards.map((card) => (
-        <div key={card.label} className="rounded-lg border bg-card p-4">
-          <p className="text-sm text-muted-foreground">{card.label}</p>
-          <p className="mt-1 text-2xl font-semibold">{card.value}</p>
+        <div key={card.label} className={cn('rounded-lg border p-4', borderColors.light, colors.white)}>
+          <p className={cn('text-sm', textColors.tertiary)}>{card.label}</p>
+          <p className={cn('mt-1 text-2xl font-semibold', textColors.primary)}>{card.value}</p>
         </div>
       ))}
     </div>

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Catalog;
 
 use App\Modules\Catalog\Application\Services\ProductVariantService;
+use App\Modules\Catalog\Domain\Entities\ProductAttributeValue;
 use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Catalog\Domain\Entities\ProductVariantAttributeValue;
 use Database\Factories\Catalog\ProductAttributeFactory;
@@ -82,10 +83,15 @@ class ProductVariantServiceMatrixTest extends TestCase
             ]);
         }
 
-        $variants = $this->service->generateMatrix(
+        $result = $this->service->generateMatrix(
             productId: (string) $product->id,
-            attributeIds: [$tailleAttr->id, $couleurAttr->id],
+            axes: [
+                ['attributeId' => $tailleAttr->id, 'valueIds' => ProductAttributeValue::where('attribute_id', $tailleAttr->id)->pluck('id')->all()],
+                ['attributeId' => $couleurAttr->id, 'valueIds' => ProductAttributeValue::where('attribute_id', $couleurAttr->id)->pluck('id')->all()],
+            ],
         );
+
+        $variants = $result['created'];
 
         // 18 variants persisted (6 × 3)
         $this->assertCount(18, $variants);
@@ -210,7 +216,10 @@ class ProductVariantServiceMatrixTest extends TestCase
         try {
             $this->service->generateMatrix(
                 productId: (string) $product->id,
-                attributeIds: [$axis1Attr->id, $axis2Attr->id],
+                axes: [
+                    ['attributeId' => $axis1Attr->id, 'valueIds' => ProductAttributeValue::where('attribute_id', $axis1Attr->id)->pluck('id')->all()],
+                    ['attributeId' => $axis2Attr->id, 'valueIds' => ProductAttributeValue::where('attribute_id', $axis2Attr->id)->pluck('id')->all()],
+                ],
             );
         } finally {
             // Regardless of exception, assert that NO new variants were committed.

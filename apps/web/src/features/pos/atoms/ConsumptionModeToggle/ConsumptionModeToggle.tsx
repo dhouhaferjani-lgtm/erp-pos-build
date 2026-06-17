@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
-import { focusRing } from '@/lib/designTokens'
+import { colors, textColors, focusRing } from '@/lib/designTokens'
 import { UtensilsCrossed, Package } from 'lucide-react'
 
 export type ConsumptionMode = 'SUR_PLACE' | 'A_EMPORTER'
@@ -15,7 +15,7 @@ export function ConsumptionModeToggle({ value, onChange, className }: Consumptio
   const { t } = useTranslation(['pos'])
 
   return (
-    <div className={cn('inline-flex rounded-lg bg-gray-100 p-1', className)}>
+    <div className={cn('inline-flex rounded-lg p-1', colors.neutral[100], className)}>
       <button
         type="button"
         onClick={() => { onChange('SUR_PLACE'); }}
@@ -24,8 +24,8 @@ export function ConsumptionModeToggle({ value, onChange, className }: Consumptio
           focusRing.default,
           focusRing.primary,
           value === 'SUR_PLACE'
-            ? 'bg-white text-gray-900 shadow-sm'
-            : 'text-gray-600 hover:text-gray-900',
+            ? cn(colors.white, textColors.primary, 'shadow-sm')
+            : cn(textColors.tertiary, textColors.hoverPrimary),
         )}
       >
         <UtensilsCrossed className="w-4 h-4" />
@@ -39,8 +39,8 @@ export function ConsumptionModeToggle({ value, onChange, className }: Consumptio
           focusRing.default,
           focusRing.primary,
           value === 'A_EMPORTER'
-            ? 'bg-white text-gray-900 shadow-sm'
-            : 'text-gray-600 hover:text-gray-900',
+            ? cn(colors.white, textColors.primary, 'shadow-sm')
+            : cn(textColors.tertiary, textColors.hoverPrimary),
         )}
       >
         <Package className="w-4 h-4" />

@@ -7,12 +7,16 @@ namespace App\Modules\Catalog\Presentation\Controllers;
 use App\Modules\Catalog\Application\Commands\CreateVariantCommand;
 use App\Modules\Catalog\Application\DTOs\ProductVariantData;
 use App\Modules\Catalog\Application\Services\ProductVariantService;
+use App\Modules\Catalog\Domain\Entities\ProductAttributeValue;
 use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Catalog\Presentation\Requests\CreateVariantRequest;
 use App\Modules\Catalog\Presentation\Requests\GenerateMatrixRequest;
 use App\Modules\Catalog\Presentation\Requests\UpdateVariantRequest;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\VariantStockReader;
+use App\Shared\Domain\Exceptions\MatrixGenerationLimitException;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
@@ -29,6 +33,7 @@ class ProductVariantController extends Controller
     public function __construct(
         private readonly ProductVariantService $variantService,
         private readonly CompanyContext $companyContext,
+        private readonly VariantStockReader $stockReader,
     ) {}
 
     /**
@@ -46,6 +51,7 @@ class ProductVariantController extends Controller
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->where('product_id', $productId)
+            ->with('attributeValues')
             ->orderBy('display_order')
             ->get();
 
@@ -100,11 +106,17 @@ class ProductVariantController extends Controller
             attributeValues: $attributeValues,
         ));
 
+        $variant->loadMissing('attributeValues');
+
         return response()->json(['data' => ProductVariantData::fromModel($variant)], 201);
     }
 
     /**
-     * Generate the full cartesian-product variant matrix for a product.
+     * Generate the variant matrix for a product from a value-subset selection.
+     *
+     * Accepts either the preferred `axes` shape (each axis = attribute + value-id
+     * subset) or the legacy `attribute_ids` shape (all values of each attribute).
+     * Returns the affected variants (created + restored) plus per-bucket meta counts.
      */
     public function generateMatrix(GenerateMatrixRequest $request, string $productId): JsonResponse
     {
@@ -123,14 +135,68 @@ class ProductVariantController extends Controller
             return response()->json(['message' => 'Product not found'], 404);
         }
 
+        $axes = $this->normalizeAxes($request);
+
+        try {
+            $result = $this->variantService->generateMatrix($product->id, $axes);
+        } catch (MatrixGenerationLimitException $e) {
+            return response()->json(['errors' => ['combinations' => [$e->getMessage()]]], 422);
+        }
+
+        /** @var EloquentCollection<int, ProductVariant> $affected */
+        $affected = new EloquentCollection(
+            $result['created']->merge($result['restored'])->all(),
+        );
+        $affected->loadMissing('attributeValues');
+
+        return response()->json([
+            'data' => $affected
+                ->map(fn (ProductVariant $v): ProductVariantData => ProductVariantData::fromModel($v))
+                ->values(),
+            'meta' => [
+                'created_count' => $result['created']->count(),
+                'restored_count' => $result['restored']->count(),
+                'skipped_count' => $result['skipped_count'],
+            ],
+        ], 201);
+    }
+
+    /**
+     * Normalise the validated request into the service's axes shape.
+     *
+     * - `axes` present  → map each {attribute_id, value_ids} → {attributeId, valueIds}.
+     * - legacy `attribute_ids` → expand each attribute to ALL of its value IDs.
+     *
+     * @return array<int, array{attributeId: string, valueIds: string[]}>
+     */
+    private function normalizeAxes(GenerateMatrixRequest $request): array
+    {
+        if ($request->has('axes') && is_array($request->input('axes'))) {
+            /** @var array<int, array{attribute_id: string, value_ids: string[]}> $rawAxes */
+            $rawAxes = $request->input('axes', []);
+
+            return array_map(
+                static fn (array $axis): array => [
+                    'attributeId' => $axis['attribute_id'],
+                    'valueIds' => array_values($axis['value_ids']),
+                ],
+                $rawAxes,
+            );
+        }
+
         /** @var array<int, string> $attributeIds */
         $attributeIds = $request->input('attribute_ids', []);
 
-        $variants = $this->variantService->generateMatrix($product->id, $attributeIds);
-
-        return response()->json([
-            'data' => $variants->map(fn (ProductVariant $v): ProductVariantData => ProductVariantData::fromModel($v))->values(),
-        ], 201);
+        return array_map(
+            static fn (string $attributeId): array => [
+                'attributeId' => $attributeId,
+                'valueIds' => ProductAttributeValue::query()
+                    ->where('attribute_id', $attributeId)
+                    ->pluck('id')
+                    ->all(),
+            ],
+            $attributeIds,
+        );
     }
 
     /**
@@ -153,8 +219,7 @@ class ProductVariantController extends Controller
             return response()->json(['message' => 'Variant not found'], 404);
         }
 
-        $variant->fill($request->validated());
-        $variant->save();
+        $variant = $this->variantService->updateVariant($variant, $request->validated());
 
         return response()->json(['data' => ProductVariantData::fromModel($variant)]);
     }
@@ -177,6 +242,12 @@ class ProductVariantController extends Controller
 
         if ($variant === null) {
             return response()->json(['message' => 'Variant not found'], 404);
+        }
+
+        if (bccomp($this->stockReader->variantOnHandQuantity($company->tenant_id, $company->id, $variant->id), '0', 4) === 1) {
+            return response()->json([
+                'message' => 'This variant has stock on hand. Deactivate it instead of deleting.',
+            ], 422);
         }
 
         $variant->delete();

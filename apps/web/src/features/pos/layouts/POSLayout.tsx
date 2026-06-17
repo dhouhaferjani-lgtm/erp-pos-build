@@ -8,6 +8,8 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { ShiftOperationsMenu } from './ShiftOperationsMenu'
 import { CashOperationModal } from '../components/CashOperationModal'
 import { usePosTenantScope } from '../hooks/usePosTenantScope'
+import { cn } from '@/lib/utils'
+import { colors, tokens, textColors, focusRing } from '@/lib/designTokens'
 
 interface POSLayoutProps {
   children: React.ReactNode
@@ -89,52 +91,51 @@ export function POSLayout({
   }, [shift?.opened_at])
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gray-900">
-      {/* Enhanced Header with Shift Management */}
-      <header className="flex h-14 items-center justify-between bg-gray-800 px-4 shadow-lg">
+    <div className={cn('fixed inset-0 z-50 flex flex-col', colors.neutral[900])}>
+      {/* Enhanced Header with Shift Management — deliberate dark brand bar */}
+      <header
+        className={cn(
+          'flex h-14 items-center justify-between px-4 shadow-lg',
+          colors.neutral[800]
+        )}
+      >
         {/* Left: Terminal, Shift, Duration, Expected Cash */}
         <div className="flex items-center gap-4">
-          <Store className="h-6 w-6 text-white" />
-          <span className="text-lg font-medium text-white">
+          <Store className={cn('h-6 w-6', textColors.inverse)} />
+          <span className={cn('text-lg font-medium', textColors.inverse)}>
             {t('common:pos.title', { defaultValue: 'Point of Sale' })}
           </span>
 
           {/* Terminal Badge */}
           {terminalCode && (
-            <div className="flex items-center gap-2 rounded-md bg-gray-700 px-3 py-1">
-              <Monitor className="h-4 w-4 text-gray-300" />
-              <span className="text-sm font-semibold text-white">{terminalCode}</span>
-            </div>
+            <span className={cn(tokens.badge.base, tokens.badge.gray)}>
+              <Monitor className="mr-1.5 h-4 w-4" />
+              {terminalCode}
+            </span>
           )}
 
           {/* Shift Badge */}
           {shift && (
             <>
-              <div className="flex items-center gap-2 rounded-md bg-green-700 px-3 py-1">
-                <span className="text-xs font-medium text-green-200">
-                  {t('common:pos.shift', { defaultValue: 'Shift' })}:
-                </span>
-                <span className="text-sm font-semibold text-white">
-                  #{shift.shift_number}
-                </span>
-              </div>
+              <span className={cn(tokens.badge.base, tokens.badge.green)}>
+                {t('common:pos.shift', { defaultValue: 'Shift' })}: #
+                {shift.shift_number}
+              </span>
 
               {/* Duration Badge */}
               {shiftDuration && (
-                <div className="flex items-center gap-2 rounded-md bg-blue-700 px-3 py-1">
-                  <Clock className="h-4 w-4 text-blue-200" />
-                  <span className="text-sm font-semibold text-white">{shiftDuration}</span>
-                </div>
+                <span className={cn(tokens.badge.base, tokens.badge.blue)}>
+                  <Clock className="mr-1.5 h-4 w-4" />
+                  {shiftDuration}
+                </span>
               )}
 
               {/* Expected Cash Badge */}
               {balance && (
-                <div className="flex items-center gap-2 rounded-md bg-yellow-700 px-3 py-1">
-                  <DollarSign className="h-4 w-4 text-yellow-200" />
-                  <span className="text-sm font-semibold text-white">
-                    {formatMoney(parseFloat(balance.expected_cash))}
-                  </span>
-                </div>
+                <span className={cn(tokens.badge.base, tokens.badge.yellow)}>
+                  <DollarSign className="mr-1.5 h-4 w-4" />
+                  {formatMoney(parseFloat(balance.expected_cash))}
+                </span>
               )}
             </>
           )}
@@ -145,7 +146,12 @@ export function POSLayout({
           {shift && (
             <button
               onClick={() => { setIsOperationsMenuOpen(!isOperationsMenuOpen); }}
-              className="flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800"
+              className={cn(
+                tokens.button.base,
+                tokens.button.primary,
+                tokens.button.sizes.md,
+                'gap-2'
+              )}
               aria-label={t('common:pos.operations', { defaultValue: 'Operations' })}
             >
               <Settings className="h-4 w-4" />
@@ -155,7 +161,13 @@ export function POSLayout({
 
           <button
             onClick={onExitPOS}
-            className="flex items-center gap-2 rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-800"
+            className={cn(
+              tokens.button.base,
+              tokens.button.secondary,
+              tokens.button.sizes.md,
+              focusRing.default,
+              'gap-2'
+            )}
             aria-label={t('common:pos.exitFullscreen', { defaultValue: 'Exit POS' })}
           >
             <X className="h-4 w-4" />

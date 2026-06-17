@@ -13,8 +13,8 @@
     "selectManufacturer": "Select manufacturer",
     "selectModel": "Select model series",
     "selectVehicle": "Select vehicle",
-    "searchManufacturer": "Search manufacturers...",
-    "searchModel": "Search models...",
+    "searchManufacturer": "Search manufacturers…",
+    "searchModel": "Search models…",
     "allManufacturers": "All manufacturers",
     "allModels": "All models",
     "allVehicles": "All vehicles",
@@ -28,7 +28,7 @@
   },
   "partNumber": {
     "title": "Part Number Search",
-    "placeholder": "Enter part number, OEM reference, or barcode...",
+    "placeholder": "Enter part number, OEM reference, or barcode…",
     "hint": "Tip: Prefix with brand name (e.g. \"TRW GDB1550\") to filter by supplier",
     "detectedBrand": "Detected brand: {{brand}}",
     "searchMethods": "Searched by: {{methods}}",
@@ -60,7 +60,7 @@
     "title": "Search Results",
     "showing": "Showing {{count}} results",
     "loadMore": "Load more",
-    "loadingMore": "Loading more...",
+    "loadingMore": "Loading more…",
     "noResults": "No articles found",
     "noResultsHint": "Try a different search or adjust your filters",
     "filterByBrand": "Filter by brand"

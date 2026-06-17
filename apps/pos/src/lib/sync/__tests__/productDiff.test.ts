@@ -85,7 +85,7 @@ describe('diffProducts', () => {
   // whose flag flips (false → true or true → false) are re-projected into
   // the in-memory catalog and the VariantPickerModal gating is re-evaluated.
   it('HIGH-2: detects has_variants flipping false → true on an existing product', () => {
-    // Simulates the v54 re-sync scenario: stale cached row has has_variants
+    // Simulates the v57 re-sync scenario: stale cached row has has_variants
     // absent (undefined == false); fresh server row returns has_variants: true.
     // Without has_variants in COMPARE_FIELDS, productEquals would return true
     // and tile-tap/scan would keep calling addItemGated directly, skipping

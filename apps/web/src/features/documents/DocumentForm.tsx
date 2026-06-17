@@ -3,13 +3,17 @@ import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Check, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost, apiPatch } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { cn } from '../../lib/utils'
+import { tokens, textColors } from '../../lib/designTokens'
 import { DocumentLineEditor, type DocumentLine } from '../../components/documents/DocumentLineEditor'
 import { PurchaseOrderAdditionalCosts } from './components/PurchaseOrderAdditionalCosts'
 import { StickyFormFooter } from '../../components/molecules/StickyFormFooter/StickyFormFooter'
+import { PageHeader } from '../../components/molecules/PageHeader'
+import { Button, FormField, Input, Select, Textarea } from '../../components/atoms'
 import { AddPartnerModal } from '../../components/organisms'
 import { PartnerSearchSelect } from '../../components/ui/PartnerSearchSelect'
 import { useCompany } from '../../hooks/useCompany'
@@ -325,10 +329,20 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
     }
   }
 
+  const partnerLabel =
+    partnerTypeFilter === 'customer'
+      ? t('partners.customer', 'Customer')
+      : partnerTypeFilter === 'supplier'
+        ? t('partners.supplier', 'Supplier')
+        : t('partners.partner', 'Partner')
+
+  const isSubmitInProgress =
+    isSubmitting || createMutation.isPending || updateMutation.isPending
+
   if (isEditing && isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-500">{t('status.loading')}</div>
+        <div className={textColors.tertiary}>{t('status.loading')}</div>
       </div>
     )
   }
@@ -336,36 +350,47 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   return (
     <div className="flex min-h-full flex-col gap-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Link
-          to={basePath}
-          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          {t('actions.back')}
-        </Link>
-        <h1 className="text-2xl font-bold text-gray-900">
-          {isEditing ? `${t('actions.edit')} ${entityName}` : `${t('actions.add')} ${entityName}`}
-        </h1>
-      </div>
+      <PageHeader
+        title={
+          isEditing
+            ? `${t('actions.edit')} ${entityName}`
+            : `${t('actions.add')} ${entityName}`
+        }
+        breadcrumb={
+          <Link
+            to={basePath}
+            className={cn(
+              'inline-flex items-center gap-2 text-sm',
+              textColors.tertiary,
+              textColors.hoverPrimary,
+            )}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t('actions.back')}
+          </Link>
+        }
+        className="mb-0"
+      />
 
       {/* Form */}
       <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="flex flex-1 flex-col gap-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className={tokens.card.base}>
+          <h2 className={cn(tokens.heading.section, 'mb-4')}>
+            {t('sales:documents.details', 'Details')}
+          </h2>
           <div className="grid gap-6 sm:grid-cols-2">
             {/* Type - hidden if type is set from context */}
             {!effectiveType && (
-              <div>
-                <label
-                  htmlFor="type"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  {t('sales:documents.type')} *
-                </label>
-                <select
+              <FormField
+                label={t('sales:documents.type')}
+                htmlFor="type"
+                required
+                error={errors.type?.message}
+              >
+                <Select
                   id="type"
                   {...register('type', { required: t('sales:documents.typeRequired') })}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  error={Boolean(errors.type)}
                   disabled={isEditing}
                 >
                   <option value="">{t('sales:documents.selectType')}</option>
@@ -375,135 +400,91 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
                   <option value="purchase_order">{t('sales:documents.types.purchase_order')}</option>
                   <option value="credit_note">{t('sales:documents.types.credit_note')}</option>
                   <option value="delivery_note">{t('sales:documents.types.delivery_note')}</option>
-                </select>
-                {errors.type && (
-                  <p className="mt-1 text-sm text-red-600">{errors.type.message}</p>
-                )}
-              </div>
+                </Select>
+              </FormField>
             )}
 
             {/* Partner */}
-            <div>
-              <label
-                htmlFor="partner_id"
-                className="block text-sm font-medium text-gray-700"
-              >
-                {partnerTypeFilter === 'customer' ? t('partners.customer', 'Customer') : partnerTypeFilter === 'supplier' ? t('partners.supplier', 'Supplier') : t('partners.partner', 'Partner')} *
-              </label>
-              <div className="mt-1">
-                <Controller
-                  name="partner_id"
-                  control={control}
-                  rules={{
-                    required: t('validation.required', 'This field is required'),
-                  }}
-                  render={({ field }) => (
-                    <PartnerSearchSelect
-                      value={field.value ?? ''}
-                      onChange={field.onChange}
-                      partnerType={partnerTypeFilter}
-                      error={errors.partner_id?.message}
-                      onAddNew={() => { setShowPartnerModal(true) }}
-                    />
-                  )}
-                />
-              </div>
-              {errors.partner_id && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.partner_id.message}
-                </p>
-              )}
-            </div>
+            <FormField label={partnerLabel} htmlFor="partner_id" required>
+              <Controller
+                name="partner_id"
+                control={control}
+                rules={{
+                  required: t('validation.required', 'This field is required'),
+                }}
+                render={({ field }) => (
+                  <PartnerSearchSelect
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    partnerType={partnerTypeFilter}
+                    error={errors.partner_id?.message}
+                    onAddNew={() => { setShowPartnerModal(true) }}
+                  />
+                )}
+              />
+            </FormField>
 
             {/* Issue Date */}
-            <div>
-              <label
-                htmlFor="issue_date"
-                className="block text-sm font-medium text-gray-700"
-              >
-                {t('sales:documents.issueDate')} *
-              </label>
-              <input
+            <FormField
+              label={t('sales:documents.issueDate')}
+              htmlFor="issue_date"
+              required
+              error={errors.issue_date?.message}
+            >
+              <Input
                 type="date"
                 id="issue_date"
                 {...register('issue_date', { required: t('validation.required') })}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                error={Boolean(errors.issue_date)}
               />
-              {errors.issue_date && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.issue_date.message}
-                </p>
-              )}
-            </div>
+            </FormField>
 
             {/* Due Date */}
-            <div>
-              <label
-                htmlFor="due_date"
-                className="block text-sm font-medium text-gray-700"
-              >
-                {t('sales:documents.dueDate')}
-              </label>
-              <input
-                type="date"
-                id="due_date"
-                {...register('due_date')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
+            <FormField label={t('sales:documents.dueDate')} htmlFor="due_date">
+              <Input type="date" id="due_date" {...register('due_date')} />
+            </FormField>
 
             {/* Supplier Invoice Reference (Purchase Orders only) */}
             {effectiveType === 'purchase_order' && (
               <>
-                <div>
-                  <label
-                    htmlFor="external_document_number"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    {t('purchases.supplierInvoiceNumber', 'Supplier Invoice #')}
-                  </label>
-                  <input
+                <FormField
+                  label={t('purchases.supplierInvoiceNumber', 'Supplier Invoice #')}
+                  htmlFor="external_document_number"
+                >
+                  <Input
                     type="text"
                     id="external_document_number"
                     {...register('external_document_number')}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     placeholder={t('purchases.supplierInvoiceNumberPlaceholder', 'e.g., INV-2025-001')}
                   />
-                </div>
+                </FormField>
 
-                <div>
-                  <label
-                    htmlFor="external_document_date"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    {t('purchases.supplierInvoiceDate', 'Supplier Invoice Date')}
-                  </label>
-                  <input
+                <FormField
+                  label={t('purchases.supplierInvoiceDate', 'Supplier Invoice Date')}
+                  htmlFor="external_document_date"
+                >
+                  <Input
                     type="date"
                     id="external_document_date"
                     {...register('external_document_date')}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
-                </div>
+                </FormField>
               </>
             )}
 
             {/* Notes */}
-            <div className="sm:col-span-2">
-              <label
-                htmlFor="notes"
-                className="block text-sm font-medium text-gray-700"
-              >
-                {t('sales:documents.notes')}
-              </label>
-              <textarea
+            <FormField
+              className="sm:col-span-2"
+              label={t('sales:documents.notes')}
+              htmlFor="notes"
+            >
+              <Textarea
                 id="notes"
                 rows={4}
                 {...register('notes')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 placeholder={t('sales:documents.notesPlaceholder', 'Additional notes...')}
               />
-            </div>
+            </FormField>
           </div>
         </div>
 
@@ -523,20 +504,15 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
         <StickyFormFooter>
           {/* Auto-save indicator (only for new documents) */}
           {!isEditing && (
-            <div className="mr-auto flex items-center gap-2 text-sm text-gray-500">
+            <div className={cn('mr-auto flex items-center gap-2 text-sm', textColors.tertiary)}>
               {isSaving ? (
                 <>
-                  <svg className="h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   <span>{t('saving')}</span>
                 </>
               ) : lastSavedAt ? (
                 <>
-                  <svg className="h-4 w-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+                  <Check className={cn('h-4 w-4', textColors.success)} />
                   <span>
                     {t('sales:documents.draftSavedAt', { time: lastSavedAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) })}
                   </span>
@@ -545,19 +521,16 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
             </div>
           )}
 
-          <Link
-            to={basePath}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => { void navigate(basePath) }}
           >
             {t('actions.cancel')}
-          </Link>
-          <button
-            type="submit"
-            disabled={isSubmitting || createMutation.isPending || updateMutation.isPending}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
-            {(isSubmitting || createMutation.isPending || updateMutation.isPending) ? t('status.saving') : t('actions.save')}
-          </button>
+          </Button>
+          <Button type="submit" variant="primary" disabled={isSubmitInProgress}>
+            {isSubmitInProgress ? t('status.saving') : t('actions.save')}
+          </Button>
         </StickyFormFooter>
       </form>
 

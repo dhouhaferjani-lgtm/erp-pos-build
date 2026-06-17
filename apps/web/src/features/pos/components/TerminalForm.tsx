@@ -1,5 +1,12 @@
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
+import { cn } from '@/lib/utils'
+import { tokens, borderColors } from '@/lib/designTokens'
+import { FormField } from '@/components/atoms/FormField'
+import { Input } from '@/components/atoms/Input'
+import { Select } from '@/components/atoms/Select'
+import { Textarea } from '@/components/atoms/Textarea'
+import { Button } from '@/components/atoms/Button'
 import type { Terminal, CreateTerminalInput, UpdateTerminalInput } from '../hooks/useTerminals'
 
 interface TerminalFormProps {
@@ -52,18 +59,21 @@ export function TerminalForm({
     onSubmit(data)
   })
 
+  const codeError = 'code' in errors ? errors.code : undefined
+  const maxDiscountError =
+    'max_discount_percent' in errors ? errors.max_discount_percent : undefined
+
   return (
     <form onSubmit={handleFormSubmit} className="space-y-6">
       {/* Terminal Code (only for create) */}
       {!isEditMode && (
-        <div>
-          <label htmlFor="code" className="block text-sm font-medium text-gray-700">
-            {t('pos.terminal.code')}
-          </label>
-          <p className="mt-1 text-sm text-gray-500">
-            {t('common.leaveBlankForAutoGenerate')}
-          </p>
-          <input
+        <FormField
+          label={t('pos.terminal.code')}
+          htmlFor="code"
+          helperText={t('common.leaveBlankForAutoGenerate')}
+          error={codeError?.message}
+        >
+          <Input
             {...register('code', {
               pattern: {
                 value: /^[A-Z0-9]+$/,
@@ -74,20 +84,19 @@ export function TerminalForm({
             id="code"
             // eslint-disable-next-line local/no-untranslated-literal -- technical code example, not user-facing prose
             placeholder="POS01"
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+            error={!!codeError}
           />
-          {'code' in errors && errors.code && (
-            <p className="mt-1 text-sm text-red-600">{errors.code.message}</p>
-          )}
-        </div>
+        </FormField>
       )}
 
       {/* Terminal Name */}
-      <div>
-        <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-          {t('pos.terminal.name')} <span className="text-red-500">*</span>
-        </label>
-        <input
+      <FormField
+        label={t('pos.terminal.name')}
+        htmlFor="name"
+        required
+        error={errors.name?.message}
+      >
+        <Input
           {...register('name', {
             required: t('validation.required'),
             maxLength: {
@@ -98,24 +107,23 @@ export function TerminalForm({
           type="text"
           id="name"
           placeholder={t('pos.terminal.namePlaceholder')}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+          error={!!errors.name}
         />
-        {errors.name && (
-          <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
-        )}
-      </div>
+      </FormField>
 
       {/* Location */}
-      <div>
-        <label htmlFor="location_id" className="block text-sm font-medium text-gray-700">
-          {t('pos.terminal.location')} <span className="text-red-500">*</span>
-        </label>
-        <select
+      <FormField
+        label={t('pos.terminal.location')}
+        htmlFor="location_id"
+        required
+        error={errors.location_id?.message}
+      >
+        <Select
           {...register('location_id', {
             required: t('validation.required'),
           })}
           id="location_id"
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+          error={!!errors.location_id}
         >
           <option value="">{t('common.selectOption')}</option>
           {locations.map((location) => (
@@ -123,18 +131,16 @@ export function TerminalForm({
               {location.name} ({location.code})
             </option>
           ))}
-        </select>
-        {errors.location_id && (
-          <p className="mt-1 text-sm text-red-600">{errors.location_id.message}</p>
-        )}
-      </div>
+        </Select>
+      </FormField>
 
       {/* Description */}
-      <div>
-        <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-          {t('pos.terminal.description')}
-        </label>
-        <textarea
+      <FormField
+        label={t('pos.terminal.description')}
+        htmlFor="description"
+        error={errors.description?.message}
+      >
+        <Textarea
           {...register('description', {
             maxLength: {
               value: 500,
@@ -144,99 +150,84 @@ export function TerminalForm({
           id="description"
           rows={3}
           placeholder={t('pos.terminal.descriptionPlaceholder')}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
         />
-        {errors.description && (
-          <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>
-        )}
-      </div>
+      </FormField>
 
       {/* Discount Settings */}
-      <div className="border-t border-gray-200 pt-4">
-        <h4 className="text-sm font-medium text-gray-900 mb-4">
+      <div className={cn('border-t pt-4', borderColors.light)}>
+        <h4 className={cn(tokens.heading.section, 'text-sm mb-4')}>
           {t('settings:terminalDiscount.title')}
         </h4>
 
         {/* Max Discount Percent */}
         <div className="mb-4">
-          <label htmlFor="max_discount_percent" className="block text-sm font-medium text-gray-700">
-            {t('settings:terminalDiscount.maxPercent')}
-          </label>
-          <p className="mt-1 text-sm text-gray-500">
-            {t('settings:terminalDiscount.maxPercentHelp')}
-          </p>
-          <input
-            {...register('max_discount_percent', {
-              valueAsNumber: true,
-              min: {
-                value: 0,
-                message: t('validation.min', { min: 0 }),
-              },
-              max: {
-                value: 100,
-                message: t('validation.max', { max: 100 }),
-              },
-            })}
-            type="number"
-            id="max_discount_percent"
-            min={0}
-            max={100}
-            step={1}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-          />
-          {'max_discount_percent' in errors && errors.max_discount_percent && (
-            <p className="mt-1 text-sm text-red-600">{errors.max_discount_percent.message}</p>
-          )}
+          <FormField
+            label={t('settings:terminalDiscount.maxPercent')}
+            htmlFor="max_discount_percent"
+            helperText={t('settings:terminalDiscount.maxPercentHelp')}
+            error={maxDiscountError?.message}
+          >
+            <Input
+              {...register('max_discount_percent', {
+                valueAsNumber: true,
+                min: {
+                  value: 0,
+                  message: t('validation.min', { min: 0 }),
+                },
+                max: {
+                  value: 100,
+                  message: t('validation.max', { max: 100 }),
+                },
+              })}
+              type="number"
+              id="max_discount_percent"
+              min={0}
+              max={100}
+              step={1}
+              error={!!maxDiscountError}
+            />
+          </FormField>
         </div>
 
-        {/* Allow Line Item Discounts */}
-        <div className="mb-4 flex items-center gap-3">
-          <input
-            {...register('allow_line_discounts')}
-            type="checkbox"
-            id="allow_line_discounts"
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          <label htmlFor="allow_line_discounts" className="text-sm font-medium text-gray-700">
-            {t('settings:terminalDiscount.allowLine')}
-          </label>
-        </div>
+          {/* Allow Line Item Discounts */}
+          <div className="mb-4 flex items-center gap-3">
+            <input
+              {...register('allow_line_discounts')}
+              type="checkbox"
+              id="allow_line_discounts"
+              className={tokens.checkbox.base}
+            />
+            <label htmlFor="allow_line_discounts" className={tokens.label.base}>
+              {t('settings:terminalDiscount.allowLine')}
+            </label>
+          </div>
 
-        {/* Allow Transaction Discounts */}
-        <div className="mb-4 flex items-center gap-3">
-          <input
-            {...register('allow_transaction_discounts')}
-            type="checkbox"
-            id="allow_transaction_discounts"
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          <label htmlFor="allow_transaction_discounts" className="text-sm font-medium text-gray-700">
-            {t('settings:terminalDiscount.allowTransaction')}
-          </label>
-        </div>
+          {/* Allow Transaction Discounts */}
+          <div className="mb-4 flex items-center gap-3">
+            <input
+              {...register('allow_transaction_discounts')}
+              type="checkbox"
+              id="allow_transaction_discounts"
+              className={tokens.checkbox.base}
+            />
+            <label htmlFor="allow_transaction_discounts" className={tokens.label.base}>
+              {t('settings:terminalDiscount.allowTransaction')}
+            </label>
+          </div>
       </div>
 
       {/* Form Actions */}
-      <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isSubmitting}
-          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
+      <div className={cn('flex justify-end gap-3 pt-4 border-t', borderColors.light)}>
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
           {t('common.cancel')}
-        </button>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
+        </Button>
+        <Button type="submit" variant="primary" disabled={isSubmitting}>
           {isSubmitting
             ? t('common.saving')
             : isEditMode
               ? t('common.update')
               : t('common.create')}
-        </button>
+        </Button>
       </div>
     </form>
   )

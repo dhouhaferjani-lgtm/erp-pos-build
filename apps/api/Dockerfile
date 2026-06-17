@@ -45,10 +45,11 @@ RUN apk add --no-cache \
     libzip-dev \
     zip \
     unzip \
-    # Image processing
+    # Image processing (libwebp-dev required for GD WebP renditions)
     libpng-dev \
     libjpeg-turbo-dev \
     freetype-dev \
+    libwebp-dev \
     # Internationalization
     icu-dev \
     # For PDF generation
@@ -64,7 +65,7 @@ RUN apk add --no-cache \
     netcat-openbsd \
     # su-exec for dropping privileges in entrypoints
     su-exec \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-configure gd --with-webp --with-jpeg --with-freetype \
     && docker-php-ext-install -j$(nproc) \
         pdo_pgsql \
         pgsql \

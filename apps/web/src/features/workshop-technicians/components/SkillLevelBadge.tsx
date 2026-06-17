@@ -7,18 +7,17 @@ interface SkillLevelBadgeProps {
 }
 
 /**
- * Skill-level badge mapping. Uses design-token badge variants where the color
- * palette covers the intent (gray / blue / purple). Emerald and amber sit
- * outside the enforced palette regex in eslint.config.js; they're the closest
- * semantic match for senior ("established") and master ("seasoned") without
- * reaching for the restricted red/green tones.
+ * Skill-level badge. Each level maps to an on-theme `tokens.badge.*` variant —
+ * no off-theme palettes. Progression reads gray → blue → green for the
+ * apprentice→master track, with purple reserved for the cross-cutting
+ * specialist role.
  */
 const STYLES: Record<SkillLevel, string> = {
   apprentice: tokens.badge.gray,
   junior: tokens.badge.blue,
-  general: 'bg-sky-50 text-sky-700',
-  senior: 'bg-emerald-50 text-emerald-700',
-  master: 'bg-amber-50 text-amber-700',
+  general: tokens.badge.blue,
+  senior: tokens.badge.green,
+  master: tokens.badge.green,
   specialist: tokens.badge.purple,
 }
 

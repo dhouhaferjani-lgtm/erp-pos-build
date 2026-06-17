@@ -51,6 +51,23 @@ final class ShiftController extends Controller
             ->where('company_id', $this->companyContext->getCompanyId())
             ->firstOrFail();
 
+        // Device-authoritative (v3) terminals mint + author their own shift
+        // locally (SESSION_OPEN); pos_shifts is a projection of the synced
+        // fiscal events. The REST open is retired with a hard 409 so a stray
+        // web/admin call can never fork a competing shift (mirrors
+        // ZReportSyncController's Z_SESSION_DEVICE_AUTHORITY_REQUIRED).
+        if ((int) ($terminal->fiscal_schema_version ?? 2) >= 3) {
+            return response()->json([
+                'error' => [
+                    'code' => 'SHIFT_DEVICE_AUTHORITY_REQUIRED',
+                    'message' => sprintf(
+                        'Shift open is retired for device-authoritative terminal %s. The device authors SESSION_OPEN locally; pos_shifts is a projection.',
+                        $terminal->id,
+                    ),
+                ],
+            ], 409);
+        }
+
         try {
             $cashierId = $request->validated('cashier_id');
             /** @var User $currentUser */
@@ -97,6 +114,22 @@ final class ShiftController extends Controller
                     'message' => 'Shift does not belong to your company',
                 ],
             ], 403);
+        }
+
+        // Device-authoritative (v3) terminals author SESSION_CLOSE + Z_REPORT
+        // locally; pos_shifts is closed by the projection. The REST close is
+        // retired with a hard 409 so a stray web/admin call can never close a
+        // device shift out from under the device (Decision 3).
+        if ((int) ($shift->terminal->fiscal_schema_version ?? 2) >= 3) {
+            return response()->json([
+                'error' => [
+                    'code' => 'SHIFT_DEVICE_AUTHORITY_REQUIRED',
+                    'message' => sprintf(
+                        'Shift close is retired for device-authoritative terminal %s. The device authors SESSION_CLOSE locally; pos_shifts is a projection.',
+                        $shift->terminal_id,
+                    ),
+                ],
+            ], 409);
         }
 
         // Require a Z report before the shift can be closed (BG10)

@@ -2,11 +2,16 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Cable, Plus, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
+import { PageHeader } from '@/components/molecules/PageHeader'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { fetchChannels } from '../api'
-import { header, page, panel, primaryButton, subtitle, table, tableShell, td, th, title } from './channelPageStyles'
+
+const thClass = cn('px-6 py-3 text-start text-xs font-medium uppercase', textColors.tertiary)
+const tdClass = cn('px-6 py-4 text-sm', textColors.secondary)
 
 export function ChannelListPage() {
   const { t } = useTranslation(['channels', 'common'])
@@ -22,58 +27,63 @@ export function ChannelListPage() {
   const registeredAdapters = data?.registered_adapters ?? []
 
   return (
-    <div className={page}>
-      <div className={header}>
-        <div>
-          <h1 className={title}>{t('channels:title')}</h1>
-          <p className={subtitle}>{t('channels:subtitle')}</p>
-        </div>
-        <Link to="/channels/new" className={primaryButton}>
-          <Plus className="h-4 w-4" />
-          {t('channels:create.action')}
-        </Link>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title={t('channels:title')}
+        subtitle={t('channels:subtitle')}
+        actions={
+          <Link
+            to="/channels/new"
+            className={cn(tokens.button.base, tokens.button.primary, tokens.button.sizes.md, 'gap-2')}
+          >
+            <Plus className="h-4 w-4" />
+            {t('channels:create.action')}
+          </Link>
+        }
+      />
 
       {registeredAdapters.length === 0 && (
-        <div className={panel}>
+        <div className={tokens.card.base}>
           <div className="flex items-start gap-3">
-            <Cable className="mt-0.5 h-5 w-5 text-gray-500" />
+            <Cable className={cn('mt-0.5 h-5 w-5', textColors.disabled)} />
             <div>
-              <h2 className="text-base font-semibold text-gray-900">{t('channels:noAdapters.title')}</h2>
-              <p className={subtitle}>{t('channels:noAdapters.body')}</p>
+              <h2 className={cn('text-base font-semibold', textColors.primary)}>{t('channels:noAdapters.title')}</h2>
+              <p className={cn('text-sm', textColors.tertiary)}>{t('channels:noAdapters.body')}</p>
             </div>
           </div>
         </div>
       )}
 
       {isLoading ? (
-        <div className={panel}>{t('common:status.loading')}</div>
+        <div className={tokens.card.base}>{t('common:status.loading')}</div>
       ) : error ? (
-        <div className={panel}>{t('common:errors.loadingFailed')}</div>
+        <div className={tokens.card.base}>{t('common:errors.loadingFailed')}</div>
       ) : channels.length === 0 ? (
-        <div className={panel}>
-          <RefreshCw className="mb-3 h-6 w-6 text-gray-500" />
-          <h2 className="text-base font-semibold text-gray-900">{t('channels:empty.title')}</h2>
-          <p className={subtitle}>{t('channels:empty.body')}</p>
+        <div className={tokens.card.base}>
+          <RefreshCw className={cn('mb-3 h-6 w-6', textColors.disabled)} />
+          <h2 className={cn('text-base font-semibold', textColors.primary)}>{t('channels:empty.title')}</h2>
+          <p className={cn('text-sm', textColors.tertiary)}>{t('channels:empty.body')}</p>
         </div>
       ) : (
-        <div className={tableShell}>
-          <table className={table}>
+        <div className={cn('overflow-hidden rounded-lg border bg-white', borderColors.light)}>
+          <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
             <thead>
               <tr>
-                <th className={th}>{t('channels:fields.name')}</th>
-                <th className={th}>{t('channels:fields.adapter')}</th>
-                <th className={th}>{t('common:fields.status')}</th>
-                <th className={th}>{t('channels:fields.lastSync')}</th>
+                <th className={thClass}>{t('channels:fields.name')}</th>
+                <th className={thClass}>{t('channels:fields.adapter')}</th>
+                <th className={thClass}>{t('common:fields.status')}</th>
+                <th className={thClass}>{t('channels:fields.lastSync')}</th>
               </tr>
             </thead>
             <tbody>
               {channels.map((channel) => (
                 <tr key={channel.id}>
-                  <td className={td}>{channel.name}</td>
-                  <td className={td}>{channel.adapter_type}</td>
-                  <td className={td}>{t(`channels:connectionStatus.${channel.connection_status}`)}</td>
-                  <td className={td}>{channel.last_successful_sync_at ?? t('channels:fields.never')}</td>
+                  <td className={tdClass}>{channel.name}</td>
+                  <td className={tdClass}>{channel.adapter_type}</td>
+                  <td className={tdClass}>{t(`channels:connectionStatus.${channel.connection_status}`)}</td>
+                  <td className={tdClass}>
+                    {channel.last_successful_sync_at ?? t('channels:fields.never')}
+                  </td>
                 </tr>
               ))}
             </tbody>

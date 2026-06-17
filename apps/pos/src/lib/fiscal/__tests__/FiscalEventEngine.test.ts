@@ -248,6 +248,7 @@ function validSessionOpenPayload(trainingFlag = false): Record<string, unknown> 
     operator_name: 'Alice',
     session_id: '77777777-7777-4777-8777-777777777777',
     shift_id: SR_SHIFT_UUID,
+    shift_number: 1,
     terminal_id: SR_TERMINAL_UUID,
     terminal_label: 'T01',
     training_flag: trainingFlag,

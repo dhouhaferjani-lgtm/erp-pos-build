@@ -22,6 +22,10 @@ export interface Terminal {
   has_history: boolean
   current_sequence: number
   current_year: number
+  // Fiscal hash schema version (TerminalResource serializes `(int)`, default 2).
+  // v3 terminals are device-authoritative: shifts open/close ON the POS device,
+  // so the web REST open/close endpoints return 409 SHIFT_DEVICE_AUTHORITY_REQUIRED.
+  fiscal_schema_version: number
   // Numeric-string from TerminalResource (decimal:2 cast, no (float) launder).
   max_discount_percent: string
   allow_line_discounts: boolean

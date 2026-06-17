@@ -7,6 +7,10 @@ import { useTranslation } from 'react-i18next'
 import { AlertCircle, CheckCircle } from 'lucide-react'
 import type { PaymentAllocationPreview } from '@/types/treasury'
 import { useCurrency } from '@/hooks/useCurrency'
+import { cn } from '@/lib/utils'
+import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
+import { Spinner } from '@/components/atoms/Spinner'
+import { StatusBadge } from '@/components/atoms/StatusBadge'
 
 interface AllocationPreviewProps {
   preview: PaymentAllocationPreview
@@ -28,10 +32,10 @@ export function AllocationPreview({ preview, isLoading }: AllocationPreviewProps
 
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className={cn('rounded-lg border bg-white p-4', borderColors.light)}>
         <div className="flex items-center gap-2">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
-          <span className="text-sm text-gray-600">
+          <Spinner size="sm" />
+          <span className={cn('text-sm', textColors.tertiary)}>
             {t('loading', 'Loading preview...')}
           </span>
         </div>
@@ -52,9 +56,9 @@ export function AllocationPreview({ preview, isLoading }: AllocationPreviewProps
   // Empty state
   if (preview.allocations.length === 0) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center">
-        <AlertCircle className="mx-auto h-12 w-12 text-gray-400" />
-        <p className="mt-2 text-sm text-gray-600">
+      <div className={cn('rounded-lg border p-8 text-center', colors.neutral[50], borderColors.light)}>
+        <AlertCircle className={cn('mx-auto h-12 w-12', textColors.disabled)} />
+        <p className={cn('mt-2 text-sm', textColors.tertiary)}>
           {t('smartPayment.preview.noAllocations')}
         </p>
       </div>
@@ -62,61 +66,61 @@ export function AllocationPreview({ preview, isLoading }: AllocationPreviewProps
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white">
+    <div className={cn('rounded-lg border bg-white', borderColors.light)}>
       {/* Header */}
-      <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-        <h3 className="text-sm font-medium text-gray-900">
+      <div className={cn('border-b px-4 py-3', borderColors.light, tokens.table.header)}>
+        <h3 className={cn('text-sm font-medium', textColors.primary)}>
           {t('smartPayment.preview.title')}
         </h3>
       </div>
 
       {/* Allocations Table */}
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+        <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+          <thead className={tokens.table.header}>
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                 {t('smartPayment.preview.invoiceNumber')}
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={cn('px-4 py-3 text-end text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                 {t('smartPayment.preview.originalBalance')}
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={cn('px-4 py-3 text-end text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                 {t('smartPayment.preview.allocated')}
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                 {t('common:fields.status')}
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
+          <tbody className={cn('divide-y bg-white', borderColors.divideDefault)}>
             {preview.allocations.map((allocation) => (
-              <tr key={allocation.document_id} className="hover:bg-gray-50">
-                <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
+              <tr key={allocation.document_id} className={tokens.table.rowHover}>
+                <td className={cn('whitespace-nowrap px-4 py-3 text-sm font-medium', textColors.primary)}>
                   {allocation.document_number}
                 </td>
-                <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
+                <td className={cn('whitespace-nowrap px-4 py-3 text-end text-sm tabular-nums', textColors.secondary)}>
                   {allocation.original_balance ? formatAmount(allocation.original_balance) : '-'}
                 </td>
-                <td className="whitespace-nowrap px-4 py-3 text-sm font-semibold text-green-700">
+                <td className={cn('whitespace-nowrap px-4 py-3 text-end text-sm font-semibold tabular-nums', textColors.success)}>
                   {formatAmount(allocation.amount)}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-sm">
                   {allocation.days_overdue !== undefined && isOverdue(allocation.days_overdue) ? (
                     <div className="flex items-center gap-2">
-                      <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800">
+                      <StatusBadge tone="danger">
                         {t('common:status.overdue', 'Overdue')}
-                      </span>
-                      <span className="text-xs text-red-600">
+                      </StatusBadge>
+                      <span className={cn('text-xs', textColors.error)}>
                         {t('treasury:smartPayment.preview.daysOverdue', {
                           days: allocation.days_overdue,
                         })}
                       </span>
                     </div>
                   ) : (
-                    <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                    <StatusBadge tone="success">
                       {t('common:status.current', 'Current')}
-                    </span>
+                    </StatusBadge>
                   )}
                 </td>
               </tr>
@@ -126,13 +130,13 @@ export function AllocationPreview({ preview, isLoading }: AllocationPreviewProps
       </div>
 
       {/* Summary */}
-      <div className="border-t border-gray-200 bg-gray-50 px-4 py-3 space-y-2">
+      <div className={cn('border-t px-4 py-3 space-y-2', borderColors.light, tokens.table.header)}>
         {/* Total to Invoices */}
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-700">
+          <span className={cn('text-sm font-medium', textColors.secondary)}>
             {t('smartPayment.preview.totalToInvoices')}
           </span>
-          <span className="text-sm font-semibold text-gray-900">
+          <span className={cn('text-sm font-semibold tabular-nums', textColors.primary)}>
             {formatAmount(preview.total_to_invoices)}
           </span>
         </div>
@@ -140,14 +144,14 @@ export function AllocationPreview({ preview, isLoading }: AllocationPreviewProps
         {/* Tolerance Write-off */}
         {preview.excess_handling === 'tolerance_writeoff' &&
           parseFloat(preview.excess_amount) > 0 && (
-            <div className="flex items-center justify-between rounded-md bg-blue-50 p-2">
+            <div className={cn('flex items-center justify-between rounded-md p-2', tokens.alert.info)}>
               <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-blue-600" />
-                <span className="text-sm font-medium text-blue-900">
+                <CheckCircle className={cn('h-4 w-4', textColors.brand)} />
+                <span className="text-sm font-medium">
                   {t('smartPayment.preview.toleranceWriteoff')}
                 </span>
               </div>
-              <span className="text-sm font-semibold text-blue-900">
+              <span className="text-sm font-semibold tabular-nums">
                 {formatAmount(preview.excess_amount)}
               </span>
             </div>
@@ -156,14 +160,14 @@ export function AllocationPreview({ preview, isLoading }: AllocationPreviewProps
         {/* Excess Amount (Credit Balance) */}
         {preview.excess_handling === 'credit_balance' &&
           parseFloat(preview.excess_amount) > 0 && (
-            <div className="flex items-center justify-between rounded-md bg-yellow-50 p-2">
+            <div className={cn('flex items-center justify-between rounded-md p-2', tokens.alert.warning)}>
               <div className="flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-yellow-600" />
-                <span className="text-sm font-medium text-yellow-900">
+                <AlertCircle className={cn('h-4 w-4', textColors.warningDark)} />
+                <span className="text-sm font-medium">
                   {t('smartPayment.preview.excessAmount')}
                 </span>
               </div>
-              <span className="text-sm font-semibold text-yellow-900">
+              <span className="text-sm font-semibold tabular-nums">
                 {formatAmount(preview.excess_amount)}
               </span>
             </div>
@@ -171,7 +175,7 @@ export function AllocationPreview({ preview, isLoading }: AllocationPreviewProps
 
         {/* Handling Explanation */}
         {parseFloat(preview.excess_amount) > 0 && (
-          <p className="text-xs text-gray-600 pl-6">
+          <p className={cn('text-xs pl-6', textColors.tertiary)}>
             {preview.excess_handling === 'tolerance_writeoff'
               ? t('smartPayment.preview.excessHandling.toleranceWriteoff')
               : t('smartPayment.preview.excessHandling.creditBalance')}

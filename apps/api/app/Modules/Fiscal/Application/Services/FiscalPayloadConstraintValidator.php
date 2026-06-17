@@ -582,6 +582,7 @@ final class FiscalPayloadConstraintValidator
     {
         $this->assertUuid($payload, 'session_id');
         $this->assertUuid($payload, 'shift_id');
+        $this->assertPositiveInt($payload, 'shift_number');
         $this->assertIsoDate($payload, 'business_date');
         $this->assertIsoDateTimeWithMs($payload, 'opened_at_device');
         $this->assertUuid($payload, 'operator_id');
@@ -2326,6 +2327,27 @@ final class FiscalPayloadConstraintValidator
                 'payload_field_invalid:%s must be bool; got %s',
                 $label,
                 get_debug_type($value),
+            ));
+        }
+    }
+
+    /**
+     * Assert a payload field is a positive integer (>= 1). Mirrors the
+     * `payload_integer_format_mismatch` failure shape used by the
+     * `status_version` clause in `validateAccountStatusChangedPayload`.
+     * Fails when the value is missing, not an int, or <= 0.
+     *
+     * @param  array<string, mixed>  $bag
+     */
+    private function assertPositiveInt(array $bag, string $field, ?string $reportAs = null): void
+    {
+        $label = $reportAs ?? $field;
+        $value = $bag[$field] ?? null;
+        if (! is_int($value) || $value < 1) {
+            throw new RuntimeException(sprintf(
+                'payload_integer_format_mismatch:%s must be a positive integer (>= 1); got %s',
+                $label,
+                var_export($value, true),
             ));
         }
     }

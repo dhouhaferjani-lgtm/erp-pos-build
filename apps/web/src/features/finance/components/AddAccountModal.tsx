@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { X } from 'lucide-react'
 import { useCreateAccount, useAccounts } from '../hooks/useAccounts'
-import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { Modal, ModalContent, ModalFooter } from '@/components/organisms'
+import { Button, FormField, Input, Select, Textarea } from '@/components/atoms'
 import type { AccountType } from '../types'
 
 interface AddAccountModalProps {
@@ -68,81 +68,61 @@ export function AddAccountModal({ open, onClose, onSuccess }: AddAccountModalPro
       })
   }
 
-  if (!open) return null
-
   return (
-    <div className={tokens.modal.backdrop}>
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4" role="dialog">
-        <div className={`flex items-center justify-between px-6 py-4 border-b ${borderColors.light}`}>
-          <h2 className={`text-lg font-semibold ${textColors.primary}`}>{t('finance:chartOfAccounts.account.addTitle')}</h2>
-          <button
-            onClick={onClose}
-            className={`${textColors.disabled} ${textColors.hoverSecondary} transition-colors`}
+    <Modal isOpen={open} onClose={onClose} title={t('finance:chartOfAccounts.account.addTitle')}>
+      <form onSubmit={handleSubmit}>
+        <ModalContent>
+          <FormField
+            label={t('finance:chartOfAccounts.account.code')}
+            htmlFor="code"
+            error={errors['code']}
           >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label htmlFor="code" className={`${tokens.label.base} mb-1`}>
-              {t('finance:chartOfAccounts.account.code')}
-            </label>
-            <input
+            <Input
               id="code"
               name="code"
               type="text"
               value={formData.code}
-              onChange={(e) => { setFormData({ ...formData, code: e.target.value }); }}
-              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
+              onChange={(e) => { setFormData({ ...formData, code: e.target.value }) }}
+              error={Boolean(errors['code'])}
             />
-            {errors['code'] && <p className={tokens.helperText.error}>{errors['code']}</p>}
-          </div>
+          </FormField>
 
-          <div>
-            <label htmlFor="name" className={`${tokens.label.base} mb-1`}>
-              {t('finance:chartOfAccounts.account.name')}
-            </label>
-            <input
+          <FormField
+            label={t('finance:chartOfAccounts.account.name')}
+            htmlFor="name"
+            error={errors['name']}
+          >
+            <Input
               id="name"
               name="name"
               type="text"
               value={formData.name}
-              onChange={(e) => { setFormData({ ...formData, name: e.target.value }); }}
-              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
+              onChange={(e) => { setFormData({ ...formData, name: e.target.value }) }}
+              error={Boolean(errors['name'])}
             />
-            {errors['name'] && <p className={tokens.helperText.error}>{errors['name']}</p>}
-          </div>
+          </FormField>
 
-          <div>
-            <label htmlFor="type" className={`${tokens.label.base} mb-1`}>
-              {t('finance:chartOfAccounts.account.type')}
-            </label>
-            <select
+          <FormField label={t('finance:chartOfAccounts.account.type')} htmlFor="type">
+            <Select
               id="type"
               name="type"
               value={formData.type}
-              onChange={(e) => { setFormData({ ...formData, type: e.target.value as AccountType }); }}
-              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
+              onChange={(e) => { setFormData({ ...formData, type: e.target.value as AccountType }) }}
             >
               <option value="asset">{t('finance:chartOfAccounts.account.types.asset')}</option>
               <option value="liability">{t('finance:chartOfAccounts.account.types.liability')}</option>
               <option value="equity">{t('finance:chartOfAccounts.account.types.equity')}</option>
               <option value="revenue">{t('finance:chartOfAccounts.account.types.revenue')}</option>
               <option value="expense">{t('finance:chartOfAccounts.account.types.expense')}</option>
-            </select>
-          </div>
+            </Select>
+          </FormField>
 
-          <div>
-            <label htmlFor="parent_id" className={`${tokens.label.base} mb-1`}>
-              {t('finance:chartOfAccounts.account.parentAccount')}
-            </label>
-            <select
+          <FormField label={t('finance:chartOfAccounts.account.parentAccount')} htmlFor="parent_id">
+            <Select
               id="parent_id"
               name="parent_id"
               value={formData.parent_id}
-              onChange={(e) => { setFormData({ ...formData, parent_id: e.target.value }); }}
-              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
+              onChange={(e) => { setFormData({ ...formData, parent_id: e.target.value }) }}
             >
               <option value="">{t('finance:chartOfAccounts.account.noParent')}</option>
               {accounts?.filter((a) => a.type === formData.type).map((account) => (
@@ -150,43 +130,31 @@ export function AddAccountModal({ open, onClose, onSuccess }: AddAccountModalPro
                   {account.code} - {account.name}
                 </option>
               ))}
-            </select>
-          </div>
+            </Select>
+          </FormField>
 
-          <div>
-            <label htmlFor="description" className={`${tokens.label.base} mb-1`}>
-              {t('finance:chartOfAccounts.account.description')}
-            </label>
-            <textarea
+          <FormField label={t('finance:chartOfAccounts.account.description')} htmlFor="description">
+            <Textarea
               id="description"
               name="description"
               rows={3}
               value={formData.description}
-              onChange={(e) => { setFormData({ ...formData, description: e.target.value }); }}
-              className={`w-full px-3 py-2 border ${borderColors.default} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
+              onChange={(e) => { setFormData({ ...formData, description: e.target.value }) }}
             />
-          </div>
+          </FormField>
+        </ModalContent>
 
-          <div className="flex gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className={`flex-1 px-4 py-2 border ${borderColors.default} rounded-lg text-sm font-medium ${textColors.secondary} hover:bg-gray-50 transition-colors`}
-            >
-              {t('common:actions.cancel')}
-            </button>
-            <button
-              type="submit"
-              disabled={createMutation.isPending}
-              className={`flex-1 px-4 py-2 ${tokens.button.primary} rounded-lg text-sm font-medium disabled:opacity-50 transition-colors`}
-            >
-              {createMutation.isPending
-                ? t('finance:chartOfAccounts.account.creating')
-                : t('finance:chartOfAccounts.account.create')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <ModalFooter>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            {t('common:actions.cancel')}
+          </Button>
+          <Button type="submit" variant="primary" disabled={createMutation.isPending}>
+            {createMutation.isPending
+              ? t('finance:chartOfAccounts.account.creating')
+              : t('finance:chartOfAccounts.account.create')}
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
   )
 }

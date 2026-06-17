@@ -3,11 +3,13 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, ChevronDown, ChevronRight, Package, Coffee } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
-import { Input, Button } from '@/components/atoms'
+import { Input, Button, MoneyInput, StatusBadge } from '@/components/atoms'
+import { tokens, colors, textColors, borderColors } from '@/lib/designTokens'
 import { api } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import { useCompanyConfig } from '@/contexts'
 import { useAddMenuCategoryItem, useRemoveMenuCategoryItem } from '../hooks/useMenus'
 import type { MenuCategoryData, MenuItemData } from '../types/menu'
 
@@ -35,6 +37,8 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
   const [searchTab, setSearchTab] = useState<SearchTab>('composite_item')
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
+  const { config } = useCompanyConfig()
+  const currency = config?.currency ?? 'TND'
 
   const addItemMutation = useAddMenuCategoryItem()
   const removeItemMutation = useRemoveMenuCategoryItem()
@@ -64,7 +68,9 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
         data: {
           sellable_type: searchTab,
           sellable_id: sellableId,
-          override_price: overridePrice ? Number(overridePrice) : null,
+          // Keep the canonical decimal string from MoneyInput — never coerce
+          // money through a JS float (precision contract / rule 19).
+          override_price: overridePrice.trim() === '' ? null : overridePrice,
         },
       },
       {
@@ -85,7 +91,7 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
   }
 
   return (
-    <div className="rounded-lg border border-gray-100 bg-gray-50">
+    <div className={`rounded-lg border ${borderColors.light} ${tokens.table.header}`}>
       {/* Category header - click to expand */}
       <button
         type="button"
@@ -94,12 +100,12 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
       >
         <div className="flex items-center gap-3">
           {isExpanded ? (
-            <ChevronDown className="h-4 w-4 text-gray-500" />
+            <ChevronDown className={`h-4 w-4 ${textColors.tertiary}`} />
           ) : (
-            <ChevronRight className="h-4 w-4 text-gray-500" />
+            <ChevronRight className={`h-4 w-4 ${textColors.tertiary}`} />
           )}
-          <span className="text-sm font-medium text-gray-900">{category.name}</span>
-          <span className="text-xs text-gray-500">
+          <span className={`text-sm font-medium ${textColors.primary}`}>{category.name}</span>
+          <span className={`text-xs ${textColors.tertiary}`}>
             ({items.length} {t('menu:items')})
           </span>
         </div>
@@ -107,60 +113,52 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
 
       {/* Expanded content */}
       {isExpanded && (
-        <div className="border-t border-gray-200 p-3 space-y-3">
+        <div className={`border-t ${borderColors.light} p-3 space-y-3`}>
           {/* Items list */}
           {items.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-2">{t('menu:noItems')}</p>
+            <p className={`text-sm ${textColors.tertiary} text-center py-2`}>{t('menu:noItems')}</p>
           ) : (
             <div className="space-y-2">
               {items.map((item: MenuItemData) => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2"
+                  className={`flex items-center justify-between rounded-md border ${borderColors.light} bg-white px-3 py-2`}
                 >
                   <div className="flex items-center gap-3">
                     {item.sellable_type === 'composite_item' ? (
-                      <Coffee className="h-4 w-4 text-amber-500" />
+                      <Coffee className={`h-4 w-4 ${textColors.warningDark}`} />
                     ) : (
-                      <Package className="h-4 w-4 text-gray-400" />
+                      <Package className={`h-4 w-4 ${textColors.disabled}`} />
                     )}
                     <div>
-                      <span className="text-sm font-medium text-gray-900">{item.name}</span>
-                      <span className="ml-2 text-xs text-gray-500">({item.code})</span>
+                      <span className={`text-sm font-medium ${textColors.primary}`}>{item.name}</span>
+                      <span className={`ml-2 text-xs ${textColors.tertiary}`}>({item.code})</span>
                     </div>
-                    <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs ${
-                      item.sellable_type === 'composite_item'
-                        ? 'bg-amber-50 text-amber-700'
-                        : 'bg-gray-100 text-gray-600'
-                    }`}>
+                    <StatusBadge tone={item.sellable_type === 'composite_item' ? 'warning' : 'neutral'}>
                       {item.sellable_type === 'composite_item' ? t('menu:prepared') : t('menu:retail')}
-                    </span>
+                    </StatusBadge>
                   </div>
                   <div className="flex items-center gap-4">
-                    <div className="text-sm text-gray-600">
+                    <div className={`text-sm ${textColors.tertiary}`}>
                       {item.override_price ? (
                         <span>
-                          <span className="line-through text-gray-400 mr-1">{item.base_price}</span>
+                          <span className={`line-through ${textColors.disabled} mr-1`}>{item.base_price}</span>
                           <span className="font-medium">{item.override_price}</span>
                         </span>
                       ) : (
                         <span>{item.base_price}</span>
                       )}
                     </div>
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                      item.is_available
-                        ? 'bg-green-50 text-green-700'
-                        : 'bg-red-50 text-red-700'
-                    }`}>
+                    <StatusBadge tone={item.is_available ? 'success' : 'danger'}>
                       {item.is_available ? t('common:active') : t('common:inactive')}
-                    </span>
+                    </StatusBadge>
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
                         handleRemoveItem(item.id)
                       }}
-                      className="text-gray-400 hover:text-red-500"
+                      className={`${textColors.disabled} ${textColors.hoverError}`}
                       disabled={removeItemMutation.isPending}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -173,16 +171,16 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
 
           {/* Add item form */}
           {showAddForm ? (
-            <div className="rounded-md border border-blue-200 bg-blue-50 p-3 space-y-3">
+            <div className={`rounded-md border ${borderColors.primary} ${tokens.alert.info} p-3 space-y-3`}>
               {/* Type toggle tabs */}
-              <div className="flex gap-1 rounded-md bg-blue-100 p-0.5">
+              <div className={`flex gap-1 rounded-md ${colors.primary[100]} p-0.5`}>
                 <button
                   type="button"
                   onClick={() => { setSearchTab('composite_item'); setSearchQuery('') }}
                   className={`flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors ${
                     searchTab === 'composite_item'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-800'
+                      ? `bg-white ${textColors.primary} shadow-sm`
+                      : `${textColors.tertiary} ${textColors.hoverPrimary}`
                   }`}
                 >
                   <Coffee className="mr-1 inline h-3 w-3" />
@@ -193,8 +191,8 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
                   onClick={() => { setSearchTab('product'); setSearchQuery('') }}
                   className={`flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors ${
                     searchTab === 'product'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-800'
+                      ? `bg-white ${textColors.primary} shadow-sm`
+                      : `${textColors.tertiary} ${textColors.hoverPrimary}`
                   }`}
                 >
                   <Package className="mr-1 inline h-3 w-3" />
@@ -209,19 +207,17 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
                   placeholder={t('menu:searchItems')}
                   className="flex-1"
                 />
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                <MoneyInput
+                  currency={currency}
                   value={overridePrice}
-                  onChange={(e) => { setOverridePrice(e.target.value); }}
+                  onChange={(value) => { setOverridePrice(value); }}
                   placeholder={t('menu:overridePrice')}
                   className="w-32"
                 />
               </div>
 
               {isSearching ? (
-                <p className="text-sm text-gray-500 text-center">{t('common:loading')}</p>
+                <p className={`text-sm ${textColors.tertiary} text-center`}>{t('common:loading')}</p>
               ) : availableItems.length > 0 ? (
                 <div className="max-h-40 overflow-y-auto space-y-1">
                   {availableItems.map((ci) => (
@@ -230,18 +226,18 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
                       type="button"
                       onClick={() => { handleAddItem(ci.id); }}
                       disabled={addItemMutation.isPending}
-                      className="flex w-full items-center justify-between rounded-md bg-white px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                      className={`flex w-full items-center justify-between rounded-md bg-white px-3 py-2 text-sm ${colors.hover.gray50} disabled:opacity-50`}
                     >
                       <span>
-                        <span className="font-medium text-gray-900">{ci.name}</span>
-                        <span className="ml-2 text-gray-500">({ci.code ?? ci.sku})</span>
+                        <span className={`font-medium ${textColors.primary}`}>{ci.name}</span>
+                        <span className={`ml-2 ${textColors.tertiary}`}>({ci.code ?? ci.sku})</span>
                       </span>
-                      <span className="text-gray-600">{ci.base_price ?? ci.sale_price}</span>
+                      <span className={textColors.tertiary}>{ci.base_price ?? ci.sale_price}</span>
                     </button>
                   ))}
                 </div>
               ) : searchQuery ? (
-                <p className="text-sm text-gray-500 text-center">
+                <p className={`text-sm ${textColors.tertiary} text-center`}>
                   {searchTab === 'composite_item' ? t('catalog:noCompositeItems') : t('common:noResults')}
                 </p>
               ) : null}

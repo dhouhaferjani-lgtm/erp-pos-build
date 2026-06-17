@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { X, UserPlus } from 'lucide-react'
 import { apiPost } from '@/lib/api'
+import { tokens, textColors, borderColors, focusRing } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
 
 interface QuickAddCustomerModalProps {
   isOpen: boolean
@@ -86,15 +88,15 @@ export function QuickAddCustomerModal({
       <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
-            <UserPlus className="h-5 w-5 text-blue-600" />
-            <h3 className="text-lg font-semibold text-gray-900">
+            <UserPlus className={cn('h-5 w-5', textColors.brand)} />
+            <h3 className={cn('text-lg font-semibold', textColors.primary)}>
               {t('pos:cart.quickAddCustomer')}
             </h3>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+            className={tokens.modal.closeButton}
           >
             <X className="h-5 w-5" />
           </button>
@@ -102,7 +104,7 @@ export function QuickAddCustomerModal({
 
         <form onSubmit={(e) => { void handleSubmit(e) }} className="space-y-4">
           <div>
-            <label htmlFor="quick-customer-name" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="quick-customer-name" className={cn(tokens.label.base, 'mb-1')}>
               {t('pos:cart.customerName')} *
             </label>
             <input
@@ -111,13 +113,13 @@ export function QuickAddCustomerModal({
               value={name}
               onChange={(e) => { setName(e.target.value) }}
               placeholder={t('pos:cart.customerName')}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={cn('w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1', borderColors.default, focusRing.primary)}
               autoFocus
             />
           </div>
 
           <div>
-            <label htmlFor="quick-customer-phone" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="quick-customer-phone" className={cn(tokens.label.base, 'mb-1')}>
               {t('pos:cart.customerPhone')}
             </label>
             <input
@@ -126,12 +128,12 @@ export function QuickAddCustomerModal({
               value={phone}
               onChange={(e) => { setPhone(e.target.value) }}
               placeholder={t('pos:cart.customerPhone')}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={cn('w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1', borderColors.default, focusRing.primary)}
             />
           </div>
 
           <div>
-            <label htmlFor="quick-customer-email" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="quick-customer-email" className={cn(tokens.label.base, 'mb-1')}>
               {t('pos:cart.customerEmail')}
             </label>
             <input
@@ -140,26 +142,26 @@ export function QuickAddCustomerModal({
               value={email}
               onChange={(e) => { setEmail(e.target.value) }}
               placeholder="email@example.com"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={cn('w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1', borderColors.default, focusRing.primary)}
             />
           </div>
 
           {error && (
-            <p className="text-sm text-red-600">{error}</p>
+            <p className={cn('text-sm', textColors.error)}>{error}</p>
           )}
 
           <div className="flex gap-3 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              className={cn('flex-1 px-4 py-2 text-sm rounded-lg', tokens.button.secondary)}
             >
               {t('common:actions.cancel')}
             </button>
             <button
               type="submit"
               disabled={isSubmitting || !name.trim()}
-              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className={cn('flex-1 px-4 py-2 text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed', tokens.button.primary)}
             >
               {isSubmitting ? t('common:status.saving') : t('common:actions.create')}
             </button>

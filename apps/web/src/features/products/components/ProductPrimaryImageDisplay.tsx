@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Search, ImageOff, Images } from 'lucide-react'
-import { getProductImages, getProductImageDownloadUrl } from '../api/productImages'
+import { getProductImages } from '../api/productImages'
 import { ImageGalleryModal } from './ImageGalleryModal'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
@@ -88,7 +88,7 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
       {/* Primary Image */}
       <div className="group relative aspect-square w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
         <img
-          src={getProductImageDownloadUrl(productId, primaryImage.id)}
+          src={primaryImage.url ?? undefined}
           alt={primaryImage.alt ?? ''}
           className="h-full w-full object-cover"
           onError={() => { handleImageError(primaryImage.id); }}
@@ -125,7 +125,7 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
               }`}
             >
               <img
-                src={getProductImageDownloadUrl(productId, image.id)}
+                src={image.url ?? undefined}
                 alt={image.alt ?? ''}
                 className="h-full w-full object-cover"
                 onError={() => { handleImageError(image.id); }}

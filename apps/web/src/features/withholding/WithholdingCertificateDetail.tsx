@@ -12,7 +12,7 @@ import {
   Building2,
   User,
   Calendar,
-  Link as LinkIcon
+  Link as LinkIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -28,6 +28,32 @@ import {
 } from './api/withholdingApi'
 import type { CertificateStatus, WithholdingDirection } from './types'
 import { useCurrency } from '@/hooks/useCurrency'
+import { cn } from '@/lib/utils'
+import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { Button } from '@/components/atoms/Button'
+import {
+  StatusBadge,
+  statusTone,
+  type StatusTone,
+} from '@/components/atoms/StatusBadge'
+import { PageHeader } from '@/components/molecules/PageHeader'
+
+/**
+ * Certificate-status tone overrides for the shared StatusBadge.
+ * `issued` maps to success, `submitted` to info, `voided` to danger;
+ * `draft` is covered by the built-in `statusTone` (pending) map.
+ */
+const statusToneOverrides: Record<CertificateStatus, StatusTone> = {
+  draft: 'pending',
+  issued: 'success',
+  submitted: 'info',
+  voided: 'danger',
+}
+
+const directionTone: Record<WithholdingDirection, StatusTone> = {
+  purchase: 'info',
+  sales: 'warning',
+}
 
 export function WithholdingCertificateDetail() {
   const { id } = useParams<{ id: string }>()
@@ -47,7 +73,7 @@ export function WithholdingCertificateDetail() {
     try {
       await issueMutation.mutateAsync(id!)
       toast.success(t('messages.certificateIssued'))
-    } catch (error) {
+    } catch {
       // Error handled by mutation onError
     }
   }
@@ -59,7 +85,7 @@ export function WithholdingCertificateDetail() {
     try {
       await voidMutation.mutateAsync({ id: id!, request: { reason } })
       toast.success(t('messages.certificateVoided'))
-    } catch (error) {
+    } catch {
       // Error handled by mutation onError
     }
   }
@@ -71,7 +97,7 @@ export function WithholdingCertificateDetail() {
     try {
       await submitToTEJMutation.mutateAsync({ id: id!, request: { tej_reference: tejReference } })
       toast.success(t('messages.tejSubmitted'))
-    } catch (error) {
+    } catch {
       // Error handled by mutation onError
     }
   }
@@ -83,7 +109,7 @@ export function WithholdingCertificateDetail() {
       await deleteMutation.mutateAsync(id!)
       toast.success(t('messages.certificateDeleted'))
       navigate('/treasury/withholding-certificates')
-    } catch (error) {
+    } catch {
       // Error handled by mutation onError
     }
   }
@@ -100,56 +126,32 @@ export function WithholdingCertificateDetail() {
     toast.success(t('messages.downloadStarted'))
   }
 
-  const getStatusBadge = (status: CertificateStatus) => {
-    const styles = {
-      draft: 'bg-gray-100 text-gray-800',
-      issued: 'bg-green-100 text-green-800',
-      submitted: 'bg-blue-100 text-blue-800',
-      voided: 'bg-red-100 text-red-800',
-    }
+  const renderStatusBadge = (status: CertificateStatus) => (
+    <StatusBadge tone={statusTone(status, statusToneOverrides)}>
+      {t(`status.${status}`)}
+    </StatusBadge>
+  )
 
-    const icons = {
-      draft: <FileText className="h-3 w-3" />,
-      issued: <CheckCircle2 className="h-3 w-3" />,
-      submitted: <Send className="h-3 w-3" />,
-      voided: <XCircle className="h-3 w-3" />,
-    }
-
-    return (
-      <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium ${styles[status]}`}>
-        {icons[status]}
-        {t(`status.${status}`)}
-      </span>
-    )
-  }
-
-  const getDirectionBadge = (direction: WithholdingDirection) => {
-    const styles = {
-      purchase: 'bg-purple-100 text-purple-800 border-purple-200',
-      sales: 'bg-orange-100 text-orange-800 border-orange-200',
-    }
-
-    return (
-      <span className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-sm font-medium ${styles[direction]}`}>
-        {t(`direction.${direction}`)}
-      </span>
-    )
-  }
+  const renderDirectionBadge = (direction: WithholdingDirection) => (
+    <StatusBadge tone={directionTone[direction]}>
+      {t(`direction.${direction}`)}
+    </StatusBadge>
+  )
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-gray-500">{t('common:loading')}</div>
+      <div className="flex min-h-screen items-center justify-center">
+        <div className={textColors.tertiary}>{t('common:loading')}</div>
       </div>
     )
   }
 
   if (!certificate) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
-          <AlertCircle className="mx-auto h-12 w-12 text-red-500" />
-          <p className="mt-2 text-sm text-gray-600">
+          <AlertCircle className={cn('mx-auto h-12 w-12', textColors.error)} />
+          <p className={cn('mt-2 text-sm', textColors.tertiary)}>
             {t('common:notFound')}
           </p>
         </div>
@@ -157,137 +159,139 @@ export function WithholdingCertificateDetail() {
     )
   }
 
+  const backLink = (
+    <Link
+      to="/treasury/withholding-certificates"
+      className={cn(
+        'inline-flex items-center gap-2 text-sm',
+        textColors.tertiary,
+        textColors.hoverPrimary,
+      )}
+    >
+      <ArrowLeft className="h-4 w-4" />
+      {t('common:back')}
+    </Link>
+  )
+
+  const headerSubtitle = (
+    <span className="flex items-center gap-2">
+      {renderDirectionBadge(certificate.direction)}
+      {renderStatusBadge(certificate.status)}
+    </span>
+  )
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link
-            to="/treasury/withholding-certificates"
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            {t('common:back')}
-          </Link>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              {certificate.certificate_number}
-            </h1>
-            <div className="mt-1 flex items-center gap-2">
-              {getDirectionBadge(certificate.direction)}
-              {getStatusBadge(certificate.status)}
-            </div>
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2">
-          {certificate.status === 'draft' && (
-            <button
-              type="button"
-              onClick={() => { void handleDelete() }}
-              className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 transition-colors"
-            >
-              <XCircle className="h-4 w-4" />
-              {t('common:delete')}
-            </button>
-          )}
-
-          {certificate.can_be_issued && (
-            <button
-              type="button"
-              onClick={() => { void handleIssue() }}
-              className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors"
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              {t('certificates.actions.issue')}
-            </button>
-          )}
-
-          {certificate.status !== 'draft' && (
-            <button
-              type="button"
-              onClick={handleDownloadPDF}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              <FileText className="h-4 w-4" />
-              {t('certificates.actions.downloadPDF')}
-            </button>
-          )}
-
-          {certificate.status === 'issued' && (
-            <>
-              <button
-                type="button"
-                onClick={handleDownloadTEJXML}
-                className="inline-flex items-center gap-2 rounded-lg border border-purple-300 bg-white px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-50 transition-colors"
+      <PageHeader
+        title={certificate.certificate_number}
+        breadcrumb={backLink}
+        actions={
+          <>
+            {certificate.status === 'draft' && (
+              <Button
+                variant="danger"
+                onClick={() => { void handleDelete() }}
               >
-                <Download className="h-4 w-4" />
-                {t('certificates.actions.downloadTEJ')}
-              </button>
-              <button
-                type="button"
-                onClick={() => { void handleSubmitToTEJ() }}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
-              >
-                <Send className="h-4 w-4" />
-                {t('certificates.actions.submitTEJ')}
-              </button>
-            </>
-          )}
+                <XCircle className="me-2 h-4 w-4" />
+                {t('common:delete')}
+              </Button>
+            )}
 
-          {certificate.can_be_voided && (
-            <button
-              type="button"
-              onClick={() => { void handleVoid() }}
-              className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 transition-colors"
-            >
-              <XCircle className="h-4 w-4" />
-              {t('certificates.actions.void')}
-            </button>
-          )}
-        </div>
-      </div>
+            {certificate.can_be_issued && (
+              <Button
+                variant="primary"
+                onClick={() => { void handleIssue() }}
+              >
+                <CheckCircle2 className="me-2 h-4 w-4" />
+                {t('certificates.actions.issue')}
+              </Button>
+            )}
+
+            {certificate.status !== 'draft' && (
+              <Button
+                variant="secondary"
+                onClick={handleDownloadPDF}
+              >
+                <FileText className="me-2 h-4 w-4" />
+                {t('certificates.actions.downloadPDF')}
+              </Button>
+            )}
+
+            {certificate.status === 'issued' && (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={handleDownloadTEJXML}
+                >
+                  <Download className="me-2 h-4 w-4" />
+                  {t('certificates.actions.downloadTEJ')}
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => { void handleSubmitToTEJ() }}
+                >
+                  <Send className="me-2 h-4 w-4" />
+                  {t('certificates.actions.submitTEJ')}
+                </Button>
+              </>
+            )}
+
+            {certificate.can_be_voided && (
+              <Button
+                variant="danger"
+                onClick={() => { void handleVoid() }}
+              >
+                <XCircle className="me-2 h-4 w-4" />
+                {t('certificates.actions.void')}
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      {/* Direction + status pills under the header */}
+      <div>{headerSubtitle}</div>
 
       {/* Certificate Information */}
       <div className="grid gap-6 md:grid-cols-2">
         {/* Basic Info */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
+        <div className={tokens.card.base}>
+          <h2 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
             <FileText className="h-5 w-5" />
             {t('details.certificateInfo')}
           </h2>
           <dl className="space-y-3">
             <div>
-              <dt className="text-sm font-medium text-gray-500">{t('certificates.number')}</dt>
-              <dd className="mt-1 text-sm font-mono text-gray-900">{certificate.certificate_number}</dd>
+              <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('certificates.number')}</dt>
+              <dd className={cn('mt-1 font-mono text-sm', textColors.primary)}>{certificate.certificate_number}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">{t('certificates.year')}</dt>
-              <dd className="mt-1 text-sm text-gray-900">{certificate.year}</dd>
+              <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('certificates.year')}</dt>
+              <dd className={cn('mt-1 text-sm', textColors.primary)}>{certificate.year}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">{t('certificates.direction')}</dt>
-              <dd className="mt-1">{getDirectionBadge(certificate.direction)}</dd>
+              <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('certificates.direction')}</dt>
+              <dd className="mt-1">{renderDirectionBadge(certificate.direction)}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">{t('certificates.status')}</dt>
-              <dd className="mt-1">{getStatusBadge(certificate.status)}</dd>
+              <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('certificates.status')}</dt>
+              <dd className="mt-1">{renderStatusBadge(certificate.status)}</dd>
             </div>
             {certificate.issued_at && (
               <div>
-                <dt className="text-sm font-medium text-gray-500">{t('certificates.issuedAt')}</dt>
-                <dd className="mt-1 flex items-center gap-2 text-sm text-gray-900">
-                  <Calendar className="h-4 w-4 text-gray-400" />
+                <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('certificates.issuedAt')}</dt>
+                <dd className={cn('mt-1 flex items-center gap-2 text-sm', textColors.primary)}>
+                  <Calendar className={cn('h-4 w-4', textColors.disabled)} />
                   {new Date(certificate.issued_at).toLocaleString()}
                 </dd>
               </div>
             )}
             {certificate.issuer && (
               <div>
-                <dt className="text-sm font-medium text-gray-500">{t('common:issuedBy')}</dt>
-                <dd className="mt-1 flex items-center gap-2 text-sm text-gray-900">
-                  <User className="h-4 w-4 text-gray-400" />
+                <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('common:issuedBy')}</dt>
+                <dd className={cn('mt-1 flex items-center gap-2 text-sm', textColors.primary)}>
+                  <User className={cn('h-4 w-4', textColors.disabled)} />
                   {certificate.issuer.name}
                 </dd>
               </div>
@@ -296,53 +300,53 @@ export function WithholdingCertificateDetail() {
         </div>
 
         {/* Partner Info */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
+        <div className={tokens.card.base}>
+          <h2 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
             <Building2 className="h-5 w-5" />
             {t('details.partnerInfo')}
           </h2>
           <dl className="space-y-3">
             <div>
-              <dt className="text-sm font-medium text-gray-500">{t('common:name')}</dt>
-              <dd className="mt-1 text-sm text-gray-900">{certificate.partner?.name ?? '-'}</dd>
+              <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('common:name')}</dt>
+              <dd className={cn('mt-1 text-sm', textColors.primary)}>{certificate.partner?.name ?? '-'}</dd>
             </div>
             {certificate.partner?.vat_number && (
               <div>
-                <dt className="text-sm font-medium text-gray-500">{t('common:vatNumber')}</dt>
-                <dd className="mt-1 text-sm font-mono text-gray-900">{certificate.partner.vat_number}</dd>
+                <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('common:vatNumber')}</dt>
+                <dd className={cn('mt-1 font-mono text-sm', textColors.primary)}>{certificate.partner.vat_number}</dd>
               </div>
             )}
             <div>
-              <dt className="text-sm font-medium text-gray-500">{t('details.glAccount')}</dt>
-              <dd className="mt-1 text-sm font-mono text-gray-900">{certificate.gl_account_code}</dd>
+              <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('details.glAccount')}</dt>
+              <dd className={cn('mt-1 font-mono text-sm', textColors.primary)}>{certificate.gl_account_code}</dd>
             </div>
           </dl>
         </div>
       </div>
 
       {/* Amount Breakdown */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">
+      <div className={tokens.card.base}>
+        <h2 className={cn(tokens.heading.section, 'mb-4')}>
           {t('details.amountBreakdown')}
         </h2>
         <div className="space-y-3">
-          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-            <span className="text-sm text-gray-600">{t('certificates.grossAmount')}</span>
-            <span className="text-lg font-mono font-semibold text-gray-900">
+          <div className={cn('flex items-center justify-between border-b pb-2', borderColors.light)}>
+            <span className={cn('text-sm', textColors.tertiary)}>{t('certificates.grossAmount')}</span>
+            <span className={cn('text-lg font-mono font-semibold tabular-nums', textColors.primary)}>
               {parseFloat(certificate.gross_amount).toFixed(decimals)} {certificate.currency}
             </span>
           </div>
-          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-            <span className="text-sm text-gray-600">
+          <div className={cn('flex items-center justify-between border-b pb-2', borderColors.light)}>
+            <span className={cn('text-sm', textColors.tertiary)}>
               {t('certificates.rate')} ({certificate.rate_percentage}%)
             </span>
-            <span className="text-lg font-mono font-semibold text-red-600">
+            <span className={cn('text-lg font-mono font-semibold tabular-nums', textColors.error)}>
               - {parseFloat(certificate.withholding_amount).toFixed(decimals)} {certificate.currency}
             </span>
           </div>
           <div className="flex items-center justify-between pt-2">
-            <span className="text-base font-semibold text-gray-900">{t('certificates.netAmount')}</span>
-            <span className="text-2xl font-mono font-bold text-gray-900">
+            <span className={cn('text-base font-semibold', textColors.primary)}>{t('certificates.netAmount')}</span>
+            <span className={cn('text-2xl font-mono font-bold tabular-nums', textColors.primary)}>
               {parseFloat(certificate.net_amount).toFixed(decimals)} {certificate.currency}
             </span>
           </div>
@@ -350,47 +354,47 @@ export function WithholdingCertificateDetail() {
       </div>
 
       {/* Rule Applied or Manual Override */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">
+      <div className={tokens.card.base}>
+        <h2 className={cn(tokens.heading.section, 'mb-4')}>
           {certificate.is_manual_override ? t('details.manualOverride') : t('details.ruleApplied')}
         </h2>
         {certificate.rule ? (
           <dl className="space-y-3">
             <div>
-              <dt className="text-sm font-medium text-gray-500">{t('rules.code')}</dt>
-              <dd className="mt-1 text-sm font-mono text-gray-900">{certificate.rule.code}</dd>
+              <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('rules.code')}</dt>
+              <dd className={cn('mt-1 font-mono text-sm', textColors.primary)}>{certificate.rule.code}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">{t('rules.name')}</dt>
-              <dd className="mt-1 text-sm text-gray-900">{certificate.rule.name}</dd>
+              <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('rules.name')}</dt>
+              <dd className={cn('mt-1 text-sm', textColors.primary)}>{certificate.rule.name}</dd>
             </div>
           </dl>
         ) : certificate.override_reason ? (
           <div>
-            <dt className="text-sm font-medium text-gray-500">{t('details.overrideReason')}</dt>
-            <dd className="mt-1 text-sm text-gray-900">{certificate.override_reason}</dd>
+            <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('details.overrideReason')}</dt>
+            <dd className={cn('mt-1 text-sm', textColors.primary)}>{certificate.override_reason}</dd>
           </div>
         ) : (
-          <p className="text-sm text-gray-500">{t('common:noData')}</p>
+          <p className={cn('text-sm', textColors.tertiary)}>{t('common:noData')}</p>
         )}
       </div>
 
       {/* TEJ Submission Info */}
       {certificate.is_submitted_to_tej && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-6">
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-blue-900">
+        <div className={cn(tokens.card.base, tokens.alert.info)}>
+          <h2 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
             <Send className="h-5 w-5" />
             {t('details.tejReference')}
           </h2>
           <dl className="space-y-3">
             <div>
-              <dt className="text-sm font-medium text-blue-700">{t('details.tejReference')}</dt>
-              <dd className="mt-1 text-sm font-mono text-blue-900">{certificate.tej_reference}</dd>
+              <dt className="text-sm font-medium">{t('details.tejReference')}</dt>
+              <dd className="mt-1 font-mono text-sm">{certificate.tej_reference}</dd>
             </div>
             {certificate.tej_submitted_at && (
               <div>
-                <dt className="text-sm font-medium text-blue-700">{t('details.tejSubmittedAt')}</dt>
-                <dd className="mt-1 text-sm text-blue-900">
+                <dt className="text-sm font-medium">{t('details.tejSubmittedAt')}</dt>
+                <dd className="mt-1 text-sm">
                   {new Date(certificate.tej_submitted_at).toLocaleString()}
                 </dd>
               </div>
@@ -401,24 +405,24 @@ export function WithholdingCertificateDetail() {
 
       {/* Hash Chain Info */}
       {certificate.hash && (
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
+        <div className={tokens.card.base}>
+          <h2 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
             <Hash className="h-5 w-5" />
             {t('details.hashChain')}
           </h2>
           <dl className="space-y-3">
             <div>
-              <dt className="text-sm font-medium text-gray-500">{t('details.sequence')}</dt>
-              <dd className="mt-1 text-sm font-mono text-gray-900">#{certificate.chain_sequence}</dd>
+              <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('details.sequence')}</dt>
+              <dd className={cn('mt-1 font-mono text-sm', textColors.primary)}>#{certificate.chain_sequence}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">{t('details.hash')}</dt>
-              <dd className="mt-1 break-all text-xs font-mono text-gray-900">{certificate.hash}</dd>
+              <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('details.hash')}</dt>
+              <dd className={cn('mt-1 break-all font-mono text-xs', textColors.primary)}>{certificate.hash}</dd>
             </div>
             {certificate.previous_hash && (
               <div>
-                <dt className="text-sm font-medium text-gray-500">{t('details.previousHash')}</dt>
-                <dd className="mt-1 break-all text-xs font-mono text-gray-900">{certificate.previous_hash}</dd>
+                <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('details.previousHash')}</dt>
+                <dd className={cn('mt-1 break-all font-mono text-xs', textColors.primary)}>{certificate.previous_hash}</dd>
               </div>
             )}
           </dl>
@@ -426,9 +430,9 @@ export function WithholdingCertificateDetail() {
       )}
 
       {/* Linked Documents */}
-      {(certificate.document_id || certificate.payment_id) && (
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
+      {(certificate.document_id ?? certificate.payment_id) && (
+        <div className={tokens.card.base}>
+          <h2 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
             <LinkIcon className="h-5 w-5" />
             {t('common:linkedDocuments')}
           </h2>
@@ -436,7 +440,7 @@ export function WithholdingCertificateDetail() {
             {certificate.document_id && (
               <Link
                 to={`/sales/invoices/${certificate.document_id}`}
-                className="block text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                className={cn('block text-sm hover:underline', textColors.brand)}
               >
                 {t('common:viewDocument')} →
               </Link>
@@ -444,7 +448,7 @@ export function WithholdingCertificateDetail() {
             {certificate.payment_id && (
               <Link
                 to={`/treasury/payments/${certificate.payment_id}`}
-                className="block text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                className={cn('block text-sm hover:underline', textColors.brand)}
               >
                 {t('common:viewPayment')} →
               </Link>

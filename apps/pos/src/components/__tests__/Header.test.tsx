@@ -103,6 +103,7 @@ vi.mock('@/stores/terminalStore', () => ({
   useTerminalStore: <T,>(selector: (s: unknown) => T): T => {
     return selector({ terminal: null, shift: null, closeShift: vi.fn() });
   },
+  fiscalShiftIdForReceipt: (shift: { id: string }) => shift.id.toLowerCase(),
 }));
 
 vi.mock('@/stores/settingsStore', () => ({
