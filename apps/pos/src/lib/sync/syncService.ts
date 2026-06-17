@@ -1279,18 +1279,31 @@ export async function pushQueuedPinUpdates(db: Database): Promise<number> {
   const pending = await getPendingPinUpdates(db);
   if (pending.length === 0) return 0;
 
+  // Self-only: the server (`PosAuthController::syncPins`) accepts ONLY the
+  // authenticated user's own PIN. A shared device can accumulate PIN-setup rows
+  // authored by different users across login sessions, so push ONLY the rows
+  // authored by the current authStore user; leave the rest pending so they
+  // drain later under their own author. This satisfies the server's self-only
+  // invariant and never drops a queued row.
+  const { useAuthStore } = await import('@/stores/authStore');
+  const currentUserId = useAuthStore.getState().user?.id ?? null;
+  const mine = currentUserId === null
+    ? []
+    : pending.filter((p) => p.userId === currentUserId);
+  if (mine.length === 0) return 0;
+
   try {
     await apiPost<{ synced: number; skipped: number }>('/pos/auth/sync-pins', {
-      updates: pending.map((p) => ({ user_id: p.userId, pin_hash: p.pinHash })),
+      updates: mine.map((p) => ({ user_id: p.userId, pin_hash: p.pinHash })),
     });
-    for (const row of pending) {
+    for (const row of mine) {
       await markPinUpdateSynced(db, row.id);
     }
-    await logSyncOperation(db, 'push', 'pin_update', null, 'success', `${pending.length} pin updates`);
-    return pending.length;
+    await logSyncOperation(db, 'push', 'pin_update', null, 'success', `${mine.length} pin updates`);
+    return mine.length;
   } catch (error) {
     const message = coerceSyncError(error);
-    for (const row of pending) {
+    for (const row of mine) {
       await markPinUpdateFailed(db, row.id, message);
     }
     await logSyncOperation(db, 'push', 'pin_update', null, 'error', message);

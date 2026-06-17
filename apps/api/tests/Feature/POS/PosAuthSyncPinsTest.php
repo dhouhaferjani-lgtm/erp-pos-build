@@ -151,11 +151,11 @@ final class PosAuthSyncPinsTest extends TestCase
         $this->assertNull($pending->pos_pin);
     }
 
-    // The legit multi-operator offline flow: another operator set up their own
-    // PIN on this shared terminal while offline; the batch is pushed under
-    // whoever is authenticated at sync time. An ACTIVE company member must still
-    // be accepted (do NOT over-restrict to self-only).
-    public function test_sync_pins_allows_another_active_company_member(): void
+    // Self-only: sync-pins may set ONLY the authenticated operator's own PIN.
+    // Even another ACTIVE member of the same company is rejected — the client
+    // drains each operator's queued PIN under its own author, so this seam never
+    // needs to write another user's PIN. Closes the same-company authorship gap.
+    public function test_sync_pins_rejects_another_active_company_member(): void
     {
         $colleague = User::factory()->create(['tenant_id' => $this->tenant->id]);
         UserCompanyMembership::create([
@@ -171,10 +171,9 @@ final class PosAuthSyncPinsTest extends TestCase
             ],
         ]);
 
-        $response->assertOk();
-        $response->assertJsonPath('data.synced', 1);
+        $response->assertStatus(422);
         $colleague->refresh();
-        $this->assertTrue(Hash::check('8642', $colleague->pos_pin));
+        $this->assertNull($colleague->pos_pin);
     }
 
     public function test_sync_pins_requires_permission(): void
