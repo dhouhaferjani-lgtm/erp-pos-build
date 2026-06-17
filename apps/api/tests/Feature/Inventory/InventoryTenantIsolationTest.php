@@ -128,7 +128,7 @@ final class InventoryTenantIsolationTest extends TestCase
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
             'vertical' => Vertical::CoffeeShop,
-            'enabled_extras' => ['Inventory'],
+            'enabled_extras' => ['Inventory', 'BatchExpiry'],
         ]);
         $this->tenantB = Tenant::create([
             'name' => 'Tenant B',
@@ -136,7 +136,7 @@ final class InventoryTenantIsolationTest extends TestCase
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
             'vertical' => Vertical::CoffeeShop,
-            'enabled_extras' => ['Inventory'],
+            'enabled_extras' => ['Inventory', 'BatchExpiry'],
         ]);
 
         $this->companyA = Company::create([

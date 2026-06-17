@@ -65,6 +65,9 @@ class StockTransferVariantTest extends TestCase
             'slug' => 'variant-tenant',
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
+            // Default (retail) vertical has Inventory; the batch-stock route is
+            // additionally gated behind the BatchExpiry module.
+            'enabled_extras' => ['BatchExpiry'],
         ]);
 
         $this->company = Company::create([
