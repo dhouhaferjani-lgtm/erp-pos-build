@@ -74,7 +74,10 @@ return [
         'product' => 'izipos',
         'compatible_extras' => ['Tables', 'Reservation', 'Inventory'],
         'product_defaults' => [
-            'requires_batch_tracking' => true,
+            // Batch/expiry is opt-in per product for F&B (a restaurant tracks
+            // expiry on perishables, not on a mug). Enabling the Inventory
+            // extra makes per-product `requires_batch_tracking` meaningful.
+            'requires_batch_tracking' => false,
         ],
         'default_modules' => [
             'Identity',
@@ -103,7 +106,8 @@ return [
         'product' => 'izipos',
         'compatible_extras' => ['Tables', 'Loyalty', 'Inventory'],
         'product_defaults' => [
-            'requires_batch_tracking' => true,
+            // Batch/expiry is opt-in per product for F&B (see restaurant).
+            'requires_batch_tracking' => false,
         ],
         'default_modules' => [
             'Identity',
@@ -129,7 +133,8 @@ return [
         'label' => 'Retail',
         'description' => 'General retail and merchandise',
         'product' => 'izipos',
-        'compatible_extras' => ['Loyalty', 'Ecommerce'],
+        // CompositeItems upgrade = kits/bundles (BOM) of existing products.
+        'compatible_extras' => ['Loyalty', 'Ecommerce', 'CompositeItems'],
         'product_defaults' => [
             'requires_batch_tracking' => false,
         ],
@@ -156,7 +161,10 @@ return [
         'label' => 'Fashion',
         'description' => 'Fashion retail and boutiques',
         'product' => 'izipos',
-        'compatible_extras' => ['Loyalty', 'Ecommerce'],
+        // CompositeItems upgrade = garment BOM (a shirt = fabric + buttons +
+        // thread). The frontend useVerticalLabels maps fashion -> 'sewing' and
+        // relabels "recipe" as "bill of materials".
+        'compatible_extras' => ['Loyalty', 'Ecommerce', 'CompositeItems'],
         'product_defaults' => [
             'requires_batch_tracking' => false,
         ],
@@ -329,7 +337,7 @@ return [
         'label' => 'Parapharmacy',
         'description' => 'Health and wellness retail',
         'product' => 'izipos',
-        'compatible_extras' => ['BatchExpiry', 'Loyalty', 'Ecommerce'],
+        'compatible_extras' => ['BatchExpiry', 'Loyalty', 'Ecommerce', 'CompositeItems'],
         'product_defaults' => [
             'requires_batch_tracking' => true,
         ],

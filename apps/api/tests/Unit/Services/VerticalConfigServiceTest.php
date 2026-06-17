@@ -105,13 +105,15 @@ class VerticalConfigServiceTest extends TestCase
 
     public function test_get_product_defaults_marks_batch_heavy_verticals_for_batch_tracking(): void
     {
-        foreach ([Vertical::Pharmacy, Vertical::Parapharmacy, Vertical::Restaurant, Vertical::CoffeeShop] as $vertical) {
+        foreach ([Vertical::Pharmacy, Vertical::Parapharmacy] as $vertical) {
             $defaults = $this->service->getProductDefaults($vertical);
 
             $this->assertTrue($defaults['requires_batch_tracking'], "{$vertical->value} should default products to batch tracking");
         }
 
-        foreach ([Vertical::Mechanic, Vertical::Retail, Vertical::Fashion, Vertical::PartsRetailer] as $vertical) {
+        // F&B (restaurant/coffee_shop) is now opt-in: batch/expiry is off by
+        // default and toggled per product once the Inventory extra is enabled.
+        foreach ([Vertical::Mechanic, Vertical::Retail, Vertical::Fashion, Vertical::PartsRetailer, Vertical::Restaurant, Vertical::CoffeeShop] as $vertical) {
             $defaults = $this->service->getProductDefaults($vertical);
 
             $this->assertFalse($defaults['requires_batch_tracking'], "{$vertical->value} should not default products to batch tracking");
