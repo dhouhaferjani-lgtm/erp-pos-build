@@ -49,7 +49,7 @@ final class LoyaltyMemberShowContractTest extends TestCase
     {
         parent::setUp();
 
-        $this->tenant = Tenant::factory()->create();
+        $this->tenant = Tenant::factory()->create(['enabled_extras' => ['Loyalty']]);
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
         $this->user = User::factory()->create(['tenant_id' => $this->tenant->id]);
         UserCompanyMembership::create([

@@ -43,7 +43,7 @@ final class LoyaltyPOSControllerTest extends TestCase
         parent::setUp();
 
         // Tenant A
-        $this->tenantA = Tenant::factory()->create();
+        $this->tenantA = Tenant::factory()->create(['enabled_extras' => ['Loyalty']]);
         $this->companyA = Company::factory()->create(['tenant_id' => $this->tenantA->id]);
         $this->userA = User::factory()->create(['tenant_id' => $this->tenantA->id]);
         UserCompanyMembership::create([
@@ -53,7 +53,7 @@ final class LoyaltyPOSControllerTest extends TestCase
         ]);
 
         // Tenant B
-        $this->tenantB = Tenant::factory()->create();
+        $this->tenantB = Tenant::factory()->create(['enabled_extras' => ['Loyalty']]);
         $this->companyB = Company::factory()->create(['tenant_id' => $this->tenantB->id]);
         $this->userB = User::factory()->create(['tenant_id' => $this->tenantB->id]);
         UserCompanyMembership::create([

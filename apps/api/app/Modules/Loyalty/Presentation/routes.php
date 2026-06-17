@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'module:Loyalty'])->group(function () {
     // Loyalty Programs (Admin)
     Route::prefix('loyalty/programs')->group(function () {
         Route::get('/', [LoyaltyProgramController::class, 'index'])

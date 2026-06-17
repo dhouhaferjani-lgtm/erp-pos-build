@@ -206,6 +206,7 @@ final class PosStabilizationTenantIsolationTest extends TestCase
             'slug' => $slug,
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
+            'enabled_extras' => ['Loyalty'],
         ]);
     }
 
