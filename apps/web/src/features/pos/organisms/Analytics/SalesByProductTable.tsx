@@ -1,4 +1,6 @@
 import { useTranslation } from 'react-i18next'
+import { cn } from '@/lib/utils'
+import { colors, textColors, borderColors } from '@/lib/designTokens'
 import type { ProductSales } from '../../api/analyticsApi'
 
 interface SalesByProductTableProps {
@@ -15,15 +17,15 @@ export function SalesByProductTable({ data }: SalesByProductTableProps) {
   const maxTotal = Math.max(...data.map((d) => Number(d.total)), 1)
 
   return (
-    <div className="rounded-lg border bg-card p-4">
-      <h3 className="mb-4 text-lg font-medium">{t('pos:analytics.topProducts')}</h3>
+    <div className={cn('rounded-lg border p-4', borderColors.light, colors.white)}>
+      <h3 className={cn('mb-4 text-lg font-medium', textColors.primary)}>{t('pos:analytics.topProducts')}</h3>
       {data.length === 0 ? (
-        <p className="py-8 text-center text-muted-foreground">{t('pos:analytics.noData')}</p>
+        <p className={cn('py-8 text-center', textColors.tertiary)}>{t('pos:analytics.noData')}</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-muted-foreground">
+              <tr className={cn('border-b text-left', borderColors.light, textColors.tertiary)}>
                 <th className="py-2 pr-4">#</th>
                 <th className="py-2 pr-4">{t('pos:analytics.product')}</th>
                 <th className="py-2 pr-4 text-right">{t('pos:analytics.quantity')}</th>
@@ -35,15 +37,15 @@ export function SalesByProductTable({ data }: SalesByProductTableProps) {
               {data.map((product, index) => {
                 const pct = (Number(product.total) / maxTotal) * 100
                 return (
-                  <tr key={product.product_name} className="border-b last:border-0">
-                    <td className="py-2 pr-4 text-muted-foreground">{index + 1}</td>
-                    <td className="py-2 pr-4 font-medium">{product.product_name}</td>
-                    <td className="py-2 pr-4 text-right">{Number(product.quantity).toLocaleString()}</td>
-                    <td className="py-2 pr-4 text-right font-medium">{formatCurrency(product.total)}</td>
+                  <tr key={product.product_name} className={cn('border-b last:border-0', borderColors.light)}>
+                    <td className={cn('py-2 pr-4', textColors.tertiary)}>{index + 1}</td>
+                    <td className={cn('py-2 pr-4 font-medium', textColors.primary)}>{product.product_name}</td>
+                    <td className={cn('py-2 pr-4 text-right', textColors.primary)}>{Number(product.quantity).toLocaleString()}</td>
+                    <td className={cn('py-2 pr-4 text-right font-medium', textColors.primary)}>{formatCurrency(product.total)}</td>
                     <td className="py-2">
-                      <div className="h-2 w-full rounded-full bg-muted">
+                      <div className={cn('h-2 w-full rounded-full', colors.neutral[100])}>
                         <div
-                          className="bg-primary h-2 rounded-full"
+                          className={cn('h-2 rounded-full', colors.primary[600])}
                           style={{ width: `${pct}%` }}
                         />
                       </div>

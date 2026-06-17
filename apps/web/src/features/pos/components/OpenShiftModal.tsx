@@ -7,6 +7,8 @@ import { POSButton } from '../atoms/POSButton'
 import { openShift, type OpenShiftData } from '../api/shiftApi'
 import { DollarSign, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
+import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
 
 export interface OpenShiftModalProps {
   isOpen: boolean
@@ -104,13 +106,13 @@ export function OpenShiftModal({
       <ModalContent>
         <div className="space-y-4">
           {/* Instructions */}
-          <div className="flex items-start gap-3 rounded-lg bg-blue-50 p-4">
-            <DollarSign className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div className={cn('flex items-start gap-3 rounded-lg p-4', tokens.alert.info)}>
+            <DollarSign className={cn('h-5 w-5 mt-0.5 flex-shrink-0', textColors.brand)} />
             <div className="flex-1">
-              <p className="text-sm font-medium text-blue-900">
+              <p className={cn('text-sm font-medium', textColors.brand)}>
                 {t('common:pos.enterOpeningCash')}
               </p>
-              <p className="mt-1 text-sm text-blue-700">
+              <p className="mt-1 text-sm">
                 {t('common:pos.openingCashHelp')}
               </p>
             </div>
@@ -128,9 +130,9 @@ export function OpenShiftModal({
           />
 
           {/* Warning about not closing modal */}
-          <div className="flex items-start gap-2 rounded-lg bg-yellow-50 border border-yellow-200 p-3">
-            <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
-            <p className="text-sm text-yellow-800">
+          <div className={cn('flex items-start gap-2 rounded-lg border p-3', tokens.alert.warning, borderColors.warning)}>
+            <AlertCircle className={cn('h-4 w-4 mt-0.5 flex-shrink-0', textColors.warningDark)} />
+            <p className={cn('text-sm', textColors.warning)}>
               {t('common:pos.mustOpenShiftWarning')}
             </p>
           </div>

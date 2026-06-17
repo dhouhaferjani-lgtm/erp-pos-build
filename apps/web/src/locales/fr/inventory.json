@@ -1,7 +1,7 @@
 {
   "barcodeLookup": {
-    "placeholder": "Scanner ou saisir le code-barres...",
-    "searching": "Recherche en cours...",
+    "placeholder": "Scanner ou saisir le code-barres…",
+    "searching": "Recherche en cours…",
     "catalogFound": "Donn\u00e9es du catalogue Syneriva",
     "confidence": "Confiance : {{tier}}",
     "notInCatalog": "Absent du catalogue \u2014 saisissez les d\u00e9tails manuellement",
@@ -39,7 +39,7 @@
     "singular": "produit",
     "plural": "produits",
     "new": "Ajouter un produit",
-    "searchPlaceholder": "Rechercher des produits...",
+    "searchPlaceholder": "Rechercher des produits…",
     "addQuick": "Ajouter un produit (rapide)",
     "edit": "Modifier le produit",
     "tabs": {
@@ -113,7 +113,7 @@
     "quickCreateNote": "Ceci crée un produit de base. Modifiez le produit plus tard pour ajouter plus de détails.",
     "nameRequired": "Le nom est requis",
     "skuRequired": "La référence est requise",
-    "unitPlaceholder": "pcs, kg, heures...",
+    "unitPlaceholder": "pcs, kg, heures…",
     "costWac": "Coût (CMP)",
     "costWacHelper": "Calculé automatiquement à partir des opérations d'achat",
     "oemPlaceholder": "Saisir le numéro OEM",
@@ -212,7 +212,7 @@
       "location": "Emplacement",
       "fromLocation": "Emplacement source",
       "toLocation": "Emplacement destination",
-      "selectDestination": "Sélectionner la destination...",
+      "selectDestination": "Sélectionner la destination…",
       "currentQuantity": "Quantité actuelle",
       "newQuantity": "Nouvelle quantité",
       "enterNewQuantity": "Entrer la nouvelle quantité",
@@ -220,10 +220,10 @@
       "reason": "Motif",
       "notes": "Notes (optionnel)",
       "reference": "Référence",
-      "enterReference": "Entrer la référence du transfert...",
-      "addNotes": "Ajouter des notes supplémentaires...",
+      "enterReference": "Entrer la référence du transfert…",
+      "addNotes": "Ajouter des notes supplémentaires…",
       "change": "Variation",
-      "saving": "Enregistrement...",
+      "saving": "Enregistrement…",
       "save": "Enregistrer"
     },
     "reasons": {
@@ -249,7 +249,7 @@
     "type": "Type",
     "reference": "Référence",
     "date": "Date",
-    "searchPlaceholder": "Rechercher des mouvements...",
+    "searchPlaceholder": "Rechercher des mouvements…",
     "noMovements": "Aucun mouvement",
     "noMatchFilter": "Aucun mouvement ne correspond au filtre sélectionné.",
     "emptyDescription": "Les mouvements de stock apparaîtront ici lors de changements d'inventaire.",
@@ -337,7 +337,7 @@
     "neverUpdated": "Jamais",
     "costLastUpdated": "Coût mis à jour le : {{date}}",
     "belowTargetHint": "En dessous de la cible : envisagez de porter le prix à {{price}}",
-    "checkingMargin": "Vérification de la marge...",
+    "checkingMargin": "Vérification de la marge…",
     "targetMarginShort": "Cible",
     "minimumMarginShort": "Minimum",
     "suggestedPriceButton": "Prix suggéré (marge cible)",
@@ -507,7 +507,7 @@
     "list": {
       "title": "Tous les comptages",
       "description": "Voir et gérer tous les comptages d'inventaire",
-      "searchPlaceholder": "Rechercher par ID ou description...",
+      "searchPlaceholder": "Rechercher par ID ou description…",
       "empty": "Aucun comptage trouvé",
       "createFirst": "Créer votre premier comptage",
       "errorLoading": "Échec du chargement des comptages",
@@ -558,7 +558,7 @@
       "allowUnexpectedItems": "Autoriser les articles imprévus",
       "allowUnexpectedItemsHelp": "Les compteurs peuvent ajouter des articles non prévus dans la liste",
       "instructions": "Instructions pour les compteurs",
-      "instructionsPlaceholder": "Entrez des instructions spéciales pour les compteurs...",
+      "instructionsPlaceholder": "Entrez des instructions spéciales pour les compteurs…",
       "assignmentTitle": "Attribuer les compteurs",
       "assignmentDescription": "Sélectionnez qui effectuera les comptages",
       "counter1": "Compteur principal",
@@ -601,7 +601,7 @@
       "title": "Annuler le comptage ?",
       "description": "Cela annulera définitivement ce comptage. Toute progression sera perdue et ne pourra pas être récupérée.",
       "reason": "Raison de l'annulation",
-      "reasonPlaceholder": "Entrez la raison de l'annulation...",
+      "reasonPlaceholder": "Entrez la raison de l'annulation…",
       "confirm": "Annuler le comptage"
     },
     "reconciliation": {
@@ -627,7 +627,7 @@
       "manualOverride": "Correction manuelle",
       "finalQuantity": "Quantité finale",
       "overrideReason": "Raison de la correction",
-      "overrideReasonPlaceholder": "Expliquez pourquoi vous corrigez le comptage...",
+      "overrideReasonPlaceholder": "Expliquez pourquoi vous corrigez le comptage…",
       "applyOverride": "Appliquer la correction"
     },
     "review": {
@@ -687,7 +687,7 @@
     "plural": "catégories",
     "new": "Nouvelle catégorie",
     "edit": "Modifier la catégorie",
-    "searchPlaceholder": "Rechercher des catégories...",
+    "searchPlaceholder": "Rechercher des catégories…",
     "name": "Nom",
     "namePlaceholder": "Entrez le nom de la catégorie",
     "description": "Description",
@@ -747,7 +747,7 @@
       "title": "Arborescence des catégories",
       "description": "Organisez et gérez vos catégories de produits",
       "dragToReorder": "Glissez pour réorganiser",
-      "loading": "Chargement des catégories..."
+      "loading": "Chargement des catégories…"
     },
     "form": {
       "basicInfo": "Informations de base",
@@ -756,7 +756,7 @@
       "nameRequired": "Le nom de la catégorie est requis",
       "save": "Enregistrer la catégorie",
       "cancel": "Annuler",
-      "saving": "Enregistrement..."
+      "saving": "Enregistrement…"
     },
     "stats": {
       "total": "Total des catégories",

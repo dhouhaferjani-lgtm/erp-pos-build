@@ -2,6 +2,10 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useProfitLoss } from '../hooks/useProfitLoss'
 import { QueryError } from '@/components/QueryError'
+import { PageHeader } from '../../../components/molecules/PageHeader'
+import { Button, FormField, Input } from '../../../components/atoms'
+import { tokens, textColors, borderColors } from '../../../lib/designTokens'
+import { cn } from '../../../lib/utils'
 import type { ProfitLossLine } from '../types'
 
 export function ProfitLossPage() {
@@ -31,46 +35,113 @@ export function ProfitLossPage() {
     }).format(num)
   }
 
+  const thLabel = cn(
+    'px-6 py-3 text-start text-xs font-medium uppercase tracking-wider',
+    textColors.tertiary
+  )
+  const thAmount = cn(
+    'px-6 py-3 text-end text-xs font-medium uppercase tracking-wider tabular-nums',
+    textColors.tertiary
+  )
+  const tdLabel = cn(
+    'whitespace-nowrap px-6 py-4 text-sm',
+    textColors.primary
+  )
+  const tdAmount = cn(
+    'whitespace-nowrap px-6 py-4 text-end text-sm tabular-nums',
+    textColors.primary
+  )
+
+  const renderSection = (
+    heading: string,
+    lines: ProfitLossLine[] | undefined,
+    totalLabel: string,
+    totalValue: string
+  ) => (
+    <div>
+      <h2 className={cn('mb-4 text-xl font-bold', textColors.primary)}>
+        {heading}
+      </h2>
+      <table
+        className={cn('min-w-full divide-y', borderColors.divideDefault)}
+      >
+        <thead className={tokens.table.header}>
+          <tr>
+            <th className={thLabel}>
+              {t('finance:reports.common.accountCode')}
+            </th>
+            <th className={thLabel}>
+              {t('finance:reports.common.accountName')}
+            </th>
+            <th className={thAmount}>
+              {t('finance:reports.common.amount')}
+            </th>
+          </tr>
+        </thead>
+        <tbody
+          className={cn('divide-y bg-white', borderColors.divideDefault)}
+        >
+          {lines?.map((line) => (
+            <tr key={line.account_code}>
+              <td className={tdLabel}>{line.account_code}</td>
+              <td className={tdLabel}>{line.account_name}</td>
+              <td className={tdAmount}>{formatCurrency(line.amount)}</td>
+            </tr>
+          ))}
+          <tr className={cn(tokens.table.header, 'font-bold')}>
+            <td className={tdLabel} colSpan={2}>
+              {totalLabel}
+            </td>
+            <td className={tdAmount}>{formatCurrency(totalValue)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  )
+
   return (
     <div className="p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t('finance:reports.profitLossReport.title')}</h1>
-        <button className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
-          {t('finance:reports.common.export')}
-        </button>
-      </div>
+      <PageHeader
+        title={t('finance:reports.profitLossReport.title')}
+        actions={
+          <Button variant="primary">
+            {t('finance:reports.common.export')}
+          </Button>
+        }
+      />
 
       {/* Filters */}
       <div className="mb-6 flex gap-4">
-        <div>
-          <label htmlFor="date-from" className="mb-2 block text-sm font-medium">
-            {t('finance:reports.common.from')}
-          </label>
-          <input
+        <FormField
+          label={t('finance:reports.common.from')}
+          htmlFor="date-from"
+        >
+          <Input
             id="date-from"
             type="date"
             value={dateFrom}
-            onChange={(e) => { setDateFrom(e.target.value); }}
-            className="rounded border border-gray-300 px-3 py-2"
+            onChange={(e) => {
+              setDateFrom(e.target.value)
+            }}
           />
-        </div>
-        <div>
-          <label htmlFor="date-to" className="mb-2 block text-sm font-medium">
-            {t('finance:reports.common.to')}
-          </label>
-          <input
+        </FormField>
+        <FormField label={t('finance:reports.common.to')} htmlFor="date-to">
+          <Input
             id="date-to"
             type="date"
             value={dateTo}
-            onChange={(e) => { setDateTo(e.target.value); }}
-            className="rounded border border-gray-300 px-3 py-2"
+            onChange={(e) => {
+              setDateTo(e.target.value)
+            }}
           />
-        </div>
+        </FormField>
       </div>
 
       {/* Report */}
       {isLoading ? (
-        <div>{t('finance:reports.common.loading')}</div>
+        <div className={textColors.tertiary}>
+          {t('finance:reports.common.loading')}
+        </div>
       ) : error ? (
         <QueryError
           error={error}
@@ -79,104 +150,33 @@ export function ProfitLossPage() {
         />
       ) : (
         <div className="space-y-8">
-          {/* Revenue Section */}
-          <div>
-            <h2 className="mb-4 text-xl font-bold">{t('finance:reports.profitLossReport.revenue')}</h2>
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('finance:reports.common.accountCode')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('finance:reports.common.accountName')}
-                  </th>
-                  <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('finance:reports.common.amount')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
-                {data?.revenue.map((line: ProfitLossLine) => (
-                  <tr key={line.account_code}>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                      {line.account_code}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                      {line.account_name}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
-                      {formatCurrency(line.amount)}
-                    </td>
-                  </tr>
-                ))}
-                <tr className="bg-gray-100 font-bold">
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900" colSpan={2}>
-                    {t('finance:reports.profitLossReport.totalRevenue')}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
-                    {formatCurrency(data?.total_revenue || '0')}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          {renderSection(
+            t('finance:reports.profitLossReport.revenue'),
+            data?.revenue,
+            t('finance:reports.profitLossReport.totalRevenue'),
+            data?.total_revenue ?? '0'
+          )}
 
-          {/* Expenses Section */}
-          <div>
-            <h2 className="mb-4 text-xl font-bold">{t('finance:reports.profitLossReport.expenses')}</h2>
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('finance:reports.common.accountCode')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('finance:reports.common.accountName')}
-                  </th>
-                  <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('finance:reports.common.amount')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
-                {data?.expenses.map((line: ProfitLossLine) => (
-                  <tr key={line.account_code}>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                      {line.account_code}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                      {line.account_name}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
-                      {formatCurrency(line.amount)}
-                    </td>
-                  </tr>
-                ))}
-                <tr className="bg-gray-100 font-bold">
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900" colSpan={2}>
-                    {t('finance:reports.profitLossReport.totalExpenses')}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
-                    {formatCurrency(data?.total_expenses || '0')}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          {renderSection(
+            t('finance:reports.profitLossReport.expenses'),
+            data?.expenses,
+            t('finance:reports.profitLossReport.totalExpenses'),
+            data?.total_expenses ?? '0'
+          )}
 
           {/* Net Income */}
-          <div className="border-t-2 border-gray-900 pt-4">
+          <div className={cn('border-t-2 pt-4', borderColors.dark)}>
             <div className="flex justify-between text-xl font-bold">
               <span>{t('finance:reports.profitLossReport.netIncome')}</span>
               <span
-                className={
-                  parseFloat(data?.net_income || '0') >= 0
-                    ? 'text-green-600'
-                    : 'text-red-600'
-                }
+                className={cn(
+                  'tabular-nums',
+                  parseFloat(data?.net_income ?? '0') >= 0
+                    ? textColors.success
+                    : textColors.error
+                )}
               >
-                {formatCurrency(data?.net_income || '0')}
+                {formatCurrency(data?.net_income ?? '0')}
               </span>
             </div>
           </div>

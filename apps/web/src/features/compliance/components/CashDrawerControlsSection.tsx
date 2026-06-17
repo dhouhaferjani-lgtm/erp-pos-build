@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { tokens, textColors } from '@/lib/designTokens'
 import { bccomp } from '@/lib/decimal'
 import { MoneyInput } from '@/components/atoms/MoneyInput'
+import { Checkbox } from '@/components/atoms'
 
 export interface CashDrawerControlsValue {
   cash_variance_over_soft: string
@@ -174,13 +175,11 @@ export function CashDrawerControlsSection({
 
       {/* Symmetric toggle */}
       <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
+        <Checkbox
           id="cash-symmetric-toggle"
           checked={symmetric}
           disabled={!canEdit}
           onChange={(e) => { handleSymmetricChange(e.target.checked) }}
-          className={tokens.checkbox.base}
         />
         <label htmlFor="cash-symmetric-toggle" className={`text-sm ${textColors.secondary}`}>
           {t('fraudSettings.cashControls.useSameToggle')}
@@ -287,13 +286,12 @@ export function CashDrawerControlsSection({
       {/* Checkboxes */}
       <div className="space-y-3 pt-2">
         <div className="flex items-start gap-2">
-          <input
-            type="checkbox"
+          <Checkbox
             id="cash-blind-count"
             checked={blindCount}
             disabled={!canEdit}
             onChange={(e) => { handleBlindCountChange(e.target.checked) }}
-            className={`mt-0.5 ${tokens.checkbox.base}`}
+            className="mt-0.5"
           />
           <label htmlFor="cash-blind-count" className={`text-sm ${textColors.secondary}`}>
             {t('fraudSettings.cashControls.blindCountLabel')}
@@ -301,13 +299,12 @@ export function CashDrawerControlsSection({
         </div>
 
         <div className="flex items-start gap-2">
-          <input
-            type="checkbox"
+          <Checkbox
             id="cash-manager-pin"
             checked={managerPin}
             disabled={!canEdit}
             onChange={(e) => { handleManagerPinChange(e.target.checked) }}
-            className={`mt-0.5 ${tokens.checkbox.base}`}
+            className="mt-0.5"
           />
           <label htmlFor="cash-manager-pin" className={`text-sm ${textColors.secondary}`}>
             {t('fraudSettings.cashControls.managerPinAboveHardLabel')}

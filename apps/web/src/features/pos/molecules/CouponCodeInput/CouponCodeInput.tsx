@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Ticket, X, Loader2, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { textColors, borderColors, colors, tokens, focusRing } from '@/lib/designTokens'
 import { POSButton } from '../../atoms'
 import { validateCoupon, type ValidateCouponResponse } from '@/features/coupons/api/couponApi'
 import { useCurrency } from '@/hooks/useCurrency'
@@ -95,7 +96,7 @@ export function CouponCodeInput({
               {state.name}
             </span>
             {parseFloat(state.discountAmount) > 0 && (
-              <span className="text-xs text-emerald-600">
+              <span className="text-xs text-emerald-600 tabular-nums">
                 -{toFixedCurrency(parseFloat(state.discountAmount))} {currency}
               </span>
             )}
@@ -104,7 +105,7 @@ export function CouponCodeInput({
         <button
           type="button"
           onClick={handleRemove}
-          className="p-1 rounded text-emerald-500 hover:text-red-500 hover:bg-red-50 transition-colors"
+          className={cn('p-1 rounded text-emerald-500 transition-colors', textColors.hoverError, colors.hover.red50)}
           aria-label={t('pos:cart.removeCoupon')}
         >
           <X className="w-4 h-4" />
@@ -117,7 +118,7 @@ export function CouponCodeInput({
     <div className={cn('space-y-1', className)}>
       <div className="flex gap-2">
         <div className="relative flex-1">
-          <Ticket className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Ticket className={cn('absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4', textColors.disabled)} />
           <input
             type="text"
             value={inputValue}
@@ -128,8 +129,11 @@ export function CouponCodeInput({
             onKeyDown={handleKeyDown}
             placeholder={t('pos:cart.couponCode')}
             className={cn(
-              'w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500',
-              state.status === 'error' ? 'border-red-300 bg-red-50' : 'border-gray-300 bg-white',
+              'w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2',
+              focusRing.primary,
+              state.status === 'error'
+                ? cn(borderColors.error, tokens.alert.error)
+                : cn(borderColors.default, colors.white),
             )}
             disabled={state.status === 'validating'}
           />
@@ -148,7 +152,7 @@ export function CouponCodeInput({
         </POSButton>
       </div>
       {state.status === 'error' && (
-        <p className="text-xs text-red-600 px-1">{state.message}</p>
+        <p className={cn('text-xs px-1', textColors.error)}>{state.message}</p>
       )}
     </div>
   )

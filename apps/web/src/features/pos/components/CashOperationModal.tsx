@@ -8,6 +8,8 @@ import { recordCashDeposit, recordCashPayout } from '../api/shiftApi'
 import { AlertCircle, TrendingUp, TrendingDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { tokens, colors, textColors, borderColors, focusRing } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
 
 export interface CashOperationModalProps {
   isOpen: boolean
@@ -151,9 +153,9 @@ export function CashOperationModal({
     : t('common:pos.cashPayout')
 
   const modalIcon = isDeposit ? (
-    <TrendingUp className="h-5 w-5 text-green-600" />
+    <TrendingUp className={cn('h-5 w-5', textColors.success)} />
   ) : (
-    <TrendingDown className="h-5 w-5 text-red-600" />
+    <TrendingDown className={cn('h-5 w-5', textColors.error)} />
   )
 
   const infoText = isDeposit
@@ -166,16 +168,18 @@ export function CashOperationModal({
         <div className="space-y-4">
           {/* Info Box */}
           <div
-            className={`flex items-start gap-3 rounded-lg p-4 ${
-              isDeposit ? 'bg-green-50' : 'bg-red-50'
-            }`}
+            className={cn(
+              'flex items-start gap-3 rounded-lg p-4',
+              isDeposit ? tokens.alert.success : tokens.alert.error,
+            )}
           >
             {modalIcon}
             <div className="flex-1">
               <p
-                className={`text-sm font-medium ${
-                  isDeposit ? 'text-green-900' : 'text-red-900'
-                }`}
+                className={cn(
+                  'text-sm font-medium',
+                  isDeposit ? textColors.success : textColors.error,
+                )}
               >
                 {infoText}
               </p>
@@ -195,7 +199,7 @@ export function CashOperationModal({
 
           {/* Reason Input */}
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">
+            <label className={cn('text-sm font-medium', textColors.secondary)}>
               {t('common:pos.reason')} *
             </label>
             <textarea
@@ -204,25 +208,23 @@ export function CashOperationModal({
               placeholder={t('common:pos.reasonPlaceholder')}
               rows={3}
               disabled={operationMutation.isPending}
-              className={`w-full rounded-lg border px-4 py-2 text-base focus:outline-none focus:ring-2 transition-colors duration-150 ${
+              className={cn(
+                'w-full rounded-lg border px-4 py-2 text-base focus:outline-none focus:ring-2 transition-colors duration-150',
                 validationErrors.reason
-                  ? 'border-red-500 focus:ring-red-500'
-                  : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-              } ${
-                operationMutation.isPending
-                  ? 'bg-gray-100 cursor-not-allowed opacity-50'
-                  : ''
-              }`}
+                  ? cn(borderColors.error, focusRing.error)
+                  : cn(borderColors.default, focusRing.primary),
+                operationMutation.isPending && cn(colors.neutral[100], 'cursor-not-allowed opacity-50'),
+              )}
             />
             {validationErrors.reason && (
-              <span className="text-sm text-red-600">{validationErrors.reason}</span>
+              <span className={cn('text-sm', textColors.error)}>{validationErrors.reason}</span>
             )}
           </div>
 
           {/* Warning */}
-          <div className="flex items-start gap-2 rounded-lg bg-yellow-50 border border-yellow-200 p-3">
-            <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
-            <p className="text-sm text-yellow-800">
+          <div className={cn('flex items-start gap-2 rounded-lg border p-3', tokens.alert.warning, borderColors.warning)}>
+            <AlertCircle className={cn('h-4 w-4 mt-0.5 flex-shrink-0', textColors.warningDark)} />
+            <p className={cn('text-sm', textColors.warning)}>
               {t('common:pos.cashOperationWarning')}
             </p>
           </div>

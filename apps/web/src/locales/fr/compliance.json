@@ -7,14 +7,14 @@
     "from": "Du",
     "to": "Au",
     "export": "Exporter JET XML",
-    "exporting": "Export en cours..."
+    "exporting": "Export en cours…"
   },
   "exportError": "\u00c9chec de l'export du fichier JET. Veuillez r\u00e9essayer.",
   "chainVerification": {
     "title": "V\u00e9rification des Cha\u00eenes de Hachage",
     "description": "V\u00e9rifier l'int\u00e9grit\u00e9 des cha\u00eenes de hachage fiscales des tickets et rapports Z par terminal.",
     "verify": "V\u00e9rifier Toutes les Cha\u00eenes",
-    "verifying": "V\u00e9rification en cours...",
+    "verifying": "V\u00e9rification en cours…",
     "terminal": "Terminal",
     "receiptChain": "Cha\u00eene Tickets",
     "zReportChain": "Cha\u00eene Rapports Z",
@@ -175,7 +175,7 @@
       "assign": "Assigner",
       "dismiss": "Rejeter",
       "resolve": "Résoudre",
-      "assignTo": "Assigner à...",
+      "assignTo": "Assigner à…",
       "viewCounting": "Voir l'inventaire"
     },
     "detail": {
@@ -199,12 +199,12 @@
       "dismiss": {
         "title": "Rejeter l'alerte",
         "notesLabel": "Raison du rejet",
-        "notesPlaceholder": "Expliquez pourquoi cette alerte est rejetée comme faux positif..."
+        "notesPlaceholder": "Expliquez pourquoi cette alerte est rejetée comme faux positif…"
       },
       "resolve": {
         "title": "Résoudre l'alerte",
         "notesLabel": "Notes de résolution",
-        "notesPlaceholder": "Documentez le résultat de l'enquête et les actions prises..."
+        "notesPlaceholder": "Documentez le résultat de l'enquête et les actions prises…"
       }
     },
     "statistics": {
@@ -218,7 +218,7 @@
       "dismissSuccess": "Alerte rejetée",
       "resolveSuccess": "Alerte résolue",
       "noAlerts": "Aucune alerte de fraude trouvée",
-      "loadingAlerts": "Chargement des alertes..."
+      "loadingAlerts": "Chargement des alertes…"
     }
   }
 }

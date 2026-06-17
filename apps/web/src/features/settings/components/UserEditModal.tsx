@@ -1,10 +1,17 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Save } from 'lucide-react'
+import { Loader2, Save } from 'lucide-react'
 import { updateUser } from '../../users/api/users'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { getErrorMessage } from '../../../lib/api'
+import { cn } from '../../../lib/utils'
+import { tokens, textColors, borderColors, colors, focusRing } from '../../../lib/designTokens'
+import { Modal, ModalContent, ModalFooter } from '../../../components/organisms/Modal'
+import { Button } from '../../../components/atoms/Button'
+import { FormField } from '../../../components/atoms/FormField'
+import { Input } from '../../../components/atoms/Input'
+import { Select } from '../../../components/atoms/Select'
 import type { User } from '../../users/types'
 
 interface Role {
@@ -104,185 +111,156 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-full items-center justify-center p-4">
-        <div className="fixed inset-0 bg-black bg-opacity-25" onClick={onClose} />
-        <div className="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            {t('settings:userEdit.title')}
-          </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Name */}
-            <div>
-              <label htmlFor="editName" className="block text-sm font-medium text-gray-700">
-                {t('common:users.modal.nameLabel')} *
+    <Modal isOpen onClose={onClose} size="md" title={t('settings:userEdit.title')}>
+      <form onSubmit={handleSubmit}>
+        <ModalContent>
+          {/* Name */}
+          <FormField
+            label={t('common:users.modal.nameLabel')}
+            htmlFor="editName"
+            required
+            error={errors['name']}
+          >
+            <Input
+              type="text"
+              id="editName"
+              value={name}
+              error={Boolean(errors['name'])}
+              onChange={(e) => { setName(e.target.value) }}
+            />
+          </FormField>
+
+          {/* Email */}
+          <FormField
+            label={`${t('common:users.modal.emailLabel')}${role !== 'cashier' ? ' *' : ''}`}
+            htmlFor="editEmail"
+            error={errors['email']}
+          >
+            <Input
+              type="email"
+              id="editEmail"
+              value={email}
+              error={Boolean(errors['email'])}
+              onChange={(e) => { setEmail(e.target.value) }}
+            />
+          </FormField>
+
+          {/* Phone */}
+          <FormField label={t('common:users.modal.phoneLabel')} htmlFor="editPhone">
+            <Input
+              type="tel"
+              id="editPhone"
+              value={phone}
+              onChange={(e) => { setPhone(e.target.value) }}
+            />
+          </FormField>
+
+          {/* Role */}
+          <FormField
+            label={t('common:users.modal.roleLabel')}
+            htmlFor="editRole"
+            required
+            error={errors['role']}
+          >
+            <Select
+              id="editRole"
+              value={role}
+              error={Boolean(errors['role'])}
+              onChange={(e) => { setRole(e.target.value) }}
+            >
+              {roles.map((r) => (
+                <option key={r.name} value={r.name}>
+                  {r.name.charAt(0).toUpperCase() + r.name.slice(1)}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+
+          {/* Discount Section */}
+          <div className={cn('border-t pt-4', borderColors.light)}>
+            <h3 className={cn('mb-3', tokens.heading.section)}>
+              {t('settings:userEdit.discountSection')}
+            </h3>
+
+            {/* Can Discount Toggle */}
+            <div className="flex items-center justify-between">
+              <label htmlFor="canDiscount" className={cn('text-sm', textColors.secondary)}>
+                {t('settings:userEdit.canDiscount')}
               </label>
-              <input
-                type="text"
-                id="editName"
-                value={name}
-                onChange={(e) => { setName(e.target.value) }}
-                className={`mt-1 block w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none focus:ring-1 ${
-                  errors['name']
-                    ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-                }`}
-              />
-              {errors['name'] && <p className="mt-1 text-sm text-red-600">{errors['name']}</p>}
-            </div>
-
-            {/* Email */}
-            <div>
-              <label htmlFor="editEmail" className="block text-sm font-medium text-gray-700">
-                {t('common:users.modal.emailLabel')} {role !== 'cashier' && '*'}
-              </label>
-              <input
-                type="email"
-                id="editEmail"
-                value={email}
-                onChange={(e) => { setEmail(e.target.value) }}
-                className={`mt-1 block w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none focus:ring-1 ${
-                  errors['email']
-                    ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-                }`}
-              />
-              {errors['email'] && <p className="mt-1 text-sm text-red-600">{errors['email']}</p>}
-            </div>
-
-            {/* Phone */}
-            <div>
-              <label htmlFor="editPhone" className="block text-sm font-medium text-gray-700">
-                {t('common:users.modal.phoneLabel')}
-              </label>
-              <input
-                type="tel"
-                id="editPhone"
-                value={phone}
-                onChange={(e) => { setPhone(e.target.value) }}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-
-            {/* Role */}
-            <div>
-              <label htmlFor="editRole" className="block text-sm font-medium text-gray-700">
-                {t('common:users.modal.roleLabel')} *
-              </label>
-              <select
-                id="editRole"
-                value={role}
-                onChange={(e) => { setRole(e.target.value) }}
-                className={`mt-1 block w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none focus:ring-1 ${
-                  errors['role']
-                    ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-                }`}
-              >
-                {roles.map((r) => (
-                  <option key={r.name} value={r.name}>
-                    {r.name.charAt(0).toUpperCase() + r.name.slice(1)}
-                  </option>
-                ))}
-              </select>
-              {errors['role'] && <p className="mt-1 text-sm text-red-600">{errors['role']}</p>}
-            </div>
-
-            {/* Discount Section */}
-            <div className="border-t border-gray-200 pt-4">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">
-                {t('settings:userEdit.discountSection')}
-              </h3>
-
-              {/* Can Discount Toggle */}
-              <div className="flex items-center justify-between">
-                <label htmlFor="canDiscount" className="text-sm text-gray-700">
-                  {t('settings:userEdit.canDiscount')}
-                </label>
-                <button
-                  type="button"
-                  id="canDiscount"
-                  role="switch"
-                  aria-checked={canDiscount}
-                  onClick={() => { setCanDiscount(!canDiscount) }}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                    canDiscount ? 'bg-blue-600' : 'bg-gray-200'
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                      canDiscount ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* Max Discount Percent */}
-              {canDiscount && (
-                <div className="mt-3">
-                  <label htmlFor="maxDiscountPercent" className="block text-sm font-medium text-gray-700">
-                    {t('settings:userEdit.maxDiscountPercent')}
-                  </label>
-                  <div className="mt-1 relative">
-                    <input
-                      type="number"
-                      id="maxDiscountPercent"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={maxDiscountPercent}
-                      onChange={(e) => { setMaxDiscountPercent(e.target.value) }}
-                      placeholder="100"
-                      className={`block w-full rounded-md border px-3 py-2 pr-8 shadow-sm focus:outline-none focus:ring-1 ${
-                        errors['maxDiscountPercent']
-                          ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                          : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-                      }`}
-                    />
-                    <span className="absolute inset-y-0 right-3 flex items-center text-gray-400 text-sm">
-                      %
-                    </span>
-                  </div>
-                  {errors['maxDiscountPercent'] && (
-                    <p className="mt-1 text-sm text-red-600">{errors['maxDiscountPercent']}</p>
-                  )}
-                  <p className="mt-1 text-xs text-gray-500">
-                    {t('settings:userEdit.maxDiscountHelp')}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="flex justify-end gap-3 pt-4">
+              {/* role="switch" toggle — a distinct control from the action Button atom */}
               <button
                 type="button"
-                onClick={onClose}
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                {t('common:actions.cancel')}
-              </button>
-              <button
-                type="submit"
-                disabled={mutation.isPending}
-                className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                {mutation.isPending ? (
-                  <>
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    {t('settings:userEdit.saving')}
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4" />
-                    {t('settings:userEdit.save')}
-                  </>
+                id="canDiscount"
+                role="switch"
+                aria-checked={canDiscount}
+                onClick={() => { setCanDiscount(!canDiscount) }}
+                className={cn(
+                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out',
+                  focusRing.default,
+                  focusRing.primary,
+                  canDiscount ? colors.primary[600] : colors.neutral[200],
                 )}
+              >
+                <span
+                  className={cn(
+                    'pointer-events-none inline-block h-5 w-5 transform rounded-full shadow ring-0 transition duration-200 ease-in-out',
+                    colors.white,
+                    canDiscount ? 'translate-x-5' : 'translate-x-0',
+                  )}
+                />
               </button>
             </div>
-          </form>
-        </div>
-      </div>
-    </div>
+
+            {/* Max Discount Percent */}
+            {canDiscount && (
+              <FormField
+                label={t('settings:userEdit.maxDiscountPercent')}
+                htmlFor="maxDiscountPercent"
+                error={errors['maxDiscountPercent']}
+                helperText={t('settings:userEdit.maxDiscountHelp')}
+                className="mt-3"
+              >
+                <div className="relative">
+                  <Input
+                    type="number"
+                    id="maxDiscountPercent"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={maxDiscountPercent}
+                    error={Boolean(errors['maxDiscountPercent'])}
+                    onChange={(e) => { setMaxDiscountPercent(e.target.value) }}
+                    placeholder="100"
+                    className="pr-8"
+                  />
+                  <span className={cn('absolute inset-y-0 right-3 flex items-center text-sm', textColors.disabled)}>
+                    %
+                  </span>
+                </div>
+              </FormField>
+            )}
+          </div>
+        </ModalContent>
+
+        <ModalFooter>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            {t('common:actions.cancel')}
+          </Button>
+          <Button type="submit" className="gap-2" disabled={mutation.isPending}>
+            {mutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t('settings:userEdit.saving')}
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4" />
+                {t('settings:userEdit.save')}
+              </>
+            )}
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
   )
 }

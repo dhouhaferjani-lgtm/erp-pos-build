@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { DollarSign, TrendingUp, AlertCircle } from 'lucide-react'
+import { TrendingUp, AlertCircle, Loader2 } from 'lucide-react'
 import { api } from '../../../../lib/api'
 import { MarginIndicator } from './MarginIndicator'
+import { Button, MoneyInput } from '@/components/atoms'
 import { useCurrency } from '@/hooks/useCurrency'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
-import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { colors, tokens, textColors } from '@/lib/designTokens'
 
 interface MarginCheckResponse {
   data: {
@@ -47,7 +48,7 @@ export function PriceInputWithMargin({
   showSuggestedPrice = true,
 }: PriceInputWithMarginProps) {
   const { t } = useTranslation('inventory')
-  const { decimals } = useCurrency()
+  const { currency, decimals } = useCurrency()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [localValue, setLocalValue] = useState(value.toString())
@@ -81,10 +82,9 @@ export function PriceInputWithMargin({
 
   const marginInfo = marginData?.data
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = e.target.value
-    setLocalValue(newValue)
-    const numValue = parseFloat(newValue) || 0
+  const handleChange = (raw: string) => {
+    setLocalValue(raw)
+    const numValue = parseFloat(raw) || 0
     onChange(numValue)
   }
 
@@ -103,30 +103,18 @@ export function PriceInputWithMargin({
       </label>
 
       {/* Price Input */}
-      <div className="relative">
-        <div className="pointer-events-none absolute inset-y-0 start-0 flex items-center ps-3">
-          <DollarSign className={`h-4 w-4 ${textColors.disabled}`} />
-        </div>
-        <input
-          type="number"
-          step="0.01"
-          min="0"
-          value={localValue}
-          onChange={handleChange}
-          disabled={disabled}
-          className={`
-            w-full rounded-md border ${borderColors.default} ps-8 pe-3 py-2 text-sm
-            focus:${borderColors.primary} focus:outline-none focus:ring-1 focus:ring-blue-500
-            ${disabled ? 'cursor-not-allowed bg-gray-100' : ''}
-          `}
-          placeholder="0.00"
-        />
-      </div>
+      <MoneyInput
+        currency={currency}
+        value={localValue}
+        onChange={handleChange}
+        disabled={disabled}
+        placeholder="0.00"
+      />
 
       {/* Margin Indicator */}
       {isLoading && debouncedValue > 0 && (
-        <div className={`flex items-center gap-2 text-sm text-gray-500`}>
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
+        <div className={`flex items-center gap-2 text-sm ${textColors.tertiary}`}>
+          <Loader2 className={`h-4 w-4 animate-spin ${textColors.brand}`} />
           {t('pricing.checkingMargin')}
         </div>
       )}
@@ -141,7 +129,7 @@ export function PriceInputWithMargin({
           />
 
           {/* Detailed Info */}
-          <div className="rounded-lg bg-gray-50 p-3 text-xs">
+          <div className={`rounded-lg ${colors.neutral[50]} p-3 text-xs`}>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <span className={textColors.tertiary}>{t('pricing.costPrice')}:</span>
@@ -172,23 +160,25 @@ export function PriceInputWithMargin({
 
           {/* Suggested Price */}
           {showSuggestedPrice && marginInfo.suggested_price && (
-            <button
+            <Button
+              type="button"
+              variant="ghost"
               onClick={applySuggestedPrice}
-              className="flex w-full items-center justify-between rounded-lg border border-blue-200 bg-blue-50 p-2 text-sm text-blue-700 hover:bg-blue-100"
+              className={`w-full justify-between rounded-lg p-2 ${tokens.alert.info}`}
             >
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4" />
                 <span>{t('pricing.suggestedPriceButton')}</span>
               </div>
-              <span className="font-semibold">
+              <span className="font-semibold tabular-nums">
                 ${parseFloat(marginInfo.suggested_price).toFixed(decimals)}
               </span>
-            </button>
+            </Button>
           )}
 
           {/* Permission Warning */}
           {!marginInfo.can_sell && (
-            <div className={`flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs ${textColors.error}`}>
+            <div className={`flex items-start gap-2 rounded-lg p-2 text-xs ${tokens.alert.error}`}>
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>
                 {t('pricing.cannotSellAtPrice')}

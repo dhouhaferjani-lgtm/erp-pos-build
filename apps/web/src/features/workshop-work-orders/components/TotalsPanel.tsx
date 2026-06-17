@@ -54,7 +54,7 @@ function TotalsColumn({ label, totals, currency }: TotalsColumnProps) {
         <Row label={t('totals.labor')} value={totals.labor_total} currency={currency} />
         <Row label={t('totals.other')} value={totals.other_total} currency={currency} />
         <Row label={t('totals.tax')} value={totals.tax_total} currency={currency} />
-        <div className="border-t border-slate-200 pt-0.5">
+        <div className={`border-t ${borderColors.light} pt-0.5`}>
           <Row label={t('totals.grand')} value={totals.grand_total} currency={currency} bold />
         </div>
       </div>
@@ -74,9 +74,9 @@ function Row({
   bold?: boolean
 }) {
   return (
-    <div className={`flex justify-between ${bold ? 'font-semibold text-slate-900' : ''}`}>
+    <div className={`flex justify-between ${bold ? `font-semibold ${textColors.primary}` : ''}`}>
       <span>{label}</span>
-      <span>
+      <span className="tabular-nums">
         {value} {currency}
       </span>
     </div>

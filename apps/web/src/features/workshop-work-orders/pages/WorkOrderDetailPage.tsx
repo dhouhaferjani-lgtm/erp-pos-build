@@ -3,7 +3,9 @@ import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Wrench } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
-import { borderColors, textColors } from '@/lib/designTokens'
+import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { PageHeader } from '@/components/molecules/PageHeader'
+import { StatusBadge } from '@/components/atoms/StatusBadge'
 import { StatusPill } from '../components/StatusPill'
 import { MileageLabel } from '../components/MileageLabel'
 import { ApprovalBadge } from '../components/ApprovalBadge'
@@ -45,7 +47,7 @@ export function WorkOrderDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 text-sm text-slate-500">
+      <div className={`p-6 text-sm ${textColors.tertiary}`}>
         {t('detail.loading')}
       </div>
     )
@@ -56,7 +58,7 @@ export function WorkOrderDetailPage() {
       <div className="p-6">
         <div
           role="alert"
-          className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"
+          className={`${tokens.alert.base} ${tokens.alert.error}`}
         >
           {t('detail.notFound')}
           {error !== null && (
@@ -108,53 +110,54 @@ export function WorkOrderDetailPage() {
     <div className="space-y-6 p-6">
       <Link
         to="/workshop/work-orders"
-        className={`inline-flex items-center gap-1 text-sm ${textColors.tertiary} hover:text-slate-900`}
+        className={`inline-flex items-center gap-1 text-sm ${textColors.tertiary} ${textColors.hoverPrimary}`}
       >
         <ArrowLeft className="h-4 w-4" aria-hidden />
         {t('detail.backToList')}
       </Link>
 
       <div className={`rounded-lg border bg-white p-6 ${borderColors.light}`}>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+        <PageHeader
+          className="mb-0"
+          title={wo.work_order_number}
+          actions={
+            <TransitionBar
+              current={wo.status}
+              canTransition={canTransition}
+              canApprove={canApprove}
+              canCancel={canCancel}
+              canComplete={canComplete}
+              onTransition={handleTransition}
+              onApprove={handleApprove}
+              onCancel={handleCancel}
+              onComplete={handleComplete}
+              isPending={isPending}
+            />
+          }
+          breadcrumb={
             <div className="flex items-center gap-2">
               <Wrench className={`h-5 w-5 ${textColors.tertiary}`} aria-hidden />
-              <h1 className={`font-mono text-2xl font-semibold ${textColors.primary}`}>
-                {wo.work_order_number}
-              </h1>
               <StatusPill status={wo.status} />
             </div>
-            <div className={`mt-2 text-sm ${textColors.secondary}`}>
-              {wo.customer_display_name} · {wo.vehicle_display_name}
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-3">
-              <MileageLabel mileage={wo.mileage_at_intake} />
-              {wo.approval_method !== null && (
-                <ApprovalBadge method={wo.approval_method} capturedAt={wo.approval_captured_at} />
-              )}
-            </div>
-            {wo.invoice_document_id !== null && (
-              <Link
-                to={`/sales/invoices/${wo.invoice_document_id}`}
-                className={`mt-2 inline-flex items-center gap-1 text-sm ${textColors.secondary} hover:text-slate-900`}
-              >
-                {t('detail.invoice_link', { number: wo.invoice_document_id.slice(0, 8) })}
-              </Link>
-            )}
-          </div>
-          <TransitionBar
-            current={wo.status}
-            canTransition={canTransition}
-            canApprove={canApprove}
-            canCancel={canCancel}
-            canComplete={canComplete}
-            onTransition={handleTransition}
-            onApprove={handleApprove}
-            onCancel={handleCancel}
-            onComplete={handleComplete}
-            isPending={isPending}
-          />
+          }
+        />
+        <div className={`mt-2 text-sm ${textColors.secondary}`}>
+          {wo.customer_display_name} · {wo.vehicle_display_name}
         </div>
+        <div className="mt-1 flex flex-wrap items-center gap-3">
+          <MileageLabel mileage={wo.mileage_at_intake} />
+          {wo.approval_method !== null && (
+            <ApprovalBadge method={wo.approval_method} capturedAt={wo.approval_captured_at} />
+          )}
+        </div>
+        {wo.invoice_document_id !== null && (
+          <Link
+            to={`/sales/invoices/${wo.invoice_document_id}`}
+            className={`mt-2 inline-flex items-center gap-1 text-sm ${textColors.secondary} ${textColors.hoverPrimary}`}
+          >
+            {t('detail.invoice_link', { number: wo.invoice_document_id.slice(0, 8) })}
+          </Link>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -190,7 +193,7 @@ export function WorkOrderDetailPage() {
           <div className={`border-b px-4 py-2 text-sm font-semibold ${borderColors.light} ${textColors.primary}`}>
             {t('detail.history')}
           </div>
-          <ul className="divide-y divide-slate-100">
+          <ul className={`divide-y ${borderColors.divideLight}`}>
             {wo.status_history.map((entry) => (
               <li key={entry.id} className={`px-4 py-2 text-xs ${textColors.secondary}`}>
                 <span className="font-medium">
@@ -237,9 +240,9 @@ function AssignmentsPanel({ assignments }: { assignments: import('../types').Wor
             <li key={assignment.id} className={`text-sm ${textColors.secondary}`}>
               {assignment.technician_display_name ?? assignment.technician_profile_id}
               {assignment.is_lead && (
-                <span className="ml-2 inline-flex items-center rounded-md bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 ring-1 ring-inset ring-sky-600/20">
+                <StatusBadge tone="info" className="ml-2">
                   {t('detail.lead')}
-                </span>
+                </StatusBadge>
               )}
             </li>
           ))}

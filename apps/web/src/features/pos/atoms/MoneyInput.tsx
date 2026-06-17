@@ -1,5 +1,6 @@
 import type { InputHTMLAttributes, ChangeEvent } from 'react'
 import { cn } from '@/lib/utils'
+import { colors, textColors, borderColors, focusRing } from '@/lib/designTokens'
 import { useCurrency } from '@/hooks/useCurrency'
 
 export interface MoneyInputProps
@@ -64,7 +65,7 @@ export function MoneyInput({
   return (
     <div className={cn('flex flex-col gap-1', className)}>
       {label && (
-        <label className="text-sm font-medium text-gray-700">{label}</label>
+        <label className={cn('text-sm font-medium', textColors.secondary)}>{label}</label>
       )}
       <div className="relative">
         <input
@@ -77,7 +78,8 @@ export function MoneyInput({
           className={cn(
             // Base styles
             'w-full rounded-lg border',
-            'focus:outline-none focus:ring-2 focus:ring-blue-500',
+            'focus:outline-none focus:ring-2',
+            focusRing.primary,
             'transition-colors duration-150',
 
             // Normal size
@@ -91,11 +93,11 @@ export function MoneyInput({
 
             // Error state
             error
-              ? 'border-red-500 focus:ring-red-500'
-              : 'border-gray-300 focus:border-blue-500',
+              ? cn(borderColors.error, focusRing.error)
+              : cn(borderColors.default, `focus:${borderColors.primary}`),
 
             // Disabled state
-            disabled && 'bg-gray-100 cursor-not-allowed opacity-50'
+            disabled && cn(colors.neutral[100], 'cursor-not-allowed opacity-50')
           )}
           {...props}
         />
@@ -103,14 +105,15 @@ export function MoneyInput({
           className={cn(
             'absolute end-0 top-0 bottom-0',
             'flex items-center pe-4',
-            'text-gray-500 font-medium',
+            'font-medium',
+            textColors.tertiary,
             touchOptimized && 'text-xl'
           )}
         >
           {currency}
         </div>
       </div>
-      {error && <span className="text-sm text-red-600">{error}</span>}
+      {error && <span className={cn('text-sm', textColors.error)}>{error}</span>}
     </div>
   )
 }

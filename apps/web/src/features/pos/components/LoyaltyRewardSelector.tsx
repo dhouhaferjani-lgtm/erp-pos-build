@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Gift, Star, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { textColors, colors, borderColors } from '@/lib/designTokens'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -66,7 +67,7 @@ export function LoyaltyRewardSelector({
 
   if (!data?.rewards.length) {
     return (
-      <div className={cn('text-sm text-gray-500 py-2', className)}>
+      <div className={cn('text-sm py-2', textColors.tertiary, className)}>
         {t('pos:loyalty.rewards.noRewards')}
       </div>
     )
@@ -75,7 +76,7 @@ export function LoyaltyRewardSelector({
   return (
     <div className={cn('space-y-3', className)}>
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+        <h4 className={cn('text-sm font-medium flex items-center gap-1.5', textColors.secondary)}>
           <Gift className="w-4 h-4 text-amber-500" />
           {t('pos:loyalty.rewards.title')}
         </h4>
@@ -95,15 +96,17 @@ export function LoyaltyRewardSelector({
               key={reward.id}
               className={cn(
                 'flex items-center justify-between p-3 rounded-lg border',
-                canAfford ? 'bg-white border-amber-200' : 'bg-gray-50 border-gray-200 opacity-60',
+                canAfford
+                  ? cn(colors.white, 'border-amber-200')
+                  : cn(colors.neutral[50], borderColors.light, 'opacity-60'),
               )}
             >
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-900 truncate">
+                <div className={cn('text-sm font-medium truncate', textColors.primary)}>
                   {reward.name}
                 </div>
                 {reward.description && (
-                  <div className="text-xs text-gray-500 truncate">{reward.description}</div>
+                  <div className={cn('text-xs truncate', textColors.tertiary)}>{reward.description}</div>
                 )}
                 <div className="text-xs text-amber-600 mt-0.5">
                   {reward.points_cost} {t('pos:loyalty.memberBadge.points')}

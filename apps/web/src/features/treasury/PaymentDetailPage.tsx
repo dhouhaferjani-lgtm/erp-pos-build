@@ -18,6 +18,18 @@ import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { cn } from '../../lib/utils'
+import { tokens, textColors, borderColors } from '../../lib/designTokens'
+import { Button } from '../../components/atoms/Button'
+import { MoneyInput } from '../../components/atoms/MoneyInput'
+import { Textarea } from '../../components/atoms/Textarea'
+import {
+  StatusBadge,
+  statusTone,
+  type StatusTone,
+} from '../../components/atoms/StatusBadge'
+import { PageHeader } from '../../components/molecules/PageHeader'
+import { Modal, ModalContent, ModalFooter } from '../../components/organisms/Modal'
 
 interface PaymentAllocation {
   id: string
@@ -82,11 +94,13 @@ interface CanRefundResponse {
   }
 }
 
-const statusColors: Record<Payment['status'], string> = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  completed: 'bg-green-100 text-green-800',
-  failed: 'bg-red-100 text-red-800',
-  reversed: 'bg-gray-100 text-gray-800',
+/**
+ * Payment-status tone overrides for the shared StatusBadge. `reversed` is not a
+ * built-in status; map it to neutral. The rest (completed/pending/failed) are
+ * covered by the built-in statusTone map.
+ */
+const statusToneOverrides: Record<string, StatusTone> = {
+  reversed: 'neutral',
 }
 
 function scopedNamespacePredicate(
@@ -283,7 +297,7 @@ export function PaymentDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-500">{t('common:status.loading')}</div>
+        <div className={textColors.tertiary}>{t('common:status.loading')}</div>
       </div>
     )
   }
@@ -293,12 +307,16 @@ export function PaymentDetailPage() {
       <div className="space-y-6">
         <Link
           to="/treasury/payments"
-          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+          className={cn(
+            'inline-flex items-center gap-2 text-sm',
+            textColors.tertiary,
+            textColors.hoverPrimary,
+          )}
         >
           <ArrowLeft className="h-4 w-4" />
           {t('common:actions.back')}
         </Link>
-        <div className="rounded-lg bg-red-50 p-4 text-red-700">
+        <div className={cn(tokens.alert.base, tokens.alert.error)}>
           {t('payments.messages.notFound')}
         </div>
       </div>
@@ -307,143 +325,133 @@ export function PaymentDetailPage() {
 
   const payment = data.data
 
+  const backLink = (
+    <Link
+      to="/treasury/payments"
+      className={cn(
+        'inline-flex items-center gap-2 text-sm',
+        textColors.tertiary,
+        textColors.hoverPrimary,
+      )}
+    >
+      <ArrowLeft className="h-4 w-4" />
+      {t('common:actions.back')}
+    </Link>
+  )
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link
-            to="/treasury/payments"
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            {t('common:actions.back')}
-          </Link>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              {t('payments.title')}
-            </h1>
-            <div className="flex items-center gap-3 mt-1">
-              <span className="text-gray-500">{formatCurrency(payment.amount)}</span>
-              <span
-                className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[payment.status]}`}
+      <PageHeader
+        title={t('payments.title')}
+        breadcrumb={backLink}
+        subtitle={`${formatCurrency(payment.amount)} · ${getStatusLabel(payment.status)}`}
+        actions={
+          <>
+            {payment.status === 'pending' && (
+              <Button
+                variant="danger"
+                onClick={handleCancel}
+                disabled={deleteMutation.isPending}
               >
-                {getStatusLabel(payment.status)}
-              </span>
-              {payment.payment_type && (
-                <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
-                  {getPaymentTypeLabel(payment.payment_type)}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {payment.status === 'pending' && (
-            <button
-              onClick={handleCancel}
-              disabled={deleteMutation.isPending}
-              className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-            >
-              {t('payments.messages.cancelPayment')}
-            </button>
-          )}
-          {payment.status === 'completed' && (
-            <>
-              <button
-                onClick={() => { setShowRefundModal(true); }}
-                disabled={!canRefund || remainingAmount <= 0}
-                className="inline-flex items-center gap-2 rounded-lg border border-orange-300 bg-white px-4 py-2 text-sm font-medium text-orange-700 hover:bg-orange-50 disabled:opacity-50"
-              >
-                <RotateCcw className="h-4 w-4" />
-                {t('payments.refund.refund')}
-              </button>
-              <button
-                onClick={() => { setShowPartialRefundModal(true); }}
-                disabled={!canRefund || remainingAmount <= 0}
-                className="inline-flex items-center gap-2 rounded-lg border border-yellow-300 bg-white px-4 py-2 text-sm font-medium text-yellow-700 hover:bg-yellow-50 disabled:opacity-50"
-              >
-                {t('payments.refund.partialRefund')}
-              </button>
-              <button
-                onClick={() => { setShowReverseModal(true); }}
-                className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-              >
-                {t('payments.refund.reverse')}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+                {t('payments.messages.cancelPayment')}
+              </Button>
+            )}
+            {payment.status === 'completed' && (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => { setShowRefundModal(true); }}
+                  disabled={!canRefund || remainingAmount <= 0}
+                >
+                  <RotateCcw className="me-2 h-4 w-4" />
+                  {t('payments.refund.refund')}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => { setShowPartialRefundModal(true); }}
+                  disabled={!canRefund || remainingAmount <= 0}
+                >
+                  {t('payments.refund.partialRefund')}
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={() => { setShowReverseModal(true); }}
+                >
+                  {t('payments.refund.reverse')}
+                </Button>
+              </>
+            )}
+          </>
+        }
+      />
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Payment Info */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <CreditCard className="h-5 w-5 text-gray-400" />
+        <div className={tokens.card.base}>
+          <h2 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
+            <CreditCard className={cn('h-5 w-5', textColors.disabled)} />
             {t('payments.sections.paymentInfo')}
           </h2>
           <dl className="grid grid-cols-2 gap-4">
             <div>
-              <dt className="text-sm font-medium text-gray-500">{t('payments.amount')}</dt>
-              <dd className="mt-1 text-lg font-semibold text-gray-900">
+              <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('payments.amount')}</dt>
+              <dd className={cn('mt-1 text-lg font-semibold tabular-nums', textColors.primary)}>
                 {formatCurrency(payment.amount)}
               </dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">{t('payments.date')}</dt>
-              <dd className="mt-1 text-sm text-gray-900 flex items-center gap-1">
-                <Calendar className="h-4 w-4 text-gray-400" />
+              <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('payments.date')}</dt>
+              <dd className={cn('mt-1 flex items-center gap-1 text-sm', textColors.primary)}>
+                <Calendar className={cn('h-4 w-4', textColors.disabled)} />
                 {new Date(payment.payment_date).toLocaleDateString()}
               </dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">{t('payments.method')}</dt>
-              <dd className="mt-1 text-sm text-gray-900">
+              <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('payments.method')}</dt>
+              <dd className={cn('mt-1 text-sm', textColors.primary)}>
                 {payment.payment_method?.name ?? '-'}
               </dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">{t('payments.status')}</dt>
+              <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('payments.status')}</dt>
               <dd className="mt-1">
-                <span
-                  className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[payment.status]}`}
-                >
+                <StatusBadge tone={statusTone(payment.status, statusToneOverrides)}>
                   {getStatusLabel(payment.status)}
-                </span>
+                </StatusBadge>
               </dd>
             </div>
             {payment.status === 'completed' && refundHistory.length > 0 && (
               <div className="col-span-2">
-                <dt className="text-sm font-medium text-gray-500">{t('payments.refund.remaining')}</dt>
-                <dd className="mt-1 text-lg font-semibold text-green-600">
+                <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('payments.refund.remaining')}</dt>
+                <dd className={cn('mt-1 text-lg font-semibold tabular-nums', textColors.success)}>
                   {formatCurrency(remainingAmount)}
                 </dd>
               </div>
             )}
             {parseFloat(payment.allocated_amount) > 0 && (
               <div>
-                <dt className="text-sm font-medium text-gray-500">{t('payments.allocatedToInvoices')}</dt>
-                <dd className="mt-1 text-sm font-semibold text-gray-900">
+                <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('payments.allocatedToInvoices')}</dt>
+                <dd className={cn('mt-1 text-sm font-semibold tabular-nums', textColors.primary)}>
                   {formatCurrency(payment.allocated_amount)}
                 </dd>
               </div>
             )}
             {parseFloat(payment.unallocated_amount) > 0 && (
               <div>
-                <dt className="text-sm font-medium text-gray-500">{t('payments.creditBalance')}</dt>
-                <dd className="mt-1 text-sm font-semibold text-blue-600">
+                <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('payments.creditBalance')}</dt>
+                <dd className={cn('mt-1 text-sm font-semibold tabular-nums', textColors.brand)}>
                   {formatCurrency(payment.unallocated_amount)}
                 </dd>
-                <dd className="text-xs text-gray-500 mt-0.5">
+                <dd className={cn('mt-0.5 text-xs', textColors.tertiary)}>
                   {t('payments.creditBalanceExplanation')}
                 </dd>
               </div>
             )}
             {payment.reference && (
               <div className="col-span-2">
-                <dt className="text-sm font-medium text-gray-500">{t('payments.reference')}</dt>
-                <dd className="mt-1 text-sm text-gray-900 font-mono">
+                <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('payments.reference')}</dt>
+                <dd className={cn('mt-1 font-mono text-sm', textColors.primary)}>
                   {payment.reference}
                 </dd>
               </div>
@@ -452,9 +460,9 @@ export function PaymentDetailPage() {
         </div>
 
         {/* Partner Info */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <User className="h-5 w-5 text-gray-400" />
+        <div className={tokens.card.base}>
+          <h2 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
+            <User className={cn('h-5 w-5', textColors.disabled)} />
             {t('payments.sections.partner')}
           </h2>
           {payment.partner ? (
@@ -465,59 +473,66 @@ export function PaymentDetailPage() {
                     ? `/purchases/suppliers/${payment.partner.id}`
                     : `/sales/customers/${payment.partner.id}`
                 }
-                className="text-blue-600 hover:text-blue-800 font-medium"
+                className={cn('font-medium', textColors.brand)}
               >
                 {payment.partner.name}
               </Link>
+              {payment.payment_type && (
+                <div className="mt-2">
+                  <StatusBadge tone="info">
+                    {getPaymentTypeLabel(payment.payment_type)}
+                  </StatusBadge>
+                </div>
+              )}
             </div>
           ) : (
-            <p className="text-sm text-gray-500">{t('payments.messages.noPartnerLinked')}</p>
+            <p className={cn('text-sm', textColors.tertiary)}>{t('payments.messages.noPartnerLinked')}</p>
           )}
         </div>
       </div>
 
       {/* Allocations */}
       {payment.allocations.length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <FileText className="h-5 w-5 text-gray-400" />
+        <div className={tokens.card.base}>
+          <h2 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
+            <FileText className={cn('h-5 w-5', textColors.disabled)} />
             {t('payments.sections.allocations')}
           </h2>
-          <div className="overflow-hidden rounded-lg border border-gray-200">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <div className={cn('overflow-hidden rounded-lg border', borderColors.light)}>
+            <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+              <thead className={tokens.table.header}>
                 <tr>
-                  <th className="px-4 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                     {t('payments.fields.document')}
                   </th>
-                  <th className="px-4 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className={cn('px-4 py-3 text-end text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                     {t('payments.amount')}
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
+              <tbody className={cn('divide-y bg-white', borderColors.divideDefault)}>
                 {payment.allocations.map((allocation) => (
                   <tr key={allocation.id}>
                     <td className="whitespace-nowrap px-4 py-3">
                       <Link
                         to={`/sales/invoices/${allocation.document_id}`}
-                        className="font-medium text-blue-600 hover:text-blue-800"
+                        className={cn('font-medium', textColors.brand)}
                       >
                         {allocation.document_number}
                       </Link>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-end text-sm font-medium text-gray-900">
+                    <td className={cn('whitespace-nowrap px-4 py-3 text-end text-sm font-medium tabular-nums', textColors.primary)}>
                       {formatCurrency(allocation.amount)}
                     </td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-gray-50">
+              <tfoot className={tokens.table.header}>
                 <tr>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm font-semibold text-gray-900">
+                  <td className={cn('whitespace-nowrap px-4 py-3 text-sm font-semibold', textColors.primary)}>
                     {t('payments.fields.totalAllocated')}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-end text-sm font-semibold text-gray-900">
+                  <td className={cn('whitespace-nowrap px-4 py-3 text-end text-sm font-semibold tabular-nums', textColors.primary)}>
                     {formatCurrency(
                       payment.allocations.reduce(
                         (sum, a) => sum + parseFloat(a.amount),
@@ -534,31 +549,34 @@ export function PaymentDetailPage() {
 
       {/* Refund History */}
       {refundHistory.length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <History className="h-5 w-5 text-gray-400" />
+        <div className={tokens.card.base}>
+          <h2 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
+            <History className={cn('h-5 w-5', textColors.disabled)} />
             {t('payments.refund.history')}
           </h2>
           <div className="space-y-4">
             {refundHistory.map((refund) => (
               <div
                 key={refund.id}
-                className="flex items-start justify-between border-b border-gray-100 pb-4 last:border-0 last:pb-0"
+                className={cn(
+                  'flex items-start justify-between border-b pb-4 last:border-0 last:pb-0',
+                  borderColors.light,
+                )}
               >
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-800">
+                    <StatusBadge tone="warning">
                       {refund.type === 'full' ? t('payments.refund.fullRefund') : t('payments.refund.partialRefund')}
-                    </span>
-                    <span className="text-sm text-gray-500">
+                    </StatusBadge>
+                    <span className={cn('text-sm', textColors.tertiary)}>
                       {new Date(refund.created_at).toLocaleDateString()}
                     </span>
                   </div>
-                  <p className="mt-1 text-sm text-gray-700">{refund.reason}</p>
-                  <p className="mt-1 text-xs text-gray-500">{t('common:by')} {refund.created_by}</p>
+                  <p className={cn('mt-1 text-sm', textColors.secondary)}>{refund.reason}</p>
+                  <p className={cn('mt-1 text-xs', textColors.tertiary)}>{t('common:by')} {refund.created_by}</p>
                 </div>
                 <div className="text-end">
-                  <span className="text-lg font-semibold text-red-600">
+                  <span className={cn('text-lg font-semibold tabular-nums', textColors.error)}>
                     -{formatCurrency(refund.amount)}
                   </span>
                 </div>
@@ -570,17 +588,17 @@ export function PaymentDetailPage() {
 
       {/* Notes */}
       {payment.notes && (
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Receipt className="h-5 w-5 text-gray-400" />
+        <div className={tokens.card.base}>
+          <h2 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
+            <Receipt className={cn('h-5 w-5', textColors.disabled)} />
             {t('payments.notes')}
           </h2>
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">{payment.notes}</p>
+          <p className={cn('whitespace-pre-wrap text-sm', textColors.secondary)}>{payment.notes}</p>
         </div>
       )}
 
       {/* Metadata */}
-      <div className="text-sm text-gray-500">
+      <div className={cn('text-sm', textColors.tertiary)}>
         <p>{t('payments.created')}: {new Date(payment.created_at).toLocaleString()}</p>
       </div>
 
@@ -597,161 +615,162 @@ export function PaymentDetailPage() {
       />
 
       {/* Full Refund Modal */}
-      {showRefundModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              {t('payments.refund.refundTitle')}
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              {t('payments.refund.refundMessage', { amount: formatCurrency(remainingAmount) })}
-            </p>
-            <div className="mb-4">
-              <label htmlFor="refund-reason" className="block text-sm font-medium text-gray-700 mb-1">
-                {t('payments.refund.reason')}
-              </label>
-              <textarea
-                id="refund-reason"
-                value={refundReason}
-                onChange={(e) => { setRefundReason(e.target.value); }}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                rows={3}
-                placeholder={t('payments.refund.reasonPlaceholder')}
-              />
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowRefundModal(false)
-                  setRefundReason('')
-                }}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                {t('common:actions.cancel')}
-              </button>
-              <button
-                onClick={handleRefund}
-                disabled={!refundReason.trim() || refundMutation.isPending}
-                className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-50"
-              >
-                {refundMutation.isPending ? t('common:status.loading') : t('common:actions.confirm')}
-              </button>
-            </div>
+      <Modal
+        isOpen={showRefundModal}
+        onClose={() => {
+          setShowRefundModal(false)
+          setRefundReason('')
+        }}
+        title={t('payments.refund.refundTitle')}
+      >
+        <ModalContent>
+          <p className={cn('text-sm', textColors.tertiary)}>
+            {t('payments.refund.refundMessage', { amount: formatCurrency(remainingAmount) })}
+          </p>
+          <div>
+            <label htmlFor="refund-reason" className={cn('mb-1 block text-sm font-medium', textColors.secondary)}>
+              {t('payments.refund.reason')}
+            </label>
+            <Textarea
+              id="refund-reason"
+              value={refundReason}
+              onChange={(e) => { setRefundReason(e.target.value); }}
+              rows={3}
+              placeholder={t('payments.refund.reasonPlaceholder')}
+            />
           </div>
-        </div>
-      )}
+        </ModalContent>
+        <ModalFooter>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowRefundModal(false)
+              setRefundReason('')
+            }}
+          >
+            {t('common:actions.cancel')}
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleRefund}
+            disabled={!refundReason.trim() || refundMutation.isPending}
+          >
+            {refundMutation.isPending ? t('common:status.loading') : t('common:actions.confirm')}
+          </Button>
+        </ModalFooter>
+      </Modal>
 
       {/* Partial Refund Modal */}
-      {showPartialRefundModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              {t('payments.refund.partialRefundTitle')}
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              {t('payments.refund.maxRefundable')}: {formatCurrency(remainingAmount)}
-            </p>
-            <div className="mb-4">
-              <label htmlFor="partial-refund-amount" className="block text-sm font-medium text-gray-700 mb-1">
-                {t('payments.amount')}
-              </label>
-              <input
-                type="number"
-                id="partial-refund-amount"
-                value={partialRefundAmount}
-                onChange={(e) => { setPartialRefundAmount(e.target.value); }}
-                max={remainingAmount}
-                min={0.01}
-                step="0.01"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="0.00"
-              />
-            </div>
-            <div className="mb-4">
-              <label htmlFor="partial-refund-reason" className="block text-sm font-medium text-gray-700 mb-1">
-                {t('payments.refund.reason')}
-              </label>
-              <textarea
-                id="partial-refund-reason"
-                value={partialRefundReason}
-                onChange={(e) => { setPartialRefundReason(e.target.value); }}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                rows={3}
-                placeholder={t('payments.refund.reasonPlaceholder')}
-              />
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowPartialRefundModal(false)
-                  setPartialRefundAmount('')
-                  setPartialRefundReason('')
-                }}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                {t('common:actions.cancel')}
-              </button>
-              <button
-                onClick={handlePartialRefund}
-                disabled={
-                  !partialRefundAmount ||
-                  !partialRefundReason.trim() ||
-                  parseFloat(partialRefundAmount) > remainingAmount ||
-                  partialRefundMutation.isPending
-                }
-                className="rounded-lg bg-yellow-600 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-700 disabled:opacity-50"
-              >
-                {partialRefundMutation.isPending ? t('common:status.loading') : t('common:actions.confirm')}
-              </button>
-            </div>
+      <Modal
+        isOpen={showPartialRefundModal}
+        onClose={() => {
+          setShowPartialRefundModal(false)
+          setPartialRefundAmount('')
+          setPartialRefundReason('')
+        }}
+        title={t('payments.refund.partialRefundTitle')}
+      >
+        <ModalContent>
+          <p className={cn('text-sm', textColors.tertiary)}>
+            {t('payments.refund.maxRefundable')}: {formatCurrency(remainingAmount)}
+          </p>
+          <div>
+            <label htmlFor="partial-refund-amount" className={cn('mb-1 block text-sm font-medium', textColors.secondary)}>
+              {t('payments.amount')}
+            </label>
+            <MoneyInput
+              id="partial-refund-amount"
+              value={partialRefundAmount}
+              onChange={(value) => { setPartialRefundAmount(value); }}
+              currency={payment.currency}
+              max={remainingAmount}
+              placeholder="0.00"
+            />
           </div>
-        </div>
-      )}
+          <div>
+            <label htmlFor="partial-refund-reason" className={cn('mb-1 block text-sm font-medium', textColors.secondary)}>
+              {t('payments.refund.reason')}
+            </label>
+            <Textarea
+              id="partial-refund-reason"
+              value={partialRefundReason}
+              onChange={(e) => { setPartialRefundReason(e.target.value); }}
+              rows={3}
+              placeholder={t('payments.refund.reasonPlaceholder')}
+            />
+          </div>
+        </ModalContent>
+        <ModalFooter>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowPartialRefundModal(false)
+              setPartialRefundAmount('')
+              setPartialRefundReason('')
+            }}
+          >
+            {t('common:actions.cancel')}
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handlePartialRefund}
+            disabled={
+              !partialRefundAmount ||
+              !partialRefundReason.trim() ||
+              parseFloat(partialRefundAmount) > remainingAmount ||
+              partialRefundMutation.isPending
+            }
+          >
+            {partialRefundMutation.isPending ? t('common:status.loading') : t('common:actions.confirm')}
+          </Button>
+        </ModalFooter>
+      </Modal>
 
       {/* Reverse Payment Modal */}
-      {showReverseModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              {t('payments.refund.reverseTitle')}
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              {t('payments.refund.reverseMessage')}
-            </p>
-            <div className="mb-4">
-              <label htmlFor="reverse-reason" className="block text-sm font-medium text-gray-700 mb-1">
-                {t('payments.refund.reason')}
-              </label>
-              <textarea
-                id="reverse-reason"
-                value={reverseReason}
-                onChange={(e) => { setReverseReason(e.target.value); }}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                rows={3}
-                placeholder={t('payments.refund.reasonPlaceholder')}
-              />
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowReverseModal(false)
-                  setReverseReason('')
-                }}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                {t('common:actions.cancel')}
-              </button>
-              <button
-                onClick={handleReverse}
-                disabled={!reverseReason.trim() || reverseMutation.isPending}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-              >
-                {reverseMutation.isPending ? t('common:status.loading') : t('common:actions.confirm')}
-              </button>
-            </div>
+      <Modal
+        isOpen={showReverseModal}
+        onClose={() => {
+          setShowReverseModal(false)
+          setReverseReason('')
+        }}
+        title={t('payments.refund.reverseTitle')}
+      >
+        <ModalContent>
+          <p className={cn('text-sm', textColors.tertiary)}>
+            {t('payments.refund.reverseMessage')}
+          </p>
+          <div>
+            <label htmlFor="reverse-reason" className={cn('mb-1 block text-sm font-medium', textColors.secondary)}>
+              {t('payments.refund.reason')}
+            </label>
+            <Textarea
+              id="reverse-reason"
+              value={reverseReason}
+              onChange={(e) => { setReverseReason(e.target.value); }}
+              rows={3}
+              placeholder={t('payments.refund.reasonPlaceholder')}
+            />
           </div>
-        </div>
-      )}
+        </ModalContent>
+        <ModalFooter>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowReverseModal(false)
+              setReverseReason('')
+            }}
+          >
+            {t('common:actions.cancel')}
+          </Button>
+          <Button
+            variant="danger"
+            onClick={handleReverse}
+            disabled={!reverseReason.trim() || reverseMutation.isPending}
+          >
+            {reverseMutation.isPending ? t('common:status.loading') : t('common:actions.confirm')}
+          </Button>
+        </ModalFooter>
+      </Modal>
     </div>
   )
 }

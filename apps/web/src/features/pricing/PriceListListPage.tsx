@@ -7,8 +7,8 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { fetchPriceLists } from './api'
-import { SearchInput } from '../../components/ui/SearchInput'
-import { FilterTabs } from '../../components/ui/FilterTabs'
+import { SearchInput } from '../../components/molecules/SearchInput'
+import { FilterTabs } from '../../components/molecules/FilterTabs'
 
 type StatusFilter = 'all' | 'active' | 'inactive'
 

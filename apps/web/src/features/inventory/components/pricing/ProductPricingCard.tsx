@@ -2,7 +2,7 @@ import { DollarSign, TrendingUp, Shield, Calendar } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MarginBadge } from './MarginIndicator'
 import { useCurrency } from '@/hooks/useCurrency'
-import { textColors, borderColors, shadows } from '@/lib/designTokens'
+import { colors, tokens, textColors, borderColors } from '@/lib/designTokens'
 
 interface Product {
   id: string
@@ -63,20 +63,21 @@ export function ProductPricingCard({
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
+  // orange ("very low") shares the warning token with yellow ("low").
   const marginLevelTextColor =
-    marginLevel === 'green' ? 'text-green-600' :
-    marginLevel === 'yellow' ? 'text-yellow-600' :
-    marginLevel === 'orange' ? 'text-orange-600' :
-    'text-red-600'
+    marginLevel === 'green' ? textColors.success :
+    marginLevel === 'yellow' ? textColors.warningDark :
+    marginLevel === 'orange' ? textColors.warningDark :
+    textColors.error
 
   return (
-    <div className={`overflow-hidden rounded-lg ${borderColors.light} bg-white ${shadows.sm}`}>
+    <div className={`overflow-hidden ${tokens.card.base} p-0`}>
       {/* Header */}
-      <div className={`border-b ${borderColors.light} bg-gray-50 px-4 py-3`}>
+      <div className={`border-b ${borderColors.light} ${colors.neutral[50]} px-4 py-3`}>
         <div className="flex items-center justify-between">
           <div>
             <h3 className={`text-sm font-semibold ${textColors.primary}`}>{product.name}</h3>
-            <p className="text-xs text-gray-500">{product.sku}</p>
+            <p className={`text-xs ${textColors.tertiary}`}>{product.sku}</p>
           </div>
           <MarginBadge level={marginLevel} />
         </div>
@@ -91,11 +92,11 @@ export function ProductPricingCard({
               <Shield className="h-3 w-3" />
               <span>{t('pricing.costPrice')}</span>
             </div>
-            <p className={`mt-1 text-lg font-semibold ${textColors.primary}`}>
+            <p className={`mt-1 text-right text-lg font-semibold tabular-nums ${textColors.primary}`}>
               ${costPrice.toFixed(decimals)}
             </p>
             {lastPurchaseCost > 0 && lastPurchaseCost !== costPrice && (
-              <p className="text-xs text-gray-500">
+              <p className={`text-right text-xs tabular-nums ${textColors.tertiary}`}>
                 {t('pricing.lastCost', { amount: `$${lastPurchaseCost.toFixed(decimals)}` })}
               </p>
             )}
@@ -108,11 +109,11 @@ export function ProductPricingCard({
             <DollarSign className="h-3 w-3" />
             <span>{t('pricing.listPrice')}</span>
           </div>
-          <p className={`mt-1 text-lg font-semibold ${textColors.primary}`}>
+          <p className={`mt-1 text-right text-lg font-semibold tabular-nums ${textColors.primary}`}>
             ${listPrice.toFixed(decimals)}
           </p>
           {currentMargin > 0 && (
-            <p className="text-xs text-gray-500">
+            <p className={`text-right text-xs tabular-nums ${textColors.tertiary}`}>
               {t('pricing.marginValue', { value: currentMargin.toFixed(1) })}
             </p>
           )}
@@ -125,10 +126,10 @@ export function ProductPricingCard({
               <TrendingUp className="h-3 w-3" />
               <span>{t('pricing.targetMargin')}</span>
             </div>
-            <p className={`mt-1 text-lg font-semibold ${textColors.primary}`}>
+            <p className={`mt-1 text-right text-lg font-semibold tabular-nums ${textColors.primary}`}>
               {targetMargin.toFixed(1)}%
             </p>
-            <p className="text-xs text-gray-500">
+            <p className={`text-right text-xs tabular-nums ${textColors.tertiary}`}>
               {t('pricing.minMargin', { margin: minimumMargin.toFixed(1) })}
             </p>
           </div>
@@ -141,10 +142,10 @@ export function ProductPricingCard({
               <TrendingUp className="h-3 w-3" />
               <span>{t('pricing.suggestedPrice')}</span>
             </div>
-            <p className={`mt-1 text-lg font-semibold ${textColors.brand}`}>
+            <p className={`mt-1 text-right text-lg font-semibold tabular-nums ${textColors.brand}`}>
               ${suggestedPrice.toFixed(decimals)}
             </p>
-            <p className="text-xs text-gray-500">
+            <p className={`text-right text-xs tabular-nums ${textColors.tertiary}`}>
               {t('pricing.atMargin', { margin: targetMargin.toFixed(1) })}
             </p>
           </div>
@@ -153,7 +154,7 @@ export function ProductPricingCard({
 
       {/* Footer */}
       {canViewCosts && product.cost_updated_at && (
-        <div className={`border-t ${borderColors.light} bg-gray-50 px-4 py-2`}>
+        <div className={`border-t ${borderColors.light} ${colors.neutral[50]} px-4 py-2`}>
           <div className={`flex items-center gap-1 text-xs ${textColors.tertiary}`}>
             <Calendar className="h-3 w-3" />
             <span>{t('pricing.costLastUpdated', { date: formatDate(product.cost_updated_at) })}</span>
@@ -167,18 +168,18 @@ export function ProductPricingCard({
           <div className="space-y-2 text-xs">
             <div className="flex justify-between">
               <span className={textColors.tertiary}>{t('pricing.markup')}:</span>
-              <span className={`font-medium ${textColors.primary}`}>
+              <span className={`font-medium tabular-nums ${textColors.primary}`}>
                 ${(listPrice - costPrice).toFixed(decimals)}
               </span>
             </div>
             <div className="flex justify-between">
               <span className={textColors.tertiary}>{t('pricing.marginPercent')}:</span>
-              <span className={`font-semibold ${marginLevelTextColor}`}>
+              <span className={`font-semibold tabular-nums ${marginLevelTextColor}`}>
                 {currentMargin.toFixed(2)}%
               </span>
             </div>
             {currentMargin < targetMargin && (
-              <div className="rounded-md bg-yellow-50 p-2 text-yellow-800">
+              <div className={`rounded-md p-2 ${tokens.alert.warning}`}>
                 {t('pricing.belowTargetHint', { price: `$${suggestedPrice.toFixed(decimals)}` })}
               </div>
             )}

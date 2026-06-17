@@ -1,7 +1,7 @@
 {
   "appName": "AutoERP",
   "by": "par",
-  "select": "Sélectionner...",
+  "select": "Sélectionner…",
   "selectCountry": "Sélectionner un pays",
   "actions": {
     "save": "Enregistrer",
@@ -28,14 +28,14 @@
     "disable": "Désactiver",
     "expand": "Développer",
     "collapse": "Réduire",
-    "select": "Sélectionner...",
+    "select": "Sélectionner…",
     "downloadPdf": "Télécharger PDF",
     "previewPdf": "Aperçu PDF",
     "printPdf": "Imprimer",
-    "downloading": "Téléchargement...",
-    "generating": "Génération...",
+    "downloading": "Téléchargement…",
+    "generating": "Génération…",
     "sendEmail": "Envoyer par e-mail",
-    "sending": "Envoi...",
+    "sending": "Envoi…",
     "tryAgain": "Réessayer",
     "refreshPage": "Rafraîchir la page",
     "goHome": "Retour à l'accueil",
@@ -52,16 +52,16 @@
   "common": {
     "create": "Créer",
     "update": "Mettre à jour",
-    "saving": "Enregistrement...",
+    "saving": "Enregistrement…",
     "error": "Une erreur est survenue",
-    "loading": "Chargement...",
+    "loading": "Chargement…",
     "noData": "Aucune donnée disponible",
     "confirmDelete": "Êtes-vous sûr de vouloir supprimer {{resource}} ?",
     "confirmDeleteTitle": "Confirmer la suppression",
     "errorCreating": "Erreur lors de la création de {{resource}}",
     "errorUpdating": "Erreur lors de la mise à jour de {{resource}}",
     "errorDeleting": "Erreur lors de la suppression de {{resource}}",
-    "selectOption": "Sélectionner une option...",
+    "selectOption": "Sélectionner une option…",
     "leaveBlankForAutoGenerate": "Laisser vide pour générer automatiquement",
     "status": "Statut",
     "custom": "Personnalisé"
@@ -82,8 +82,8 @@
     "generic": "Une erreur est survenue. Veuillez réessayer."
   },
   "status": {
-    "loading": "Chargement...",
-    "saving": "Enregistrement...",
+    "loading": "Chargement…",
+    "saving": "Enregistrement…",
     "noResults": "Aucun résultat trouvé",
     "error": "Une erreur est survenue",
     "success": "Succès",
@@ -100,8 +100,8 @@
     "refunded": "Remboursé",
     "current": "En cours",
     "overdue": "En retard",
-    "creating": "Création...",
-    "processing": "Traitement...",
+    "creating": "Création…",
+    "processing": "Traitement…",
     "tryDifferentSearch": "Essayez un autre terme de recherche.",
     "noDocuments": "Aucun document",
     "noDocumentsDescription": "Aucun document n'a été créé pour ce client.",
@@ -388,7 +388,7 @@
     "delete": "Êtes-vous sûr de vouloir supprimer cet élément ?",
     "unsavedChanges": "Vous avez des modifications non enregistrées. Êtes-vous sûr de vouloir quitter ?"
   },
-  "loading": "Chargement...",
+  "loading": "Chargement…",
   "noData": "Aucune donnée disponible",
   "error": "Erreur",
   "details": "Détails",
@@ -401,7 +401,7 @@
   "centralInvoicing": "Facturation centrale",
   "noLocationResults": "Aucun emplacement trouvé",
   "noLocations": "Aucun emplacement disponible",
-  "searchLocation": "Rechercher des emplacements...",
+  "searchLocation": "Rechercher des emplacements…",
   "sku": "Référence",
   "cancel": "Annuler",
   "retry": "Réessayer",
@@ -409,9 +409,9 @@
   "saved": "Enregistré",
   "saveSuccess": "Paramètres enregistrés avec succès.",
   "deleted": "Supprimé",
-  "saving": "Enregistrement...",
-  "creating": "Création...",
-  "processing": "Traitement...",
+  "saving": "Enregistrement…",
+  "creating": "Création…",
+  "processing": "Traitement…",
   "back": "Retour",
   "previous": "Précédent",
   "next": "Suivant",
@@ -492,7 +492,7 @@
       "currentStock": "Stock Actuel",
       "reorderPoint": "Seuil de Réapprovisionnement"
     },
-    "moreProducts": "Et {{count}} autres produits..."
+    "moreProducts": "Et {{count}} autres produits…"
   },
   "fiscal": {
     "category": {
@@ -578,7 +578,7 @@
       "validate": {
         "title": "Valider les données",
         "description": "Vérifiez les résultats de validation et corrigez les erreurs",
-        "validating": "Validation en cours...",
+        "validating": "Validation en cours…",
         "summary": "Résumé de la validation",
         "totalRows": "Total des lignes",
         "validRows": "Valides",
@@ -598,7 +598,7 @@
       "preview": {
         "title": "Aperçu des modifications",
         "description": "Vérifiez ce qui sera créé lors de la comptabilisation de ce lot",
-        "loading": "Chargement de l'aperçu...",
+        "loading": "Chargement de l'aperçu…",
         "accounting": {
           "journalEntry": "Écriture comptable",
           "account": "Compte",
@@ -627,7 +627,7 @@
       "post": {
         "title": "Comptabiliser le lot",
         "description": "Créez les écritures dans votre système comptable",
-        "posting": "Comptabilisation en cours...",
+        "posting": "Comptabilisation en cours…",
         "postButton": "Comptabiliser le lot",
         "confirmPost": "Cela créera toutes les écritures comptables et mouvements de stock. Continuer ?"
       },
@@ -640,7 +640,7 @@
         "warning3": "Assurez-vous que toutes les données ont été vérifiées avant le verrouillage",
         "confirmTitle": "Prêt à verrouiller",
         "confirmDescription": "En verrouillant ce lot, vous confirmez que tous les soldes d'ouverture sont exacts et vérifiés.",
-        "locking": "Verrouillage en cours...",
+        "locking": "Verrouillage en cours…",
         "lockButton": "Verrouiller le lot"
       },
       "complete": {
@@ -704,7 +704,7 @@
     "editService": "Modifier la prestation",
     "createService": "Créer une prestation",
     "manageCategories": "Gérer les catégories",
-    "searchPlaceholder": "Rechercher des prestations...",
+    "searchPlaceholder": "Rechercher des prestations…",
     "noServices": "Aucune prestation",
     "noServicesDescription": "Commencez par créer une nouvelle prestation.",
     "serviceCount": {
@@ -761,7 +761,7 @@
       "pricing": "Tarification",
       "codePlaceholder": "ex. SRV-001",
       "namePlaceholder": "ex. Vidange d'huile",
-      "descriptionPlaceholder": "Description de la prestation...",
+      "descriptionPlaceholder": "Description de la prestation…",
       "selectCategory": "Sélectionner une catégorie",
       "noCategory": "Sans catégorie",
       "durationMinutes": "Durée (minutes)",
@@ -787,7 +787,7 @@
     "count": "{{count}} utilisateur",
     "count_plural": "{{count}} utilisateurs",
     "addUser": "Ajouter un utilisateur",
-    "searchPlaceholder": "Rechercher des utilisateurs...",
+    "searchPlaceholder": "Rechercher des utilisateurs…",
     "errorLoading": "Erreur de chargement des utilisateurs. Veuillez réessayer.",
     "empty": {
       "title": "Aucun utilisateur",
@@ -867,7 +867,7 @@
   "auditLogs": {
     "title": "Journaux d'audit",
     "description": "Suivre toutes les actions administratives",
-    "loading": "Chargement des journaux d'audit...",
+    "loading": "Chargement des journaux d'audit…",
     "empty": "Aucun journal d'audit",
     "table": {
       "date": "Date",
@@ -981,7 +981,7 @@
     "ccEmails": "CC",
     "ccEmailsPlaceholder": "Destinataires supplémentaires (séparés par des virgules)",
     "send": "Envoyer l'e-mail",
-    "sending": "Envoi...",
+    "sending": "Envoi…",
     "success": "E-mail envoyé avec succès",
     "error": "Échec de l'envoi de l'e-mail",
     "noRecipient": "Aucune adresse e-mail de destinataire trouvée"
@@ -1082,7 +1082,7 @@
       "noCategory": "Sans catégorie",
       "tree": "Arbre des catégories",
       "cannotDelete": "Impossible de supprimer une catégorie contenant des produits ou des sous-catégories",
-      "selectCategory": "Sélectionner une catégorie...",
+      "selectCategory": "Sélectionner une catégorie…",
       "rootCategory": "Catégorie racine (Aucune parente)",
       "productsCount": "{{count}} produits",
       "noCategoriesFound": "Aucune catégorie trouvée",
@@ -1146,7 +1146,7 @@
     "mustOpenShiftWarning": "Vous ne pouvez pas utiliser le point de vente sans ouvrir une session de caisse",
     "shiftOpened": "Session de caisse ouverte avec succès",
     "shiftOpenError": "Échec de l'ouverture de la session de caisse",
-    "openingShift": "Ouverture de la session de caisse...",
+    "openingShift": "Ouverture de la session de caisse…",
     "startShift": "Démarrer la session de caisse",
     "featureComingSoon": "Cette fonctionnalité sera bientôt disponible",
     "shiftInfo": "Informations sur la session de caisse",
@@ -1154,12 +1154,12 @@
     "expectedCash": "Attendu",
     "amount": "Montant",
     "reason": "Motif",
-    "reasonPlaceholder": "Saisissez le motif de cette opération...",
+    "reasonPlaceholder": "Saisissez le motif de cette opération…",
     "amountMustBePositive": "Le montant doit être positif",
     "depositInfo": "Enregistrer un ajout d'espèces en caisse",
     "payoutInfo": "Enregistrer un retrait d'espèces de la caisse",
     "cashOperationWarning": "Cette opération affectera le solde de la session. Veillez à compter les espèces avec précision.",
-    "recording": "Enregistrement...",
+    "recording": "Enregistrement…",
     "recordDeposit": "Enregistrer le dépôt",
     "recordPayout": "Enregistrer le retrait",
     "depositRecorded": "Dépôt d'espèces enregistré avec succès",
@@ -1187,7 +1187,7 @@
       "pageDescription": "Gérer les terminaux de point de vente et leurs configurations",
       "deactivationReasonPrompt": "Raison de la désactivation (optionnel) :",
       "deactivateTerminal": "Désactiver le terminal",
-      "deactivationReasonPlaceholder": "Entrez la raison...",
+      "deactivationReasonPlaceholder": "Entrez la raison…",
       "archive": "Archiver",
       "confirmArchiveTitle": "Archiver le terminal",
       "confirmArchive": "Êtes-vous sûr de vouloir archiver {{resource}} ? Le terminal sera masqué mais tout l'historique des transactions sera conservé.",
@@ -1201,7 +1201,7 @@
     "messages": {
       "checkoutSuccess": "Règlement effectué avec succès !",
       "transactionComplete": "Transaction finalisée avec succès",
-      "paymentProcessing": "Traitement du paiement...",
+      "paymentProcessing": "Traitement du paiement…",
       "terminalCreated": "Terminal créé avec succès",
       "terminalUpdated": "Terminal mis à jour avec succès",
       "terminalArchived": "Terminal archivé avec succès",
@@ -1214,7 +1214,7 @@
   },
   "realtime": {
     "connected": "Mises à jour en temps réel actives",
-    "connecting": "Connexion aux mises à jour en temps réel...",
+    "connecting": "Connexion aux mises à jour en temps réel…",
     "disconnected": "Mises à jour en temps réel indisponibles"
   },
   "permissions": {
@@ -1299,13 +1299,13 @@
     }
   },
   "commandPalette": {
-    "placeholder": "Rechercher ou aller à...",
+    "placeholder": "Rechercher ou aller à…",
     "navigation": "Navigation",
     "actions": "Actions",
     "recent": "Récents",
     "noResults": "Aucun résultat",
     "hint": "↑↓ Naviguer • Entrée Sélectionner • Échap Fermer",
-    "searchTrigger": "Rechercher...",
+    "searchTrigger": "Rechercher…",
     "createInvoice": "Créer une facture",
     "createQuote": "Créer un devis",
     "createCustomer": "Créer un client",
@@ -1407,8 +1407,8 @@
     "openPos": "Ouvrir la caisse"
   },
   "tax": {
-    "selectPlaceholder": "Sélectionner une taxe...",
-    "addNew": "+ Ajouter une taxe...",
+    "selectPlaceholder": "Sélectionner une taxe…",
+    "addNew": "+ Ajouter une taxe…",
     "loadingError": "Échec du chargement — saisir le taux manuellement",
     "staleTaxWarning": "La taxe sélectionnée n'existe plus",
     "noTaxes": "Aucune taxe configurée"
@@ -1418,7 +1418,7 @@
     "supplier": "Fournisseur",
     "partner": "Partenaire",
     "both": "Les deux",
-    "searchPlaceholder": "Rechercher par nom, e-mail ou téléphone...",
+    "searchPlaceholder": "Rechercher par nom, e-mail ou téléphone…",
     "noSearchResults": "Aucun partenaire trouvé",
     "noPartners": "Aucun partenaire disponible",
     "addNew": "Ajouter"

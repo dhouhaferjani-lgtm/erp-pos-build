@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { usePermissions } from '@/hooks/usePermissions'
-import { Input, FormField, Button, Select } from '@/components/atoms'
+import { Input, FormField, Button, Select, Checkbox } from '@/components/atoms'
 import { PageHeader } from '@/components/molecules'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/molecules/Tabs/Tabs'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
@@ -316,22 +316,18 @@ export function CompositeItemFormPage() {
                   />
                   <div className="flex items-center gap-6 pt-6">
                     <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={form.is_active}
                         onChange={(e) => { setForm({ ...form, is_active: e.target.checked }); }}
-                        className={tokens.checkbox.base}
                       />
-                      <span className="text-sm text-gray-700">{t('catalog:isActive')}</span>
+                      <span className={cn('text-sm', textColors.secondary)}>{t('catalog:isActive')}</span>
                     </label>
                     <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={form.is_available}
                         onChange={(e) => { setForm({ ...form, is_available: e.target.checked }); }}
-                        className={tokens.checkbox.base}
                       />
-                      <span className="text-sm text-gray-700">{t('catalog:isAvailable')}</span>
+                      <span className={cn('text-sm', textColors.secondary)}>{t('catalog:isAvailable')}</span>
                     </label>
                   </div>
                 </div>
@@ -386,13 +382,13 @@ export function CompositeItemFormPage() {
                   </FormField>
                 </div>
                 {isCheckingAvailability && (
-                  <p className="text-sm text-gray-500">{t('common:loading')}</p>
+                  <p className={cn('text-sm', textColors.tertiary)}>{t('common:loading')}</p>
                 )}
                 {availability && selectedLocationId && (
                   <div className="space-y-3">
                     <div className="flex items-center gap-4">
-                      <div className="text-2xl font-bold text-gray-900">{availability.available_quantity}</div>
-                      <div className="text-sm text-gray-600">{t('catalog:maxProducible')}</div>
+                      <div className={cn('text-2xl font-bold', textColors.primary)}>{availability.available_quantity}</div>
+                      <div className={cn('text-sm', textColors.tertiary)}>{t('catalog:maxProducible')}</div>
                       {availability.limiting_component && (
                         <div className="text-sm text-amber-600">
                           {t('catalog:limitingIngredient')}: {availability.limiting_component}
@@ -403,10 +399,10 @@ export function CompositeItemFormPage() {
                       <table className="min-w-full text-sm">
                         <thead>
                           <tr>
-                            <th className="text-left py-1 font-medium text-gray-700">{getLabel('recipeLine')}</th>
-                            <th className="text-right py-1 font-medium text-gray-700">{t('catalog:required')}</th>
-                            <th className="text-right py-1 font-medium text-gray-700">{t('catalog:available')}</th>
-                            <th className="text-right py-1 font-medium text-gray-700">{t('catalog:maxProducible')}</th>
+                            <th className={cn('text-left py-1 font-medium', textColors.secondary)}>{getLabel('recipeLine')}</th>
+                            <th className={cn('text-right py-1 font-medium', textColors.secondary)}>{t('catalog:required')}</th>
+                            <th className={cn('text-right py-1 font-medium', textColors.secondary)}>{t('catalog:available')}</th>
+                            <th className={cn('text-right py-1 font-medium', textColors.secondary)}>{t('catalog:maxProducible')}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -437,7 +433,7 @@ export function CompositeItemFormPage() {
                 />
               ) : (
                 <div className="text-center py-8">
-                  <p className="text-gray-500 mb-4">{t('catalog:createRecipe')}</p>
+                  <p className={cn(textColors.tertiary, 'mb-4')}>{t('catalog:createRecipe')}</p>
                   <Button
                     onClick={handleCreateRecipe}
                     disabled={createRecipeMutation.isPending}
@@ -529,22 +525,18 @@ export function CompositeItemFormPage() {
               />
               <div className="flex items-center gap-6 pt-6">
                 <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={form.is_active}
                     onChange={(e) => { setForm({ ...form, is_active: e.target.checked }); }}
-                    className={tokens.checkbox.base}
                   />
-                  <span className="text-sm text-gray-700">{t('catalog:isActive')}</span>
+                  <span className={cn('text-sm', textColors.secondary)}>{t('catalog:isActive')}</span>
                 </label>
                 <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={form.is_available}
                     onChange={(e) => { setForm({ ...form, is_available: e.target.checked }); }}
-                    className={tokens.checkbox.base}
                   />
-                  <span className="text-sm text-gray-700">{t('catalog:isAvailable')}</span>
+                  <span className={cn('text-sm', textColors.secondary)}>{t('catalog:isAvailable')}</span>
                 </label>
               </div>
             </div>

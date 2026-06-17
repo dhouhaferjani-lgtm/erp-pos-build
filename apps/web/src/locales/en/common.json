@@ -1,7 +1,7 @@
 {
   "appName": "AutoERP",
   "by": "by",
-  "select": "Select...",
+  "select": "Select…",
   "selectCountry": "Select country",
   "actions": {
     "save": "Save",
@@ -32,14 +32,14 @@
     "newQuote": "New Quote",
     "newInvoice": "New Invoice",
     "addVehicle": "Add Vehicle",
-    "select": "Select...",
+    "select": "Select…",
     "downloadPdf": "Download PDF",
     "previewPdf": "Preview PDF",
     "printPdf": "Print",
-    "downloading": "Downloading...",
-    "generating": "Generating...",
+    "downloading": "Downloading…",
+    "generating": "Generating…",
     "sendEmail": "Send Email",
-    "sending": "Sending...",
+    "sending": "Sending…",
     "tryAgain": "Try Again",
     "refreshPage": "Refresh Page",
     "goHome": "Go Home",
@@ -52,16 +52,16 @@
   "common": {
     "create": "Create",
     "update": "Update",
-    "saving": "Saving...",
+    "saving": "Saving…",
     "error": "An error occurred",
-    "loading": "Loading...",
+    "loading": "Loading…",
     "noData": "No data available",
     "confirmDelete": "Are you sure you want to delete {{resource}}?",
     "confirmDeleteTitle": "Confirm Deletion",
     "errorCreating": "Error creating {{resource}}",
     "errorUpdating": "Error updating {{resource}}",
     "errorDeleting": "Error deleting {{resource}}",
-    "selectOption": "Select an option...",
+    "selectOption": "Select an option…",
     "leaveBlankForAutoGenerate": "Leave blank to auto-generate",
     "status": "Status",
     "custom": "Custom"
@@ -82,10 +82,10 @@
     "generic": "An error occurred. Please try again."
   },
   "status": {
-    "loading": "Loading...",
-    "saving": "Saving...",
-    "creating": "Creating...",
-    "processing": "Processing...",
+    "loading": "Loading…",
+    "saving": "Saving…",
+    "creating": "Creating…",
+    "processing": "Processing…",
     "noResults": "No results found",
     "error": "An error occurred",
     "success": "Success",
@@ -400,7 +400,7 @@
     "delete": "Are you sure you want to delete this item?",
     "unsavedChanges": "You have unsaved changes. Are you sure you want to leave?"
   },
-  "loading": "Loading...",
+  "loading": "Loading…",
   "noData": "No data available",
   "error": "Error",
   "details": "Details",
@@ -413,7 +413,7 @@
   "centralInvoicing": "Central invoicing",
   "noLocationResults": "No locations found",
   "noLocations": "No locations available",
-  "searchLocation": "Search locations...",
+  "searchLocation": "Search locations…",
   "sku": "SKU",
   "cancel": "Cancel",
   "retry": "Retry",
@@ -421,9 +421,9 @@
   "saved": "Saved",
   "saveSuccess": "Settings saved successfully.",
   "deleted": "Deleted",
-  "saving": "Saving...",
-  "creating": "Creating...",
-  "processing": "Processing...",
+  "saving": "Saving…",
+  "creating": "Creating…",
+  "processing": "Processing…",
   "back": "Back",
   "previous": "Previous",
   "next": "Next",
@@ -486,7 +486,7 @@
       "currentStock": "Current Stock",
       "reorderPoint": "Reorder Point"
     },
-    "moreProducts": "And {{count}} more products..."
+    "moreProducts": "And {{count}} more products…"
   },
   "fiscal": {
     "category": {
@@ -572,7 +572,7 @@
       "validate": {
         "title": "Validate Data",
         "description": "Review validation results and fix any errors",
-        "validating": "Validating...",
+        "validating": "Validating…",
         "summary": "Validation Summary",
         "totalRows": "Total Rows",
         "validRows": "Valid",
@@ -592,7 +592,7 @@
       "preview": {
         "title": "Preview Changes",
         "description": "Review what will be created when you post this batch",
-        "loading": "Loading preview...",
+        "loading": "Loading preview…",
         "accounting": {
           "journalEntry": "Journal Entry",
           "account": "Account",
@@ -621,7 +621,7 @@
       "post": {
         "title": "Post Batch",
         "description": "Create the entries in your accounting system",
-        "posting": "Posting...",
+        "posting": "Posting…",
         "postButton": "Post Batch",
         "confirmPost": "This will create all journal entries and stock movements. Continue?"
       },
@@ -634,7 +634,7 @@
         "warning3": "Make sure all data has been verified before locking",
         "confirmTitle": "Ready to Lock",
         "confirmDescription": "By locking this batch, you confirm that all opening balances are accurate and verified.",
-        "locking": "Locking...",
+        "locking": "Locking…",
         "lockButton": "Lock Batch"
       },
       "complete": {
@@ -697,7 +697,7 @@
     "addService": "Add Service",
     "editService": "Edit Service",
     "manageCategories": "Manage Categories",
-    "searchPlaceholder": "Search services...",
+    "searchPlaceholder": "Search services…",
     "noServices": "No services",
     "noServicesDescription": "Get started by creating a new service.",
     "serviceCount": {
@@ -740,7 +740,7 @@
       "pricing": "Pricing",
       "codePlaceholder": "e.g., SRV-001",
       "namePlaceholder": "e.g., Oil Change",
-      "descriptionPlaceholder": "Service description...",
+      "descriptionPlaceholder": "Service description…",
       "selectCategory": "Select category",
       "noCategory": "No category",
       "durationMinutes": "Duration (minutes)",
@@ -770,7 +770,7 @@
     "count": "{{count}} user",
     "count_plural": "{{count}} users",
     "addUser": "Add User",
-    "searchPlaceholder": "Search users...",
+    "searchPlaceholder": "Search users…",
     "errorLoading": "Error loading users. Please try again.",
     "empty": {
       "title": "No users",
@@ -850,7 +850,7 @@
   "auditLogs": {
     "title": "Audit Logs",
     "description": "Track all administrative actions",
-    "loading": "Loading audit logs...",
+    "loading": "Loading audit logs…",
     "empty": "No audit logs yet",
     "table": {
       "date": "Date",
@@ -964,7 +964,7 @@
     "ccEmails": "CC",
     "ccEmailsPlaceholder": "Additional recipients (comma separated)",
     "send": "Send Email",
-    "sending": "Sending...",
+    "sending": "Sending…",
     "success": "Email sent successfully",
     "error": "Failed to send email",
     "noRecipient": "No recipient email address found"
@@ -1065,7 +1065,7 @@
       "noCategory": "No category",
       "tree": "Category Tree",
       "cannotDelete": "Cannot delete category with products or subcategories",
-      "selectCategory": "Select category...",
+      "selectCategory": "Select category…",
       "rootCategory": "Root Category (No Parent)",
       "productsCount": "{{count}} products",
       "noCategoriesFound": "No categories found",
@@ -1129,7 +1129,7 @@
     "mustOpenShiftWarning": "You cannot use the POS without opening a shift",
     "shiftOpened": "Shift opened successfully",
     "shiftOpenError": "Failed to open shift",
-    "openingShift": "Opening shift...",
+    "openingShift": "Opening shift…",
     "startShift": "Start Shift",
     "featureComingSoon": "This feature is coming soon",
     "shiftInfo": "Shift Information",
@@ -1137,12 +1137,12 @@
     "expectedCash": "Expected",
     "amount": "Amount",
     "reason": "Reason",
-    "reasonPlaceholder": "Enter reason for this operation...",
+    "reasonPlaceholder": "Enter reason for this operation…",
     "amountMustBePositive": "Amount must be positive",
     "depositInfo": "Record cash added to the drawer",
     "payoutInfo": "Record cash removed from the drawer",
     "cashOperationWarning": "This will affect shift balance. Make sure to count cash accurately.",
-    "recording": "Recording...",
+    "recording": "Recording…",
     "recordDeposit": "Record Deposit",
     "recordPayout": "Record Payout",
     "depositRecorded": "Cash deposit recorded successfully",
@@ -1170,7 +1170,7 @@
       "pageDescription": "Manage POS terminals and their configurations",
       "deactivationReasonPrompt": "Reason for deactivation (optional):",
       "deactivateTerminal": "Deactivate Terminal",
-      "deactivationReasonPlaceholder": "Enter reason...",
+      "deactivationReasonPlaceholder": "Enter reason…",
       "archive": "Archive",
       "confirmArchiveTitle": "Archive Terminal",
       "confirmArchive": "Are you sure you want to archive {{resource}}? The terminal will be hidden but all transaction history will be preserved.",
@@ -1184,7 +1184,7 @@
     "messages": {
       "checkoutSuccess": "Checkout successful!",
       "transactionComplete": "Transaction completed successfully",
-      "paymentProcessing": "Processing payment...",
+      "paymentProcessing": "Processing payment…",
       "terminalCreated": "Terminal created successfully",
       "terminalUpdated": "Terminal updated successfully",
       "terminalArchived": "Terminal archived successfully",
@@ -1197,7 +1197,7 @@
   },
   "realtime": {
     "connected": "Real-time updates active",
-    "connecting": "Connecting to real-time updates...",
+    "connecting": "Connecting to real-time updates…",
     "disconnected": "Real-time updates unavailable"
   },
   "permissions": {
@@ -1282,13 +1282,13 @@
     }
   },
   "commandPalette": {
-    "placeholder": "Search or jump to...",
+    "placeholder": "Search or jump to…",
     "navigation": "Navigation",
     "actions": "Actions",
     "recent": "Recent",
     "noResults": "No results found",
     "hint": "↑↓ Navigate • Enter Select • Esc Close",
-    "searchTrigger": "Search...",
+    "searchTrigger": "Search…",
     "createInvoice": "Create Invoice",
     "createQuote": "Create Quote",
     "createCustomer": "Create Customer",
@@ -1390,8 +1390,8 @@
     "openPos": "Open POS"
   },
   "tax": {
-    "selectPlaceholder": "Select tax...",
-    "addNew": "+ Add new tax...",
+    "selectPlaceholder": "Select tax…",
+    "addNew": "+ Add new tax…",
     "loadingError": "Tax load failed — enter rate manually",
     "staleTaxWarning": "Selected tax no longer exists",
     "noTaxes": "No taxes configured"
@@ -1401,7 +1401,7 @@
     "supplier": "Supplier",
     "partner": "Partner",
     "both": "Both",
-    "searchPlaceholder": "Search by name, email, or phone...",
+    "searchPlaceholder": "Search by name, email, or phone…",
     "noSearchResults": "No partners found",
     "noPartners": "No partners available",
     "addNew": "Add new"

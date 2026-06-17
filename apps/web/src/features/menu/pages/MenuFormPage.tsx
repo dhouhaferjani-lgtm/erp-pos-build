@@ -6,7 +6,7 @@ import { StickyFormFooter } from '../../../components/molecules/StickyFormFooter
 import { PageHeader } from '../../../components/molecules/PageHeader'
 import { useMenu, useCreateMenu, useUpdateMenu, useCreateMenuCategory, useDeleteMenuCategory } from '../hooks/useMenus'
 import { MenuCategoryItemManager } from '../components/MenuCategoryItemManager'
-import { Input, Textarea, FormField, Button } from '@/components/atoms'
+import { Input, Textarea, FormField, Button, Checkbox } from '@/components/atoms'
 import { cn } from '@/lib/utils'
 import { tokens, textColors, colors } from '@/lib/designTokens'
 import type { CreateMenuData, UpdateMenuData, MenuCategoryData } from '../types/menu'
@@ -167,20 +167,16 @@ export function MenuFormPage() {
             </FormField>
             <div className="flex items-center gap-6 pt-6">
               <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={isActive}
                   onChange={(e) => { setIsActive(e.target.checked); }}
-                  className={tokens.checkbox.base}
                 />
                 <span className={cn('text-sm', textColors.secondary)}>{t('menu:isActive')}</span>
               </label>
               <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={isDefault}
                   onChange={(e) => { setIsDefault(e.target.checked); }}
-                  className={tokens.checkbox.base}
                 />
                 <span className={cn('text-sm', textColors.secondary)}>{t('menu:isDefault')}</span>
               </label>

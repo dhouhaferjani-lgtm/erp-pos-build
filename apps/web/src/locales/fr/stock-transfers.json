@@ -78,7 +78,7 @@
     "error": "Impossible de créer le transfert.",
     "availability": {
       "selectSource": "Sélectionner la source",
-      "loading": "Vérification...",
+      "loading": "Vérification…",
       "error": "Indisponible",
       "exceeds": "Dépasse le disponible source"
     }

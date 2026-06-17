@@ -289,3 +289,42 @@ export async function hasOperatorPins(db: Database): Promise<boolean> {
   const result = await queryOne<{ count: number }>(db, 'SELECT COUNT(*) as count FROM operator_pins');
   return (result?.count ?? 0) > 0;
 }
+
+/**
+ * FU-1 — make a confirmed-full `/pos/auth/pin-data` pull authoritative by
+ * deleting any cached operator NOT present in the pull (`keepIds`).
+ *
+ * The device previously only ever upserted operator PINs, so a manager
+ * mirrored BEFORE suspension kept a valid local PIN + cached `approval_scopes`
+ * and could still approve offline overrides — the offline approval path checks
+ * client-side bcrypt against this store and never reaches the server
+ * `PinVerifier`. Pruning omitted operators on a full pull closes that window.
+ *
+ * Returns the number of rows deleted.
+ *
+ * Deliberately NO active-operator exception: the server (`PosAuthController::
+ * pinData`) returns EVERY active company member with a `pos_pin` and does not
+ * filter by terminal, so a legitimate active operator is always in `keepIds`
+ * and never at risk of being pruned. An `id != activeOperatorId` carve-out
+ * would only ever fire when the active operator is OMITTED — i.e. they were
+ * just suspended/revoked — and would then SHIELD that suspended operator's
+ * local PIN (Codex review, FU-1 HIGH). So we prune strictly by `keepIds`.
+ *
+ * Callers MUST only invoke this after a confirmed full, current-terminal pull
+ * (status-200, non-empty response). An empty `keepIds` is treated as a
+ * defensive no-op: the sole caller already gates on a non-empty pull, and
+ * wiping every operator would break ALL offline approvals.
+ */
+export async function pruneOperatorsExcept(db: Database, keepIds: string[]): Promise<number> {
+  if (keepIds.length === 0) {
+    return 0;
+  }
+
+  const placeholders = keepIds.map((_, i) => `$${i + 1}`).join(', ');
+  const result = await execute(
+    db,
+    `DELETE FROM operator_pins WHERE id NOT IN (${placeholders})`,
+    keepIds,
+  );
+  return result.rowsAffected;
+}

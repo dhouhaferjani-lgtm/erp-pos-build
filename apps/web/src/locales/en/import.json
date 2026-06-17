@@ -104,7 +104,7 @@
     "mapping": {
       "title": "Map your columns",
       "description": "Match the columns in your file to the required system fields. Required fields are marked with an asterisk (*).",
-      "validating": "Validating...",
+      "validating": "Validating…",
       "validate": "Validate Data"
     },
     "validation": {
@@ -121,8 +121,8 @@
       "validRows": "Valid rows",
       "invalidRows": "Invalid rows",
       "start": "Start Import",
-      "starting": "Starting...",
-      "importing": "Importing...",
+      "starting": "Starting…",
+      "importing": "Importing…",
       "completed": "Import completed!",
       "failed": "Import failed",
       "progress": "Progress",
@@ -171,7 +171,7 @@
   },
   "preview": {
     "title": "Data Preview",
-    "loading": "Loading preview...",
+    "loading": "Loading preview…",
     "loadError": "Failed to load preview. Please try again.",
     "totalRows": "{{count}} total rows",
     "validRows": "{{count}} valid",

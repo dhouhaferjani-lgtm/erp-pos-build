@@ -2,6 +2,8 @@ import { useTranslation } from 'react-i18next'
 import { Inbox } from 'lucide-react'
 import { ExpenseCard } from './ExpenseCard'
 import type { Expense } from '../../types'
+import { cn } from '@/lib/utils'
+import { colors, textColors, borderColors } from '@/lib/designTokens'
 
 interface ExpenseListProps {
   expenses: Expense[]
@@ -24,7 +26,7 @@ export function ExpenseList({ expenses, isLoading, onDelete, onPost }: ExpenseLi
         {Array.from({ length: 6 }).map((_, i) => (
           <div
             key={i}
-            className="h-64 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"
+            className={cn('h-64 animate-pulse rounded-lg', colors.neutral[200])}
           />
         ))}
       </div>
@@ -33,12 +35,18 @@ export function ExpenseList({ expenses, isLoading, onDelete, onPost }: ExpenseLi
 
   if (expenses.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 py-12 dark:border-gray-700 dark:bg-gray-800">
-        <Inbox className="h-12 w-12 text-gray-400" />
-        <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">
+      <div
+        className={cn(
+          'flex flex-col items-center justify-center rounded-lg border-2 border-dashed py-12',
+          borderColors.default,
+          colors.neutral[50]
+        )}
+      >
+        <Inbox className={cn('h-12 w-12', textColors.disabled)} />
+        <h3 className={cn('mt-4 text-lg font-medium', textColors.primary)}>
           {t('expenses:noExpenses')}
         </h3>
-        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+        <p className={cn('mt-2 text-sm', textColors.disabled)}>
           {t('expenses:noExpensesDescription')}
         </p>
       </div>

@@ -6,6 +6,7 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import { colors, textColors, borderColors } from '@/lib/designTokens'
 
 interface ProductStockLevelsProps {
   productId: string
@@ -39,13 +40,13 @@ export function ProductStockLevels({
 
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white">
-        <div className="border-b border-gray-200 px-6 py-4">
-          <div className="h-5 w-32 animate-pulse rounded bg-gray-200" />
+      <div className={`rounded-lg border ${borderColors.light} bg-white`}>
+        <div className={`border-b ${borderColors.light} px-6 py-4`}>
+          <div className={`h-5 w-32 animate-pulse rounded ${colors.neutral[200]}`} />
         </div>
         <div className="space-y-3 p-6">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-12 animate-pulse rounded bg-gray-100" />
+            <div key={i} className={`h-12 animate-pulse rounded ${colors.neutral[100]}`} />
           ))}
         </div>
       </div>
@@ -54,12 +55,12 @@ export function ProductStockLevels({
 
   if (!data) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white">
-        <div className="border-b border-gray-200 px-6 py-4">
-          <h2 className="text-base font-semibold text-gray-900">{t('stock.title')}</h2>
+      <div className={`rounded-lg border ${borderColors.light} bg-white`}>
+        <div className={`border-b ${borderColors.light} px-6 py-4`}>
+          <h2 className={`text-base font-semibold ${textColors.primary}`}>{t('stock.title')}</h2>
         </div>
         <div className="px-6 py-8 text-center">
-          <p className="text-sm text-gray-500">{t('stock.noStock')}</p>
+          <p className={`text-sm ${textColors.tertiary}`}>{t('stock.noStock')}</p>
         </div>
       </div>
     )
@@ -73,23 +74,23 @@ export function ProductStockLevels({
     : 0
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white">
-      <div className="border-b border-gray-200 px-6 py-4">
-        <h2 className="text-base font-semibold text-gray-900">{t('stock.title')}</h2>
+    <div className={`rounded-lg border ${borderColors.light} bg-white`}>
+      <div className={`border-b ${borderColors.light} px-6 py-4`}>
+        <h2 className={`text-base font-semibold ${textColors.primary}`}>{t('stock.title')}</h2>
       </div>
 
       {/* Summary Totals */}
-      <div className="divide-y divide-gray-100">
+      <div className={`divide-y ${borderColors.divideLight}`}>
         {/* Stock Value - Prominent Display */}
         {costPrice && parseFloat(totals.quantity) > 0 && (
-          <div className="bg-blue-50 px-6 py-4">
-            <div className="text-xs font-medium uppercase tracking-wide text-blue-700">
+          <div className={`${colors.primary[50]} px-6 py-4`}>
+            <div className={`text-xs font-medium uppercase tracking-wide ${textColors.brand}`}>
               {t('stock.stockValue')}
             </div>
-            <div className="mt-1 text-xl font-bold text-blue-900">
+            <div className={`mt-1 text-xl font-bold ${textColors.brand}`}>
               {formatAmount(stockValue.toFixed(decimals))}
             </div>
-            <div className="mt-1 text-xs text-blue-600">
+            <div className={`mt-1 text-xs ${textColors.brand}`}>
               {/* eslint-disable-next-line local/no-untranslated-literal -- WAC is a canonical accounting acronym, not translatable prose */}
               {formatQuantity(totals.quantity)} × {formatAmount(costPrice)} (WAC)
             </div>
@@ -98,18 +99,18 @@ export function ProductStockLevels({
 
         <div className="grid grid-cols-2 gap-x-6 px-6 py-3">
           <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+            <div className={`text-xs font-medium uppercase tracking-wide ${textColors.tertiary}`}>
               {t('stock.onHand')}
             </div>
-            <div className="mt-1 text-base font-semibold text-gray-900">
+            <div className={`mt-1 text-base font-semibold ${textColors.primary}`}>
               {formatQuantity(totals.quantity)}
             </div>
           </div>
           <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+            <div className={`text-xs font-medium uppercase tracking-wide ${textColors.tertiary}`}>
               {t('stock.available')}
             </div>
-            <div className="mt-1 text-base font-semibold text-green-600">
+            <div className={`mt-1 text-base font-semibold ${textColors.success}`}>
               {formatQuantity(totals.available)}
             </div>
           </div>
@@ -117,28 +118,28 @@ export function ProductStockLevels({
 
         <div className="grid grid-cols-2 gap-x-6 px-6 py-3">
           <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+            <div className={`text-xs font-medium uppercase tracking-wide ${textColors.tertiary}`}>
               {t('stock.reserved')}
             </div>
-            <div className="mt-1 text-base font-semibold text-orange-600">
+            <div className={`mt-1 text-base font-semibold ${textColors.warningDark}`}>
               {formatQuantity(totals.reserved)}
             </div>
           </div>
           <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+            <div className={`text-xs font-medium uppercase tracking-wide ${textColors.tertiary}`}>
               {t('stock.incoming')}
             </div>
-            <div className="mt-1 text-base font-semibold text-blue-600">
+            <div className={`mt-1 text-base font-semibold ${textColors.brand}`}>
               {formatQuantity(totals.incoming)}
             </div>
           </div>
         </div>
 
         <div className="px-6 py-3">
-          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+          <div className={`text-xs font-medium uppercase tracking-wide ${textColors.tertiary}`}>
             {t('stock.projectedAvailable')}
           </div>
-          <div className="mt-1 text-base font-semibold text-gray-900">
+          <div className={`mt-1 text-base font-semibold ${textColors.primary}`}>
             {formatQuantity(totals.projected_available)}
           </div>
         </div>
@@ -146,28 +147,28 @@ export function ProductStockLevels({
 
       {/* Per-Location Breakdown (Collapsible) */}
       {locations.length > 1 && (
-        <details className="border-t border-gray-200">
-          <summary className="cursor-pointer px-6 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
+        <details className={`border-t ${borderColors.light}`}>
+          <summary className={`cursor-pointer px-6 py-3 text-sm font-medium ${textColors.secondary} ${colors.hover.gray50}`}>
             {t('stock.viewByLocation', { count: locations.length })}
           </summary>
-          <div className="divide-y divide-gray-100 px-6 pb-4">
+          <div className={`divide-y ${borderColors.divideLight} px-6 pb-4`}>
             {locations.map((loc) => (
               <div key={loc.id} className="py-3">
-                <div className="mb-2 font-medium text-gray-900">{loc.location_name}</div>
+                <div className={`mb-2 font-medium ${textColors.primary}`}>{loc.location_name}</div>
                 <div className="grid grid-cols-3 gap-4 text-sm">
                   <div>
-                    <span className="text-gray-500">{t('stock.onHand')}:</span>{' '}
+                    <span className={textColors.tertiary}>{t('stock.onHand')}:</span>{' '}
                     <span className="font-medium">{formatQuantity(loc.quantity)}</span>
                   </div>
                   <div>
-                    <span className="text-gray-500">{t('stock.available')}:</span>{' '}
-                    <span className="font-medium text-green-600">
+                    <span className={textColors.tertiary}>{t('stock.available')}:</span>{' '}
+                    <span className={`font-medium ${textColors.success}`}>
                       {formatQuantity(loc.available)}
                     </span>
                   </div>
                   <div>
-                    <span className="text-gray-500">{t('stock.incoming')}:</span>{' '}
-                    <span className="font-medium text-blue-600">
+                    <span className={textColors.tertiary}>{t('stock.incoming')}:</span>{' '}
+                    <span className={`font-medium ${textColors.brand}`}>
                       {formatQuantity(loc.incoming)}
                     </span>
                   </div>

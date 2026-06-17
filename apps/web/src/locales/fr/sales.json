@@ -233,7 +233,7 @@
     "sealed": "Scellé",
     "deliveryDate": "Date de livraison",
     "returnDate": "Date de retour",
-    "notesPlaceholder": "Notes supplémentaires...",
+    "notesPlaceholder": "Notes supplémentaires…",
     "draftSavedAt": "Brouillon enregistré {{time}}"
   },
   "lineItems": {
@@ -261,13 +261,13 @@
       "clickToEdit": "Cliquer pour modifier",
       "removeLine": "Supprimer la ligne",
       "searchProducts": "Rechercher des produits",
-      "searchProductsPlaceholder": "Rechercher des produits...",
-      "searchServicesPlaceholder": "Rechercher des services...",
+      "searchProductsPlaceholder": "Rechercher des produits…",
+      "searchServicesPlaceholder": "Rechercher des services…",
       "createNewProduct": "Créer un nouveau produit",
       "addBlankLine": "Ajouter une ligne vide",
       "close": "Fermer"
     },
-    "loading": "Chargement...",
+    "loading": "Chargement…",
     "noProductsFound": "Aucun produit trouvé correspondant à votre recherche",
     "noProductsAvailable": "Aucun produit disponible",
     "noServicesFound": "Aucun service trouvé correspondant à votre recherche",
@@ -337,7 +337,7 @@
     "creditNotes": "Avoirs",
     "post": "Comptabiliser la facture",
     "createCreditNote": "Créer un avoir",
-    "searchInvoicePlaceholder": "Rechercher par numéro de facture ou partenaire...",
+    "searchInvoicePlaceholder": "Rechercher par numéro de facture ou partenaire…",
     "noInvoicesFound": "Aucune facture trouvée",
     "noPostedInvoices": "Aucune facture comptabilisée disponible",
     "invoice": "Facture",
@@ -385,7 +385,7 @@
       "step3": "Les bons de livraison seront ajoutés à la chaîne de hachage fiscal",
       "step4": "La facture sera comptabilisée et finalisée",
       "confirmAndPost": "Confirmer et comptabiliser",
-      "confirming": "Confirmation en cours...",
+      "confirming": "Confirmation en cours…",
       "success": "Facture comptabilisée avec succès avec les bons de livraison confirmés"
     }
   },
@@ -393,7 +393,7 @@
     "title": "Bons de livraison",
     "singular": "bon de livraison",
     "plural": "bons de livraison",
-    "searchPlaceholder": "Rechercher par numéro de bon de livraison ou partenaire...",
+    "searchPlaceholder": "Rechercher par numéro de bon de livraison ou partenaire…",
     "noResults": "Aucun bon de livraison trouvé",
     "noConfirmed": "Aucun bon de livraison confirmé disponible",
     "consolidation": {
@@ -445,7 +445,7 @@
       "other": "Autre"
     },
     "notes": "Notes",
-    "notesPlaceholder": "Motif de l'avoir...",
+    "notesPlaceholder": "Motif de l'avoir…",
     "form": {
       "selectInvoice": "Sélectionner une facture",
       "invoiceRequired": "La facture est requise",
@@ -592,7 +592,7 @@
       "none": "Pas de remboursement (Inspection/Réparation)"
     },
     "notes": "Notes de retour",
-    "notesPlaceholder": "Détails sur le retour...",
+    "notesPlaceholder": "Détails sur le retour…",
     "form": {
       "selectSource": "Sélectionner le document source",
       "sourceRequired": "Le document source est requis",
@@ -698,7 +698,7 @@
   },
   "pos": {
     "title": "Point de vente",
-    "searchProducts": "Rechercher des produits...",
+    "searchProducts": "Rechercher des produits…",
     "noProducts": "Aucun produit à afficher",
     "cart": "Panier",
     "items": "articles",

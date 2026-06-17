@@ -1,5 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { cn } from '@/lib/utils'
+import { colors, textColors } from '@/lib/designTokens'
+import { Input } from '@/components/atoms'
 import type { AnalyticsFilters } from '../../api/analyticsApi'
 
 interface AnalyticsDateFilterProps {
@@ -54,29 +57,30 @@ export function AnalyticsDateFilter({ filters, onChange }: AnalyticsDateFilterPr
             key={preset.key}
             type="button"
             onClick={() => { handlePreset(preset); }}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={cn(
+              'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
               activePreset === preset.key
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-            }`}
+                ? cn(colors.primary[600], textColors.inverse)
+                : cn(colors.neutral[100], textColors.tertiary, colors.hover.gray100),
+            )}
           >
             {t(`pos:analytics.presets.${preset.key}`)}
           </button>
         ))}
       </div>
       <div className="flex items-center gap-2">
-        <input
+        <Input
           type="date"
           value={filters.from}
           onChange={(e) => { handleDateChange('from', e.target.value); }}
-          className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+          className="w-auto"
         />
-        <span className="text-muted-foreground">—</span>
-        <input
+        <span className={textColors.tertiary}>—</span>
+        <Input
           type="date"
           value={filters.to}
           onChange={(e) => { handleDateChange('to', e.target.value); }}
-          className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+          className="w-auto"
         />
       </div>
     </div>

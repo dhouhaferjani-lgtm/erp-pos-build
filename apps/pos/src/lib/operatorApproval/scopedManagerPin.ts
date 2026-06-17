@@ -5,7 +5,7 @@ import { getAllOperators } from '@/lib/db/repositories/operatorPinRepository';
 import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
 import { FetchTimeoutError } from '@/lib/fetchWithTimeout';
 import { useConnectivityStore } from '@/stores/connectivityStore';
-import { verifyOfflineApprovalPin, type ApprovalScope } from './approvalVerifier';
+import { verifyOfflineApprovalPin, isApprovalCacheFresh, type ApprovalScope } from './approvalVerifier';
 import type { PosOverrideContext } from './posOverrideAuthoring';
 
 /**
@@ -251,6 +251,36 @@ export async function verifyScopedManagerPin(
       // a parser error, a wrapped module error, or a broken instanceof check
       // must NEVER silently downgrade to PIN-only approval. NO pin/hash.
       if (isGenuineOfflineFailure(error)) {
+        // FU-1b — bound stale offline authority. The offline fallback bypasses
+        // the server's revocation/caps checks; refuse it if the matched
+        // operator's cached approval metadata is older than the TTL. FU-1 prunes
+        // a suspended operator on the next successful pull, but a device that
+        // never re-syncs would otherwise retain approval authority forever. Fail
+        // closed (the terminal must come back online to re-establish trust) and
+        // audit the refusal so the bypass attempt stays visible to fraud.
+        if (!isApprovalCacheFresh(matched.approval_scope_permissions_fetched_at, Date.now())) {
+          void recordAuditEvent({
+            type: 'pos.manager_override_denied',
+            aggregateType: 'Override',
+            aggregateId: input.context.terminalId,
+            tenantId: input.context.tenantId,
+            companyId: input.context.companyId,
+            operatorId: matched.id,
+            payload: {
+              scope: toTaxonomyScope(input.approvalScope),
+              requested_amount: null,
+              cart_total: null,
+              reason: input.reason,
+              denied_kind: 'stale_offline_cache',
+            },
+          }).catch(() => {});
+          throw new ApiRequestError(
+            503,
+            'manager_override_stale_offline_cache',
+            'MANAGER_OVERRIDE_STALE_OFFLINE_CACHE',
+          );
+        }
+
         // Genuine offline-first local fallback (server unreachable). Audit the
         // bypass — this bypassed the server's caps/revocation checks and must
         // be VISIBLE to fraud. Emit pos.manager_override_offline_approved (NOT

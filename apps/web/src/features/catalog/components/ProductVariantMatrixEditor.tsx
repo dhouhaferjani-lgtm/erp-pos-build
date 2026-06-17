@@ -4,7 +4,7 @@ import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { usePermissions } from '@/hooks/usePermissions'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
-import { Button, Input, MoneyInput } from '@/components/atoms'
+import { Button, Checkbox, Input, MoneyInput } from '@/components/atoms'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { useCompanyConfig } from '@/contexts'
 import { getErrorMessage } from '@/lib/api'
@@ -131,9 +131,7 @@ function AxisValueChips({
     <div className="flex flex-wrap gap-2">
       {(values ?? []).map((v) => (
         <label key={v.id} className="inline-flex items-center gap-1">
-          <input
-            type="checkbox"
-            className={tokens.checkbox.base}
+          <Checkbox
             aria-label={t('catalog:variants.valueLabel', { label: v.label })}
             checked={selectedValueIds.includes(v.id)}
             onChange={() => {
@@ -443,9 +441,7 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
               {variantAxes.map((axis) => (
                 <div key={axis.id} className="space-y-1">
                   <label className="inline-flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      className={tokens.checkbox.base}
+                    <Checkbox
                       checked={isAxisChecked(axis.id)}
                       onChange={() => {
                         toggleAxis(axis.id)
@@ -592,10 +588,8 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
                       />
                     </td>
                     <td className="px-3 py-2 text-center">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         aria-label={t('catalog:variants.active')}
-                        className={tokens.checkbox.base}
                         checked={draft.is_active}
                         disabled={!canUpdate}
                         onChange={(e) => {

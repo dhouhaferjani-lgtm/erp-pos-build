@@ -10,6 +10,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Expense\Domain\ExpenseCategory;
@@ -283,6 +284,36 @@ final class AccountingTenantIsolationTest extends TestCase
         $cross = $this->actingAsForCompany($this->userA, $this->companyA)
             ->getJson("/api/v1/companies/{$this->companyB->id}/accounts/purposes");
         $cross->assertStatus(404);
+    }
+
+    // FU-2a (HIGH) — RequiresCompanyAccess must require an ACTIVE membership,
+    // not mere existence. userA is active in companyA (so passes CompanyContext
+    // via that header) but only SUSPENDED in companyC, the route-segment
+    // company — the suspended membership must NOT grant route-driven access.
+    public function test_account_purpose_route_refuses_a_suspended_company_membership(): void
+    {
+        $companyC = Company::create([
+            'tenant_id' => $this->tenantA->id,
+            'name' => 'Company C',
+            'legal_name' => 'Company C LLC',
+            'tax_id' => 'TAX-C-ACCT',
+            'country_code' => 'FR',
+            'locale' => 'fr_FR',
+            'timezone' => 'Europe/Paris',
+            'currency' => 'EUR',
+            'status' => CompanyStatus::Active,
+        ]);
+        UserCompanyMembership::create([
+            'user_id' => $this->userA->id,
+            'company_id' => $companyC->id,
+            'role' => 'admin',
+            'status' => MembershipStatus::Suspended->value,
+        ]);
+
+        $response = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->getJson("/api/v1/companies/{$companyC->id}/accounts/purposes");
+
+        $response->assertStatus(404);
     }
 
     public function test_account_purpose_validate_route_refuses_foreign_company(): void

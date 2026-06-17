@@ -125,9 +125,9 @@
   "madeToOrder": "حسب الطلب",
   "batch": "إنتاج دفعات",
   "stock": "مخزون",
-  "searchIngredient": "البحث عن مكوِّن...",
-  "searchComponent": "البحث عن مكوِّن...",
-  "searchCompositeItem": "البحث عن عنصر مركب...",
+  "searchIngredient": "البحث عن مكوِّن…",
+  "searchComponent": "البحث عن مكوِّن…",
+  "searchCompositeItem": "البحث عن عنصر مركب…",
   "noCompositeItemsFound": "لا توجد عناصر مركبة",
   "pricingMode": "نمط التسعير",
   "pricingModes": {

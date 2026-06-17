@@ -107,7 +107,7 @@
         "contact": "Contact",
         "review": "Récapitulatif"
       },
-      "loading": "Chargement des entreprises...",
+      "loading": "Chargement des entreprises…",
       "noCompaniesTitle": "Aucune entreprise trouvée",
       "noCompaniesMessage": "Vous n'avez accès à aucune entreprise. Veuillez contacter votre administrateur."
     },
@@ -348,7 +348,7 @@
     "maxDiscountPercent": "Pourcentage maximum de remise",
     "maxDiscountHelp": "Laisser vide pour aucune limite (la limite du terminal s'applique)",
     "save": "Enregistrer",
-    "saving": "Enregistrement...",
+    "saving": "Enregistrement…",
     "success": "Utilisateur modifié avec succès"
   },
   "admin": {

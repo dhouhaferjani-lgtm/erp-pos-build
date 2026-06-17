@@ -21,7 +21,7 @@ import {
   upsertPaymentMethods,
   upsertPaymentRepositories,
 } from '@/lib/db/repositories/paymentRepository';
-import { upsertOperators } from '@/lib/db/repositories/operatorPinRepository';
+import { upsertOperators, pruneOperatorsExcept } from '@/lib/db/repositories/operatorPinRepository';
 import Big from 'big.js';
 import {
   upsertTerminalState,
@@ -1025,6 +1025,17 @@ export async function pullOperatorPins(db: Database, terminalId: string): Promis
       `/pos/auth/pin-data?terminal_id=${encodeURIComponent(terminalId)}`,
     );
     await upsertOperators(db, operators);
+    // FU-1 — make this confirmed-full pull authoritative: delete any cached
+    // operator NOT in the response so a suspended-then-omitted manager can no
+    // longer approve offline overrides against a stale local PIN. Gate on a
+    // NON-EMPTY response only: a real terminal always returns at least the
+    // operator driving the sync, so an empty result is treated as
+    // non-authoritative and never prunes (which would otherwise wipe
+    // legitimately-offline operators). A failed pull throws before reaching
+    // here, so it never prunes either.
+    if (operators.length > 0) {
+      await pruneOperatorsExcept(db, operators.map((op) => op.id));
+    }
     await setSyncMetadata(db, 'operators_last_sync', new Date().toISOString());
     await logSyncOperation(db, 'pull', 'operators', null, 'success', `${operators.length} operators`);
     return operators.length;

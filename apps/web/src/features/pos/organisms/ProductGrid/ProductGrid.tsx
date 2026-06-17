@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { textColors, borderColors, focusRing } from '@/lib/designTokens'
 import { ProductCard, type Product } from '../../molecules'
 import { POSButton } from '../../atoms'
 import { Search, X, Package, ScanBarcode } from 'lucide-react'
@@ -103,8 +104,8 @@ export function ProductGrid({
     return (
       <div className={cn('flex items-center justify-center py-12', className)}>
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">{t('pos:products.loading')}</p>
+          <div className={cn('animate-spin rounded-full h-12 w-12 border-b-2 mx-auto mb-4', borderColors.primary)} />
+          <p className={textColors.tertiary}>{t('pos:products.loading')}</p>
         </div>
       </div>
     )
@@ -115,8 +116,8 @@ export function ProductGrid({
     return (
       <div className={cn('flex items-center justify-center py-12', className)}>
         <div className="text-center">
-          <Package className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-600 text-lg">{t('pos:products.empty')}</p>
+          <Package className={cn('w-16 h-16 mx-auto mb-4', textColors.disabled)} />
+          <p className={cn('text-lg', textColors.tertiary)}>{t('pos:products.empty')}</p>
         </div>
       </div>
     )
@@ -162,15 +163,17 @@ export function ProductGrid({
         {/* Search Bar */}
         {showSearch && (
           <div className="relative">
-            <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Search className={cn('absolute start-3 top-1/2 -translate-y-1/2 w-5 h-5', textColors.disabled)} />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); }}
               placeholder={t('pos:products.searchPlaceholder')}
               className={cn(
-                'w-full ps-10 pe-10 py-3 rounded-lg border border-gray-300',
-                'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500',
+                'w-full ps-10 pe-10 py-3 rounded-lg border',
+                borderColors.default,
+                'focus:outline-none focus:ring-2',
+                focusRing.primary,
                 touchOptimized && 'py-4 text-lg'
               )}
             />
@@ -180,7 +183,7 @@ export function ProductGrid({
                 className="absolute end-3 top-1/2 -translate-y-1/2"
                 aria-label={t('pos:products.clearSearch')}
               >
-                <X className="w-5 h-5 text-gray-400 hover:text-gray-600" />
+                <X className={cn('w-5 h-5', textColors.disabled, textColors.hoverSecondary)} />
               </button>
             )}
           </div>
@@ -209,7 +212,7 @@ export function ProductGrid({
 
         {/* Product Count */}
         {showProductCount && (
-          <div className="text-sm text-gray-600">
+          <div className={cn('text-sm', textColors.tertiary)}>
             {filteredProducts.length} {filteredProducts.length === 1 ? t('pos:products.product') : t('pos:products.productPlural')}
           </div>
         )}
@@ -219,9 +222,9 @@ export function ProductGrid({
       {filteredProducts.length === 0 ? (
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
-            <Package className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 text-lg">{t('pos:products.notFound')}</p>
-            <p className="text-gray-500 text-sm mt-2">
+            <Package className={cn('w-16 h-16 mx-auto mb-4', textColors.disabled)} />
+            <p className={cn('text-lg', textColors.tertiary)}>{t('pos:products.notFound')}</p>
+            <p className={cn('text-sm mt-2', textColors.tertiary)}>
               {t('pos:products.tryAdjusting')}
             </p>
           </div>

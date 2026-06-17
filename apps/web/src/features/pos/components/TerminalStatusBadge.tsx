@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { tokens } from '@/lib/designTokens'
 
 interface TerminalStatusBadgeProps {
   isActive: boolean
@@ -16,9 +17,7 @@ export function TerminalStatusBadge({ isActive, className }: TerminalStatusBadge
     <span
       className={cn(
         'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-        isActive
-          ? 'bg-green-100 text-green-800'
-          : 'bg-gray-100 text-gray-800',
+        isActive ? tokens.badge.green : tokens.badge.gray,
         className
       )}
     >

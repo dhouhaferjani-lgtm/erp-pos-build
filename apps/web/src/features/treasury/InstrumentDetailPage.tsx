@@ -18,6 +18,22 @@ import { api } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { cn } from '../../lib/utils'
+import { tokens, textColors } from '../../lib/designTokens'
+import { Button } from '../../components/atoms/Button/Button'
+import { Select } from '../../components/atoms/Select/Select'
+import { Textarea } from '../../components/atoms/Textarea/Textarea'
+import {
+  StatusBadge,
+  type StatusTone,
+} from '../../components/atoms/StatusBadge/StatusBadge'
+import { statusTone } from '../../components/atoms/StatusBadge/statusTone'
+import { PageHeader } from '../../components/molecules/PageHeader/PageHeader'
+import {
+  Modal,
+  ModalContent,
+  ModalFooter,
+} from '../../components/organisms/Modal/Modal'
 
 interface PaymentMethod {
   id: string
@@ -69,12 +85,17 @@ interface InstrumentResponse {
   data: InstrumentDetail
 }
 
-const statusColors: Record<InstrumentDetail['status'], string> = {
-  received: 'bg-yellow-100 text-yellow-800',
-  deposited: 'bg-blue-100 text-blue-800',
-  cleared: 'bg-green-100 text-green-800',
-  bounced: 'bg-red-100 text-red-800',
-  cancelled: 'bg-gray-100 text-gray-800',
+/**
+ * Maps instrument lifecycle statuses to semantic StatusBadge tones, preserving
+ * the prior color semantics (received=warning/yellow, deposited=info/blue,
+ * cleared=success/green, bounced=danger/red, cancelled=neutral/gray).
+ */
+const statusToneOverrides: Record<InstrumentDetail['status'], StatusTone> = {
+  received: 'warning',
+  deposited: 'info',
+  cleared: 'success',
+  bounced: 'danger',
+  cancelled: 'neutral',
 }
 
 const statusLabels: Record<InstrumentDetail['status'], string> = {
@@ -197,14 +218,14 @@ export function InstrumentDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-500">{t('common:status.loading')}</div>
+        <div className={textColors.tertiary}>{t('common:status.loading')}</div>
       </div>
     )
   }
 
   if (error || !instrument) {
     return (
-      <div className="rounded-lg bg-red-50 p-4 text-red-700">
+      <div className={cn(tokens.alert.base, tokens.alert.error)}>
         {t('common:errors.loadingFailed')}
       </div>
     )
@@ -213,111 +234,115 @@ export function InstrumentDetailPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link
-            to="/treasury/instruments"
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            {t('common:actions.back')}
-          </Link>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900">{instrument.reference}</h1>
-              <span
-                className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[instrument.status]}`}
-              >
-                {statusLabels[instrument.status]}
-              </span>
-            </div>
-            <p className="text-gray-500">
-              {instrument.payment_method?.name ?? 'Unknown Method'}
-            </p>
+      <PageHeader
+        title={instrument.reference}
+        subtitle={instrument.payment_method?.name ?? 'Unknown Method'}
+        breadcrumb={
+          <div className="flex items-center gap-3">
+            <Link
+              to="/treasury/instruments"
+              className={cn(
+                'inline-flex items-center gap-2 text-sm',
+                textColors.tertiary,
+                textColors.hoverPrimary,
+              )}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              {t('common:actions.back')}
+            </Link>
+            <StatusBadge
+              tone={statusTone(instrument.status, statusToneOverrides)}
+            >
+              {statusLabels[instrument.status]}
+            </StatusBadge>
           </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2">
-          {canDeposit && (
-            <button
-              onClick={() => { setShowDepositModal(true); }}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              <Landmark className="h-4 w-4" />
-              {t('treasury:instruments.deposit', 'Deposit')}
-            </button>
-          )}
-          {canTransfer && (
-            <button
-              onClick={() => { setShowTransferModal(true); }}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              <ArrowRightLeft className="h-4 w-4" />
-              {t('treasury:instruments.transfer', 'Transfer')}
-            </button>
-          )}
-          {canClear && (
-            <button
-              onClick={() => { clearMutation.mutate(); }}
-              disabled={clearMutation.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-            >
-              <CheckCircle className="h-4 w-4" />
-              {t('treasury:instruments.clear', 'Clear')}
-            </button>
-          )}
-          {canBounce && (
-            <button
-              onClick={() => { setShowBounceModal(true); }}
-              className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
-            >
-              <XCircle className="h-4 w-4" />
-              {t('treasury:instruments.bounce', 'Bounce')}
-            </button>
-          )}
-        </div>
-      </div>
+        }
+        actions={
+          <>
+            {canDeposit && (
+              <Button
+                variant="primary"
+                onClick={() => { setShowDepositModal(true); }}
+                className="gap-2"
+              >
+                <Landmark className="h-4 w-4" />
+                {t('treasury:instruments.deposit', 'Deposit')}
+              </Button>
+            )}
+            {canTransfer && (
+              <Button
+                variant="secondary"
+                onClick={() => { setShowTransferModal(true); }}
+                className="gap-2"
+              >
+                <ArrowRightLeft className="h-4 w-4" />
+                {t('treasury:instruments.transfer', 'Transfer')}
+              </Button>
+            )}
+            {canClear && (
+              <Button
+                variant="primary"
+                onClick={() => { clearMutation.mutate(); }}
+                disabled={clearMutation.isPending}
+                className="gap-2"
+              >
+                <CheckCircle className="h-4 w-4" />
+                {t('treasury:instruments.clear', 'Clear')}
+              </Button>
+            )}
+            {canBounce && (
+              <Button
+                variant="danger"
+                onClick={() => { setShowBounceModal(true); }}
+                className="gap-2"
+              >
+                <XCircle className="h-4 w-4" />
+                {t('treasury:instruments.bounce', 'Bounce')}
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {/* Main Info Card */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+      <div className={tokens.card.base}>
+        <h2 className={cn(tokens.heading.section, 'mb-4')}>
           {t('treasury:instruments.details', 'Instrument Details')}
         </h2>
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <dt className="text-sm text-gray-500 flex items-center gap-1">
+            <dt className={cn('flex items-center gap-1 text-sm', textColors.tertiary)}>
               <CreditCard className="h-4 w-4" />
               {t('treasury:instruments.amount', 'Amount')}
             </dt>
-            <dd className="mt-1 text-xl font-semibold text-gray-900">
+            <dd className={cn('mt-1 text-xl font-semibold tabular-nums', textColors.primary)}>
               {formatCurrency(instrument.amount, instrument.currency)}
             </dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-500 flex items-center gap-1">
+            <dt className={cn('flex items-center gap-1 text-sm', textColors.tertiary)}>
               <User className="h-4 w-4" />
               {t('treasury:instruments.partner', 'Partner')}
             </dt>
-            <dd className="mt-1 text-sm font-medium text-gray-900">
+            <dd className={cn('mt-1 text-sm font-medium', textColors.primary)}>
               {instrument.partner?.name ?? instrument.drawer_name ?? '-'}
             </dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-500 flex items-center gap-1">
+            <dt className={cn('flex items-center gap-1 text-sm', textColors.tertiary)}>
               <Calendar className="h-4 w-4" />
               {t('treasury:instruments.receivedDate', 'Received Date')}
             </dt>
-            <dd className="mt-1 text-sm font-medium text-gray-900">
+            <dd className={cn('mt-1 text-sm font-medium', textColors.primary)}>
               {formatDate(instrument.received_date)}
             </dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-500 flex items-center gap-1">
+            <dt className={cn('flex items-center gap-1 text-sm', textColors.tertiary)}>
               <Calendar className="h-4 w-4" />
               {t('treasury:instruments.maturityDate', 'Maturity Date')}
             </dt>
-            <dd className="mt-1 text-sm font-medium text-gray-900">
+            <dd className={cn('mt-1 text-sm font-medium', textColors.primary)}>
               {formatDate(instrument.maturity_date)}
             </dd>
           </div>
@@ -325,26 +350,26 @@ export function InstrumentDetailPage() {
       </div>
 
       {/* Location Card */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-          <MapPin className="h-5 w-5 text-gray-400" />
+      <div className={tokens.card.base}>
+        <h2 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
+          <MapPin className={cn('h-5 w-5', textColors.disabled)} />
           {t('treasury:instruments.location', 'Current Location')}
         </h2>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <dt className="text-sm text-gray-500">
+            <dt className={cn('text-sm', textColors.tertiary)}>
               {t('treasury:instruments.repository', 'Repository')}
             </dt>
-            <dd className="mt-1 text-sm font-medium text-gray-900">
+            <dd className={cn('mt-1 text-sm font-medium', textColors.primary)}>
               {instrument.repository?.name ?? '-'}
             </dd>
           </div>
           {instrument.deposited_to && (
             <div>
-              <dt className="text-sm text-gray-500">
+              <dt className={cn('text-sm', textColors.tertiary)}>
                 {t('treasury:instruments.depositedTo', 'Deposited To')}
               </dt>
-              <dd className="mt-1 text-sm font-medium text-gray-900">
+              <dd className={cn('mt-1 text-sm font-medium', textColors.primary)}>
                 {instrument.deposited_to.name}
               </dd>
             </div>
@@ -354,38 +379,38 @@ export function InstrumentDetailPage() {
 
       {/* Bank Information Card */}
       {(instrument.bank_name || instrument.bank_branch || instrument.bank_account) && (
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-gray-400" />
+        <div className={tokens.card.base}>
+          <h2 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
+            <Building2 className={cn('h-5 w-5', textColors.disabled)} />
             {t('treasury:instruments.bankInfo', 'Bank Information')}
           </h2>
           <dl className="grid gap-4 sm:grid-cols-3">
             {instrument.bank_name && (
               <div>
-                <dt className="text-sm text-gray-500">
+                <dt className={cn('text-sm', textColors.tertiary)}>
                   {t('treasury:instruments.bankName', 'Bank Name')}
                 </dt>
-                <dd className="mt-1 text-sm font-medium text-gray-900">
+                <dd className={cn('mt-1 text-sm font-medium', textColors.primary)}>
                   {instrument.bank_name}
                 </dd>
               </div>
             )}
             {instrument.bank_branch && (
               <div>
-                <dt className="text-sm text-gray-500">
+                <dt className={cn('text-sm', textColors.tertiary)}>
                   {t('treasury:instruments.bankBranch', 'Branch')}
                 </dt>
-                <dd className="mt-1 text-sm font-medium text-gray-900">
+                <dd className={cn('mt-1 text-sm font-medium', textColors.primary)}>
                   {instrument.bank_branch}
                 </dd>
               </div>
             )}
             {instrument.bank_account && (
               <div>
-                <dt className="text-sm text-gray-500">
+                <dt className={cn('text-sm', textColors.tertiary)}>
                   {t('treasury:instruments.bankAccount', 'Account Number')}
                 </dt>
-                <dd className="mt-1 text-sm font-medium text-gray-900 font-mono">
+                <dd className={cn('mt-1 font-mono text-sm font-medium', textColors.primary)}>
                   {instrument.bank_account}
                 </dd>
               </div>
@@ -395,20 +420,20 @@ export function InstrumentDetailPage() {
       )}
 
       {/* Timeline / History Card */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+      <div className={tokens.card.base}>
+        <h2 className={cn(tokens.heading.section, 'mb-4')}>
           {t('treasury:instruments.history', 'History')}
         </h2>
         <ul className="space-y-4">
           <li className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-yellow-100 flex items-center justify-center">
-              <CreditCard className="h-4 w-4 text-yellow-600" />
+            <div className={cn('flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full', tokens.badge.yellow)}>
+              <CreditCard className={cn('h-4 w-4', textColors.warningDark)} />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-900">
+              <p className={cn('text-sm font-medium', textColors.primary)}>
                 {t('treasury:instruments.received', 'Received')}
               </p>
-              <p className="text-xs text-gray-500">
+              <p className={cn('text-xs', textColors.tertiary)}>
                 {formatDateTime(instrument.received_date)}
               </p>
             </div>
@@ -416,14 +441,14 @@ export function InstrumentDetailPage() {
 
           {instrument.deposited_at && (
             <li className="flex items-start gap-3">
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                <Landmark className="h-4 w-4 text-blue-600" />
+              <div className={cn('flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full', tokens.badge.blue)}>
+                <Landmark className={cn('h-4 w-4', textColors.brand)} />
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-900">
+                <p className={cn('text-sm font-medium', textColors.primary)}>
                   {t('treasury:instruments.depositedTo', 'Deposited to')} {instrument.deposited_to?.name}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className={cn('text-xs', textColors.tertiary)}>
                   {formatDateTime(instrument.deposited_at)}
                 </p>
               </div>
@@ -432,14 +457,14 @@ export function InstrumentDetailPage() {
 
           {instrument.cleared_at && (
             <li className="flex items-start gap-3">
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                <CheckCircle className="h-4 w-4 text-green-600" />
+              <div className={cn('flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full', tokens.badge.green)}>
+                <CheckCircle className={cn('h-4 w-4', textColors.success)} />
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-900">
+                <p className={cn('text-sm font-medium', textColors.primary)}>
                   {t('treasury:instruments.cleared', 'Cleared')}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className={cn('text-xs', textColors.tertiary)}>
                   {formatDateTime(instrument.cleared_at)}
                 </p>
               </div>
@@ -448,18 +473,18 @@ export function InstrumentDetailPage() {
 
           {instrument.bounced_at && (
             <li className="flex items-start gap-3">
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
-                <XCircle className="h-4 w-4 text-red-600" />
+              <div className={cn('flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full', tokens.badge.red)}>
+                <XCircle className={cn('h-4 w-4', textColors.error)} />
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-900">
+                <p className={cn('text-sm font-medium', textColors.primary)}>
                   {t('treasury:instruments.bounced', 'Bounced')}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className={cn('text-xs', textColors.tertiary)}>
                   {formatDateTime(instrument.bounced_at)}
                 </p>
                 {instrument.bounce_reason && (
-                  <p className="mt-1 text-sm text-red-600">
+                  <p className={cn('mt-1 text-sm', textColors.error)}>
                     {instrument.bounce_reason}
                   </p>
                 )}
@@ -470,146 +495,143 @@ export function InstrumentDetailPage() {
       </div>
 
       {/* Deposit Modal */}
-      {showDepositModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-lg bg-white p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              {t('treasury:instruments.depositToBank', 'Deposit to Bank Account')}
-            </h3>
-            <div className="mb-4">
-              <label htmlFor="repository" className="block text-sm font-medium text-gray-700 mb-1">
-                {t('treasury:instruments.selectBankAccount', 'Select Bank Account')}
-              </label>
-              <select
-                id="repository"
-                value={selectedRepositoryId}
-                onChange={(e) => { setSelectedRepositoryId(e.target.value); }}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="">
-                  {t('common:fields.selectOption', 'Select...')}
+      <Modal
+        isOpen={showDepositModal}
+        onClose={() => { setShowDepositModal(false); }}
+        title={t('treasury:instruments.depositToBank', 'Deposit to Bank Account')}
+      >
+        <ModalContent>
+          <div>
+            <label htmlFor="repository" className={cn('mb-1 block', tokens.label.base)}>
+              {t('treasury:instruments.selectBankAccount', 'Select Bank Account')}
+            </label>
+            <Select
+              id="repository"
+              value={selectedRepositoryId}
+              onChange={(e) => { setSelectedRepositoryId(e.target.value); }}
+            >
+              <option value="">
+                {t('common:fields.selectOption', 'Select...')}
+              </option>
+              {bankAccounts.map((repo) => (
+                <option key={repo.id} value={repo.id}>
+                  {repo.name}
                 </option>
-                {bankAccounts.map((repo) => (
+              ))}
+            </Select>
+          </div>
+        </ModalContent>
+        <ModalFooter>
+          <Button
+            variant="secondary"
+            onClick={() => { setShowDepositModal(false); }}
+          >
+            {t('common:actions.cancel')}
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => { depositMutation.mutate(selectedRepositoryId); }}
+            disabled={!selectedRepositoryId || depositMutation.isPending}
+          >
+            {depositMutation.isPending
+              ? t('common:status.saving')
+              : t('treasury:instruments.deposit', 'Deposit')}
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Transfer Modal */}
+      <Modal
+        isOpen={showTransferModal}
+        onClose={() => { setShowTransferModal(false); }}
+        title={t('treasury:instruments.transferTo', 'Transfer to Repository')}
+      >
+        <ModalContent>
+          <div>
+            <label htmlFor="transfer-repository" className={cn('mb-1 block', tokens.label.base)}>
+              {t('treasury:instruments.selectRepository', 'Select Repository')}
+            </label>
+            <Select
+              id="transfer-repository"
+              value={selectedRepositoryId}
+              onChange={(e) => { setSelectedRepositoryId(e.target.value); }}
+            >
+              <option value="">
+                {t('common:fields.selectOption', 'Select...')}
+              </option>
+              {repositories
+                .filter((r) => r.id !== instrument.repository_id)
+                .map((repo) => (
                   <option key={repo.id} value={repo.id}>
                     {repo.name}
                   </option>
                 ))}
-              </select>
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => { setShowDepositModal(false); }}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                {t('common:actions.cancel')}
-              </button>
-              <button
-                onClick={() => { depositMutation.mutate(selectedRepositoryId); }}
-                disabled={!selectedRepositoryId || depositMutation.isPending}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                {depositMutation.isPending
-                  ? t('common:status.saving')
-                  : t('treasury:instruments.deposit', 'Deposit')}
-              </button>
-            </div>
+            </Select>
           </div>
-        </div>
-      )}
-
-      {/* Transfer Modal */}
-      {showTransferModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-lg bg-white p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              {t('treasury:instruments.transferTo', 'Transfer to Repository')}
-            </h3>
-            <div className="mb-4">
-              <label htmlFor="transfer-repository" className="block text-sm font-medium text-gray-700 mb-1">
-                {t('treasury:instruments.selectRepository', 'Select Repository')}
-              </label>
-              <select
-                id="transfer-repository"
-                value={selectedRepositoryId}
-                onChange={(e) => { setSelectedRepositoryId(e.target.value); }}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="">
-                  {t('common:fields.selectOption', 'Select...')}
-                </option>
-                {repositories
-                  .filter((r) => r.id !== instrument.repository_id)
-                  .map((repo) => (
-                    <option key={repo.id} value={repo.id}>
-                      {repo.name}
-                    </option>
-                  ))}
-              </select>
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => { setShowTransferModal(false); }}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                {t('common:actions.cancel')}
-              </button>
-              <button
-                onClick={() => { transferMutation.mutate(selectedRepositoryId); }}
-                disabled={!selectedRepositoryId || transferMutation.isPending}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                {transferMutation.isPending
-                  ? t('common:status.saving')
-                  : t('treasury:instruments.transfer', 'Transfer')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        </ModalContent>
+        <ModalFooter>
+          <Button
+            variant="secondary"
+            onClick={() => { setShowTransferModal(false); }}
+          >
+            {t('common:actions.cancel')}
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => { transferMutation.mutate(selectedRepositoryId); }}
+            disabled={!selectedRepositoryId || transferMutation.isPending}
+          >
+            {transferMutation.isPending
+              ? t('common:status.saving')
+              : t('treasury:instruments.transfer', 'Transfer')}
+          </Button>
+        </ModalFooter>
+      </Modal>
 
       {/* Bounce Modal */}
-      {showBounceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-lg bg-white p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              {t('treasury:instruments.markAsBounced', 'Mark as Bounced')}
-            </h3>
-            <div className="mb-4">
-              <label htmlFor="bounce-reason" className="block text-sm font-medium text-gray-700 mb-1">
-                {t('treasury:instruments.bounceReason', 'Reason (optional)')}
-              </label>
-              <textarea
-                id="bounce-reason"
-                value={bounceReason}
-                onChange={(e) => { setBounceReason(e.target.value); }}
-                rows={3}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder={t('treasury:instruments.bounceReasonPlaceholder', 'e.g., Insufficient funds')}
-              />
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowBounceModal(false)
-                  setBounceReason('')
-                }}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                {t('common:actions.cancel')}
-              </button>
-              <button
-                onClick={() => { bounceMutation.mutate(bounceReason); }}
-                disabled={bounceMutation.isPending}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-              >
-                {bounceMutation.isPending
-                  ? t('common:status.saving')
-                  : t('treasury:instruments.bounce', 'Bounce')}
-              </button>
-            </div>
+      <Modal
+        isOpen={showBounceModal}
+        onClose={() => {
+          setShowBounceModal(false)
+          setBounceReason('')
+        }}
+        title={t('treasury:instruments.markAsBounced', 'Mark as Bounced')}
+      >
+        <ModalContent>
+          <div>
+            <label htmlFor="bounce-reason" className={cn('mb-1 block', tokens.label.base)}>
+              {t('treasury:instruments.bounceReason', 'Reason (optional)')}
+            </label>
+            <Textarea
+              id="bounce-reason"
+              value={bounceReason}
+              onChange={(e) => { setBounceReason(e.target.value); }}
+              rows={3}
+              placeholder={t('treasury:instruments.bounceReasonPlaceholder', 'e.g., Insufficient funds')}
+            />
           </div>
-        </div>
-      )}
+        </ModalContent>
+        <ModalFooter>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowBounceModal(false)
+              setBounceReason('')
+            }}
+          >
+            {t('common:actions.cancel')}
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => { bounceMutation.mutate(bounceReason); }}
+            disabled={bounceMutation.isPending}
+          >
+            {bounceMutation.isPending
+              ? t('common:status.saving')
+              : t('treasury:instruments.bounce', 'Bounce')}
+          </Button>
+        </ModalFooter>
+      </Modal>
     </div>
   )
 }

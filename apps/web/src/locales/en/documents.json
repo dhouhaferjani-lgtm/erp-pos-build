@@ -15,7 +15,7 @@
       "placeholder": "e.g. 2.5h × 60/hr by mechanic John"
     },
     "variant": "Variant",
-    "variantLoading": "Loading variants...",
+    "variantLoading": "Loading variants…",
     "variantPlaceholder": "Select a variant"
   },
   "taxMention": {
@@ -34,7 +34,7 @@
     "title": "Attachments",
     "dropzone": "Drag and drop files here, or click to browse",
     "allowedTypes": "Allowed: {{types}} (max {{maxSize}}MB)",
-    "uploading": "Uploading...",
+    "uploading": "Uploading…",
     "noAttachments": "No attachments yet",
     "errors": {
       "fileTooLarge": "File exceeds maximum size of {{maxSize}}MB",
@@ -87,7 +87,7 @@
     },
     "additionalCosts": {
       "title": "Additional Costs",
-      "loading": "Loading costs...",
+      "loading": "Loading costs…",
       "total": "Total: {{amount}}",
       "costTypeLabel": "Cost Type",
       "amountLabel": "Amount",

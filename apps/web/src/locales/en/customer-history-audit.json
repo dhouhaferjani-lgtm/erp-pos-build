@@ -35,6 +35,6 @@
   "noResults": "No searches found",
   "empty": "No customer history searches match the selected filters.",
   "accessDenied": "Access denied — Manager or Admin role required.",
-  "loading": "Loading audit log...",
+  "loading": "Loading audit log…",
   "errorLoading": "Failed to load audit log. Please try again."
 }

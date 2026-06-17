@@ -2,7 +2,10 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router-dom'
 import { Plus } from 'lucide-react'
-import { borderColors, textColors, tokens } from '../../../lib/designTokens'
+import { Button } from '@/components/atoms/Button'
+import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal'
+import { borderColors, textColors } from '../../../lib/designTokens'
+import { cn } from '../../../lib/utils'
 import { useBundle, useDeleteBundleComponent } from '../hooks/useBundles'
 import { BundleForm } from '../components/organisms/BundleForm'
 import { BundleComponentRow } from '../components/molecules/BundleComponentRow'
@@ -51,17 +54,19 @@ export function BundleDetailPage() {
           <h2 className={`text-sm font-medium uppercase tracking-wide ${textColors.tertiary}`}>
             {t('detail.components', { count: bundle.components.length })}
           </h2>
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="sm"
             onClick={() => {
               setIsCreating(true)
             }}
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm} inline-flex items-center gap-1`}
+            className="gap-1"
             data-testid="bundle-add-component-btn"
           >
             <Plus className="h-4 w-4" aria-hidden />
             {t('authoring.detail.addComponent')}
-          </button>
+          </Button>
         </div>
         {bundle.components.length === 0 ? (
           <p className={`text-sm ${textColors.tertiary}`}>{t('detail.emptyComponents')}</p>
@@ -119,48 +124,50 @@ export function BundleDetailPage() {
       ) : null}
 
       {deletingComponent !== null ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50"
-          data-testid="bundle-delete-confirm"
+        <Modal
+          isOpen
+          onClose={() => {
+            setDeletingId(null)
+          }}
+          title={t('authoring.deleteConfirm.title')}
+          size="sm"
         >
-          <div
-            className="relative mx-4 rounded-xl bg-white p-6 shadow-xl"
-            style={{ width: '420px', maxWidth: '100%' }}
-          >
-            <h3 className={`text-base font-semibold ${textColors.primary}`}>
-              {t('authoring.deleteConfirm.title')}
-            </h3>
-            <p className={`mt-2 text-sm ${textColors.secondary}`}>
-              {t('authoring.deleteConfirm.body')}
-            </p>
-            <div className={`mt-4 flex items-center justify-end gap-2 border-t ${borderColors.light} pt-4`}>
-              <button
-                type="button"
-                onClick={() => {
-                  setDeletingId(null)
-                }}
-                className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
-              >
-                {t('authoring.deleteConfirm.cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  deleteComponent.mutate(deletingComponent.id, {
-                    onSuccess: () => {
-                      setDeletingId(null)
-                    },
-                  })
-                }}
-                disabled={deleteComponent.isPending}
-                className={`${tokens.button.base} ${tokens.button.danger} ${tokens.button.sizes.sm}`}
-                data-testid="bundle-delete-confirm-btn"
-              >
-                {t('authoring.deleteConfirm.confirm')}
-              </button>
+          <ModalContent>
+            <div data-testid="bundle-delete-confirm">
+              <p className={cn('text-sm', textColors.secondary)}>
+                {t('authoring.deleteConfirm.body')}
+              </p>
             </div>
-          </div>
-        </div>
+          </ModalContent>
+          <ModalFooter className={cn('border-t pt-4', borderColors.light)}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setDeletingId(null)
+              }}
+            >
+              {t('authoring.deleteConfirm.cancel')}
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              onClick={() => {
+                deleteComponent.mutate(deletingComponent.id, {
+                  onSuccess: () => {
+                    setDeletingId(null)
+                  },
+                })
+              }}
+              disabled={deleteComponent.isPending}
+              data-testid="bundle-delete-confirm-btn"
+            >
+              {t('authoring.deleteConfirm.confirm')}
+            </Button>
+          </ModalFooter>
+        </Modal>
       ) : null}
     </div>
   )
