@@ -6,6 +6,7 @@ namespace App\Modules\Catalog\Providers;
 
 use App\Modules\Catalog\Application\Queries\CatalogMediaQuery;
 use App\Modules\Catalog\Application\Services\CompositeItemImportService;
+use App\Modules\Catalog\Application\Services\PosVariantFeedService;
 use App\Modules\Catalog\Domain\Contracts\MediaAssetRepositoryInterface;
 use App\Modules\Catalog\Domain\Contracts\MediaAttachmentRepositoryInterface;
 use App\Modules\Catalog\Domain\Contracts\MediaStorageInterface;
@@ -27,6 +28,7 @@ use App\Modules\Catalog\Infrastructure\Storage\MediaStorageAdapter;
 use App\Modules\POS\Infrastructure\Broadcasting\CatalogModelObserver;
 use App\Shared\Contracts\CatalogMediaQueryInterface;
 use App\Shared\Contracts\CompositeItemServiceInterface;
+use App\Shared\Contracts\PosVariantFeedReader;
 use App\Shared\Contracts\ProductVariantLookup;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
@@ -40,6 +42,7 @@ class CatalogServiceProvider extends ServiceProvider
         $this->app->bind(AttributeValueRepository::class, EloquentAttributeValueRepository::class);
         $this->app->bind(ProductVariantRepository::class, EloquentProductVariantRepository::class);
         $this->app->bind(ProductVariantLookup::class, EloquentProductVariantLookup::class);
+        $this->app->bind(PosVariantFeedReader::class, PosVariantFeedService::class);
         $this->app->bind(MediaAttachmentRepositoryInterface::class, EloquentMediaAttachmentRepository::class);
         $this->app->bind(MediaAssetRepositoryInterface::class, EloquentMediaAssetRepository::class);
         $this->app->bind(CatalogMediaQueryInterface::class, CatalogMediaQuery::class);

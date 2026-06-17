@@ -353,7 +353,8 @@
     "empty": "Aucune variante disponible",
     "loadError": "Impossible de charger les variantes",
     "inStock": "{{count}} en stock",
-    "outOfStock": "Rupture de stock"
+    "outOfStock": "Rupture de stock",
+    "offlineNoCache": "Connectez-vous pour charger les variantes"
   },
   "reports": {
     "title": "Rapports",

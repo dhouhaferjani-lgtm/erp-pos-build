@@ -69,7 +69,7 @@ describe('VariantPickerModal', () => {
   });
 
   it('renders nothing when no product is given', () => {
-    useProductVariantsMock.mockReturnValue({ data: undefined, isLoading: false, isError: false });
+    useProductVariantsMock.mockReturnValue({ variants: [], isLoading: false, status: 'idle' });
     const { container } = render(
       <VariantPickerModal isOpen product={null} onClose={vi.fn()} onConfirm={vi.fn()} />,
     );
@@ -77,7 +77,7 @@ describe('VariantPickerModal', () => {
   });
 
   it('shows a loading state while fetching', () => {
-    useProductVariantsMock.mockReturnValue({ data: undefined, isLoading: true, isError: false });
+    useProductVariantsMock.mockReturnValue({ variants: [], isLoading: true, status: 'loading' });
     render(
       <VariantPickerModal
         isOpen
@@ -90,7 +90,7 @@ describe('VariantPickerModal', () => {
   });
 
   it('shows an error state when the fetch fails', () => {
-    useProductVariantsMock.mockReturnValue({ data: undefined, isLoading: false, isError: true });
+    useProductVariantsMock.mockReturnValue({ variants: [], isLoading: false, status: 'error' });
     render(
       <VariantPickerModal
         isOpen
@@ -102,12 +102,25 @@ describe('VariantPickerModal', () => {
     expect(screen.getByText('variants.loadError')).toBeTruthy();
   });
 
+  it('shows an offline-no-cache state when offline with no local data', () => {
+    useProductVariantsMock.mockReturnValue({ variants: [], isLoading: false, status: 'offline-empty' });
+    render(
+      <VariantPickerModal
+        isOpen
+        product={makeProduct({ id: 'prod-1', name: 'Shoe', has_variants: true })}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('variants.offlineNoCache')).toBeTruthy();
+  });
+
   it('confirms with the selected variant', () => {
     const onConfirm = vi.fn();
     useProductVariantsMock.mockReturnValue({
-      data: [makeVariant({ id: 'var-1', name_suffix: ' — 39', stock_quantity: 7 })],
+      variants: [makeVariant({ id: 'var-1', name_suffix: ' — 39', stock_quantity: 7 })],
       isLoading: false,
-      isError: false,
+      status: 'local',
     });
 
     render(
@@ -130,9 +143,9 @@ describe('VariantPickerModal', () => {
 
   it('disables the confirm button until a variant is selected', () => {
     useProductVariantsMock.mockReturnValue({
-      data: [makeVariant({ id: 'var-1', name_suffix: ' — 39', stock_quantity: 7 })],
+      variants: [makeVariant({ id: 'var-1', name_suffix: ' — 39', stock_quantity: 7 })],
       isLoading: false,
-      isError: false,
+      status: 'local',
     });
 
     render(

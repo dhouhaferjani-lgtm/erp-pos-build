@@ -26,13 +26,13 @@ interface Props {
 export function CrossLocationStockSection({ product, canView, currentLocationId }: Props) {
   const { t } = useTranslation('pos');
   const hasVariants = product.has_variants === true;
-  const { data: variants } = useProductVariants(hasVariants && canView ? product.id : null);
+  const { variants } = useProductVariants(hasVariants && canView ? product.id : null);
   const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
 
   const variantId = useMemo(() => {
     if (!hasVariants) return null;
     if (selectedVariant) return selectedVariant;
-    const def = variants?.find((v) => v.is_default) ?? variants?.[0];
+    const def = variants.find((v) => v.is_default) ?? variants[0];
     return def?.id ?? null;
   }, [hasVariants, selectedVariant, variants]);
 
@@ -71,7 +71,7 @@ export function CrossLocationStockSection({ product, canView, currentLocationId 
           value={variantId ?? ''}
           onChange={(e) => setSelectedVariant(e.target.value)}
         >
-          {(variants ?? []).map((v) => (
+          {variants.map((v) => (
             <option key={v.id} value={v.id}>
               {product.name}
               {v.name_suffix}

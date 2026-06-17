@@ -17,6 +17,17 @@ const COMPARE_FIELDS: (keyof POSProduct)[] = [
   // chooser-row category label and ID-based dedupe disabled for the
   // refreshed product until another visible field changes.
   'menu_category_id', 'sellable_id',
+  // HIGH-2 fix: include has_variants so diffProducts detects when the
+  // server-authoritative flag flips on an existing product. Without
+  // this, a variant product already in the in-memory catalog would
+  // never be updated (productEquals returns true) and tile-tap/scan
+  // would read the stale has_variants=false value, bypassing the
+  // VariantPickerModal entirely.
+  'has_variants',
+  // v51 migration: include is_physical so a product flipping
+  // is_physical true↔false is re-projected into the in-memory catalog;
+  // without this, stock enforcement would read the stale flag value.
+  'is_physical',
 ];
 
 function productEquals(a: POSProduct, b: POSProduct): boolean {

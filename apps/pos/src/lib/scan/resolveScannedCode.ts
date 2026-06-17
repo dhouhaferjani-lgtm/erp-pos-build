@@ -43,11 +43,13 @@
  * rejection.
  */
 import type Database from '@tauri-apps/plugin-sql';
-import type { POSProduct } from '@/types/product';
+import type { POSProduct, POSProductVariant } from '@/types/product';
 import {
   getProductsByBarcode,
+  getProductById,
   upsertProducts,
 } from '@/lib/db/repositories/productRepository';
+import { getVariantByBarcode } from '@/lib/db/repositories/variantRepository';
 import { fetchProductByBarcode } from '@/api/productApi';
 import { serializeErrorForLog } from '@/lib/errorLogging';
 import { getCachedScan, setCachedScan } from './scanResolutionCache';
@@ -63,6 +65,7 @@ const MIN_SCAN_CODE_LENGTH = 2;
 
 export type ResolveScannedCodeResult =
   | { kind: 'hit'; product: POSProduct }
+  | { kind: 'variant-hit'; product: POSProduct; variant: POSProductVariant }
   | { kind: 'choose'; candidates: POSProduct[] }
   | { kind: 'miss' };
 
@@ -123,9 +126,32 @@ export async function resolveScannedCode(
     return { kind: 'choose', candidates: inMemoryMatches };
   }
 
-  // Tier 2 — SQLite. `getProductsByBarcode` (plural) returns every
-  // match; same multi-match handling as Tier 1.
+  // Tier 2 — SQLite. Variant-barcode lookup runs first within this tier
+  // so a variant barcode short-circuits before the product-barcode scan.
+  // Variant-hits are NOT written to the Tier 0 LRU (the LRU stores
+  // POSProduct only; caching here would lose the variant on the next repeat
+  // scan). If the variant's parent product is not in the in-memory snapshot,
+  // we fall back to a SQLite getProductById lookup. If the parent is still
+  // not found (not yet synced), we fall through to the existing product tiers
+  // rather than crashing.
+  //
+  // `getProductsByBarcode` (plural) returns every match for the product-
+  // barcode sub-tier; same multi-match handling as Tier 1.
   try {
+    const variant = await getVariantByBarcode(deps.db, code);
+    if (variant) {
+      const product =
+        deps.products.find((p) => p.id === variant.product_id) ??
+        (await getProductById(deps.db, variant.product_id));
+      if (product) {
+        // Do NOT cache variant-hits via setCachedScan — the LRU entry stores
+        // POSProduct only; a repeat scan of the same variant barcode must
+        // still surface the variant.
+        return { kind: 'variant-hit', product, variant };
+      }
+      // Parent product not yet synced → fall through to the product tiers below.
+    }
+
     const sqliteMatches = await getProductsByBarcode(deps.db, code);
     if (sqliteMatches.length === 1) {
       const product = sqliteMatches[0]!;

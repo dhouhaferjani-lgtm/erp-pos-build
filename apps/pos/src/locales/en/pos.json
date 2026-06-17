@@ -353,7 +353,8 @@
     "empty": "No variants available",
     "loadError": "Could not load variants",
     "inStock": "{{count}} in stock",
-    "outOfStock": "Out of stock"
+    "outOfStock": "Out of stock",
+    "offlineNoCache": "Connect to load variants"
   },
   "reports": {
     "title": "Reports",

@@ -65,7 +65,6 @@ vi.mock('@/api/reportApi', () => ({
 }));
 vi.mock('@/api/fraudSettingsApi', () => ({ fetchFraudSettings: vi.fn().mockResolvedValue({}) }));
 vi.mock('@/api/managersApi', () => ({ fetchAuthorizedManagers: vi.fn().mockResolvedValue([]) }));
-vi.mock('@/api/managerPinApi', () => ({ verifyManagerPin: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 // Store mocks
