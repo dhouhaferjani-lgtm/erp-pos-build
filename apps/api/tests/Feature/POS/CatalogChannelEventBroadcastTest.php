@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Enums\Vertical;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\Modifier;
 use App\Modules\Catalog\Domain\Entities\ModifierGroup;
@@ -71,7 +72,7 @@ final class CatalogChannelEventBroadcastTest extends TestCase
     {
         Event::fake([CatalogChannelEvent::class]);
 
-        $tenant = Tenant::factory()->create();
+        $tenant = Tenant::factory()->create(['vertical' => Vertical::Restaurant, 'enabled_extras' => ['Inventory']]);
         $company = Company::factory()->create(['tenant_id' => $tenant->id]);
 
         $product = Product::factory()->create([
@@ -89,7 +90,7 @@ final class CatalogChannelEventBroadcastTest extends TestCase
 
     public function test_product_delete_dispatches_catalog_channel_event(): void
     {
-        $tenant = Tenant::factory()->create();
+        $tenant = Tenant::factory()->create(['vertical' => Vertical::Restaurant, 'enabled_extras' => ['Inventory']]);
         $company = Company::factory()->create(['tenant_id' => $tenant->id]);
 
         $product = Product::factory()->create([
@@ -113,7 +114,7 @@ final class CatalogChannelEventBroadcastTest extends TestCase
     {
         Event::fake([CatalogChannelEvent::class]);
 
-        $tenant = Tenant::factory()->create();
+        $tenant = Tenant::factory()->create(['vertical' => Vertical::Restaurant, 'enabled_extras' => ['Inventory']]);
         $company = Company::factory()->create(['tenant_id' => $tenant->id]);
 
         Menu::create([
@@ -133,7 +134,7 @@ final class CatalogChannelEventBroadcastTest extends TestCase
 
     public function test_menu_category_save_dispatches_catalog_channel_event_with_resolved_tenant(): void
     {
-        $tenant = Tenant::factory()->create();
+        $tenant = Tenant::factory()->create(['vertical' => Vertical::Restaurant, 'enabled_extras' => ['Inventory']]);
         $company = Company::factory()->create(['tenant_id' => $tenant->id]);
         $menu = Menu::create([
             'tenant_id' => $tenant->id,
@@ -204,7 +205,7 @@ final class CatalogChannelEventBroadcastTest extends TestCase
         // must trigger catalog.changed too.
         Event::fake([CatalogChannelEvent::class]);
 
-        $tenant = Tenant::factory()->create();
+        $tenant = Tenant::factory()->create(['vertical' => Vertical::Restaurant, 'enabled_extras' => ['Inventory']]);
         $company = Company::factory()->create(['tenant_id' => $tenant->id]);
 
         CompositeItem::create([
@@ -229,7 +230,7 @@ final class CatalogChannelEventBroadcastTest extends TestCase
         // active-menu payload via composite items' modifier groups.
         Event::fake([CatalogChannelEvent::class]);
 
-        $tenant = Tenant::factory()->create();
+        $tenant = Tenant::factory()->create(['vertical' => Vertical::Restaurant, 'enabled_extras' => ['Inventory']]);
         $company = Company::factory()->create(['tenant_id' => $tenant->id]);
 
         ModifierGroup::create([
@@ -253,7 +254,7 @@ final class CatalogChannelEventBroadcastTest extends TestCase
         // Codex r3 P2 closure — Modifier rows are relation-resolved via
         // ModifierGroup. Event::listen subscription extracts the parent
         // group's tenant + company before broadcasting.
-        $tenant = Tenant::factory()->create();
+        $tenant = Tenant::factory()->create(['vertical' => Vertical::Restaurant, 'enabled_extras' => ['Inventory']]);
         $company = Company::factory()->create(['tenant_id' => $tenant->id]);
         $group = ModifierGroup::create([
             'tenant_id' => $tenant->id,
@@ -314,7 +315,7 @@ final class CatalogChannelEventBroadcastTest extends TestCase
         // doesn't fire model events on either side, so the observer
         // never sees the change. The controller now broadcasts
         // explicitly after the pivot write.
-        $tenant = Tenant::factory()->create();
+        $tenant = Tenant::factory()->create(['vertical' => Vertical::Restaurant, 'enabled_extras' => ['Inventory']]);
         $company = Company::factory()->create(['tenant_id' => $tenant->id]);
         $user = User::factory()->create(['tenant_id' => $tenant->id]);
         UserCompanyMembership::create([
@@ -364,7 +365,7 @@ final class CatalogChannelEventBroadcastTest extends TestCase
 
     public function test_modifier_group_remove_endpoint_dispatches_catalog_channel_event_despite_pivot_write(): void
     {
-        $tenant = Tenant::factory()->create();
+        $tenant = Tenant::factory()->create(['vertical' => Vertical::Restaurant, 'enabled_extras' => ['Inventory']]);
         $company = Company::factory()->create(['tenant_id' => $tenant->id]);
         $user = User::factory()->create(['tenant_id' => $tenant->id]);
         UserCompanyMembership::create([
@@ -415,7 +416,7 @@ final class CatalogChannelEventBroadcastTest extends TestCase
      */
     private function scaffoldMenuStack(): array
     {
-        $tenant = Tenant::factory()->create();
+        $tenant = Tenant::factory()->create(['vertical' => Vertical::Restaurant, 'enabled_extras' => ['Inventory']]);
         $company = Company::factory()->create(['tenant_id' => $tenant->id]);
         $user = User::factory()->create(['tenant_id' => $tenant->id]);
         UserCompanyMembership::create([

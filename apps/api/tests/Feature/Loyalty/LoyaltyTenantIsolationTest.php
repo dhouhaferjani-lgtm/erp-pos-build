@@ -115,12 +115,14 @@ final class LoyaltyTenantIsolationTest extends TestCase
             'slug' => 'tenant-a-loyalty-iso',
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
+            'enabled_extras' => ['Loyalty'],
         ]);
         $this->tenantB = Tenant::create([
             'name' => 'Tenant B',
             'slug' => 'tenant-b-loyalty-iso',
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
+            'enabled_extras' => ['Loyalty'],
         ]);
 
         $this->companyA = Company::create([
