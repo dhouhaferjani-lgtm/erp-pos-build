@@ -119,6 +119,7 @@ export const PERMISSIONS = {
   'catalog.variants.create': ['admin', 'manager'],
   'catalog.variants.update': ['admin', 'manager'],
   'catalog.variants.delete': ['admin'],
+  'catalog.labels.print': ['admin', 'manager'],
 
   // Workshop Service Bundles
   'workshop-bundles.view': ['admin', 'manager', 'technician'],
