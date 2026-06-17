@@ -337,7 +337,7 @@ return [
         'label' => 'Parapharmacy',
         'description' => 'Health and wellness retail',
         'product' => 'izipos',
-        'compatible_extras' => ['BatchExpiry', 'Loyalty', 'Ecommerce', 'CompositeItems'],
+        'compatible_extras' => ['Loyalty', 'Ecommerce', 'CompositeItems'],
         'product_defaults' => [
             'requires_batch_tracking' => true,
         ],
@@ -350,6 +350,9 @@ return [
             'Inventory',
             'Treasury',
             'Accounting',
+            // Parapharmacy products are expiry-tracked (requires_batch_tracking),
+            // so batch/expiry management is a default capability, not an upgrade.
+            'BatchExpiry',
             'Parapharmacy',
         ],
     ],

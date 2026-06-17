@@ -102,4 +102,17 @@ final class BatchExpiryModuleAccessControlTest extends TestCase
 
         $response->assertSuccessful();
     }
+
+    /** @test */
+    public function the_parapharmacy_vertical_can_reach_batch_routes(): void
+    {
+        // Parapharmacy products are batch/expiry-tracked (requires_batch_tracking
+        // = true), so the vertical must include BatchExpiry as a default module.
+        $ctx = $this->makeContext(Vertical::Parapharmacy, 'parapharmacy-batch');
+
+        $response = $this->actingAs($ctx['user'], 'sanctum')
+            ->getJson('/api/v1/batches');
+
+        $response->assertSuccessful();
+    }
 }
