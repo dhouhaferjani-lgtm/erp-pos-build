@@ -1461,6 +1461,7 @@ export function HomePage() {
         paymentRepositories={paymentRepositories}
         onComplete={handleAdvancedComplete}
         onChargeToAccount={handleChargeToAccount}
+        approvalContext={approvalContext}
         isProcessing={isProcessing}
         error={paymentError}
         voucherDb={voucherDb}

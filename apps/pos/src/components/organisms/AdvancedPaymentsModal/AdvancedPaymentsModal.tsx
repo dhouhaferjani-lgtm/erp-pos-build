@@ -25,6 +25,7 @@ import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import { usePaymentStore, type AdvancedPaymentLine } from '@/stores/paymentStore';
 import { useAuthStore } from '@/stores/authStore';
 import type { AccountChargeOverrideApprovalInput } from '@/lib/accountCharge/accountChargeService';
+import type { PosOverrideContext } from '@/lib/operatorApproval/posOverrideAuthoring';
 
 const METHOD_ICONS: Record<string, typeof Banknote> = {
   CASH: Banknote,
@@ -109,6 +110,12 @@ export interface AdvancedPaymentsModalProps {
   onChargeToAccount?: (
     overrideApproval?: AccountChargeOverrideApprovalInput | null,
   ) => Promise<void>;
+  /**
+   * Scoped-approval context forwarded to AccountChargeConfirmation so the
+   * credit-limit / account-status manager override verifies through the
+   * canonical scoped (audited) path. Built once by HomePage.
+   */
+  approvalContext?: PosOverrideContext;
 }
 
 export function AdvancedPaymentsModal({
@@ -122,6 +129,7 @@ export function AdvancedPaymentsModal({
   error,
   voucherDb = null,
   onChargeToAccount,
+  approvalContext,
 }: AdvancedPaymentsModalProps) {
   const { t } = useTranslation('pos');
   const { format, decimals, currency } = useCurrency();
@@ -680,6 +688,7 @@ export function AdvancedPaymentsModal({
               total={bcformat(String(total), decimals)}
               currency={currency}
               cashierUserId={cashierUserId}
+              approvalContext={approvalContext}
               isProcessing={isProcessing}
               onCancel={() => setAccountChargeMode(false)}
               onConfirm={async (o) => {

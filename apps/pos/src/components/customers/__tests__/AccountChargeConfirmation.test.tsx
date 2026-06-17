@@ -15,9 +15,18 @@ vi.mock('@/api/managersApi', () => ({
   fetchAuthorizedManagers: vi.fn().mockResolvedValue([{ id: 'm1', name: 'Mgr' }]),
 }));
 
-vi.mock('@/api/managerPinApi', () => ({
-  verifyManagerPin: vi.fn().mockResolvedValue({ valid: true }),
+vi.mock('@/lib/operatorApproval/scopedManagerPin', () => ({
+  verifyScopedManagerPin: vi.fn().mockResolvedValue({ id: 'm1', name: 'Mgr', roles: [] }),
 }));
+
+const APPROVAL_CONTEXT = {
+  tenantId: 'tenant-1',
+  companyId: 'company-1',
+  terminalId: 'terminal-1',
+  cashierUserId: 'c1',
+  businessDate: '2026-06-04',
+  isTraining: false,
+};
 
 let currentCustomer: AttachedCheckoutCustomer | null = null;
 
@@ -27,6 +36,7 @@ vi.mock('@/stores/paymentStore', () => ({
 }));
 
 import { AccountChargeConfirmation } from '../AccountChargeConfirmation';
+import { verifyScopedManagerPin } from '@/lib/operatorApproval/scopedManagerPin';
 
 const FIXED_NOW = new Date('2026-06-04T12:00:00.000Z');
 
@@ -94,6 +104,7 @@ describe('AccountChargeConfirmation', () => {
         total="119.000"
         currency="TND"
         cashierUserId="c1"
+        approvalContext={APPROVAL_CONTEXT}
         onConfirm={onConfirm}
         onCancel={vi.fn()}
         isProcessing={false}
@@ -133,6 +144,17 @@ describe('AccountChargeConfirmation', () => {
     expect(override.reasonCode).toBe('credit_limit_exceeded');
     expect(override.supervisorUserId).toBe('m1');
     expect(override.supervisorUserSnapshot).toEqual({ name: 'Mgr' });
+
+    // The override must go through the canonical scoped (audited, online-confirm
+    // + offline-fallback) path — not the divergent {user_id,pin}-only endpoint.
+    expect(vi.mocked(verifyScopedManagerPin)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pin: '1234',
+        context: APPROVAL_CONTEXT,
+        approvalScope: 'credit_limit_override',
+        targetOperatorId: 'm1',
+      }),
+    );
   });
 
   it('invalidates a captured override when the charge amount changes', async () => {
@@ -144,6 +166,7 @@ describe('AccountChargeConfirmation', () => {
         total="119.000"
         currency="TND"
         cashierUserId="c1"
+        approvalContext={APPROVAL_CONTEXT}
         onConfirm={onConfirm}
         onCancel={vi.fn()}
         isProcessing={false}
@@ -172,6 +195,7 @@ describe('AccountChargeConfirmation', () => {
         total="500.000"
         currency="TND"
         cashierUserId="c1"
+        approvalContext={APPROVAL_CONTEXT}
         onConfirm={onConfirm}
         onCancel={vi.fn()}
         isProcessing={false}

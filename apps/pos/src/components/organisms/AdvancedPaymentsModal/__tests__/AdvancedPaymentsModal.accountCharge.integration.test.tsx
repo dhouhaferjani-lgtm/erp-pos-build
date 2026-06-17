@@ -56,8 +56,8 @@ vi.mock('@/lib/currency', async () => {
 vi.mock('@/api/managersApi', () => ({
   fetchAuthorizedManagers: vi.fn().mockResolvedValue([{ id: 'm1', name: 'Mgr' }]),
 }));
-vi.mock('@/api/managerPinApi', () => ({
-  verifyManagerPin: vi.fn().mockResolvedValue({ valid: true }),
+vi.mock('@/lib/operatorApproval/scopedManagerPin', () => ({
+  verifyScopedManagerPin: vi.fn().mockResolvedValue({ id: 'm1', name: 'Mgr', roles: [] }),
 }));
 
 // VoucherTenderModal pulls heavier deps; the account-charge path never opens it.

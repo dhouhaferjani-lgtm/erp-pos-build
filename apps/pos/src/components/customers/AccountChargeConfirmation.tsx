@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePaymentStore } from '@/stores/paymentStore';
 import { formatCurrency, getCurrencyDecimals } from '@/lib/currency';
@@ -10,7 +10,19 @@ import {
 import type { AccountChargeOverrideApprovalInput } from '@/lib/accountCharge/accountChargeService';
 import { ManagerPinPanel } from '@/components/pos/molecules/ManagerPinPanel';
 import { fetchAuthorizedManagers, type AuthorizedManager } from '@/api/managersApi';
-import { verifyManagerPin } from '@/api/managerPinApi';
+import { verifyScopedManagerPin } from '@/lib/operatorApproval/scopedManagerPin';
+import type { ApprovalScope } from '@/lib/operatorApproval/approvalVerifier';
+import type { PosOverrideContext } from '@/lib/operatorApproval/posOverrideAuthoring';
+
+// Maps each overridable account-charge scope to a stable target_event_type for
+// the scoped manager-PIN audit trail (server validates a 2–64 char string).
+const OVERRIDE_EVENT_TYPE: Record<
+  'credit_limit_override' | 'account_status_override',
+  string
+> = {
+  credit_limit_override: 'ACCOUNT_CHARGE_CREDIT_LIMIT_OVERRIDE',
+  account_status_override: 'ACCOUNT_CHARGE_ACCOUNT_STATUS_OVERRIDE',
+};
 
 const OVERRIDE_SCOPE: Partial<
   Record<AccountChargeRejectionCode, AccountChargeOverrideApprovalInput['approvalScope']>
@@ -50,6 +62,12 @@ export interface AccountChargeConfirmationProps {
   total: string;
   currency: string;
   cashierUserId: string;
+  /**
+   * Scoped-approval context (tenant/company/terminal/cashier) for the manager
+   * override. Threaded from HomePage; when absent the override cannot be
+   * authorized (the adapter fails closed).
+   */
+  approvalContext?: PosOverrideContext;
   onConfirm: (overrideApproval: AccountChargeOverrideApprovalInput | null) => Promise<void>;
   onCancel: () => void;
   isProcessing: boolean;
@@ -125,11 +143,46 @@ export function AccountChargeConfirmation(props: AccountChargeConfirmationProps)
 
   const confirmable = decision?.ok === true || override !== null;
 
+  // One target_reference_id per override attempt, shared between the scoped
+  // verification (its audit anchor) and the captured override's approvalId so
+  // the two correlate. Regenerated whenever the panel re-mounts for a new scope.
+  const targetReferenceIdRef = useRef<string>(crypto.randomUUID());
+
+  // Verify the selected manager's PIN through the canonical scoped path
+  // (online-confirm → offline-fallback → audited), adapted to the
+  // ManagerPinPanel's `(userId, pin) => { valid }` contract. Replaces the
+  // divergent `{user_id, pin}`-only endpoint, which the server rejected (422)
+  // for missing scoped fields — leaving this override unusable.
+  const verifyOverridePin = useCallback(
+    async (managerUserId: string, pin: string): Promise<{ valid: boolean }> => {
+      if (!overridableScope || !rejection || !props.approvalContext) {
+        return { valid: false };
+      }
+      try {
+        await verifyScopedManagerPin({
+          pin,
+          context: props.approvalContext,
+          approvalScope: overridableScope as ApprovalScope,
+          targetEventType: OVERRIDE_EVENT_TYPE[overridableScope],
+          targetReferenceId: targetReferenceIdRef.current,
+          reason: `Account charge override (${rejection})`,
+          targetOperatorId: managerUserId,
+        });
+        return { valid: true };
+      } catch {
+        // Any failure (rejection / unreachable / stale) fails closed — the panel
+        // surfaces it as an invalid attempt and applies its throttle.
+        return { valid: false };
+      }
+    },
+    [overridableScope, rejection, props.approvalContext],
+  );
+
   const handlePinSuccess = (supervisorUserId: string, supervisorName: string): void => {
     if (!overridableScope || !rejection) return;
     const at = now();
     setOverride({
-      approvalId: crypto.randomUUID(),
+      approvalId: targetReferenceIdRef.current,
       approvalScope: overridableScope,
       cashierUserId: props.cashierUserId,
       reasonCode: rejection,
@@ -277,7 +330,7 @@ export function AccountChargeConfirmation(props: AccountChargeConfirmationProps)
               <ManagerPinPanel
                 authorizedManagers={managers}
                 excludeUserId={props.cashierUserId}
-                onVerify={verifyManagerPin}
+                onVerify={verifyOverridePin}
                 onSuccess={handlePinSuccess}
                 throttle={throttle}
                 onThrottleUpdate={setThrottle}
