@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight, BarChart3, Lock, Minimize2, RotateCw, Settings } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
-import { useTerminalStore } from '@/stores/terminalStore';
+import { useTerminalStore, fiscalShiftIdForReceipt } from '@/stores/terminalStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { applyFullscreen } from '@/lib/fullscreen';
 import { useOperatorStore } from '@/stores/operatorStore';
@@ -38,7 +38,8 @@ import { usePrinterStore } from '@/stores/printerStore';
 import { toast } from 'sonner';
 import { fetchFraudSettings } from '@/api/fraudSettingsApi';
 import { fetchAuthorizedManagers } from '@/api/managersApi';
-import { verifyManagerPin } from '@/api/managerPinApi';
+import { verifyScopedManagerPin } from '@/lib/operatorApproval/scopedManagerPin';
+import { ApiRequestError } from '@/lib/api';
 import { useRefundFlowStore } from '@/stores/refundFlowStore';
 import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { getTerminalState, setManagerPinThrottle, setManagerPinFailedAttempts } from '@/lib/db/repositories/terminalStateRepository';
@@ -127,6 +128,28 @@ export function Header() {
         // Load throttle state from local SQLite
         const { getDatabase } = await import('@/lib/db');
         const db = await getDatabase(companyId);
+
+        // B6 (Codex F-2): refresh the durable fraud-settings cache on every
+        // successful online EOD open, so a later OFFLINE close in the same
+        // session reads fresh thresholds — not just the activation-time snapshot.
+        try {
+          const { upsertCompanyFraudSettings } = await import(
+            '@/lib/db/repositories/companyFraudSettingsCacheRepository'
+          );
+          await upsertCompanyFraudSettings(db, {
+            company_id: companyId,
+            cash_variance_over_soft: settings.cashVarianceOverSoft,
+            cash_variance_over_hard: settings.cashVarianceOverHard,
+            cash_variance_under_soft: settings.cashVarianceUnderSoft,
+            cash_variance_under_hard: settings.cashVarianceUnderHard,
+            require_blind_cash_count: settings.requireBlindCashCount,
+            require_manager_pin_above_hard: settings.requireManagerPinAboveHard,
+            cash_variance_email_severity: settings.cashVarianceEmailSeverity,
+          });
+        } catch {
+          // Non-fatal: a cache-write blip must not block the EOD flow.
+        }
+
         const ts = await getTerminalState(db, terminal.id);
         if (!cancelled) {
           setManagerPinThrottleState({
@@ -135,11 +158,44 @@ export function Header() {
           });
         }
       } catch {
-        // Offline: keep existing local state from SQLite only
+        // Offline (B6): the live fraud-settings + managers fetch failed.
+        // Read the variance thresholds from the durable
+        // company_fraud_settings_cache (eagerly populated at activation) so the
+        // EOD close still computes severity offline, plus the throttle state.
         if (cancelled) return;
         try {
           const { getDatabase } = await import('@/lib/db');
           const db = await getDatabase(companyId);
+
+          const { getCompanyFraudSettings } = await import(
+            '@/lib/db/repositories/companyFraudSettingsCacheRepository'
+          );
+          const cachedFraud = await getCompanyFraudSettings(db, companyId);
+          if (!cancelled && cachedFraud) {
+            setFraudSettings({
+              cash_variance_over_soft: cachedFraud.cash_variance_over_soft,
+              cash_variance_over_hard: cachedFraud.cash_variance_over_hard,
+              cash_variance_under_soft: cachedFraud.cash_variance_under_soft,
+              cash_variance_under_hard: cachedFraud.cash_variance_under_hard,
+              require_blind_cash_count: cachedFraud.require_blind_cash_count,
+              require_manager_pin_above_hard: cachedFraud.require_manager_pin_above_hard,
+            });
+          }
+
+          // F-3 (B7): the authorized-managers list for the offline above-hard
+          // close comes from the operator_pins mirror — the managers holding the
+          // close_shift_variance approval scope (their bcrypt hashes are already
+          // mirrored there and verified locally by verifyScopedManagerPin).
+          const { getAllOperators } = await import(
+            '@/lib/db/repositories/operatorPinRepository'
+          );
+          const offlineManagers = (await getAllOperators(db))
+            .filter((o) => o.approval_scopes?.includes('close_shift_variance'))
+            .map((o) => ({ id: o.id, name: o.name }));
+          if (!cancelled) {
+            setAuthorizedManagers(offlineManagers);
+          }
+
           const ts = await getTerminalState(db, terminal.id);
           if (!cancelled) {
             setManagerPinThrottleState({
@@ -158,9 +214,45 @@ export function Header() {
     };
   }, [showEndOfDay, terminal, companyId]);
 
+  // B7: above-hard-variance close manager approval is now OFFLINE-CAPABLE,
+  // reusing the audited operator-approval verifier (online-first → anti-downgrade
+  // → local bcrypt fallback against operator_pins for the close_shift_variance
+  // scope). targetOperatorId pins the match to the manager the cashier selected.
   const onVerifyManagerPin = useCallback(
-    (userId: string, pin: string) => verifyManagerPin(userId, pin),
-    [],
+    async (managerUserId: string, pin: string) => {
+      if (!approvalContext || !shift) return { valid: false };
+      try {
+        const approved = await verifyScopedManagerPin({
+          pin,
+          context: approvalContext,
+          approvalScope: 'close_shift_variance',
+          targetOperatorId: managerUserId,
+          targetEventType: 'SESSION_CLOSE',
+          targetReferenceId: shift.id,
+          reason: 'above_hard_variance_close',
+        });
+        return { valid: true, user_id: approved.id, user_name: approved.name };
+      } catch (error) {
+        // A local no-match (wrong PIN / scope mismatch) or an explicit server
+        // denial (4xx, not 408/429) is a COUNTABLE failed attempt → valid:false.
+        // A fail-closed service-unavailable (503) or any unexpected error must
+        // NOT be counted as a bad PIN — rethrow so the panel shows a generic
+        // error without advancing the lockout (anti-downgrade discipline).
+        if (error instanceof Error && error.message === 'manager_pin_scope_mismatch') {
+          return { valid: false };
+        }
+        if (
+          error instanceof ApiRequestError &&
+          error.status < 500 &&
+          error.status !== 408 &&
+          error.status !== 429
+        ) {
+          return { valid: false };
+        }
+        throw error;
+      }
+    },
+    [approvalContext, shift],
   );
 
   const onManagerPinThrottleUpdate = useCallback(
@@ -188,11 +280,17 @@ export function Header() {
     setReportError(null);
     setXReport(null);
     try {
-      const xOpts: GenerateXReportOpts = shift && tenantId
+      // Only device-authoritative (v3) terminals author fiscal events locally.
+      // generateXReport treats a defined fiscalShiftId/fiscalSessionId as the
+      // trigger to append an X_REPORT fiscal event; for a v2 server shift there
+      // is no local SESSION_OPEN, so supplying ids would wrongly author (and
+      // throw). Gate the opts on v3 — pre-one-id-sweep this was implicit because
+      // v2 shifts had no fiscal_shift_id.
+      const xOpts: GenerateXReportOpts = shift && tenantId && terminal.fiscal_schema_version === 3
         ? {
             tenantId,
-            fiscalShiftId: shift.fiscal_shift_id,
-            fiscalSessionId: shift.fiscal_session_id,
+            fiscalShiftId: fiscalShiftIdForReceipt(shift),
+            fiscalSessionId: fiscalShiftIdForReceipt(shift),
             operatorId: shift.user.id,
             operatorName: shift.user.name,
             isTraining: terminal.is_training_mode === true,
@@ -220,17 +318,41 @@ export function Header() {
       throw new Error('Missing terminal, shift, company, or tenant context');
     }
 
+    // F-1/F-2 (B7, fail-closed): a v3 device-authoritative close needs the
+    // cash-count fraud policy to decide variance severity and whether manager
+    // approval is required. If it could not be loaded — whether genuinely
+    // offline with an empty cache, OR online-but-the-fraud-fetch-failed with no
+    // cached fallback — BLOCK the close rather than silently degrading to a
+    // preview-only close without the variance gate (Codex F-2: the guard must
+    // NOT be limited to the offline branch). fraudSettings is only ever null
+    // when the policy genuinely failed to load (the server always returns one),
+    // so this never false-blocks a normal close.
+    if (terminal.fiscal_schema_version === 3 && fraudSettings === null) {
+      throw new Error(
+        t('cash_count.policy_unavailable', {
+          defaultValue:
+            'Cannot close this shift: the cash-count policy has not been synced to this device. Connect to the network once, then retry the close.',
+        }),
+      );
+    }
+
     // Build opts from cash-count payload when present.
     // Pass fraudSettings so generateZReport can compute variance_severity.
+    // v3 only: device-authoritative close authors SESSION_CLOSE + Z_REPORT
+    // locally. For a v2 server shift there is no local SESSION_OPEN, so the
+    // fiscal ids must stay undefined — buildFiscalCloseInput keys on them and
+    // would otherwise append a close with no matching open (pre-one-id-sweep
+    // this was implicit because v2 shifts had no fiscal_shift_id).
+    const isDeviceAuthoritative = terminal.fiscal_schema_version === 3;
     const fiscalZOpts: GenerateZReportOpts = {
       tenantId,
-      fiscalShiftId: shift.fiscal_shift_id,
-      fiscalSessionId: shift.fiscal_session_id,
+      fiscalShiftId: isDeviceAuthoritative ? fiscalShiftIdForReceipt(shift) : undefined,
+      fiscalSessionId: isDeviceAuthoritative ? fiscalShiftIdForReceipt(shift) : undefined,
       terminalLabel: terminal.code,
       operatorId: shift.user.id,
       operatorName: shift.user.name,
       isTraining: terminal.is_training_mode === true,
-      requireFiscalEvents: terminal.fiscal_schema_version === 3,
+      requireFiscalEvents: isDeviceAuthoritative,
     };
     const zOpts: GenerateZReportOpts = cashCountPayload != null
       ? {

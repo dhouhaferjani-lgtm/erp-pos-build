@@ -492,7 +492,8 @@ describe('ProductInfoModal', () => {
     await waitFor(() => {
       const distributionRow = screen.getByText('Distribution Center').closest('tr')
       const availableCell = distributionRow?.querySelector('td:nth-child(2) span')
-      expect(availableCell).toHaveClass('text-red-600')
+      // Out-of-stock available figure uses the danger text token (text-red-700).
+      expect(availableCell).toHaveClass('text-red-700')
     })
   })
 })

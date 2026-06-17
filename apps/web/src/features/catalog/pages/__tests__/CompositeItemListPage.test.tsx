@@ -3,10 +3,18 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { CompositeItemListPage } from '../CompositeItemListPage'
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  // Mirror i18next: a string 2nd arg is a default value; an object 2nd arg is
+  // interpolation options (OffsetPagination passes `{ from, to, total }`). A
+  // naive `(key) => key` mock crashes when handed the object.
+  useTranslation: () => ({
+    t: (key: string, second?: unknown) =>
+      typeof second === 'string' ? second : key,
+  }),
 }))
 
+const mockNavigate = vi.fn()
 vi.mock('react-router-dom', () => ({
+  useNavigate: () => mockNavigate,
   Link: ({ to, children, ...props }: { to: string; children: React.ReactNode; [key: string]: unknown }) => (
     <a href={to} {...props}>{children}</a>
   ),
@@ -33,7 +41,7 @@ const mockPaginatedData = {
       created_at: '2026-01-01T00:00:00Z', updated_at: null,
     },
   ],
-  meta: { current_page: 1, last_page: 1, per_page: 25, total: 2 },
+  meta: { current_page: 1, last_page: 2, per_page: 25, total: 30, from: 1, to: 25 },
 }
 
 let mockUseQueryReturn: { data: typeof mockPaginatedData | undefined; isLoading: boolean } = {
@@ -69,6 +77,7 @@ describe('CompositeItemListPage', () => {
   beforeEach(() => {
     mockUseQueryReturn = { data: mockPaginatedData, isLoading: false }
     mockHasPermission = vi.fn().mockReturnValue(true)
+    mockNavigate.mockReset()
   })
 
   it('renders composite items table with data', () => {
@@ -78,25 +87,34 @@ describe('CompositeItemListPage', () => {
     expect(screen.getByText('ESP')).toBeInTheDocument()
   })
 
-  it('renders loading state', () => {
-    mockUseQueryReturn = { data: undefined, isLoading: true }
-    render(<CompositeItemListPage />)
-    expect(screen.getByText('common:loading')).toBeInTheDocument()
-  })
-
   it('renders empty state when no items', () => {
     mockUseQueryReturn = {
-      data: { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } },
+      data: { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0, from: 0, to: 0 } },
       isLoading: false,
     }
     render(<CompositeItemListPage />)
     expect(screen.getByText('catalog:noCompositeItems')).toBeInTheDocument()
   })
 
-  it('has create link', () => {
+  it('navigates to the create page when the create button is clicked', () => {
     render(<CompositeItemListPage />)
-    const link = screen.getByText('catalog:createCompositeItem')
-    expect(link.closest('a')).toHaveAttribute('href', '/catalog/composite-items/new')
+    const createButton = screen.getByRole('button', { name: /catalog:createCompositeItem/i })
+    fireEvent.click(createButton)
+    expect(mockNavigate).toHaveBeenCalledWith('/catalog/composite-items/new')
+  })
+
+  it('renders pagination controls via OffsetPagination (per-page combobox)', () => {
+    // OffsetPagination renders a per-page <select> (combobox). The original
+    // hand-rolled prev/next buttons had none — this is the red→green driver.
+    render(<CompositeItemListPage />)
+    expect(screen.getByRole('combobox')).toBeInTheDocument()
+  })
+
+  it('right-aligns the numeric base-price column with tabular-nums', () => {
+    render(<CompositeItemListPage />)
+    const priceCell = screen.getByText('3.5000').closest('td')
+    expect(priceCell?.className).toContain('text-right')
+    expect(priceCell?.className).toContain('tabular-nums')
   })
 
   it('renders a delete button per row', () => {

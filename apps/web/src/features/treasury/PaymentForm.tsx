@@ -7,7 +7,10 @@ import { ArrowLeft, Plus, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost, getErrorMessage } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { cn } from '../../lib/utils'
+import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
 import { AddPartnerModal, AddRepositoryModal } from '../../components/organisms'
+import { Button, FormField, Input, MoneyInput, Select, Textarea } from '../../components/atoms'
 import { PaymentAllocationForm } from './components'
 import type { OpenInvoice } from '../../types/treasury'
 import { useWithholdingPreview } from '../withholding'
@@ -15,7 +18,6 @@ import type { TransactionType } from '../withholding/types'
 import { useCurrency } from '../../hooks/useCurrency'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
-import { MoneyInput } from '../../components/atoms/MoneyInput'
 
 interface PaymentMethod {
   id: string
@@ -391,12 +393,16 @@ export function PaymentForm() {
       <div className="flex items-center gap-4">
         <Link
           to={invoiceId ? `/sales/invoices/${invoiceId}` : '/treasury/payments'}
-          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+          className={cn(
+            'inline-flex items-center gap-2 text-sm',
+            textColors.tertiary,
+            textColors.hoverPrimary,
+          )}
         >
           <ArrowLeft className="h-4 w-4" />
           {t('common:back')}
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900">
+        <h1 className={cn('text-2xl font-bold', textColors.primary)}>
           {invoiceData
             ? t('treasury:payments.newForInvoice', { invoiceNumber: invoiceData.document_number })
             : t('treasury:payments.new')}
@@ -405,18 +411,17 @@ export function PaymentForm() {
 
       {/* Form */}
       <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="space-y-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className={tokens.card.base}>
           <div className="grid gap-6 sm:grid-cols-2">
             {/* Amount */}
-            <div>
-              <label
-                htmlFor="amount"
-                className="block text-sm font-medium text-gray-700"
-              >
-                {t('treasury:payments.form.amount')} *
-              </label>
-              <div className="relative mt-1">
-                <span className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-500 z-10">
+            <FormField
+              label={t('treasury:payments.form.amount')}
+              htmlFor="amount"
+              required
+              error={errors.amount?.message}
+            >
+              <div className="relative">
+                <span className={cn('absolute start-3 top-1/2 -translate-y-1/2 z-10', textColors.disabled)}>
                   {symbol}
                 </span>
                 <Controller
@@ -436,30 +441,26 @@ export function PaymentForm() {
                       onBlur={field.onBlur}
                       ref={field.ref}
                       error={!!errors.amount}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 ps-10 pe-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="ps-10 pe-3"
                     />
                   )}
                 />
               </div>
-              {errors.amount && (
-                <p className="mt-1 text-sm text-red-600">{errors.amount.message}</p>
-              )}
-            </div>
+            </FormField>
 
             {/* Payment Method */}
-            <div>
-              <label
-                htmlFor="payment_method_id"
-                className="block text-sm font-medium text-gray-700"
-              >
-                {t('treasury:payments.form.paymentMethod')} *
-              </label>
-              <select
+            <FormField
+              label={t('treasury:payments.form.paymentMethod')}
+              htmlFor="payment_method_id"
+              required
+              error={errors.payment_method_id?.message}
+            >
+              <Select
                 id="payment_method_id"
                 {...register('payment_method_id', {
                   required: t('treasury:payments.form.paymentMethodRequired'),
                 })}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                error={Boolean(errors.payment_method_id)}
               >
                 <option value="">{t('treasury:payments.form.selectMethod')}</option>
                 {paymentMethods.map((method) => (
@@ -467,27 +468,21 @@ export function PaymentForm() {
                     {method.name}
                   </option>
                 ))}
-              </select>
-              {errors.payment_method_id && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.payment_method_id.message}
-                </p>
-              )}
-            </div>
+              </Select>
+            </FormField>
 
             {/* Repository */}
-            <div>
-              <label
-                htmlFor="repository_id"
-                className="block text-sm font-medium text-gray-700"
-              >
-                {t('treasury:payments.form.repository')} *
-              </label>
-              <div className="mt-1 flex gap-2">
-                <select
+            <FormField
+              label={t('treasury:payments.form.repository')}
+              htmlFor="repository_id"
+              required
+              error={errors.repository_id?.message}
+            >
+              <div className="flex gap-2">
+                <Select
                   id="repository_id"
                   {...register('repository_id', { required: t('treasury:payments.form.repositoryRequired') })}
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  error={Boolean(errors.repository_id)}
                 >
                   <option value="">{t('treasury:payments.form.selectRepository')}</option>
                   {repositories.map((repo) => (
@@ -495,36 +490,31 @@ export function PaymentForm() {
                       {repo.name} ({repo.code})
                     </option>
                   ))}
-                </select>
-                <button
+                </Select>
+                <Button
                   type="button"
+                  variant="secondary"
                   onClick={() => { setShowRepositoryModal(true) }}
-                  className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                   title={t('treasury:payments.form.addRepository')}
+                  className="mt-1 shrink-0"
                 >
                   <Plus className="h-4 w-4" />
-                </button>
+                </Button>
               </div>
-              {errors.repository_id && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.repository_id.message}
-                </p>
-              )}
-            </div>
+            </FormField>
 
             {/* Partner */}
-            <div>
-              <label
-                htmlFor="partner_id"
-                className="block text-sm font-medium text-gray-700"
-              >
-                {t('treasury:payments.partner')} *
-              </label>
-              <div className="mt-1 flex gap-2">
-                <select
+            <FormField
+              label={t('treasury:payments.partner')}
+              htmlFor="partner_id"
+              required
+              error={errors.partner_id?.message}
+            >
+              <div className="flex gap-2">
+                <Select
                   id="partner_id"
                   {...register('partner_id', { required: t('treasury:payments.form.partnerRequired') })}
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  error={Boolean(errors.partner_id)}
                 >
                   <option value="">{t('treasury:payments.form.selectPartner')}</option>
                   {partners.map((partner) => (
@@ -532,107 +522,89 @@ export function PaymentForm() {
                       {partner.name}
                     </option>
                   ))}
-                </select>
-                <button
+                </Select>
+                <Button
                   type="button"
+                  variant="secondary"
                   onClick={() => { setShowPartnerModal(true) }}
-                  className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                   title={t('treasury:payments.form.addPartner')}
+                  className="mt-1 shrink-0"
                 >
                   <Plus className="h-4 w-4" />
-                </button>
+                </Button>
               </div>
-              {errors.partner_id && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.partner_id.message}
-                </p>
-              )}
-            </div>
+            </FormField>
 
             {/* Payment Date */}
-            <div>
-              <label
-                htmlFor="payment_date"
-                className="block text-sm font-medium text-gray-700"
-              >
-                {t('treasury:payments.form.paymentDate')} *
-              </label>
-              <input
+            <FormField
+              label={t('treasury:payments.form.paymentDate')}
+              htmlFor="payment_date"
+              required
+              error={errors.payment_date?.message}
+            >
+              <Input
                 type="date"
                 id="payment_date"
                 {...register('payment_date', {
                   required: t('treasury:payments.form.paymentDateRequired'),
                 })}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                error={Boolean(errors.payment_date)}
               />
-              {errors.payment_date && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.payment_date.message}
-                </p>
-              )}
-            </div>
+            </FormField>
 
             {/* Reference */}
-            <div>
-              <label
-                htmlFor="reference"
-                className="block text-sm font-medium text-gray-700"
-              >
-                {t('treasury:payments.reference')}
-              </label>
-              <input
+            <FormField label={t('treasury:payments.reference')} htmlFor="reference">
+              <Input
                 type="text"
                 id="reference"
                 {...register('reference')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 placeholder={t('treasury:payments.form.referencePlaceholder')}
               />
-            </div>
+            </FormField>
 
             {/* Notes */}
-            <div className="sm:col-span-2">
-              <label
-                htmlFor="notes"
-                className="block text-sm font-medium text-gray-700"
-              >
-                {t('treasury:payments.notes')}
-              </label>
-              <textarea
+            <FormField
+              className="sm:col-span-2"
+              label={t('treasury:payments.notes')}
+              htmlFor="notes"
+            >
+              <Textarea
                 id="notes"
                 rows={3}
                 {...register('notes')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 placeholder={t('treasury:payments.form.notesPlaceholder')}
               />
-            </div>
+            </FormField>
           </div>
         </div>
 
         {/* Withholding Tax Section */}
         {withholdingPreview?.should_withhold && !withholdingEnabled && (
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <div className={cn(tokens.alert.base, tokens.alert.info)}>
             <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5" />
+              <AlertCircle className={cn('h-5 w-5 mt-0.5', textColors.brand)} />
               <div className="flex-1">
-                <p className="text-sm text-blue-900">
+                <p className={cn('text-sm', textColors.brand)}>
                   {t('withholding:form.recommendedAlert')}
                 </p>
-                <button
+                <Button
                   type="button"
+                  variant="primary"
+                  size="sm"
                   onClick={() => { setWithholdingEnabled(true) }}
-                  className="mt-2 inline-flex items-center rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+                  className="mt-2"
                 >
                   {t('withholding:form.enable')}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
         )}
 
         {withholdingEnabled && (
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
+          <div className={tokens.card.base}>
             <div className="mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">
+              <h3 className={cn(tokens.heading.section, 'mb-4')}>
                 {t('withholding:title')}
               </h3>
               <button
@@ -642,7 +614,7 @@ export function PaymentForm() {
                   setWithholdingRate('')
                   setWithholdingTransactionType('')
                 }}
-                className="mt-1 text-sm text-gray-600 hover:text-gray-900"
+                className={cn('mt-1 text-sm', textColors.tertiary, textColors.hoverPrimary)}
               >
                 {t('common:disable')}
               </button>
@@ -650,18 +622,14 @@ export function PaymentForm() {
 
             <div className="grid gap-6 sm:grid-cols-2">
               {/* Transaction Type */}
-              <div>
-                <label
-                  htmlFor="transaction_type"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  {t('withholding:form.transactionType')}
-                </label>
-                <select
+              <FormField
+                label={t('withholding:form.transactionType')}
+                htmlFor="transaction_type"
+              >
+                <Select
                   id="transaction_type"
                   value={withholdingTransactionType}
                   onChange={(e) => { setWithholdingTransactionType(e.target.value as TransactionType) }}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="">{t('common:select')}</option>
                   <option value="services">{t('withholding:transactionTypes.services')}</option>
@@ -670,89 +638,81 @@ export function PaymentForm() {
                   <option value="rental_hotel">{t('withholding:transactionTypes.rental_hotel')}</option>
                   <option value="commission">{t('withholding:transactionTypes.commission')}</option>
                   <option value="export_services">{t('withholding:transactionTypes.export_services')}</option>
-                </select>
-              </div>
+                </Select>
+              </FormField>
 
               {/* Withholding Rate */}
-              <div>
-                <label
-                  htmlFor="withholding_rate"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  {t('withholding:form.rate')}
-                </label>
-                <div className="relative mt-1">
-                  <input
+              <FormField
+                label={t('withholding:form.rate')}
+                htmlFor="withholding_rate"
+                helperText={
+                  withholdingPreview?.calculation
+                    ? t('withholding:preview.suggestedRate', { rate: withholdingPreview.calculation.rate_percentage })
+                    : undefined
+                }
+              >
+                <div className="relative">
+                  <Input
                     type="number"
                     step="0.01"
                     id="withholding_rate"
                     value={withholdingRate}
                     onChange={(e) => { setWithholdingRate(e.target.value) }}
-                    className="block w-full rounded-lg border border-gray-300 pe-8 ps-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="pe-8 ps-3"
                     placeholder="0.00"
                   />
-                  <span className="absolute end-3 top-1/2 -translate-y-1/2 text-gray-500">
+                  <span className={cn('absolute end-3 top-1/2 -translate-y-1/2', textColors.disabled)}>
                     %
                   </span>
                 </div>
-                {withholdingPreview?.calculation && (
-                  <p className="mt-1 text-sm text-gray-600">
-                    {t('withholding:preview.suggestedRate', { rate: withholdingPreview.calculation.rate_percentage })}
-                  </p>
-                )}
-              </div>
+              </FormField>
 
               {/* Override Reason (if rate differs from suggested) */}
               {withholdingRate &&
                 withholdingPreview?.calculation &&
                 parseFloat(withholdingRate) !== withholdingPreview.calculation.rate_percentage && (
-                  <div className="sm:col-span-2">
-                    <label
-                      htmlFor="withholding_override_reason"
-                      className="block text-sm font-medium text-gray-700"
-                    >
-                      {t('withholding:form.overrideReason')} *
-                    </label>
-                    <textarea
+                  <FormField
+                    className="sm:col-span-2"
+                    label={t('withholding:form.overrideReason')}
+                    htmlFor="withholding_override_reason"
+                    required
+                    error={errors.withholding_override_reason?.message}
+                  >
+                    <Textarea
                       id="withholding_override_reason"
                       rows={2}
                       {...register('withholding_override_reason', {
                         required: t('withholding:form.overrideReasonRequired'),
                       })}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      error={Boolean(errors.withholding_override_reason)}
                       placeholder={t('withholding:form.overrideReason')}
                     />
-                    {errors.withholding_override_reason && (
-                      <p className="mt-1 text-sm text-red-600">
-                        {errors.withholding_override_reason.message}
-                      </p>
-                    )}
-                  </div>
+                  </FormField>
                 )}
             </div>
 
             {/* Calculation Preview */}
             {withholdingPreview?.calculation && withholdingRate && (
-              <div className="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <h4 className="mb-3 text-sm font-semibold text-gray-900">
+              <div className={cn('mt-6 rounded-lg border p-4', borderColors.light, colors.neutral[50])}>
+                <h4 className={cn('mb-3 text-sm font-semibold', textColors.primary)}>
                   {t('withholding:form.calculation')}
                 </h4>
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">{t('withholding:form.grossAmount')}</span>
-                    <span className="font-mono font-semibold text-gray-900">
+                    <span className={textColors.tertiary}>{t('withholding:form.grossAmount')}</span>
+                    <span className={cn('font-mono font-semibold', textColors.primary)}>
                       {formatCurrency(parseFloat(paymentAmount || '0'))}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">{t('withholding:form.withholdingAmount')}</span>
-                    <span className="font-mono font-semibold text-red-600">
+                    <span className={textColors.tertiary}>{t('withholding:form.withholdingAmount')}</span>
+                    <span className={cn('font-mono font-semibold', textColors.error)}>
                       - {formatCurrency(parseFloat(paymentAmount || '0') * parseFloat(withholdingRate) / 100)}
                     </span>
                   </div>
-                  <div className="flex justify-between border-t border-gray-300 pt-2 text-sm">
-                    <span className="font-semibold text-gray-900">{t('withholding:form.netPayment')}</span>
-                    <span className="font-mono text-lg font-bold text-gray-900">
+                  <div className={cn('flex justify-between border-t pt-2 text-sm', borderColors.default)}>
+                    <span className={cn('font-semibold', textColors.primary)}>{t('withholding:form.netPayment')}</span>
+                    <span className={cn('font-mono text-lg font-bold', textColors.primary)}>
                       {formatCurrency(parseFloat(paymentAmount || '0') * (1 - parseFloat(withholdingRate) / 100))}
                     </span>
                   </div>
@@ -764,12 +724,12 @@ export function PaymentForm() {
 
         {/* Smart Payment Allocation Section */}
         {createdPaymentId && openInvoices.length > 0 && !invoiceId && (
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
+          <div className={tokens.card.base}>
             <div className="mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">
+              <h3 className={cn(tokens.heading.section, 'mb-1')}>
                 {t('treasury:allocation.title')}
               </h3>
-              <p className="mt-1 text-sm text-gray-600">
+              <p className={cn('mt-1 text-sm', textColors.tertiary)}>
                 {t('treasury:allocation.description')}
               </p>
             </div>
@@ -787,19 +747,18 @@ export function PaymentForm() {
 
         {/* Form Actions */}
         <div className="flex items-center justify-end gap-4">
-          <Link
-            to={invoiceId ? `/sales/invoices/${invoiceId}` : '/treasury/payments'}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              void navigate(invoiceId ? `/sales/invoices/${invoiceId}` : '/treasury/payments')
+            }}
           >
             {t('common:cancel')}
-          </Link>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
+          </Button>
+          <Button type="submit" variant="primary" disabled={isSubmitting}>
             {isSubmitting ? t('common:saving') : t('common:save')}
-          </button>
+          </Button>
         </div>
       </form>
 

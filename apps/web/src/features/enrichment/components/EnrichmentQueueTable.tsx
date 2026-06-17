@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { tokens, textColors, colors, borderColors } from '@/lib/designTokens'
+import { textColors, colors, borderColors } from '@/lib/designTokens'
+import { Checkbox } from '@/components/atoms'
 import { QualityBadge } from './QualityBadge'
 import type { EnrichmentResult } from '../types/enrichment'
 
@@ -42,11 +43,9 @@ export function EnrichmentQueueTable({
         <thead className={colors.neutral[50]}>
           <tr>
             <th className="w-10 px-3 py-3">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={allSelected}
                 onChange={onToggleSelectAll}
-                className={tokens.checkbox.base}
               />
             </th>
             <th className={`px-4 py-3 text-left text-xs font-medium ${textColors.secondary} uppercase tracking-wider`}>
@@ -74,11 +73,9 @@ export function EnrichmentQueueTable({
               className={`cursor-pointer ${colors.hover.gray50} transition-colors`}
             >
               <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={selectedIds.has(result.id)}
                   onChange={() => onToggleSelect(result.id)}
-                  className={tokens.checkbox.base}
                 />
               </td>
               <td className={`px-4 py-3 text-sm ${textColors.primary} font-medium`}>

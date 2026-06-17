@@ -6,6 +6,7 @@ namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
@@ -176,6 +177,43 @@ class PinDataEndpointTest extends TestCase
 
         $response->assertOk()
             ->assertJsonCount(2, 'data'); // Still only 2, not 3
+    }
+
+    /**
+     * F-3 (HIGH): a user whose company membership is suspended must NOT appear
+     * in pin-data — they would otherwise be mirrored into the device's
+     * operator_pins and could locally approve an above-hard close, exceeding the
+     * online AuthorizedManagersController list (active-only).
+     */
+    public function test_pin_data_excludes_suspended_company_members(): void
+    {
+        $suspendedManager = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Suspended Manager',
+            'email' => 'suspended-manager@pos-test.local',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+            'pos_pin' => Hash::make('4321'),
+            'can_discount' => true,
+            'max_discount_percent' => 80.0,
+        ]);
+        $suspendedManager->assignRole('manager');
+
+        UserCompanyMembership::create([
+            'user_id' => $suspendedManager->id,
+            'company_id' => $this->company->id,
+            'role' => 'manager',
+            'status' => MembershipStatus::Suspended,
+        ]);
+
+        $response = $this->actingAs($this->managerUser)
+            ->getJson('/api/v1/pos/auth/pin-data');
+
+        $response->assertOk()
+            ->assertJsonCount(2, 'data'); // Manager + Cashier only, not the suspended one.
+
+        $names = array_column($response->json('data'), 'name');
+        $this->assertNotContains('Suspended Manager', $names);
     }
 
     public function test_pin_data_excludes_same_tenant_pin_users_without_company_membership(): void

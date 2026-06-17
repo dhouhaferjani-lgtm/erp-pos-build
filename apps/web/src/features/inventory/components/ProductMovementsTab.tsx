@@ -16,6 +16,9 @@ import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { LocationSelectorMulti } from '../../locations/components/LocationSelectorMulti'
+import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge'
+import { Button } from '@/components/atoms/Button'
 
 interface StockMovement {
   id: string
@@ -44,36 +47,36 @@ interface ProductMovementsTabProps {
 
 const movementTypeConfig: Record<
   string,
-  { label: string; color: string; icon: typeof ArrowDownCircle }
+  { label: string; tone: StatusTone; icon: typeof ArrowDownCircle }
 > = {
   receipt: {
     label: 'Receipt',
-    color: 'bg-green-100 text-green-800',
+    tone: 'success',
     icon: ArrowDownCircle,
   },
   issue: {
     label: 'Issue',
-    color: 'bg-red-100 text-red-800',
+    tone: 'danger',
     icon: ArrowUpCircle,
   },
   adjustment: {
     label: 'Adjustment',
-    color: 'bg-blue-100 text-blue-800',
+    tone: 'info',
     icon: RefreshCw,
   },
   transfer_in: {
     label: 'Transfer In',
-    color: 'bg-purple-100 text-purple-800',
+    tone: 'info',
     icon: ArrowRightLeft,
   },
   transfer_out: {
     label: 'Transfer Out',
-    color: 'bg-orange-100 text-orange-800',
+    tone: 'warning',
     icon: ArrowRightLeft,
   },
   opening: {
     label: 'Opening',
-    color: 'bg-gray-100 text-gray-800',
+    tone: 'neutral',
     icon: Package,
   },
 }
@@ -157,7 +160,7 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
     return (
       movementTypeConfig[type] ?? {
         label: type,
-        color: 'bg-gray-100 text-gray-800',
+        tone: 'neutral' as StatusTone,
         icon: Package,
       }
     )
@@ -166,14 +169,14 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-500">{t('common:status.loading')}</div>
+        <div className={textColors.tertiary}>{t('common:status.loading')}</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="rounded-lg bg-red-50 p-4 text-red-700">
+      <div className={`${tokens.alert.base} ${tokens.alert.error}`}>
         {t('common:errors.loadingFailed')}
       </div>
     )
@@ -184,35 +187,37 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
       {/* Header with filter */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">
+          <h3 className={`text-lg font-semibold ${textColors.primary}`}>
             {t('products.movementsTab.title')}
           </h3>
-          <p className="text-sm text-gray-500">
+          <p className={`text-sm ${textColors.tertiary}`}>
             {t('products.movementsTab.subtitle', { count: movements.length })}
           </p>
         </div>
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={() => {
             setShowLocationFilter(!showLocationFilter)
           }}
-          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+          className={
             selectedLocationIds.length > 0
-              ? 'border-blue-300 bg-blue-50 text-blue-700'
-              : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-          }`}
+              ? `gap-2 ${tokens.alert.info} ${borderColors.primary}`
+              : 'gap-2'
+          }
         >
           <Filter className="h-4 w-4" />
           {selectedLocationIds.length > 0
             ? t('products.movementsTab.filterByLocation') +
               ` (${String(selectedLocationIds.length)})`
             : t('products.movementsTab.filterByLocation')}
-        </button>
+        </Button>
       </div>
 
       {/* Location filter panel */}
       {showLocationFilter && (
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className={`rounded-lg border ${borderColors.light} bg-white p-4`}>
           <LocationSelectorMulti
             value={selectedLocationIds}
             onChange={setSelectedLocationIds}
@@ -226,44 +231,44 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
 
       {/* Content */}
       {movements.length === 0 ? (
-        <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-          <RefreshCw className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-semibold text-gray-900">
+        <div className={`rounded-lg border-2 border-dashed ${borderColors.default} p-12 text-center`}>
+          <RefreshCw className={`mx-auto h-12 w-12 ${textColors.disabled}`} />
+          <h3 className={`mt-2 text-sm font-semibold ${textColors.primary}`}>
             {t('products.movementsTab.empty.title')}
           </h3>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className={`mt-1 text-sm ${textColors.tertiary}`}>
             {t('products.movementsTab.empty.description')}
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className={`overflow-hidden rounded-lg border ${borderColors.light} bg-white`}>
+          <table className={`min-w-full divide-y ${borderColors.divideDefault}`}>
+            <thead className={tokens.table.header}>
               <tr>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                   {t('products.movementsTab.columns.date')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                   {t('products.movementsTab.columns.type')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                   {t('products.movementsTab.columns.location')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                   {t('products.movementsTab.columns.quantity')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                   {t('products.movementsTab.columns.before')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                   {t('products.movementsTab.columns.after')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
                   {t('products.movementsTab.columns.reference')}
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
+            <tbody className={`divide-y ${borderColors.divideDefault} bg-white`}>
               {movements.map((movement) => {
                 const config = getMovementConfig(movement.movement_type)
                 const Icon = config.icon
@@ -272,47 +277,45 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
                 const documentLink = getDocumentLink(movement.reference)
 
                 return (
-                  <tr key={movement.id} className="hover:bg-gray-50">
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                  <tr key={movement.id} className={tokens.table.rowHover}>
+                    <td className={`whitespace-nowrap px-6 py-4 text-sm ${textColors.tertiary}`}>
                       {formatDate(movement.created_at)}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4">
                       <div className="flex items-center gap-2">
                         <Icon
-                          className={`h-4 w-4 ${isPositive ? 'text-green-600' : 'text-red-600'}`}
+                          className={`h-4 w-4 ${isPositive ? textColors.success : textColors.error}`}
                         />
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${config.color}`}
-                        >
+                        <StatusBadge tone={config.tone}>
                           {config.label}
-                        </span>
+                        </StatusBadge>
                       </div>
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                    <td className={`whitespace-nowrap px-6 py-4 text-sm ${textColors.tertiary}`}>
                       {movement.location_name}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end">
                       <span
-                        className={`text-sm font-semibold ${isPositive ? 'text-green-600' : 'text-red-600'}`}
+                        className={`text-sm font-semibold tabular-nums ${isPositive ? textColors.success : textColors.error}`}
                       >
                         {isPositive ? '+' : ''}
                         {formatQuantity(movement.quantity)}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-500">
+                    <td className={`whitespace-nowrap px-6 py-4 text-end text-sm tabular-nums ${textColors.tertiary}`}>
                       {formatQuantity(movement.quantity_before)}
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
+                    <td className={`whitespace-nowrap px-6 py-4 text-end text-sm font-medium tabular-nums ${textColors.primary}`}>
                       {formatQuantity(movement.quantity_after)}
                     </td>
                     <td
-                      className="max-w-xs truncate px-6 py-4 text-sm text-gray-500"
+                      className={`max-w-xs truncate px-6 py-4 text-sm ${textColors.tertiary}`}
                       title={movement.reference}
                     >
                       {documentLink ? (
                         <Link
                           to={documentLink}
-                          className="text-blue-600 hover:text-blue-800 hover:underline"
+                          className={`${textColors.brand} hover:underline`}
                         >
                           {movement.reference}
                         </Link>

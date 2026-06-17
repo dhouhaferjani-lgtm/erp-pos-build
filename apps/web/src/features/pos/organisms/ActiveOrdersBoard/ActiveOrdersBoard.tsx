@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { OrderStatusBadge } from '../../molecules/OrderStatusBadge'
 import { KitchenTimer } from '../../atoms/KitchenTimer'
+import { colors, textColors, borderColors } from '@/lib/designTokens'
 import type { OrderData } from '../../api/orderApi'
 
 export interface ActiveOrdersBoardProps {
@@ -14,6 +15,7 @@ interface BoardColumn {
   key: string
   statuses: string[]
   labelKey: string
+  /** Status-driven top accent: open → info, sent → warning, ready → success. */
   borderColor: string
 }
 
@@ -22,19 +24,19 @@ const COLUMNS: BoardColumn[] = [
     key: 'open',
     statuses: ['open'],
     labelKey: 'orders.board.open',
-    borderColor: 'border-blue-300 dark:border-blue-700',
+    borderColor: borderColors.primary,
   },
   {
     key: 'sent',
     statuses: ['sent_to_kitchen'],
     labelKey: 'orders.board.sent',
-    borderColor: 'border-amber-300 dark:border-amber-700',
+    borderColor: borderColors.warning,
   },
   {
     key: 'ready',
     statuses: ['ready'],
     labelKey: 'orders.board.ready',
-    borderColor: 'border-green-300 dark:border-green-700',
+    borderColor: borderColors.success,
   },
 ]
 
@@ -62,20 +64,20 @@ export function ActiveOrdersBoard({
       {COLUMNS.map((column) => (
         <div
           key={column.key}
-          className={`flex flex-col rounded-xl border-t-4 bg-gray-50 dark:bg-gray-900 ${column.borderColor}`}
+          className={`flex flex-col rounded-xl border-t-4 ${colors.neutral[50]} ${column.borderColor}`}
         >
           <div className="flex items-center justify-between px-4 py-3">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+            <h3 className={`text-sm font-semibold ${textColors.secondary}`}>
               {t(column.labelKey)}
             </h3>
-            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+            <span className={`rounded-full ${colors.neutral[200]} px-2 py-0.5 text-xs font-medium ${textColors.tertiary}`}>
               {columnOrders[column.key].length}
             </span>
           </div>
 
           <div className="flex-1 space-y-2 overflow-y-auto px-3 pb-3">
             {columnOrders[column.key].length === 0 ? (
-              <p className="py-8 text-center text-sm text-gray-400 dark:text-gray-600">
+              <p className={`py-8 text-center text-sm ${textColors.disabled}`}>
                 {t('orders.noOrders')}
               </p>
             ) : (
@@ -84,14 +86,14 @@ export function ActiveOrdersBoard({
                   key={order.id}
                   type="button"
                   onClick={() => { onSelectOrder(order.id); }}
-                  className={`w-full rounded-lg border p-3 text-left transition-colors hover:border-blue-300 dark:hover:border-blue-600 ${
+                  className={`w-full rounded-lg border p-3 text-left transition-colors hover:${borderColors.primary} ${
                     selectedOrderId === order.id
-                      ? 'border-blue-500 bg-blue-50 dark:border-blue-500 dark:bg-blue-900/20'
-                      : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'
+                      ? `${borderColors.primary} ${colors.primary[50]}`
+                      : `${borderColors.light} ${colors.white}`
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                    <span className={`text-sm font-bold ${textColors.primary}`}>
                       {order.order_number}
                     </span>
                     <OrderStatusBadge status={order.status} />
@@ -99,18 +101,18 @@ export function ActiveOrdersBoard({
 
                   <div className="mt-1 flex items-center gap-2">
                     {order.table && (
-                      <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+                      <span className={`rounded ${colors.primary[100]} px-1.5 py-0.5 text-xs font-medium ${textColors.brand}`}>
                         {order.table.table_number}
                       </span>
                     )}
                     {order.customer_name && (
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                      <span className={`text-xs ${textColors.tertiary}`}>
                         {order.customer_name}
                       </span>
                     )}
                   </div>
 
-                  <div className="mt-2 flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
+                  <div className={`mt-2 flex items-center justify-between text-xs ${textColors.disabled}`}>
                     <span>
                       {order.lines.length}{' '}
                       {order.lines.length === 1
@@ -126,7 +128,7 @@ export function ActiveOrdersBoard({
                     )}
                   </div>
 
-                  <div className="mt-1 text-right text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  <div className={`mt-1 text-right text-sm font-semibold tabular-nums ${textColors.primary}`}>
                     {order.total} {order.currency}
                   </div>
                 </button>

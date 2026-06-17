@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { POSButton } from '../../atoms'
 import { X } from 'lucide-react'
+import { colors, textColors, borderColors } from '@/lib/designTokens'
 
 export interface CalculatorProps {
   isOpen: boolean
@@ -171,7 +172,8 @@ export function Calculator({
         <div className="flex items-center justify-between mb-4">
           <h3
             className={cn(
-              'font-bold text-gray-900',
+              'font-bold',
+              textColors.primary,
               touchOptimized ? 'text-2xl' : 'text-xl'
             )}
           >
@@ -179,10 +181,10 @@ export function Calculator({
           </h3>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className={cn('p-2 rounded-lg transition-colors', colors.hover.gray100)}
             aria-label={t('pos:calculator.close')}
           >
-            <X className="w-5 h-5 text-gray-600" />
+            <X className={cn('w-5 h-5', textColors.tertiary)} />
           </button>
         </div>
 
@@ -192,8 +194,10 @@ export function Calculator({
           value={display}
           readOnly
           className={cn(
-            'w-full mb-4 px-4 py-3 rounded-lg border-2 border-gray-300',
-            'text-end font-mono font-bold bg-gray-50',
+            'w-full mb-4 px-4 py-3 rounded-lg border-2',
+            borderColors.default,
+            'text-end font-mono font-bold tabular-nums',
+            colors.neutral[50],
             touchOptimized ? 'text-3xl' : 'text-2xl'
           )}
         />

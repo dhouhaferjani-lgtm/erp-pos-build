@@ -5,7 +5,7 @@
 
   "preview": {
     "title": "Withholding Preview",
-    "calculating": "Calculating withholding...",
+    "calculating": "Calculating withholding…",
     "noRuleFound": "No withholding rule found",
     "noRuleFoundHelp": "You can manually specify a withholding rate using the override option below.",
     "suggestedRate": "Suggested rate: {{rate}}%",
@@ -13,7 +13,7 @@
     "applyWithholding": "Apply Withholding",
     "manualOverride": "Manual Override",
     "manualRate": "Manual Rate (%)",
-    "overrideReasonPlaceholder": "Enter reason for manual rate override..."
+    "overrideReasonPlaceholder": "Enter reason for manual rate override…"
   },
 
   "form": {
@@ -76,7 +76,7 @@
       "batch": "Export Batch",
       "batchTEJ": "Export Batch TEJ XML",
       "selectPeriod": "Select Period",
-      "downloading": "Downloading..."
+      "downloading": "Downloading…"
     }
   },
 

@@ -1,7 +1,13 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, X } from 'lucide-react'
+import { Button } from '@/components/atoms/Button'
+import { FormField } from '@/components/atoms/FormField'
+import { Input } from '@/components/atoms/Input'
+import { Select } from '@/components/atoms/Select'
+import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
 import type { ServiceBundleData, VehicleTypeRef } from '../../types'
 import { useReplaceBundleApplicabilities } from '../../hooks/useBundles'
 import { VehicleApplicabilityChip } from '../atoms/VehicleApplicabilityChip'
@@ -141,17 +147,19 @@ export function BundleApplicabilityEditor({ bundle }: BundleApplicabilityEditorP
         <h2 className={`text-sm font-medium uppercase tracking-wide ${textColors.tertiary}`}>
           {t('authoring.applicability.sectionTitle')}
         </h2>
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={() => {
             setIsAddOpen(true)
           }}
-          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm} inline-flex items-center gap-1`}
+          className="gap-1"
           data-testid="bundle-applicability-add-btn"
         >
           <Plus className="h-4 w-4" aria-hidden />
           {t('authoring.applicability.addRule')}
-        </button>
+        </Button>
       </div>
 
       {bundle.vehicle_applicabilities.length === 0 ? (
@@ -161,144 +169,133 @@ export function BundleApplicabilityEditor({ bundle }: BundleApplicabilityEditorP
           {bundle.vehicle_applicabilities.map((applicability, idx) => (
             <li key={applicability.id} className="flex items-center gap-1">
               <VehicleApplicabilityChip applicability={applicability} />
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   handleRemove(idx)
                 }}
                 aria-label={t('authoring.applicability.remove')}
-                className={`${textColors.tertiary} ${textColors.hoverPrimary}`}
+                className={cn('!p-1', textColors.tertiary, textColors.hoverPrimary)}
                 data-testid={`bundle-applicability-remove-${applicability.id}`}
               >
                 <X className="h-3.5 w-3.5" aria-hidden />
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
       )}
 
       {isAddOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50"
-          data-testid="bundle-applicability-modal"
+        <Modal
+          isOpen
+          onClose={() => {
+            setIsAddOpen(false)
+            resetDraft()
+          }}
+          title={t('authoring.applicability.addTitle')}
+          size="md"
         >
-          <div
-            className="relative mx-4 rounded-xl bg-white p-6 shadow-xl"
-            style={{ width: '480px', maxWidth: '100%' }}
-          >
-            <div className={`mb-4 flex items-center justify-between border-b ${borderColors.light} pb-3`}>
-              <h3 className={`text-base font-semibold ${textColors.primary}`}>
-                {t('authoring.applicability.addTitle')}
-              </h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsAddOpen(false)
-                  resetDraft()
+          <ModalContent>
+            <div data-testid="bundle-applicability-modal" className="space-y-4">
+            <FormField
+              label={t('authoring.applicability.vehicleType')}
+              htmlFor="bundle-applicability-vehicle-type"
+            >
+              <Select
+                id="bundle-applicability-vehicle-type"
+                data-testid="bundle-applicability-vehicle-type"
+                value={draft.vehicle_type}
+                onChange={(e) => {
+                  setDraft((d) => ({ ...d, vehicle_type: e.target.value as VehicleTypeRef | '' }))
                 }}
-                aria-label={t('authoring.modal.close')}
-                className={tokens.modal.closeButton}
               >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+                <option value="">{t('authoring.applicability.vehicleTypePlaceholder')}</option>
+                {VEHICLE_TYPE_OPTIONS.map((vt) => (
+                  <option key={vt} value={vt}>
+                    {t(`authoring.applicability.vehicleTypeOptions.${vt}`)}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
 
-            <div className="space-y-3">
-              <div>
-                <label className={tokens.label.base}>
-                  {t('authoring.applicability.vehicleType')}
-                </label>
-                <select
-                  data-testid="bundle-applicability-vehicle-type"
-                  className={tokens.input.base}
-                  value={draft.vehicle_type}
-                  onChange={(e) => {
-                    setDraft((d) => ({ ...d, vehicle_type: e.target.value as VehicleTypeRef | '' }))
-                  }}
-                >
-                  <option value="">{t('authoring.applicability.vehicleTypePlaceholder')}</option>
-                  {VEHICLE_TYPE_OPTIONS.map((vt) => (
-                    <option key={vt} value={vt}>
-                      {t(`authoring.applicability.vehicleTypeOptions.${vt}`)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <FormField
+              label={t('authoring.applicability.vehicleDisplay')}
+              htmlFor="bundle-applicability-vehicle-display"
+            >
+              <Input
+                id="bundle-applicability-vehicle-display"
+                data-testid="bundle-applicability-vehicle-display"
+                type="text"
+                value={draft.vehicle_display}
+                onChange={(e) => {
+                  setDraft((d) => ({ ...d, vehicle_display: e.target.value }))
+                }}
+              />
+            </FormField>
 
-              <div>
-                <label className={tokens.label.base}>
-                  {t('authoring.applicability.vehicleDisplay')}
-                </label>
-                <input
-                  data-testid="bundle-applicability-vehicle-display"
-                  type="text"
-                  className={tokens.input.base}
-                  value={draft.vehicle_display}
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                label={t('authoring.applicability.yearFrom')}
+                htmlFor="bundle-applicability-year-from"
+              >
+                <Input
+                  id="bundle-applicability-year-from"
+                  data-testid="bundle-applicability-year-from"
+                  type="number"
+                  value={draft.year_from}
                   onChange={(e) => {
-                    setDraft((d) => ({ ...d, vehicle_display: e.target.value }))
+                    setDraft((d) => ({ ...d, year_from: e.target.value }))
                   }}
                 />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={tokens.label.base}>
-                    {t('authoring.applicability.yearFrom')}
-                  </label>
-                  <input
-                    data-testid="bundle-applicability-year-from"
-                    type="number"
-                    className={tokens.input.base}
-                    value={draft.year_from}
-                    onChange={(e) => {
-                      setDraft((d) => ({ ...d, year_from: e.target.value }))
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className={tokens.label.base}>
-                    {t('authoring.applicability.yearTo')}
-                  </label>
-                  <input
-                    data-testid="bundle-applicability-year-to"
-                    type="number"
-                    className={tokens.input.base}
-                    value={draft.year_to}
-                    onChange={(e) => {
-                      setDraft((d) => ({ ...d, year_to: e.target.value }))
-                    }}
-                  />
-                </div>
-              </div>
-
-              {addError !== null ? (
-                <div className={`${tokens.alert.base} ${tokens.alert.error}`}>{addError}</div>
-              ) : null}
-
-              <div className={`flex items-center justify-end gap-2 border-t ${borderColors.light} pt-4`}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsAddOpen(false)
-                    resetDraft()
+              </FormField>
+              <FormField
+                label={t('authoring.applicability.yearTo')}
+                htmlFor="bundle-applicability-year-to"
+              >
+                <Input
+                  id="bundle-applicability-year-to"
+                  data-testid="bundle-applicability-year-to"
+                  type="number"
+                  value={draft.year_to}
+                  onChange={(e) => {
+                    setDraft((d) => ({ ...d, year_to: e.target.value }))
                   }}
-                  className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
-                >
-                  {t('authoring.applicability.cancel')}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAdd}
-                  disabled={replaceMutation.isPending}
-                  className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
-                  data-testid="bundle-applicability-save-btn"
-                >
-                  {t('authoring.applicability.save')}
-                </button>
-              </div>
+                />
+              </FormField>
             </div>
-          </div>
-        </div>
+
+            {addError !== null ? (
+              <div className={`${tokens.alert.base} ${tokens.alert.error}`}>{addError}</div>
+            ) : null}
+            </div>
+          </ModalContent>
+
+          <ModalFooter className={cn('border-t pt-4', borderColors.light)}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setIsAddOpen(false)
+                resetDraft()
+              }}
+            >
+              {t('authoring.applicability.cancel')}
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={handleAdd}
+              disabled={replaceMutation.isPending}
+              data-testid="bundle-applicability-save-btn"
+            >
+              {t('authoring.applicability.save')}
+            </Button>
+          </ModalFooter>
+        </Modal>
       ) : null}
     </section>
   )

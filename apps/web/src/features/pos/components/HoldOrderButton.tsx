@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Pause } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal, ModalHeader, ModalContent, ModalFooter } from '@/components/organisms/Modal/Modal'
+import { cn } from '@/lib/utils'
+import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import { useHoldOrder } from '../hooks/useHeldOrders'
 import type { CartSnapshot } from '../api/heldOrderApi'
 
@@ -73,7 +75,12 @@ export function HoldOrderButton({
         type="button"
         onClick={handleOpenDialog}
         disabled={isButtonDisabled}
-        className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+        className={cn(
+          'flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+          borderColors.default,
+          textColors.secondary,
+          colors.hover.gray50,
+        )}
       >
         <Pause className="h-4 w-4" />
         {t('pos:heldOrders.holdOrder')}
@@ -86,7 +93,7 @@ export function HoldOrderButton({
             <div>
               <label
                 htmlFor="hold-order-label"
-                className="mb-1 block text-sm font-medium text-gray-700"
+                className={cn('mb-1 block', tokens.label.base)}
               >
                 {t('pos:heldOrders.label')}
               </label>
@@ -97,7 +104,7 @@ export function HoldOrderButton({
                 onChange={(e) => { setLabel(e.target.value); }}
                 placeholder={t('pos:heldOrders.labelPlaceholder')}
                 maxLength={255}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={cn('block w-full text-sm', tokens.input.base)}
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -112,7 +119,7 @@ export function HoldOrderButton({
           <button
             type="button"
             onClick={() => { setIsDialogOpen(false); }}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className={cn(tokens.button.base, tokens.button.secondary, tokens.button.sizes.md)}
           >
             {t('common:cancel')}
           </button>
@@ -120,7 +127,7 @@ export function HoldOrderButton({
             type="button"
             onClick={handleHold}
             disabled={holdMutation.isPending}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className={cn(tokens.button.base, tokens.button.primary, tokens.button.sizes.md)}
           >
             {holdMutation.isPending ? '...' : t('pos:heldOrders.holdOrder')}
           </button>

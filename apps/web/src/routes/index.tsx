@@ -4,7 +4,7 @@ import { Layout } from '../components/layout/Layout'
 import { RequireAuth } from '../features/auth'
 import { RequirePermission } from '../components/auth'
 import { ModuleGuard } from '../components/guards'
-import { LoadingSpinner } from '../components/ui/LoadingSpinner'
+import { LoadingSpinner } from '../components/atoms/Spinner'
 
 // Lazy loaded pages
 const LoginPage = lazy(() => import('../features/auth/LoginPage').then((m) => ({ default: m.LoginPage })))

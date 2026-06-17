@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Presentation\Concerns;
 
+use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use Illuminate\Http\Request;
@@ -38,9 +39,12 @@ trait RequiresCompanyAccess
         /** @var User $user */
         $user = $request->user();
 
+        // FU-2a: require an ACTIVE membership, not mere existence — a
+        // suspended/revoked member must not retain route-driven company access.
         $hasAccess = UserCompanyMembership::query()
             ->where('user_id', $user->id)
             ->where('company_id', $companyId)
+            ->where('status', MembershipStatus::Active->value)
             ->exists();
 
         if (! $hasAccess) {

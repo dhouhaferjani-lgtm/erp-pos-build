@@ -16,6 +16,7 @@ final readonly class SessionOpenPayload extends Phase4SimplePayload
         'operator_name',
         'session_id',
         'shift_id',
+        'shift_number',
         'terminal_id',
         'terminal_label',
         'training_flag',

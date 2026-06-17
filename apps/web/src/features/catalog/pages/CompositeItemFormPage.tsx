@@ -4,11 +4,14 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { usePermissions } from '@/hooks/usePermissions'
-import { Input, FormField, Button, Select } from '@/components/atoms'
+import { Input, FormField, Button, Select, Checkbox } from '@/components/atoms'
+import { PageHeader } from '@/components/molecules'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/molecules/Tabs/Tabs'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { tokens } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
+import { tokens, textColors } from '@/lib/designTokens'
+import { bcsub, bcdiv, bcmul, bccomp } from '@/lib/decimal'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
@@ -26,6 +29,18 @@ import { MoneyInput } from '@/components/atoms'
 import type { ProductionType, PricingMode } from '../types/compositeItem'
 
 type TabValue = 'details' | 'recipeTab' | 'sizesTab' | 'modifiersTab'
+
+/**
+ * Cost margin as a 1-dp percentage string, computed entirely from decimal
+ * strings (precision contract rule 19 — never `parseFloat` a money value).
+ * Returns `null` when base price is missing/zero (margin is undefined).
+ */
+function computeMarginPercent(basePrice: string, cost: string): string | null {
+  if (!basePrice || bccomp(basePrice, '0') <= 0) return null
+  // (base - cost) / base * 100, rounded half-up to 1dp via high intermediate scale.
+  const fraction = bcdiv(bcsub(basePrice, cost, 4), basePrice, 6)
+  return bcmul(fraction, '100', 1)
+}
 
 export function CompositeItemFormPage() {
   const { t } = useTranslation(['catalog', 'common'])
@@ -173,26 +188,29 @@ export function CompositeItemFormPage() {
   }
 
   if (isEdit && isLoading) {
-    return <div className="text-center py-8 text-gray-500">{t('common:loading')}</div>
+    return <div className={cn('text-center py-8', textColors.tertiary)}>{t('common:loading')}</div>
   }
+
+  const pageTitle = isEdit
+    ? `${t('common:actions.edit')} ${getLabel('compositeItem')}`
+    : `${t('common:actions.create')} ${getLabel('compositeItem')}`
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <button
-          type="button"
-          onClick={() => navigate('/catalog/composite-items')}
-          className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <h1 className="text-2xl font-semibold text-gray-900">
-          {isEdit
-            ? `${t('common:actions.edit')} ${getLabel('compositeItem')}`
-            : `${t('common:actions.create')} ${getLabel('compositeItem')}`}
-        </h1>
-      </div>
+      <PageHeader
+        title={pageTitle}
+        breadcrumb={
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => navigate('/catalog/composite-items')}
+            aria-label={t('common:back')}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        }
+      />
 
       {/* Tabs (edit mode) / Details form (create mode) */}
       {isEdit ? (
@@ -246,22 +264,22 @@ export function CompositeItemFormPage() {
                       placeholder={t('catalog:manualCostPlaceholder')}
                     />
                     {item?.recipe_cost && (
-                      <div className="rounded-md bg-blue-50 p-3 text-sm space-y-1 mt-2">
+                      <div className={cn(tokens.alert.base, tokens.alert.info, 'text-sm space-y-1 mt-2')}>
                         <div className="flex justify-between">
-                          <span className="text-blue-700">{t('catalog:recipeCost')}</span>
-                          <span className="font-medium text-blue-900">{item.recipe_cost}</span>
+                          <span>{t('catalog:recipeCost')}</span>
+                          <span className="font-medium">{item.recipe_cost}</span>
                         </div>
                         {item.margin_percentage !== null && (
                           <div className="flex justify-between">
-                            <span className="text-blue-700">{t('catalog:margin')}</span>
-                            <span className="font-medium text-blue-900">{item.margin_percentage}%</span>
+                            <span>{t('catalog:margin')}</span>
+                            <span className="font-medium">{item.margin_percentage}%</span>
                           </div>
                         )}
                       </div>
                     )}
-                    {form.manual_cost && parseFloat(form.base_price) > 0 && (
-                      <p className="mt-1 text-sm text-gray-500">
-                        {t('catalog:margin')}: {(((parseFloat(form.base_price) - parseFloat(form.manual_cost)) / parseFloat(form.base_price)) * 100).toFixed(1)}%
+                    {form.manual_cost && computeMarginPercent(form.base_price, form.manual_cost) !== null && (
+                      <p className={cn('mt-1 text-sm', textColors.tertiary)}>
+                        {t('catalog:margin')}: {computeMarginPercent(form.base_price, form.manual_cost)}%
                       </p>
                     )}
                   </FormField>
@@ -298,22 +316,18 @@ export function CompositeItemFormPage() {
                   />
                   <div className="flex items-center gap-6 pt-6">
                     <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={form.is_active}
                         onChange={(e) => { setForm({ ...form, is_active: e.target.checked }); }}
-                        className={tokens.checkbox.base}
                       />
-                      <span className="text-sm text-gray-700">{t('catalog:isActive')}</span>
+                      <span className={cn('text-sm', textColors.secondary)}>{t('catalog:isActive')}</span>
                     </label>
                     <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={form.is_available}
                         onChange={(e) => { setForm({ ...form, is_available: e.target.checked }); }}
-                        className={tokens.checkbox.base}
                       />
-                      <span className="text-sm text-gray-700">{t('catalog:isAvailable')}</span>
+                      <span className={cn('text-sm', textColors.secondary)}>{t('catalog:isAvailable')}</span>
                     </label>
                   </div>
                 </div>
@@ -352,7 +366,7 @@ export function CompositeItemFormPage() {
             {/* Availability section — only shown when Inventory module is enabled */}
             {hasInventory && item?.active_recipe && (
               <div className={`${tokens.card.base} mt-6`}>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">{t('catalog:availability')}</h3>
+                <h3 className={cn(tokens.heading.section, 'mb-4')}>{t('catalog:availability')}</h3>
                 <div className="flex items-end gap-3 mb-4">
                   <FormField label={t('common:location')} htmlFor="avail-location" className="flex-1">
                     <Select
@@ -368,13 +382,13 @@ export function CompositeItemFormPage() {
                   </FormField>
                 </div>
                 {isCheckingAvailability && (
-                  <p className="text-sm text-gray-500">{t('common:loading')}</p>
+                  <p className={cn('text-sm', textColors.tertiary)}>{t('common:loading')}</p>
                 )}
                 {availability && selectedLocationId && (
                   <div className="space-y-3">
                     <div className="flex items-center gap-4">
-                      <div className="text-2xl font-bold text-gray-900">{availability.available_quantity}</div>
-                      <div className="text-sm text-gray-600">{t('catalog:maxProducible')}</div>
+                      <div className={cn('text-2xl font-bold', textColors.primary)}>{availability.available_quantity}</div>
+                      <div className={cn('text-sm', textColors.tertiary)}>{t('catalog:maxProducible')}</div>
                       {availability.limiting_component && (
                         <div className="text-sm text-amber-600">
                           {t('catalog:limitingIngredient')}: {availability.limiting_component}
@@ -385,10 +399,10 @@ export function CompositeItemFormPage() {
                       <table className="min-w-full text-sm">
                         <thead>
                           <tr>
-                            <th className="text-left py-1 font-medium text-gray-700">{getLabel('recipeLine')}</th>
-                            <th className="text-right py-1 font-medium text-gray-700">{t('catalog:required')}</th>
-                            <th className="text-right py-1 font-medium text-gray-700">{t('catalog:available')}</th>
-                            <th className="text-right py-1 font-medium text-gray-700">{t('catalog:maxProducible')}</th>
+                            <th className={cn('text-left py-1 font-medium', textColors.secondary)}>{getLabel('recipeLine')}</th>
+                            <th className={cn('text-right py-1 font-medium', textColors.secondary)}>{t('catalog:required')}</th>
+                            <th className={cn('text-right py-1 font-medium', textColors.secondary)}>{t('catalog:available')}</th>
+                            <th className={cn('text-right py-1 font-medium', textColors.secondary)}>{t('catalog:maxProducible')}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -419,7 +433,7 @@ export function CompositeItemFormPage() {
                 />
               ) : (
                 <div className="text-center py-8">
-                  <p className="text-gray-500 mb-4">{t('catalog:createRecipe')}</p>
+                  <p className={cn(textColors.tertiary, 'mb-4')}>{t('catalog:createRecipe')}</p>
                   <Button
                     onClick={handleCreateRecipe}
                     disabled={createRecipeMutation.isPending}
@@ -484,9 +498,9 @@ export function CompositeItemFormPage() {
                   onChange={(v) => { setForm({ ...form, manual_cost: v }); }}
                   placeholder={t('catalog:manualCostPlaceholder')}
                 />
-                {form.manual_cost && parseFloat(form.base_price) > 0 && (
-                  <p className="mt-1 text-sm text-gray-500">
-                    {t('catalog:margin')}: {(((parseFloat(form.base_price) - parseFloat(form.manual_cost)) / parseFloat(form.base_price)) * 100).toFixed(1)}%
+                {form.manual_cost && computeMarginPercent(form.base_price, form.manual_cost) !== null && (
+                  <p className={cn('mt-1 text-sm', textColors.tertiary)}>
+                    {t('catalog:margin')}: {computeMarginPercent(form.base_price, form.manual_cost)}%
                   </p>
                 )}
               </FormField>
@@ -511,22 +525,18 @@ export function CompositeItemFormPage() {
               />
               <div className="flex items-center gap-6 pt-6">
                 <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={form.is_active}
                     onChange={(e) => { setForm({ ...form, is_active: e.target.checked }); }}
-                    className={tokens.checkbox.base}
                   />
-                  <span className="text-sm text-gray-700">{t('catalog:isActive')}</span>
+                  <span className={cn('text-sm', textColors.secondary)}>{t('catalog:isActive')}</span>
                 </label>
                 <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={form.is_available}
                     onChange={(e) => { setForm({ ...form, is_available: e.target.checked }); }}
-                    className={tokens.checkbox.base}
                   />
-                  <span className="text-sm text-gray-700">{t('catalog:isAvailable')}</span>
+                  <span className={cn('text-sm', textColors.secondary)}>{t('catalog:isAvailable')}</span>
                 </label>
               </div>
             </div>

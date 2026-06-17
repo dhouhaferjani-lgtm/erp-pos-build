@@ -10,6 +10,9 @@ import { Button } from '@/components/atoms/Button/Button'
 import { Modal } from '@/components/organisms/Modal/Modal'
 import { Input } from '@/components/atoms/Input/Input'
 import { Select } from '@/components/atoms/Select/Select'
+import { Textarea } from '@/components/atoms/Textarea/Textarea'
+import { PageHeader } from '@/components/molecules/PageHeader'
+import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 
 export function CategoryManagementPage() {
   const { t } = useTranslation()
@@ -100,7 +103,7 @@ export function CategoryManagementPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-500">{t('common:loading')}</div>
+        <div className={textColors.tertiary}>{t('common:loading')}</div>
       </div>
     )
   }
@@ -108,28 +111,27 @@ export function CategoryManagementPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('common:catalog.categories.title')}</h1>
-          <p className="text-sm text-gray-600 mt-1">
-            {t('common:catalog.categories.tree')}
-          </p>
-        </div>
-        <Button onClick={handleOpenCreate}>
-          <Plus className="h-4 w-4 me-2" />
-          {t('common:catalog.categories.create')}
-        </Button>
-      </div>
+      <PageHeader
+        title={t('common:catalog.categories.title')}
+        subtitle={t('common:catalog.categories.tree')}
+        actions={
+          <Button onClick={handleOpenCreate}>
+            <Plus className="h-4 w-4 me-2" />
+            {t('common:catalog.categories.create')}
+          </Button>
+        }
+        className="mb-0"
+      />
 
       {/* Category Tree */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className={tokens.card.base}>
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className={tokens.heading.section}>
             {t('common:catalog.categories.tree')}
           </h2>
         </div>
 
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className={`border ${borderColors.light} rounded-lg overflow-hidden`}>
           {categoryTree && categoryTree.length > 0 ? (
             <div className="max-h-[600px] overflow-y-auto">
               <CategoryTree
@@ -153,15 +155,15 @@ export function CategoryManagementPage() {
 
         {/* Selected Category Actions */}
         {selectedCategory && (
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <div className={`mt-4 p-4 ${colors.neutral[50]} rounded-lg border ${borderColors.light}`}>
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-gray-900">{selectedCategory.name}</h3>
+                <h3 className={`font-semibold ${textColors.primary}`}>{selectedCategory.name}</h3>
                 {selectedCategory.description && (
-                  <p className="text-sm text-gray-600 mt-1">{selectedCategory.description}</p>
+                  <p className={`text-sm ${textColors.tertiary} mt-1`}>{selectedCategory.description}</p>
                 )}
                 {selectedCategory.products_count !== null && (
-                  <p className="text-sm text-gray-500 mt-1">
+                  <p className={`text-sm ${textColors.tertiary} mt-1`}>
                     {t('common:catalog.categories.productsCount', { count: selectedCategory.products_count })}
                   </p>
                 )}
@@ -175,7 +177,7 @@ export function CategoryManagementPage() {
                   variant="secondary"
                   size="sm"
                   onClick={() => { handleOpenDelete(selectedCategory); }}
-                  className="text-red-600 hover:text-red-700 hover:border-red-300"
+                  className={`${textColors.error} ${textColors.hoverError} ${borderColors.hover}`}
                 >
                   <Trash2 className="h-4 w-4 me-2" />
                   {t('common:actions.delete')}
@@ -194,7 +196,7 @@ export function CategoryManagementPage() {
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className={`${tokens.label.base} mb-1`}>
               {t('common:catalog.categories.name')}
             </label>
             <Input
@@ -205,7 +207,7 @@ export function CategoryManagementPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className={`${tokens.label.base} mb-1`}>
               {t('common:catalog.categories.parent')}
             </label>
             <Select
@@ -225,14 +227,13 @@ export function CategoryManagementPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className={`${tokens.label.base} mb-1`}>
               {t('common:catalog.categories.description')}
             </label>
-            <textarea
+            <Textarea
               value={formData.description}
               onChange={(e) => { setFormData({ ...formData, description: e.target.value }); }}
               placeholder={t('common:catalog.categories.description')}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               rows={3}
             />
           </div>
@@ -256,7 +257,7 @@ export function CategoryManagementPage() {
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className={`${tokens.label.base} mb-1`}>
               {t('common:catalog.categories.name')}
             </label>
             <Input
@@ -267,7 +268,7 @@ export function CategoryManagementPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className={`${tokens.label.base} mb-1`}>
               {t('common:catalog.categories.parent')}
             </label>
             <Select
@@ -289,14 +290,13 @@ export function CategoryManagementPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className={`${tokens.label.base} mb-1`}>
               {t('common:catalog.categories.description')}
             </label>
-            <textarea
+            <Textarea
               value={formData.description}
               onChange={(e) => { setFormData({ ...formData, description: e.target.value }); }}
               placeholder={t('common:catalog.categories.description')}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               rows={3}
             />
           </div>
@@ -319,12 +319,12 @@ export function CategoryManagementPage() {
         title={t('common:actions.delete')}
       >
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">
+          <p className={`text-sm ${textColors.tertiary}`}>
             {t('common:confirmation.delete')}
           </p>
           {selectedCategory?.products_count && selectedCategory.products_count > 0 && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-800">
+            <div className={`${tokens.alert.base} ${tokens.alert.error}`}>
+              <p className="text-sm">
                 {t('common:catalog.categories.cannotDelete')}
               </p>
             </div>
@@ -335,12 +335,12 @@ export function CategoryManagementPage() {
               {t('common:actions.cancel')}
             </Button>
             <Button
+              variant="danger"
               onClick={handleDelete}
               disabled={
                 deleteMutation.isPending ||
                 (selectedCategory?.products_count != null && selectedCategory.products_count > 0)
               }
-              className="bg-red-600 hover:bg-red-700"
             >
               {deleteMutation.isPending ? t('common:status.processing') : t('common:actions.delete')}
             </Button>

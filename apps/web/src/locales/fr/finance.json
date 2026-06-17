@@ -8,7 +8,7 @@
     },
     "form": {
       "title": "Nouvelle ecriture comptable",
-      "descriptionPlaceholder": "Saisir la description de l'ecriture..."
+      "descriptionPlaceholder": "Saisir la description de l'ecriture…"
     },
     "new": "Nouvelle ecriture",
     "entryNumber": "Numero d'ecriture",
@@ -71,9 +71,9 @@
         "revenue": "Produits",
         "expense": "Charges"
       },
-      "creating": "Création...",
+      "creating": "Création…",
       "create": "Créer le compte",
-      "saving": "Enregistrement...",
+      "saving": "Enregistrement…",
       "saveChanges": "Enregistrer les modifications"
     }
   },
@@ -116,7 +116,7 @@
     "agedPayables": "Balance agee fournisseurs",
     "common": {
       "export": "Exporter",
-      "loading": "Chargement...",
+      "loading": "Chargement…",
       "asOfDate": "Au",
       "from": "Du",
       "to": "Au",

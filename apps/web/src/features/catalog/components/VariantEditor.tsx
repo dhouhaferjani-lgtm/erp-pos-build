@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { Input, Button, Select, MoneyInput, QuantityInput } from '@/components/atoms'
-import { tokens } from '@/lib/designTokens'
+import { Input, Button, Checkbox, Select, MoneyInput, QuantityInput } from '@/components/atoms'
+import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { useCompanyConfig } from '@/contexts'
 import type { CompositeItemVariantData, PriceAdjustmentType } from '../types/compositeItem'
 import { useCreateVariant, useUpdateVariant, useDeleteVariant } from '../hooks/useRecipes'
@@ -118,22 +118,22 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
   return (
     <div className="space-y-4">
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-300">
+        <table className={`min-w-full divide-y ${borderColors.default}`}>
           <thead>
             <tr>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:code')}</th>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:name')}</th>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:priceAdjustmentType')}</th>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:priceAdjustment')}</th>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:recipeMultiplier')}</th>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:isDefault')}</th>
+              <th className={`px-3 py-3.5 text-left text-sm font-semibold ${textColors.primary}`}>{t('catalog:code')}</th>
+              <th className={`px-3 py-3.5 text-left text-sm font-semibold ${textColors.primary}`}>{t('catalog:name')}</th>
+              <th className={`px-3 py-3.5 text-left text-sm font-semibold ${textColors.primary}`}>{t('catalog:priceAdjustmentType')}</th>
+              <th className={`px-3 py-3.5 text-left text-sm font-semibold ${textColors.primary}`}>{t('catalog:priceAdjustment')}</th>
+              <th className={`px-3 py-3.5 text-left text-sm font-semibold ${textColors.primary}`}>{t('catalog:recipeMultiplier')}</th>
+              <th className={`px-3 py-3.5 text-left text-sm font-semibold ${textColors.primary}`}>{t('catalog:isDefault')}</th>
               <th className="px-3 py-3.5"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className={`divide-y ${borderColors.divideDefault}`}>
             {variants.map((variant) => (
               <tr key={variant.id}>
-                <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">{variant.code}</td>
+                <td className={`whitespace-nowrap px-3 py-4 text-sm ${textColors.primary}`}>{variant.code}</td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
                   <Input
                     type="text"
@@ -185,7 +185,7 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                     size="sm"
                     onClick={() => { handleDelete(variant.id); }}
                     disabled={deleteMutation.isPending}
-                    className="!p-1 text-red-600 hover:text-red-900 hover:bg-red-50"
+                    className={`!p-1 ${textColors.error} ${textColors.hoverError}`}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -193,7 +193,7 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
               </tr>
             ))}
             {/* Add new variant row */}
-            <tr className="bg-gray-50">
+            <tr className={tokens.table.header}>
               <td className="px-3 py-4">
                 <Input
                   type="text"
@@ -242,11 +242,9 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                 />
               </td>
               <td className="px-3 py-4">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={newVariant.is_default}
                   onChange={(e) => { setNewVariant({ ...newVariant, is_default: e.target.checked }); }}
-                  className={tokens.checkbox.base}
                 />
               </td>
               <td className="px-3 py-4">
@@ -255,7 +253,7 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                   size="sm"
                   onClick={handleAdd}
                   disabled={!newVariant.code || !newVariant.name || createMutation.isPending}
-                  className="!p-1 text-blue-600 hover:text-blue-700"
+                  className={`!p-1 ${textColors.brand}`}
                 >
                   <Plus className="h-4 w-4" />
                 </Button>

@@ -53,6 +53,7 @@ vi.mock('@/contexts/ProductConfigContext', async () => {
 
 vi.mock('@/hooks/useCurrency', () => ({
   useCurrency: () => ({ currency: 'EUR', locale: 'en', decimals: 2 }),
+  getDecimals: () => 2,
 }))
 
 vi.mock('@/hooks/useTaxConfigName', () => ({

@@ -181,7 +181,7 @@ describe('JournalEntryListPage', () => {
     render(<JournalEntryListPage />, { wrapper: TestWrapper })
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: /new.*entry/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /new.*entry/i })).toBeInTheDocument()
     })
   })
 })

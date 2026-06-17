@@ -4,10 +4,12 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Trash2 } from 'lucide-react'
 import { api } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { cn } from '../../lib/utils'
+import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
 import { useCurrency } from '../../hooks/useCurrency'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
-import { MoneyInput } from '../../components/atoms/MoneyInput'
+import { Button, FormField, Input, MoneyInput, Select } from '../../components/atoms'
 
 interface PaymentMethod {
   id: string
@@ -168,28 +170,29 @@ export function SplitPaymentForm({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+      <div className={cn('rounded-lg border p-4', borderColors.light, colors.neutral[50])}>
         <div className="flex justify-between items-center">
           <div>
-            <span className="text-sm font-medium text-gray-500">
+            <span className={cn('text-sm font-medium', textColors.tertiary)}>
               {t('treasury:splitPayment.totalRequired')}
             </span>
-            <div className="text-xl font-bold text-gray-900">
+            <div className={cn('text-xl font-bold', textColors.primary)}>
               {formatCurrency(totalAmount)}
             </div>
           </div>
           <div className="text-end">
-            <span className="text-sm font-medium text-gray-500">
+            <span className={cn('text-sm font-medium', textColors.tertiary)}>
               {t('treasury:splitPayment.remaining')}
             </span>
             <div
-              className={`text-xl font-bold ${
+              className={cn(
+                'text-xl font-bold',
                 Math.abs(remaining) < 0.01
-                  ? 'text-green-600'
+                  ? textColors.success
                   : remaining > 0
-                  ? 'text-yellow-600'
-                  : 'text-red-600'
-              }`}
+                  ? textColors.warningDark
+                  : textColors.error,
+              )}
             >
               {formatCurrency(remaining)}
             </div>
@@ -199,19 +202,16 @@ export function SplitPaymentForm({
 
       <div className="space-y-4">
         {paymentLines.map((line, index) => (
-          <div
-            key={line.id}
-            className="rounded-lg border border-gray-200 bg-white p-4"
-          >
+          <div key={line.id} className={tokens.card.base}>
             <div className="flex items-center justify-between mb-4">
-              <h4 className="text-sm font-medium text-gray-700">
+              <h4 className={cn('text-sm font-medium', textColors.secondary)}>
                 {t('treasury:splitPayment.paymentLine', { number: index + 1 })}
               </h4>
               {paymentLines.length > 1 && (
                 <button
                   type="button"
                   onClick={() => { removePaymentLine(line.id); }}
-                  className="text-red-600 hover:text-red-800"
+                  className={cn(textColors.error, textColors.hoverError)}
                   aria-label={t('common:actions.remove')}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -220,20 +220,13 @@ export function SplitPaymentForm({
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label
-                  htmlFor={`method-${line.id}`}
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  {t('treasury:payments.method')}
-                </label>
-                <select
+              <FormField label={t('treasury:payments.method')} htmlFor={`method-${line.id}`}>
+                <Select
                   id={`method-${line.id}`}
                   value={line.payment_method_id}
                   onChange={(e) =>
                     { updatePaymentLine(line.id, 'payment_method_id', e.target.value); }
                   }
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   aria-label={t('treasury:payments.method')}
                 >
                   <option value="">{t('common:select')}</option>
@@ -242,41 +235,27 @@ export function SplitPaymentForm({
                       {method.name}
                     </option>
                   ))}
-                </select>
-              </div>
+                </Select>
+              </FormField>
 
-              <div>
-                <label
-                  htmlFor={`amount-${line.id}`}
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  {t('treasury:payments.amount')}
-                </label>
+              <FormField label={t('treasury:payments.amount')} htmlFor={`amount-${line.id}`}>
                 <MoneyInput
                   id={`amount-${line.id}`}
                   currency={currency}
                   value={line.amount}
                   onChange={(v) => { updatePaymentLine(line.id, 'amount', v) }}
                   min="0.01"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   aria-label={t('treasury:payments.amount')}
                 />
-              </div>
+              </FormField>
 
-              <div>
-                <label
-                  htmlFor={`repository-${line.id}`}
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  {t('treasury:instruments.repository')}
-                </label>
-                <select
+              <FormField label={t('treasury:instruments.repository')} htmlFor={`repository-${line.id}`}>
+                <Select
                   id={`repository-${line.id}`}
                   value={line.repository_id}
                   onChange={(e) =>
                     { updatePaymentLine(line.id, 'repository_id', e.target.value); }
                   }
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="">{t('common:select')}</option>
                   {repositories.map((repo) => (
@@ -284,27 +263,20 @@ export function SplitPaymentForm({
                       {repo.name}
                     </option>
                   ))}
-                </select>
-              </div>
+                </Select>
+              </FormField>
 
-              <div>
-                <label
-                  htmlFor={`reference-${line.id}`}
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  {t('treasury:payments.reference')}
-                </label>
-                <input
+              <FormField label={t('treasury:payments.reference')} htmlFor={`reference-${line.id}`}>
+                <Input
                   type="text"
                   id={`reference-${line.id}`}
                   value={line.reference}
                   onChange={(e) =>
                     { updatePaymentLine(line.id, 'reference', e.target.value); }
                   }
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   placeholder={t('treasury:payments.reference')}
                 />
-              </div>
+              </FormField>
             </div>
           </div>
         ))}
@@ -313,34 +285,30 @@ export function SplitPaymentForm({
       <button
         type="button"
         onClick={addPaymentLine}
-        className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800"
+        className={cn('inline-flex items-center gap-2 text-sm font-medium transition-colors', textColors.brand)}
       >
         <Plus className="h-4 w-4" />
         {t('treasury:splitPayment.addPayment')}
       </button>
 
       {validationError && (
-        <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+        <div className={cn(tokens.alert.base, tokens.alert.error)}>
           {validationError}
         </div>
       )}
 
-      <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-        >
+      <div className={cn('flex justify-end gap-3 pt-4 border-t', borderColors.light)}>
+        <Button type="button" variant="secondary" onClick={onCancel}>
           {t('common:actions.cancel')}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="primary"
           onClick={handleSubmit}
           disabled={submitMutation.isPending}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
           {submitMutation.isPending ? t('common:status.loading') : t('common:actions.submit')}
-        </button>
+        </Button>
       </div>
     </div>
   )

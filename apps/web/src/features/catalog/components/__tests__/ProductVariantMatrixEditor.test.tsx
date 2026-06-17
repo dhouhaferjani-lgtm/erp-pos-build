@@ -4,7 +4,17 @@ import userEvent from '@testing-library/user-event'
 import { ProductVariantMatrixEditor } from '../ProductVariantMatrixEditor'
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, second?: unknown) =>
+      typeof second === 'string' ? second : key,
+  }),
+}))
+
+vi.mock('@/contexts', () => ({
+  useCompanyConfig: () => ({
+    config: { vertical: 'fnb', currency: 'TND' },
+    hasModule: () => false,
+  }),
 }))
 
 let mockHasPermission = vi.fn().mockReturnValue(true)
@@ -128,5 +138,30 @@ describe('ProductVariantMatrixEditor', () => {
     const arg = mockUpdateMutate.mock.calls[0][0]
     expect(arg.variantId).toBe('v1')
     expect(arg.payload.is_active).toBe(false)
+  })
+
+  it('renders the price override as a precision-safe number (MoneyInput) input', () => {
+    mockVariants = [variant({ id: 'v1', price_override: '12.500' })]
+    render(<ProductVariantMatrixEditor productId="p1" />)
+    // MoneyInput renders <input type="number"> → exposed as a spinbutton.
+    const priceInput = screen.getByLabelText('catalog:variants.price Red / S')
+    expect(priceInput).toHaveAttribute('type', 'number')
+  })
+
+  it('saves an edited price as a canonical string (no float coercion)', async () => {
+    mockVariants = [variant({ id: 'v1', price_override: '' })]
+    mockUpdateMutate.mockResolvedValue(variant({ id: 'v1' }))
+    const user = userEvent.setup()
+    render(<ProductVariantMatrixEditor productId="p1" />)
+
+    const priceInput = screen.getByLabelText('catalog:variants.price Red / S')
+    await user.type(priceInput, '12.5')
+    await user.click(screen.getByRole('button', { name: 'catalog:variants.save' }))
+
+    await waitFor(() => {
+      expect(mockUpdateMutate).toHaveBeenCalled()
+    })
+    const arg = mockUpdateMutate.mock.calls[0][0]
+    expect(arg.payload.price_override).toBe('12.5')
   })
 })

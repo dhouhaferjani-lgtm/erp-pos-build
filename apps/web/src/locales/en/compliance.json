@@ -7,14 +7,14 @@
     "from": "From",
     "to": "To",
     "export": "Export JET XML",
-    "exporting": "Exporting..."
+    "exporting": "Exporting…"
   },
   "exportError": "Failed to export JET file. Please try again.",
   "chainVerification": {
     "title": "Hash Chain Verification",
     "description": "Verify the integrity of receipt and Z-report fiscal hash chains per terminal.",
     "verify": "Verify All Chains",
-    "verifying": "Verifying...",
+    "verifying": "Verifying…",
     "terminal": "Terminal",
     "receiptChain": "Receipt Chain",
     "zReportChain": "Z-Report Chain",
@@ -175,7 +175,7 @@
       "assign": "Assign",
       "dismiss": "Dismiss",
       "resolve": "Resolve",
-      "assignTo": "Assign to...",
+      "assignTo": "Assign to…",
       "viewCounting": "View Counting"
     },
     "detail": {
@@ -199,12 +199,12 @@
       "dismiss": {
         "title": "Dismiss Alert",
         "notesLabel": "Reason for dismissal",
-        "notesPlaceholder": "Explain why this alert is being dismissed as a false positive..."
+        "notesPlaceholder": "Explain why this alert is being dismissed as a false positive…"
       },
       "resolve": {
         "title": "Resolve Alert",
         "notesLabel": "Resolution notes",
-        "notesPlaceholder": "Document the investigation outcome and actions taken..."
+        "notesPlaceholder": "Document the investigation outcome and actions taken…"
       }
     },
     "statistics": {
@@ -218,7 +218,7 @@
       "dismissSuccess": "Alert dismissed",
       "resolveSuccess": "Alert resolved",
       "noAlerts": "No fraud alerts found",
-      "loadingAlerts": "Loading alerts..."
+      "loadingAlerts": "Loading alerts…"
     }
   }
 }

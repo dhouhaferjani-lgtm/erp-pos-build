@@ -1,10 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, AlertTriangle, Circle, ArrowRight } from 'lucide-react'
+import { Check, AlertTriangle, Circle, ArrowRight } from 'lucide-react'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import { cn } from '@/lib/utils'
+import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
+import { Spinner } from '@/components/atoms/Spinner'
+import { ProgressBar } from '@/components/atoms/ProgressBar'
+import { StatusBadge } from '@/components/atoms/StatusBadge'
 import { fetchOnboardingStatus, type OnboardingItem } from '../api/onboardingApi'
 
 export function SetupChecklist() {
@@ -28,7 +33,7 @@ export function SetupChecklist() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600" />
+        <Spinner size="md" />
       </div>
     )
   }
@@ -36,81 +41,80 @@ export function SetupChecklist() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-gray-900">{t('onboarding.title')}</h2>
-        <p className="mt-1 text-sm text-gray-600">{t('onboarding.description')}</p>
+        <h2 className={tokens.heading.section}>{t('onboarding.title')}</h2>
+        <p className={cn('mt-1 text-sm', textColors.tertiary)}>{t('onboarding.description')}</p>
       </div>
 
       {/* Progress bar */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-gray-700">
+      <div className={cn(tokens.card.base)}>
+        <div className="mb-2 flex items-center justify-between">
+          <span className={cn('text-sm font-medium', textColors.secondary)}>
             {t('onboarding.progressLabel', { completed: completedCount, total: totalCount })}
           </span>
-          <span className="text-sm font-semibold text-gray-900">{progressPercent}%</span>
+          <span className={cn('text-sm font-semibold', textColors.primary)}>{`${String(progressPercent)}%`}</span>
         </div>
-        <div className="h-2 w-full rounded-full bg-gray-200">
-          <div
-            className="h-2 rounded-full bg-green-500 transition-all duration-300"
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
+        <ProgressBar percent={progressPercent} size="sm" variant="success" />
       </div>
 
       {/* Required steps alert */}
       {hasIncompleteRequired && (
-        <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
-          <AlertTriangle className="h-5 w-5 shrink-0 text-red-600 mt-0.5" />
-          <p className="text-sm font-medium text-red-800">{t('onboarding.requiredStepsAlert')}</p>
+        <div className={cn('flex items-start gap-3', tokens.alert.base, tokens.alert.error)}>
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          <p className="font-medium">{t('onboarding.requiredStepsAlert')}</p>
         </div>
       )}
 
       {/* Checklist items */}
-      <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
+      <div
+        className={cn(
+          'divide-y rounded-lg border',
+          colors.white,
+          borderColors.light,
+          borderColors.divideLight,
+        )}
+      >
         {items.map((item: OnboardingItem) => (
           <button
             key={item.step}
             type="button"
-            onClick={() => { navigate(item.settings_path); }}
-            className="flex w-full items-center gap-4 px-6 py-4 text-left hover:bg-gray-50 transition-colors"
+            onClick={() => { void navigate(item.settings_path); }}
+            className={cn(
+              'flex w-full items-center gap-4 px-6 py-4 text-left transition-colors',
+              tokens.table.rowHover,
+            )}
           >
             {/* Status icon */}
             <span className="shrink-0">
               {item.completed ? (
-                <CheckCircle2 className="h-5 w-5 text-green-500" />
+                <Check className={cn('h-5 w-5', textColors.success)} aria-hidden="true" />
               ) : item.required ? (
-                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                <AlertTriangle className={cn('h-5 w-5', textColors.warningDark)} aria-hidden="true" />
               ) : (
-                <Circle className="h-5 w-5 text-gray-300" />
+                <Circle className={cn('h-5 w-5', textColors.disabled)} aria-hidden="true" />
               )}
             </span>
 
             {/* Label */}
-            <span className="flex-1 text-sm font-medium text-gray-900">{t(`onboarding.steps.${item.step}`)}</span>
-
-            {/* Badge */}
-            <span
-              className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                item.required
-                  ? 'bg-red-100 text-red-700'
-                  : 'bg-gray-100 text-gray-500'
-              }`}
-            >
-              {item.required ? t('onboarding.badges.required') : t('onboarding.badges.optional')}
+            <span className={cn('flex-1 text-sm font-medium', textColors.primary)}>
+              {t(`onboarding.steps.${item.step}`)}
             </span>
 
+            {/* Badge */}
+            <StatusBadge tone={item.required ? 'danger' : 'neutral'}>
+              {item.required ? t('onboarding.badges.required') : t('onboarding.badges.optional')}
+            </StatusBadge>
+
             {/* Arrow */}
-            <ArrowRight className="h-4 w-4 shrink-0 text-gray-400" />
+            <ArrowRight className={cn('h-4 w-4 shrink-0', textColors.disabled)} aria-hidden="true" />
           </button>
         ))}
       </div>
 
       {/* All done message */}
       {!hasIncompleteRequired && totalCount > 0 && (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="h-5 w-5 shrink-0 text-green-600" />
-            <p className="text-sm font-medium text-green-800">{t('onboarding.allDone')}</p>
-          </div>
+        <div className={cn('flex items-center gap-3', tokens.alert.base, tokens.alert.success)}>
+          <Check className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <p className="font-medium">{t('onboarding.allDone')}</p>
         </div>
       )}
     </div>

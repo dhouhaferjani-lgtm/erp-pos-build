@@ -1,5 +1,5 @@
 {
-  "searchPlaceholder": "Search products by name, SKU, or barcode...",
+  "searchPlaceholder": "Search products by name, SKU, or barcode…",
   "noProductsFound": "No products found",
   "noAvailableProducts": "No products available",
   "selectedProducts": "{{count}} product selected",
@@ -18,7 +18,7 @@
     "dragDropOrClick": "Drag & drop an image here, or click to select",
     "supportedFormats": "Supported formats",
     "supportedFormatsDetail": "Supported formats: JPEG, PNG, WebP, GIF (max 5MB)",
-    "uploading": "Uploading image...",
+    "uploading": "Uploading image…",
     "primary": "Primary",
     "setPrimary": "Set as primary",
     "confirmDelete": "Are you sure you want to delete this image?",

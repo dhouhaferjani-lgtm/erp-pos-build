@@ -114,6 +114,7 @@ const terminal: Terminal = {
   has_history: false,
   current_sequence: 1,
   current_year: 2026,
+  fiscal_schema_version: 2,
   max_discount_percent: '10.00',
   allow_line_discounts: true,
   allow_transaction_discounts: true,

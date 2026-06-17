@@ -9,6 +9,11 @@ import { useAuthStore } from '../../stores/authStore'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
 import { formatCurrency } from '../../lib/format'
+import { cn } from '../../lib/utils'
+import { tokens, textColors, borderColors } from '../../lib/designTokens'
+import { Button } from '../../components/atoms/Button'
+import { StatusBadge, statusTone } from '../../components/atoms/StatusBadge'
+import { PageHeader } from '../../components/molecules/PageHeader'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import {
   Tabs,
@@ -39,7 +44,7 @@ interface Product {
   barcode: string | null
   is_active: boolean
   oem_numbers: string[] | null
-  cross_references: Array<{ brand: string; reference: string }> | null
+  cross_references: { brand: string; reference: string }[] | null
   created_at: string
   updated_at: string | null
 }
@@ -130,7 +135,7 @@ export function ProductDetailPage() {
 
   if (!id) {
     return (
-      <div className="rounded-lg bg-red-50 p-4 text-red-700">
+      <div className={cn(tokens.alert.base, tokens.alert.error)}>
         {t('common:errors.loadingFailed')}
       </div>
     )
@@ -139,14 +144,14 @@ export function ProductDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-500">{t('status.loading')}</div>
+        <div className={textColors.tertiary}>{t('status.loading')}</div>
       </div>
     )
   }
 
   if (error || !data) {
     return (
-      <div className="rounded-lg bg-red-50 p-4 text-red-700">
+      <div className={cn(tokens.alert.base, tokens.alert.error)}>
         {t('common:errors.loadingFailed')}
       </div>
     )
@@ -154,52 +159,55 @@ export function ProductDetailPage() {
 
   const product = data
 
+  const backLink = (
+    <Link
+      to="/inventory/products"
+      className={cn(
+        'inline-flex items-center gap-2 text-sm',
+        textColors.tertiary,
+        textColors.hoverPrimary,
+      )}
+    >
+      <ArrowLeft className="h-4 w-4" />
+      {t('common:actions.back')}
+    </Link>
+  )
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link
-            to="/inventory/products"
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            {t('common:actions.back')}
-          </Link>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900">{product.name}</h1>
-              <span
-                className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                  product.is_active
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-gray-100 text-gray-800'
-                }`}
-              >
-                {product.is_active ? t('common:status.active') : t('common:status.inactive')}
-              </span>
-            </div>
-            <p className="text-sm text-gray-500">{t('common:sku')}: {product.sku}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            to={`/inventory/products/${product.id}/edit`}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            <Edit className="h-4 w-4" />
-            {t('common:actions.edit')}
-          </Link>
-          <button
-            onClick={handleDelete}
-            disabled={deleteMutation.isPending}
-            className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 transition-colors disabled:opacity-50"
-          >
-            <Trash2 className="h-4 w-4" />
-            {deleteMutation.isPending ? t('common:status.saving') : t('common:actions.delete')}
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title={product.name}
+        breadcrumb={backLink}
+        subtitle={`${t('common:sku')}: ${product.sku}`}
+        actions={
+          <>
+            <StatusBadge tone={statusTone(product.is_active ? 'active' : 'inactive')}>
+              {product.is_active ? t('common:status.active') : t('common:status.inactive')}
+            </StatusBadge>
+            <Link
+              to={`/inventory/products/${product.id}/edit`}
+              className={cn(
+                tokens.button.base,
+                tokens.button.secondary,
+                tokens.button.sizes.md,
+                'gap-2',
+              )}
+            >
+              <Edit className="h-4 w-4" />
+              {t('common:actions.edit')}
+            </Link>
+            <Button
+              variant="danger"
+              onClick={handleDelete}
+              disabled={deleteMutation.isPending}
+            >
+              <Trash2 className="me-2 h-4 w-4" />
+              {deleteMutation.isPending ? t('common:status.saving') : t('common:actions.delete')}
+            </Button>
+          </>
+        }
+      />
 
       {/* Tabs */}
       <Tabs defaultValue="details">
@@ -221,26 +229,26 @@ export function ProductDetailPage() {
             {/* Right: Essential Info - Clean Data Table */}
             <div className="space-y-6">
               {/* Product Information */}
-              <div className="rounded-lg border border-gray-200 bg-white">
-                <div className="border-b border-gray-200 px-6 py-4">
-                  <h2 className="text-base font-semibold text-gray-900">{t('products.productInformation')}</h2>
+              <div className={cn('rounded-lg border bg-white', borderColors.light)}>
+                <div className={cn('border-b px-6 py-4', borderColors.light)}>
+                  <h2 className={cn('text-base font-semibold', textColors.primary)}>{t('products.productInformation')}</h2>
                 </div>
-                <div className="divide-y divide-gray-100">
+                <div className={cn('divide-y', borderColors.divideLight)}>
                   {product.description && (
                     <div className="px-6 py-3">
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.description')}</div>
-                      <div className="mt-1 text-sm text-gray-900">{product.description}</div>
+                      <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.description')}</div>
+                      <div className={cn('mt-1 text-sm', textColors.primary)}>{product.description}</div>
                     </div>
                   )}
                   <div className="grid grid-cols-2 gap-x-6 px-6 py-3">
                     <div>
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.unit')}</div>
-                      <div className="mt-1 text-sm font-medium text-gray-900">{product.unit ?? '-'}</div>
+                      <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.unit')}</div>
+                      <div className={cn('mt-1 text-sm font-medium', textColors.primary)}>{product.unit ?? '-'}</div>
                     </div>
                     {product.barcode && (
                       <div>
-                        <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.barcode')}</div>
-                        <div className="mt-1 font-mono text-sm font-medium text-gray-900">{product.barcode}</div>
+                        <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.barcode')}</div>
+                        <div className={cn('mt-1 font-mono text-sm font-medium', textColors.primary)}>{product.barcode}</div>
                       </div>
                     )}
                   </div>
@@ -248,34 +256,34 @@ export function ProductDetailPage() {
               </div>
 
               {/* Pricing */}
-              <div className="rounded-lg border border-gray-200 bg-white">
-                <div className="border-b border-gray-200 px-6 py-4">
-                  <h2 className="text-base font-semibold text-gray-900">{t('products.sections.pricing')}</h2>
+              <div className={cn('rounded-lg border bg-white', borderColors.light)}>
+                <div className={cn('border-b px-6 py-4', borderColors.light)}>
+                  <h2 className={cn('text-base font-semibold', textColors.primary)}>{t('products.sections.pricing')}</h2>
                 </div>
-                <div className="divide-y divide-gray-100">
+                <div className={cn('divide-y', borderColors.divideLight)}>
                   <div className="grid grid-cols-3 gap-x-6 px-6 py-3">
                     <div>
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.salePrice')}</div>
-                      <div className="mt-1 text-base font-semibold text-gray-900">{formatAmount(product.sale_price)}</div>
+                      <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.salePrice')}</div>
+                      <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>{formatAmount(product.sale_price)}</div>
                     </div>
                     <div>
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.costWac')}</div>
-                      <div className="mt-1 text-base font-semibold text-gray-900">{formatAmount(product.cost_price)}</div>
+                      <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.costWac')}</div>
+                      <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>{formatAmount(product.cost_price)}</div>
                     </div>
                     <div>
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.fields.taxRate')}</div>
-                      <div className="mt-1 text-base font-semibold text-gray-900">{taxConfigName ?? (product.tax_rate ? `${product.tax_rate}%` : '-')}</div>
+                      <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.fields.taxRate')}</div>
+                      <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>{taxConfigName ?? (product.tax_rate ? `${product.tax_rate}%` : '-')}</div>
                     </div>
                   </div>
                   {product.sale_price && product.cost_price && (
                     <div className="px-6 py-3">
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.margin')}</div>
-                      <div className="mt-1 text-base font-semibold text-gray-900">
+                      <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.margin')}</div>
+                      <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>
                         {formatAmount(
                           String(parseFloat(product.sale_price) - parseFloat(product.cost_price))
                         )}
                         {parseFloat(product.cost_price) > 0 && (
-                          <span className="ml-2 text-sm font-normal text-gray-600">
+                          <span className={cn('ml-2 text-sm font-normal', textColors.tertiary)}>
                             ({(
                               ((parseFloat(product.sale_price) - parseFloat(product.cost_price)) /
                                 parseFloat(product.cost_price)) *
@@ -304,20 +312,20 @@ export function ProductDetailPage() {
             <div className="grid gap-6 lg:grid-cols-3">
               {/* Automotive Info */}
               <div className="lg:col-span-2">
-                <div className="rounded-lg border border-gray-200 bg-white p-6">
-                  <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
-                    <Tag className="h-5 w-5 text-gray-400" />
+                <div className={tokens.card.base}>
+                  <h3 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
+                    <Tag className={cn('h-5 w-5', textColors.disabled)} />
                     {t('products.sections.automotiveInfo')}
                   </h3>
                   <div className="space-y-4">
                     {product.oem_numbers && product.oem_numbers.length > 0 && (
                       <div>
-                        <label className="text-sm font-medium text-gray-500">{t('products.oemNumbers')}</label>
+                        <label className={cn('text-sm font-medium', textColors.tertiary)}>{t('products.oemNumbers')}</label>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {product.oem_numbers.map((oem, index) => (
                             <span
                               key={index}
-                              className="inline-flex rounded-md bg-gray-100 px-2.5 py-1 text-sm font-mono text-gray-700"
+                              className={cn(tokens.table.cellMonoBadge, 'font-normal', textColors.secondary)}
                             >
                               {oem}
                             </span>
@@ -327,24 +335,24 @@ export function ProductDetailPage() {
                     )}
                     {product.cross_references && product.cross_references.length > 0 && (
                       <div>
-                        <label className="text-sm font-medium text-gray-500">{t('products.crossReferences')}</label>
-                        <div className="mt-2 overflow-hidden rounded-lg border border-gray-200">
-                          <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
+                        <label className={cn('text-sm font-medium', textColors.tertiary)}>{t('products.crossReferences')}</label>
+                        <div className={cn('mt-2 overflow-hidden rounded-lg border', borderColors.light)}>
+                          <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+                            <thead className={tokens.table.header}>
                               <tr>
-                                <th className="px-4 py-2 text-start text-xs font-medium uppercase text-gray-500">
+                                <th className={cn('px-4 py-2 text-start text-xs font-medium uppercase', textColors.tertiary)}>
                                   {t('products.brand')}
                                 </th>
-                                <th className="px-4 py-2 text-start text-xs font-medium uppercase text-gray-500">
+                                <th className={cn('px-4 py-2 text-start text-xs font-medium uppercase', textColors.tertiary)}>
                                   {t('products.reference')}
                                 </th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-200">
+                            <tbody className={cn('divide-y', borderColors.divideDefault)}>
                               {product.cross_references.map((ref, index) => (
                                 <tr key={index}>
-                                  <td className="px-4 py-2 text-sm text-gray-900">{ref.brand}</td>
-                                  <td className="px-4 py-2 text-sm font-mono text-gray-600">
+                                  <td className={cn('px-4 py-2 text-sm', textColors.primary)}>{ref.brand}</td>
+                                  <td className={cn('px-4 py-2 text-sm font-mono', textColors.tertiary)}>
                                     {ref.reference}
                                   </td>
                                 </tr>
@@ -359,51 +367,51 @@ export function ProductDetailPage() {
               </div>
 
               {/* Metadata Sidebar */}
-              <div className="rounded-lg border border-gray-200 bg-white">
-                <div className="border-b border-gray-200 px-6 py-4">
-                  <h3 className="text-base font-semibold text-gray-900">{t('products.sections.metadata')}</h3>
+              <div className={cn('rounded-lg border bg-white', borderColors.light)}>
+                <div className={cn('border-b px-6 py-4', borderColors.light)}>
+                  <h3 className={cn('text-base font-semibold', textColors.primary)}>{t('products.sections.metadata')}</h3>
                 </div>
-                <div className="divide-y divide-gray-100 px-6">
+                <div className={cn('divide-y px-6', borderColors.divideLight)}>
                   <div className="grid grid-cols-1 gap-y-3 py-3">
                     <div>
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.created')}</div>
-                      <div className="mt-1 text-sm text-gray-900">{formatDate(product.created_at)}</div>
+                      <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.created')}</div>
+                      <div className={cn('mt-1 text-sm', textColors.primary)}>{formatDate(product.created_at)}</div>
                     </div>
                     {product.updated_at && (
                       <div>
-                        <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.lastUpdated')}</div>
-                        <div className="mt-1 text-sm text-gray-900">{formatDate(product.updated_at)}</div>
+                        <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.lastUpdated')}</div>
+                        <div className={cn('mt-1 text-sm', textColors.primary)}>{formatDate(product.updated_at)}</div>
                       </div>
                     )}
                   </div>
                   <div className="py-3">
-                    <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.productId')}</div>
-                    <div className="mt-1 font-mono text-xs text-gray-600">{product.id}</div>
+                    <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.productId')}</div>
+                    <div className={cn('mt-1 font-mono text-xs', textColors.tertiary)}>{product.id}</div>
                   </div>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="rounded-lg border border-gray-200 bg-white">
-              <div className="border-b border-gray-200 px-6 py-4">
-                <h3 className="text-base font-semibold text-gray-900">{t('products.sections.metadata')}</h3>
+            <div className={cn('rounded-lg border bg-white', borderColors.light)}>
+              <div className={cn('border-b px-6 py-4', borderColors.light)}>
+                <h3 className={cn('text-base font-semibold', textColors.primary)}>{t('products.sections.metadata')}</h3>
               </div>
-              <div className="divide-y divide-gray-100 px-6">
+              <div className={cn('divide-y px-6', borderColors.divideLight)}>
                 <div className="grid grid-cols-2 gap-x-6 py-3">
                   <div>
-                    <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.created')}</div>
-                    <div className="mt-1 text-sm text-gray-900">{formatDate(product.created_at)}</div>
+                    <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.created')}</div>
+                    <div className={cn('mt-1 text-sm', textColors.primary)}>{formatDate(product.created_at)}</div>
                   </div>
                   {product.updated_at && (
                     <div>
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.lastUpdated')}</div>
-                      <div className="mt-1 text-sm text-gray-900">{formatDate(product.updated_at)}</div>
+                      <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.lastUpdated')}</div>
+                      <div className={cn('mt-1 text-sm', textColors.primary)}>{formatDate(product.updated_at)}</div>
                     </div>
                   )}
                 </div>
                 <div className="py-3">
-                  <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('products.productId')}</div>
-                  <div className="mt-1 font-mono text-xs text-gray-600">{product.id}</div>
+                  <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.productId')}</div>
+                  <div className={cn('mt-1 font-mono text-xs', textColors.tertiary)}>{product.id}</div>
                 </div>
               </div>
             </div>

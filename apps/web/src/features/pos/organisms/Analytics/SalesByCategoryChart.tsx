@@ -1,5 +1,7 @@
 import ReactECharts from 'echarts-for-react'
 import { useTranslation } from 'react-i18next'
+import { cn } from '@/lib/utils'
+import { colors, textColors, borderColors } from '@/lib/designTokens'
 import type { CategorySales } from '../../api/analyticsApi'
 
 interface SalesByCategoryChartProps {
@@ -37,10 +39,10 @@ export function SalesByCategoryChart({ data }: SalesByCategoryChartProps) {
   }
 
   return (
-    <div className="rounded-lg border bg-card p-4">
-      <h3 className="mb-4 text-lg font-medium">{t('pos:analytics.salesByCategory')}</h3>
+    <div className={cn('rounded-lg border p-4', borderColors.light, colors.white)}>
+      <h3 className={cn('mb-4 text-lg font-medium', textColors.primary)}>{t('pos:analytics.salesByCategory')}</h3>
       {data.length === 0 ? (
-        <p className="py-8 text-center text-muted-foreground">{t('pos:analytics.noData')}</p>
+        <p className={cn('py-8 text-center', textColors.tertiary)}>{t('pos:analytics.noData')}</p>
       ) : (
         <ReactECharts option={option} style={{ height: 350 }} />
       )}

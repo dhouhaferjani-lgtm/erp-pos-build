@@ -197,7 +197,8 @@ describe('document tenant scope', () => {
     renderHook(() => useCustomerHistorySearches({ partner_id: 'partner-1' }), { wrapper: wrapper(queryClient) })
 
     await waitFor(() => {
-      expect(observedClient?.getQueryData(['documents', 'invoice', '', 'all', 'tenant-A', 'company-1'])).toBeDefined()
+      // list query key now carries page + per_page (DocumentListPage pagination)
+      expect(observedClient?.getQueryData(['documents', 'invoice', '', 'all', 1, 25, 'tenant-A', 'company-1'])).toBeDefined()
       expect(observedClient?.getQueryData(['return-notes', '', '', '', 'tenant-A', 'company-1'])).toBeDefined()
       expect(observedClient?.getQueryData(['tax-breakdown', 'doc-1', 'tenant-A', 'company-1'])).toBeDefined()
       expect(observedClient?.getQueryData(['payment-history', 'doc-1', 'tenant-A', 'company-1'])).toBeDefined()

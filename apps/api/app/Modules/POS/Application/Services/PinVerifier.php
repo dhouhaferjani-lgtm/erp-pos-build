@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Application\Services;
 
+use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Infrastructure\Repositories\UserRepository;
 use App\Modules\POS\Domain\Enums\ApprovalScope;
@@ -44,12 +45,18 @@ final class PinVerifier
             return OperatorApprovalDecision::ScopeMismatch;
         }
 
-        $hasCompanyScope = UserCompanyMembership::query()
+        // F-3: require an ACTIVE company membership, not mere existence. A
+        // suspended/revoked member who still holds a pos_pin + the approval
+        // permission must not be able to approve offline — mirroring the online
+        // AuthorizedManagersController, which lists only active members, so the
+        // offline override surface never exceeds the online one.
+        $hasActiveCompanyScope = UserCompanyMembership::query()
             ->where('user_id', $user->id)
             ->where('company_id', $companyId)
+            ->where('status', MembershipStatus::Active->value)
             ->exists();
 
-        if (! $hasCompanyScope) {
+        if (! $hasActiveCompanyScope) {
             return OperatorApprovalDecision::ScopeMismatch;
         }
 

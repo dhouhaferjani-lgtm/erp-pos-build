@@ -1,5 +1,5 @@
 {
-  "searchPlaceholder": "Rechercher des produits par nom, référence ou code-barres...",
+  "searchPlaceholder": "Rechercher des produits par nom, référence ou code-barres…",
   "noProductsFound": "Aucun produit trouvé",
   "noAvailableProducts": "Aucun produit disponible",
   "selectedProducts": "{{count}} produit sélectionné",
@@ -18,7 +18,7 @@
     "dragDropOrClick": "Glissez-déposez une image ici, ou cliquez pour sélectionner",
     "supportedFormats": "Formats supportés",
     "supportedFormatsDetail": "Formats acceptés : JPEG, PNG, WebP, GIF (max 5 Mo)",
-    "uploading": "Téléchargement de l'image...",
+    "uploading": "Téléchargement de l'image…",
     "primary": "Principale",
     "setPrimary": "Définir comme principale",
     "confirmDelete": "Êtes-vous sûr de vouloir supprimer cette image ?",

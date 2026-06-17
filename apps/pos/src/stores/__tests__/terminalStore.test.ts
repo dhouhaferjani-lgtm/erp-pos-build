@@ -65,6 +65,7 @@ vi.mock('@/lib/fiscal/zSessionAuthoring', () => ({
     sessionOpenEvent: { id: 'session-open-event' },
     openingFloatEvent: { id: 'opening-float-event' },
     openingFloatMovementId: 'movement-1',
+    shiftNumber: 1,
   }),
 }));
 
@@ -94,8 +95,8 @@ vi.mock('@/stores/operatorStore', () => ({
   },
 }));
 
-import { apiGet, apiPost, ApiRequestError } from '@/lib/api';
-import { getDatabase, execute, queryAll } from '@/lib/db';
+import { apiGet, apiPost } from '@/lib/api';
+import { getDatabase, queryOne } from '@/lib/db';
 import { invalidateTerminalDiscountPermissions } from '@/lib/db/repositories/operatorPinRepository';
 import { authorZSessionOpenWithOpeningFloat } from '@/lib/fiscal/zSessionAuthoring';
 import { getStoredValue, setStoredValue, removeStoredValue } from '@/lib/storage';
@@ -233,38 +234,15 @@ describe('terminalStore', () => {
     expect(useTerminalStore.getState().shift).toEqual(expect.objectContaining(mockShift));
   });
 
-  it('openShift (M3) records the shift receipt anchor from the offline_receipts MAX sequence, not terminal_state', async () => {
+  it('openShift authors device-authoritative fiscal events without a server POST (v3)', async () => {
+    // The M3 receipt anchor + local_shifts insert now happen atomically inside
+    // authorZSessionOpenWithOpeningFloat (covered in zSessionAuthoring.test.ts);
+    // here we assert the store mints a device shift and never hits the server.
     useTerminalStore.setState({ terminal: { ...mockTerminal, fiscal_schema_version: 3 } });
-    vi.mocked(apiPost).mockResolvedValue(mockShift);
-    // The terminal's last receipt is at operational sequence 42.
-    vi.mocked(queryAll).mockImplementation(async (_db, sql) =>
-      (String(sql).includes('offline_receipts') ? [{ max_seq: 42 }] : []) as unknown as never[],
-    );
 
     await useTerminalStore.getState().openShift('100.00');
 
-    // The boundary query reads offline_receipts.hash_sequence (the same space the
-    // Z window bounds by) — NOT terminal_state.hash_sequence (the legacy counter).
-    const maxQuery = vi
-      .mocked(queryAll)
-      .mock.calls.find((c) => String(c[1]).includes('MAX(hash_sequence)'));
-    expect(maxQuery).toBeDefined();
-    expect(String(maxQuery![1])).toContain('FROM offline_receipts');
-
-    // The anchor INSERT carries that sequence (42).
-    const anchorInsert = vi
-      .mocked(execute)
-      .mock.calls.find((c) => String(c[1]).includes('shift_receipt_anchors'));
-    expect(anchorInsert).toBeDefined();
-    expect(anchorInsert![2]).toEqual(expect.arrayContaining([42]));
-  });
-
-  it('openShift authors Z-session opening fiscal events for cutover terminals', async () => {
-    useTerminalStore.setState({ terminal: { ...mockTerminal, fiscal_schema_version: 3 } });
-    vi.mocked(apiPost).mockResolvedValue(mockShift);
-
-    await useTerminalStore.getState().openShift('100.00');
-
+    expect(apiPost).not.toHaveBeenCalled();
     expect(authorZSessionOpenWithOpeningFloat).toHaveBeenCalledWith(expect.objectContaining({
       tenantId: 'tenant-1',
       companyId: 'company-1',
@@ -272,14 +250,22 @@ describe('terminalStore', () => {
       terminalLabel: 'T001',
       shiftId: expect.any(String),
       sessionId: expect.any(String),
-      businessDate: '2026-03-12',
-      operatorId: 'user-1',
+      businessDate: expect.any(String),
+      operatorId: '22222222-2222-4222-8222-222222222222',
       operatorName: 'Jane',
       currencyCode: 'EUR',
       currencyScale: 2,
       openingFloatAmount: '100.00',
       isTraining: false,
     }));
+
+    // Freshly minted device UUIDv7 id (not a server id, not `offline-`).
+    const shift = useTerminalStore.getState().shift;
+    expect(shift?.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(shift?.fiscal_shift_id).toBe(shift?.id);
+    expect(shift?.shift_number).toBe(1);
   });
 
   it('openShift synthesizes user from the auth session when the server payload lacks user (2026-06-12 live crash)', async () => {
@@ -304,31 +290,6 @@ describe('terminalStore', () => {
       id: '22222222-2222-4222-8222-222222222222',
       name: 'Jane',
     });
-  });
-
-  it('openShift adopts the existing server shift on SHIFT_ALREADY_OPEN instead of forking an offline shift', async () => {
-    // A reachable server refusing the open means a shift is ALREADY open for
-    // this terminal. Treating the 409 as "offline" forked a local `offline-…`
-    // shift, splitting the device from the server shift (2026-06-12 live
-    // regression: Today Sales 404'd and checkout payloads carried a
-    // non-UUID shift_id).
-    useTerminalStore.setState({ terminal: mockTerminal });
-    vi.mocked(apiPost).mockRejectedValue(
-      new ApiRequestError(409, 'A shift is already open', 'SHIFT_ALREADY_OPEN'),
-    );
-    const serverShift: Record<string, unknown> = {
-      ...mockShift,
-      cashier_id: '22222222-2222-4222-8222-222222222222',
-    };
-    delete serverShift['user'];
-    vi.mocked(apiGet).mockResolvedValue(serverShift);
-
-    await useTerminalStore.getState().openShift('100.00');
-
-    expect(apiGet).toHaveBeenCalledWith('/pos/shifts/current/T001');
-    const shift = useTerminalStore.getState().shift;
-    expect(shift?.id).toBe(mockShift.id);
-    expect(shift?.id).not.toMatch(/^offline-/);
   });
 
   it('fetchCurrentShift synthesizes user when the server payload lacks user', async () => {
@@ -364,6 +325,21 @@ describe('terminalStore', () => {
     expect(useTerminalStore.getState().shift).toBeNull();
   });
 
+  it('closeShift (v3) clears device state without calling the REST close endpoint', async () => {
+    // Device-authoritative close: SESSION_CLOSE + Z_REPORT are authored locally
+    // and pos_shifts is closed by the projection; the REST close returns 409.
+    useTerminalStore.setState({
+      terminal: { ...mockTerminal, fiscal_schema_version: 3 },
+      shift: mockShift,
+    });
+
+    await useTerminalStore.getState().closeShift('150.00');
+
+    expect(apiPost).not.toHaveBeenCalled();
+    expect(useTerminalStore.getState().shift).toBeNull();
+    expect(removeStoredValue).toHaveBeenCalledWith('current_shift');
+  });
+
   it('closeShift throws when no active shift', async () => {
     await expect(useTerminalStore.getState().closeShift('150.00')).rejects.toThrow(
       'No active shift',
@@ -393,9 +369,11 @@ describe('terminalStore', () => {
     expect(setStoredValue).toHaveBeenCalledWith('current_shift', expect.objectContaining(mockShift));
   });
 
-  it('openShift creates local shift when API fails (offline)', async () => {
-    useTerminalStore.setState({ terminal: mockTerminal });
-    vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
+  it('openShift (v3) authors the shift fully offline when the device cannot reach the server', async () => {
+    // Device-authoritative open never calls the server, so a dead network is a
+    // non-event: the shift opens locally and only the fire-and-forget stock
+    // pull (swallowed) would fail.
+    useTerminalStore.setState({ terminal: { ...mockTerminal, fiscal_schema_version: 3 } });
 
     await useTerminalStore.getState().openShift('100.00');
 
@@ -404,14 +382,41 @@ describe('terminalStore', () => {
     expect(state.shift!.terminal_id).toBe('term-1');
     expect(state.shift!.opening_cash).toBe('100.00');
     expect(state.shift!.status).toBe('OPEN');
-    expect(state.shift!.id).toMatch(/^offline-/);
-    expect(state.shift!.fiscal_shift_id).toMatch(/^[0-9a-f-]{36}$/);
-    expect(state.shift!.fiscal_session_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(state.shift!.id).not.toMatch(/^offline-/);
     expect(state.isLoading).toBe(false);
+    expect(apiPost).not.toHaveBeenCalled();
     expect(setStoredValue).toHaveBeenCalledWith('current_shift', expect.objectContaining({
       terminal_id: 'term-1',
       status: 'OPEN',
     }));
+  });
+
+  it('fetchCurrentShift (v3) reads the open shift from local_shifts with no network', async () => {
+    useTerminalStore.setState({ terminal: { ...mockTerminal, fiscal_schema_version: 3 } });
+    vi.mocked(getStoredValue).mockResolvedValue(null);
+    const localOpen = {
+      id: '019700aa-bbbb-7ccc-8ddd-eeeeffff1234',
+      terminal_id: 'term-1',
+      session_id: '019700aa-bbbb-7ccc-8ddd-eeeeffff1234',
+      shift_number: 5,
+      status: 'OPEN' as const,
+      opening_cash: '100.000',
+      opened_at: '2026-06-14T08:00:00.000Z',
+      closed_at: null,
+      cashier_id: 'cashier-1',
+      cashier_name: 'Alice',
+    };
+    vi.mocked(getDatabase).mockResolvedValue(mockDb);
+    vi.mocked(queryOne).mockResolvedValue(localOpen);
+
+    await useTerminalStore.getState().fetchCurrentShift();
+
+    expect(apiGet).not.toHaveBeenCalled();
+    const shift = useTerminalStore.getState().shift;
+    expect(shift?.id).toBe(localOpen.id);
+    expect(shift?.shift_number).toBe(5);
+    expect(shift?.fiscal_shift_id).toBe(localOpen.id);
+    expect(shift?.user).toEqual({ id: 'cashier-1', name: 'Alice' });
   });
 
   it('fetchCurrentShift restores shift from storage when API fails (offline)', async () => {
@@ -526,9 +531,11 @@ describe('terminalStore', () => {
 });
 
 describe('fiscalShiftIdForReceipt', () => {
-  // Fiscal canonical payloads validate shift_id as a lowercase-hex UUID.
-  // Raw shift.id is NOT safe: offline-opened shifts are `offline-<uuid>`
-  // (2026-06-12 live failure: checkout rejected with payload_field_invalid).
+  // One-id model (Phase 1–3): shift.id IS the fiscal shift/session id — a v3
+  // device-minted UUIDv7 or a v<3 server UUID. The legacy `offline-<uuid>`
+  // fork was removed in Phase 1, so resolution collapses onto shift.id.
+  // Fiscal canonical payloads still validate shift_id as a lowercase-hex UUID,
+  // so a non-UUID id must fail loud rather than mis-attribute fiscal data.
   const base: Shift = {
     id: 'shift-1',
     terminal_id: 'term-1',
@@ -539,22 +546,28 @@ describe('fiscalShiftIdForReceipt', () => {
     user: { id: 'user-1', name: 'Jane' },
   };
 
-  it('returns the device-minted fiscal_shift_id when present', () => {
-    const shift = { ...base, fiscal_shift_id: '11111111-1111-4111-8111-111111111111' };
-    expect(fiscalShiftIdForReceipt(shift)).toBe('11111111-1111-4111-8111-111111111111');
-  });
-
-  it('falls back to the shift id when it is already a UUID', () => {
+  it('returns shift.id when it is a UUID', () => {
     const shift = { ...base, id: '33333333-3333-4333-8333-333333333333' };
     expect(fiscalShiftIdForReceipt(shift)).toBe('33333333-3333-4333-8333-333333333333');
   });
 
-  it('derives the UUID from an offline- prefixed shift id', () => {
-    const shift = { ...base, id: 'offline-44444444-4444-4444-8444-444444444444' };
-    expect(fiscalShiftIdForReceipt(shift)).toBe('44444444-4444-4444-8444-444444444444');
+  it('lowercases an upper-case UUID shift.id (payload requires lowercase hex)', () => {
+    const shift = { ...base, id: '33333333-3333-4333-8333-3333333333AB' };
+    expect(fiscalShiftIdForReceipt(shift)).toBe('33333333-3333-4333-8333-3333333333ab');
   });
 
-  it('fails loud on an underivable shift id instead of minting a random one', () => {
+  it('ignores fiscal_shift_id and resolves onto shift.id (one-id model)', () => {
+    // In the one-id model id == fiscal_shift_id == fiscal_session_id, so
+    // returning shift.id is equivalent to the old fiscal_shift_id-first branch.
+    const shift = {
+      ...base,
+      id: '33333333-3333-4333-8333-333333333333',
+      fiscal_shift_id: '33333333-3333-4333-8333-333333333333',
+    };
+    expect(fiscalShiftIdForReceipt(shift)).toBe('33333333-3333-4333-8333-333333333333');
+  });
+
+  it('fails loud on a non-UUID shift id instead of minting a random one', () => {
     // A random UUID here would scatter receipts across phantom shift ids and
     // silently corrupt the Z window — fail-closed is the only safe behavior.
     expect(() => fiscalShiftIdForReceipt(base)).toThrow(/fiscal shift id/i);

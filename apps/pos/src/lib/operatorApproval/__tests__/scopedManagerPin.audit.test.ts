@@ -58,7 +58,9 @@ function operator(overrides: Partial<CachedOperator> = {}): CachedOperator {
     company_ids: ['company-1'],
     terminal_ids: ['terminal-1'],
     approval_scopes: ['discount_limit_override'],
-    approval_scope_permissions_fetched_at: '2026-05-23T08:00:00.000Z',
+    // Fresh by default (relative to now) so the offline_approved test passes the
+    // FU-1b TTL; the stale-cache test overrides this with an old timestamp.
+    approval_scope_permissions_fetched_at: new Date(Date.now() - 60_000).toISOString(),
     approval_mirror_status: 'fresh',
     can_discount: true,
     max_discount_percent: 50,
@@ -205,6 +207,28 @@ describe('verifyScopedManagerPin — Task 11 pos.manager_override_denied', () =>
     expect(payload.scope).toBe('discount_limit');
     expect(payload.reason).toBe('High discount');
     expect(payload).not.toHaveProperty('degraded_kind');
+    expect(JSON.stringify(payload)).not.toContain('1234');
+  });
+
+  it('emits denied{stale_offline_cache} (NOT offline_approved) when the cache is stale while offline (FU-1b)', async () => {
+    vi.mocked(getAllOperators).mockResolvedValue([
+      operator({ approval_scope_permissions_fetched_at: '2026-01-01T00:00:00.000Z' }),
+    ]);
+    mockConnectivityOnline(false);
+    vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
+
+    await expect(verifyScopedManagerPin(input)).rejects.toMatchObject({
+      status: 503,
+      code: 'MANAGER_OVERRIDE_STALE_OFFLINE_CACHE',
+    });
+
+    expect(lastOfType('pos.manager_override_offline_approved')).toBeUndefined();
+    const denied = lastDenied();
+    expect(denied).toBeDefined();
+    expect(denied!.operatorId).toBe('supervisor-1');
+    const payload = denied!.payload as Record<string, unknown>;
+    expect(payload.denied_kind).toBe('stale_offline_cache');
+    expect(payload.scope).toBe('discount_limit');
     expect(JSON.stringify(payload)).not.toContain('1234');
   });
 

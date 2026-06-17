@@ -104,7 +104,7 @@
     "mapping": {
       "title": "Mappez vos colonnes",
       "description": "Faites correspondre les colonnes de votre fichier aux champs système requis. Les champs obligatoires sont marqués d'un astérisque (*).",
-      "validating": "Validation...",
+      "validating": "Validation…",
       "validate": "Valider les données"
     },
     "validation": {
@@ -121,8 +121,8 @@
       "validRows": "Lignes valides",
       "invalidRows": "Lignes invalides",
       "start": "Lancer l'import",
-      "starting": "Démarrage...",
-      "importing": "Importation en cours...",
+      "starting": "Démarrage…",
+      "importing": "Importation en cours…",
       "completed": "Import terminé !",
       "failed": "Échec de l'import",
       "progress": "Progression",
@@ -171,7 +171,7 @@
   },
   "preview": {
     "title": "Aperçu des données",
-    "loading": "Chargement de l'aperçu...",
+    "loading": "Chargement de l'aperçu…",
     "loadError": "Échec du chargement de l'aperçu. Veuillez réessayer.",
     "totalRows": "{{count}} lignes au total",
     "validRows": "{{count}} valides",

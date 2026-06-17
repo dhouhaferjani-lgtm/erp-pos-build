@@ -57,6 +57,13 @@ export interface TerminalHashState {
   z_chain_genesis_seed?: string;
   training_fiscal_event_genesis_seed?: string;
   training_z_chain_genesis_seed?: string;
+  /**
+   * Offline-first shifts Phase 6.1: the server's `MAX(pos_shifts.shift_number)`
+   * for this terminal. Written atomically inside the terminal_state upsert (one
+   * statement) with a monotone guard so a crash between writes can never leave a
+   * fresh row with the v54 default 0 (Codex r1 HIGH). Absent → 0.
+   */
+  shift_number_seed?: number;
 }
 
 /**
@@ -123,6 +130,54 @@ export async function getTerminalState(
     );
   }
   return { ...row, fiscal_schema_version: row.fiscal_schema_version };
+}
+
+/**
+ * The per-terminal `shift_number` seed (offline-first shifts Phase 6.1) — the
+ * server's `MAX(pos_shifts.shift_number)` cached at activation so a fresh device
+ * continues numbering monotonically instead of restarting at 1.
+ *
+ * Tolerant of a pre-v54 `terminal_state` (no `shift_number_seed` column) and of
+ * a missing row: both read as 0 — the legacy local-only behaviour. This mirrors
+ * `getZChainState`'s no-such-column tolerance and keeps the Phase-0 authoring
+ * path working on older schemas.
+ */
+export async function getShiftNumberSeed(db: Database, terminalId: string): Promise<number> {
+  try {
+    const row = await queryOne<{ shift_number_seed: number | null }>(
+      db,
+      `SELECT shift_number_seed FROM terminal_state WHERE terminal_id = $1`,
+      [terminalId],
+    );
+    return row?.shift_number_seed ?? 0;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '';
+    if (msg.includes('no such column')) {
+      return 0;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Persist the per-terminal `shift_number` seed with a monotone guard: the seed
+ * only ever rises (`MAX(existing, incoming)`), so a transiently stale server
+ * read reporting a lower MAX can never rewind it below a number the device has
+ * already used. No-op when no `terminal_state` row exists yet (the seed is
+ * pulled alongside `upsertTerminalState`, which creates the row first).
+ */
+export async function setShiftNumberSeed(
+  db: Database,
+  terminalId: string,
+  seed: number,
+): Promise<void> {
+  await execute(
+    db,
+    `UPDATE terminal_state
+        SET shift_number_seed = MAX(shift_number_seed, $1)
+      WHERE terminal_id = $2`,
+    [seed, terminalId],
+  );
 }
 
 export async function setManagerPinThrottle(
@@ -215,9 +270,9 @@ export async function upsertTerminalState(
        terminal_id, terminal_code, location_code, genesis_seed, last_hash,
        hash_sequence, fiscal_schema_version, fiscal_event_genesis_seed,
        z_chain_genesis_seed, training_fiscal_event_genesis_seed,
-       training_z_chain_genesis_seed, updated_at
+       training_z_chain_genesis_seed, shift_number_seed, updated_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, datetime('now'))
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, datetime('now'))
      ON CONFLICT(terminal_id) DO UPDATE SET
        terminal_code = excluded.terminal_code,
        location_code = excluded.location_code,
@@ -241,6 +296,9 @@ export async function upsertTerminalState(
          WHEN terminal_state.training_z_chain_genesis_seed = '' THEN excluded.training_z_chain_genesis_seed
          ELSE terminal_state.training_z_chain_genesis_seed
        END,
+       -- Phase 6.1: monotone so a stale re-pull never rewinds the seed below a
+       -- number the device has already used (Codex r1 HIGH — atomic with the row).
+       shift_number_seed = MAX(terminal_state.shift_number_seed, excluded.shift_number_seed),
        updated_at = datetime('now')`,
     [
       state.terminal_id,
@@ -254,6 +312,7 @@ export async function upsertTerminalState(
       incomingZSeed,
       incomingTrainingFiscalSeed,
       incomingTrainingZSeed,
+      state.shift_number_seed ?? 0,
     ],
   );
 

@@ -4,6 +4,8 @@ import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { usePermissions } from '@/hooks/usePermissions'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { Button, Checkbox, Input, MoneyInput } from '@/components/atoms'
+import { useCompanyConfig } from '@/contexts'
 import { getErrorMessage } from '@/lib/api'
 import {
   useAttributes,
@@ -60,6 +62,8 @@ function draftToPayload(draft: VariantDraft): UpdateVariantPayload {
 export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEditorProps) {
   const { t } = useTranslation()
   const { hasPermission } = usePermissions()
+  const { config } = useCompanyConfig()
+  const currency = config?.currency ?? 'TND'
 
   const { data: attributes } = useAttributes()
   const { data: variants, isLoading, isError } = useVariantsForProduct(productId)
@@ -147,7 +151,7 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
   return (
     <div className="space-y-4">
       <div>
-        <h3 className={`text-lg font-medium ${textColors.primary}`}>
+        <h3 className={tokens.heading.section}>
           {t('catalog:variants.title')}
         </h3>
         <p className={`mt-1 text-sm ${textColors.tertiary}`}>
@@ -168,9 +172,7 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
             <div className="flex flex-wrap gap-3">
               {variantAxes.map((axis) => (
                 <label key={axis.id} className="inline-flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    className={tokens.checkbox.base}
+                  <Checkbox
                     checked={selectedAxes.includes(axis.id)}
                     onChange={() => { toggleAxis(axis.id) }}
                     aria-label={axis.name}
@@ -180,16 +182,15 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
               ))}
             </div>
           )}
-          <button
+          <Button
             type="button"
             onClick={() => { void handleGenerate() }}
             disabled={generateMatrix.isPending}
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
           >
             {hasVariants
               ? t('catalog:variants.regenerate')
               : t('catalog:variants.generate')}
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -235,53 +236,45 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
                       </div>
                     </td>
                     <td className="px-3 py-2">
-                      <input
+                      <Input
                         type="text"
                         aria-label={`${t('catalog:variants.sku')} ${variant.name_suffix}`}
-                        className={tokens.input.base}
                         value={draft.sku}
                         disabled={!canUpdate}
                         onChange={(e) => { updateDraft(variant.id, { sku: e.target.value }) }}
                       />
                     </td>
                     <td className="px-3 py-2">
-                      <input
+                      <Input
                         type="text"
                         aria-label={`${t('catalog:variants.barcode')} ${variant.name_suffix}`}
-                        className={tokens.input.base}
                         value={draft.barcode}
                         disabled={!canUpdate}
                         onChange={(e) => { updateDraft(variant.id, { barcode: e.target.value }) }}
                       />
                     </td>
                     <td className="px-3 py-2">
-                      <input
-                        type="text"
-                        inputMode="decimal"
+                      <MoneyInput
+                        currency={currency}
                         aria-label={`${t('catalog:variants.price')} ${variant.name_suffix}`}
-                        className={tokens.input.base}
                         value={draft.price_override}
                         disabled={!canUpdate}
-                        onChange={(e) => { updateDraft(variant.id, { price_override: e.target.value }) }}
+                        onChange={(value) => { updateDraft(variant.id, { price_override: value }) }}
                       />
                     </td>
                     <td className="px-3 py-2">
-                      <input
-                        type="text"
-                        inputMode="decimal"
+                      <MoneyInput
+                        currency={currency}
                         aria-label={`${t('catalog:variants.cost')} ${variant.name_suffix}`}
                         title={t('catalog:variants.costAdvisory')}
-                        className={tokens.input.base}
                         value={draft.cost_override}
                         disabled={!canUpdate}
-                        onChange={(e) => { updateDraft(variant.id, { cost_override: e.target.value }) }}
+                        onChange={(value) => { updateDraft(variant.id, { cost_override: value }) }}
                       />
                     </td>
                     <td className="px-3 py-2 text-center">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         aria-label={t('catalog:variants.active')}
-                        className={tokens.checkbox.base}
                         checked={draft.is_active}
                         disabled={!canUpdate}
                         onChange={(e) => { updateDraft(variant.id, { is_active: e.target.checked }) }}
@@ -290,25 +283,28 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2">
                         {canUpdate ? (
-                          <button
+                          <Button
                             type="button"
+                            variant="secondary"
+                            size="sm"
                             onClick={() => { void handleSave(variant) }}
                             disabled={updateVariant.isPending}
-                            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
                           >
                             {t('catalog:variants.save')}
-                          </button>
+                          </Button>
                         ) : null}
                         {canDelete ? (
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="sm"
                             onClick={() => { void handleDelete(variant.id) }}
                             disabled={deleteVariant.isPending}
                             aria-label={`${t('catalog:variants.delete')} ${variant.name_suffix}`}
-                            className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm} ${textColors.hoverError}`}
+                            className={textColors.hoverError}
                           >
                             <Trash2 className="h-4 w-4" />
-                          </button>
+                          </Button>
                         ) : null}
                       </div>
                     </td>

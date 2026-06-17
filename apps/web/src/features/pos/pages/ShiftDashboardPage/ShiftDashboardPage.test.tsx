@@ -418,6 +418,136 @@ describe('ShiftDashboardPage', () => {
   })
 })
 
+describe('ShiftDashboardPage — device-authoritative (v3) shift control gating', () => {
+  const mockCurrentShift: import('./ShiftDashboardPage').Shift = {
+    id: 'shift-1',
+    terminal_id: 'terminal-1',
+    shift_number: 42,
+    cashier_id: 'user-1',
+    cashier_name: 'John Doe',
+    opening_cash: '500.000',
+    expected_cash: '1250.000',
+    opened_at: '2026-01-09T08:00:00Z',
+    status: 'OPEN',
+  }
+
+  const mockTerminal: import('./ShiftDashboardPage').Terminal = {
+    id: 'terminal-1',
+    code: 'POS-01',
+    location_id: 'loc-1',
+    location_name: 'Main Store',
+  }
+
+  // --- v3 terminal: controls hidden, notice shown ---
+
+  it('hides the Close Shift button for a v3 terminal when a shift is open', () => {
+    const { queryByRole } = render(
+      <ShiftDashboardPage
+        currentShift={mockCurrentShift}
+        terminal={mockTerminal}
+        isDeviceAuthoritative={true}
+        onOpenShift={vi.fn()}
+        onCloseShift={vi.fn()}
+        onGenerateXReport={vi.fn()}
+        onCashDeposit={vi.fn()}
+        onCashPayout={vi.fn()}
+      />
+    )
+
+    expect(queryByRole('button', { name: /close shift/i })).not.toBeInTheDocument()
+  })
+
+  it('shows the device-authority notice for a v3 terminal when a shift is open', () => {
+    const { getByText } = render(
+      <ShiftDashboardPage
+        currentShift={mockCurrentShift}
+        terminal={mockTerminal}
+        isDeviceAuthoritative={true}
+        onOpenShift={vi.fn()}
+        onCloseShift={vi.fn()}
+        onGenerateXReport={vi.fn()}
+        onCashDeposit={vi.fn()}
+        onCashPayout={vi.fn()}
+      />
+    )
+
+    expect(getByText(/start or end a shift/i)).toBeInTheDocument()
+  })
+
+  it('keeps read-only views (X Report, cash deposit/payout) for a v3 terminal', () => {
+    const { getByRole } = render(
+      <ShiftDashboardPage
+        currentShift={mockCurrentShift}
+        terminal={mockTerminal}
+        isDeviceAuthoritative={true}
+        onOpenShift={vi.fn()}
+        onCloseShift={vi.fn()}
+        onGenerateXReport={vi.fn()}
+        onCashDeposit={vi.fn()}
+        onCashPayout={vi.fn()}
+      />
+    )
+
+    expect(getByRole('button', { name: /x report/i })).toBeInTheDocument()
+    expect(getByRole('button', { name: /deposit/i })).toBeInTheDocument()
+    expect(getByRole('button', { name: /payout/i })).toBeInTheDocument()
+  })
+
+  it('hides the Open Shift button for a v3 terminal with no active shift', () => {
+    const { queryByRole, getByText } = render(
+      <ShiftDashboardPage
+        currentShift={null}
+        terminal={mockTerminal}
+        isDeviceAuthoritative={true}
+        onOpenShift={vi.fn()}
+        onCloseShift={vi.fn()}
+        onGenerateXReport={vi.fn()}
+        onCashDeposit={vi.fn()}
+        onCashPayout={vi.fn()}
+      />
+    )
+
+    expect(queryByRole('button', { name: /open shift/i })).not.toBeInTheDocument()
+    expect(getByText(/start or end a shift/i)).toBeInTheDocument()
+  })
+
+  // --- v2 (legacy / default) terminal: controls remain ---
+
+  it('shows the Open + Close Shift buttons for a v2 terminal (isDeviceAuthoritative=false)', () => {
+    const { getByRole } = render(
+      <ShiftDashboardPage
+        currentShift={mockCurrentShift}
+        terminal={mockTerminal}
+        isDeviceAuthoritative={false}
+        onOpenShift={vi.fn()}
+        onCloseShift={vi.fn()}
+        onGenerateXReport={vi.fn()}
+        onCashDeposit={vi.fn()}
+        onCashPayout={vi.fn()}
+      />
+    )
+
+    expect(getByRole('button', { name: /close shift/i })).toBeInTheDocument()
+  })
+
+  it('shows the Open Shift button for a v2 terminal with no active shift (default prop)', () => {
+    const { getByRole, queryByText } = render(
+      <ShiftDashboardPage
+        currentShift={null}
+        terminal={mockTerminal}
+        onOpenShift={vi.fn()}
+        onCloseShift={vi.fn()}
+        onGenerateXReport={vi.fn()}
+        onCashDeposit={vi.fn()}
+        onCashPayout={vi.fn()}
+      />
+    )
+
+    expect(getByRole('button', { name: /open shift/i })).toBeInTheDocument()
+    expect(queryByText(/on the POS device/i)).not.toBeInTheDocument()
+  })
+})
+
 describe('ShiftDashboardPage — EUR 2-decimal variance renders at currency scale', () => {
   it('computes variance at 2 decimals for EUR', async () => {
     mockUseCurrency.mockReturnValue({ ...eurMock, decimals: 2 })

@@ -1,9 +1,10 @@
 import { create } from 'zustand';
-import { apiGet, apiPost, ApiRequestError } from '@/lib/api';
+import { apiGet, apiPost } from '@/lib/api';
 import { getDeviceId } from '@/lib/device';
 import { getStoredValue, setStoredValue, removeStoredValue, StorageKeys } from '@/lib/storage';
 import { getDatabase } from '@/lib/db';
-import { pullTerminalState, pullZChainState, pullLocationStock } from '@/lib/sync/syncService';
+import { pullTerminalState, pullZChainState, pullLocationStock, pullOperatorPins } from '@/lib/sync/syncService';
+import { refreshFraudSettingsCache } from '@/api/fraudSettingsApi';
 import { SyncScheduler } from '@/lib/sync/syncScheduler';
 import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
@@ -11,6 +12,11 @@ import { usePaymentStore } from '@/stores/paymentStore';
 import { serializeErrorForLog } from '@/lib/errorLogging';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { authorZSessionOpenWithOpeningFloat } from '@/lib/fiscal/zSessionAuthoring';
+import { uuidv7 } from '@/lib/uuidv7';
+import {
+  getCurrentOpenShift,
+  type LocalShift,
+} from '@/lib/db/repositories/localShiftRepository';
 
 /**
  * Company-level stock-enforcement policy delivered on the terminal payload
@@ -95,12 +101,23 @@ export interface Shift {
   };
 }
 
+/**
+ * Advisory remote-close conflict (offline-first shifts Phase 6.2): the device
+ * has this shift OPEN locally but the server projection shows it CLOSED (a
+ * web-admin recovery close). Surfaced as a banner; never auto-closed.
+ */
+export interface RemoteShiftCloseConflict {
+  shiftId: string;
+  shiftNumber: number;
+}
+
 interface TerminalState {
   terminal: Terminal | null;
   pendingTerminalId: string | null;
   shift: Shift | null;
   isLoading: boolean;
   hashChainReady: boolean;
+  remoteShiftCloseConflict: RemoteShiftCloseConflict | null;
 }
 
 interface TerminalActions {
@@ -115,6 +132,8 @@ interface TerminalActions {
   reset: () => void;
   refreshHashChainReady: () => Promise<void>;
   refreshTerminalRecord: () => Promise<void>;
+  flagRemoteShiftClose: (conflict: RemoteShiftCloseConflict) => void;
+  clearRemoteShiftCloseConflict: () => void;
 }
 
 type TerminalStore = TerminalState & TerminalActions;
@@ -133,6 +152,7 @@ const initialState: TerminalState = {
   shift: null,
   isLoading: false,
   hashChainReady: false,
+  remoteShiftCloseConflict: null,
 };
 
 async function refreshOperatorDiscountPermissionsAfterTerminalChange(terminalCode: string): Promise<void> {
@@ -184,29 +204,27 @@ function fiscalCurrencyScale(currencyCode: string): 0 | 2 | 3 {
 }
 
 function fiscalSessionIdForShift(shift: Shift): string {
-  return shift.fiscal_session_id ?? (isUuid(shift.id) ? shift.id : crypto.randomUUID());
+  return fiscalShiftIdForReceipt(shift);
 }
 
 function fiscalShiftIdForShift(shift: Shift): string {
-  return shift.fiscal_shift_id ?? (isUuid(shift.id) ? shift.id : crypto.randomUUID());
+  return fiscalShiftIdForReceipt(shift);
 }
 
 /**
  * The shift id to stamp into fiscal canonical payloads (SALE_RECEIPT,
- * ACCOUNT_PAYMENT, ACCOUNT_CHARGE). Payload validation requires a
- * lowercase-hex UUID, and raw `shift.id` is NOT one for offline-opened
- * shifts (`offline-<uuid>`). Resolution order:
- *   1. the device-minted `fiscal_shift_id` (matches the SESSION_OPEN event),
- *   2. the shift id itself when it is a UUID (server-opened shifts),
- *   3. the UUID inside an `offline-` prefixed id (deterministic — the same
- *      value on every call, unlike a random fallback which would scatter
- *      receipts across phantom shift ids and corrupt the Z window),
- *   4. fail loud. A blocked sale beats silently mis-attributed fiscal data.
+ * ACCOUNT_PAYMENT, ACCOUNT_CHARGE, SESSION_OPEN, X/Z). Payload validation
+ * requires a lowercase-hex UUID.
+ *
+ * One-id model (Phase 1–3): `shift.id` is now ALWAYS a valid UUID — a v3
+ * device-minted UUIDv7 (where `id == fiscal_shift_id == fiscal_session_id`)
+ * or a v<3 server UUID. The legacy `offline-<uuid>` shift-id fork was removed
+ * in Phase 1, so the old prefix-strip and fiscal_shift_id-first branch are
+ * dead: returning `shift.id` is now equivalent. Fail loud if it is somehow
+ * not a UUID — a blocked sale beats silently mis-attributed fiscal data.
  */
 export function fiscalShiftIdForReceipt(shift: Shift): string {
-  if (shift.fiscal_shift_id) return shift.fiscal_shift_id;
-  const raw = shift.id.startsWith('offline-') ? shift.id.slice('offline-'.length) : shift.id;
-  if (isUuid(raw)) return raw.toLowerCase();
+  if (isUuid(shift.id)) return shift.id.toLowerCase();
   throw new Error(`Shift ${shift.id} has no usable fiscal shift id; cannot author fiscal events.`);
 }
 
@@ -238,6 +256,21 @@ function withShiftUser(serverShift: ServerShiftPayload, cached: Shift | null): S
   return { ...serverShift, user: { id: cashierId, name } };
 }
 
+/** Map a device `local_shifts` row to the in-memory `Shift` (one-id model). */
+function localShiftToShift(open: LocalShift): Shift {
+  return {
+    id: open.id,
+    terminal_id: open.terminal_id,
+    shift_number: open.shift_number,
+    status: open.status,
+    opening_cash: open.opening_cash,
+    opened_at: open.opened_at,
+    fiscal_shift_id: open.fiscal_shift_id,
+    fiscal_session_id: open.session_id,
+    user: { id: open.cashier_id, name: open.cashier_name },
+  };
+}
+
 async function authorShiftOpenFiscalEvents(
   terminal: Terminal,
   shift: Shift,
@@ -257,34 +290,14 @@ async function authorShiftOpenFiscalEvents(
     throw new Error(`Cannot author Z-session opening event with invalid shift opened_at ${shift.opened_at}.`);
   }
 
-  // M3: record the terminal's last receipt hash_sequence at shift open so the
-  // device Z can select THIS shift's receipts by monotonic, clock-rollback-immune
-  // sequence (`hash_sequence > anchor`) instead of wall-clock created_at.
-  //
-  // The anchor MUST be in the same sequence space the Z window bounds by —
-  // `offline_receipts.hash_sequence` (the fiscal-event operational
-  // sequence_number) — NOT `terminal_state.hash_sequence`, which is the separate
-  // legacy receipt-V3 counter (using it would re-include the previous shift's
-  // receipts in the next Z and corrupt every total + the Z hash).
-  //
-  // Written BEFORE authoring the open event and fail-CLOSED: a device-authority
-  // shift must not run without a correct fiscal Z boundary, so a failure here
-  // aborts the open (no fiscal event has been authored yet). The created_at
-  // fallback in generateZReport now only applies to shifts that pre-date
-  // migration 49 (which never recorded an anchor).
-  {
-    const db = await getDatabase(auth.companyId);
-    const { getMaxReceiptHashSequence, insertShiftReceiptAnchor } = await import(
-      '@/lib/db/repositories/shiftReceiptAnchorRepository'
-    );
-    const openingHashSequence = await getMaxReceiptHashSequence(db, terminal.id);
-    await insertShiftReceiptAnchor(db, {
-      shift_id: shift.id,
-      opening_hash_sequence: openingHashSequence,
-    });
-  }
-
-  await authorZSessionOpenWithOpeningFloat({
+  // SESSION_OPEN + OPENING_FLOAT, the M3 receipt anchor, and the device-
+  // authoritative `local_shifts` row are authored atomically inside the fiscal
+  // write-gate transaction (see authorZSessionOpenWithOpeningFloatOnDb). The
+  // anchor records the terminal's receipt hash_sequence at open time so the Z
+  // window selects THIS shift's receipts by monotonic, clock-rollback-immune
+  // sequence; the local_shifts row is the SQLite-first source of truth for
+  // "the current open shift". `shift_number` is minted in-tx and returned.
+  const { shiftNumber } = await authorZSessionOpenWithOpeningFloat({
     tenantId: auth.user.tenantId,
     companyId: auth.companyId,
     terminalId: terminal.id,
@@ -302,12 +315,9 @@ async function authorShiftOpenFiscalEvents(
     openingCashDrawerOperationId: null,
   });
 
-  if (shift.fiscal_shift_id === fiscalShiftId && shift.fiscal_session_id === fiscalSessionId) {
-    return shift;
-  }
-
   return {
     ...shift,
+    shift_number: shiftNumber,
     fiscal_shift_id: fiscalShiftId,
     fiscal_session_id: fiscalSessionId,
   };
@@ -474,6 +484,28 @@ export async function seedOfflineHashChain(terminalId: string): Promise<void> {
           serializeErrorForLog(err),
         );
       });
+
+    // Phase 5 / F-8: EAGER operator-PIN sync at activation (online), so a
+    // device that goes offline immediately after login can still authorize an
+    // EOD close from the local operator_pins mirror — rather than waiting for
+    // the first lazy sync tick. Fire-and-forget; the sync scheduler re-pulls.
+    void pullOperatorPins(db, terminalId).catch((err: unknown) => {
+      console.error(
+        '[POS][terminalStore][preWarm] operator-PIN sync failed',
+        serializeErrorForLog(err),
+      );
+    });
+
+    // Phase 5 / B6: EAGER fraud-settings cache refresh at activation, so the
+    // offline EOD close reads variance thresholds from
+    // company_fraud_settings_cache instead of needing a live fetch. companyId
+    // is guaranteed non-null (guarded at the top of this function).
+    void refreshFraudSettingsCache(db, companyId).catch((err: unknown) => {
+      console.error(
+        '[POS][terminalStore][preWarm] fraud-settings cache refresh failed',
+        serializeErrorForLog(err),
+      );
+    });
 
     // T1.3 Step 4.1: hydrate pendingReceiptCount from SQLite so the
     // header badge reflects the truth from boot. The hydration runs
@@ -722,6 +754,31 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     const { terminal } = get();
     if (!terminal) return;
 
+    // v3 terminals: SQLite-FIRST. "Current open shift" is read purely from the
+    // local_shifts projection — no network. The server is a downstream
+    // projection of the device's fiscal events and is never consulted for the
+    // live shift (an app restart must not sever the shift from its SESSION_OPEN
+    // fiscal event).
+    if (terminal.fiscal_schema_version === 3) {
+      const companyId = useAuthStore.getState().companyId;
+      if (!companyId) {
+        const cached = await getStoredValue<Shift>(StorageKeys.SHIFT);
+        set({ shift: cached ?? null });
+        return;
+      }
+      const db = await getDatabase(companyId);
+      const open = await getCurrentOpenShift(db, terminal.id);
+      if (open) {
+        const shift = localShiftToShift(open);
+        await setStoredValue(StorageKeys.SHIFT, shift);
+        set({ shift });
+      } else {
+        await removeStoredValue(StorageKeys.SHIFT);
+        set({ shift: null });
+      }
+      return;
+    }
+
     try {
       const serverShift = await apiGet<ServerShiftPayload | null>(`/pos/shifts/current/${terminal.code}`);
       if (serverShift) {
@@ -757,6 +814,62 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     if (!terminal) throw new Error('No terminal configured');
 
     set({ isLoading: true });
+
+    // Task 9 — full location-stock re-baseline on shift open (spec §4.3): the
+    // opening cashier starts the shift against fresh availability.
+    // Fire-and-forget + swallow-and-log: it must never block the open (offline
+    // it just times out).
+    const pullLocationStockNonFatal = (): void => {
+      void (async () => {
+        const companyId = useAuthStore.getState().companyId;
+        if (!companyId) return;
+        const db = await getDatabase(companyId);
+        await pullLocationStock(db, 'full', { terminalId: terminal.id });
+      })().catch((err: unknown) => {
+        console.error(
+          '[POS][terminalStore][openShift] location-stock full pull failed (non-fatal)',
+          serializeErrorForLog(err),
+        );
+      });
+    };
+
+    // v3 terminals are DEVICE-AUTHORITATIVE (mirror the receipt model): the
+    // device mints the shift id (UUIDv7) + per-terminal monotone shift_number
+    // and authors SESSION_OPEN + OPENING_FLOAT locally inside the fiscal
+    // write-gate — NO server round-trip, fully offline. `pos_shifts` is a
+    // projection of the synced fiscal events. The old server-first POST,
+    // `offline-<uuid>` fork, and SHIFT_ALREADY_OPEN adoption are gone: there is
+    // exactly one open path and one shift id.
+    if (terminal.fiscal_schema_version === 3) {
+      const auth = useAuthStore.getState();
+      const id = uuidv7();
+      const shift: Shift = {
+        id,
+        terminal_id: terminal.id,
+        shift_number: 0, // assigned in-tx by the fiscal authoring; filled below
+        status: 'OPEN',
+        opening_cash: openingCash,
+        opened_at: new Date().toISOString(),
+        fiscal_shift_id: id,
+        fiscal_session_id: id,
+        user: {
+          id: cashierId ?? auth.user?.id ?? '',
+          name: auth.user?.name ?? 'Operator',
+        },
+      };
+      try {
+        const fiscalShift = await authorShiftOpenFiscalEvents(terminal, shift, openingCash);
+        await setStoredValue(StorageKeys.SHIFT, fiscalShift);
+        set({ shift: fiscalShift, isLoading: false });
+      } catch (error) {
+        set({ isLoading: false });
+        throw error;
+      }
+      pullLocationStockNonFatal();
+      return;
+    }
+
+    // Legacy pre-cutover (v<3) terminals remain server-authoritative.
     let shift: Shift;
     try {
       const body: Record<string, string> = {
@@ -768,94 +881,33 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
       }
       shift = withShiftUser(await apiPost<ServerShiftPayload>('/pos/shifts/open', body), null);
     } catch (error) {
-      if (error instanceof ApiRequestError && error.code === 'SHIFT_ALREADY_OPEN') {
-        // A reachable server refusing the open means a shift is ALREADY open
-        // for this terminal — adopt it. Forking a local `offline-…` shift
-        // here split the device from the server shift (2026-06-12 live
-        // regression: Today Sales 404'd on the unknown shift id and fiscal
-        // payloads carried a non-UUID shift_id).
-        try {
-          const current = await apiGet<ServerShiftPayload | null>(`/pos/shifts/current/${terminal.code}`);
-          if (!current) throw error;
-          const cached = await getStoredValue<Shift>(StorageKeys.SHIFT);
-          shift = withShiftUser(current, cached);
-          if (cached && cached.id === shift.id) {
-            shift = {
-              ...shift,
-              fiscal_shift_id: shift.fiscal_shift_id ?? cached.fiscal_shift_id,
-              fiscal_session_id: shift.fiscal_session_id ?? cached.fiscal_session_id,
-            };
-          }
-        } catch (adoptionError) {
-          set({ isLoading: false });
-          throw adoptionError;
-        }
-      } else {
-        // Offline fallback: create local shift
-        const authState = useAuthStore.getState();
-        const user = authState.user;
-        shift = {
-          id: `offline-${crypto.randomUUID()}`,
-          terminal_id: terminal.id,
-          shift_number: 0,
-          status: 'OPEN',
-          opening_cash: openingCash,
-          opened_at: new Date().toISOString(),
-          fiscal_shift_id: crypto.randomUUID(),
-          fiscal_session_id: crypto.randomUUID(),
-          user: {
-            id: cashierId ?? user?.id ?? '',
-            name: user?.name ?? 'Operator',
-          },
-        };
-      }
+      set({ isLoading: false });
+      throw error;
     }
 
-    // Task 9 — full location-stock re-baseline on shift open (spec §4.3):
-    // the opening cashier starts the shift against fresh availability.
-    // Fire-and-forget + swallow-and-log: an offline shift open (the catch
-    // branch above) will time out here, and that must never block the
-    // shift from opening or selling from starting.
-    void (async () => {
-      const companyId = useAuthStore.getState().companyId;
-      if (!companyId) return;
-      const db = await getDatabase(companyId);
-      await pullLocationStock(db, 'full', { terminalId: terminal.id });
-    })().catch((err: unknown) => {
-      console.error(
-        '[POS][terminalStore][openShift] location-stock full pull failed (non-fatal)',
-        serializeErrorForLog(err),
-      );
-    });
-
-    if (terminal.fiscal_schema_version === 3) {
-      try {
-        const fiscalShift = await authorShiftOpenFiscalEvents(terminal, shift, openingCash);
-        await setStoredValue(StorageKeys.SHIFT, fiscalShift);
-        set({ shift: fiscalShift, isLoading: false });
-      } catch (error) {
-        set({ isLoading: false });
-        throw error;
-      }
-
-      return;
-    }
-
+    pullLocationStockNonFatal();
     await setStoredValue(StorageKeys.SHIFT, shift);
     set({ shift, isLoading: false });
   },
 
   closeShift: async (actualCash: string) => {
-    const { shift } = get();
+    const { terminal, shift } = get();
     if (!shift) throw new Error('No active shift');
 
     set({ isLoading: true });
-    try {
-      await apiPost<Shift>(`/pos/shifts/${shift.id}/close`, {
-        actual_cash: actualCash,
-      });
-    } catch {
-      console.warn('[Terminal] Shift close API failed (offline), closing locally');
+
+    // v3 is device-authoritative: SESSION_CLOSE + Z_REPORT are authored locally
+    // (generateZReport, called before this) and the local_shifts row is already
+    // closed; the server pos_shifts row is closed by the projection. The REST
+    // close is retired (returns 409), so this just clears device state.
+    if (terminal?.fiscal_schema_version !== 3) {
+      try {
+        await apiPost<Shift>(`/pos/shifts/${shift.id}/close`, {
+          actual_cash: actualCash,
+        });
+      } catch {
+        console.warn('[Terminal] Shift close API failed (offline), closing locally');
+      }
     }
     await removeStoredValue(StorageKeys.SHIFT);
     set({ shift: null, isLoading: false });
@@ -948,5 +1000,17 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     } catch (error) {
       console.error('[Terminal] refreshTerminalRecord failed (non-fatal)', serializeErrorForLog(error));
     }
+  },
+
+  // Phase 6.2: the background reconcile (syncService.runFullSync) surfaces an
+  // advisory banner when the server projection shows this device's open shift
+  // CLOSED (a web-admin recovery close). Advisory only — the local shift is
+  // never auto-closed (a sale may be mid-flight; Decision 4).
+  flagRemoteShiftClose: (conflict: RemoteShiftCloseConflict) => {
+    set({ remoteShiftCloseConflict: conflict });
+  },
+
+  clearRemoteShiftCloseConflict: () => {
+    set({ remoteShiftCloseConflict: null });
   },
 }));

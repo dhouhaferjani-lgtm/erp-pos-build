@@ -9,6 +9,11 @@ import { toast } from 'sonner'
 import { api, getErrorMessage } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { tokens, textColors } from '../../../lib/designTokens'
+import { cn } from '../../../lib/utils'
+import { Button } from '../../../components/atoms/Button/Button'
+import { Checkbox } from '../../../components/atoms'
+import { Input } from '../../../components/atoms/Input'
+import { Textarea } from '../../../components/atoms/Textarea'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 
@@ -215,7 +220,7 @@ export function ReceiptSettingsTab() {
     <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="space-y-6">
       {/* Custom Text Fields */}
       <div className={tokens.card.base}>
-        <h2 className={`text-lg font-semibold ${textColors.primary} mb-4`}>
+        <h2 className={cn(tokens.heading.section, 'mb-4')}>
           {t('settings:receipt.sections.customText')}
         </h2>
         <div className="space-y-4">
@@ -224,12 +229,11 @@ export function ReceiptSettingsTab() {
             <label htmlFor="receipt_header" className={tokens.label.base}>
               {t('settings:receipt.fields.header')}
             </label>
-            <textarea
+            <Textarea
               id="receipt_header"
               rows={3}
               maxLength={500}
               {...register('receipt_header')}
-              className={tokens.textarea.base}
               placeholder={t('settings:receipt.placeholders.header')}
             />
             <div className="mt-1 flex justify-between">
@@ -249,12 +253,11 @@ export function ReceiptSettingsTab() {
             <label htmlFor="receipt_footer" className={tokens.label.base}>
               {t('settings:receipt.fields.footer')}
             </label>
-            <textarea
+            <Textarea
               id="receipt_footer"
               rows={3}
               maxLength={500}
               {...register('receipt_footer')}
-              className={tokens.textarea.base}
               placeholder={t('settings:receipt.placeholders.footer')}
             />
             <div className="mt-1 flex justify-between">
@@ -274,12 +277,11 @@ export function ReceiptSettingsTab() {
             <label htmlFor="receipt_thank_you" className={tokens.label.base}>
               {t('settings:receipt.fields.thankYou')}
             </label>
-            <input
+            <Input
               type="text"
               id="receipt_thank_you"
               maxLength={200}
               {...register('receipt_thank_you')}
-              className={tokens.input.base}
               placeholder={t('settings:receipt.placeholders.thankYou')}
             />
             <div className="mt-1 flex justify-between">
@@ -298,7 +300,7 @@ export function ReceiptSettingsTab() {
 
       {/* Section Visibility Toggles */}
       <div className={tokens.card.base}>
-        <h2 className={`text-lg font-semibold ${textColors.primary} mb-4`}>
+        <h2 className={cn(tokens.heading.section, 'mb-4')}>
           {t('settings:receipt.sections.visibility')}
         </h2>
         <p className={`text-sm ${textColors.disabled} mb-4`}>
@@ -349,7 +351,7 @@ export function ReceiptSettingsTab() {
 
       {/* Printing Options */}
       <div className={tokens.card.base}>
-        <h2 className={`text-lg font-semibold ${textColors.primary} mb-4`}>
+        <h2 className={cn(tokens.heading.section, 'mb-4')}>
           {t('settings:receipt.sections.printing')}
         </h2>
         <div className="space-y-4">
@@ -367,14 +369,15 @@ export function ReceiptSettingsTab() {
       {/* Save Button */}
       <div className="flex justify-end gap-3">
         {isDirty && (
-          <span className="text-sm text-amber-600 self-center">
+          <span className={cn('text-sm self-center', textColors.warningDark)}>
             {t('settings:company.messages.unsavedChanges')}
           </span>
         )}
-        <button
+        <Button
           type="submit"
           disabled={saveMutation.isPending || !isDirty}
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} gap-2`}
+          size="md"
+          className="gap-2"
         >
           {saveMutation.isPending ? (
             <>
@@ -384,7 +387,7 @@ export function ReceiptSettingsTab() {
           ) : (
             t('common:actions.save')
           )}
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -411,12 +414,10 @@ function ToggleField({
   return (
     <div className="flex items-start gap-3">
       <div className="flex h-6 items-center">
-        <input
-          type="checkbox"
+        <Checkbox
           id={id}
           {...register(id)}
           disabled={override.isForced}
-          className={tokens.checkbox.base}
         />
       </div>
       <div className="flex-1">
@@ -425,7 +426,7 @@ function ToggleField({
         </label>
         <p className={tokens.helperText.base}>{description}</p>
         {override.isForced && (
-          <div className="mt-1 flex items-center gap-1 text-xs text-amber-600">
+          <div className={cn('mt-1 flex items-center gap-1 text-xs', textColors.warningDark)}>
             <Info className="h-3.5 w-3.5" />
             <span>{t(override.tooltipKey)}</span>
           </div>

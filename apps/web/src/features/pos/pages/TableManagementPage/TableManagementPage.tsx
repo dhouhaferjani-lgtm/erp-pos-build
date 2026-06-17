@@ -10,6 +10,8 @@ import {
 } from '../../hooks/useTables'
 import { TableStatusBadge } from '../../atoms/TableStatusBadge'
 import type { FloorData, TableData } from '../../api/tableApi'
+import { tokens, colors, textColors, borderColors } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
 
 /**
  * Admin page for managing floors and tables (CRUD).
@@ -68,20 +70,20 @@ export function TableManagementPage() {
   if (floorsLoading || tablesLoading) {
     return (
       <div className="flex items-center justify-center p-12">
-        <span className="text-gray-400">{t('common:loading', 'Loading...')}</span>
+        <span className={textColors.disabled}>{t('common:loading', 'Loading...')}</span>
       </div>
     )
   }
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-6">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+      <h1 className={cn('text-2xl font-bold', textColors.primary)}>
         {t('tables.title')}
       </h1>
 
       {/* Floors Section */}
       <section>
-        <h2 className="mb-4 text-lg font-semibold text-gray-800 dark:text-gray-200">
+        <h2 className={cn('mb-4 text-lg font-semibold', textColors.primary)}>
           {t('tables.floors')}
         </h2>
 
@@ -92,14 +94,14 @@ export function TableManagementPage() {
             value={newFloorName}
             onChange={(e) => { setNewFloorName(e.target.value) }}
             placeholder={t('tables.floorNamePlaceholder')}
-            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+            className={cn('flex-1 rounded-lg border px-3 py-2 text-sm', borderColors.default)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleCreateFloor() }}
           />
           <button
             type="button"
             onClick={handleCreateFloor}
             disabled={createFloor.isPending || !newFloorName.trim()}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className={cn(tokens.button.base, tokens.button.primary, tokens.button.sizes.md, 'rounded-lg')}
           >
             {t('tables.addFloor')}
           </button>
@@ -110,17 +112,17 @@ export function TableManagementPage() {
           {(floors ?? []).map((floor: FloorData) => (
             <div
               key={floor.id}
-              className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800"
+              className={cn('flex items-center justify-between rounded-lg border bg-white p-3', borderColors.light)}
             >
               <div>
-                <span className="font-medium text-gray-900 dark:text-gray-100">
+                <span className={cn('font-medium', textColors.primary)}>
                   {floor.name}
                 </span>
-                <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">
+                <span className={cn('ml-2 text-sm', textColors.tertiary)}>
                   ({floor.tables?.length ?? 0} {t('tables.tablesCount')})
                 </span>
                 {!floor.is_active && (
-                  <span className="ml-2 rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                  <span className={cn('ml-2 rounded px-1.5 py-0.5 text-xs', colors.neutral[200], textColors.tertiary)}>
                     {t('common:inactive', 'Inactive')}
                   </span>
                 )}
@@ -129,7 +131,7 @@ export function TableManagementPage() {
                 type="button"
                 onClick={() => { handleDeleteFloor(floor.id) }}
                 disabled={deleteFloor.isPending}
-                className="text-sm text-red-600 hover:text-red-800 disabled:opacity-50 dark:text-red-400"
+                className={cn('text-sm disabled:opacity-50', textColors.error, textColors.hoverError)}
               >
                 {t('common:delete', 'Delete')}
               </button>
@@ -140,7 +142,7 @@ export function TableManagementPage() {
 
       {/* Tables Section */}
       <section>
-        <h2 className="mb-4 text-lg font-semibold text-gray-800 dark:text-gray-200">
+        <h2 className={cn('mb-4 text-lg font-semibold', textColors.primary)}>
           {t('tables.tablesList')}
         </h2>
 
@@ -149,7 +151,7 @@ export function TableManagementPage() {
           <select
             value={newTableFloorId}
             onChange={(e) => { setNewTableFloorId(e.target.value) }}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+            className={cn('rounded-lg border px-3 py-2 text-sm', borderColors.default)}
           >
             <option value="">{t('tables.noFloor')}</option>
             {(floors ?? []).map((floor: FloorData) => (
@@ -163,14 +165,14 @@ export function TableManagementPage() {
             value={newTableNumber}
             onChange={(e) => { setNewTableNumber(e.target.value) }}
             placeholder={t('tables.tableNumberPlaceholder')}
-            className="w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+            className={cn('w-24 rounded-lg border px-3 py-2 text-sm', borderColors.default)}
           />
           <input
             type="text"
             value={newTableLabel}
             onChange={(e) => { setNewTableLabel(e.target.value) }}
             placeholder={t('tables.labelPlaceholder')}
-            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+            className={cn('flex-1 rounded-lg border px-3 py-2 text-sm', borderColors.default)}
           />
           <input
             type="number"
@@ -178,56 +180,56 @@ export function TableManagementPage() {
             onChange={(e) => { setNewTableSeats(e.target.value) }}
             min="1"
             max="100"
-            className="w-16 rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+            className={cn('w-16 rounded-lg border px-3 py-2 text-sm', borderColors.default)}
           />
           <button
             type="button"
             onClick={handleCreateTable}
             disabled={createTable.isPending || !newTableNumber.trim()}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className={cn(tokens.button.base, tokens.button.primary, tokens.button.sizes.md, 'rounded-lg')}
           >
             {t('tables.addTable')}
           </button>
         </div>
 
         {/* Table List */}
-        <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-800">
+        <div className={cn('overflow-hidden rounded-lg border', borderColors.light)}>
+          <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+            <thead className={tokens.table.header}>
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                <th className={cn('px-4 py-3 text-left text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                   {t('tables.tableNumber')}
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                <th className={cn('px-4 py-3 text-left text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                   {t('tables.label')}
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                <th className={cn('px-4 py-3 text-left text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                   {t('tables.floor')}
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                <th className={cn('px-4 py-3 text-right text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                   {t('tables.seats')}
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                <th className={cn('px-4 py-3 text-left text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                   {t('tables.statusLabel')}
                 </th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                <th className={cn('px-4 py-3 text-right text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
                   {t('common:actions', 'Actions')}
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-900">
+            <tbody className={cn('divide-y bg-white', borderColors.divideDefault)}>
               {(tables ?? []).map((table: TableData) => (
                 <tr key={table.id}>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
+                  <td className={cn('whitespace-nowrap px-4 py-3 text-sm font-medium', textColors.primary)}>
                     {table.table_number}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                  <td className={cn('whitespace-nowrap px-4 py-3 text-sm', textColors.tertiary)}>
                     {table.label ?? '-'}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                  <td className={cn('whitespace-nowrap px-4 py-3 text-sm', textColors.tertiary)}>
                     {table.floor?.name ?? t('tables.noFloor')}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                  <td className={cn('whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums', textColors.tertiary)}>
                     {table.seats}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
@@ -238,7 +240,7 @@ export function TableManagementPage() {
                       type="button"
                       onClick={() => { handleDeleteTable(table.id) }}
                       disabled={deleteTableMutation.isPending || table.status === 'occupied'}
-                      className="text-sm text-red-600 hover:text-red-800 disabled:opacity-50 dark:text-red-400"
+                      className={cn('text-sm disabled:opacity-50', textColors.error, textColors.hoverError)}
                     >
                       {t('common:delete', 'Delete')}
                     </button>
@@ -247,7 +249,7 @@ export function TableManagementPage() {
               ))}
               {(tables ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={6} className={cn('px-4 py-8 text-center text-sm', textColors.disabled)}>
                     {t('tables.noTables')}
                   </td>
                 </tr>

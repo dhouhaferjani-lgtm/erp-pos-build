@@ -1623,4 +1623,114 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_xloc_cache_product ON product_stock_distribution_cache(product_id);
     `,
   },
+  {
+    // Offline-first shifts — Phase 0 (2026-06-14). Device-authoritative shift
+    // lifecycle, mirroring the receipt model.
+    //
+    // `local_shifts` is the device's local source of truth for "the current
+    // open shift": the device mints a UUIDv7 shift id (== fiscal_shift_id ==
+    // pos_shifts.id) plus a per-terminal monotone `shift_number`, authors
+    // SESSION_OPEN locally, and `pos_shifts` becomes a server-side projection
+    // of those already-device-authored events. "Current open shift" is then
+    // answered purely from SQLite — no network.
+    //
+    // The partial unique index mirrors the server `pos_shifts_one_open_per_
+    // terminal` invariant: at most one OPEN row per terminal. A second open
+    // attempt fails loud (constraint violation) rather than silently
+    // double-opening. The `(terminal_id, shift_number)` index backs the
+    // `nextShiftNumber` MAX lookup.
+    //
+    // `id` is the canonical shift UUID; `session_id` is the fiscal session id
+    // (same value in the one-id model, kept as a distinct column so the
+    // SESSION_OPEN payload round-trips). `fiscal_shift_id` is an alias of `id`
+    // — derived in the repository, not stored. `opening_cash` is a TEXT
+    // decimal string (currency-scaled), never a float, per the migration-21
+    // TEXT-decimal discipline.
+    //
+    // Numbered v53 (after the dev v52 product_stock_distribution_cache it
+    // merged alongside) — migration versions are a global UNIQUE key.
+    version: 53,
+    name: 'create_local_shifts',
+    sql: `
+      CREATE TABLE IF NOT EXISTS local_shifts (
+        id TEXT PRIMARY KEY,
+        terminal_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        shift_number INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED')),
+        opening_cash TEXT NOT NULL DEFAULT '0',
+        opened_at TEXT NOT NULL,
+        closed_at TEXT,
+        cashier_id TEXT NOT NULL,
+        cashier_name TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_local_shifts_one_open_per_terminal
+        ON local_shifts(terminal_id) WHERE status = 'OPEN';
+      CREATE INDEX IF NOT EXISTS idx_local_shifts_terminal_number
+        ON local_shifts(terminal_id, shift_number);
+    `,
+  },
+  {
+    // Offline-first shifts — Phase 6.1 (2026-06-14). Per-terminal
+    // `shift_number` counter seed.
+    //
+    // A freshly-installed (or DB-reset) device starts with an empty
+    // `local_shifts`, so `nextShiftNumber` would restart the per-terminal
+    // counter at 1 and collide with shift numbers the server already projected
+    // from a prior install. The device caches the server's current
+    // `MAX(pos_shifts.shift_number)` for the terminal (carried on the terminal
+    // payload as `max_shift_number`, see TerminalResource) into this column so
+    // the counter continues monotonically.
+    //
+    // `nextShiftNumber` takes MAX(local row, seed); `setShiftNumberSeed` writes
+    // it with a monotone guard so a stale server read can never rewind it below
+    // a number the device has already used. Default 0 preserves the legacy
+    // local-only behaviour for terminals with no server history.
+    //
+    // Numbered v54 — migration versions are a global UNIQUE key (v53 =
+    // create_local_shifts). ALTER ADD COLUMN guarded with the duplicate-column
+    // pattern so the migration is re-runnable.
+    version: 54,
+    name: 'add_shift_number_seed_to_terminal_state',
+    sql: '',
+    async run(db) {
+      try {
+        await db.execute(
+          'ALTER TABLE terminal_state ADD COLUMN shift_number_seed INTEGER NOT NULL DEFAULT 0',
+        );
+      } catch (error) {
+        if (!isDuplicateColumnError(error)) {
+          throw error;
+        }
+      }
+    },
+  },
+  {
+    // Offline-first shifts — Phase 6.1 hardening (2026-06-14, Codex r1 MEDIUM).
+    //
+    // Promote the `(terminal_id, shift_number)` lookup index from v53 to a
+    // UNIQUE index, mirroring the server's
+    // `pos_shifts (terminal_id, shift_number)` unique constraint
+    // (2026_06_14_110000_make_pos_shifts_terminal_shift_number_unique).
+    //
+    // The device mints shift numbers monotonically inside the fiscal write-gate
+    // tx and the Phase-6.1 seed only ever RAISES the floor, so a duplicate is
+    // impossible on the happy path. This is a fail-loud DB backstop: a regressed
+    // caller, manual import, or restore edge case that reused a number for the
+    // same terminal would otherwise silently break the per-register sequence
+    // (NF525 "sans rupture de séquence"). The unique index also still backs the
+    // `nextShiftNumber` MAX lookup, so the old plain index is dropped.
+    //
+    // Clean-slate / pre-live: no existing device has duplicate numbers, so the
+    // unique index builds without remediation. Numbered v55 — migration
+    // versions are a global UNIQUE key.
+    version: 55,
+    name: 'make_local_shifts_terminal_number_unique',
+    sql: `
+      DROP INDEX IF EXISTS idx_local_shifts_terminal_number;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_local_shifts_terminal_number_unique
+        ON local_shifts(terminal_id, shift_number);
+    `,
+  },
 ];

@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { FormField, Input, Select } from '../../../components/atoms'
 import type { Account, LedgerFilters as LedgerFiltersType } from '../types'
 
 interface LedgerFiltersProps {
@@ -31,16 +32,12 @@ export function LedgerFilters({ filters, accounts, onFiltersChange }: LedgerFilt
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div>
-        <label htmlFor="account" className="block text-sm font-medium text-gray-700 mb-1">
-          {t('finance:ledger.filters.account')}
-        </label>
-        <select
+    <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-3">
+      <FormField label={t('finance:ledger.filters.account')} htmlFor="account">
+        <Select
           id="account"
-          value={filters.account_id || ''}
+          value={filters.account_id ?? ''}
           onChange={(e) => { handleAccountChange(e.target.value); }}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">{t('finance:ledger.filters.allAccounts')}</option>
           {accounts.map((account) => (
@@ -48,34 +45,26 @@ export function LedgerFilters({ filters, accounts, onFiltersChange }: LedgerFilt
               {account.code} - {account.name}
             </option>
           ))}
-        </select>
-      </div>
+        </Select>
+      </FormField>
 
-      <div>
-        <label htmlFor="date-from" className="block text-sm font-medium text-gray-700 mb-1">
-          {t('finance:ledger.filters.fromDate')}
-        </label>
-        <input
+      <FormField label={t('finance:ledger.filters.fromDate')} htmlFor="date-from">
+        <Input
           id="date-from"
           type="date"
-          value={filters.date_from || ''}
+          value={filters.date_from ?? ''}
           onChange={(e) => { handleDateFromChange(e.target.value); }}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-      </div>
+      </FormField>
 
-      <div>
-        <label htmlFor="date-to" className="block text-sm font-medium text-gray-700 mb-1">
-          {t('finance:ledger.filters.toDate')}
-        </label>
-        <input
+      <FormField label={t('finance:ledger.filters.toDate')} htmlFor="date-to">
+        <Input
           id="date-to"
           type="date"
-          value={filters.date_to || ''}
+          value={filters.date_to ?? ''}
           onChange={(e) => { handleDateToChange(e.target.value); }}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-      </div>
+      </FormField>
     </div>
   )
 }

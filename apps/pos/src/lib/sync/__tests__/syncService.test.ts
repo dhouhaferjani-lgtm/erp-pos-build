@@ -89,6 +89,7 @@ vi.mock('@/lib/db/repositories/paymentRepository', () => ({
 
 vi.mock('@/lib/db/repositories/operatorPinRepository', () => ({
   upsertOperators: vi.fn().mockResolvedValue(undefined),
+  pruneOperatorsExcept: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock('@/lib/db/repositories/queuedPinUpdateRepository', () => ({
@@ -124,6 +125,7 @@ vi.mock('@/stores/authStore', () => ({
 
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   upsertTerminalState: vi.fn().mockResolvedValue(undefined),
+  setShiftNumberSeed: vi.fn().mockResolvedValue(undefined),
   upsertZChainState: vi.fn().mockResolvedValue(undefined),
   FiscalRegressionError: class FiscalRegressionError extends Error {
     constructor(
@@ -166,6 +168,7 @@ import {
   runFullSync,
 } from '../syncService';
 import { apiGet, apiPost, apiPostRaw, ApiRequestError } from '@/lib/api';
+import { pruneOperatorsExcept } from '@/lib/db/repositories/operatorPinRepository';
 import { getUnsyncedZReports, markZReportSynced } from '@/lib/db/repositories/zReportRepository';
 import { updateReceiptStatus } from '@/lib/db/repositories/offlineReceiptRepository';
 import {
@@ -175,7 +178,10 @@ import {
   type LocalFiscalEvent,
 } from '@/lib/db/repositories/fiscalEventRepository';
 import { upsertProducts, deleteProducts } from '@/lib/db/repositories/productRepository';
-import { upsertTerminalState } from '@/lib/db/repositories/terminalStateRepository';
+import {
+  upsertTerminalState,
+  setShiftNumberSeed,
+} from '@/lib/db/repositories/terminalStateRepository';
 import { computeGenesisHash } from '@/lib/fiscal/hashService';
 
 function makeMockDb() {
@@ -620,22 +626,59 @@ describe('syncService', () => {
   });
 
   describe('pullOperatorPins', () => {
-    it('pulls operator data', async () => {
+    it('pulls operator data scoped to the terminal', async () => {
       vi.mocked(apiGet).mockResolvedValue([
         { id: 'op-1', name: 'Jane', pin_hash: 'hash123' },
       ]);
 
-      const count = await pullOperatorPins(db);
+      const count = await pullOperatorPins(db, 'term-1');
 
       expect(count).toBe(1);
+      // terminal_id MUST be sent — otherwise the server mirrors terminal_ids: []
+      // and verifyOfflineApprovalPin rejects every operator (scope_mismatch).
+      expect(vi.mocked(apiGet)).toHaveBeenCalledWith('/pos/auth/pin-data?terminal_id=term-1');
     });
 
     it('returns 0 on error', async () => {
       vi.mocked(apiGet).mockRejectedValue(new Error('Unauthorized'));
 
-      const count = await pullOperatorPins(db);
+      const count = await pullOperatorPins(db, 'term-1');
 
       expect(count).toBe(0);
+    });
+
+    // FU-1 — a confirmed full pull is authoritative: any cached operator NOT in
+    // the response is pruned so a suspended-then-omitted manager can no longer
+    // approve offline overrides against the stale local PIN.
+    it('prunes operators omitted from a successful non-empty pull', async () => {
+      vi.mocked(apiGet).mockResolvedValue([
+        { id: 'op-1', name: 'Jane', pin_hash: 'hash123' },
+        { id: 'op-2', name: 'Bob', pin_hash: 'hash456' },
+      ]);
+
+      await pullOperatorPins(db, 'term-1');
+
+      expect(vi.mocked(pruneOperatorsExcept)).toHaveBeenCalledWith(db, ['op-1', 'op-2']);
+    });
+
+    // Pruning on a failed pull would wipe legitimately-offline operators and
+    // break ALL offline approvals — must NOT prune when apiGet throws.
+    it('does NOT prune when the pull fails', async () => {
+      vi.mocked(apiGet).mockRejectedValue(new Error('Unauthorized'));
+
+      await pullOperatorPins(db, 'term-1');
+
+      expect(vi.mocked(pruneOperatorsExcept)).not.toHaveBeenCalled();
+    });
+
+    // An empty 200 response is treated as a non-authoritative/partial pull (a
+    // real terminal always has at least the operator pulling) — do NOT prune.
+    it('does NOT prune on an empty response', async () => {
+      vi.mocked(apiGet).mockResolvedValue([]);
+
+      await pullOperatorPins(db, 'term-1');
+
+      expect(vi.mocked(pruneOperatorsExcept)).not.toHaveBeenCalled();
     });
   });
 
@@ -664,6 +707,7 @@ describe('syncService', () => {
         manager_pin_throttle_until: null,
         manager_pin_failed_attempts: 0,
         fiscal_schema_version: 2,
+        shift_number_seed: 0,
       });
       expect(computeGenesisHash).not.toHaveBeenCalled();
     });
@@ -693,7 +737,51 @@ describe('syncService', () => {
         manager_pin_throttle_until: null,
         manager_pin_failed_attempts: 0,
         fiscal_schema_version: 2,
+        shift_number_seed: 0,
       });
+    });
+
+    it('Phase 6.1: seeds the shift_number counter from the server max_shift_number', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: null },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 3,
+        max_shift_number: 42,
+      });
+
+      const result = await pullTerminalState(db, 'term-1');
+
+      expect(result).toBe(true);
+      // Atomic with the row (Codex r1 HIGH): the seed rides the upsert, not a
+      // separate setShiftNumberSeed write, on the success path.
+      expect(upsertTerminalState).toHaveBeenCalledWith(
+        db,
+        expect.objectContaining({ shift_number_seed: 42 }),
+      );
+    });
+
+    it('Phase 6.1: seeds 0 when the server omits max_shift_number (stale server)', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: null },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+        fiscal_schema_version: 2,
+      });
+
+      const result = await pullTerminalState(db, 'term-1');
+
+      expect(result).toBe(true);
+      expect(upsertTerminalState).toHaveBeenCalledWith(
+        db,
+        expect.objectContaining({ shift_number_seed: 0 }),
+      );
     });
 
     it('Codex review B1: projects v3 fiscal_schema_version when the server declares it', async () => {
@@ -749,6 +837,7 @@ describe('syncService', () => {
         genesis_seed: 'seed-abc',
         last_hash: null,
         hash_sequence: 0,
+        max_shift_number: 5,
       });
 
       // Simulate the guard inside upsertTerminalState: make the mock throw
@@ -766,6 +855,9 @@ describe('syncService', () => {
       // and NEVER propagate — a partial pull must not kill the scheduler.
       expect(ok).toBe(true);
       expect(upsertTerminalState).toHaveBeenCalledOnce();
+      // The upsert rejected the whole write (seed included), so the regression
+      // path refreshes the monotone shift-number seed on its own.
+      expect(setShiftNumberSeed).toHaveBeenCalledWith(db, 'terminal-1', 5);
     });
   });
 

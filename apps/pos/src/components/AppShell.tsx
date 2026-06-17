@@ -4,6 +4,7 @@ import type Database from '@tauri-apps/plugin-sql';
 import { Header } from './Header';
 import { TrainingModeBanner } from './TrainingModeBanner';
 import { C2MigrationBanner } from './C2MigrationBanner';
+import { RemoteShiftCloseBanner } from './RemoteShiftCloseBanner';
 import { UnsyncedRiskIndicator } from './fiscal/UnsyncedRiskIndicator';
 import { DurabilityGateModal } from './fiscal/DurabilityGateModal';
 import { HomePage } from '@/pages/HomePage';
@@ -128,6 +129,10 @@ export function AppShell() {
           the cashier sees it on every screen, not just HomePage. */}
       <TrainingModeBanner />
       <C2MigrationBanner />
+      {/* Phase 6.2 — advisory banner when the device's open shift was closed
+          remotely (web-admin recovery). Renders null when no conflict; the
+          background reconcile (syncService.runFullSync) sets/clears it. */}
+      <RemoteShiftCloseBanner />
       {/* Round-2 T32-B2: spec §12 operator-visible unsynced-risk indicator.
           Exception-only: renders null for healthy/pre-first-poll (no DOM,
           no layout impact — the healthy "synced" signal lives in the Header

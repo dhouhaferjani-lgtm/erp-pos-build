@@ -119,19 +119,82 @@ export const borderColors = {
 }
 
 /**
- * Chart color values for ECharts and other canvas/SVG renderers.
- * Tailwind class tokens above cannot be passed into chart options, so chart
- * surfaces consume these semantic values from the same token module.
+ * Chart colors for ECharts and other canvas/SVG renderers.
+ *
+ * ECharts can't consume Tailwind/CSS-variable tokens directly, so it needs
+ * resolved color strings. Rather than hardcode hex here (which would drift from
+ * the theme and ignore the per-vertical `[data-product]` switch), these are
+ * resolved AT RUNTIME from the `--chart-*` CSS custom properties defined in
+ * `src/index.css`. That keeps the theme the single source of truth: re-theming
+ * or switching vertical updates the charts automatically, with zero hardcoded
+ * hex in app code.
+ *
+ * `chartColors.primary` reads `--chart-primary` from the document root on each
+ * access. In non-DOM contexts (SSR/jsdom without the stylesheet) it returns ''
+ * (ECharts falls back to its own default) — tests inject the vars explicitly.
+ *
+ * Guarded by `src/lib/chartColors.theme.test.ts`.
  */
-export const chartColors = {
-  primary: '#2563eb',
-  success: '#16a34a',
-  warning: '#ca8a04',
-  danger: '#dc2626',
-  neutral: '#64748b',
-  cyan: '#0891b2',
-  violet: '#7c3aed',
+export type ChartColorKey =
+  | 'primary'
+  | 'success'
+  | 'warning'
+  | 'danger'
+  | 'neutral'
+  | 'secondary'
+  | 'cyan'
+  | 'violet'
+
+/** Read a `--chart-*` custom property off the document root. Empty string when no DOM. */
+export function readChartColor(key: ChartColorKey): string {
+  if (typeof document === 'undefined') return ''
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue(`--chart-${key}`)
+    .trim()
 }
+
+/**
+ * Live, theme-derived chart palette. Each getter resolves the matching
+ * `--chart-*` CSS variable at access time, so the palette always reflects the
+ * active theme/vertical. Keys also serve as a categorical sequence for
+ * multi-series charts (see `chartCategoricalKeys`).
+ */
+export const chartColors: Record<ChartColorKey, string> = {
+  get primary() {
+    return readChartColor('primary')
+  },
+  get success() {
+    return readChartColor('success')
+  },
+  get warning() {
+    return readChartColor('warning')
+  },
+  get danger() {
+    return readChartColor('danger')
+  },
+  get neutral() {
+    return readChartColor('neutral')
+  },
+  get secondary() {
+    return readChartColor('secondary')
+  },
+  get cyan() {
+    return readChartColor('cyan')
+  },
+  get violet() {
+    return readChartColor('violet')
+  },
+}
+
+/** Ordered categorical sequence for multi-series charts (pies/donuts). */
+export const chartCategoricalKeys: readonly ChartColorKey[] = [
+  'primary',
+  'success',
+  'warning',
+  'cyan',
+  'violet',
+  'neutral',
+]
 
 /**
  * Spacing scale (consistent with Tailwind)
@@ -237,6 +300,7 @@ export const tokens = {
    */
   textarea: {
     base: 'mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed resize-y',
+    error: 'border-red-500 focus:border-red-500 focus:ring-red-500',
   },
 
   /**
@@ -259,6 +323,18 @@ export const tokens = {
   label: {
     base: 'block text-sm font-medium text-gray-700',
     required: 'text-red-500',
+  },
+
+  /**
+   * Section heading styles.
+   *
+   * The ONE sanctioned treatment for in-card `<h2>`/`<h3>` section titles, so
+   * forms stop varying between `font-bold`/`font-semibold`/`font-medium`
+   * (see CANONICALIZATION-SPEC §"Headers"). Only the theme-bridged `gray`
+   * palette is used, so no new off-theme color literals are introduced.
+   */
+  heading: {
+    section: 'text-lg font-medium text-gray-900',
   },
 
   /**

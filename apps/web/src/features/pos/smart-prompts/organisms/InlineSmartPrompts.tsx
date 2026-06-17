@@ -1,5 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Sparkles, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { borderColors, colors, textColors } from '@/lib/designTokens'
 import { SmartPromptCard } from '../atoms/SmartPromptCard'
 import { ContextQuestion } from '../atoms/ContextQuestion'
 import type { Recommendation } from '../types/recommendations'
@@ -30,18 +33,23 @@ export function InlineSmartPrompts({
   }
 
   return (
-    <div className="animate-fadeIn border-b border-indigo-500/15 bg-indigo-500/[0.06] px-4 py-2.5">
+    <div className={cn('animate-fadeIn border-b px-4 py-2.5', borderColors.light, colors.neutral[50])}>
       <div className="mb-2 flex items-center gap-1.5">
-        <span className="text-xs text-indigo-400">✦</span>
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-indigo-400">
+        <Sparkles className={cn('h-4 w-4', textColors.brand)} aria-hidden="true" />
+        <span className={cn('text-[11px] font-semibold uppercase tracking-wide', textColors.brand)}>
           {t('section_title')}
         </span>
         <button
           type="button"
-          className="ml-auto text-[10px] text-gray-500 hover:text-gray-400"
+          className={cn(
+            'ml-auto inline-flex min-h-[32px] items-center gap-1 text-[10px]',
+            textColors.disabled,
+            textColors.hoverSecondary
+          )}
           onClick={() => setDismissed(true)}
         >
-          {t('dismiss')} ✕
+          {t('dismiss')}
+          <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
       </div>
 

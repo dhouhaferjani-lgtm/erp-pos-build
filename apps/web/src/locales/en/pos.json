@@ -363,6 +363,8 @@
     "openShift": "Open Shift",
     "noActiveShift": "No Active Shift",
     "noActiveShiftDescription": "Start a new shift to begin operations",
+    "deviceAuthorityNotice": "This terminal opens and closes shifts on the POS device. Use the POS device to start or end a shift.",
+    "deviceAuthorityNoActiveShiftDescription": "Shifts for this terminal are managed on the POS device.",
     "actualCashCount": "Actual Cash Count",
     "variance": "Variance",
     "amount": "Amount",

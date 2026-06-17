@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { borderColors, textColors } from '@/lib/designTokens'
+import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import { StatusPill } from './StatusPill'
 import type { WorkOrderListItem } from '../types'
 
@@ -19,9 +19,9 @@ export function WorkOrderRow({ workOrder }: WorkOrderRowProps) {
   return (
     <Link
       to={`/workshop/work-orders/${workOrder.id}`}
-      className={`grid grid-cols-12 items-center gap-3 rounded-lg border bg-white px-4 py-3 shadow-sm transition-colors hover:bg-slate-50 ${borderColors.light}`}
+      className={`grid grid-cols-12 items-center gap-3 rounded-lg border bg-white px-4 py-3 shadow-sm transition-colors ${tokens.table.rowHover} ${borderColors.light}`}
     >
-      <div className="col-span-2 font-mono text-xs font-semibold text-slate-900">
+      <div className={`col-span-2 font-mono text-xs font-semibold ${textColors.primary}`}>
         {workOrder.work_order_number}
       </div>
       <div className="col-span-2">
@@ -41,7 +41,7 @@ export function WorkOrderRow({ workOrder }: WorkOrderRowProps) {
           ? new Date(workOrder.scheduled_start_at).toLocaleString()
           : t('labels.notSet')}
       </div>
-      <div className="col-span-1 text-right text-sm font-semibold text-slate-900">
+      <div className={`col-span-1 text-right text-sm font-semibold tabular-nums ${textColors.primary}`}>
         {workOrder.estimated_grand_total === null
           ? t('labels.notSet')
           : `${workOrder.estimated_grand_total} ${workOrder.currency}`}

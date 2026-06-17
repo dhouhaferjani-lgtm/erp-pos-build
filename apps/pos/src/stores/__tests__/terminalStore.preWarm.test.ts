@@ -20,6 +20,16 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const startSpy = vi.fn();
 const fetchPaymentConfigSpy = vi.fn().mockResolvedValue(undefined);
 
+// Phase 5: eager offline-EOD prewarm spies — operator-PIN sync (F-8) +
+// fraud-settings cache refresh (B6), fired fire-and-forget after scheduler.start.
+// MUST be vi.hoisted(): their mock factories (@/lib/sync/syncService,
+// @/api/fraudSettingsApi) run during the EAGER import of terminalStore below,
+// before plain top-level consts would initialize.
+const { pullOperatorPinsSpy, refreshFraudSettingsCacheSpy } = vi.hoisted(() => ({
+  pullOperatorPinsSpy: vi.fn().mockResolvedValue(0),
+  refreshFraudSettingsCacheSpy: vi.fn().mockResolvedValue(undefined),
+}));
+
 // T1.3 Step 4.1 + 4.2: startup hydration spies — invoked from
 // seedOfflineHashChain after scheduler.start.
 const setPendingCountSpy = vi.fn();
@@ -70,6 +80,13 @@ vi.mock('@/lib/sync/syncService', () => ({
   // Task 9 — seedOfflineHashChain now fires a fire-and-forget full
   // location-stock baseline after scheduler.start.
   pullLocationStock: vi.fn().mockResolvedValue({ count: 0 }),
+  // Phase 5 / F-8 — eager operator-PIN sync at activation.
+  pullOperatorPins: pullOperatorPinsSpy,
+}));
+
+vi.mock('@/api/fraudSettingsApi', () => ({
+  // Phase 5 / B6 — eager fraud-settings cache refresh at activation.
+  refreshFraudSettingsCache: refreshFraudSettingsCacheSpy,
 }));
 
 vi.mock('@/lib/sync/syncScheduler', () => ({
@@ -148,8 +165,51 @@ describe('T1.2 Step 2.4 — seedOfflineHashChain pre-warms payment config', () =
     recoverStrandedSyncingAuditEventsSpy.mockResolvedValue(0);
     pruneSyncedAuditEventsSpy.mockClear();
     pruneSyncedAuditEventsSpy.mockResolvedValue(undefined);
+    pullOperatorPinsSpy.mockClear();
+    pullOperatorPinsSpy.mockResolvedValue(0);
+    refreshFraudSettingsCacheSpy.mockClear();
+    refreshFraudSettingsCacheSpy.mockResolvedValue(undefined);
 
     useAuthStore.setState({ companyId: 'company-1' } as never);
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase 5 — eager offline-EOD prewarm: operator-PIN sync (F-8) +
+  // fraud-settings cache refresh (B6) fire-and-forget after scheduler.start so
+  // a device that goes offline right after activation can still run an EOD close.
+  // -------------------------------------------------------------------------
+
+  it('Phase 5 / F-8: eagerly syncs operator PINs after scheduler.start', async () => {
+    await seedOfflineHashChain('term-1');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(pullOperatorPinsSpy).toHaveBeenCalledTimes(1);
+    const startOrder = startSpy.mock.invocationCallOrder[0]!;
+    const pinOrder = pullOperatorPinsSpy.mock.invocationCallOrder[0]!;
+    expect(pinOrder).toBeGreaterThan(startOrder);
+  });
+
+  it('Phase 5 / B6: eagerly refreshes the fraud-settings cache for the company', async () => {
+    await seedOfflineHashChain('term-1');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(refreshFraudSettingsCacheSpy).toHaveBeenCalledTimes(1);
+    expect(refreshFraudSettingsCacheSpy).toHaveBeenCalledWith(expect.anything(), 'company-1');
+  });
+
+  it('Phase 5: a prewarm rejection (operator-PIN or fraud-settings) does NOT propagate', async () => {
+    pullOperatorPinsSpy.mockRejectedValueOnce(new Error('pin sync failed'));
+    refreshFraudSettingsCacheSpy.mockRejectedValueOnce(new Error('fraud fetch failed'));
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(seedOfflineHashChain('term-1')).resolves.toBeUndefined();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(startSpy).toHaveBeenCalledTimes(1);
+    consoleError.mockRestore();
   });
 
   it('T1.2: seedOfflineHashChain fires fetchPaymentConfig AFTER scheduler.start', async () => {
