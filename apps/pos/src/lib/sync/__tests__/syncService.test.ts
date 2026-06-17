@@ -950,6 +950,37 @@ describe('pushQueuedPinUpdates', () => {
     expect(result).toBe(0);
     expect(apiPost).not.toHaveBeenCalled();
   });
+
+  it('no-ops when no user is authenticated', async () => {
+    const { pushQueuedPinUpdates } = await import('../syncService');
+    const { getPendingPinUpdates } = await import('@/lib/db/repositories/queuedPinUpdateRepository');
+    const { useAuthStore } = await import('@/stores/authStore');
+    vi.mocked(useAuthStore.getState).mockReturnValueOnce({ user: undefined } as never);
+    vi.mocked(getPendingPinUpdates).mockResolvedValueOnce([
+      { id: 1, userId: 'u1', pinHash: 'h1', status: 'pending', retryCount: 0, createdAt: 'now', syncedAt: null, syncError: null },
+    ]);
+
+    const result = await pushQueuedPinUpdates(db);
+
+    expect(result).toBe(0);
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  it('marks only the current user\'s rows failed on API error', async () => {
+    const { pushQueuedPinUpdates } = await import('../syncService');
+    const { getPendingPinUpdates, markPinUpdateFailed } = await import('@/lib/db/repositories/queuedPinUpdateRepository');
+    vi.mocked(getPendingPinUpdates).mockResolvedValueOnce([
+      { id: 1, userId: 'u1', pinHash: 'h1', status: 'pending', retryCount: 0, createdAt: 'now', syncedAt: null, syncError: null },
+      { id: 2, userId: 'u2', pinHash: 'h2', status: 'pending', retryCount: 0, createdAt: 'now', syncedAt: null, syncError: null },
+    ]);
+    vi.mocked(apiPost).mockRejectedValueOnce(new Error('network'));
+
+    const result = await pushQueuedPinUpdates(db);
+
+    expect(result).toBe(0);
+    expect(markPinUpdateFailed).toHaveBeenCalledWith(db, 1, expect.any(String));
+    expect(markPinUpdateFailed).not.toHaveBeenCalledWith(db, 2, expect.any(String));
+  });
 });
 
 describe('pullReceiptQrIndex', () => {
