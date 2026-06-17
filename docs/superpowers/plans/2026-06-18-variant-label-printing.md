@@ -43,6 +43,44 @@
 
 ---
 
+## Execution order (dependency-correct — Codex plan-review r1)
+`A0 (seed permission, BE+FE) → A1 → A2 → B1 → B2 → B3 → C1 → C2 → E1 → E2 → E3 → F`.
+The permission seed moves FIRST so the permission-gated endpoint tests (A2/B3/C2) and the frontend gate don't forward-depend on it. (Old "Task D1" is folded into A0.)
+
+## Canonical `VariantLabelData` DTO (lock this shape — Codex HIGH-4/HIGH-3)
+Define ONCE in `apps/api/app/Modules/Catalog/Application/DTOs/VariantLabelData.php` and use **named** construction everywhere (B2 build, C1 render, B3 JSON). No positional drift.
+```php
+final readonly class VariantLabelData
+{
+    public function __construct(
+        public string $variant_id,
+        public string $product_name,
+        public string $name_suffix,
+        public string $effective_price, // decimal string (never float)
+        public string $barcode_value,
+        public string $symbology,       // 'code128' | 'ean13' — from the renderer
+        public int $quantity,
+        public string $sku,
+    ) {}
+}
+```
+The `prepare` JSON `ready` rows expose `{ variant_id, quantity, barcode_value, symbology }` (subset of this DTO). The renderer exposes a public `symbologyFor(string $value): string` so the service can set `symbology` without rendering a PNG (HIGH-3).
+
+---
+
+## Task A0: Seed `catalog.labels.print` (backend seeder + frontend PERMISSIONS map)
+
+**Files:**
+- Modify: `apps/api/database/seeders/RolesAndPermissionsSeeder.php`, `apps/web/src/hooks/usePermissions.ts`
+- Test: `apps/api/tests/Feature/Catalog/LabelPermissionSeededTest.php`
+
+- [ ] **Step 1: Failing test** — after `RolesAndPermissionsSeeder`, `Permission::where('name','catalog.labels.print')->exists()` is true and the manager role has it.
+- [ ] **Step 2: Run — expect fail.** FAIL.
+- [ ] **Step 3: Implement** — add `'catalog.labels.print'` to the catalog permissions array (near line 68) AND the manager-role mapping (near line 448) in `RolesAndPermissionsSeeder.php`. Add `'catalog.labels.print': 'catalog.labels.print'` to the `PERMISSIONS` map in `apps/web/src/hooks/usePermissions.ts` (lines ~113-121) so `hasPermission('catalog.labels.print')` type-checks and resolves (Codex HIGH-2).
+- [ ] **Step 4: Run — expect pass.** PASS. **Step 5: Commit** `feat(catalog): seed catalog.labels.print (backend + frontend permission map)`.
+
+---
+
 ## Milestone A — Backend foundation
 
 ### Task A1: Barcode PNG renderer + symbology selection + render PoC
@@ -105,6 +143,12 @@ final class VariantLabelBarcodeRenderer
         [$symbology, $type, $encoded] = $this->select($value);
         $png = $gen->getBarcode($encoded, $type);
         return new RenderedBarcode($symbology, 'data:image/png;base64,'.base64_encode($png));
+    }
+
+    /** Public so the prepare service can label a row's symbology without rendering a PNG (Codex HIGH-3). */
+    public function symbologyFor(string $value): string
+    {
+        return $this->select($value)[0];
     }
 
     /** @return array{0:string,1:string,2:string} [symbology, picqerType, encodedValue] */
@@ -254,14 +298,24 @@ public function test_skips_cross_tenant_or_missing_variant(): void { /* reason n
 
 - [ ] **Step 2: Run — expect fail.** (PG.) FAIL.
 
-- [ ] **Step 3: Implement `prepare`.** For each item: load the variant **tenant+company-scoped** (skip `not_found` if absent — Codex M2: scope before pricing). If `barcode` empty: if `valueIsUsable(tenantId, sku, variantId)` → set `barcode=sku` and persist via the variant service's safe path; else skip `barcode_conflict`. Resolve price:
+- [ ] **Step 3: Implement `prepare`.** Constructor-inject `ProductVariantService`, `PricingService`, `VariantLabelBarcodeRenderer`, repositories. For each item: load the variant **tenant+company-scoped** (skip `not_found` if absent — Codex M2: scope before pricing). If `barcode` empty: if `valueIsUsable(tenantId, sku, variantId)` → assign via the **public** path `ProductVariantService::updateVariant($variant, ['barcode' => $variant->sku])` (Codex BLOCKER-1 — `saveBarcodeSafe` is private; `updateVariant` wraps it and maps a tenant 23505 to a `ValidationException`); catch that `ValidationException` → skip `barcode_conflict`. If `valueIsUsable` is false → skip `barcode_conflict` without writing. Resolve price (getPrice returns an **array** — Codex HIGH-1):
   ```php
-  $price = $this->pricingService->getPrice(
+  $priceResult = $this->pricingService->getPrice(
       productId: $variant->product_id, partnerId: null, quantity: '1.00',
       currency: $company->currency, date: null, variantId: $variant->id,
   );
+  $price = $priceResult['price']; // array{price, source, price_list_id}
   ```
-  Build `VariantLabelData(product_name, name_suffix, effective_price: $price, barcode_value: $variant->barcode, sku, quantity)` and push to `ready`. Constructor-inject `ProductVariantService` (for `saveBarcodeSafe`), `PricingService`, repositories. **Persisting the assign goes through `ProductVariantService::saveBarcodeSafe()`** (Codex H1) — wrap so a 23505 also maps to `skipped`/`barcode_conflict` rather than 500.
+  Build the canonical DTO with **named args**:
+  ```php
+  new VariantLabelData(
+      variant_id: $variant->id, product_name: $product->name, name_suffix: $variant->name_suffix,
+      effective_price: $price, barcode_value: $variant->barcode,
+      symbology: $this->barcodeRenderer->symbologyFor($variant->barcode),
+      quantity: $item['quantity'], sku: $variant->sku,
+  );
+  ```
+  push to `ready`.
 
 - [ ] **Step 4: Run — expect pass.** PASS. **Step 5: PHPStan + Pint + Commit** `feat(catalog): VariantLabelService::prepare (assign barcode=sku safely + effective price)`.
 
@@ -296,7 +350,10 @@ public function test_skips_cross_tenant_or_missing_variant(): void { /* reason n
 ```php
 public function test_renders_pdf_with_correct_label_count_and_start_offset(): void
 {
-    $labels = [ new VariantLabelData('Tee','S / Black','12.000','TS-S-BLK','code128', 3) ];
+    $labels = [ new VariantLabelData(
+        variant_id: 'v1', product_name: 'Tee', name_suffix: 'S / Black', effective_price: '12.000',
+        barcode_value: 'TS-S-BLK', symbology: 'code128', quantity: 3, sku: 'TS-S-BLK',
+    ) ];
     $pdf = app(VariantLabelPdfService::class)->render('avery_l7160', $labels, startCell: 2, shopName: 'My Shop');
     $this->assertStringStartsWith('%PDF', $pdf);
 }
@@ -304,7 +361,7 @@ public function test_renders_pdf_with_correct_label_count_and_start_offset(): vo
 
 - [ ] **Step 2: Run — expect fail.** FAIL.
 
-- [ ] **Step 3: Implement.** `render(string $formatKey, array $labels, int $startCell, string $shopName): string`: resolve `LabelSheetFormat::find`, expand labels by quantity into a flat cell list, prepend `startCell` blank cells, render each barcode via `VariantLabelBarcodeRenderer`, pass to the Blade view, `Pdf::loadView('catalog.variant-labels', [...])->setPaper(...)` (A4 or the 4×6 dimensions) `->output()`. Blade: CSS grid sized to the format's label mm dims (rows×cols), each cell shows name/suffix/price/`<img src="{{ $cell.barcode_data_uri }}">`/human-readable/`$shopName`. Mirror `CertificatePDFService`'s base64-PNG `<img>` embed and `ReceiptPdfService`'s `Pdf::loadView` pattern.
+- [ ] **Step 3: Implement.** `render(string $formatKey, array $labels, int $startCell, string $shopName): string`: resolve `LabelSheetFormat::find`, expand labels by quantity into a flat cell list, prepend `startCell` blank cells, render each barcode via `VariantLabelBarcodeRenderer`, pass to the Blade view, `Pdf::loadView('catalog.variant-labels', [...])->setPaper(...)` (A4 or the 4×6 dimensions) `->output()`. Blade: an **HTML `<table>`** laid out as rows×cols of fixed mm-sized `<td>` cells (dompdf supports table layout but **NOT CSS grid** — Codex BLOCKER-2; set `table-layout:fixed`, `<td>` width/height in mm from the format, page-break per `rows`). Each cell shows name/suffix/price/`<img src="{{ $cell['barcode_data_uri'] }}">`/human-readable/`$shopName`. Mirror `CertificatePDFService`'s base64-PNG `<img>` embed and `ReceiptPdfService`'s `Pdf::loadView` pattern.
 
 - [ ] **Step 4: Run — expect pass.** PASS. **Step 5: Commit** `feat(catalog): VariantLabelPdfService + label sheet Blade template`.
 
@@ -323,21 +380,6 @@ public function test_renders_pdf_with_correct_label_count_and_start_offset(): vo
 - [ ] **Step 3: Implement.** `GenerateLabelPdfRequest`: `format` required in `array_keys(LabelSheetFormat::all())`; `items` as in B3; `start_cell` integer min:0; `withValidator` asserts `start_cell < rows*cols` for the chosen format. Controller `pdf()`: scope variants (company), build `VariantLabelData` from current variant state (read-only — do NOT assign here; if a variant's barcode is empty → 422 `must prepare first`), resolve price (same `getPrice` call), call the pdf service, `return response($pdf, 200, ['Content-Type'=>'application/pdf','Content-Disposition'=>'attachment; filename=variant-labels.pdf'])`. Route `POST labels/variants/pdf` with `can:catalog.labels.print`.
 
 - [ ] **Step 4: Run — expect pass.** PASS. **Step 5: PHPStan + Pint + Commit** `feat(catalog): POST /labels/variants/pdf endpoint (binary)`.
-
----
-
-## Milestone D — Permission
-
-### Task D1: Seed `catalog.labels.print`
-
-**Files:**
-- Modify: `apps/api/database/seeders/RolesAndPermissionsSeeder.php`
-- Test: `apps/api/tests/Feature/Catalog/LabelPermissionSeededTest.php`
-
-- [ ] **Step 1: Failing test** — after seeding `RolesAndPermissionsSeeder`, `Permission::where('name','catalog.labels.print')->exists()` is true, and the manager role has it.
-- [ ] **Step 2: Run — expect fail.** FAIL.
-- [ ] **Step 3: Implement** — add `'catalog.labels.print'` to the catalog permissions array (near line 68) and to the manager-role mapping (near line 448).
-- [ ] **Step 4: Run — expect pass.** PASS. **Step 5: Commit** `feat(catalog): seed catalog.labels.print permission + manager role`.
 
 ---
 
@@ -369,7 +411,7 @@ export async function downloadVariantLabelsPdf(p: { format: string; items: Label
 **Files:** Create `components/VariantLabelDialog.tsx` + test.
 
 - [ ] **Step 1: Failing tests** — given variants + a format select + per-variant qty, confirm: (1) calls `prepareVariantLabels`, renders `meta.skipped` inline; (2) then calls `downloadVariantLabelsPdf` for the ready set and triggers a blob download (mock `URL.createObjectURL` + an anchor click); all-skipped → no pdf call + "nothing printable" message. Fixed-size dialog (per `feedback_modal_fixed_size`).
-- [ ] **Step 2–4: Implement + pass.** Use the existing fixed-size dialog/modal component; design tokens; all text `t()`. Quantity inputs default 1; format select from `useLabelFormats`; optional start-cell input.
+- [ ] **Step 2–4: Implement + pass.** Use the existing `Modal` (`apps/web/src/components/organisms/Modal/Modal.tsx`) but **pin explicit fixed dimensions via `className`** (e.g. a fixed `w-[…] h-[…]` with internal `overflow-y-auto`) — `Modal` only offers max-width size variants and is NOT inherently fixed-size (Codex MED-2; per `feedback_modal_fixed_size`). Design tokens; all text `t()`. Quantity inputs default 1; format select from `useLabelFormats`; optional start-cell input.
 - [ ] **Step 5: Commit** `feat(web): VariantLabelDialog prepare->pdf flow`.
 
 ### Task E3: Triggers — variant editor + bulk product list
