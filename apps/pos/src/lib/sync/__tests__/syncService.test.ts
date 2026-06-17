@@ -118,6 +118,7 @@ vi.mock('@/lib/db/repositories/menuRepository', () => ({
 vi.mock('@/stores/authStore', () => ({
   useAuthStore: {
     getState: vi.fn().mockReturnValue({
+      user: { id: 'u1' },
       refreshCompanyConfig: vi.fn().mockResolvedValue(undefined),
     }),
   },
@@ -912,26 +913,42 @@ describe('pushQueuedPinUpdates', () => {
     expect(apiPost).not.toHaveBeenCalled();
   });
 
-  it('batches pending updates into /pos/auth/sync-pins and marks synced', async () => {
+  // Self-only: the server only accepts the authenticated user's own PIN, so the
+  // client pushes ONLY rows authored by the current authStore user (here u1) and
+  // marks only those synced. A row authored by another user (u2) — e.g. queued
+  // on this shared device during a different login session — is left pending so
+  // it drains later under its own author, never dropped and never pushed under
+  // the wrong identity.
+  it('pushes only the current user\'s rows and leaves others pending', async () => {
     const { pushQueuedPinUpdates } = await import('../syncService');
     const { getPendingPinUpdates, markPinUpdateSynced } = await import('@/lib/db/repositories/queuedPinUpdateRepository');
     vi.mocked(getPendingPinUpdates).mockResolvedValueOnce([
       { id: 1, userId: 'u1', pinHash: 'h1', status: 'pending', retryCount: 0, createdAt: 'now', syncedAt: null, syncError: null },
       { id: 2, userId: 'u2', pinHash: 'h2', status: 'pending', retryCount: 0, createdAt: 'now', syncedAt: null, syncError: null },
     ]);
-    vi.mocked(apiPost).mockResolvedValueOnce({ synced: 2, skipped: 0 });
+    vi.mocked(apiPost).mockResolvedValueOnce({ synced: 1, skipped: 0 });
 
     const count = await pushQueuedPinUpdates(db);
 
-    expect(count).toBe(2);
+    expect(count).toBe(1);
     expect(apiPost).toHaveBeenCalledWith('/pos/auth/sync-pins', {
-      updates: [
-        { user_id: 'u1', pin_hash: 'h1' },
-        { user_id: 'u2', pin_hash: 'h2' },
-      ],
+      updates: [{ user_id: 'u1', pin_hash: 'h1' }],
     });
     expect(markPinUpdateSynced).toHaveBeenCalledWith(db, 1);
-    expect(markPinUpdateSynced).toHaveBeenCalledWith(db, 2);
+    expect(markPinUpdateSynced).not.toHaveBeenCalledWith(db, 2);
+  });
+
+  it('no-ops (no API call) when the queue holds only other users\' rows', async () => {
+    const { pushQueuedPinUpdates } = await import('../syncService');
+    const { getPendingPinUpdates } = await import('@/lib/db/repositories/queuedPinUpdateRepository');
+    vi.mocked(getPendingPinUpdates).mockResolvedValueOnce([
+      { id: 9, userId: 'someone-else', pinHash: 'h9', status: 'pending', retryCount: 0, createdAt: 'now', syncedAt: null, syncError: null },
+    ]);
+
+    const result = await pushQueuedPinUpdates(db);
+
+    expect(result).toBe(0);
+    expect(apiPost).not.toHaveBeenCalled();
   });
 });
 
