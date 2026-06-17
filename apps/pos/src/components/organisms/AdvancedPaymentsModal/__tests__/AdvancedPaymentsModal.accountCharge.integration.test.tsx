@@ -12,7 +12,7 @@
  * confirmation to focus on tile/mode wiring), this test renders the REAL
  * AccountChargeConfirmation so the modal -> confirmation -> credit-engine seam
  * is exercised end to end. Only the boundaries are mocked (managersApi,
- * managerPinApi, the two stores, useCurrency); bcformat, formatCurrency,
+ * scopedManagerPin, the two stores, useCurrency); bcformat, formatCurrency,
  * getCurrencyDecimals and the credit-rules engine all run for real.
  *
  * WITHOUT the modal-boundary fix (`total={bcformat(String(total), decimals)}`)

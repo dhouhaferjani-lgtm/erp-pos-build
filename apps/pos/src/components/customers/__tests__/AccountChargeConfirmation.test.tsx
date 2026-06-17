@@ -152,9 +152,73 @@ describe('AccountChargeConfirmation', () => {
         pin: '1234',
         context: APPROVAL_CONTEXT,
         approvalScope: 'credit_limit_override',
+        targetEventType: 'ACCOUNT_CHARGE_CREDIT_LIMIT_OVERRIDE',
+        reason: 'Account charge override (credit_limit_exceeded)',
         targetOperatorId: 'm1',
       }),
     );
+    // The captured override's approvalId must equal the verification's
+    // target_reference_id so the account-charge override and its audit correlate.
+    const scopedArg = vi.mocked(verifyScopedManagerPin).mock.calls[0]?.[0];
+    expect(override.approvalId).toBe(scopedArg?.targetReferenceId);
+  });
+
+  it('does not render the manager-PIN panel when approvalContext is missing', async () => {
+    currentCustomer = makeCustomer({ credit_limit: '100.000', receivable_balance: '90.000' });
+
+    render(
+      <AccountChargeConfirmation
+        total="119.000"
+        currency="TND"
+        cashierUserId="c1"
+        onConfirm={vi.fn().mockResolvedValue(undefined)}
+        onCancel={vi.fn()}
+        isProcessing={false}
+        now={() => FIXED_NOW}
+      />,
+    );
+
+    // The rejection shows, but with no approval context the override panel must
+    // NOT mount (so failed-PIN throttling can't be triggered); a message shows.
+    expect(await screen.findByTestId('rejection-message')).toHaveTextContent(/credit limit/i);
+    expect(screen.queryByTestId('manager-pin-panel')).not.toBeInTheDocument();
+    expect(screen.getByTestId('approval-context-unavailable')).toBeInTheDocument();
+  });
+
+  it('surfaces a server error (5xx) without capturing an override', async () => {
+    const { ApiRequestError } = await import('@/lib/api');
+    vi.mocked(verifyScopedManagerPin).mockRejectedValueOnce(
+      new ApiRequestError(503, 'service unavailable', 'MANAGER_OVERRIDE_SERVICE_UNAVAILABLE'),
+    );
+    currentCustomer = makeCustomer({ credit_limit: '100.000', receivable_balance: '90.000' });
+    const onConfirm = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <AccountChargeConfirmation
+        total="119.000"
+        currency="TND"
+        cashierUserId="c1"
+        approvalContext={APPROVAL_CONTEXT}
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+        isProcessing={false}
+        now={() => FIXED_NOW}
+      />,
+    );
+
+    expect(await screen.findByTestId('manager-pin-panel')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('manager-pin-select'), { target: { value: 'm1' } });
+    fireEvent.click(screen.getByTestId('numpad-digit-1'));
+    fireEvent.click(screen.getByTestId('numpad-digit-2'));
+    fireEvent.click(screen.getByTestId('numpad-digit-3'));
+    fireEvent.click(screen.getByTestId('numpad-digit-4'));
+    fireEvent.click(screen.getByTestId('manager-pin-verify'));
+
+    // No override captured; confirm stays disabled (the 5xx surfaced as an
+    // error, not a captured approval).
+    await waitFor(() => expect(vi.mocked(verifyScopedManagerPin)).toHaveBeenCalled());
+    expect(screen.queryByTestId('override-captured')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /charge to account/i })).toBeDisabled();
   });
 
   it('invalidates a captured override when the charge amount changes', async () => {

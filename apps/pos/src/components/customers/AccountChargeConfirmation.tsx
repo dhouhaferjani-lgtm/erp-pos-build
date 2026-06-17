@@ -10,6 +10,7 @@ import {
 import type { AccountChargeOverrideApprovalInput } from '@/lib/accountCharge/accountChargeService';
 import { ManagerPinPanel } from '@/components/pos/molecules/ManagerPinPanel';
 import { fetchAuthorizedManagers, type AuthorizedManager } from '@/api/managersApi';
+import { ApiRequestError } from '@/lib/api';
 import { verifyScopedManagerPin } from '@/lib/operatorApproval/scopedManagerPin';
 import type { ApprovalScope } from '@/lib/operatorApproval/approvalVerifier';
 import type { PosOverrideContext } from '@/lib/operatorApproval/posOverrideAuthoring';
@@ -158,20 +159,31 @@ export function AccountChargeConfirmation(props: AccountChargeConfirmationProps)
       if (!overridableScope || !rejection || !props.approvalContext) {
         return { valid: false };
       }
+      // Fresh id per attempt: it anchors BOTH the scoped verification's audit
+      // (target_reference_id) and the captured override's approvalId. Reusing a
+      // single id across attempts in one mount would collide with the fiscal
+      // append dedup (source_event_id).
+      const targetReferenceId = crypto.randomUUID();
+      targetReferenceIdRef.current = targetReferenceId;
       try {
         await verifyScopedManagerPin({
           pin,
           context: props.approvalContext,
           approvalScope: overridableScope as ApprovalScope,
           targetEventType: OVERRIDE_EVENT_TYPE[overridableScope],
-          targetReferenceId: targetReferenceIdRef.current,
+          targetReferenceId,
           reason: `Account charge override (${rejection})`,
           targetOperatorId: managerUserId,
         });
         return { valid: true };
-      } catch {
-        // Any failure (rejection / unreachable / stale) fails closed — the panel
-        // surfaces it as an invalid attempt and applies its throttle.
+      } catch (err) {
+        // A reachable-but-erroring server / stale-cache failure (5xx) is NOT a
+        // bad PIN — rethrow so the panel surfaces a "verification failed" error
+        // WITHOUT consuming a PIN attempt / throttling. An explicit auth
+        // rejection (e.g. 403 wrong PIN) maps to a failed attempt (fail closed).
+        if (err instanceof ApiRequestError && err.status >= 500) {
+          throw err;
+        }
         return { valid: false };
       }
     },
@@ -327,15 +339,26 @@ export function AccountChargeConfirmation(props: AccountChargeConfirmationProps)
             </p>
 
             {overridableScope !== null && (
-              <ManagerPinPanel
-                authorizedManagers={managers}
-                excludeUserId={props.cashierUserId}
-                onVerify={verifyOverridePin}
-                onSuccess={handlePinSuccess}
-                throttle={throttle}
-                onThrottleUpdate={setThrottle}
-                disabled={props.isProcessing}
-              />
+              props.approvalContext ? (
+                <ManagerPinPanel
+                  authorizedManagers={managers}
+                  excludeUserId={props.cashierUserId}
+                  onVerify={verifyOverridePin}
+                  onSuccess={handlePinSuccess}
+                  throttle={throttle}
+                  onThrottleUpdate={setThrottle}
+                  disabled={props.isProcessing}
+                />
+              ) : (
+                // Without a scoped-approval context (terminal/tenant/company not
+                // ready) the override cannot be authorized — show a message
+                // rather than letting the panel count failed PIN attempts.
+                <p data-testid="approval-context-unavailable" className="text-sm text-amber-700">
+                  {t('account_charge.approval_unavailable', {
+                    defaultValue: 'Manager override is unavailable until the terminal is ready.',
+                  })}
+                </p>
+              )
             )}
           </div>
         )}
