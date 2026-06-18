@@ -340,15 +340,21 @@ holes.
   `module:Menu` / `module:BatchExpiry` / `module:Loyalty` / `module:CompositeItems`,
   each with a `*ModuleAccessControlTest` (`tests/Feature/Security/`). Existing
   feature tests were updated to provision the enabling module/vertical.
-- **CompositeItems vs Inventory split — DONE (2026-06-17), industry-researched.**
-  A deep-research pass on F&B POS / ERP norms (Toast, Lightspeed, MarketMan,
-  Odoo, NetSuite, Cin7, Katana) established: items sell without recipes/inventory;
-  recipe authoring is coupled to the inventory capability; one composite/BOM
-  primitive is reused cross-vertical with relabeling. So Catalog routes now split:
-  composite-item CRUD + availability + **menu modifiers** → `module:CompositeItems`
-  (no inventory needed); recipes + recipe-lines + recipe-cost + composite-item
-  variants → **`module:Inventory`** (ingredient BOMs drive depletion/costing). See
-  `docs/superpowers/research/2026-06-16-composite-items-recipe-inventory-industry-standards.md`.
+- **CompositeItems vs Inventory split — DONE, industry-researched, then refined
+  to the decoupled model (2026-06-18).** A deep-research pass (Toast, Lightspeed,
+  MarketMan, Odoo, NetSuite, Cin7, Katana) found two valid patterns; the owner
+  chose the **progressive-growth (decoupled)** one: composite-item /recipe
+  **definition + theoretical costing are independent of inventory**, and inventory
+  is required only for **stock-aware behaviours**. So in `Catalog/Presentation/routes.php`,
+  everything under `module:CompositeItems` — composite-item CRUD + availability,
+  **menu modifiers**, and **recipes / recipe-lines / `calculate-cost` / composite-item
+  variants**. `calculate-cost` rolls up each component's `cost_price` field (set
+  manually before any stock ledger, kept accurate by WAC once Inventory is on).
+  The **Inventory** module's role is the stock-aware layer in the SELL path:
+  accurate WAC costing, ingredient depletion, and recipe-driven availability /
+  **86-ing** (enforced via `PosStockPolicy` + `CompositeItemAvailabilityService`
+  when inventory tracking is active — the enforcement wiring is a pending build).
+  See `docs/superpowers/research/2026-06-16-composite-items-recipe-inventory-industry-standards.md`.
 - **Cross-vertical CompositeItems / BOM — DONE (2026-06-18).** `CompositeItems`
   is now a `compatible_extra` for **retail** (kits/bundles), **fashion** (garment
   BOM — a shirt = fabric + buttons + thread) and **parapharmacy** (gift sets);

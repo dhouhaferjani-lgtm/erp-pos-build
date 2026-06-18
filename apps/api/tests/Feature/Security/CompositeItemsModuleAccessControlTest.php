@@ -119,26 +119,29 @@ final class CompositeItemsModuleAccessControlTest extends TestCase
     }
 
     /** @test */
-    public function recipes_still_require_the_inventory_module(): void
+    public function recipes_and_costing_do_not_require_the_inventory_module(): void
     {
-        // Restaurant has CompositeItems but not Inventory: recipe routes stay gated.
+        // Recipe definition + theoretical costing live under CompositeItems. A
+        // restaurant (CompositeItems, no Inventory) can define/cost recipes with a
+        // manual cost_price and grow into Inventory later for depletion + WAC.
         $ctx = $this->makeContext(Vertical::Restaurant, 'restaurant-rec', []);
 
         $response = $this->actingAs($ctx['user'], 'sanctum')
             ->getJson('/api/v1/composite-items/00000000-0000-0000-0000-000000000000/recipes');
 
-        $response->assertStatus(403);
+        // Past the CompositeItems gate: a 404 from the controller, not a 403 block.
+        $response->assertStatus(404);
     }
 
     /** @test */
-    public function an_fnb_vertical_with_the_inventory_upgrade_can_reach_recipes(): void
+    public function recipes_are_blocked_without_the_composite_items_module(): void
     {
-        $ctx = $this->makeContext(Vertical::Restaurant, 'restaurant-rec-inv', ['Inventory']);
+        // Retail without the CompositeItems extra cannot reach recipe routes.
+        $ctx = $this->makeContext(Vertical::Retail, 'retail-rec', []);
 
         $response = $this->actingAs($ctx['user'], 'sanctum')
             ->getJson('/api/v1/composite-items/00000000-0000-0000-0000-000000000000/recipes');
 
-        // Past the module gate: not 403 (404/200 from the controller is fine).
-        $response->assertStatus(404);
+        $response->assertStatus(403);
     }
 }

@@ -39,18 +39,30 @@ vertical route-gating work), and whether to offer it cross-vertical.
    availability, costing-variance), and (b) ship the composite/BOM module as an
    **upgrade to non-F&B verticals with vertical-specific relabeling.**
 
-## Decision applied (Module 4)
+## Decision applied (Module 4, refined 2026-06-18 to the decoupled model)
+
+The research found two valid patterns (recipe-coupled-to-inventory vs.
+definition-decoupled). The owner chose the **decoupled / progressive-growth**
+model: define + cost recipes without inventory; inventory only for stock-aware
+behaviour.
 
 | Routes | Gate |
 |---|---|
 | composite-item CRUD + availability | `module:CompositeItems` |
-| menu modifiers / modifier-groups | `module:CompositeItems` (moved off Inventory) |
-| recipes / recipe-lines / recipe-cost | `module:Inventory` |
-| composite-item variants | `module:Inventory` |
+| menu modifiers / modifier-groups | `module:CompositeItems` |
+| recipes / recipe-lines / recipe `calculate-cost` | `module:CompositeItems` |
+| composite-item variants | `module:CompositeItems` |
+| ingredient depletion + recipe availability / 86-ing (SELL path) | requires `Inventory` (active stock tracking) — wiring pending |
+| accurate WAC `cost_price` feeding `calculate-cost` | `Inventory` (else manual cost) |
 
-Follow-up (config + i18n, not yet done): add `CompositeItems` to the
-`compatible_extras` of relevant non-F&B verticals (apparel/manufacturing) and
-relabel per vertical (Recipe / Bill of Materials / Kit / Assembly).
+`calculate-cost` rolls up each component's `cost_price` field, settable manually
+before any stock ledger — so theoretical menu/BOM costing works on CompositeItems
+alone, and grows more accurate once Inventory provides WAC.
+
+Done: `CompositeItems` added to the `compatible_extras` of retail/fashion/
+parapharmacy; the FE `useVerticalLabels` (fashion → 'sewing') relabels per
+vertical (Recipe / Bill of Materials / Kit). Pending: wiring 86-ing enforcement
+into the POS sell path.
 
 ## Open questions (not blocking; flagged by the research)
 

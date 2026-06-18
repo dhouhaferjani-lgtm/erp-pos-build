@@ -15,14 +15,20 @@ use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Support\Facades\Route;
 
-// Group 1: Composite items + menu modifiers — gated behind the CompositeItems module.
-// Defining sellable composite items (dishes/combos/bundles) and their menu
-// modifiers is a CompositeItems concern (a default module for restaurant /
-// coffee_shop). It does NOT require inventory tracking — composites can be built
-// and sold with no stock ledger. Ingredient recipes (which drive stock
-// depletion/costing) live in the Inventory-gated group below. This mirrors the
-// industry split (e.g. Lightspeed/MarketMan author recipes inside the inventory
-// capability, while item + modifier definition is base catalog/menu).
+// Group 1: Composite items, recipes, modifiers & variants — gated behind the
+// CompositeItems module. This is all DEFINITION + theoretical costing, and does
+// NOT require inventory tracking:
+//   - composite items (dishes/combos/bundles/BOMs) and menu modifiers;
+//   - recipes / recipe-lines and recipe cost (`calculate-cost` rolls up each
+//     component's `cost_price` field — which can be set manually before any
+//     stock ledger exists, and is kept accurate by WAC once Inventory is on);
+//   - composite-item variants.
+// The Inventory module adds the STOCK-AWARE behaviours that live elsewhere:
+// accurate WAC `cost_price`, ingredient-level depletion at sale, and recipe-driven
+// availability / 86-ing (enforced in the POS sell path when inventory tracking is
+// active — see PosStockPolicy + CompositeItemAvailabilityService). The progressive
+// model: start on CompositeItems with manual costs, grow into Inventory for
+// accurate costing + depletion.
 Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'module:CompositeItems'])->group(function () {
     // Composite Items
     Route::get('composite-items', [CompositeItemController::class, 'index'])->middleware('can:composite-items.view');
@@ -32,6 +38,25 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::delete('composite-items/{id}', [CompositeItemController::class, 'destroy'])->middleware('can:composite-items.delete');
     Route::post('composite-items/{id}/duplicate', [CompositeItemController::class, 'duplicate'])->middleware('can:composite-items.create');
     Route::get('composite-items/{id}/availability', [CompositeItemController::class, 'checkAvailability'])->middleware('can:composite-items.view');
+
+    // Recipes (definition + theoretical costing — no inventory required)
+    Route::get('composite-items/{compositeItemId}/recipes', [RecipeController::class, 'index'])->middleware('can:composite-items.manage-recipes');
+    Route::post('composite-items/{compositeItemId}/recipes', [RecipeController::class, 'store'])->middleware('can:composite-items.manage-recipes');
+    Route::get('recipes/{id}', [RecipeController::class, 'show'])->middleware('can:composite-items.manage-recipes');
+    Route::patch('recipes/{id}', [RecipeController::class, 'update'])->middleware('can:composite-items.manage-recipes');
+    Route::post('recipes/{id}/activate', [RecipeController::class, 'activate'])->middleware('can:composite-items.manage-recipes');
+    Route::post('recipes/{id}/calculate-cost', [RecipeController::class, 'calculateCost'])->middleware('can:composite-items.manage-recipes');
+
+    // Recipe Lines (nested under recipes)
+    Route::post('recipes/{recipeId}/lines', [RecipeLineController::class, 'store'])->middleware('can:composite-items.manage-recipes');
+    Route::patch('recipes/{recipeId}/lines/{lineId}', [RecipeLineController::class, 'update'])->middleware('can:composite-items.manage-recipes');
+    Route::delete('recipes/{recipeId}/lines/{lineId}', [RecipeLineController::class, 'destroy'])->middleware('can:composite-items.manage-recipes');
+
+    // Composite Item Variants (nested under composite items for listing/creation)
+    Route::get('composite-items/{compositeItemId}/variants', [CompositeItemVariantController::class, 'index'])->middleware('can:composite-items.update');
+    Route::post('composite-items/{compositeItemId}/variants', [CompositeItemVariantController::class, 'store'])->middleware('can:composite-items.update');
+    Route::patch('variants/{id}', [CompositeItemVariantController::class, 'update'])->middleware('can:composite-items.update');
+    Route::delete('variants/{id}', [CompositeItemVariantController::class, 'destroy'])->middleware('can:composite-items.update');
 
     // Modifier Group assignment to composite items
     Route::post('composite-items/{compositeItemId}/modifier-groups', [ModifierGroupController::class, 'assignToItem'])->middleware('can:composite-items.update');
@@ -71,7 +96,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     // Product Variants (standalone update/delete by variant id).
     // NOTE: distinct `product-variants/` prefix to avoid colliding with the
-    // CompositeItemVariantController `variants/{id}` routes in Group 2.
+    // CompositeItemVariantController `variants/{id}` routes in the CompositeItems group.
     Route::patch('product-variants/{id}', [ProductVariantController::class, 'update'])->middleware('can:catalog.variants.update');
     Route::delete('product-variants/{id}', [ProductVariantController::class, 'destroy'])->middleware('can:catalog.variants.delete');
 
@@ -80,31 +105,4 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('labels/formats', [VariantLabelController::class, 'formats'])->middleware('can:catalog.labels.print');
     Route::post('labels/variants/prepare', [VariantLabelController::class, 'prepare'])->middleware('can:catalog.labels.print');
     Route::post('labels/variants/pdf', [VariantLabelController::class, 'pdf'])->middleware('can:catalog.labels.print');
-});
-
-// Group 2: Recipes, recipe lines, composite-item variants — gated behind the Inventory module.
-// Ingredient recipes (bills of materials) drive stock depletion and costing, so
-// they require the Inventory module (the stock-tracking upgrade). This matches the
-// industry standard: recipe authoring/depletion is part of the inventory
-// capability (Toast requires a recipe + recorded stock baseline to deplete;
-// Lightspeed/MarketMan author recipes inside the inventory product).
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'module:Inventory'])->group(function () {
-    // Recipes (nested under composite items for creation, standalone for show/update)
-    Route::get('composite-items/{compositeItemId}/recipes', [RecipeController::class, 'index'])->middleware('can:composite-items.manage-recipes');
-    Route::post('composite-items/{compositeItemId}/recipes', [RecipeController::class, 'store'])->middleware('can:composite-items.manage-recipes');
-    Route::get('recipes/{id}', [RecipeController::class, 'show'])->middleware('can:composite-items.manage-recipes');
-    Route::patch('recipes/{id}', [RecipeController::class, 'update'])->middleware('can:composite-items.manage-recipes');
-    Route::post('recipes/{id}/activate', [RecipeController::class, 'activate'])->middleware('can:composite-items.manage-recipes');
-    Route::post('recipes/{id}/calculate-cost', [RecipeController::class, 'calculateCost'])->middleware('can:composite-items.manage-recipes');
-
-    // Recipe Lines (nested under recipes)
-    Route::post('recipes/{recipeId}/lines', [RecipeLineController::class, 'store'])->middleware('can:composite-items.manage-recipes');
-    Route::patch('recipes/{recipeId}/lines/{lineId}', [RecipeLineController::class, 'update'])->middleware('can:composite-items.manage-recipes');
-    Route::delete('recipes/{recipeId}/lines/{lineId}', [RecipeLineController::class, 'destroy'])->middleware('can:composite-items.manage-recipes');
-
-    // Composite Item Variants (nested under composite items for listing/creation)
-    Route::get('composite-items/{compositeItemId}/variants', [CompositeItemVariantController::class, 'index'])->middleware('can:composite-items.update');
-    Route::post('composite-items/{compositeItemId}/variants', [CompositeItemVariantController::class, 'store'])->middleware('can:composite-items.update');
-    Route::patch('variants/{id}', [CompositeItemVariantController::class, 'update'])->middleware('can:composite-items.update');
-    Route::delete('variants/{id}', [CompositeItemVariantController::class, 'destroy'])->middleware('can:composite-items.update');
 });
