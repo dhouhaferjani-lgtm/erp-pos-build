@@ -98,7 +98,6 @@ final class VariantLabelService
                 $variant = ProductVariant::query()
                     ->where('tenant_id', $company->tenant_id)
                     ->where('company_id', $company->id)
-                    ->with('product')
                     ->find($variantId);
 
                 if ($variant === null) {
@@ -107,13 +106,14 @@ final class VariantLabelService
                     continue;
                 }
 
-                // The variant row can outlive a soft-deleted parent product.
-                // Guard before any ->product dereference below. The relation's
-                // PHPDoc is non-nullable, but soft-deletion makes it null at
-                // runtime, so the guard is real.
-                $product = $variant->product;
+                // The variant row can outlive a soft-deleted parent product. Fetch
+                // it nullable + tenant-scoped (a trashed product yields null) and
+                // guard before dereferencing ->name. product_id is immutable across
+                // a barcode-only update, so this $product stays valid below.
+                $product = Product::query()
+                    ->where('tenant_id', $company->tenant_id)
+                    ->find($variant->product_id);
 
-                // @phpstan-ignore identical.alwaysFalse
                 if ($product === null) {
                     $skipped[] = ['variant_id' => $variantId, 'reason' => 'product_unavailable'];
 
@@ -138,16 +138,6 @@ final class VariantLabelService
                         }
 
                         $skipped[] = ['variant_id' => $variantId, 'reason' => 'barcode_conflict'];
-
-                        continue;
-                    }
-
-                    $variant->loadMissing('product');
-                    $product = $variant->product;
-
-                    // @phpstan-ignore identical.alwaysFalse
-                    if ($product === null) {
-                        $skipped[] = ['variant_id' => $variantId, 'reason' => 'product_unavailable'];
 
                         continue;
                     }

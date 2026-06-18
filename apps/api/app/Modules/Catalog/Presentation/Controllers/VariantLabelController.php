@@ -14,6 +14,7 @@ use App\Modules\Catalog\Presentation\Requests\GenerateLabelPdfRequest;
 use App\Modules\Catalog\Presentation\Requests\PrepareLabelsRequest;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Pricing\Domain\Services\PricingService;
+use App\Modules\Product\Domain\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
@@ -105,7 +106,6 @@ class VariantLabelController extends Controller
             $variant = ProductVariant::query()
                 ->where('tenant_id', $company->tenant_id)
                 ->where('company_id', $company->id)
-                ->with('product')
                 ->find($item['variant_id']);
 
             if ($variant === null) {
@@ -120,9 +120,14 @@ class VariantLabelController extends Controller
                 ]);
             }
 
-            // The parent product may be soft-deleted while the variant row survives;
-            // guard before dereferencing ->product->name (Codex H-2).
-            if ($variant->product === null) {
+            // The parent product may be soft-deleted while the variant row survives.
+            // Fetch it nullable + tenant-scoped (so a trashed product yields null) and
+            // guard before dereferencing ->name (Codex H-2).
+            $product = Product::query()
+                ->where('tenant_id', $company->tenant_id)
+                ->find($variant->product_id);
+
+            if ($product === null) {
                 throw ValidationException::withMessages([
                     'items' => 'A requested variant belongs to an unavailable product.',
                 ]);
@@ -141,7 +146,7 @@ class VariantLabelController extends Controller
 
             $labels[] = new VariantLabelData(
                 variant_id: $variant->id,
-                product_name: $variant->product->name,
+                product_name: $product->name,
                 name_suffix: $variant->name_suffix,
                 effective_price: $price,
                 barcode_value: $barcodeValue,
