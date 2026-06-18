@@ -16,6 +16,7 @@ import {
   useUpdateVariant,
   useVariantsForProduct,
 } from '../hooks/useVariants'
+import { VariantLabelDialog } from './VariantLabelDialog'
 import type {
   GenerateMatrixAxis,
   ProductVariant,
@@ -166,6 +167,11 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
   const canGenerate = hasPermission('catalog.variants.create')
   const canUpdate = hasPermission('catalog.variants.update')
   const canDelete = hasPermission('catalog.variants.delete')
+  const canPrintLabels = hasPermission('catalog.labels.print')
+
+  // Whether the variant-label printing dialog is open. Seeded with the
+  // product's variants (id + name_suffix) so the user can choose quantities.
+  const [labelDialogOpen, setLabelDialogOpen] = useState(false)
 
   // Which value ids are selected per attribute axis. An axis key present here is
   // a "checked" axis; its array is the subset of value ids that go into the
@@ -420,11 +426,25 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className={tokens.heading.section}>{t('catalog:variants.title')}</h3>
-        <p className={`mt-1 text-sm ${textColors.tertiary}`}>
-          {t('catalog:variants.subtitle')}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className={tokens.heading.section}>{t('catalog:variants.title')}</h3>
+          <p className={`mt-1 text-sm ${textColors.tertiary}`}>
+            {t('catalog:variants.subtitle')}
+          </p>
+        </div>
+        {canPrintLabels && hasVariants ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setLabelDialogOpen(true)
+            }}
+          >
+            {t('catalog:labels.printLabels')}
+          </Button>
+        ) : null}
       </div>
 
       {canGenerate ? (
@@ -665,6 +685,19 @@ export function ProductVariantMatrixEditor({ productId }: ProductVariantMatrixEd
         variant={deleteHasStock ? 'warning' : 'danger'}
         isLoading={deleteVariant.isPending || updateVariant.isPending}
       />
+
+      {canPrintLabels ? (
+        <VariantLabelDialog
+          open={labelDialogOpen}
+          onClose={() => {
+            setLabelDialogOpen(false)
+          }}
+          variants={(variants ?? []).map((v) => ({
+            id: v.id,
+            name_suffix: v.name_suffix,
+          }))}
+        />
+      ) : null}
     </div>
   )
 }
