@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Identity\Presentation\Requests;
 
 use App\Modules\Identity\Domain\User;
+use App\Modules\Identity\Presentation\Rules\AssignableRole;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -43,7 +44,7 @@ class UpdateUserRequest extends FormRequest
                     ->ignore($userId),
             ],
             'phone' => ['sometimes', 'nullable', 'string', 'regex:/^\+?[0-9]{7,20}$/'],
-            'role' => ['sometimes', 'string', 'exists:roles,name'],
+            'role' => ['sometimes', 'string', 'exists:roles,name', new AssignableRole($currentUser)],
             'locale' => ['sometimes', 'nullable', 'string', 'max:10'],
             'timezone' => ['sometimes', 'nullable', 'string', 'max:50'],
             'can_discount' => ['sometimes', 'boolean'],

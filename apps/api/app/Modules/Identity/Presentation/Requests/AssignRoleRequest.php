@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Identity\Presentation\Requests;
 
+use App\Modules\Identity\Domain\User;
+use App\Modules\Identity\Presentation\Rules\AssignableRole;
 use Illuminate\Foundation\Http\FormRequest;
 
 class AssignRoleRequest extends FormRequest
@@ -25,8 +27,11 @@ class AssignRoleRequest extends FormRequest
      */
     public function rules(): array
     {
+        /** @var User|null $actor */
+        $actor = $this->user();
+
         return [
-            'role' => ['required', 'string', 'exists:roles,name'],
+            'role' => ['required', 'string', 'exists:roles,name', new AssignableRole($actor)],
         ];
     }
 }
