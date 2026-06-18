@@ -54,12 +54,30 @@ final class VariantLabelService
             return false;
         }
 
-        $productClash = Product::query()
+        return ! $this->collidesWithProductCode($tenantId, $value);
+    }
+
+    /**
+     * Whether $value collides with a product code (barcode OR sku) of any
+     * Product in the tenant.
+     *
+     * Spec A resolves a scanned code against product barcode/sku in Tier 1,
+     * BEFORE the variant tier. A variant label whose barcode equals a product
+     * code therefore mis-scans to that product, so such a value must never be
+     * assigned to — nor printed for — a variant.
+     *
+     * Unlike {@see self::valueIsUsable()}, this intentionally excludes the
+     * other-variant-barcode (withTrashed) subcheck: a variant legitimately owns
+     * its own existing barcode, and a dead variant also holding it must not
+     * false-skip the live owner. Use this directly when re-validating a barcode
+     * the variant already owns.
+     */
+    public function collidesWithProductCode(string $tenantId, string $value): bool
+    {
+        return Product::query()
             ->where('tenant_id', $tenantId)
             ->where(fn (Builder $q): Builder => $q->where('barcode', $value)->orWhere('sku', $value))
             ->exists();
-
-        return ! $productClash;
     }
 
     /**
@@ -141,9 +159,23 @@ final class VariantLabelService
 
                         continue;
                     }
+                } elseif ($this->collidesWithProductCode($company->tenant_id, (string) $variant->barcode)) {
+                    // A PRE-EXISTING barcode that resolves to a product code (Tier 1)
+                    // would mis-scan to that product — never print it.
+                    $skipped[] = ['variant_id' => $variantId, 'reason' => 'barcode_conflict'];
+
+                    continue;
                 }
 
                 $barcodeValue = (string) $variant->barcode;
+
+                if (! $this->renderer->canEncode($barcodeValue)) {
+                    // A non-ASCII (un-encodable) value would yield a corrupt,
+                    // unscannable Code128 symbol — skip rather than print garbage.
+                    $skipped[] = ['variant_id' => $variantId, 'reason' => 'unencodable_barcode'];
+
+                    continue;
+                }
 
                 $price = $this->pricingService->getPrice(
                     productId: $variant->product_id,

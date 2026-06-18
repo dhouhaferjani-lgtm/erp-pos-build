@@ -135,6 +135,22 @@ class VariantLabelController extends Controller
 
             $barcodeValue = (string) $variant->barcode;
 
+            // A pre-existing barcode that resolves to a product code (Spec A Tier 1)
+            // mis-scans to that product — reject before printing (B1).
+            if ($this->labelService->collidesWithProductCode($company->tenant_id, $barcodeValue)) {
+                throw ValidationException::withMessages([
+                    'items' => "A requested variant's barcode collides with a product code; fix it before printing.",
+                ]);
+            }
+
+            // A non-ASCII (un-encodable) barcode would render a corrupt, unscannable
+            // symbol — reject rather than emit garbage (H1).
+            if (! $this->renderer->canEncode($barcodeValue)) {
+                throw ValidationException::withMessages([
+                    'items' => 'A requested variant barcode cannot be encoded as a scannable barcode.',
+                ]);
+            }
+
             $price = $this->pricingService->getPrice(
                 productId: $variant->product_id,
                 partnerId: null,

@@ -59,6 +59,15 @@ class VariantLabelBarcodeRendererTest extends TestCase
         $this->assertSame('ean13', $renderer->symbologyFor('5012345678900'));
     }
 
+    public function test_can_encode_rejects_non_ascii_and_accepts_ascii_and_ean(): void
+    {
+        $renderer = new VariantLabelBarcodeRenderer;
+
+        $this->assertFalse($renderer->canEncode('CAFÉ'));
+        $this->assertTrue($renderer->canEncode('TSHIRT-S'));
+        $this->assertTrue($renderer->canEncode('5012345678900'));
+    }
+
     public function test_png_barcode_embeds_into_dompdf(): void
     {
         $uri = (new VariantLabelBarcodeRenderer)->render('TSHIRT-S-BLACK')->dataUri;

@@ -6,6 +6,8 @@ namespace Tests\Feature\Catalog;
 
 use App\Modules\Catalog\Application\DTOs\VariantLabelData;
 use App\Modules\Catalog\Application\Services\VariantLabelPdfService;
+use App\Modules\Catalog\Domain\Support\LabelSheetFormat;
+use Illuminate\Support\Facades\View;
 use Tests\TestCase;
 
 /**
@@ -67,6 +69,33 @@ class VariantLabelPdfServiceTest extends TestCase
 
         $this->assertStringStartsWith('%PDF', $pdf);
         $this->assertGreaterThan(1500, strlen($pdf));
+    }
+
+    public function test_grid_custom_blade_applies_vertical_gutter_between_rows(): void
+    {
+        $format = LabelSheetFormat::find('grid_custom');
+        $this->assertNotNull($format);
+        $this->assertSame(2.0, $format->gutterYmm);
+
+        // Two full rows (cols=4) so a non-last row exists carrying the gutter.
+        $cells = array_fill(0, 8, [
+            'blank' => false,
+            'product_name' => 'Tee',
+            'name_suffix' => 'S',
+            'effective_price' => '12.000',
+            'barcode_data_uri' => 'data:image/png;base64,AAAA',
+            'barcode_value' => 'TS-S',
+            'shop_name' => 'My Shop',
+        ]);
+
+        $html = View::make('catalog.variant-labels', [
+            'format' => $format,
+            'cells' => $cells,
+            'shopName' => 'My Shop',
+        ])->render();
+
+        // Non-last rows carry gutterY (2.0) + 1mm base bottom padding = 3mm.
+        $this->assertStringContainsString('1mm 1mm 3mm', $html);
     }
 
     public function test_unknown_format_throws(): void

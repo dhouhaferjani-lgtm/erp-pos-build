@@ -22,9 +22,14 @@
     <div style="{{ $isLastPage ? '' : 'page-break-after:always;' }} padding-top:{{ $format->marginTopMm }}mm; padding-left:{{ $format->marginLeftMm }}mm;">
         <table style="table-layout:fixed; border-collapse:collapse;">
             @foreach ($rowsOfCells as $rowCells)
+                @php
+                    // Vertical gutter: bottom spacing between rows. The final row gets
+                    // none so the grid does not overflow past its last row (M1).
+                    $rowGutterYmm = $loop->last ? 0 : $format->gutterYmm;
+                @endphp
                 <tr>
                     @foreach ($rowCells as $cell)
-                        <td style="width:{{ $format->labelWidthMm }}mm; height:{{ $format->labelHeightMm }}mm; padding:1mm 1mm 1mm {{ $loop->first ? '0' : $format->gutterXmm }}mm; vertical-align:top; overflow:hidden;">
+                        <td style="width:{{ $format->labelWidthMm }}mm; height:{{ $format->labelHeightMm }}mm; padding:1mm 1mm {{ $rowGutterYmm + 1 }}mm {{ $loop->first ? '0' : $format->gutterXmm }}mm; vertical-align:top; overflow:hidden;">
                             @if (! $cell['blank'])
                                 <div style="font-size:8pt; font-weight:bold;">{{ $cell['product_name'] }}</div>
                                 @if ($cell['name_suffix'] !== '')

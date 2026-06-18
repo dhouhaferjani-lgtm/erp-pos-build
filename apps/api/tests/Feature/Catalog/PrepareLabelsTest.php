@@ -142,6 +142,103 @@ class PrepareLabelsTest extends TestCase
         $this->assertSame('6191234567890', ProductVariant::find($variant->id)->barcode);
     }
 
+    public function test_existing_barcode_colliding_with_product_code_is_skipped_barcode_conflict(): void
+    {
+        // A product whose barcode is later (illegally) also held by a variant.
+        ProductFactory::new()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'P-CODE',
+            'barcode' => 'PROD-COLLIDE',
+        ]);
+
+        $product = ProductFactory::new()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'P-OWNER2',
+            'sale_price' => '5.000',
+        ]);
+
+        // Variant already OWNS a barcode that equals the other product's barcode.
+        $variant = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'sku' => 'V-OWNS',
+            'barcode' => 'PROD-COLLIDE',
+        ]);
+
+        $result = $this->service()->prepare($this->company, [
+            ['variantId' => $variant->id, 'quantity' => 1],
+        ]);
+
+        $this->assertCount(0, $result['ready']);
+        $this->assertCount(1, $result['skipped']);
+        $this->assertSame($variant->id, $result['skipped'][0]['variant_id']);
+        $this->assertSame('barcode_conflict', $result['skipped'][0]['reason']);
+    }
+
+    public function test_clean_existing_barcode_not_colliding_with_product_code_is_ready(): void
+    {
+        ProductFactory::new()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'P-CODE2',
+            'barcode' => 'PROD-OTHER',
+        ]);
+
+        $product = ProductFactory::new()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'P-OWNER3',
+            'sale_price' => '7.000',
+        ]);
+
+        $variant = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'sku' => 'V-CLEAN',
+            'barcode' => 'VARIANT-CLEAN',
+        ]);
+
+        $result = $this->service()->prepare($this->company, [
+            ['variantId' => $variant->id, 'quantity' => 1],
+        ]);
+
+        $this->assertCount(1, $result['ready']);
+        $this->assertCount(0, $result['skipped']);
+        $this->assertSame('VARIANT-CLEAN', $result['ready'][0]->barcode_value);
+    }
+
+    public function test_unencodable_non_ascii_barcode_value_is_skipped(): void
+    {
+        $product = ProductFactory::new()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'P-ACCENT',
+            'sale_price' => '4.000',
+        ]);
+
+        // Empty barcode + non-ASCII sku: valueIsUsable may pass, but canEncode fails.
+        $variant = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'sku' => 'CAFÉ-1',
+            'barcode' => null,
+        ]);
+
+        $result = $this->service()->prepare($this->company, [
+            ['variantId' => $variant->id, 'quantity' => 1],
+        ]);
+
+        $this->assertCount(0, $result['ready']);
+        $this->assertCount(1, $result['skipped']);
+        $this->assertSame($variant->id, $result['skipped'][0]['variant_id']);
+        $this->assertSame('unencodable_barcode', $result['skipped'][0]['reason']);
+    }
+
     public function test_variant_with_soft_deleted_parent_product_is_skipped_product_unavailable(): void
     {
         $product = ProductFactory::new()->create([

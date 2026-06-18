@@ -26,6 +26,24 @@ final class VariantLabelBarcodeRenderer
         return $this->select($value)[0];
     }
 
+    /**
+     * Whether $value can be rendered as a scannable barcode.
+     *
+     * True when it is a valid EAN-13/UPC numeric (selected as 'ean13' by the
+     * same {@see self::select()} logic) OR is printable-ASCII (the Code128
+     * set-B encodable range, \x20–\x7E). A non-ASCII value (e.g. an accented
+     * sku) would produce a corrupt, unscannable Code128 symbol, so it is
+     * reported as not encodable and skipped/rejected upstream.
+     */
+    public function canEncode(string $value): bool
+    {
+        if ($this->select($value)[0] === 'ean13') {
+            return true;
+        }
+
+        return preg_match('/^[\x20-\x7E]+$/', $value) === 1;
+    }
+
     /** @return array{0:string,1:'C128'|'EAN13',2:string} */
     private function select(string $value): array
     {

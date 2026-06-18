@@ -130,6 +130,24 @@ class GenerateLabelPdfEndpointTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_existing_barcode_colliding_with_product_code_is_422(): void
+    {
+        // A separate product holds the code the variant's barcode also equals.
+        ProductFactory::new()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'barcode' => 'COLLIDE-PDF',
+        ]);
+
+        $variant = $this->variant(barcode: 'COLLIDE-PDF');
+
+        $this->postJson('/api/v1/labels/variants/pdf', [
+            'format' => 'avery_l7160',
+            'items' => [['variant_id' => $variant->id, 'quantity' => 1]],
+        ])->assertStatus(422)
+            ->assertJsonStructure(['error' => ['errors' => ['items']]]);
+    }
+
     public function test_no_permission_is_403(): void
     {
         $other = User::factory()->for($this->tenant)->create();
