@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace App\Modules\Identity\Presentation\Middleware;
 
+use App\Modules\Identity\Infrastructure\CentralPersonalAccessToken;
 use App\Modules\Tenant\Application\Services\TenancyResolver;
 use App\Modules\Tenant\Application\Services\TenantLinkSigner;
+use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Closure;
 use Illuminate\Http\Request;
-use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -61,6 +62,19 @@ class ResolveTenancy
 
             $tenant = Tenant::query()->find($tenantId);
             if ($tenant !== null) {
+                // Go-live audit Finding #5: enforce tenant status at REQUEST
+                // time, not only at login. A token/session minted while the
+                // org was Active must stop working the moment it is suspended
+                // or archived (token revocation does not kill cookie sessions).
+                if (in_array($tenant->status, [TenantStatus::Suspended, TenantStatus::Archived], true)) {
+                    return response()->json([
+                        'error' => [
+                            'code' => 'ORGANIZATION_UNAVAILABLE',
+                            'message' => __('auth.organization_unavailable'),
+                        ],
+                    ], 403);
+                }
+
                 $this->tenancyResolver->initializeIfProvisioned($tenant);
             }
         }
@@ -101,7 +115,11 @@ class ResolveTenancy
 
     private function tenantFromBearer(string $bearer): ?string
     {
-        $token = PersonalAccessToken::findToken($bearer);
+        // Go-live audit Finding #7: resolve the PAT via the central-pinned
+        // model (not the bare Sanctum model) so this security-critical tenant
+        // selector always reads the central personal_access_tokens table,
+        // regardless of the current default-connection state.
+        $token = CentralPersonalAccessToken::findToken($bearer);
         if ($token === null) {
             return null;
         }

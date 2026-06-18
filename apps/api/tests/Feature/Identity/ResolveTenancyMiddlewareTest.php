@@ -12,6 +12,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
@@ -93,6 +94,69 @@ class ResolveTenancyMiddlewareTest extends TestCase
     public function test_middleware_class_exists(): void
     {
         $this->assertTrue(class_exists(ResolveTenancy::class));
+    }
+
+    /**
+     * Go-live audit Finding #5: a suspended organization must be blocked at
+     * REQUEST time, not only at login. A token minted while Active keeps
+     * working after suspension unless the resolver re-checks status.
+     */
+    public function test_suspended_tenant_is_blocked_at_request_time_for_token_auth(): void
+    {
+        [$tenant, $user] = $this->makeUser('suspend-org', 'suspend@example.com');
+        $token = $user->createToken('api', ['tenant:'.$tenant->id, '*'])->plainTextToken;
+
+        // Suspend WITHOUT firing TenantObserver (which revokes tokens) so this
+        // exercises the request-time GATE directly — i.e. the race window the
+        // observer itself documents (status committed before tokens revoked),
+        // where a still-valid token must already be blocked.
+        DB::table('tenants')->where('id', $tenant->id)->update(['status' => TenantStatus::Suspended->value]);
+
+        $this->withToken($token)
+            ->getJson('/__test/resolved-tenant')
+            ->assertStatus(403)
+            ->assertJsonPath('error.code', 'ORGANIZATION_UNAVAILABLE');
+    }
+
+    public function test_archived_tenant_is_blocked_at_request_time(): void
+    {
+        [$tenant, $user] = $this->makeUser('archive-org', 'archive@example.com');
+        $token = $user->createToken('api', ['tenant:'.$tenant->id, '*'])->plainTextToken;
+
+        $tenant->update(['status' => TenantStatus::Archived]);
+
+        $this->withToken($token)
+            ->getJson('/__test/resolved-tenant')
+            ->assertStatus(403)
+            ->assertJsonPath('error.code', 'ORGANIZATION_UNAVAILABLE');
+    }
+
+    /**
+     * The cookie/session branch is the crux of Finding #5: token revocation on
+     * suspend does NOT kill SPA cookie sessions, so the request-time gate must
+     * block a suspended tenant resolved from the session too.
+     */
+    public function test_suspended_tenant_is_blocked_on_the_cookie_session_branch(): void
+    {
+        [$tenant] = $this->makeUser('suspend-cookie-org', 'suspend-cookie@example.com');
+
+        $tenant->update(['status' => TenantStatus::Suspended]);
+
+        $this->withSession(['tenant_id' => $tenant->id])
+            ->getJson('/__test/resolved-tenant-web')
+            ->assertStatus(403)
+            ->assertJsonPath('error.code', 'ORGANIZATION_UNAVAILABLE');
+    }
+
+    public function test_active_tenant_is_not_blocked(): void
+    {
+        [$tenant, $user] = $this->makeUser('active-org', 'active@example.com');
+        $token = $user->createToken('api', ['tenant:'.$tenant->id, '*'])->plainTextToken;
+
+        $this->withToken($token)
+            ->getJson('/__test/resolved-tenant')
+            ->assertOk()
+            ->assertJsonPath('resolved_tenant_id', $tenant->id);
     }
 
     /**
