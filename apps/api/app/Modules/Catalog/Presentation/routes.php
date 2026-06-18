@@ -75,7 +75,9 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::patch('product-variants/{id}', [ProductVariantController::class, 'update'])->middleware('can:catalog.variants.update');
     Route::delete('product-variants/{id}', [ProductVariantController::class, 'destroy'])->middleware('can:catalog.variants.delete');
 
-    // Variant label printing — prepare a print batch (assign sku-as-barcode where missing).
+    // Variant label printing — sheet format registry + prepare a print batch
+    // (assign sku-as-barcode where missing).
+    Route::get('labels/formats', [VariantLabelController::class, 'formats'])->middleware('can:catalog.labels.print');
     Route::post('labels/variants/prepare', [VariantLabelController::class, 'prepare'])->middleware('can:catalog.labels.print');
 });
 

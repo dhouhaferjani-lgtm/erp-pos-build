@@ -6,6 +6,7 @@ namespace App\Modules\Catalog\Presentation\Controllers;
 
 use App\Modules\Catalog\Application\DTOs\VariantLabelData;
 use App\Modules\Catalog\Application\Services\VariantLabelService;
+use App\Modules\Catalog\Domain\Support\LabelSheetFormat;
 use App\Modules\Catalog\Presentation\Requests\PrepareLabelsRequest;
 use App\Modules\Company\Services\CompanyContext;
 use Illuminate\Http\JsonResponse;
@@ -24,6 +25,19 @@ class VariantLabelController extends Controller
         private readonly VariantLabelService $labelService,
         private readonly CompanyContext $companyContext,
     ) {}
+
+    /**
+     * List the supported label sheet/roll layouts the print flow can target.
+     */
+    public function formats(): JsonResponse
+    {
+        return response()->json([
+            'data' => array_map(
+                static fn (LabelSheetFormat $f): array => $f->toArray(),
+                LabelSheetFormat::all(),
+            ),
+        ]);
+    }
 
     public function prepare(PrepareLabelsRequest $request): JsonResponse
     {
