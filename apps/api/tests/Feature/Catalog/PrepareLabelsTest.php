@@ -142,6 +142,37 @@ class PrepareLabelsTest extends TestCase
         $this->assertSame('6191234567890', ProductVariant::find($variant->id)->barcode);
     }
 
+    public function test_variant_with_soft_deleted_parent_product_is_skipped_product_unavailable(): void
+    {
+        $product = ProductFactory::new()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'P-GONE',
+        ]);
+
+        $variant = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'sku' => 'V-ORPHAN',
+            'barcode' => '6199999999999',
+        ]);
+
+        // Soft-delete the parent product but keep the variant row.
+        $product->delete();
+        $this->assertSoftDeleted($product);
+
+        $result = $this->service()->prepare($this->company, [
+            ['variantId' => $variant->id, 'quantity' => 1],
+        ]);
+
+        // No 500 — the orphaned variant degrades to a skipped entry.
+        $this->assertCount(0, $result['ready']);
+        $this->assertCount(1, $result['skipped']);
+        $this->assertSame($variant->id, $result['skipped'][0]['variant_id']);
+        $this->assertSame('product_unavailable', $result['skipped'][0]['reason']);
+    }
+
     public function test_missing_or_cross_tenant_variant_is_skipped_not_found(): void
     {
         $otherTenant = Tenant::factory()->create();

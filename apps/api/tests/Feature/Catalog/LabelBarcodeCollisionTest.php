@@ -87,4 +87,26 @@ class LabelBarcodeCollisionTest extends TestCase
 
         $this->assertTrue($this->service()->valueIsUsable($this->tenant->id, 'TOTALLY-FREE', $subject->id));
     }
+
+    public function test_value_is_unusable_when_taken_by_soft_deleted_variant_barcode(): void
+    {
+        // A soft-deleted variant still holds its barcode (a stale offline POS
+        // device retains the row); reusing it would mis-scan, so it stays TAKEN.
+        $dead = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'barcode' => 'DEAD-BC',
+        ]);
+        $dead->delete();
+
+        $this->assertSoftDeleted($dead);
+
+        $subject = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'barcode' => null,
+        ]);
+
+        $this->assertFalse($this->service()->valueIsUsable($this->tenant->id, 'DEAD-BC', $subject->id));
+    }
 }
