@@ -8,8 +8,8 @@ vi.mock('react-i18next', () => ({
     t: (key: string, second?: unknown) => {
       if (second && typeof second === 'object') {
         const opts = second as Record<string, unknown>
-        if ('defaultValue' in opts && typeof opts.defaultValue === 'string') {
-          return opts.defaultValue
+        if ('defaultValue' in opts && typeof opts['defaultValue'] === 'string') {
+          return opts['defaultValue']
         }
         return `${key} ${JSON.stringify(second)}`
       }

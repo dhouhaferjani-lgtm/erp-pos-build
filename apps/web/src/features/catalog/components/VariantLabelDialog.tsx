@@ -61,8 +61,8 @@ export function VariantLabelDialog({
   }, [format, formats])
 
   const quantityFor = (variantId: string): number => {
-    const raw = quantities[variantId]
-    if (raw === undefined || raw.trim() === '') return 1
+    const raw = (quantities[variantId] ?? '').trim()
+    if (raw === '') return 1
     const parsed = Number.parseInt(raw, 10)
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 1
   }
