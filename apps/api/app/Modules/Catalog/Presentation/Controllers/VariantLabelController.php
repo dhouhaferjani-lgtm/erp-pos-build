@@ -120,6 +120,14 @@ class VariantLabelController extends Controller
                 ]);
             }
 
+            // The parent product may be soft-deleted while the variant row survives;
+            // guard before dereferencing ->product->name (Codex H-2).
+            if ($variant->product === null) {
+                throw ValidationException::withMessages([
+                    'items' => 'A requested variant belongs to an unavailable product.',
+                ]);
+            }
+
             $barcodeValue = (string) $variant->barcode;
 
             $price = $this->pricingService->getPrice(
