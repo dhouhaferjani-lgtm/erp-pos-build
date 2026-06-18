@@ -79,6 +79,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // (assign sku-as-barcode where missing).
     Route::get('labels/formats', [VariantLabelController::class, 'formats'])->middleware('can:catalog.labels.print');
     Route::post('labels/variants/prepare', [VariantLabelController::class, 'prepare'])->middleware('can:catalog.labels.print');
+    Route::post('labels/variants/pdf', [VariantLabelController::class, 'pdf'])->middleware('can:catalog.labels.print');
 });
 
 // Group 2: Recipes, recipe lines, composite-item variants — gated behind the Inventory module.

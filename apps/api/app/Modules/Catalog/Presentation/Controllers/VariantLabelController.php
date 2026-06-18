@@ -5,12 +5,19 @@ declare(strict_types=1);
 namespace App\Modules\Catalog\Presentation\Controllers;
 
 use App\Modules\Catalog\Application\DTOs\VariantLabelData;
+use App\Modules\Catalog\Application\Services\VariantLabelBarcodeRenderer;
+use App\Modules\Catalog\Application\Services\VariantLabelPdfService;
 use App\Modules\Catalog\Application\Services\VariantLabelService;
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Catalog\Domain\Support\LabelSheetFormat;
+use App\Modules\Catalog\Presentation\Requests\GenerateLabelPdfRequest;
 use App\Modules\Catalog\Presentation\Requests\PrepareLabelsRequest;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Pricing\Domain\Services\PricingService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
+use Illuminate\Validation\ValidationException;
 
 /**
  * REST surface for variant label printing.
@@ -24,6 +31,9 @@ class VariantLabelController extends Controller
     public function __construct(
         private readonly VariantLabelService $labelService,
         private readonly CompanyContext $companyContext,
+        private readonly VariantLabelPdfService $pdfService,
+        private readonly VariantLabelBarcodeRenderer $renderer,
+        private readonly PricingService $pricingService,
     ) {}
 
     /**
@@ -70,6 +80,74 @@ class VariantLabelController extends Controller
             'meta' => [
                 'skipped' => $result['skipped'],
             ],
+        ]);
+    }
+
+    /**
+     * Render a print-ready label sheet PDF for a batch of variants.
+     *
+     * Read-only: unlike `prepare`, this never assigns a barcode — a variant
+     * without one is rejected (422) so the caller runs `prepare` first.
+     */
+    public function pdf(GenerateLabelPdfRequest $request): Response
+    {
+        $company = $this->companyContext->requireCompany();
+
+        $formatKey = (string) $request->validated('format');
+        $startCell = (int) $request->validated('start_cell', 0);
+
+        /** @var array<int, array{variant_id: string, quantity: int}> $rawItems */
+        $rawItems = $request->validated('items');
+
+        $labels = [];
+
+        foreach ($rawItems as $item) {
+            $variant = ProductVariant::query()
+                ->where('tenant_id', $company->tenant_id)
+                ->where('company_id', $company->id)
+                ->with('product')
+                ->find($item['variant_id']);
+
+            if ($variant === null) {
+                throw ValidationException::withMessages([
+                    'items' => 'A requested variant was not found in this company.',
+                ]);
+            }
+
+            if ($variant->barcode === null || $variant->barcode === '') {
+                throw ValidationException::withMessages([
+                    'items' => 'A requested variant has no barcode. Prepare the labels first.',
+                ]);
+            }
+
+            $barcodeValue = (string) $variant->barcode;
+
+            $price = $this->pricingService->getPrice(
+                productId: $variant->product_id,
+                partnerId: null,
+                quantity: '1.00',
+                currency: $company->currency,
+                date: null,
+                variantId: $variant->id,
+            )['price'];
+
+            $labels[] = new VariantLabelData(
+                variant_id: $variant->id,
+                product_name: $variant->product->name,
+                name_suffix: $variant->name_suffix,
+                effective_price: $price,
+                barcode_value: $barcodeValue,
+                symbology: $this->renderer->symbologyFor($barcodeValue),
+                quantity: (int) $item['quantity'],
+                sku: $variant->sku,
+            );
+        }
+
+        $pdf = $this->pdfService->render($formatKey, $labels, $startCell, $company->name);
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="variant-labels.pdf"',
         ]);
     }
 }
