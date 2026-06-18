@@ -49,8 +49,12 @@ class PaymentController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
+        // Tenant+company scope — Treasury is company-scoped (api.treasury.075).
+        // Without the company_id predicate a user bound to one company could
+        // read every company's payments in the tenant (go-live audit #4).
         $query = Payment::query()
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->with(['partner', 'paymentMethod', 'allocations.document']);
 
         // Filter by partner
