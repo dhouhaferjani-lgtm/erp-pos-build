@@ -239,5 +239,26 @@
       "date": "Date",
       "image": "Image"
     }
+  },
+  "labels": {
+    "title": "Print variant labels",
+    "titleFor": "Print labels — {{name}}",
+    "printLabels": "Print labels",
+    "format": "Label format",
+    "quantity": "Quantity per variant",
+    "quantityFor": "Quantity for {{name}}",
+    "startCell": "Start cell (optional)",
+    "readyCount": "{{count}} label(s) ready to print",
+    "skipped": "{{count}} variant(s) skipped",
+    "skippedReason": {
+      "not_found": "Variant not found",
+      "barcode_conflict": "Barcode conflicts with another item",
+      "product_unavailable": "Product is unavailable",
+      "error": "Could not be prepared"
+    },
+    "nothingPrintable": "Nothing to print — no variants have a usable barcode.",
+    "download": "Download PDF",
+    "generating": "Generating…",
+    "cancel": "Cancel"
   }
 }
