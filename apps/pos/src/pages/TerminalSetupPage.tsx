@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { apiGet, getErrorMessage } from '@/lib/api';
 import { getDeviceId } from '@/lib/device';
 import { useAuthStore } from '@/stores/authStore';
@@ -279,14 +279,15 @@ function RequestTab({ onError }: { onError: (msg: string | null) => void }) {
           <div className="text-sm font-medium text-amber-800">{t('terminal.pendingActivation')}</div>
           <p className="mt-1 text-sm text-amber-700">
             {pendingTerminal ? (
-              <span
-                dangerouslySetInnerHTML={{
-                  __html: t('terminal.terminalRequested', {
-                    name: pendingTerminal.name,
-                    code: pendingTerminal.code,
-                    interpolation: { escapeValue: false },
-                  }),
-                }}
+              // Trans escapes interpolated `name`/`code` (a terminal name is
+              // free-text server input) and renders <strong> from the component
+              // tree — no unsafe HTML sink. Replaces a raw-innerHTML +
+              // unescaped-interpolation stored-XSS vector (go-live audit #6).
+              <Trans
+                i18nKey="terminal.terminalRequested"
+                ns="pos"
+                values={{ name: pendingTerminal.name, code: pendingTerminal.code }}
+                components={{ strong: <strong /> }}
               />
             ) : (
               <>{t('terminal.awaitingActivation')}</>
