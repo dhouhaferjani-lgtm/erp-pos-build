@@ -27,6 +27,7 @@ import { useCurrency } from '../../hooks/useCurrency'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
 import { TaxConfigurationField } from '../../components/molecules/TaxConfigurationField'
 import { inventoryProductsInvalidationPredicate } from './_invalidation'
+import { buildProductPayload } from './productPayload'
 
 interface Product {
   id: string
@@ -69,7 +70,7 @@ interface ParapharmacyMetadata {
   storage_requirements: string | null
 }
 
-interface ProductFormData {
+export interface ProductFormData {
   name: string
   sku: string
   is_physical: boolean
@@ -249,7 +250,8 @@ export function ProductForm() {
   }, [product, reset])
 
   const createMutation = useMutation({
-    mutationFn: (data: ProductFormData) => apiPost<Product>('/products', data),
+    mutationFn: (data: ProductFormData) =>
+      apiPost<Product>('/products', buildProductPayload(data, { isParapharmacy })),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         predicate: inventoryProductsInvalidationPredicate(tenantId, companyId),
@@ -258,7 +260,8 @@ export function ProductForm() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (data: ProductFormData) => apiPatch<Product>(`/products/${id}`, data),
+    mutationFn: (data: ProductFormData) =>
+      apiPatch<Product>(`/products/${id}`, buildProductPayload(data, { isParapharmacy })),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
