@@ -32,6 +32,7 @@ The account is **kept as a permanent demo account**; data grows naturally as sal
 
 ## 4. Target environment & hard constraints
 
+- **Likely target = the IziPOS staging deploy at `erp.otospex.dev`** (db-per-tenant from `dev`, brought live 2026-06-19 by the parallel session; new PG `erp-staging-postgres-8x7pbx:5434`, central DB `iziposcentral`, **`AUTO_SEED=false`**). **To confirm with owner.** Because `AUTO_SEED=false`, `DemoPharmacySeeder` is **run manually** against the staging container (`php artisan db:seed --class=DemoPharmacySeeder --force`).
 - **Tauri POS bakes its backend URL at build time** (`VITE_API_URL`, read in `apps/pos/src/stores/authStore.ts:134`). There is **no runtime server-picker**. Demoing against deployed dev requires **rebuilding/running the POS pointed at the deployed URL**.
 - Backend must allow the POS origin via **CORS**; HTTPS cert must be valid (Dokploy Let's Encrypt is fine); `VITE_REVERB_HOST`/`VITE_REVERB_PORT`/`VITE_REVERB_SCHEME` must point at the deployed WebSocket (Reverb) for broadcast (terminal activation, etc.).
 - POS↔backend auth is **Sanctum Bearer + `X-Company-Id` header**; all sync endpoints are relative to `/api/v1` (no localhost assumptions beyond the build-time fallback). So once the base URL is correct, claim/auth/sync work remotely unchanged.
@@ -135,6 +136,7 @@ A report-only artifact (`docs/superpowers/audits/2026-06-…-demo-pharmacy-gap-r
 - **Typed refund-exception mapping** missing (Phase H) — manager-override modal doesn't trigger correctly for override-required refunds.
 - **Cross-terminal refunds** require a receipts mirror (Phase 1 backlog, ~1–2 days).
 - **Customer deposit top-up** flow pending (A8/G4).
+- **Pre-existing product-form 422** on staging (tax_rate 4dp + `parapharmacy_metadata` on retail vertical) blocks web product-create — verify it does NOT bite the parapharmacy demo tenant (the seeder bypasses the FormRequest, so seeded products are unaffected; only manual web product-create during the demo would hit it).
 - Anything the client asks for that we can't show.
 
 ## 9. Reusability & reprovision (G1 workaround)
