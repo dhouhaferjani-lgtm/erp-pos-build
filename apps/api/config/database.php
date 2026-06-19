@@ -126,7 +126,11 @@ return [
             'url' => env('DB_CENTRAL_URL', env('DB_URL')),
             'host' => env('DB_CENTRAL_HOST', env('DB_HOST', '127.0.0.1')),
             'port' => env('DB_CENTRAL_PORT', env('DB_PORT', '5432')),
-            'database' => env('DB_CENTRAL_DATABASE', env('DB_DATABASE', 'synerivia_central')),
+            // Product-neutral fallback only. Each deployment sets a
+            // product-named central DB via DB_CENTRAL_DATABASE (e.g.
+            // otospexcentral / iziposcentral). The ERP must NOT name its own
+            // resources after the "synerivia" data platform — it is a client of it.
+            'database' => env('DB_CENTRAL_DATABASE', env('DB_DATABASE', 'autoerp_central')),
             'username' => env('DB_CENTRAL_USERNAME', env('DB_USERNAME', 'root')),
             'password' => env('DB_CENTRAL_PASSWORD', env('DB_PASSWORD', '')),
             'charset' => env('DB_CHARSET', 'utf8'),
