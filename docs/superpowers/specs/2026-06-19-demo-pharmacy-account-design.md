@@ -3,7 +3,9 @@
 > **Date:** 2026-06-19
 > **Branch:** `feat/demo-pharmacy-account` (off `dev`)
 > **Status:** Design — awaiting owner review before implementation plan
-> **Author context:** Prep for a possible parapharmacy-client demo. Build a permanent, reusable demo account on the **deployed dev** environment, run a live Tauri-POS demo against it end-to-end, and produce a concrete **reporting/feature gap list** that drives the "what to build next" decision.
+> **Author context:** Prep for a possible **Tunisia** parapharmacy-client demo. Build a permanent, reusable demo account on the **deployed dev** environment, run a live Tauri-POS demo against it end-to-end, and produce a concrete **reporting/feature gap list** that drives the "what to build next" decision.
+>
+> **LOCALE: Tunisia only.** No France anywhere — TND currency (3-decimal), Tunisia chart of accounts, Tunisian *matricule fiscal* (not SIRET/SIREN/NIC), Tunisian cities, Tunisian VAT rates. The existing `ParapharmacyMultiBranchSeeder` is France-specific; reuse its *structure*, swap every locale detail.
 
 ---
 
@@ -21,7 +23,9 @@ The account is **kept as a permanent demo account**; data grows naturally as sal
 | D2 | Seeder strategy | **Reusable** `DemoPharmacySeeder` extending the existing `ParapharmacyMultiBranchSeeder`; additive/idempotent. |
 | D3 | Sales history | **No fiscal-event-authoring seeder.** Seed everything a cashier needs, then **hand-ring ~20–30 real sales** through the live POS. History grows organically thereafter. |
 | D4 | Enrichment | **GO (real, not stubbed).** Platform is deployed with ~13k products; connection mostly works. Owner is fixing image/barcode issues on the platform side. |
-| D5 | Platform data cleaning | **Parallel Track B**, executed from the **Synerivia repo** (not this repo). |
+| D5 | Platform data cleaning | **Parallel Track B**, executed from the **Synerivia repo** (not this repo). Mostly done: enrichment URL + API key added, deploy ready. |
+| D6 | Locale | **Tunisia only** — TND, Tunisia COA, *matricule fiscal*, Tunisian cities/VAT. No France. |
+| D7 | Barcode demo | Seed a **mix** of products with and without barcodes; demo exercises both the "has barcode → platform lookup returns data" path and the "no barcode → platform performs the lookup/assignment" path. |
 
 ## 3. Scope: two tracks
 
@@ -41,18 +45,28 @@ The account is **kept as a permanent demo account**; data grows naturally as sal
 
 ## 5. Component design (Track A)
 
-### 5.1 `DemoPharmacySeeder` — topology (warehouse + 3 shops)
+### 5.1 `DemoPharmacySeeder` — topology (Tunisia: warehouse + 4 shops)
 
-Extend `ParapharmacyMultiBranchSeeder` (which already builds 1 tenant + 1 company + warehouse `WH-01` + Paris + Lyon, ~1000 products, variant SKUs, 180 partners, house account, 2 terminals, location-scoped cashiers).
+Reuse the *structure* of `ParapharmacyMultiBranchSeeder` (multi-location + per-branch tax identity + location-scoped cashiers + terminals + stock distribution + variant SKUs) but build a **Tunisia** tenant: TND currency, country `TN`, **Tunisia chart of accounts** + Tunisia tax/withholding config, and **per-branch *matricule fiscal*** instead of SIRET. (The implementation pulls the Tunisia COA/tax/payment building blocks confirmed in `TunisianParapharmacySeeder` + the Tunisia seeders — see §11 verification.)
 
-**Add a 3rd shop:**
-- New `Location` (type `shop`, `pos_enabled=true`), code `STORE-MAR` (Marseille), with its own SIRET in `tax_id` + `legal_identifiers` (siren/siret/nic), matching the Paris/Lyon pattern.
-- One `POS01` terminal at the new shop (terminal code is unique per location; CHECK constraint `^POS[0-9]{2}$`).
-- Stock distribution to the new shop (~60% of catalog, small front-of-house quantities), matching existing shops.
-- A location-scoped cashier (`marseille.cashier@pharmabio.fr`, PIN, `allowed_location_ids=[marseilleShop.id]`).
-- Owner/manager remain cross-branch (`allowed_location_ids=NULL`).
+**5 locations** (1 warehouse + 4 shops):
 
-**B2C framing:** keep the 150 individual customers as the headline; trim or de-emphasize the 20 B2B (retain the clinic house account + maybe 1–2 B2B for the account-charge demo).
+| Code | Name (proposed, adjustable) | City | Type | POS |
+|---|---|---|---|---|
+| `WH-01` | Entrepôt Central | **Sousse** | warehouse | no |
+| `STORE-TUN1` | Tunis — Lac | **Tunis** | shop | yes |
+| `STORE-TUN2` | Tunis — Centre | **Tunis** | shop | yes |
+| `STORE-SOU` | Sousse — Médina | **Sousse** | shop | yes |
+| `STORE-SFA` | Sfax — Centre | **Sfax** | shop | yes |
+
+- **Per-branch tax identity (Tunisian analog to SIRET/NIC):** Tunisia has no per-establishment SIRET; instead the *matricule fiscal* carries an **establishment code** suffix (principal `000`, secondary establishments `001`, `002`, …). Company base e.g. `1234567/A/M/000`; each shop sets `tax_id` to its establishment variant (`…/001` … `…/004`) with `legal_identifiers` holding the matricule + establishment code. Warehouse/principal leaves `tax_id` NULL → inherits company value (`TaxIdentityResolver` reads location override, falls back to company, merges `legal_identifiers`). (Exact `legal_identifiers` key names for TN are open — §11; the resolver just merges arrays, so we have latitude — keep it consistent with what Tunisian receipts render.)
+- One `POS01` terminal per shop (4 terminals; terminal code unique per location, CHECK `^POS[0-9]{2}$`). None at the warehouse.
+- Stock: warehouse holds bulk (~90% of catalog); each shop holds ~60% in small front-of-house quantities. Variant SKUs (sized goods) distributed across all locations.
+- Location-scoped cashiers per shop (`tunis1.cashier@…`, `tunis2.cashier@…`, `sousse.cashier@…`, `sfax.cashier@…`, each `allowed_location_ids=[shop.id]`); owner/manager cross-branch (`NULL`).
+
+**B2C framing:** ~150 individual Tunisian customers (`Partner::factory()->tunisia()`) as the headline; retain a clinic/house account + maybe 1–2 B2B for the account-charge demo.
+
+**Seeder construction (reuse, don't fork):** Neither existing seeder fits — `ParapharmacyMultiBranchSeeder` is hardcoded-France (creates a tenant, ~1000 products, multi-branch) and `TunisianParapharmacySeeder` only adds a company to an *existing* tenant (single location, 121 products). So `DemoPharmacySeeder` **creates a Tunisia tenant** using the France seeder's multi-branch structure, with locale extracted into overridable hooks: **currency** (TND), **country** (`TN`), **COA seeder** (`TunisiaChartOfAccountsSeeder::run($companyId,$tenantId)`), **tax config** (`TunisiaTaxConfigurationSeeder`), **VAT** (19% standard for parapharmacy), **tax-id generator** (matricule fiscal), **city list** (Tunis/Sousse/Sfax), and **barcode policy** (§5.6). Catalog generation (brands/categories) is locale-agnostic and reused; only barcode prefix + VAT + currency scale change. Extracting these hooks (vs forking) is what makes it genuinely reusable per D2.
 
 ### 5.2 Customers, suppliers, accounts & balances
 
@@ -62,7 +76,8 @@ Extend `ParapharmacyMultiBranchSeeder` (which already builds 1 tenant + 1 compan
   - A few customers with **store credit** (`CustomerAdvance`).
   - The clinic house account with both a credit limit (already €5000) **and** a real balance.
   - Optionally 1–2 suppliers with a **payable balance** (`SupplierPayable`).
-- Pattern: create `JournalEntry` + `JournalLine`s against the system-purpose accounts, then call `PartnerBalanceService::refreshPartnerBalance($companyId, $partnerId)` to populate the cached columns. **Template:** `CoffeeShopSeeder.php:985–1116`.
+- Pattern: create `JournalEntry` + `JournalLine`s against the **Tunisia COA** system-purpose accounts — **411 Clients** (CustomerReceivable), **419 Clients créditeurs** (CustomerAdvance/store credit), **401 Fournisseurs** (SupplierPayable) — then call `PartnerBalanceService::refreshPartnerBalance($companyId, $partnerId)` to populate the cached columns. **Template:** `CoffeeShopSeeder.php:985–1116`.
+- **All monetary values in TND (scale 3)** via `CurrencyScale::bcformat($v, 3)` — never floats. Same for PO line amounts (§5.3) and product prices.
 - Result: partner statements and balance views reconcile against the GL (no faked numbers).
 
 ### 5.3 Purchase orders
@@ -107,9 +122,13 @@ This yields genuine fiscally-valid history that populates shift-history, Z-repor
 
 ERP side is implemented (`PlatformIntegration` + `Product` modules): barcode lookup, submit, upload-url, status, webhook receiver, and review/accept/reject endpoints + UI (UI currently on `feat/parapharmacy-enrichment-erp` — **must confirm whether it is on `dev`; if not, merge/cherry-pick** — see §11). Platform side is deployed with ~13k products.
 
-Demo path: open a product (or scan a barcode) → **lookup** against the deployed platform → **submit** for enrichment → enrichment result lands in the **review queue** → **accept** selected fields → product is enriched (name/brand/description/ingredients/images merged).
+**Two demo paths (per D7 — seed a barcode mix):**
+1. **Product WITH a barcode** → lookup against the deployed platform → match returns product data → submit → review queue → **accept** selected fields → product enriched (name/brand/description/ingredients/images merged).
+2. **Product WITHOUT a barcode** → the platform performs the lookup/assignment (resolves identity and returns/assigns a barcode + data) → same review/accept flow.
 
-Prerequisites: the demo tenant has a valid platform **`X-API-Key`**; the platform's barcode/lookup/submit endpoints + webhook are reachable from the deployed ERP; clean-enough catalog data (Track B).
+So the seeder must leave **some products with EAN-13 barcodes and some with none** (`barcode` is nullable + non-unique). Override the France seeder's blanket-barcode behavior: give a subset realistic **Tunisia GS1 `619`-prefixed** EAN-13 barcodes (those become the "scan a barcode that resolves" demo set), and leave a deliberate subset **NULL** (the "no barcode → platform looks up/assigns" demo set).
+
+Prerequisites (**ready** per D4/D5): platform **enrichment URL + `X-API-Key` are configured** and the deploy is ready; the platform's lookup/submit endpoints + webhook are reachable from the deployed ERP; ~13k-product catalog (owner finishing image/barcode cleanup).
 
 ## 6. POS deployment & build (Track A prerequisite for the live demo)
 
@@ -129,7 +148,7 @@ On the Tauri POS (desktop): open shift → **simple sale** → **split-payment s
 
 A report-only artifact (`docs/superpowers/audits/2026-06-…-demo-pharmacy-gap-report.md`) capturing what's missing/weak for a client, to drive the build-next decision. Seeded with **known gaps already found**, to be confirmed/extended during the dry run:
 
-- Web-admin **`/pos/transactions` is disabled** — no transaction/receipt list for the owner in web-admin (only via Z-report detail / shift receipts). Likely the biggest reporting gap.
+- Web-admin **transaction list is needed but currently absent.** The old `/pos/transactions` page was **intentionally removed** (web POS *authoring* is retired — POS is Tauri-only, by design), but a **read-only transaction/receipt list in web-admin is definitely wanted** (today receipts are only reachable via Z-report detail / shift receipts). **OWNED BY THE PARALLEL REPORTING SESSION** — do **not** plan or build it here; this spec only *records the need* and feeds observations to that session. Avoid scope overlap.
 - **X-report** `expected_cash` does not subtract refunds (display gap, G6).
 - Per-terminal **Z-report excludes cross-terminal refunds** (by design, G8) — confirm acceptable for client.
 - Web-admin **returns surface quarantined** (G9); refunds desktop-only.
@@ -155,15 +174,15 @@ Execution begins **after the deploy completes** (owner gate).
 
 ## 11. Open items / dependencies
 
-- **Deploy must finish** (parallel session) before §6/§7.
-- **Enrichment UI branch status:** confirm whether `feat/parapharmacy-enrichment-erp` is merged to `dev`; if not, decide merge vs cherry-pick. (Investigation reported it as implemented but possibly not on `dev`.)
-- **Platform `X-API-Key`** provisioned for the demo tenant.
-- **Track B** (Synerivia repo): image/barcode cleanup on the ~13k catalog — owner is fixing some; remainder via a Synerivia-repo session. Handoff prompt to be produced.
+- **Tunisia building blocks — RESOLVED** (currency TND/scale 3, country TN, `TunisiaChartOfAccountsSeeder` + `TunisiaTaxConfigurationSeeder`, accounts 411/419/401, VAT 19/13/7/exempt, `Partner::factory()->tunisia()`). **Only open Tunisia detail:** the exact `legal_identifiers` key names for the per-branch *matricule fiscal* establishment code (verify against what Tunisian receipts/`TaxIdentityResolver` render; latitude exists since the resolver just merges arrays).
+- **Deploy must finish** (parallel session) before §6/§7. Likely `erp.otospex.dev` staging.
+- **Enrichment UI branch status:** confirm whether `feat/parapharmacy-enrichment-erp` is merged to `dev`; if not, decide merge vs cherry-pick.
+- **Track B** (Synerivia repo): enrichment URL + API key DONE, deploy ready; owner finishing image/barcode cleanup on the ~13k catalog.
 - Confirm the exact deployed-dev API + Reverb URLs and that CORS is configured for the POS origin.
 
 ## 12. Out of scope / YAGNI
 
 - Fiscal-event-authoring history seeder (explicitly dropped, D3).
-- Building new reports — this cycle **identifies** gaps; building is a follow-up decision.
+- Building new reports / the web-admin transaction list — **owned by a parallel reporting-planning session.** This cycle only *identifies* gaps and feeds them over; it does not design or build reporting.
 - Tenant-deletion (G1) fix — worked around, not fixed here.
 - Any modification of ERP from the Synerivia context, or vice versa.
