@@ -107,6 +107,29 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
         return 'pharmabio.tn';
     }
 
+    // ==================== Barcode policy override ====================
+
+    /**
+     * Tunisia demo barcode policy: ~30% of catalog products get NO barcode
+     * (null) so the enrichment demo exercises the "platform performs lookup/
+     * assignment" path. The remaining ~70% get a `619`-prefixed EAN-13 via
+     * the parent, which already calls {@see localeBarcodePrefix()} = '619'.
+     *
+     * Deterministic by ordinal (no randomness) so the test count is stable
+     * across repeated seeder runs and CI is reproducible.
+     *
+     * Ratio: ordinals where `$ordinal % 10 < 3` → null (ordinals 0,1,2 in
+     * each decade = 30%); ordinals 3-9 → parent (619-prefixed EAN-13 = 70%).
+     */
+    protected function productBarcode(int $ordinal): ?string
+    {
+        if ($ordinal % 10 < 3) {
+            return null;
+        }
+
+        return parent::productBarcode($ordinal);
+    }
+
     // ==================== Company creation override ====================
 
     /**

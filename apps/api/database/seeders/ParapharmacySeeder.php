@@ -643,7 +643,9 @@ class ParapharmacySeeder extends Seeder
         // ordinal so cross-category collisions (supplement #1 vs
         // cosmetic #1) and SCALE > 1 multiplications don't generate
         // duplicate EANs.
-        $barcode = $this->generateBarcode($globalOrdinal);
+        // Routed through productBarcode() hook so locale subclasses can
+        // produce a null subset (e.g. Tunisia demo: 30% no-barcode).
+        $barcode = $this->productBarcode($globalOrdinal);
 
         // Pricing
         [$retailPrice, $cost, $vatRate] = $this->calculatePricing($category);
@@ -1266,9 +1268,25 @@ class ParapharmacySeeder extends Seeder
     }
 
     /**
+     * Return the barcode to assign to a catalog product by its global ordinal,
+     * or null to leave the product without a barcode.
+     *
+     * Default (France) behaviour: always assign a barcode via
+     * {@see generateBarcode()}. Override in a locale subclass to produce a
+     * mixed barcode/null catalog (e.g. Tunisia demo: 30% null).
+     *
+     * The ordinal passed here is the same $globalOrdinal threaded through
+     * {@see seedProducts()} — unique per product, 1-based, deterministic.
+     */
+    protected function productBarcode(int $ordinal): ?string
+    {
+        return $this->generateBarcode($ordinal);
+    }
+
+    /**
      * Generate valid EAN-13 barcode.
      */
-    private function generateBarcode(int $counter): string
+    protected function generateBarcode(int $counter): string
     {
         // GS1 barcode prefix (3 digits, locale-specific) + 9-digit ordinal
         $base = $this->localeBarcodePrefix().str_pad((string) ($counter % 1000000000), 9, '0', STR_PAD_LEFT);

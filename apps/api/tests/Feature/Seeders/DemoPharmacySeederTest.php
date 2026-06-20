@@ -122,6 +122,19 @@ final class DemoPharmacySeederTest extends TestCase
         });
     }
 
+    public function test_catalog_has_a_barcode_mix(): void
+    {
+        $this->seed(DemoPharmacySeeder::class);
+        Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail()->run(function () {
+            $withBarcode = \App\Modules\Product\Domain\Product::whereNotNull('barcode')->count();
+            $withoutBarcode = \App\Modules\Product\Domain\Product::whereNull('barcode')->count();
+            $this->assertGreaterThan(0, $withBarcode, 'need scan-resolves demo set');
+            $this->assertGreaterThan(0, $withoutBarcode, 'need no-barcode demo set');
+            $sample = \App\Modules\Product\Domain\Product::whereNotNull('barcode')->first();
+            $this->assertStringStartsWith('619', $sample->barcode); // Tunisia GS1
+        });
+    }
+
     public function test_seeds_active_unclaimed_terminals_and_scoped_cashiers(): void
     {
         $this->seed(DemoPharmacySeeder::class);
