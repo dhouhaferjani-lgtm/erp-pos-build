@@ -30,6 +30,7 @@ export type CategoryRevenueReport = App.Modules.Accounting.Application.DTOs.Repo
 export type PaymentMethodBreakdownReport = App.Modules.Accounting.Application.DTOs.Reports.PaymentMethodBreakdownData
 export type StockAlertReport = App.Modules.Accounting.Application.DTOs.Reports.StockAlertData
 export type CashReconciliationReport = App.Modules.Accounting.Application.DTOs.Reports.CashReconciliationData
+export type SalesSummaryReport = App.Modules.Accounting.Application.DTOs.Reports.SalesSummaryData
 
 export async function fetchSalesByLocation(params: SalesByLocationParams): Promise<SalesByLocationReport[]> {
   return apiGet<SalesByLocationReport[]>(`/reports/sales/by-location?${buildParams(params)}`)
@@ -55,6 +56,10 @@ export async function fetchLowStockAlerts(params: StockAlertsParams): Promise<St
 
 export async function fetchCashRegisterReconciliation(params: CashReconciliationParams): Promise<CashReconciliationReport[]> {
   return apiGet<CashReconciliationReport[]>(`/reports/cash-register/reconciliation?${buildParams(params)}`)
+}
+
+export async function fetchSalesSummary(params: OwnerDateRangeParams): Promise<SalesSummaryReport> {
+  return apiGet<SalesSummaryReport>(`/reports/sales/summary?${buildParams(params)}`)
 }
 
 function buildParams(params: object): string {

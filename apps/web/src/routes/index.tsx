@@ -70,6 +70,9 @@ const WithholdingCertificatesList = lazy(() => import('../features/withholding')
 const WithholdingCertificateDetail = lazy(() => import('../features/withholding').then((m) => ({ default: m.WithholdingCertificateDetail })))
 const SalesWithholdingTrackingPage = lazy(() => import('../features/withholding/pages/SalesWithholdingTrackingPage').then((m) => ({ default: m.SalesWithholdingTrackingPage })))
 
+// Owner dashboard (reports)
+const OwnerDashboardPage = lazy(() => import('../features/owner-dashboard').then((m) => ({ default: m.OwnerDashboardPage })))
+
 // Reports module
 // Hub pages
 const InventoryHubPage = lazy(() => import('../features/inventory/pages/InventoryHubPage').then((m) => ({ default: m.InventoryHubPage })))
@@ -1578,8 +1581,17 @@ export function AppRoutes() {
           />
         </Route>
 
-        {/* Reports - redirect to Finance hub */}
-        <Route path="reports" element={<Navigate to="/finance" replace />} />
+        {/* Owner Reports dashboard */}
+        <Route
+          path="reports"
+          element={
+            <RequirePermission permission="dashboard.owner">
+              <SuspenseWrapper>
+                <OwnerDashboardPage />
+              </SuspenseWrapper>
+            </RequirePermission>
+          }
+        />
 
         {/* Marketing Hub */}
         <Route

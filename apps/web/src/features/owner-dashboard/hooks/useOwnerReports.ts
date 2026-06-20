@@ -8,6 +8,7 @@ import {
   fetchPaymentMethodBreakdown,
   fetchRevenueByCategory,
   fetchSalesByLocation,
+  fetchSalesSummary,
   fetchTopSkus,
   type CashReconciliationParams,
   type OwnerDateRangeParams,
@@ -24,6 +25,7 @@ export const ownerReportKeys = {
   paymentMethods: (params: OwnerDateRangeParams) => [...ownerReportKeys.all, 'payment-methods', params] as const,
   stockAlerts: (params: StockAlertsParams) => [...ownerReportKeys.all, 'stock-alerts', params] as const,
   cashReconciliation: (params: CashReconciliationParams) => [...ownerReportKeys.all, 'cash-reconciliation', params] as const,
+  salesSummary: (params: OwnerDateRangeParams) => [...ownerReportKeys.all, 'sales-summary', params] as const,
 }
 
 function useOwnerReportsEnabled(): boolean {
@@ -89,6 +91,16 @@ export function useCashRegisterReconciliation(params: CashReconciliationParams, 
   return useQuery({
     queryKey: tenantScopedKey(ownerReportKeys.cashReconciliation(params)),
     queryFn: () => fetchCashRegisterReconciliation(params),
+    enabled,
+  })
+}
+
+export function useSalesSummary(params: OwnerDateRangeParams, canFetch = true) {
+  const enabled = useOwnerReportsEnabled() && canFetch
+
+  return useQuery({
+    queryKey: tenantScopedKey(ownerReportKeys.salesSummary(params)),
+    queryFn: () => fetchSalesSummary(params),
     enabled,
   })
 }

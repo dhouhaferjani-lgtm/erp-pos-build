@@ -54,7 +54,12 @@
       "granularity": "Group by",
       "day": "Day",
       "week": "Week",
-      "month": "Month"
+      "month": "Month",
+      "allLocations": "All locations",
+      "locations": "Locations"
+    },
+    "salesTrend": {
+      "title": "Sales over time"
     },
     "salesByLocation": {
       "title": "Sales by Location",
@@ -75,6 +80,15 @@
       "title": "Payment Method Breakdown",
       "amount": "Amount",
       "percentage": "Percentage"
+    },
+    "kpi": {
+      "totalSales": "Total sales",
+      "transactions": "Transactions",
+      "avgBasket": "Average basket",
+      "itemsSold": "Items sold",
+      "returns": "Returns",
+      "vsPrevious": "vs previous period",
+      "error": "Could not load summary"
     },
     "cashReconciliation": {
       "title": "Cash Register Reconciliation"

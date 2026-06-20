@@ -195,6 +195,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   vehicles: ['vehicles.view'],
   services: ['services.view'],
   reports: ['reports.view'],
+  ownerReports: ['dashboard.owner'],
   finance: ['accounts.view', 'journal.view'],
   pricing: ['pricing.view'],
   accounts: ['accounts.view'],

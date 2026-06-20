@@ -54,7 +54,12 @@
       "granularity": "Grouper par",
       "day": "Jour",
       "week": "Semaine",
-      "month": "Mois"
+      "month": "Mois",
+      "allLocations": "Tous les sites",
+      "locations": "Sites"
+    },
+    "salesTrend": {
+      "title": "Évolution des ventes"
     },
     "salesByLocation": {
       "title": "Ventes par Site",
@@ -75,6 +80,15 @@
       "title": "Répartition des Paiements",
       "amount": "Montant",
       "percentage": "Pourcentage"
+    },
+    "kpi": {
+      "totalSales": "Ventes totales",
+      "transactions": "Transactions",
+      "avgBasket": "Panier moyen",
+      "itemsSold": "Articles vendus",
+      "returns": "Retours",
+      "vsPrevious": "vs période précédente",
+      "error": "Impossible de charger le résumé"
     },
     "cashReconciliation": {
       "title": "Rapprochement Caisse"

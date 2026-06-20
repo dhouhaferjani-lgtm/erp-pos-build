@@ -13,9 +13,10 @@ import { QuickCreateButton } from './QuickCreateButton'
 interface TopBarProps {
   onMenuClick?: () => void
   onSearchClick?: () => void
+  showLocationSwitcher?: boolean
 }
 
-export function TopBar({ onMenuClick, onSearchClick }: TopBarProps) {
+export function TopBar({ onMenuClick, onSearchClick, showLocationSwitcher = true }: TopBarProps) {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const user = useAuthStore((state) => state.user)
@@ -96,7 +97,7 @@ export function TopBar({ onMenuClick, onSearchClick }: TopBarProps) {
         <CompanySelector />
 
         {/* Location selector for multi-location companies */}
-        <LocationSwitcher className="hidden lg:block" />
+        {showLocationSwitcher && <LocationSwitcher className="hidden lg:block" />}
 
         {/* Language selector */}
         <div className="relative" ref={langMenuRef}>

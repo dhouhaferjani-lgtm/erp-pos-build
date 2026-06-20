@@ -14,6 +14,7 @@ use App\Modules\Accounting\Application\Services\Reports\AgedReceivablesService;
 use App\Modules\Accounting\Application\Services\Reports\BalanceSheetService;
 use App\Modules\Accounting\Application\Services\Reports\CashRegisterReportService;
 use App\Modules\Accounting\Application\Services\Reports\OwnerReportScope;
+use App\Modules\Accounting\Application\Services\Reports\OwnerSalesSummaryService;
 use App\Modules\Accounting\Application\Services\Reports\ProfitLossService;
 use App\Modules\Accounting\Application\Services\Reports\SalesReportService;
 use App\Modules\Accounting\Application\Services\Reports\StockAlertReportService;
@@ -81,6 +82,7 @@ class ReportsController extends Controller
         private readonly SalesReportService $salesReportService,
         private readonly StockAlertReportService $stockAlertReportService,
         private readonly CashRegisterReportService $cashRegisterReportService,
+        private readonly OwnerSalesSummaryService $ownerSalesSummaryService,
     ) {}
 
     public function salesByLocation(GetOwnerSalesReportRequest $request): JsonResponse
@@ -169,6 +171,21 @@ class ReportsController extends Controller
 
         return response()->json([
             'data' => $this->cashRegisterReportService->reconciliationSummary(
+                range: $request->dateRange(),
+                companyIds: $companyIds,
+                locationIds: $locationIds,
+            ),
+        ]);
+    }
+
+    public function salesSummary(GetOwnerSalesReportRequest $request): JsonResponse
+    {
+        $user = $this->ownerUser($request->user());
+        $companyIds = $this->ownerReportScope->companyIds($request->companyIds(), $user);
+        $locationIds = $this->ownerReportScope->locationIds($companyIds, $request->locationIds(), $user);
+
+        return response()->json([
+            'data' => $this->ownerSalesSummaryService->summary(
                 range: $request->dateRange(),
                 companyIds: $companyIds,
                 locationIds: $locationIds,
