@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Revision:** r2 — corrected after Codex plan review (`docs/superpowers/reviews/2026-06-20-owner-reporting-plan-codex-review.md`). Changes: reuse the real `OwnerReportingTest` fixtures via an extracted trait (no hand-rolled inserts); resolve per-company currency + enforce single-currency + return `currencyCode`; round (not truncate) percent deltas; build `EChartsOption` for `OwnerChart`; add Big.js `formatQuantity` to `lib/decimal`; gate the Reports route via `<RequirePermission permission="dashboard.owner">` and the Sidebar via a new `ownerReports` module-permission; mandatory stock-alert location wiring; thicker endpoint test; no `as any`.
+**Revision:** r3 — corrected after two Codex plan reviews (`…/reviews/2026-06-20-owner-reporting-plan-codex-review.md` and `…-r2.md`). r2 changes: reuse the real `OwnerReportingTest` fixtures via an extracted trait (no hand-rolled inserts); resolve per-company currency + enforce single-currency + return `currencyCode`; round (not truncate) percent deltas; build `EChartsOption` for `OwnerChart`; add Big.js `formatQuantity` to `lib/decimal`; gate the Reports route via `<RequirePermission permission="dashboard.owner">` and the Sidebar via a new `ownerReports` module-permission; mandatory stock-alert location wiring; thicker endpoint test; no `as any`. r3 changes (the r2-review BLOCKER + 2 MED + LOW): dedicated `seedReturn` helper that satisfies the return-receipt DB CHECK (`original_receipt_id` + `return_reason`) and writes NO payment row (avoids the `amount > 0` CHECK); `averageBasket` and percent now use `CurrencyScale::bcround` (round, not truncate); `useMemo` builds the conditional `location_ids` spread inside the callback (exhaustive-deps clean); delete the orphaned `reports.tenantScope.test.tsx` alongside `ReportsPage.tsx`.
 
 **Goal:** Add a dedicated, permission-gated owner Reports section that aggregates sales across all locations, fronted by a KPI-card row + sales trend, sourced from a new precision-correct backend summary service.
 
@@ -165,8 +165,9 @@ git commit -m "feat(reports): owner sales summary DTOs + generated types"
 **Interfaces:**
 - Produces trait `InteractsWithOwnerReporting` providing properties `$tenant,$company,$childCompany,$owner,$userWithoutPermission,$locationA,$locationB,$terminalA,$terminalB,$cashMethod,$cardMethod` and methods:
   - `setUpOwnerReportingFixtures(): void` (call from the test's `setUp()` AFTER `parent::setUp()`)
-  - `seedReceipt(Location $location, Terminal $terminal, string $postedAt, string $total, ReceiptType $type = ReceiptType::Sale, bool $trainingFlag = false): Receipt`
-  - `seedReceiptWithLine(Product $product, Location $location, Terminal $terminal, string $postedAt, string $lineTotal, string $quantity, ReceiptType $type = ReceiptType::Sale): Receipt`
+  - `seedReceipt(Location $location, Terminal $terminal, string $postedAt, string $total, bool $trainingFlag = false): Receipt` (SALE only — writes a positive cash payment)
+  - `seedReturn(Location $location, Terminal $terminal, string $postedAt, string $negativeTotal, Receipt $original, string $reason = 'customer_request'): Receipt` (RETURN — sets `original_receipt_id` + `return_reason` per the DB CHECK; writes NO payment row to avoid the `pos_receipt_payments.amount > 0` CHECK)
+  - `seedReceiptWithLine(Product $product, Location $location, Terminal $terminal, string $postedAt, string $lineTotal, string $quantity): Receipt`
   - `companyHeaders(): array{X-Company-Id:string}`
 
 - [ ] **Step 1: Create the trait (copy the proven helpers from `OwnerReportingTest`, generalized for `ReceiptType`)**
@@ -236,7 +237,7 @@ trait InteractsWithOwnerReporting
         return ['X-Company-Id' => $this->company->id];
     }
 
-    protected function seedReceipt(Location $location, Terminal $terminal, string $postedAt, string $total, ReceiptType $type = ReceiptType::Sale, bool $trainingFlag = false): Receipt
+    protected function seedReceipt(Location $location, Terminal $terminal, string $postedAt, string $total, bool $trainingFlag = false): Receipt
     {
         $receipt = Receipt::factory()->create([
             'tenant_id' => $this->tenant->id,
@@ -245,7 +246,7 @@ trait InteractsWithOwnerReporting
             'terminal_id' => $terminal->id,
             'cashier_id' => $this->owner->id,
             'cashier_name' => 'Owner Cashier',
-            'receipt_type' => $type,
+            'receipt_type' => ReceiptType::Sale,
             'posted_at' => $postedAt,
             'subtotal' => $total,
             'tax_amount' => '0.000',
@@ -253,6 +254,7 @@ trait InteractsWithOwnerReporting
             'training_flag' => $trainingFlag,
         ]);
 
+        // Mirrors the proven OwnerReportingTest payment insert (sales only, positive amount).
         ReceiptPayment::create([
             'receipt_id' => $receipt->id,
             'payment_method_id' => $this->cashMethod->id,
@@ -263,9 +265,35 @@ trait InteractsWithOwnerReporting
         return $receipt;
     }
 
-    protected function seedReceiptWithLine(Product $product, Location $location, Terminal $terminal, string $postedAt, string $lineTotal, string $quantity, ReceiptType $type = ReceiptType::Sale): Receipt
+    /**
+     * Return receipt: negative total. DB CHECK requires receipt_type='return' to carry
+     * original_receipt_id + return_reason. NO payment row is written (pos_receipt_payments
+     * has CHECK amount > 0; the summary service reads pos_receipts, not payments, so a
+     * return needs no tender row for these tests).
+     */
+    protected function seedReturn(Location $location, Terminal $terminal, string $postedAt, string $negativeTotal, Receipt $original, string $reason = 'customer_request'): Receipt
     {
-        $receipt = $this->seedReceipt($location, $terminal, $postedAt, $lineTotal, $type);
+        return Receipt::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $location->company_id,
+            'location_id' => $location->id,
+            'terminal_id' => $terminal->id,
+            'cashier_id' => $this->owner->id,
+            'cashier_name' => 'Owner Cashier',
+            'receipt_type' => ReceiptType::Return,
+            'original_receipt_id' => $original->id,
+            'return_reason' => $reason,
+            'posted_at' => $postedAt,
+            'subtotal' => $negativeTotal,
+            'tax_amount' => '0.000',
+            'total' => $negativeTotal,
+            'training_flag' => false,
+        ]);
+    }
+
+    protected function seedReceiptWithLine(Product $product, Location $location, Terminal $terminal, string $postedAt, string $lineTotal, string $quantity): Receipt
+    {
+        $receipt = $this->seedReceipt($location, $terminal, $postedAt, $lineTotal);
 
         ReceiptLine::create([
             'receipt_id' => $receipt->id,
@@ -287,7 +315,7 @@ trait InteractsWithOwnerReporting
 }
 ```
 
-> **Implementer note:** This is copied verbatim from the proven `OwnerReportingTest` helpers (generalized with the `ReceiptType $type` param + negative totals for returns). If any factory/field has drifted, open `OwnerReportingTest.php` and match it exactly. A later cleanup can re-point `OwnerReportingTest` at this trait (out of scope here to avoid touching a green test).
+> **Implementer note:** `seedReceipt`/`seedReceiptWithLine`/`companyHeaders` are copied from the proven (green) `OwnerReportingTest` helpers — do NOT change their insert shape. `seedReturn` is the new return-aware helper (sets `original_receipt_id` + `return_reason`, writes no payment row). If any factory/field has drifted, open `OwnerReportingTest.php` and match it exactly. A later cleanup can re-point `OwnerReportingTest` at this trait (out of scope here to avoid touching a green test).
 
 - [ ] **Step 2: Verify the existing suite still green (no source changed)**
 
@@ -324,7 +352,6 @@ namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Application\DTOs\Reports\DateRangeData;
 use App\Modules\Accounting\Application\Services\Reports\OwnerSalesSummaryService;
-use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\Product\Domain\Product;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -350,10 +377,10 @@ final class OwnerSalesSummaryServiceTest extends TestCase
     public function test_summary_separates_gross_sales_returns_and_computes_deltas(): void
     {
         $product = Product::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->company->id, 'name' => 'Widget', 'sku' => 'W1']);
-        // current window: sales 100 + 200, return -50, items 2 + 3
-        $this->seedReceiptWithLine($product, $this->locationA, $this->terminalA, '2026-06-10 10:00:00', '100.00', '2.0000');
+        // current window: sales 100 + 200, return -50 (references sale #1), items 2 + 3
+        $sale1 = $this->seedReceiptWithLine($product, $this->locationA, $this->terminalA, '2026-06-10 10:00:00', '100.00', '2.0000');
         $this->seedReceiptWithLine($product, $this->locationB, $this->terminalB, '2026-06-11 10:00:00', '200.00', '3.0000');
-        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-12 10:00:00', '-50.00', ReceiptType::Return);
+        $this->seedReturn($this->locationA, $this->terminalA, '2026-06-12 10:00:00', '-50.00', $sale1);
         // prior window (2026-06-01..06-08): sale 150
         $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-05 10:00:00', '150.00');
 
@@ -402,8 +429,23 @@ final class OwnerSalesSummaryServiceTest extends TestCase
 
         $this->assertSame('66.67', $summary->delta->salesCountPct);
     }
+
+    public function test_average_basket_rounds_half_away_from_zero(): void
+    {
+        // gross 100.01 over 2 sales → 50.005 → 50.01 (round, not truncate), EUR scale 2
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-10 10:00:00', '100.00');
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-11 10:00:00', '0.01');
+
+        $summary = $this->app->make(OwnerSalesSummaryService::class)->summary(
+            $this->range(), [$this->company->id], [$this->locationA->id],
+        );
+
+        $this->assertSame('50.01', $summary->averageBasket);
+    }
 }
 ```
+
+> **Implementer note:** the `Company` factory default currency is EUR (verified — `CompanyFactory:49`), so the summary formats at scale 2 and these scale-2 string assertions are correct. If a future fixture overrides the company to TND (scale 3), the expected strings become scale 3.
 
 - [ ] **Step 2: Run test to verify it fails** — `cd apps/api && ./vendor/bin/phpunit tests/Feature/Accounting/OwnerSalesSummaryServiceTest.php` → FAIL (service missing).
 
@@ -458,7 +500,7 @@ final class OwnerSalesSummaryService
         );
 
         $averageBasket = $current['saleCount'] > 0
-            ? CurrencyScale::bcformatStrict(bcdiv($current['gross'], (string) $current['saleCount'], $scale + 1), $scale)
+            ? CurrencyScale::bcround(bcdiv($current['gross'], (string) $current['saleCount'], $scale + 2), $scale)
             : null;
 
         return new SalesSummaryData(
@@ -545,20 +587,8 @@ final class OwnerSalesSummaryService
 
         $raw = bcmul(bcdiv(bcsub($current, $prior, 8), $prior, 8), '100', 6);
 
-        return $this->bcround($raw, 2);
-    }
-
-    /** Round half away from zero to $scale decimals (percent is not currency-scaled). */
-    private function bcround(string $number, int $scale): string
-    {
-        if (! str_contains($number, '.')) {
-            return bcadd($number, '0', $scale);
-        }
-        $increment = '0.'.str_repeat('0', $scale).'5';
-
-        return str_starts_with($number, '-')
-            ? bcsub($number, $increment, $scale)
-            : bcadd($number, $increment, $scale);
+        // Round (not truncate) at the boundary — percent is NOT currency-scaled.
+        return CurrencyScale::bcround($raw, 2);
     }
 
     private function zero(string $currency, int $scale): SalesSummaryData
@@ -614,7 +644,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Accounting;
 
-use App\Modules\POS\Domain\Enums\ReceiptType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\Feature\Accounting\Concerns\InteractsWithOwnerReporting;
@@ -634,8 +663,8 @@ final class SalesSummaryEndpointTest extends TestCase
     public function test_owner_can_fetch_sales_summary_with_returns(): void
     {
         Sanctum::actingAs($this->owner);
-        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-10 10:00:00', '120.00');
-        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-11 10:00:00', '-20.00', ReceiptType::Return);
+        $sale = $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-10 10:00:00', '120.00');
+        $this->seedReturn($this->locationA, $this->terminalA, '2026-06-11 10:00:00', '-20.00', $sale);
 
         $this->getJson('/api/v1/reports/sales/summary?from=2026-06-09&to=2026-06-16', $this->companyHeaders())
             ->assertOk()
@@ -1199,7 +1228,7 @@ import { OwnerDashboardPage } from '../features/owner-dashboard'
 
 - [ ] **Step 7: Add the Sidebar entry + delete the orphan**
 - In `Sidebar.tsx`, add a nav module/child "Reports": `{ key: 'reports', href: '/reports', icon: BarChart3, permission: 'ownerReports' }` following the existing nav structure (place sensibly near the top or under an owner group). Label via the sidebar's existing `t()` key mechanism (add the `reports` nav key to the sidebar i18n).
-- `grep -rn "ReportsPage" apps/web/src` and remove every reference, then delete `features/reports/ReportsPage.tsx`.
+- `grep -rn "ReportsPage" apps/web/src` — references are `features/reports/ReportsPage.tsx` AND its colocated test `features/reports/reports.tenantScope.test.tsx` (which imports `ReportsPage`). Delete BOTH (remove the whole `features/reports/` dir if nothing else remains) plus any route/nav import. Confirm no references remain.
 
 - [ ] **Step 8: Run tests + typecheck + lint**
 Run: `cd apps/web && pnpm vitest run src/features/owner-dashboard src/hooks/__tests__/usePermissions.ownerReports.test.ts && pnpm typecheck && pnpm lint --max-warnings=0 src/features/owner-dashboard src/routes/index.tsx src/components/organisms/Sidebar/Sidebar.tsx src/hooks/usePermissions.ts`
@@ -1208,7 +1237,7 @@ Expected: PASS; no dangling `ReportsPage` references.
 - [ ] **Step 9: Commit**
 ```bash
 git add apps/web/src/features/owner-dashboard apps/web/src/features/dashboard/Dashboard.tsx apps/web/src/routes/index.tsx apps/web/src/hooks/usePermissions.ts apps/web/src/components/organisms/Sidebar/Sidebar.tsx apps/web/src/hooks/__tests__/usePermissions.ownerReports.test.ts apps/web/src/locales/en/common.json apps/web/src/locales/fr/common.json
-git rm apps/web/src/features/reports/ReportsPage.tsx
+git rm apps/web/src/features/reports/ReportsPage.tsx apps/web/src/features/reports/reports.tenantScope.test.tsx
 git commit -m "feat(reports): gated owner Reports route + nav; relocate owner overview; retire orphan ReportsPage"
 ```
 
@@ -1254,12 +1283,20 @@ describe('OwnerDashboardFilters location scope', () => {
 - `const locations = useLocationStore((s) => s.locations)`.
 - Render a checkbox per location (`<input type="checkbox" aria-label={loc.name} checked={value.locationIds.includes(loc.id)} onChange={...}>`) + an "All locations" reset that sets `locationIds: []`. Tokens + `t()` keys `reports:ownerDashboard.filters.allLocations` / `...filters.locations`. Tolerate empty `locations` (render nothing/just "All").
 
-- [ ] **Step 4: Wire `location_ids` into ALL owner hooks** — in `OwnerDashboardPage`:
+- [ ] **Step 4: Wire `location_ids` into ALL owner hooks** — in `OwnerDashboardPage`, build the conditional spread INSIDE the memo callbacks (no external closure — `react-hooks/exhaustive-deps` runs as a warning and the lint step uses `--max-warnings=0`):
 ```tsx
-const locationParam = filters.locationIds.length > 0 ? { location_ids: filters.locationIds } : {}
-const dateParams = useMemo(() => ({ from: filters.from, to: filters.to, ...locationParam }), [filters.from, filters.to, filters.locationIds])
+const dateParams = useMemo(() => ({
+  from: filters.from,
+  to: filters.to,
+  ...(filters.locationIds.length > 0 ? { location_ids: filters.locationIds } : {}),
+}), [filters.from, filters.to, filters.locationIds])
+
+const stockParams = useMemo(() => ({
+  threshold_pct: 100,
+  ...(filters.locationIds.length > 0 ? { location_ids: filters.locationIds } : {}),
+}), [filters.locationIds])
 ```
-Pass `dateParams` into `useSalesByLocation`, `useTopSkus`, `useRevenueByCategory`, `usePaymentMethodBreakdown`, `useCashRegisterReconciliation`, `useSalesSummary`. For `useLowStockAlerts`, pass `{ threshold_pct: 100, ...locationParam }` (its `StockAlertsParams` already accepts `location_ids`). Initialize `defaultFilters()` with `locationIds: []`.
+Pass `dateParams` into `useSalesByLocation`, `useTopSkus`, `useRevenueByCategory`, `usePaymentMethodBreakdown`, `useCashRegisterReconciliation`, `useSalesSummary`; pass `stockParams` into `useLowStockAlerts` (`StockAlertsParams` already accepts `location_ids`). Initialize `defaultFilters()` with `locationIds: []`.
 
 - [ ] **Step 5: Run tests + typecheck + lint** — `cd apps/web && pnpm vitest run src/features/owner-dashboard && pnpm typecheck && pnpm lint --max-warnings=0 src/features/owner-dashboard` → PASS.
 
