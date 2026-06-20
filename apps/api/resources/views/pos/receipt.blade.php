@@ -326,7 +326,7 @@
                     {{ $company->address_postal_code }} {{ $company->address_city }}<br>
                 @endif
                 @if(!empty($sellerTaxId))
-                    {{ __('pos.tax_id') }}: {{ $sellerTaxId }}<br>
+                    {{ ($sellerTaxLabel ?? null) ?? __('pos.tax_id') }}: {{ $sellerTaxId }}<br>
                 @endif
                 @if($company->phone)
                     {{ __('pos.tel') }}: {{ $company->phone }}<br>

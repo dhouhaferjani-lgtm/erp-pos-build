@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Modules\Company\Application\Services\TaxIdentityResolver;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
@@ -102,6 +103,7 @@ final class GenerateZReportWithCountsTest extends TestCase
             $this->app->make(FraudSettingsResolver::class),
             $this->app->make(ZReportCountRepository::class),
             $this->app->make(PaymentToleranceQueryService::class),
+            $this->app->make(TaxIdentityResolver::class),
         );
         $this->location = Location::factory()->create(['company_id' => $this->company->id]);
         $this->cashier = User::factory()->create(['tenant_id' => $this->tenant->id]);

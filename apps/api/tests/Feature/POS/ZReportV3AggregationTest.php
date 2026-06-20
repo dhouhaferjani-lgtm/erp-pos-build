@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Modules\Company\Application\Services\TaxIdentityResolver;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
@@ -70,6 +71,7 @@ class ZReportV3AggregationTest extends TestCase
             $this->app->make(FraudSettingsResolver::class),
             $this->app->make(ZReportCountRepository::class),
             $this->app->make(PaymentToleranceQueryService::class),
+            $this->app->make(TaxIdentityResolver::class),
         );
 
         $this->tenant = Tenant::factory()->create();

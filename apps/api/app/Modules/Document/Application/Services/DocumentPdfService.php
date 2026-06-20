@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Application\Services;
 
+use App\Modules\Company\Application\Services\TaxIdentityResolver;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FacturXProfile;
 use App\Services\CompanyConfigService;
+use App\Shared\Contracts\Company\TaxIdentityData;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DomPdf;
@@ -23,6 +26,7 @@ final class DocumentPdfService
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly FacturXService $facturXService,
         private readonly FacturXPdfGenerator $facturXPdfGenerator,
+        private readonly TaxIdentityResolver $taxIdentityResolver,
     ) {}
 
     private function scale(): int
@@ -38,18 +42,8 @@ final class DocumentPdfService
      */
     public function generate(Document $document, bool $stream = false): DomPdf
     {
-        $document->load(['company.tenant', 'partner', 'lines']);
-
-        $company = $document->company;
-
-        // Only load vehicle context if Vehicle module is enabled
-        $hasVehicleModule = $this->configService->getConfigForTenant($company->tenant)->hasModule('Vehicle');
-        if ($hasVehicleModule) {
-            $document->load(['vehicleContext']);
-        }
+        $data = $this->viewDataFor($document);
         $templateView = $this->resolveTemplate($document);
-
-        $data = $this->prepareData($document, $company);
 
         $pdf = Pdf::loadView($templateView, $data);
 
@@ -140,8 +134,28 @@ final class DocumentPdfService
     }
 
     /**
-     * Prepare data for the PDF template.
+     * Load the relations the templates and seller tax-identity resolution need,
+     * then build the view data. Public so render paths (and tests) share exactly
+     * the data the PDF is built from.
      *
+     * @return array<string, mixed>
+     */
+    public function viewDataFor(Document $document): array
+    {
+        $document->load(['company.tenant', 'partner', 'lines', 'location']);
+
+        $company = $document->company;
+
+        // Only load vehicle context if Vehicle module is enabled
+        $hasVehicleModule = $this->configService->getConfigForTenant($company->tenant)->hasModule('Vehicle');
+        if ($hasVehicleModule) {
+            $document->load(['vehicleContext']);
+        }
+
+        return $this->prepareData($document, $company);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function prepareData(Document $document, Company $company): array
@@ -149,9 +163,18 @@ final class DocumentPdfService
         $locale = $company->locale ?? 'en';
         $currency = $document->currency ?? $company->currency;
 
+        // Resolve the seller tax identity from the document's establishment
+        // (branch override → company fallback), mirroring the Factur-X XML path
+        // so the human-readable PDF and the embedded XML agree. documents.location_id
+        // is nullable, so fall back to the company when absent.
+        $seller = $this->sellerTaxIdentity($company, $document->location);
+
         return [
             'document' => $document,
             'company' => $company,
+            'sellerTaxId' => $seller['taxId'],
+            'sellerVat' => $seller['vatNumber'],
+            'sellerTaxLabel' => $seller['taxIdLabel'],
             'partner' => $document->partner,
             'lines' => $document->lines,
             'vehicle' => $document->vehicleContext ? (object) $document->vehicleContext->getVehicleSnapshot() : null,
@@ -161,6 +184,32 @@ final class DocumentPdfService
             'formatMoney' => fn (string|float|null $amount) => $this->formatMoney($amount, $currency, $locale),
             'formatDate' => fn (Carbon|string|null $date) => $this->formatDate($date, $company->date_format, $locale),
             'formatNumber' => fn (string|float|null $number, int $decimals = 2) => $this->formatNumber($number, $decimals, $locale),
+        ];
+    }
+
+    /**
+     * Resolve the seller (company) tax identity for display, applying the branch
+     * override when the document is tied to an establishment and falling back to
+     * the company otherwise.
+     *
+     * @return array{taxId: ?string, vatNumber: ?string, taxIdLabel: ?string}
+     */
+    private function sellerTaxIdentity(Company $company, ?Location $location): array
+    {
+        $identity = $location !== null
+            ? $this->taxIdentityResolver->resolve($location)
+            : new TaxIdentityData(
+                taxId: $company->tax_id,
+                vatNumber: $company->vat_number,
+                legalIdentifiers: [],
+                countryCode: $company->country_code,
+                taxIdLabel: $this->taxIdentityResolver->labelForCountry($company->country_code),
+            );
+
+        return [
+            'taxId' => $identity->taxId,
+            'vatNumber' => $identity->vatNumber,
+            'taxIdLabel' => $identity->taxIdLabel,
         ];
     }
 
