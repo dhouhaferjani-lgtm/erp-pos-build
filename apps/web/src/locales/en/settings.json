@@ -284,6 +284,10 @@
         "active": "Active",
         "recoverable": "Recoverable/Deductible",
         "recoverableHelp": "If checked, this tax can be deducted (like VAT for registered companies). If unchecked, it adds to product cost (like stamp duties).",
+        "stampDuty": "Stamp duty",
+        "stampDutyHelp": "Mark this as a fixed fiscal stamp (e.g. the Tunisian timbre fiscal). Stamp duties are never recoverable.",
+        "effectiveFrom": "Effective from",
+        "effectiveTo": "Effective to",
         "sequenceOrder": "Sequence Order"
       },
       "messages": {

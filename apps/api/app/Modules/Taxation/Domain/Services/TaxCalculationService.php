@@ -58,6 +58,11 @@ class TaxCalculationService
         $documentType = $document->fiscal_category?->value ?? $document->type->value;
         $countryCode = $company->country_code;
 
+        // Resolve the rate table as of the document's own date, so a back-dated
+        // or future document gets the rate in force on that date (not just the
+        // currently-active row). documents.document_date is NOT NULL.
+        $documentDate = $document->document_date->toDateString();
+
         $scale = $this->scaleFor($document);
 
         // Get line items subtotal (before any taxes)
@@ -72,6 +77,7 @@ class TaxCalculationService
             ->where('country_code', $countryCode)
             ->where('is_active', true)
             ->forDocumentType($documentType)
+            ->effectiveOn($documentDate)
             ->ordered()
             ->get();
 
