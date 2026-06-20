@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\POS\Domain\Terminal;
@@ -223,6 +224,22 @@ final class DemoPharmacySeederTest extends TestCase
             app(\App\Modules\Accounting\Application\Services\PartnerBalanceService::class)
                 ->refreshPartnerBalance($debtor->company_id, $debtor->id);
             $this->assertTrue(bccomp($debtor->fresh()->receivable_balance, '0', 3) === 1);
+        });
+    }
+
+    public function test_seeds_purchase_order_pipeline(): void
+    {
+        $this->seed(DemoPharmacySeeder::class);
+        Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail()->run(function () {
+            $byStatus = Document::where('type', 'purchase_order')
+                ->get()->groupBy(fn ($d) => $d->status->value);
+            $this->assertArrayHasKey('draft', $byStatus->toArray());
+            $this->assertArrayHasKey('confirmed', $byStatus->toArray()); // incl. the partially-received one
+            $this->assertArrayHasKey('received', $byStatus->toArray());
+            // fully-received PO has sum(quantity_received) > 0 on its lines
+            $received = Document::where('type', 'purchase_order')
+                ->where('status', 'received')->firstOrFail();
+            $this->assertGreaterThan(0, (float) $received->lines()->sum('quantity_received'));
         });
     }
 

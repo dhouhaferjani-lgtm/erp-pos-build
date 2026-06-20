@@ -17,8 +17,17 @@ use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\Services\PurchaseOrderService;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\GoodsReceiptService;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
@@ -344,6 +353,8 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
             $this->seedTunisiaStock($this->company, $products);
 
             $this->seedTunisiaBalances($this->company);
+
+            $this->seedTunisiaPurchaseOrders($this->company, $this->location);
         });
     }
 
@@ -665,5 +676,180 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
 
             $user->update(['pos_pin' => Hash::make($def['pin'])]);
         }
+    }
+
+    /**
+     * Seed a 4-state purchase-order pipeline against the Tunisia warehouse.
+     *
+     * Creates four POs representing the full document lifecycle:
+     *   DEMO-PO-0001 — draft (created only, not confirmed)
+     *   DEMO-PO-0002 — confirmed (confirmed, no goods receipt)
+     *   DEMO-PO-0003 — partially-received (confirmed + receiveGoods on first line)
+     *   DEMO-PO-0004 — fully-received (confirmed + receiveAll → status=received)
+     *
+     * Additive guard: skips entirely if any DEMO-PO-* documents already exist
+     * so double-run / CI re-runs are safe.
+     *
+     * Prices are TND decimal(N,3) strings via CurrencyScale::bcformat(..., 3).
+     * Services resolved via $this->container per Agent rule 13 (no app() helper).
+     */
+    protected function seedTunisiaPurchaseOrders(Company $company, Location $warehouse): void
+    {
+        // Additive guard — skip if already seeded.
+        if (Document::where('document_number', 'like', 'DEMO-PO-%')->exists()) {
+            $this->command->info('PO pipeline already seeded — skipping seedTunisiaPurchaseOrders().');
+
+            return;
+        }
+
+        // Resolve the supplier seeded by Task 7 (seedTunisiaBalances).
+        // Falls back to any supplier in the company if that partner doesn't exist yet.
+        $supplier = Partner::where('company_id', $company->id)
+            ->where('code', 'SUPP-PAYABLE-01')
+            ->first()
+            ?? Partner::where('company_id', $company->id)
+                ->where('type', PartnerType::Supplier->value)
+                ->first();
+
+        if ($supplier === null) {
+            $this->command->warn('No supplier found — skipping seedTunisiaPurchaseOrders().');
+
+            return;
+        }
+
+        // Pick 4 physical products from the catalog (non-batch-tracked, simpler receipt).
+        /** @var Collection<int, Product> $catalog */
+        $catalog = Product::where('company_id', $company->id)
+            ->where('is_physical', true)
+            ->where('requires_batch_tracking', false)
+            ->take(4)
+            ->get();
+
+        if ($catalog->count() < 2) {
+            $this->command->warn('Insufficient physical products — skipping seedTunisiaPurchaseOrders().');
+
+            return;
+        }
+
+        /** @var PurchaseOrderService $poService */
+        $poService = $this->container->make(PurchaseOrderService::class);
+        /** @var GoodsReceiptService $grService */
+        $grService = $this->container->make(GoodsReceiptService::class);
+
+        $tenantId  = $company->tenant_id;
+        $companyId = $company->id;
+
+        // Bind the company context so CurrencyScaleResolver::getScale() can resolve the
+        // TND scale (3 dp) without an HTTP request / CompanyContextMiddleware present.
+        // This is the canonical seeder pattern for console/queue callers per CLAUDE.md Rule 19.
+        /** @var CompanyContext $companyCtx */
+        $companyCtx = $this->container->make(CompanyContext::class);
+        $companyCtx->setCompanyId($companyId);
+
+        // Helper: create a PO with a given document_number and N lines.
+        // $lineSpecs: array of [product, qty_string, unit_price_tnd_string]
+        $createPo = function (string $docNumber, array $lineSpecs) use ($tenantId, $companyId, $company, $warehouse, $supplier): Document {
+            /** @var Document $po */
+            $po = Document::create([
+                'id'              => Str::uuid()->toString(),
+                'tenant_id'       => $tenantId,
+                'company_id'      => $companyId,
+                'location_id'     => $warehouse->id,
+                'partner_id'      => $supplier->id,
+                'type'            => DocumentType::PurchaseOrder,
+                'fiscal_category' => FiscalCategory::NonFiscal,
+                'fiscal_status'   => FiscalStatus::Draft,
+                'status'          => DocumentStatus::Draft,
+                'document_number' => $docNumber,
+                'document_date'   => now()->toDateString(),
+                'due_date'        => now()->addDays(30)->toDateString(),
+                'currency'        => 'TND',
+                'subtotal'        => CurrencyScale::bcformat(0, 3),
+                'discount_amount' => CurrencyScale::bcformat(0, 3),
+                'tax_amount'      => CurrencyScale::bcformat(0, 3),
+                'total'           => CurrencyScale::bcformat(0, 3),
+                'balance_due'     => CurrencyScale::bcformat(0, 3),
+                'is_historical'   => false,
+            ]);
+
+            $lineNumber = 1;
+            $subtotal   = '0.000';
+
+            foreach ($lineSpecs as [$product, $qty, $unitPrice]) {
+                /** @var Product $product */
+                $lineTotal = bcmul($qty, $unitPrice, 3);
+                $subtotal  = bcadd($subtotal, $lineTotal, 3);
+
+                DocumentLine::create([
+                    'id'               => Str::uuid()->toString(),
+                    'document_id'      => $po->id,
+                    'product_id'       => $product->id,
+                    'product_code'     => $product->sku ?? $product->barcode,
+                    'line_number'      => $lineNumber++,
+                    'description'      => $product->name,
+                    'quantity'         => $qty,
+                    'quantity_received' => '0.0000',
+                    'quantity_delivered' => '0.0000',
+                    'unit_price'       => $unitPrice,
+                    'line_total'       => $lineTotal,
+                    'allocated_costs'  => CurrencyScale::bcformat(0, 6),
+                    'tax_rate'         => '19.00',
+                ]);
+            }
+
+            // Update document totals from the lines.
+            $taxAmount = bcmul($subtotal, '0.190', 3);
+            $total     = bcadd($subtotal, $taxAmount, 3);
+            $po->update([
+                'subtotal'    => $subtotal,
+                'tax_amount'  => $taxAmount,
+                'total'       => $total,
+                'balance_due' => $total,
+            ]);
+
+            $po->load('lines');
+
+            return $po;
+        };
+
+        // Build line specs using up to 4 catalog products.
+        $p0 = $catalog->get(0);
+        $p1 = $catalog->get(1);
+        $p2 = $catalog->get(2) ?? $p0;
+        $p3 = $catalog->get(3) ?? $p1;
+
+        // PO-0001: DRAFT — created only, no confirm.
+        $createPo('DEMO-PO-0001', [
+            [$p0, '20.0000', CurrencyScale::bcformat(12, 3)],
+            [$p1, '15.0000', CurrencyScale::bcformat(18, 3)],
+        ]);
+        $this->command->info('✓ DEMO-PO-0001 — draft');
+
+        // PO-0002: CONFIRMED — confirm, no receipt.
+        $po2 = $createPo('DEMO-PO-0002', [
+            [$p0, '30.0000', CurrencyScale::bcformat(12, 3)],
+            [$p2, '10.0000', CurrencyScale::bcformat(25, 3)],
+        ]);
+        $poService->confirm($po2);
+        $this->command->info('✓ DEMO-PO-0002 — confirmed');
+
+        // PO-0003: PARTIALLY RECEIVED — confirm + receiveGoods on first line only.
+        $po3 = $createPo('DEMO-PO-0003', [
+            [$p1, '50.0000', CurrencyScale::bcformat(8, 3)],
+            [$p3, '40.0000', CurrencyScale::bcformat(15, 3)],
+        ]);
+        $po3 = $poService->confirm($po3);
+        $firstLine = $po3->lines->first();
+        $grService->receiveGoods($po3, [$firstLine->id => '20.0000']);
+        $this->command->info('✓ DEMO-PO-0003 — partially received (stays confirmed)');
+
+        // PO-0004: FULLY RECEIVED — confirm + receiveAll → status=received.
+        $po4 = $createPo('DEMO-PO-0004', [
+            [$p2, '25.0000', CurrencyScale::bcformat(20, 3)],
+            [$p3, '35.0000', CurrencyScale::bcformat(10, 3)],
+        ]);
+        $po4 = $poService->confirm($po4);
+        $grService->receiveAll($po4);
+        $this->command->info('✓ DEMO-PO-0004 — fully received');
     }
 }
