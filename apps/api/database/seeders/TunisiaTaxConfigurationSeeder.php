@@ -64,13 +64,14 @@ class TunisiaTaxConfigurationSeeder extends Seeder
                     'is_active' => true,
                     'sequence_order' => $rate['sequence_order'],
                     'stacks_on' => 'SUBTOTAL',
+                    // Only real FiscalCategory tokens — the calc keys on
+                    // documents.fiscal_category, so non-category tokens (e.g.
+                    // 'QUOTATION', 'PURCHASE_INVOICE') would never match.
                     'applicable_document_types' => [
                         'TAX_INVOICE',
                         'FISCAL_RECEIPT',
                         'CREDIT_NOTE',
-                        'PURCHASE_INVOICE',
                         'DELIVERY_NOTE',
-                        'QUOTATION',
                     ],
                     'is_stamp_duty' => false,
                     'is_recoverable' => true, // VAT is recoverable for registered companies
@@ -89,18 +90,36 @@ class TunisiaTaxConfigurationSeeder extends Seeder
                 'code' => 'STAMP_TAX_INVOICE',
                 'amount' => '1.000',
                 'document_types' => ['TAX_INVOICE'],
+                // Art. 117-6° CDET: applies to every Tunisian commercial invoice.
+                'is_active' => true,
+                'metadata' => null,
             ],
             [
                 'name' => 'Timbre Fiscal - Ticket',
                 'code' => 'STAMP_FISCAL_RECEIPT',
                 'amount' => '0.100',
                 'document_types' => ['FISCAL_RECEIPT'],
+                // Art. 117-10° / 135 bis CDET (LF 2022): the 0.100 TND ticket
+                // timbre is levied ONLY by grandes surfaces commerciales,
+                // multi-department stores under the DGE/DME directorate, and
+                // foreign-brand franchisees — NOT ordinary retailers or a
+                // parapharmacy. Seeded OFF so ordinary tenants do not
+                // over-collect it; a qualifying tenant activates it via the tax
+                // configuration UI.
+                'is_active' => false,
+                'metadata' => [
+                    'applicability' => 'grandes_surfaces_dge_dme_or_foreign_franchise',
+                    'legal_reference' => 'Code des droits d\'enregistrement et de timbre, Art. 117-10° / 135 bis (LF 2022)',
+                    'gated_default_off' => true,
+                ],
             ],
             [
                 'name' => 'Timbre Fiscal - Avoir',
                 'code' => 'STAMP_CREDIT_NOTE',
                 'amount' => '0.600',
                 'document_types' => ['CREDIT_NOTE'],
+                'is_active' => true,
+                'metadata' => null,
             ],
         ];
 
@@ -117,12 +136,13 @@ class TunisiaTaxConfigurationSeeder extends Seeder
                     'fixed_amount' => $stamp['amount'],
                     'applies_to' => 'DOCUMENT_TOTAL',
                     'is_default' => false,
-                    'is_active' => true,
+                    'is_active' => $stamp['is_active'],
                     'sequence_order' => 99,
                     'stacks_on' => 'SUBTOTAL',
                     'applicable_document_types' => $stamp['document_types'],
                     'is_stamp_duty' => true,
                     'is_recoverable' => false, // Stamp duties are not recoverable
+                    'metadata' => $stamp['metadata'],
                 ]
             );
         }

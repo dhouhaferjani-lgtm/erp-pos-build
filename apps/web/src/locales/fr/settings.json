@@ -284,6 +284,10 @@
         "active": "Actif",
         "recoverable": "Récupérable/Déductible",
         "recoverableHelp": "Si coché, cette taxe peut être déduite (comme la TVA pour les entreprises assujetties). Si décoché, elle s'ajoute au coût du produit (comme les timbres fiscaux).",
+        "stampDuty": "Timbre fiscal",
+        "stampDutyHelp": "Marquer comme timbre fiscal à montant fixe (ex. le timbre fiscal tunisien). Les timbres fiscaux ne sont jamais déductibles.",
+        "effectiveFrom": "En vigueur à partir du",
+        "effectiveTo": "En vigueur jusqu'au",
         "sequenceOrder": "Ordre de séquence"
       },
       "messages": {

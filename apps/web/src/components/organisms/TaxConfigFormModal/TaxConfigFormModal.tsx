@@ -40,6 +40,9 @@ const defaultFormData: TaxConfigurationFormData = {
   applicable_document_types: [],
   is_active: true,
   is_recoverable: true,
+  is_stamp_duty: false,
+  effective_from: null,
+  effective_to: null,
 }
 
 export function TaxConfigFormModal({ isOpen, onClose, onSaved, editingTax }: TaxConfigFormModalProps) {
@@ -61,6 +64,10 @@ export function TaxConfigFormModal({ isOpen, onClose, onSaved, editingTax }: Tax
         applicable_document_types: editingTax.applicable_document_types,
         is_active: editingTax.is_active,
         is_recoverable: editingTax.is_recoverable,
+        is_stamp_duty: editingTax.is_stamp_duty,
+        is_default: editingTax.is_default,
+        effective_from: editingTax.effective_from,
+        effective_to: editingTax.effective_to,
         sequence_order: editingTax.sequence_order,
       }
     }
@@ -215,7 +222,7 @@ export function TaxConfigFormModal({ isOpen, onClose, onSaved, editingTax }: Tax
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
                     <span className="ms-2 text-sm text-gray-700">
-                      {t(`sales:documents.types.${getDocumentTypeTranslationKey(docType.value)}`)}
+                      {t(`sales:documents.types.${getDocumentTypeTranslationKey(docType.value)}`, { defaultValue: docType.label })}
                     </span>
                   </label>
                 ))}
@@ -246,6 +253,46 @@ export function TaxConfigFormModal({ isOpen, onClose, onSaved, editingTax }: Tax
             <p className="text-xs text-gray-500 mt-1 ms-6">
               {t('settings:tax.configurations.form.recoverableHelp')}
             </p>
+          </div>
+          <div>
+            <label className="flex items-center">
+              <input
+                type="checkbox"
+                checked={taxFormData.is_stamp_duty ?? false}
+                onChange={(e) => { handleTaxFormChange('is_stamp_duty', e.target.checked); }}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <span className="ms-2 text-sm text-gray-700">{t('settings:tax.configurations.form.stampDuty')}</span>
+            </label>
+            <p className="text-xs text-gray-500 mt-1 ms-6">
+              {t('settings:tax.configurations.form.stampDutyHelp')}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="tax-effective-from" className="block text-sm font-medium text-gray-700 mb-1">
+                {t('settings:tax.configurations.form.effectiveFrom')}
+              </label>
+              <input
+                id="tax-effective-from"
+                type="date"
+                value={taxFormData.effective_from ?? ''}
+                onChange={(e) => { handleTaxFormChange('effective_from', e.target.value || null); }}
+                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              />
+            </div>
+            <div>
+              <label htmlFor="tax-effective-to" className="block text-sm font-medium text-gray-700 mb-1">
+                {t('settings:tax.configurations.form.effectiveTo')}
+              </label>
+              <input
+                id="tax-effective-to"
+                type="date"
+                value={taxFormData.effective_to ?? ''}
+                onChange={(e) => { handleTaxFormChange('effective_to', e.target.value || null); }}
+                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              />
+            </div>
           </div>
         </div>
         <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">

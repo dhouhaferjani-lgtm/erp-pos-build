@@ -101,6 +101,31 @@ final class TenantInitializationTaxTest extends TestCase
     }
 
     /**
+     * A country with seeded standard VAT data but no dedicated tax-config seeder
+     * (DE) must still receive a DATA-DRIVEN default_tax_rate from country_tax_rates
+     * (19%), not a hardcoded fallback. Guards the de-hardcoding of setDefaultTaxRate.
+     */
+    public function test_country_with_rate_data_but_no_seeder_uses_data_driven_default_rate(): void
+    {
+        [$tenant, $company, $user] = $this->createTenantCompanyUser('DE', 'EUR');
+
+        $this->service->initializeForNewRegistration($tenant, $company, $user);
+
+        $fresh = Company::findOrFail($company->id);
+
+        // No tax-config seeder is registered for DE → the FK stays null...
+        $this->assertNull($fresh->default_tax_configuration_id);
+
+        // ...but the default rate must be the German standard VAT (19%) read from
+        // country_tax_rates, not a hardcoded 0.00.
+        $rawRate = (string) $fresh->default_tax_rate;
+        if (! is_numeric($rawRate)) {
+            $this->fail("default_tax_rate must be numeric, got '{$rawRate}'");
+        }
+        $this->assertSame(0, bccomp($rawRate, '19.00', 2), "Expected ≈ 19.00 from data, got '{$rawRate}'");
+    }
+
+    /**
      * For an unsupported country (US) the FK should remain null and the rate 0.00.
      */
     public function test_unsupported_country_leaves_tax_configuration_id_null(): void

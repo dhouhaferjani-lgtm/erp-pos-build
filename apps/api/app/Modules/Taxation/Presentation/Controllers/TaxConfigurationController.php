@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Taxation\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Taxation\Presentation\Resources\TaxConfigurationResource;
 use Illuminate\Http\JsonResponse;
@@ -83,6 +84,10 @@ class TaxConfigurationController extends Controller
             'applicable_document_types.*' => ['string'],
             'is_active' => ['boolean'],
             'is_recoverable' => ['boolean'],
+            'is_stamp_duty' => ['boolean'],
+            'is_default' => ['boolean'],
+            'effective_from' => ['nullable', 'date'],
+            'effective_to' => ['nullable', 'date', 'after_or_equal:effective_from'],
             'metadata' => ['nullable', 'array'],
         ], [
             'percentage_rate.regex' => 'The percentage rate must have at most 2 decimal places.',
@@ -137,6 +142,10 @@ class TaxConfigurationController extends Controller
             'applicable_document_types.*' => ['string'],
             'is_active' => ['boolean'],
             'is_recoverable' => ['boolean'],
+            'is_stamp_duty' => ['boolean'],
+            'is_default' => ['boolean'],
+            'effective_from' => ['nullable', 'date'],
+            'effective_to' => ['nullable', 'date', 'after_or_equal:effective_from'],
             'metadata' => ['nullable', 'array'],
         ], [
             'percentage_rate.regex' => 'The percentage rate must have at most 2 decimal places.',
@@ -195,21 +204,23 @@ class TaxConfigurationController extends Controller
     }
 
     /**
-     * Get available document types for dropdown
+     * Get the applicability tokens admins can tag a tax to.
+     *
+     * These MUST be the values TaxCalculationService keys on — the document's
+     * `fiscal_category` (a NOT NULL column whose domain is the FiscalCategory
+     * enum). Sourcing the list straight from the enum keeps the dropdown and the
+     * matcher in lockstep; an ad-hoc list (e.g. "QUOTATION") would offer tokens
+     * that silently never match a real document.
      */
     public function documentTypes(): JsonResponse
     {
-        // Get document types from the DocumentType enum
-        $documentTypes = [
-            ['value' => 'QUOTATION', 'label' => 'Quotation'],
-            ['value' => 'SALES_ORDER', 'label' => 'Sales Order'],
-            ['value' => 'DELIVERY_NOTE', 'label' => 'Delivery Note'],
-            ['value' => 'TAX_INVOICE', 'label' => 'Tax Invoice'],
-            ['value' => 'FISCAL_RECEIPT', 'label' => 'Fiscal Receipt'],
-            ['value' => 'CREDIT_NOTE', 'label' => 'Credit Note'],
-            ['value' => 'PURCHASE_ORDER', 'label' => 'Purchase Order'],
-            ['value' => 'PURCHASE_INVOICE', 'label' => 'Purchase Invoice'],
-        ];
+        $documentTypes = array_map(
+            fn (FiscalCategory $category): array => [
+                'value' => $category->value,
+                'label' => $category->label(),
+            ],
+            FiscalCategory::cases(),
+        );
 
         return response()->json(['data' => $documentTypes]);
     }

@@ -17,7 +17,6 @@ use App\Modules\Taxation\Domain\Repositories\VatDataRepositoryInterface;
 use App\Modules\Taxation\Domain\Repositories\VatPeriodRepositoryInterface;
 use App\Modules\Taxation\Domain\Repositories\WithholdingCertificateRepositoryInterface;
 use App\Modules\Taxation\Domain\Repositories\WithholdingTaxRuleRepositoryInterface;
-use App\Modules\Taxation\Domain\Services\StampDutyService;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Taxation\Domain\Services\TaxResolutionService;
 use App\Modules\Taxation\Domain\Services\VatCreditService;
@@ -39,7 +38,6 @@ class TaxationServiceProvider extends ServiceProvider
     public function register(): void
     {
         // Register taxation services as singletons
-        $this->app->singleton(StampDutyService::class);
         $this->app->singleton(TaxResolutionService::class);
         $this->app->singleton(TaxCalculationService::class);
 
