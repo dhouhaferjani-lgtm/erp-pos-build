@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Modules\Accounting\Application\Services\PartnerBalanceService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\LocationType;
@@ -14,11 +20,14 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -333,6 +342,8 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
             // seedStockLevels() — only the shops are seeded here.
             $products = Product::where('company_id', $this->company->id)->get();
             $this->seedTunisiaStock($this->company, $products);
+
+            $this->seedTunisiaBalances($this->company);
         });
     }
 
@@ -449,6 +460,148 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                 ],
             );
         }
+    }
+
+    /**
+     * Seed GL-consistent TND partner balances via real JournalEntry + JournalLine rows.
+     *
+     * Creates three stably-coded demo partners and posts journal entries against
+     * the Tunisia COA system-purpose accounts so that the cached balance columns
+     * (receivable_balance, credit_balance, payable_balance) reflect real GL state
+     * after {@see PartnerBalanceService::refreshPartnerBalance()} is called.
+     *
+     * Pattern mirrors CoffeeShopSeeder::seedPartnerTransactions() (lines 1067–1197).
+     * All amounts are TND (scale 3) via CurrencyScale::bcformat().
+     * Uses firstOrCreate keyed on (company_id, code) for re-run safety.
+     */
+    protected function seedTunisiaBalances(Company $company): void
+    {
+        $companyId = $company->id;
+        $tenantId = $company->tenant_id;
+
+        // --- Create the three demo partners ---
+
+        $debtor = Partner::firstOrCreate(
+            ['company_id' => $companyId, 'code' => 'CUST-DEBTOR-01'],
+            [
+                'tenant_id' => $tenantId,
+                'name' => 'Clinique Al Amal',
+                'type' => PartnerType::Customer,
+                'email' => 'achats@clinique-alamal.tn',
+                'country_code' => 'TN',
+                'is_active' => true,
+            ]
+        );
+
+        $creditCustomer = Partner::firstOrCreate(
+            ['company_id' => $companyId, 'code' => 'CUST-CREDIT-01'],
+            [
+                'tenant_id' => $tenantId,
+                'name' => 'Pharmacie Centrale Tunis',
+                'type' => PartnerType::Customer,
+                'email' => 'credit@pharmacie-centrale.tn',
+                'country_code' => 'TN',
+                'is_active' => true,
+            ]
+        );
+
+        $supplier = Partner::firstOrCreate(
+            ['company_id' => $companyId, 'code' => 'SUPP-PAYABLE-01'],
+            [
+                'tenant_id' => $tenantId,
+                'name' => 'Medis Distribution SARL',
+                'type' => PartnerType::Supplier,
+                'email' => 'commandes@medis-distribution.tn',
+                'country_code' => 'TN',
+                'is_active' => true,
+            ]
+        );
+
+        // --- Resolve GL accounts by system purpose ---
+
+        $receivableAccount = Account::where('company_id', $companyId)
+            ->where('system_purpose', SystemAccountPurpose::CustomerReceivable->value)
+            ->firstOrFail();
+
+        $advanceAccount = Account::where('company_id', $companyId)
+            ->where('system_purpose', SystemAccountPurpose::CustomerAdvance->value)
+            ->firstOrFail();
+
+        $payableAccount = Account::where('company_id', $companyId)
+            ->where('system_purpose', SystemAccountPurpose::SupplierPayable->value)
+            ->firstOrFail();
+
+        $revenueAccount = Account::where('company_id', $companyId)
+            ->where('system_purpose', SystemAccountPurpose::ProductRevenue->value)
+            ->firstOrFail();
+
+        $vatAccount = Account::where('company_id', $companyId)
+            ->where('system_purpose', SystemAccountPurpose::VatCollected->value)
+            ->firstOrFail();
+
+        $cashAccount = Account::where('company_id', $companyId)
+            ->where('system_purpose', SystemAccountPurpose::Cash->value)
+            ->firstOrFail();
+
+        $entrySeq = 7000;
+
+        $createEntry = function (string $description, string $sourceType, array $lines) use ($companyId, $tenantId, &$entrySeq): void {
+            $entry = JournalEntry::create([
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'entry_number' => 'DEMO-BAL-'.$entrySeq++,
+                'entry_date' => now()->subDays(10)->toDateString(),
+                'description' => $description,
+                'status' => JournalEntryStatus::Posted,
+                'source_type' => $sourceType,
+                'posted_at' => now(),
+            ]);
+
+            $lineOrder = 0;
+            foreach ($lines as $line) {
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $line['account_id'],
+                    'partner_id' => $line['partner_id'] ?? null,
+                    'debit' => $line['debit'],
+                    'credit' => $line['credit'],
+                    'description' => $line['description'],
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+        };
+
+        // CUST-DEBTOR-01: Invoice 1 500 TND, partial payment 600 TND → 900 TND outstanding
+        $createEntry('Invoice INV-DEMO-001 - Clinique Al Amal', 'invoice', [
+            ['account_id' => $receivableAccount->id, 'partner_id' => $debtor->id, 'debit' => CurrencyScale::bcformat(1500, 3), 'credit' => CurrencyScale::bcformat(0, 3), 'description' => 'Accounts receivable'],
+            ['account_id' => $revenueAccount->id, 'debit' => CurrencyScale::bcformat(0, 3), 'credit' => CurrencyScale::bcformat(1401, 3), 'description' => 'Sales revenue'],
+            ['account_id' => $vatAccount->id, 'debit' => CurrencyScale::bcformat(0, 3), 'credit' => CurrencyScale::bcformat(99, 3), 'description' => 'VAT collected'],
+        ]);
+        $createEntry('Payment PAY-DEMO-001 - Clinique Al Amal', 'payment', [
+            ['account_id' => $cashAccount->id, 'debit' => CurrencyScale::bcformat(600, 3), 'credit' => CurrencyScale::bcformat(0, 3), 'description' => 'Cash received'],
+            ['account_id' => $receivableAccount->id, 'partner_id' => $debtor->id, 'debit' => CurrencyScale::bcformat(0, 3), 'credit' => CurrencyScale::bcformat(600, 3), 'description' => 'Receivable cleared'],
+        ]);
+
+        // CUST-CREDIT-01: Store credit / advance 350 TND → credit_balance = 350
+        $createEntry('Advance ADV-DEMO-001 - Pharmacie Centrale Tunis', 'payment', [
+            ['account_id' => $cashAccount->id, 'debit' => CurrencyScale::bcformat(350, 3), 'credit' => CurrencyScale::bcformat(0, 3), 'description' => 'Advance received'],
+            ['account_id' => $advanceAccount->id, 'partner_id' => $creditCustomer->id, 'debit' => CurrencyScale::bcformat(0, 3), 'credit' => CurrencyScale::bcformat(350, 3), 'description' => 'Customer advance / store credit'],
+        ]);
+
+        // SUPP-PAYABLE-01: Purchase 3 200 TND → payable_balance = 3 200
+        $createEntry('Purchase PO-DEMO-001 - Medis Distribution', 'purchase', [
+            ['account_id' => $revenueAccount->id, 'debit' => CurrencyScale::bcformat(3200, 3), 'credit' => CurrencyScale::bcformat(0, 3), 'description' => 'Purchase cost'],
+            ['account_id' => $payableAccount->id, 'partner_id' => $supplier->id, 'debit' => CurrencyScale::bcformat(0, 3), 'credit' => CurrencyScale::bcformat(3200, 3), 'description' => 'Supplier payable'],
+        ]);
+
+        // Refresh cached balance columns from the GL for all three partners
+        /** @var PartnerBalanceService $balanceService */
+        $balanceService = app(PartnerBalanceService::class);
+        $balanceService->refreshPartnerBalance($companyId, $debtor->id);
+        $balanceService->refreshPartnerBalance($companyId, $creditCustomer->id);
+        $balanceService->refreshPartnerBalance($companyId, $supplier->id);
+
+        $this->command->info('GL-consistent TND balances seeded: CUST-DEBTOR-01 (receivable), CUST-CREDIT-01 (advance/credit), SUPP-PAYABLE-01 (payable)');
     }
 
     /**

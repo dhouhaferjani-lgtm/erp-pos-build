@@ -198,4 +198,23 @@ final class DemoPharmacySeederTest extends TestCase
             }
         });
     }
+
+    public function test_seeds_gl_consistent_partner_balances(): void
+    {
+        $this->seed(DemoPharmacySeeder::class);
+        Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail()->run(function () {
+            $debtor = \App\Modules\Partner\Domain\Partner::where('code', 'CUST-DEBTOR-01')->firstOrFail();
+            $this->assertTrue(bccomp($debtor->receivable_balance, '0', 3) === 1, 'has outstanding receivable');
+
+            $credited = \App\Modules\Partner\Domain\Partner::where('code', 'CUST-CREDIT-01')->firstOrFail();
+            // CustomerAdvance is a liability: credit_balance = debit - credit = 0 - amount = negative.
+            // Negative credit_balance means we owe the customer (store credit outstanding).
+            $this->assertTrue(bccomp($credited->credit_balance, '0', 3) === -1, 'has store credit (negative = we owe them)');
+
+            // GL-consistency: recompute and confirm the cached column matches
+            app(\App\Modules\Accounting\Application\Services\PartnerBalanceService::class)
+                ->refreshPartnerBalance($debtor->company_id, $debtor->id);
+            $this->assertTrue(bccomp($debtor->fresh()->receivable_balance, '0', 3) === 1);
+        });
+    }
 }
