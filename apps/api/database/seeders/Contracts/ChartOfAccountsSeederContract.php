@@ -36,7 +36,11 @@ interface ChartOfAccountsSeederContract
      * Declared here so callers can invoke it through the contract without an
      * additional cast to the concrete seeder or the base class.
      *
-     * @return static
+     * Note: no return-type hint here — Laravel's {@see \Illuminate\Database\Seeder::setCommand()}
+     * does not declare one either, so adding `: static` would break PHP's
+     * interface-vs-implementation covariance check at load time.
+     *
+     * @return $this
      */
-    public function setCommand(Command $command): static;
+    public function setCommand(Command $command);
 }
