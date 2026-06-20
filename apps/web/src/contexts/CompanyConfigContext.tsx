@@ -62,10 +62,16 @@ export function CompanyConfigProvider({ children }: CompanyConfigProviderProps) 
   })
 
   const hasModule = useMemo(() => {
-    return (moduleName: string): boolean => {
-      if (!data) return false
-      return data.all_enabled_modules.includes(moduleName)
-    }
+    // Defensive normalization: the API returns an array, but a PHP assoc-array
+    // with non-sequential keys can serialize as an object ({"0":..,"11":..}).
+    // Coerce to an array so module gating never throws and white-screens the app.
+    const raw = data?.all_enabled_modules as unknown
+    const modules: string[] = Array.isArray(raw)
+      ? (raw as string[])
+      : raw && typeof raw === 'object'
+        ? (Object.values(raw as Record<string, string>))
+        : []
+    return (moduleName: string): boolean => modules.includes(moduleName)
   }, [data])
 
   const value = useMemo<CompanyConfigContextValue>(

@@ -153,6 +153,25 @@ describe('CompanyConfigContext', () => {
     })
   })
 
+  it('hasModule works when all_enabled_modules arrives as an object (PHP gap-key serialization)', async () => {
+    // A PHP assoc-array with non-sequential keys serializes as a JSON object,
+    // not an array. hasModule must normalize it instead of throwing.
+    const objectShapedConfig = {
+      ...defaultCompanyConfig,
+      vertical: 'parapharmacy',
+      all_enabled_modules: { 0: 'Identity', 8: 'BatchExpiry', 11: 'Loyalty' } as unknown as string[],
+    }
+    vi.mocked(api.apiGet).mockResolvedValueOnce(objectShapedConfig)
+
+    const { result } = renderHook(() => useCompanyConfig(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.hasModule('BatchExpiry')).toBe(true)
+      expect(result.current.hasModule('Loyalty')).toBe(true)
+      expect(result.current.hasModule('Nonexistent')).toBe(false)
+    })
+  })
+
   it('handles API errors gracefully', async () => {
     const mockError = new Error('Failed to fetch config')
     vi.mocked(api.apiGet).mockRejectedValue(mockError) // Reject all attempts
