@@ -27,8 +27,12 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Services\PurchaseOrderService;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
+use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
 use App\Modules\Inventory\Application\Services\GoodsReceiptService;
+use App\Modules\Inventory\Application\Services\StockTransferService;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockTransfer;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Enums\TerminalType;
@@ -355,6 +359,8 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
             $this->seedTunisiaBalances($this->company);
 
             $this->seedTunisiaPurchaseOrders($this->company, $this->location);
+
+            $this->seedTunisiaTransfers($this->company, $this->location, $this->shops);
         });
     }
 
@@ -851,5 +857,141 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
         $po4 = $poService->confirm($po4);
         $grService->receiveAll($po4);
         $this->command->info('✓ DEMO-PO-0004 — fully received');
+    }
+
+    /**
+     * Seed warehouse → shop stock transfers for the Tunisia demo.
+     *
+     * Creates 3 transfers demonstrating the full transfer lifecycle:
+     *   DEMO-TR-0001 — warehouse → STORE-TUN1, completed (stock visibly moved)
+     *   DEMO-TR-0002 — warehouse → STORE-TUN2, completed (stock visibly moved)
+     *   DEMO-TR-0003 — warehouse → STORE-SOU,  in_transit (incoming stock visible at destination)
+     *
+     * All transfers use non-variant, non-batch-tracked physical products that
+     * already have warehouse stock from the parent's seedStockLevels(). Variant
+     * products are DEFERRED — see task-9-brief.md (Revision post Task-6).
+     *
+     * Additive guard: skips entirely if any DEMO-TR-* transfers already exist.
+     *
+     * Services resolved via $this->container per Agent rule 13 (no app() helper).
+     * CompanyContext is bound before invoking the service so CurrencyScaleResolver
+     * can resolve the TND scale (3 dp) without an HTTP request (same pattern as
+     * seedTunisiaPurchaseOrders()).
+     *
+     * @param Location[] $shops
+     */
+    protected function seedTunisiaTransfers(Company $company, Location $warehouse, array $shops): void
+    {
+        // Additive guard — skip if already seeded.
+        if (StockTransfer::where('transfer_number', 'like', 'DEMO-TR-%')->exists()) {
+            $this->command->info('Transfers already seeded — skipping seedTunisiaTransfers().');
+
+            return;
+        }
+
+        // Need at least 2 shops to create meaningful transfers.
+        if (count($shops) < 2) {
+            $this->command->warn('Fewer than 2 shops found — skipping seedTunisiaTransfers().');
+
+            return;
+        }
+
+        // Pick non-variant, non-batch-tracked physical products that have warehouse stock.
+        // These were seeded by the parent's seedStockLevels() and seedTunisiaStock().
+        // has_variants is a computed accessor — use whereDoesntHave() for the DB query.
+        /** @var Collection<int, Product> $candidates */
+        $candidates = Product::where('company_id', $company->id)
+            ->where('is_physical', true)
+            ->where('requires_batch_tracking', false)
+            ->whereDoesntHave('activeVariants')
+            ->whereHas('stockLevels', fn ($q) => $q->where('location_id', $warehouse->id)
+                ->where('quantity', '>', 0))
+            ->take(6)
+            ->get();
+
+        if ($candidates->count() < 2) {
+            $this->command->warn('Insufficient warehouse stock — skipping seedTunisiaTransfers().');
+
+            return;
+        }
+
+        // Resolve the owner user as the transfer initiator (seeded by the parent).
+        $domain = $this->localeUserEmailDomain();
+        $actor = User::where('email', "owner@{$domain}")->firstOrFail();
+
+        /** @var StockTransferService $transferService */
+        $transferService = $this->container->make(StockTransferService::class);
+
+        // Bind the company context so CurrencyScaleResolver::getScale() resolves
+        // the TND scale (3 dp) without an HTTP request (canonical seeder pattern).
+        /** @var CompanyContext $companyCtx */
+        $companyCtx = $this->container->make(CompanyContext::class);
+        $companyCtx->setCompanyId($company->id);
+
+        $tenantId  = $company->tenant_id;
+        $companyId = $company->id;
+
+        // Use the first few products; cap transfer qty to a safe small amount
+        // that is guaranteed to be below the seeded warehouse quantity.
+        $p0 = $candidates->get(0);
+        $p1 = $candidates->get(1);
+        $p2 = $candidates->get(2) ?? $p0;
+
+        // Helper to build an InitiateTransferData DTO.
+        $makeData = function (
+            string $transferNumber,
+            string $destinationId,
+            array $lineSpecs,
+        ) use ($tenantId, $companyId, $warehouse, $actor): InitiateTransferData {
+            $lines = [];
+            foreach ($lineSpecs as [$product, $qty]) {
+                /** @var Product $product */
+                $lines[] = new InitiateTransferLineData(
+                    productId: $product->id,
+                    quantity: $qty,
+                );
+            }
+
+            return new InitiateTransferData(
+                tenantId: $tenantId,
+                companyId: $companyId,
+                sourceLocationId: $warehouse->id,
+                destinationLocationId: $destinationId,
+                initiatedByUserId: $actor->id,
+                lines: $lines,
+                transferNumber: $transferNumber,
+                transferCost: '0',
+                idempotencyKey: $transferNumber,
+            );
+        };
+
+        // DEMO-TR-0001: warehouse → STORE-TUN1, completed.
+        $shop0 = $shops[0];
+        $data1 = $makeData('DEMO-TR-0001', $shop0->id, [
+            [$p0, '5.0000'],
+            [$p1, '3.0000'],
+        ]);
+        $transfer1 = $transferService->initiate($data1);
+        $transferService->complete($transfer1->id, $actor->id);
+        $this->command->info('✓ DEMO-TR-0001 — warehouse → '.$shop0->code.' (completed)');
+
+        // DEMO-TR-0002: warehouse → STORE-TUN2, completed.
+        $shop1 = $shops[1];
+        $data2 = $makeData('DEMO-TR-0002', $shop1->id, [
+            [$p2, '4.0000'],
+        ]);
+        $transfer2 = $transferService->initiate($data2);
+        $transferService->complete($transfer2->id, $actor->id);
+        $this->command->info('✓ DEMO-TR-0002 — warehouse → '.$shop1->code.' (completed)');
+
+        // DEMO-TR-0003: warehouse → STORE-SOU, left in_transit.
+        // Destination shows "incoming stock" without yet incrementing its on-hand qty.
+        $shop2 = $shops[2] ?? $shops[0];
+        $data3 = $makeData('DEMO-TR-0003', $shop2->id, [
+            [$p0, '2.0000'],
+        ]);
+        $transferService->initiate($data3);
+        // Intentionally NOT completed — status remains in_transit.
+        $this->command->info('✓ DEMO-TR-0003 — warehouse → '.$shop2->code.' (in_transit)');
     }
 }

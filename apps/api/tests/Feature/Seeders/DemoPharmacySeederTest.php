@@ -11,6 +11,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockTransfer;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\DemoPharmacySeeder;
@@ -253,6 +254,27 @@ final class DemoPharmacySeederTest extends TestCase
             // Exactly 3 DEMO-BAL-* entries (not 6) confirms the idempotency guard fired.
             $count = \App\Modules\Accounting\Domain\JournalEntry::where('entry_number', 'like', 'DEMO-BAL-%')->count();
             $this->assertSame(3, $count, 'second run must skip — exactly 3 DEMO-BAL entries expected');
+        });
+    }
+
+    public function test_seeds_completed_and_in_transit_transfers(): void
+    {
+        $this->seed(DemoPharmacySeeder::class);
+        Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail()->run(function () {
+            $transfers = StockTransfer::all();
+            $this->assertTrue(
+                $transfers->contains(fn ($t) => $t->status->value === 'completed'),
+                'at least one completed transfer must exist'
+            );
+            $this->assertTrue(
+                $transfers->contains(fn ($t) => $t->status->value === 'in_transit'),
+                'at least one in_transit transfer must exist'
+            );
+            // At least one transfer line exists (non-variant warehouse→shop transfer)
+            $this->assertTrue(
+                $transfers->flatMap->lines->isNotEmpty(),
+                'at least one transfer line exists'
+            );
         });
     }
 }
