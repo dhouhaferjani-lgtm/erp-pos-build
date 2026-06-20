@@ -8,6 +8,8 @@ import { OwnerDashboardFilters, type OwnerDashboardFiltersValue } from './compon
 import { PaymentMethodBreakdownPie } from './components/PaymentMethodBreakdownPie'
 import { RevenueByCategoryDonut } from './components/RevenueByCategoryDonut'
 import { SalesByLocationChart } from './components/SalesByLocationChart'
+import { SalesSummaryCards } from './components/SalesSummaryCards'
+import { SalesTrendChart } from './components/SalesTrendChart'
 import { TopSkusWidget } from './components/TopSkusWidget'
 import {
   useCashRegisterReconciliation,
@@ -15,6 +17,7 @@ import {
   usePaymentMethodBreakdown,
   useRevenueByCategory,
   useSalesByLocation,
+  useSalesSummary,
   useTopSkus,
 } from './hooks/useOwnerReports'
 
@@ -39,6 +42,7 @@ export function OwnerDashboardPage() {
 
   const canViewOwnerDashboard = hasPermission('dashboard.owner')
   const dateParams = useMemo(() => ({ from: filters.from, to: filters.to }), [filters.from, filters.to])
+  const summary = useSalesSummary(dateParams, canViewOwnerDashboard)
   const sales = useSalesByLocation({ ...dateParams, granularity: filters.granularity }, canViewOwnerDashboard)
   const topSkus = useTopSkus({ ...dateParams, limit: 20, sort_by: topSkuSortBy }, canViewOwnerDashboard)
   const categories = useRevenueByCategory(dateParams, canViewOwnerDashboard)
@@ -57,6 +61,8 @@ export function OwnerDashboardPage() {
         <p className={`text-sm ${textColors.tertiary}`}>{t('reports:ownerDashboard.subtitle')}</p>
       </div>
       <OwnerDashboardFilters value={filters} onChange={setFilters} />
+      <SalesSummaryCards data={summary.data} isLoading={summary.isLoading} isError={summary.isError} />
+      <SalesTrendChart data={sales.data ?? []} isLoading={sales.isLoading} isError={sales.isError} />
       <div className="grid gap-4 xl:grid-cols-2">
         <SalesByLocationChart data={sales.data ?? []} isLoading={sales.isLoading} isError={sales.isError} />
         <RevenueByCategoryDonut data={categories.data ?? []} isLoading={categories.isLoading} isError={categories.isError} />
