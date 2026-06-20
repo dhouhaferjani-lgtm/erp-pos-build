@@ -108,7 +108,16 @@ function canonicalizeMenuCatalog(
 }
 
 export function hasModule(config: CompanyConfig | null, moduleName: string): boolean {
-  return config?.all_enabled_modules?.includes(moduleName) ?? false;
+  // Defensive: the API should return an array, but a PHP assoc-array with
+  // non-sequential keys can serialize as an object ({"0":..,"11":..}). Coerce
+  // so module gating never throws and white-screens the POS.
+  const raw = config?.all_enabled_modules as unknown;
+  const modules: string[] = Array.isArray(raw)
+    ? (raw as string[])
+    : raw && typeof raw === 'object'
+      ? (Object.values(raw as Record<string, string>))
+      : [];
+  return modules.includes(moduleName);
 }
 
 /**
