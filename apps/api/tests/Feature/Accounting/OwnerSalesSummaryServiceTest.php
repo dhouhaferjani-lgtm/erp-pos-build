@@ -96,4 +96,26 @@ final class OwnerSalesSummaryServiceTest extends TestCase
 
         $this->assertSame('50.01', $summary->averageBasket);
     }
+
+    public function test_empty_scope_returns_zeroed_summary_with_blank_currency(): void
+    {
+        // Empty companyIds/locationIds must short-circuit before any DB query
+        // and return a fully-zeroed SalesSummaryData with an empty currencyCode.
+        // zero() calls getScaleSafe(null, 3) → scale 3 for money → '0.000'
+        // and QTY_SCALE = 4 for itemsSold → '0.0000'.
+        $summary = $this->app->make(OwnerSalesSummaryService::class)->summary(
+            $this->range(), [], [],
+        );
+
+        $this->assertSame('', $summary->currencyCode);
+        $this->assertSame('0.000', $summary->grossSales);
+        $this->assertSame('0.000', $summary->returnsAmount);
+        $this->assertSame('0.000', $summary->netSales);
+        $this->assertSame(0, $summary->salesCount);
+        $this->assertSame(0, $summary->returnsCount);
+        $this->assertSame('0.0000', $summary->itemsSold);
+        $this->assertNull($summary->averageBasket);
+        $this->assertSame('0.000', $summary->delta->grossSalesAbs);
+        $this->assertNull($summary->delta->grossSalesPct);
+    }
 }
