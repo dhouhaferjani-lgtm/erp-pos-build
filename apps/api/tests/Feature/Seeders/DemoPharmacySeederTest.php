@@ -246,14 +246,52 @@ final class DemoPharmacySeederTest extends TestCase
 
     public function test_seeds_are_idempotent_on_double_run(): void
     {
-        // Running the seeder twice must not crash on the DEMO-BAL-* unique constraint.
-        $this->seed(DemoPharmacySeeder::class);
+        // ---- RUN 1 ----
         $this->seed(DemoPharmacySeeder::class);
 
-        Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail()->run(function () {
-            // Exactly 3 DEMO-BAL-* entries (not 6) confirms the idempotency guard fired.
-            $count = \App\Modules\Accounting\Domain\JournalEntry::where('entry_number', 'like', 'DEMO-BAL-%')->count();
-            $this->assertSame(3, $count, 'second run must skip — exactly 3 DEMO-BAL entries expected');
+        $tenantAfterRun1 = Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail();
+        $tenantIdAfterRun1 = $tenantAfterRun1->id;
+
+        // Snapshot counts after run 1 — all idempotency checks below compare against these.
+        $productCountRun1 = $tenantAfterRun1->run(fn () => \App\Modules\Product\Domain\Product::count());
+
+        // ---- RUN 2 ----
+        $this->seed(DemoPharmacySeeder::class);
+
+        // ---- Assertions ----
+
+        // (A) Same tenant id: the tenant was NOT deleted + recreated.
+        $tenantAfterRun2 = Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail();
+        $this->assertSame($tenantIdAfterRun1, $tenantAfterRun2->id, 'tenant must NOT be deleted+recreated on re-run');
+
+        $tenantAfterRun2->run(function () use ($productCountRun1): void {
+            // (B) Exactly 5 locations (1 warehouse + 4 shops) — no duplicates.
+            $this->assertSame(5, Location::count(), 'exactly 5 locations after double run');
+
+            // (C) Exactly 4 DEMO-PO-* purchase orders — not doubled.
+            $this->assertSame(
+                4,
+                Document::where('document_number', 'like', 'DEMO-PO-%')->count(),
+                'exactly 4 DEMO-PO-* purchase orders after double run'
+            );
+
+            // (D) Exactly 3 DEMO-TR-* transfers — not doubled.
+            $this->assertSame(
+                3,
+                StockTransfer::where('transfer_number', 'like', 'DEMO-TR-%')->count(),
+                'exactly 3 DEMO-TR-* transfers after double run'
+            );
+
+            // (E) Exactly 3 DEMO-BAL-* journal entries — not doubled.
+            $this->assertSame(
+                3,
+                \App\Modules\Accounting\Domain\JournalEntry::where('entry_number', 'like', 'DEMO-BAL-%')->count(),
+                'second run must skip — exactly 3 DEMO-BAL entries expected'
+            );
+
+            // (F) Product count is stable — no duplication.
+            $productCountRun2 = \App\Modules\Product\Domain\Product::count();
+            $this->assertSame($productCountRun1, $productCountRun2, 'product count must not grow on re-run');
         });
     }
 

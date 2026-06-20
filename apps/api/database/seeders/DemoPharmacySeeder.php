@@ -318,35 +318,67 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
     // ==================== run() ====================
 
     /**
-     * Run the Tunisia demo seeds.
+     * Run the Tunisia demo seeds — additively idempotent on re-run.
      *
-     * Calls the parent {@see ParapharmacySeeder::run()} which:
+     * FIRST RUN: delegates entirely to {@see ParapharmacySeeder::run()} which:
      *   1. Creates the tenant (slug `demo-pharmacy-tn`) via {@see createParapharmacyTenant()}.
      *   2. Seeds reference data (roles, countries, ingredients, etc.).
      *   3. Creates the company + warehouse via our overridden
-     *      {@see createCompanyWithLocation()} (TN identity).
+     *      {@see createCompanyWithLocation()} (TN identity), populating
+     *      {@see $company}, {@see $location}, and {@see $shops}.
      *   4. Calls {@see setupFinancialFoundation()} which invokes the Tunisia
      *      COA seeder via {@see localeChartOfAccountsSeeder()}.
-     *   5. Provisions company tax via {@see CompanyTaxProvisioningService}
-     *      (this seeds TN VAT bands from the tax_configurations table seeded
-     *      by {@see TunisiaTaxConfigurationSeeder} below).
+     *   5. Provisions company tax via {@see CompanyTaxProvisioningService}.
      *   6. Seeds products, partners, stock, and users.
      *
-     * After the parent completes we additionally run
-     * {@see TunisiaTaxConfigurationSeeder} inside the tenant context to
-     * ensure VAT 19/13/7 + stamp duties are always present regardless of
-     * whether the parent's provisioning service found matching rows.
+     * RE-RUN (tenant already exists): skips the destructive parent bootstrap
+     * (which would DELETE + recreate the tenant) and re-hydrates
+     * {@see $tenant}, {@see $company}, {@see $location}, and {@see $shops}
+     * from the existing database so the additively-guarded {@see seedTunisia*}
+     * steps can run safely as no-ops.
+     *
+     * Every {@see seedTunisia*} method is additively guarded (firstOrCreate /
+     * existence check) so re-runs are always safe no-ops.
      */
     public function run(): void
     {
-        parent::run();
+        $slug = $this->localeTenantSlug();
+        $existing = Tenant::where('slug', $slug)->first();
 
-        // Ensure Tunisia tax configs (VAT 19/13/7 + stamp duties) are seeded.
-        // TunisiaTaxConfigurationSeeder uses updateOrCreate so it is idempotent
-        // and safe to run after the parent's CompanyTaxProvisioningService call.
-        $tenant = Tenant::where('slug', $this->localeTenantSlug())->firstOrFail();
+        if ($existing === null) {
+            // FIRST RUN: the parent provisions the tenant DB, creates the company,
+            // warehouse (WH-01), and 4 shops (via our createCompanyWithLocation
+            // override), seeds products/partners/stock/users, and sets
+            // $this->tenant, $this->company, $this->location, and $this->shops.
+            parent::run();
+        } else {
+            // RE-RUN: do NOT invoke the parent — its createParapharmacyTenant()
+            // would DELETE the existing tenant and recreate it (and on the
+            // db-per-tenant staging server that hits the G1 500 bug).
+            // Instead, re-hydrate the properties the seedTunisia* steps rely on.
+            $this->tenant = $existing;
+            $existing->run(function () use ($existing): void {
+                $this->company  = Company::firstOrFail();
+                $this->location = Location::where('code', 'WH-01')->firstOrFail();
+                $this->shops    = Location::whereIn('code', ['STORE-TUN1', 'STORE-TUN2', 'STORE-SOU', 'STORE-SFA'])
+                    ->orderBy('code')
+                    ->get()
+                    ->all();
+            });
+
+            $this->command->info('✓ DemoPharmacySeeder re-run: reusing existing tenant '.$existing->id);
+        }
+
+        // In both branches the tenant now exists in the DB. Run all Tunisia-
+        // specific sections inside the tenant context. Every seedTunisia* method
+        // is additively guarded (firstOrCreate / existence early-return) so on a
+        // re-run they all no-op without error.
+        $tenant = Tenant::where('slug', $slug)->firstOrFail();
         $tenant->run(function (): void {
+            // Ensure Tunisia tax configs (VAT 19/13/7 + stamp duties) are seeded.
+            // TunisiaTaxConfigurationSeeder uses updateOrCreate so it is idempotent.
             $this->call(TunisiaTaxConfigurationSeeder::class);
+
             $this->seedTunisiaTerminals($this->shops);
             $this->seedTunisiaCashiers($this->company, $this->shops);
 
