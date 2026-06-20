@@ -19,7 +19,7 @@ use Illuminate\Support\Str;
  * Implements {@see ChartOfAccountsSeederContract} so it can be returned
  * type-safely from {@see \Database\Seeders\DemoPharmacySeeder::localeChartOfAccountsSeeder()}.
  */
-class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeederContract
+final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeederContract
 {
     /**
      * Run the database seeds.

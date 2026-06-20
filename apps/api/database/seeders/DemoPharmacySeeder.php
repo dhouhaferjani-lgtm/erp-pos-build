@@ -67,6 +67,26 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
         return 'demo-pharmacy-tn';
     }
 
+    protected function localeTenantName(): string
+    {
+        return 'PharmaBio Tunisie SARL';
+    }
+
+    protected function localeTenantTaxId(): string
+    {
+        return '1234567AM000';
+    }
+
+    protected function localeTenantTimezone(): string
+    {
+        return 'Africa/Tunis';
+    }
+
+    protected function localeUserEmailDomain(): string
+    {
+        return 'pharmabio.tn';
+    }
+
     // ==================== Company creation override ====================
 
     /**

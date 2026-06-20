@@ -159,6 +159,38 @@ class ParapharmacySeeder extends Seeder
         return 'pharmabio-france';
     }
 
+    /**
+     * Tenant display name stored in the central tenants row.
+     */
+    protected function localeTenantName(): string
+    {
+        return 'PharmaBio France';
+    }
+
+    /**
+     * Tenant tax ID stored in the central tenants row.
+     */
+    protected function localeTenantTaxId(): string
+    {
+        return 'FR12345678901';
+    }
+
+    /**
+     * Tenant timezone stored in the central tenants settings column.
+     */
+    protected function localeTenantTimezone(): string
+    {
+        return 'Europe/Paris';
+    }
+
+    /**
+     * Email domain used for the 3 test user accounts (owner/manager/cashier).
+     */
+    protected function localeUserEmailDomain(): string
+    {
+        return 'pharmabio.fr';
+    }
+
     // ==================== Scale helpers ====================
 
     /**
@@ -279,7 +311,8 @@ class ParapharmacySeeder extends Seeder
         $this->command->info('🏪 Creating company...');
         [$this->company, $this->location] = $this->createCompanyWithLocation($this->tenant);
         $this->command->info("✓ Company: {$this->company->name}");
-        $this->command->info("✓ Location: {$this->location->name} (POS enabled)");
+        $locationSuffix = $this->location->pos_enabled ? '(POS enabled)' : '(warehouse)';
+        $this->command->info("✓ Location: {$this->location->name} {$locationSuffix}");
 
         // 4. Setup financial foundation
         $this->command->info('💰 Setting up financial foundation...');
@@ -315,10 +348,11 @@ class ParapharmacySeeder extends Seeder
         $this->command->newLine();
         $this->command->info('✅ Parapharmacy company seeded successfully!');
         $this->command->newLine();
+        $d = $this->localeUserEmailDomain();
         $this->command->info('🔑 Test Credentials:');
-        $this->command->info('   Owner:   owner@pharmabio.fr / password');
-        $this->command->info('   Manager: manager@pharmabio.fr / password');
-        $this->command->info('   Cashier: cashier@pharmabio.fr / password');
+        $this->command->info("   Owner:   owner@{$d} / password");
+        $this->command->info("   Manager: manager@{$d} / password");
+        $this->command->info("   Cashier: cashier@{$d} / password");
         $this->command->newLine();
 
         // Revert the default connection back to central (no-op in single-DB).
@@ -360,12 +394,12 @@ class ParapharmacySeeder extends Seeder
         }
 
         $tenant = Tenant::create([
-            'name' => 'PharmaBio France',
+            'name' => $this->localeTenantName(),
             'slug' => $slug,
             'status' => TenantStatus::Active,
             'plan' => 'professional',
             'vertical' => Vertical::Parapharmacy,
-            'tax_id' => 'FR12345678901',
+            'tax_id' => $this->localeTenantTaxId(),
             'country_code' => $this->localeCountryCode(),
             'currency_code' => $this->localeCurrency(),
             // Top-level column — this is what CompanyConfigService reads.
@@ -375,7 +409,7 @@ class ParapharmacySeeder extends Seeder
             // gated surfaces (owner decision 2026-06-12).
             'enabled_extras' => ['BatchExpiry', 'Loyalty', 'Ecommerce'],
             'settings' => [
-                'timezone' => 'Europe/Paris',
+                'timezone' => $this->localeTenantTimezone(),
                 'locale' => 'fr',
                 'date_format' => 'd/m/Y',
                 'fiscal_year_start' => '01-01',
@@ -943,11 +977,12 @@ class ParapharmacySeeder extends Seeder
         setPermissionsTeamId($tenant->id);
 
         // 1. Owner Account
+        $emailDomain = $this->localeUserEmailDomain();
         $owner = User::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $tenant->id,
             'name' => 'Jean-Baptiste Mercier',
-            'email' => 'owner@pharmabio.fr',
+            'email' => 'owner@'.$emailDomain,
             'password' => Hash::make('password'),
             'status' => 'active',
             'email_verified_at' => now(),
@@ -974,14 +1009,14 @@ class ParapharmacySeeder extends Seeder
 
         $owner->update(['pos_pin' => Hash::make('1234')]);
 
-        $this->command->info('✓ Owner: owner@pharmabio.fr (PIN: 1234)');
+        $this->command->info("✓ Owner: owner@{$emailDomain} (PIN: 1234)");
 
         // 2. Manager Account
         $manager = User::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $tenant->id,
             'name' => 'Sophie Laurent',
-            'email' => 'manager@pharmabio.fr',
+            'email' => 'manager@'.$emailDomain,
             'password' => Hash::make('password'),
             'status' => 'active',
             'email_verified_at' => now(),
@@ -1006,14 +1041,14 @@ class ParapharmacySeeder extends Seeder
 
         $manager->update(['pos_pin' => Hash::make('5678')]);
 
-        $this->command->info('✓ Manager: manager@pharmabio.fr (PIN: 5678)');
+        $this->command->info("✓ Manager: manager@{$emailDomain} (PIN: 5678)");
 
         // 3. Cashier Account (POS-only permissions)
         $cashier = User::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $tenant->id,
             'name' => 'Marie Dubois',
-            'email' => 'cashier@pharmabio.fr',
+            'email' => 'cashier@'.$emailDomain,
             'password' => Hash::make('password'),
             'status' => 'active',
             'email_verified_at' => now(),
@@ -1038,7 +1073,7 @@ class ParapharmacySeeder extends Seeder
 
         $cashier->update(['pos_pin' => Hash::make('0000')]);
 
-        $this->command->info('✓ Cashier: cashier@pharmabio.fr (PIN: 0000)');
+        $this->command->info("✓ Cashier: cashier@{$emailDomain} (PIN: 0000)");
     }
 
     // ==================== Helper Methods ====================

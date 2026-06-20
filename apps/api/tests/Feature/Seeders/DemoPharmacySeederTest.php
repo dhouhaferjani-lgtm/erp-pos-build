@@ -6,6 +6,7 @@ namespace Tests\Feature\Seeders;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\DemoPharmacySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -64,6 +65,35 @@ final class DemoPharmacySeederTest extends TestCase
             $warehouse = \App\Modules\Company\Domain\Location::firstOrFail();
             $this->assertSame('WH-01', $warehouse->code);
             $this->assertFalse((bool) $warehouse->pos_enabled, 'Warehouse must NOT be POS-enabled');
+        });
+    }
+
+    public function test_tenant_central_row_has_tunisia_identity(): void
+    {
+        $this->seed(DemoPharmacySeeder::class);
+
+        // Central-DB fields — must be asserted OUTSIDE $tenant->run() which
+        // swaps the default connection to the per-tenant DB.
+        $tenant = Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail();
+        $this->assertSame('PharmaBio Tunisie SARL', $tenant->name);
+        $this->assertSame('1234567AM000', $tenant->tax_id);
+    }
+
+    public function test_test_users_have_tunisia_email_domain(): void
+    {
+        $this->seed(DemoPharmacySeeder::class);
+
+        $tenant = Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail();
+
+        $tenant->run(function () use ($tenant) {
+            $this->assertTrue(
+                User::where('email', 'owner@pharmabio.tn')->where('tenant_id', $tenant->id)->exists(),
+                'owner@pharmabio.tn must exist for this tenant'
+            );
+            $this->assertFalse(
+                User::where('email', 'owner@pharmabio.fr')->where('tenant_id', $tenant->id)->exists(),
+                'owner@pharmabio.fr must NOT exist for this tenant'
+            );
         });
     }
 }
