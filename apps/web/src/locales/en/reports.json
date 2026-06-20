@@ -54,7 +54,9 @@
       "granularity": "Group by",
       "day": "Day",
       "week": "Week",
-      "month": "Month"
+      "month": "Month",
+      "allLocations": "All locations",
+      "locations": "Locations"
     },
     "salesTrend": {
       "title": "Sales over time"

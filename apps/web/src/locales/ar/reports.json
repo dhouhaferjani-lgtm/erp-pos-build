@@ -11,7 +11,9 @@
       "granularity": "تجميع حسب",
       "day": "يوم",
       "week": "أسبوع",
-      "month": "شهر"
+      "month": "شهر",
+      "allLocations": "جميع المواقع",
+      "locations": "المواقع"
     },
     "salesByLocation": {
       "title": "المبيعات حسب الموقع",

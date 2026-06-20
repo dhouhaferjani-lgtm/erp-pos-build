@@ -54,7 +54,9 @@
       "granularity": "Grouper par",
       "day": "Jour",
       "week": "Semaine",
-      "month": "Mois"
+      "month": "Mois",
+      "allLocations": "Tous les sites",
+      "locations": "Sites"
     },
     "salesTrend": {
       "title": "Évolution des ventes"

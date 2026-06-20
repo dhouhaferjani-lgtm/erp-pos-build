@@ -30,6 +30,7 @@ function defaultFilters(): OwnerDashboardFiltersValue {
     from: from.toISOString().slice(0, 10),
     to: to.toISOString().slice(0, 10),
     granularity: 'day',
+    locationIds: [],
   }
 }
 
@@ -41,13 +42,36 @@ export function OwnerDashboardPage() {
   const [paymentMode, setPaymentMode] = useState<'amount' | 'percentage'>('amount')
 
   const canViewOwnerDashboard = hasPermission('dashboard.owner')
-  const dateParams = useMemo(() => ({ from: filters.from, to: filters.to }), [filters.from, filters.to])
+
+  const dateParams = useMemo(
+    () => ({
+      from: filters.from,
+      to: filters.to,
+      ...(filters.locationIds.length > 0 ? { location_ids: filters.locationIds } : {}),
+    }),
+    [filters.from, filters.to, filters.locationIds],
+  )
+
+  const stockParams = useMemo(
+    () => ({
+      threshold_pct: 100,
+      ...(filters.locationIds.length > 0 ? { location_ids: filters.locationIds } : {}),
+    }),
+    [filters.locationIds],
+  )
+
   const summary = useSalesSummary(dateParams, canViewOwnerDashboard)
-  const sales = useSalesByLocation({ ...dateParams, granularity: filters.granularity }, canViewOwnerDashboard)
-  const topSkus = useTopSkus({ ...dateParams, limit: 20, sort_by: topSkuSortBy }, canViewOwnerDashboard)
+  const sales = useSalesByLocation(
+    { ...dateParams, granularity: filters.granularity },
+    canViewOwnerDashboard,
+  )
+  const topSkus = useTopSkus(
+    { ...dateParams, limit: 20, sort_by: topSkuSortBy },
+    canViewOwnerDashboard,
+  )
   const categories = useRevenueByCategory(dateParams, canViewOwnerDashboard)
   const payments = usePaymentMethodBreakdown(dateParams, canViewOwnerDashboard)
-  const stockAlerts = useLowStockAlerts({ threshold_pct: 100 }, canViewOwnerDashboard)
+  const stockAlerts = useLowStockAlerts(stockParams, canViewOwnerDashboard)
   const cash = useCashRegisterReconciliation(dateParams, canViewOwnerDashboard)
 
   if (!canViewOwnerDashboard) {
