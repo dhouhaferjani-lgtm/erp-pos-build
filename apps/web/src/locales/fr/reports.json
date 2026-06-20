@@ -56,6 +56,9 @@
       "week": "Semaine",
       "month": "Mois"
     },
+    "salesTrend": {
+      "title": "Évolution des ventes"
+    },
     "salesByLocation": {
       "title": "Ventes par Site",
       "axis": "Ventes"

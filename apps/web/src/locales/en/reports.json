@@ -56,6 +56,9 @@
       "week": "Week",
       "month": "Month"
     },
+    "salesTrend": {
+      "title": "Sales over time"
+    },
     "salesByLocation": {
       "title": "Sales by Location",
       "axis": "Sales"
