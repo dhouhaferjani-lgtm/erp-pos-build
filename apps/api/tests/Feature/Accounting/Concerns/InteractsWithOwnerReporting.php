@@ -105,7 +105,7 @@ trait InteractsWithOwnerReporting
      * has CHECK amount > 0; the summary service reads pos_receipts, not payments, so a
      * return needs no tender row for these tests).
      */
-    protected function seedReturn(Location $location, Terminal $terminal, string $postedAt, string $negativeTotal, Receipt $original, string $reason = 'customer_request'): Receipt
+    protected function seedReturn(Location $location, Terminal $terminal, string $postedAt, string $negativeTotal, Receipt $original, string $reason = 'customer_changed_mind'): Receipt
     {
         return Receipt::factory()->create([
             'tenant_id' => $this->tenant->id,
