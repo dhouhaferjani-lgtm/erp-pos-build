@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Application\Services;
 
+use App\Modules\Company\Application\Services\TaxIdentityResolver;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\DTOs\CashCountValidationResultDTO;
@@ -57,6 +58,7 @@ final class ReportGenerationService
         private readonly FraudSettingsResolver $fraudSettingsResolver,
         private readonly ZReportCountRepository $zReportCountRepository,
         private readonly PaymentToleranceQueryService $paymentToleranceQueryService,
+        private readonly TaxIdentityResolver $taxIdentityResolver,
     ) {}
 
     private function scale(): int
@@ -435,17 +437,7 @@ final class ReportGenerationService
      */
     public function generatePdf(ZReport $zReport): DomPdf
     {
-        $zReport->load(['terminal', 'generatedBy']);
-
-        /** @var Terminal $terminal */
-        $terminal = $zReport->terminal;
-
-        /** @var Company $company */
-        $company = Company::findOrFail($terminal->company_id);
-
-        $data = $this->preparePdfData($zReport, $company);
-
-        $pdf = Pdf::loadView('pos.z-report', $data);
+        $pdf = Pdf::loadView('pos.z-report', $this->viewDataFor($zReport));
 
         // A4 paper for Z reports (unlike thermal receipt)
         $pdf->setPaper('a4', 'portrait');
@@ -716,11 +708,41 @@ final class ReportGenerationService
      *
      * @return array<string, mixed>
      */
+    /**
+     * Prepare the Z-report view data, loading the relations the template and
+     * tax-identity resolution need. Public so render paths (and tests) share
+     * exactly the data the PDF is built from.
+     *
+     * @return array<string, mixed>
+     */
+    public function viewDataFor(ZReport $zReport): array
+    {
+        $zReport->load(['terminal.location', 'generatedBy']);
+
+        /** @var Terminal $terminal */
+        $terminal = $zReport->terminal;
+
+        /** @var Company $company */
+        $company = Company::findOrFail($terminal->company_id);
+
+        return $this->preparePdfData($zReport, $company);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
     private function preparePdfData(ZReport $zReport, Company $company): array
     {
         $locale = $company->locale ?? 'en';
         $currency = $company->currency ?? 'EUR';
         $reportData = $zReport->report_data;
+
+        // Resolve the seller tax identity from the terminal's establishment
+        // (branch override → company fallback). A Z-report is scoped to a single
+        // terminal/location (terminals.location_id is NOT NULL), so this is
+        // unambiguous. Fiscal events seal SALE_RECEIPT seller identity from the
+        // device; this is the render-time presentation of that establishment.
+        $taxIdentity = $this->taxIdentityResolver->resolve($zReport->terminal->location);
         $salesCount = $reportData['sales_count'] ?? 0;
         $grossSales = $reportData['gross_sales'] ?? '0.00';
 
@@ -732,6 +754,8 @@ final class ReportGenerationService
             'zReport' => $zReport,
             'company' => $company,
             'terminal' => $zReport->terminal,
+            'sellerTaxId' => $taxIdentity->taxId ?? $company->tax_id,
+            'sellerTaxLabel' => $taxIdentity->taxIdLabel,
             'generatedByName' => $zReport->generatedBy->name,
             'reportData' => $reportData,
             'vatBreakdown' => $reportData['vat_breakdown'] ?? [],

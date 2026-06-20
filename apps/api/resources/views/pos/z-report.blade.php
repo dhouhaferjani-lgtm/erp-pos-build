@@ -236,8 +236,9 @@
                 @if($company->address_city)
                     {{ $company->address_postal_code }} {{ $company->address_city }}<br>
                 @endif
-                @if($company->tax_id)
-                    {{ __('pos.tax_id') }}: {{ $company->tax_id }}<br>
+                @php($sellerTaxIdDisplay = ($sellerTaxId ?? null) ?? $company->tax_id)
+                @if($sellerTaxIdDisplay)
+                    {{ ($sellerTaxLabel ?? null) ?? __('pos.tax_id') }}: {{ $sellerTaxIdDisplay }}<br>
                 @endif
                 @if($company->phone)
                     {{ __('pos.tel') }}: {{ $company->phone }}<br>

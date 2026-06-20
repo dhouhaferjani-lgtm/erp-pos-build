@@ -14,5 +14,6 @@ final class TaxIdentityData
         public readonly ?string $vatNumber,
         public readonly array $legalIdentifiers,
         public readonly ?string $countryCode,
+        public readonly ?string $taxIdLabel = null,
     ) {}
 }

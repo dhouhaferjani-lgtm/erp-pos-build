@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Company;
 
+use App\Models\Country;
 use App\Modules\Company\Application\Services\TaxIdentityResolver;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
@@ -121,6 +122,50 @@ class TaxIdentityResolverTest extends TestCase
         $this->assertSame('COMPANY-TAX', $resolved->taxId);
         $this->assertSame('COMPANY-VAT', $resolved->vatNumber);
         $this->assertSame('FR', $resolved->countryCode);
+    }
+
+    public function test_resolver_exposes_per_country_tax_id_label(): void
+    {
+        Country::create([
+            'code' => 'TN',
+            'name' => 'Tunisia',
+            'currency_code' => 'TND',
+            'tax_id_label' => 'Matricule Fiscal',
+        ]);
+
+        $company = $this->makeCompany();
+        $location = Location::create([
+            'company_id' => $company->id,
+            'name' => 'Tunis Branch',
+            'code' => 'TN1',
+            'type' => LocationType::Shop,
+            'address_country' => 'TN',
+            'tax_id' => 'TN-BRANCH-MF',
+            'is_default' => false,
+            'is_active' => true,
+        ]);
+
+        $resolved = (new TaxIdentityResolver)->resolve($location);
+
+        $this->assertSame('TN-BRANCH-MF', $resolved->taxId);
+        $this->assertSame('Matricule Fiscal', $resolved->taxIdLabel);
+    }
+
+    public function test_resolver_tax_id_label_is_null_when_country_unknown(): void
+    {
+        $company = $this->makeCompany();
+        $location = Location::create([
+            'company_id' => $company->id,
+            'name' => 'Branch',
+            'code' => 'BX',
+            'type' => LocationType::Shop,
+            'is_default' => false,
+            'is_active' => true,
+        ]);
+
+        $resolved = (new TaxIdentityResolver)->resolve($location);
+
+        $this->assertNull($resolved->taxIdLabel);
     }
 
     private function makeCompany(): Company

@@ -154,6 +154,7 @@ final class ReceiptPdfService
             'company' => $company,
             'location' => $receipt->location,
             'sellerTaxId' => $taxIdentity->taxId ?? $company->tax_id,
+            'sellerTaxLabel' => $taxIdentity->taxIdLabel,
             'terminal' => $receipt->terminal,
             'cashier' => $receipt->cashier,
             'lines' => $receipt->lines,
