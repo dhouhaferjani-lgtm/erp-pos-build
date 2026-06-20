@@ -204,17 +204,38 @@ final class DemoPharmacySeederTest extends TestCase
         $this->seed(DemoPharmacySeeder::class);
         Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail()->run(function () {
             $debtor = \App\Modules\Partner\Domain\Partner::where('code', 'CUST-DEBTOR-01')->firstOrFail();
-            $this->assertTrue(bccomp($debtor->receivable_balance, '0', 3) === 1, 'has outstanding receivable');
+            $this->assertTrue(bccomp($debtor->receivable_balance, '0', 3) === 1, 'CUST-DEBTOR-01 has outstanding receivable > 0');
 
-            $credited = \App\Modules\Partner\Domain\Partner::where('code', 'CUST-CREDIT-01')->firstOrFail();
-            // CustomerAdvance is a liability: credit_balance = debit - credit = 0 - amount = negative.
-            // Negative credit_balance means we owe the customer (store credit outstanding).
-            $this->assertTrue(bccomp($credited->credit_balance, '0', 3) === -1, 'has store credit (negative = we owe them)');
+            // CUST-CREDIT-01 (CustomerAdvance / store credit) is intentionally NOT seeded:
+            // PartnerBalanceService stores credit_balance as (debit - credit) on the
+            // CustomerAdvance account (negative for a credit advance), but PartnerListPage
+            // getNetBalance() computes (receivable - credit_balance) which inverts the sign
+            // and renders a store credit as a red debt. Pre-existing production bug — tracked
+            // separately. Not included in demo fixtures to avoid confusing demo users.
 
-            // GL-consistency: recompute and confirm the cached column matches
+            // PartnerBalanceService stores payable_balance as (debit - credit) on the
+            // SupplierPayable account. A normal payable is a credit entry → balance < 0
+            // (negative = we owe them). The PartnerListPage renders this as green.
+            $supplier = \App\Modules\Partner\Domain\Partner::where('code', 'SUPP-PAYABLE-01')->firstOrFail();
+            $this->assertTrue(bccomp($supplier->payable_balance, '0', 3) === -1, 'SUPP-PAYABLE-01 payable_balance < 0 (we owe them)');
+
+            // GL-consistency: recompute and confirm the cached receivable column still holds
             app(\App\Modules\Accounting\Application\Services\PartnerBalanceService::class)
                 ->refreshPartnerBalance($debtor->company_id, $debtor->id);
             $this->assertTrue(bccomp($debtor->fresh()->receivable_balance, '0', 3) === 1);
+        });
+    }
+
+    public function test_seeds_are_idempotent_on_double_run(): void
+    {
+        // Running the seeder twice must not crash on the DEMO-BAL-* unique constraint.
+        $this->seed(DemoPharmacySeeder::class);
+        $this->seed(DemoPharmacySeeder::class);
+
+        Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail()->run(function () {
+            // Exactly 3 DEMO-BAL-* entries (not 6) confirms the idempotency guard fired.
+            $count = \App\Modules\Accounting\Domain\JournalEntry::where('entry_number', 'like', 'DEMO-BAL-%')->count();
+            $this->assertSame(3, $count, 'second run must skip — exactly 3 DEMO-BAL entries expected');
         });
     }
 }
