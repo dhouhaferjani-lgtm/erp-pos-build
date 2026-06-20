@@ -60,11 +60,33 @@ final class DemoPharmacySeederTest extends TestCase
         $tenant = Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail();
 
         $tenant->run(function () {
-            // Task 2: warehouse only (Task 3 will add the 4 shops)
-            $this->assertSame(1, \App\Modules\Company\Domain\Location::count(), 'Task 2 creates warehouse location only');
-            $warehouse = \App\Modules\Company\Domain\Location::firstOrFail();
+            // Task 3: 1 warehouse + 4 shops = 5 total locations
+            $this->assertSame(5, \App\Modules\Company\Domain\Location::count(), '5 locations: 1 warehouse + 4 shops');
+            $warehouse = \App\Modules\Company\Domain\Location::where('code', 'WH-01')->firstOrFail();
             $this->assertSame('WH-01', $warehouse->code);
             $this->assertFalse((bool) $warehouse->pos_enabled, 'Warehouse must NOT be POS-enabled');
+        });
+    }
+
+    public function test_seeds_warehouse_and_four_shops_with_valid_matricule(): void
+    {
+        $this->seed(DemoPharmacySeeder::class);
+        Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail()->run(function () {
+            $locations = \App\Modules\Company\Domain\Location::all();
+            $this->assertCount(5, $locations);
+            $wh = $locations->firstWhere('code', 'WH-01');
+            $this->assertSame('warehouse', $wh->type->value);
+            $this->assertFalse($wh->pos_enabled);
+            $this->assertNull($wh->tax_id); // inherits company
+
+            $tunisRegex = '/^[0-9]{7,8}[A-Z]{2}[0-9]{3}$/';
+            foreach (['STORE-TUN1', 'STORE-TUN2', 'STORE-SOU', 'STORE-SFA'] as $code) {
+                $shop = $locations->firstWhere('code', $code);
+                $this->assertNotNull($shop, "Shop location {$code} must exist");
+                $this->assertSame('shop', $shop->type->value);
+                $this->assertTrue($shop->pos_enabled);
+                $this->assertMatchesRegularExpression($tunisRegex, str_replace('/', '', (string) $shop->tax_id));
+            }
         });
     }
 

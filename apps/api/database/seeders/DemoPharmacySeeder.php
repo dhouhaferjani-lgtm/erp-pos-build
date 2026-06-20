@@ -22,11 +22,22 @@ use Illuminate\Support\Str;
  * Tunisia COA (via {@see TunisiaChartOfAccountsSeeder}) + Tunisia tax config
  * (VAT 19/13/7 + stamp duties via {@see TunisiaTaxConfigurationSeeder}).
  *
- * Task 3 will extend {@see createCompanyWithLocation()} further to add
- * the 4 Sousse/Tunis shop locations.
+ * Task 3 scope: extends {@see createCompanyWithLocation()} to add 4 POS shops
+ * (STORE-TUN1, STORE-TUN2, STORE-SOU, STORE-SFA) each with a per-establishment
+ * matricule fiscal. Available to Tasks 4/6/9 via {@see $shops}.
  */
 final class DemoPharmacySeeder extends ParapharmacySeeder
 {
+    /**
+     * The 4 Tunisia POS shop locations created by {@see createCompanyWithLocation()}.
+     *
+     * Populated after the parent's company-creation step completes.
+     * Available to Tasks 4/6/9 that need to seed per-shop data.
+     *
+     * @var Location[]
+     */
+    protected array $shops = [];
+
     // ==================== Locale hooks ====================
 
     protected function localeCountryCode(): string
@@ -90,61 +101,160 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
     // ==================== Company creation override ====================
 
     /**
-     * Create the Tunisia company with a single central warehouse location.
+     * Create the Tunisia company with a central warehouse + 4 POS shops.
      *
      * Overrides the France-hardcoded values in the parent's
      * {@see ParapharmacySeeder::createCompanyWithLocation()} method to set
      * the full Tunisia identity (name, address in Sousse, matricule fiscal,
-     * TN/TND currency) and a non-POS warehouse location.
+     * TN/TND currency), a non-POS warehouse location (WH-01), and 4 POS
+     * shop locations each carrying a per-establishment matricule fiscal.
      *
-     * Task 3 will extend this override to add the 4 POS shop locations.
+     * The warehouse is returned as the parent's primary `$this->location`
+     * so the parent's stock/products seeding still works. The 4 shops are
+     * exposed via {@see $shops} for use by Tasks 4/6/9.
+     *
+     * Per-establishment matricule pattern: `1234567AM00{n}` satisfies the
+     * CountryTaxNumberRules TN regex `/^[0-9]{7,8}[A-Z]{2}[0-9]{3}$/`.
      *
      * @return array{0: Company, 1: Location}
      */
     protected function createCompanyWithLocation(Tenant $tenant): array
     {
-        $company = Company::create([
-            'tenant_id' => $tenant->id,
-            'name' => 'PharmaBio Tunisie SARL',
-            'legal_name' => 'PharmaBio Tunisie SARL',
-            'country_code' => $this->localeCountryCode(),
-            'tax_id' => '1234567AM000',
-            'vat_number' => '1234567AM000',
-            'currency' => $this->localeCurrency(),
-            'locale' => 'fr',
-            'timezone' => 'Africa/Tunis',
-            'date_format' => 'd/m/Y',
-            'fiscal_year_start_month' => 1,
-            'status' => CompanyStatus::Active,
-            'is_headquarters' => true,
-            'address_street' => '12 Avenue Habib Bourguiba',
-            'address_city' => 'Sousse',
-            'address_postal_code' => '4000',
-            'address_state' => 'Sousse',
-            'phone' => '+216 73 000 000',
-            'email' => 'contact@pharmabio.tn',
-        ]);
+        $company = Company::firstOrCreate(
+            ['tenant_id' => $tenant->id, 'name' => 'PharmaBio Tunisie SARL'],
+            [
+                'legal_name' => 'PharmaBio Tunisie SARL',
+                'country_code' => $this->localeCountryCode(),
+                'tax_id' => '1234567AM000',
+                'vat_number' => '1234567AM000',
+                'currency' => $this->localeCurrency(),
+                'locale' => 'fr',
+                'timezone' => 'Africa/Tunis',
+                'date_format' => 'd/m/Y',
+                'fiscal_year_start_month' => 1,
+                'status' => CompanyStatus::Active,
+                'is_headquarters' => true,
+                'address_street' => '12 Avenue Habib Bourguiba',
+                'address_city' => 'Sousse',
+                'address_postal_code' => '4000',
+                'address_state' => 'Sousse',
+                'phone' => '+216 73 000 000',
+                'email' => 'contact@pharmabio.tn',
+            ]
+        );
 
-        // Task 2: warehouse only — Task 3 adds the 4 shops.
-        $warehouse = Location::create([
-            'id' => Str::uuid()->toString(),
-            'company_id' => $company->id,
-            'code' => 'WH-01',
-            'name' => 'PharmaBio Entrepôt Central',
-            'type' => LocationType::Warehouse,
-            'is_default' => true,
-            'is_active' => true,
-            'pos_enabled' => false,
-            'tax_id' => null, // inherits company
-            'address_street' => '12 Avenue Habib Bourguiba',
-            'address_city' => 'Sousse',
-            'address_postal_code' => '4000',
-            'address_country' => 'TN',
-            'phone' => '+216 73 000 000',
-            'email' => 'warehouse@pharmabio.tn',
-        ]);
+        // Central warehouse — non-POS, tax_id NULL (inherits company matricule).
+        $warehouse = Location::firstOrCreate(
+            ['company_id' => $company->id, 'code' => 'WH-01'],
+            [
+                'id' => Str::uuid()->toString(),
+                'name' => 'PharmaBio Entrepôt Central',
+                'type' => LocationType::Warehouse,
+                'is_default' => true,
+                'is_active' => true,
+                'pos_enabled' => false,
+                'tax_id' => null, // inherits company matricule
+                'address_street' => '12 Avenue Habib Bourguiba',
+                'address_city' => 'Sousse',
+                'address_postal_code' => '4000',
+                'address_country' => 'TN',
+                'phone' => '+216 73 000 000',
+                'email' => 'warehouse@pharmabio.tn',
+            ]
+        );
+
+        // 4 POS shops with per-establishment matricule fiscal.
+        // Pattern: 1234567AM00{n} — satisfies CountryTaxNumberRules TN regex.
+        $this->shops = $this->seedTunisiaShops($company);
 
         return [$company, $warehouse];
+    }
+
+    /**
+     * Create the 4 Tunisia POS shop locations with per-establishment matricule.
+     *
+     * Ported from {@see ParapharmacyMultiBranchSeeder::createCompanyWithBranches()}
+     * (lines 251-297), adapted to Tunisia identity and 4-shop topology.
+     * Uses `firstOrCreate` keyed on `(company_id, code)` so re-runs are safe.
+     *
+     * @return Location[]
+     */
+    private function seedTunisiaShops(Company $company): array
+    {
+        $shopDefinitions = [
+            [
+                'code' => 'STORE-TUN1',
+                'name' => 'PharmaBio Tunis — Lac',
+                'city' => 'Tunis',
+                'postal_code' => '1053',
+                'street' => '15 Rue du Lac de Constance',
+                'tax_id' => '1234567AM001',
+                'establishment_code' => '001',
+                'phone' => '+216 71 100 001',
+                'email' => 'tunis-lac@pharmabio.tn',
+            ],
+            [
+                'code' => 'STORE-TUN2',
+                'name' => 'PharmaBio Tunis — Centre',
+                'city' => 'Tunis',
+                'postal_code' => '1000',
+                'street' => '3 Avenue Habib Bourguiba',
+                'tax_id' => '1234567AM002',
+                'establishment_code' => '002',
+                'phone' => '+216 71 100 002',
+                'email' => 'tunis-centre@pharmabio.tn',
+            ],
+            [
+                'code' => 'STORE-SOU',
+                'name' => 'PharmaBio Sousse — Médina',
+                'city' => 'Sousse',
+                'postal_code' => '4000',
+                'street' => '7 Rue Ali Belhouane',
+                'tax_id' => '1234567AM003',
+                'establishment_code' => '003',
+                'phone' => '+216 73 100 003',
+                'email' => 'sousse-medina@pharmabio.tn',
+            ],
+            [
+                'code' => 'STORE-SFA',
+                'name' => 'PharmaBio Sfax — Centre',
+                'city' => 'Sfax',
+                'postal_code' => '3000',
+                'street' => '22 Avenue Habib Bourguiba',
+                'tax_id' => '1234567AM004',
+                'establishment_code' => '004',
+                'phone' => '+216 74 100 004',
+                'email' => 'sfax-centre@pharmabio.tn',
+            ],
+        ];
+
+        $shops = [];
+        foreach ($shopDefinitions as $def) {
+            $shops[] = Location::firstOrCreate(
+                ['company_id' => $company->id, 'code' => $def['code']],
+                [
+                    'id' => Str::uuid()->toString(),
+                    'name' => $def['name'],
+                    'type' => LocationType::Shop,
+                    'is_default' => false,
+                    'is_active' => true,
+                    'pos_enabled' => true,
+                    'address_street' => $def['street'],
+                    'address_city' => $def['city'],
+                    'address_postal_code' => $def['postal_code'],
+                    'address_country' => 'TN',
+                    'tax_id' => $def['tax_id'],
+                    'legal_identifiers' => [
+                        'matricule_fiscal' => $def['tax_id'],
+                        'establishment_code' => $def['establishment_code'],
+                    ],
+                    'phone' => $def['phone'],
+                    'email' => $def['email'],
+                ]
+            );
+        }
+
+        return $shops;
     }
 
     // ==================== run() ====================
