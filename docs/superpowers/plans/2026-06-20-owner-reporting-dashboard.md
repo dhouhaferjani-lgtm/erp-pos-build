@@ -2,26 +2,29 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Revision:** r2 — corrected after Codex plan review (`docs/superpowers/reviews/2026-06-20-owner-reporting-plan-codex-review.md`). Changes: reuse the real `OwnerReportingTest` fixtures via an extracted trait (no hand-rolled inserts); resolve per-company currency + enforce single-currency + return `currencyCode`; round (not truncate) percent deltas; build `EChartsOption` for `OwnerChart`; add Big.js `formatQuantity` to `lib/decimal`; gate the Reports route via `<RequirePermission permission="dashboard.owner">` and the Sidebar via a new `ownerReports` module-permission; mandatory stock-alert location wiring; thicker endpoint test; no `as any`.
+
 **Goal:** Add a dedicated, permission-gated owner Reports section that aggregates sales across all locations, fronted by a KPI-card row + sales trend, sourced from a new precision-correct backend summary service.
 
-**Architecture:** Backend adds one new application service (`OwnerSalesSummaryService`) + DTO + endpoint in the existing Accounting owner-report surface (NOT extending the float-tainted `SalesReportService`). Frontend relocates the existing `OwnerDashboardPage` out of the main Dashboard into a new `dashboard.owner`-gated Reports route where the header `LocationSwitcher` is hidden via a layout prop, and adds a KPI row, a rolled-up sales trend, and a location scope multiselect.
+**Architecture:** Backend adds one new application service (`OwnerSalesSummaryService`) + DTOs + endpoint in the existing Accounting owner-report surface (NOT extending the float-tainted `SalesReportService`). Frontend relocates the existing `OwnerDashboardPage` out of the main Dashboard into a new `dashboard.owner`-gated `/reports` route where the header `LocationSwitcher` is hidden via a layout prop, and adds a KPI row, a rolled-up sales trend, and a location scope multiselect.
 
 **Tech Stack:** Laravel 12 (PHP 8.2 strict), Spatie LaravelData + TypeScriptTransformer, PostgreSQL, BCMath; React 19 / TS strict / TanStack Query 5 / ECharts / Vitest.
 
 ## Global Constraints
 
-- Constructor injection only; never `app()`. (CLAUDE.md rule 13)
-- Strict typing: no `mixed` (PHP), no `any` (TS). (rule 3)
-- Money/quantity NEVER touch float: backend `CurrencyScale::bcformatStrict((string) $value, $scale)` with injected `CurrencyScaleResolverInterface`; frontend `formatCurrency`/`formatQuantity` from `@/lib/decimal` (Big.js-based) — never `parseFloat`/`Number(...)` on money. Percent is NOT currency-scaled. (rule 19)
-- Enum values via `ReceiptType::Sale->value` / `ReceiptType::Return->value` — never string literals. (rule 9)
-- Route added inside existing Accounting group: middleware `['api','auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class]` + `->middleware('can:dashboard.owner')`. (rule 12)
+- Constructor injection only; never `app()` in app code (test setup may use `$this->app->make`). (rule 13)
+- Strict typing: no `mixed` (PHP), no `any` (TS — `@typescript-eslint/no-explicit-any` is a warning and `--max-warnings=0` is used, so `as any` fails lint). (rule 3)
+- Money/quantity NEVER touch float: backend `CurrencyScale::bcformatStrict((string) $value, $scale)` with `CurrencyScaleResolverInterface::getScale($currencyCode)` (pass an EXPLICIT currency — bare no-arg `getScale()` throws without `CompanyContext`); frontend `formatCurrency`/`formatQuantity` from `@/lib/decimal` (Big.js) — never `parseFloat`. `Number(...)` is permitted ONLY at the ECharts coordinate boundary (matches existing `SalesByLocationChart`) and on percent values (percent is NOT currency-scaled). (rule 19)
+- Enum values: type-hint `ReceiptType` and compare with the enum; in raw SQL bindings use `ReceiptType::Sale->value`. (rule 9)
+- Route inside existing Accounting group: middleware `['api','auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class]` + `->middleware('can:dashboard.owner')`. (rule 12)
 - Types flow from backend: run `php artisan typescript:transform` after DTO changes; never hand-author domain response types. (rule 7)
-- `apiGet`/`apiPost` already unwrap `response.data.data`; the summary returns a single object under `{ "data": {...} }`, so `apiGet<T>` returns the object directly — no double-unwrap. (rule 14)
+- `apiGet<T>` returns `response.data.data`; the summary returns `{ "data": {...} }`, so `apiGet<SalesSummaryReport>` yields the object. (rule 14, verified `lib/api.ts`)
 - All user-facing text via `t()` in the `reports` i18n namespace (en + fr). (rule 11)
-- New `.tsx` uses `@/lib/designTokens` only; reusing existing shared `ui` components (e.g. `StatCard`) as-is is allowed. (rule 18)
-- TDD: red → green → commit per task. NEVER run the full PHPUnit suite (crashes the laptop) — always `--filter`/path-scoped. (rule 2 + memory)
-- SQL aggregates use `CASE WHEN ... END` (portable across the SQLite Unit suite and PG) — never `FILTER (WHERE ...)`.
-- Scope: receipts with `is_voided = false AND training_flag = false`, filtered by `OwnerReportScope`, `posted_at ∈ [from.startOfDay, to.endOfDay]`.
+- New `.tsx` uses `@/lib/designTokens`; reusing existing shared `ui` components (e.g. `StatCard`) as-is is allowed. (rule 18)
+- TDD: red → green → commit per task. NEVER run the full PHPUnit suite — scope every run with `--filter`/path. (rule 2 + memory)
+- SQL aggregates use `CASE WHEN ... END` (portable across the SQLite Unit suite and PG) — never `FILTER (WHERE ...)`. Numeric exactness is asserted on PG; on the SQLite test connection, aggregate SUMs may return floats — keep summary feature assertions at currency-scale-friendly values and run against the PG test connection for full exactness.
+- Aggregate scope: receipts with `is_voided = false AND training_flag = false`, filtered by `OwnerReportScope`, `posted_at ∈ [from.startOfDay, to.endOfDay]`.
+- Test placement mirrors existing owner-report tests: backend under `tests/Feature/Accounting/`, frontend under `features/owner-dashboard/.../__tests__/`. Commit messages: follow the repo's active convention for the branch (the `feat(reports): …` examples below are a default — adapt if the active phase/convention differs).
 
 ---
 
@@ -30,14 +33,12 @@
 **Files:**
 - Create: `apps/api/app/Modules/Accounting/Application/DTOs/Reports/SalesSummaryDeltaData.php`
 - Create: `apps/api/app/Modules/Accounting/Application/DTOs/Reports/SalesSummaryData.php`
-- Test: `apps/api/tests/Unit/Modules/Accounting/Reports/SalesSummaryDataTest.php`
+- Test: `apps/api/tests/Unit/Accounting/Reports/SalesSummaryDataTest.php`
 
 **Interfaces:**
-- Produces: `SalesSummaryData` (Spatie `Data`, `#[TypeScript]`) with readonly fields:
-  `grossSales:string, returnsAmount:string, netSales:string, salesCount:int, returnsCount:int, itemsSold:string, averageBasket:?string, delta:SalesSummaryDeltaData`.
-- Produces: `SalesSummaryDeltaData` with readonly fields:
-  `grossSalesAbs:string, grossSalesPct:?string, salesCountAbs:int, salesCountPct:?string`.
-  (`*Pct` is `null` when the prior-period base is zero — render "new", never divide by zero.)
+- Produces: `SalesSummaryData` (Spatie `Data`, `#[TypeScript]`) readonly fields:
+  `currencyCode:string, grossSales:string, returnsAmount:string, netSales:string, salesCount:int, returnsCount:int, itemsSold:string, averageBasket:?string, delta:SalesSummaryDeltaData`.
+- Produces: `SalesSummaryDeltaData`: `grossSalesAbs:string, grossSalesPct:?string, salesCountAbs:int, salesCountPct:?string` (`*Pct` null ⇒ prior base was zero → render "new").
 
 - [ ] **Step 1: Write the failing test**
 
@@ -46,7 +47,7 @@
 
 declare(strict_types=1);
 
-namespace Tests\Unit\Modules\Accounting\Reports;
+namespace Tests\Unit\Accounting\Reports;
 
 use App\Modules\Accounting\Application\DTOs\Reports\SalesSummaryData;
 use App\Modules\Accounting\Application\DTOs\Reports\SalesSummaryDeltaData;
@@ -57,34 +58,30 @@ final class SalesSummaryDataTest extends TestCase
     public function test_it_exposes_summary_fields_as_strings(): void
     {
         $dto = new SalesSummaryData(
-            grossSales: '1500.000',
-            returnsAmount: '50.000',
-            netSales: '1450.000',
+            currencyCode: 'EUR',
+            grossSales: '1500.00',
+            returnsAmount: '50.00',
+            netSales: '1450.00',
             salesCount: 12,
             returnsCount: 1,
             itemsSold: '34.0000',
-            averageBasket: '125.000',
-            delta: new SalesSummaryDeltaData(
-                grossSalesAbs: '200.000',
-                grossSalesPct: '15.38',
-                salesCountAbs: 3,
-                salesCountPct: '33.33',
-            ),
+            averageBasket: '125.00',
+            delta: new SalesSummaryDeltaData('200.00', '15.38', 3, '33.33'),
         );
 
         $array = $dto->toArray();
 
-        $this->assertSame('1500.000', $array['grossSales']);
-        $this->assertSame('50.000', $array['returnsAmount']);
+        $this->assertSame('EUR', $array['currencyCode']);
+        $this->assertSame('1500.00', $array['grossSales']);
         $this->assertSame(12, $array['salesCount']);
-        $this->assertNull((new SalesSummaryDeltaData('0.000', null, 0, null))->grossSalesPct);
+        $this->assertNull((new SalesSummaryDeltaData('0.00', null, 0, null))->grossSalesPct);
     }
 }
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/api && ./vendor/bin/phpunit tests/Unit/Modules/Accounting/Reports/SalesSummaryDataTest.php`
+Run: `cd apps/api && ./vendor/bin/phpunit tests/Unit/Accounting/Reports/SalesSummaryDataTest.php`
 Expected: FAIL — classes do not exist.
 
 - [ ] **Step 3: Write the DTOs**
@@ -127,6 +124,7 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 final class SalesSummaryData extends Data
 {
     public function __construct(
+        public readonly string $currencyCode,
         public readonly string $grossSales,
         public readonly string $returnsAmount,
         public readonly string $netSales,
@@ -139,152 +137,275 @@ final class SalesSummaryData extends Data
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Run test to verify it passes** — `cd apps/api && ./vendor/bin/phpunit tests/Unit/Accounting/Reports/SalesSummaryDataTest.php` → PASS.
 
-Run: `cd apps/api && ./vendor/bin/phpunit tests/Unit/Modules/Accounting/Reports/SalesSummaryDataTest.php`
-Expected: PASS.
+- [ ] **Step 5: Generate types** — `cd apps/api && php artisan typescript:transform`; verify `grep -r "SalesSummaryData" packages/shared/types` shows both DTOs under `App.Modules.Accounting.Application.DTOs.Reports`.
 
-- [ ] **Step 5: Generate TypeScript types**
-
-Run: `cd apps/api && php artisan typescript:transform`
-Expected: regenerates the shared types; `SalesSummaryData` and `SalesSummaryDeltaData` appear under `App.Modules.Accounting.Application.DTOs.Reports` in the generated `.d.ts` (e.g. `packages/shared/types/generated.d.ts`). Verify: `grep -r "SalesSummaryData" packages/shared/types`.
-
-- [ ] **Step 6: Run Pint + PHPStan (scoped)**
-
-Run: `cd apps/api && ./vendor/bin/pint app/Modules/Accounting/Application/DTOs/Reports && ./vendor/bin/phpstan analyse app/Modules/Accounting/Application/DTOs/Reports/SalesSummaryData.php app/Modules/Accounting/Application/DTOs/Reports/SalesSummaryDeltaData.php`
-Expected: no style diff, 0 errors.
+- [ ] **Step 6: Pint + PHPStan (scoped)** — `cd apps/api && ./vendor/bin/pint app/Modules/Accounting/Application/DTOs/Reports && ./vendor/bin/phpstan analyse app/Modules/Accounting/Application/DTOs/Reports/SalesSummaryData.php app/Modules/Accounting/Application/DTOs/Reports/SalesSummaryDeltaData.php` → 0 errors.
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add apps/api/app/Modules/Accounting/Application/DTOs/Reports/SalesSummaryData.php \
         apps/api/app/Modules/Accounting/Application/DTOs/Reports/SalesSummaryDeltaData.php \
-        apps/api/tests/Unit/Modules/Accounting/Reports/SalesSummaryDataTest.php \
-        packages/shared/types
+        apps/api/tests/Unit/Accounting/Reports/SalesSummaryDataTest.php packages/shared/types
 git commit -m "feat(reports): owner sales summary DTOs + generated types"
 ```
 
 ---
 
-### Task 2: `OwnerSalesSummaryService` (precision-correct aggregate)
+### Task 2: Extract reusable owner-reporting test fixtures into a trait
+
+**Why:** Task 3–4 need valid `Tenant/Company/Location/Terminal/PaymentMethod/Receipt/ReceiptLine/ReceiptPayment` rows with all NOT NULL columns. The proven setup already exists in `tests/Feature/Accounting/OwnerReportingTest.php`; extract it so new tests reuse it instead of hand-rolling inserts (which would crash on missing required columns).
 
 **Files:**
-- Create: `apps/api/app/Modules/Accounting/Application/Services/Reports/OwnerSalesSummaryService.php`
-- Test: `apps/api/tests/Feature/Modules/Accounting/Reports/OwnerSalesSummaryServiceTest.php`
+- Create: `apps/api/tests/Feature/Accounting/Concerns/InteractsWithOwnerReporting.php`
+- Test: this trait is exercised by Task 3's test; no standalone test. (Verify by running the existing `OwnerReportingTest` still green after no source change — the trait is additive.)
 
 **Interfaces:**
-- Consumes: `DateRangeData` (`->from`, `->to` are `CarbonImmutable`), `CurrencyScaleResolverInterface::getScale(?string)`, `CurrencyScale::bcformatStrict(string,int)`, `ReceiptType::{Sale,Return}->value`.
-- Produces: `OwnerSalesSummaryService::summary(DateRangeData $range, array $companyIds, array $locationIds): SalesSummaryData`. The prior window is `[from - (to-from), from)` at day granularity. Returns zero-filled summary (deltas `null` pct) when scope arrays are empty.
+- Produces trait `InteractsWithOwnerReporting` providing properties `$tenant,$company,$childCompany,$owner,$userWithoutPermission,$locationA,$locationB,$terminalA,$terminalB,$cashMethod,$cardMethod` and methods:
+  - `setUpOwnerReportingFixtures(): void` (call from the test's `setUp()` AFTER `parent::setUp()`)
+  - `seedReceipt(Location $location, Terminal $terminal, string $postedAt, string $total, ReceiptType $type = ReceiptType::Sale, bool $trainingFlag = false): Receipt`
+  - `seedReceiptWithLine(Product $product, Location $location, Terminal $terminal, string $postedAt, string $lineTotal, string $quantity, ReceiptType $type = ReceiptType::Sale): Receipt`
+  - `companyHeaders(): array{X-Company-Id:string}`
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Create the trait (copy the proven helpers from `OwnerReportingTest`, generalized for `ReceiptType`)**
 
 ```php
 <?php
 
 declare(strict_types=1);
 
-namespace Tests\Feature\Modules\Accounting\Reports;
+namespace Tests\Feature\Accounting\Concerns;
+
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\ReceiptLine;
+use App\Modules\POS\Domain\ReceiptPayment;
+use App\Modules\POS\Domain\Terminal;
+use App\Modules\Product\Domain\Product;
+use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\PaymentMethod;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
+
+trait InteractsWithOwnerReporting
+{
+    protected Tenant $tenant;
+    protected Company $company;
+    protected Company $childCompany;
+    protected User $owner;
+    protected User $userWithoutPermission;
+    protected Location $locationA;
+    protected Location $locationB;
+    protected Terminal $terminalA;
+    protected Terminal $terminalB;
+    protected PaymentMethod $cashMethod;
+
+    protected function setUpOwnerReportingFixtures(): void
+    {
+        $this->tenant = Tenant::factory()->create();
+        $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id, 'name' => 'Parent Company']);
+        $this->childCompany = Company::factory()->create([
+            'tenant_id' => $this->tenant->id, 'name' => 'Child Company',
+            'parent_company_id' => $this->company->id, 'is_headquarters' => false,
+        ]);
+        $this->owner = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        $this->userWithoutPermission = User::factory()->create(['tenant_id' => $this->tenant->id]);
+
+        UserCompanyMembership::create(['user_id' => $this->owner->id, 'company_id' => $this->company->id, 'role' => 'owner']);
+        UserCompanyMembership::create(['user_id' => $this->userWithoutPermission->id, 'company_id' => $this->company->id, 'role' => 'manager']);
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        Permission::findOrCreate('dashboard.owner', 'sanctum');
+        $this->owner->givePermissionTo('dashboard.owner');
+
+        $this->locationA = Location::factory()->create(['company_id' => $this->company->id, 'name' => 'Downtown']);
+        $this->locationB = Location::factory()->create(['company_id' => $this->company->id, 'name' => 'Airport']);
+        $this->terminalA = Terminal::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->company->id, 'location_id' => $this->locationA->id]);
+        $this->terminalB = Terminal::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->company->id, 'location_id' => $this->locationB->id]);
+        $this->cashMethod = PaymentMethod::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->company->id, 'name' => 'Cash', 'code' => 'CASH']);
+    }
+
+    protected function companyHeaders(): array
+    {
+        return ['X-Company-Id' => $this->company->id];
+    }
+
+    protected function seedReceipt(Location $location, Terminal $terminal, string $postedAt, string $total, ReceiptType $type = ReceiptType::Sale, bool $trainingFlag = false): Receipt
+    {
+        $receipt = Receipt::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $location->company_id,
+            'location_id' => $location->id,
+            'terminal_id' => $terminal->id,
+            'cashier_id' => $this->owner->id,
+            'cashier_name' => 'Owner Cashier',
+            'receipt_type' => $type,
+            'posted_at' => $postedAt,
+            'subtotal' => $total,
+            'tax_amount' => '0.000',
+            'total' => $total,
+            'training_flag' => $trainingFlag,
+        ]);
+
+        ReceiptPayment::create([
+            'receipt_id' => $receipt->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'payment_type' => 'cash',
+            'amount' => $total,
+        ]);
+
+        return $receipt;
+    }
+
+    protected function seedReceiptWithLine(Product $product, Location $location, Terminal $terminal, string $postedAt, string $lineTotal, string $quantity, ReceiptType $type = ReceiptType::Sale): Receipt
+    {
+        $receipt = $this->seedReceipt($location, $terminal, $postedAt, $lineTotal, $type);
+
+        ReceiptLine::create([
+            'receipt_id' => $receipt->id,
+            'line_number' => 1,
+            'product_id' => $product->id,
+            'product_name' => $product->name,
+            'product_code' => $product->sku,
+            'quantity' => $quantity,
+            'unit' => 'pcs',
+            'unit_price' => $lineTotal,
+            'tax_rate' => '0.00',
+            'tax_amount' => '0.00',
+            'line_total' => $lineTotal,
+            'discount_amount' => '0.00',
+        ]);
+
+        return $receipt;
+    }
+}
+```
+
+> **Implementer note:** This is copied verbatim from the proven `OwnerReportingTest` helpers (generalized with the `ReceiptType $type` param + negative totals for returns). If any factory/field has drifted, open `OwnerReportingTest.php` and match it exactly. A later cleanup can re-point `OwnerReportingTest` at this trait (out of scope here to avoid touching a green test).
+
+- [ ] **Step 2: Verify the existing suite still green (no source changed)**
+
+Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Accounting/OwnerReportingTest.php`
+Expected: PASS (unchanged). Pint: `./vendor/bin/pint tests/Feature/Accounting/Concerns`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add apps/api/tests/Feature/Accounting/Concerns/InteractsWithOwnerReporting.php
+git commit -m "test(reports): extract reusable owner-reporting fixtures trait"
+```
+
+---
+
+### Task 3: `OwnerSalesSummaryService` (precision-correct, currency-aware aggregate)
+
+**Files:**
+- Create: `apps/api/app/Modules/Accounting/Application/Services/Reports/OwnerSalesSummaryService.php`
+- Test: `apps/api/tests/Feature/Accounting/OwnerSalesSummaryServiceTest.php`
+
+**Interfaces:**
+- Consumes: `DateRangeData` (`->from`,`->to` `CarbonImmutable`), `CurrencyScaleResolverInterface::getScale(string)`/`getScaleSafe()`, `CurrencyScale::bcformatStrict(string,int)`, `ReceiptType::{Sale,Return}->value`, `companies.currency`.
+- Produces: `summary(DateRangeData $range, array $companyIds, array $locationIds): SalesSummaryData`. Prior window = `[from - lenDays, from - 1 day]`, `lenDays = from→to inclusive`. Resolves one currency across `companyIds` (throws `AuthorizationException` if mixed). Empty scope → zeroed summary with `currencyCode=''`.
+
+- [ ] **Step 1: Write the failing test (uses the Task-2 trait)**
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Application\DTOs\Reports\DateRangeData;
 use App\Modules\Accounting\Application\Services\Reports\OwnerSalesSummaryService;
 use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\Product\Domain\Product;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use Tests\Feature\Accounting\Concerns\InteractsWithOwnerReporting;
 use Tests\TestCase;
 
 final class OwnerSalesSummaryServiceTest extends TestCase
 {
+    use InteractsWithOwnerReporting;
     use RefreshDatabase;
 
-    private function seedReceipt(string $companyId, string $locationId, string $type, string $total, string $postedAt, string $qty): void
+    protected function setUp(): void
     {
-        $receiptId = (string) Str::uuid();
-        DB::table('pos_receipts')->insert([
-            'id' => $receiptId,
-            'company_id' => $companyId,
-            'location_id' => $locationId,
-            'receipt_type' => $type,
-            'total' => $total,
-            'subtotal' => $total,
-            'tax_amount' => '0',
-            'discount_amount' => '0',
-            'is_voided' => false,
-            'training_flag' => false,
-            'posted_at' => $postedAt,
-            'created_at' => $postedAt,
-            'updated_at' => $postedAt,
-        ]);
-        DB::table('pos_receipt_lines')->insert([
-            'id' => (string) Str::uuid(),
-            'receipt_id' => $receiptId,
-            'product_id' => (string) Str::uuid(),
-            'product_name' => 'Widget',
-            'quantity' => $qty,
-            'line_total' => $total,
-            'unit_price' => $total,
-        ]);
+        parent::setUp();
+        $this->setUpOwnerReportingFixtures();
     }
 
-    public function test_summary_separates_gross_sales_and_returns(): void
+    private function range(): DateRangeData
     {
-        $companyId = (string) Str::uuid();
-        $locationId = (string) Str::uuid();
-        DB::table('companies')->insert(['id' => $companyId, 'name' => 'Acme', 'created_at' => now(), 'updated_at' => now()]);
-        DB::table('locations')->insert(['id' => $locationId, 'company_id' => $companyId, 'name' => 'Tunis', 'created_at' => now(), 'updated_at' => now()]);
+        return new DateRangeData(CarbonImmutable::parse('2026-06-09'), CarbonImmutable::parse('2026-06-16'));
+    }
 
-        // current period: 2 sales (100 + 200), 1 return (-50)
-        $this->seedReceipt($companyId, $locationId, ReceiptType::Sale->value, '100.000', '2026-06-10 10:00:00', '2.0000');
-        $this->seedReceipt($companyId, $locationId, ReceiptType::Sale->value, '200.000', '2026-06-11 10:00:00', '3.0000');
-        $this->seedReceipt($companyId, $locationId, ReceiptType::Return->value, '-50.000', '2026-06-12 10:00:00', '-1.0000');
-        // prior period (2026-06-01..06-08): 1 sale (150)
-        $this->seedReceipt($companyId, $locationId, ReceiptType::Sale->value, '150.000', '2026-06-05 10:00:00', '1.0000');
+    public function test_summary_separates_gross_sales_returns_and_computes_deltas(): void
+    {
+        $product = Product::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->company->id, 'name' => 'Widget', 'sku' => 'W1']);
+        // current window: sales 100 + 200, return -50, items 2 + 3
+        $this->seedReceiptWithLine($product, $this->locationA, $this->terminalA, '2026-06-10 10:00:00', '100.00', '2.0000');
+        $this->seedReceiptWithLine($product, $this->locationB, $this->terminalB, '2026-06-11 10:00:00', '200.00', '3.0000');
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-12 10:00:00', '-50.00', ReceiptType::Return);
+        // prior window (2026-06-01..06-08): sale 150
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-05 10:00:00', '150.00');
 
-        $service = $this->app->make(OwnerSalesSummaryService::class);
-        $summary = $service->summary(
-            new DateRangeData(CarbonImmutable::parse('2026-06-09'), CarbonImmutable::parse('2026-06-16')),
-            [$companyId],
-            [$locationId],
+        $summary = $this->app->make(OwnerSalesSummaryService::class)->summary(
+            $this->range(), [$this->company->id], [$this->locationA->id, $this->locationB->id],
         );
 
-        $this->assertSame('300.000', $summary->grossSales);
-        $this->assertSame('50.000', $summary->returnsAmount);
-        $this->assertSame('250.000', $summary->netSales);
+        $this->assertSame('300.00', $summary->grossSales);
+        $this->assertSame('50.00', $summary->returnsAmount);
+        $this->assertSame('250.00', $summary->netSales);
         $this->assertSame(2, $summary->salesCount);
         $this->assertSame(1, $summary->returnsCount);
         $this->assertSame('5.0000', $summary->itemsSold);
-        $this->assertSame('150.000', $summary->averageBasket);
-        // prior gross 150 → delta abs 150, pct 100.00
-        $this->assertSame('150.000', $summary->delta->grossSalesAbs);
-        $this->assertSame('100.00', $summary->delta->grossSalesPct);
+        $this->assertSame('150.00', $summary->averageBasket);
+        $this->assertSame('150.00', $summary->delta->grossSalesAbs);
+        $this->assertSame('100.00', $summary->delta->grossSalesPct);  // (300-150)/150*100
     }
 
     public function test_zero_previous_period_yields_null_percentages(): void
     {
-        $companyId = (string) Str::uuid();
-        $locationId = (string) Str::uuid();
-        DB::table('companies')->insert(['id' => $companyId, 'name' => 'Acme', 'created_at' => now(), 'updated_at' => now()]);
-        DB::table('locations')->insert(['id' => $locationId, 'company_id' => $companyId, 'name' => 'Tunis', 'created_at' => now(), 'updated_at' => now()]);
-        $this->seedReceipt($companyId, $locationId, ReceiptType::Sale->value, '100.000', '2026-06-10 10:00:00', '1.0000');
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-10 10:00:00', '100.00');
 
-        $service = $this->app->make(OwnerSalesSummaryService::class);
-        $summary = $service->summary(
-            new DateRangeData(CarbonImmutable::parse('2026-06-09'), CarbonImmutable::parse('2026-06-16')),
-            [$companyId],
-            [$locationId],
+        $summary = $this->app->make(OwnerSalesSummaryService::class)->summary(
+            $this->range(), [$this->company->id], [$this->locationA->id],
         );
 
         $this->assertNull($summary->delta->grossSalesPct);
         $this->assertNull($summary->delta->salesCountPct);
     }
+
+    public function test_percentage_rounds_half_away_from_zero(): void
+    {
+        // prior 3 (count), current 5 → 66.666.. → 66.67
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-03 10:00:00', '10.00');
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-04 10:00:00', '10.00');
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-05 10:00:00', '10.00');
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-10 10:00:00', '10.00');
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-11 10:00:00', '10.00');
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-12 10:00:00', '10.00');
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-13 10:00:00', '10.00');
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-14 10:00:00', '10.00');
+
+        $summary = $this->app->make(OwnerSalesSummaryService::class)->summary(
+            $this->range(), [$this->company->id], [$this->locationA->id],
+        );
+
+        $this->assertSame('66.67', $summary->delta->salesCountPct);
+    }
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Modules/Accounting/Reports/OwnerSalesSummaryServiceTest.php`
-Expected: FAIL — service does not exist. (If `pos_receipts`/`pos_receipt_lines` columns differ, adjust the seed insert to the real non-null columns — check the migration first.)
+- [ ] **Step 2: Run test to verify it fails** — `cd apps/api && ./vendor/bin/phpunit tests/Feature/Accounting/OwnerSalesSummaryServiceTest.php` → FAIL (service missing).
 
 - [ ] **Step 3: Write the service**
 
@@ -301,10 +422,13 @@ use App\Modules\Accounting\Application\DTOs\Reports\SalesSummaryDeltaData;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 
 final class OwnerSalesSummaryService
 {
+    private const QTY_SCALE = 4;
+
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
@@ -312,48 +436,63 @@ final class OwnerSalesSummaryService
     /**
      * @param  list<string>  $companyIds
      * @param  list<string>  $locationIds
+     *
+     * @throws AuthorizationException
      */
     public function summary(DateRangeData $range, array $companyIds, array $locationIds): SalesSummaryData
     {
-        $moneyScale = $this->scaleResolver->getScale();
-        $qtyScale = 4;
-
         if ($companyIds === [] || $locationIds === []) {
-            return $this->zero($moneyScale, $qtyScale);
+            return $this->zero('', $this->scaleResolver->getScaleSafe(null, 3));
         }
+
+        $currency = $this->resolveCurrency($companyIds);
+        $scale = $this->scaleResolver->getScale($currency);
 
         $current = $this->aggregate($range, $companyIds, $locationIds);
 
         $lengthDays = (int) $range->from->startOfDay()->diffInDays($range->to->startOfDay()) + 1;
-        $priorRange = new DateRangeData(
-            from: $range->from->subDays($lengthDays),
-            to: $range->from->subDay(),
+        $prior = $this->aggregate(
+            new DateRangeData(from: $range->from->subDays($lengthDays), to: $range->from->subDay()),
+            $companyIds,
+            $locationIds,
         );
-        $prior = $this->aggregate($priorRange, $companyIds, $locationIds);
 
-        $grossSales = CurrencyScale::bcformatStrict((string) $current['gross'], $moneyScale);
-        $returnsAmount = CurrencyScale::bcformatStrict((string) $current['returns'], $moneyScale);
-        $netSales = CurrencyScale::bcformatStrict(bcsub((string) $current['gross'], (string) $current['returns'], $moneyScale + 1), $moneyScale);
-        $itemsSold = CurrencyScale::bcformatStrict((string) $current['items'], $qtyScale);
         $averageBasket = $current['saleCount'] > 0
-            ? CurrencyScale::bcformatStrict(bcdiv((string) $current['gross'], (string) $current['saleCount'], $moneyScale + 1), $moneyScale)
+            ? CurrencyScale::bcformatStrict(bcdiv($current['gross'], (string) $current['saleCount'], $scale + 1), $scale)
             : null;
 
         return new SalesSummaryData(
-            grossSales: $grossSales,
-            returnsAmount: $returnsAmount,
-            netSales: $netSales,
-            salesCount: (int) $current['saleCount'],
-            returnsCount: (int) $current['returnCount'],
-            itemsSold: $itemsSold,
+            currencyCode: $currency,
+            grossSales: CurrencyScale::bcformatStrict($current['gross'], $scale),
+            returnsAmount: CurrencyScale::bcformatStrict($current['returns'], $scale),
+            netSales: CurrencyScale::bcformatStrict(bcsub($current['gross'], $current['returns'], $scale + 1), $scale),
+            salesCount: $current['saleCount'],
+            returnsCount: $current['returnCount'],
+            itemsSold: CurrencyScale::bcformatStrict($current['items'], self::QTY_SCALE),
             averageBasket: $averageBasket,
             delta: new SalesSummaryDeltaData(
-                grossSalesAbs: CurrencyScale::bcformatStrict(bcsub((string) $current['gross'], (string) $prior['gross'], $moneyScale + 1), $moneyScale),
-                grossSalesPct: $this->pct((string) $current['gross'], (string) $prior['gross']),
-                salesCountAbs: (int) $current['saleCount'] - (int) $prior['saleCount'],
+                grossSalesAbs: CurrencyScale::bcformatStrict(bcsub($current['gross'], $prior['gross'], $scale + 1), $scale),
+                grossSalesPct: $this->pct($current['gross'], $prior['gross']),
+                salesCountAbs: $current['saleCount'] - $prior['saleCount'],
                 salesCountPct: $this->pct((string) $current['saleCount'], (string) $prior['saleCount']),
             ),
         );
+    }
+
+    /**
+     * @param  list<string>  $companyIds
+     *
+     * @throws AuthorizationException
+     */
+    private function resolveCurrency(array $companyIds): string
+    {
+        $currencies = DB::table('companies')->whereIn('id', $companyIds)->distinct()->pluck('currency');
+
+        if ($currencies->count() > 1) {
+            throw new AuthorizationException('Owner reporting cannot aggregate across companies with different currencies.');
+        }
+
+        return (string) ($currencies->first() ?? 'EUR');
     }
 
     /**
@@ -372,10 +511,10 @@ final class OwnerSalesSummaryService
             ->where('is_voided', false)
             ->where('training_flag', false)
             ->whereBetween('posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
-            ->selectRaw("COALESCE(SUM(CASE WHEN receipt_type = ? THEN total ELSE 0 END), 0) as gross", [$sale])
-            ->selectRaw("COALESCE(ABS(SUM(CASE WHEN receipt_type = ? THEN total ELSE 0 END)), 0) as returns", [$return])
-            ->selectRaw("COUNT(CASE WHEN receipt_type = ? THEN 1 END) as sale_count", [$sale])
-            ->selectRaw("COUNT(CASE WHEN receipt_type = ? THEN 1 END) as return_count", [$return])
+            ->selectRaw('COALESCE(SUM(CASE WHEN receipt_type = ? THEN total ELSE 0 END), 0) as gross', [$sale])
+            ->selectRaw('COALESCE(ABS(SUM(CASE WHEN receipt_type = ? THEN total ELSE 0 END)), 0) as returns', [$return])
+            ->selectRaw('COUNT(CASE WHEN receipt_type = ? THEN 1 END) as sale_count', [$sale])
+            ->selectRaw('COUNT(CASE WHEN receipt_type = ? THEN 1 END) as return_count', [$return])
             ->first();
 
         $items = DB::table('pos_receipt_lines')
@@ -400,118 +539,144 @@ final class OwnerSalesSummaryService
 
     private function pct(string $current, string $prior): ?string
     {
-        if (bccomp($prior, '0', 4) === 0) {
+        if (bccomp($prior, '0', 6) === 0) {
             return null;
         }
 
-        return bcadd(bcmul(bcdiv(bcsub($current, $prior, 6), $prior, 6), '100', 4), '0', 2);
+        $raw = bcmul(bcdiv(bcsub($current, $prior, 8), $prior, 8), '100', 6);
+
+        return $this->bcround($raw, 2);
     }
 
-    private function zero(int $moneyScale, int $qtyScale): SalesSummaryData
+    /** Round half away from zero to $scale decimals (percent is not currency-scaled). */
+    private function bcround(string $number, int $scale): string
     {
-        $zeroMoney = CurrencyScale::bcformatStrict('0', $moneyScale);
+        if (! str_contains($number, '.')) {
+            return bcadd($number, '0', $scale);
+        }
+        $increment = '0.'.str_repeat('0', $scale).'5';
+
+        return str_starts_with($number, '-')
+            ? bcsub($number, $increment, $scale)
+            : bcadd($number, $increment, $scale);
+    }
+
+    private function zero(string $currency, int $scale): SalesSummaryData
+    {
+        $zero = CurrencyScale::bcformatStrict('0', $scale);
 
         return new SalesSummaryData(
-            grossSales: $zeroMoney,
-            returnsAmount: $zeroMoney,
-            netSales: $zeroMoney,
+            currencyCode: $currency,
+            grossSales: $zero,
+            returnsAmount: $zero,
+            netSales: $zero,
             salesCount: 0,
             returnsCount: 0,
-            itemsSold: CurrencyScale::bcformatStrict('0', $qtyScale),
+            itemsSold: CurrencyScale::bcformatStrict('0', self::QTY_SCALE),
             averageBasket: null,
-            delta: new SalesSummaryDeltaData($zeroMoney, null, 0, null),
+            delta: new SalesSummaryDeltaData($zero, null, 0, null),
         );
     }
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Run test to verify it passes** — `cd apps/api && ./vendor/bin/phpunit tests/Feature/Accounting/OwnerSalesSummaryServiceTest.php` → PASS. (If the local default connection is SQLite and a decimal assertion is off by float noise, run against the PG test connection per the project recipe; the CASE/ABS SQL is portable.)
 
-Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Modules/Accounting/Reports/OwnerSalesSummaryServiceTest.php`
-Expected: PASS. (This is a Feature test; if the local default connection is SQLite it will still run — the CASE/ABS expressions are portable. The numeric exactness assertions hold on PG; if SQLite returns a float-formatted intermediate, prefer running against the PG test connection per the project's PG test recipe.)
-
-- [ ] **Step 5: Pint + PHPStan (scoped)**
-
-Run: `cd apps/api && ./vendor/bin/pint app/Modules/Accounting/Application/Services/Reports/OwnerSalesSummaryService.php && ./vendor/bin/phpstan analyse app/Modules/Accounting/Application/Services/Reports/OwnerSalesSummaryService.php`
-Expected: 0 errors (note: the new service has constructor injection and no float casts — the `ForbidFloatCastOnDecimalProperty`/`ForbidHardcodedBcmathScale` guards should pass since scales come from the resolver, not literals on money).
+- [ ] **Step 5: Pint + PHPStan (scoped)** — `cd apps/api && ./vendor/bin/pint app/Modules/Accounting/Application/Services/Reports/OwnerSalesSummaryService.php && ./vendor/bin/phpstan analyse app/Modules/Accounting/Application/Services/Reports/OwnerSalesSummaryService.php` → 0 errors (no float casts on money; scales come from the resolver/const, not literals on money columns).
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add apps/api/app/Modules/Accounting/Application/Services/Reports/OwnerSalesSummaryService.php \
-        apps/api/tests/Feature/Modules/Accounting/Reports/OwnerSalesSummaryServiceTest.php
-git commit -m "feat(reports): precision-correct OwnerSalesSummaryService"
+        apps/api/tests/Feature/Accounting/OwnerSalesSummaryServiceTest.php
+git commit -m "feat(reports): currency-aware precision-correct OwnerSalesSummaryService"
 ```
 
 ---
 
-### Task 3: `salesSummary` endpoint (controller + route)
+### Task 4: `salesSummary` endpoint (controller + route)
 
 **Files:**
-- Modify: `apps/api/app/Modules/Accounting/Presentation/Controllers/ReportsController.php` (add `OwnerSalesSummaryService` to constructor + new `salesSummary()` action)
-- Modify: `apps/api/app/Modules/Accounting/Presentation/routes.php` (add route in the "Owner Reporting MVP" block)
-- Test: `apps/api/tests/Feature/Modules/Accounting/Reports/SalesSummaryEndpointTest.php`
+- Modify: `apps/api/app/Modules/Accounting/Presentation/Controllers/ReportsController.php` (constructor + `salesSummary()`)
+- Modify: `apps/api/app/Modules/Accounting/Presentation/routes.php` (Owner Reporting MVP block)
+- Test: `apps/api/tests/Feature/Accounting/SalesSummaryEndpointTest.php`
 
 **Interfaces:**
-- Consumes: `OwnerSalesSummaryService::summary()`, `GetOwnerSalesReportRequest` (reused), `OwnerReportScope`, `$this->ownerUser()`.
+- Consumes: `OwnerSalesSummaryService::summary()`, `GetOwnerSalesReportRequest`, `OwnerReportScope`, `$this->ownerUser()`.
 - Produces: `GET /api/v1/reports/sales/summary` → `{ "data": SalesSummaryData }`, gated `can:dashboard.owner`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing test (mirror `OwnerReportingTest` auth via the trait; cover returns/prior/scope/403)**
 
 ```php
 <?php
 
 declare(strict_types=1);
 
-namespace Tests\Feature\Modules\Accounting\Reports;
+namespace Tests\Feature\Accounting;
 
-use Tests\Feature\Modules\Accounting\Reports\Concerns\SeedsOwnerReportingTenant; // see note
+use App\Modules\POS\Domain\Enums\ReceiptType;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
+use Tests\Feature\Accounting\Concerns\InteractsWithOwnerReporting;
 use Tests\TestCase;
 
 final class SalesSummaryEndpointTest extends TestCase
 {
-    public function test_owner_can_fetch_sales_summary(): void
+    use InteractsWithOwnerReporting;
+    use RefreshDatabase;
+
+    protected function setUp(): void
     {
-        // Arrange: authenticate a user with dashboard.owner + company context + 1 sale.
-        // Reuse the same seeding helper the existing owner-report endpoint tests use
-        // (search tests/Feature/Modules/Accounting for the salesByLocation endpoint test
-        // and mirror its auth/company-context setup).
-        $owner = $this->actingAsOwnerWithSales(grossSales: '120.000');
+        parent::setUp();
+        $this->setUpOwnerReportingFixtures();
+    }
 
-        $response = $this->getJson('/api/v1/reports/sales/summary?from=2026-06-01&to=2026-06-30');
+    public function test_owner_can_fetch_sales_summary_with_returns(): void
+    {
+        Sanctum::actingAs($this->owner);
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-10 10:00:00', '120.00');
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-11 10:00:00', '-20.00', ReceiptType::Return);
 
-        $response->assertOk()
-            ->assertJsonPath('data.grossSales', '120.000')
-            ->assertJsonStructure(['data' => ['grossSales', 'returnsAmount', 'salesCount', 'averageBasket', 'delta' => ['grossSalesAbs', 'grossSalesPct']]]);
+        $this->getJson('/api/v1/reports/sales/summary?from=2026-06-09&to=2026-06-16', $this->companyHeaders())
+            ->assertOk()
+            ->assertJsonPath('data.grossSales', '120.00')
+            ->assertJsonPath('data.returnsAmount', '20.00')
+            ->assertJsonPath('data.salesCount', 1)
+            ->assertJsonStructure(['data' => ['currencyCode', 'grossSales', 'returnsAmount', 'salesCount', 'averageBasket', 'delta' => ['grossSalesAbs', 'grossSalesPct']]]);
+    }
+
+    public function test_location_scope_is_enforced(): void
+    {
+        Sanctum::actingAs($this->owner);
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-10 10:00:00', '120.00');
+        $this->seedReceipt($this->locationB, $this->terminalB, '2026-06-10 10:00:00', '300.00');
+
+        $this->getJson('/api/v1/reports/sales/summary?from=2026-06-09&to=2026-06-16&location_ids[]='.$this->locationA->id, $this->companyHeaders())
+            ->assertOk()
+            ->assertJsonPath('data.grossSales', '120.00');
     }
 
     public function test_non_owner_is_forbidden(): void
     {
-        $this->actingAsUserWithoutPermission('dashboard.owner');
+        Sanctum::actingAs($this->userWithoutPermission);
 
-        $this->getJson('/api/v1/reports/sales/summary?from=2026-06-01&to=2026-06-30')
+        $this->getJson('/api/v1/reports/sales/summary?from=2026-06-09&to=2026-06-16', $this->companyHeaders())
             ->assertForbidden();
     }
 }
 ```
 
-> **Implementer note:** The two helper methods above (`actingAsOwnerWithSales`, `actingAsUserWithoutPermission`) must mirror the EXISTING owner-report endpoint tests. Before writing this test, open the existing test for `reports/sales/by-location` (search `tests/Feature/Modules/Accounting` for `by-location` / `dashboard.owner`) and reuse its exact authentication, `RolesAndPermissionsSeeder`, and company-context bootstrap. Do not invent a new auth pattern.
+- [ ] **Step 2: Run test to verify it fails** — `cd apps/api && ./vendor/bin/phpunit tests/Feature/Accounting/SalesSummaryEndpointTest.php` → FAIL (route missing).
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 3: Add service to controller constructor + action**
 
-Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Modules/Accounting/Reports/SalesSummaryEndpointTest.php`
-Expected: FAIL — route/action missing (404/500).
-
-- [ ] **Step 3: Add the service to the controller constructor + the action**
-
-In `ReportsController.php` constructor, add the import and parameter:
+Add import + constructor param:
 ```php
 use App\Modules\Accounting\Application\Services\Reports\OwnerSalesSummaryService;
-// ...
+// ... in constructor:
         private readonly OwnerSalesSummaryService $ownerSalesSummaryService,
 ```
-
-Add the action (mirror `salesByLocation`):
+Add the action (mirrors `salesByLocation`):
 ```php
 public function salesSummary(GetOwnerSalesReportRequest $request): JsonResponse
 {
@@ -529,53 +694,44 @@ public function salesSummary(GetOwnerSalesReportRequest $request): JsonResponse
 }
 ```
 
-- [ ] **Step 4: Add the route**
-
-In `routes.php`, inside the `// Owner Reporting MVP` block (next to `reports/sales/by-location`):
+- [ ] **Step 4: Add the route** — inside the `// Owner Reporting MVP` block in `routes.php`:
 ```php
 Route::get('/reports/sales/summary', [ReportsController::class, 'salesSummary'])
     ->middleware('can:dashboard.owner')
     ->name('reports.sales.summary');
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [ ] **Step 5: Run test to verify it passes** — `cd apps/api && ./vendor/bin/phpunit tests/Feature/Accounting/SalesSummaryEndpointTest.php` → PASS.
 
-Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Modules/Accounting/Reports/SalesSummaryEndpointTest.php`
-Expected: PASS (200 with grossSales; 403 for non-owner).
-
-- [ ] **Step 6: Pint + PHPStan (scoped) + commit**
-
+- [ ] **Step 6: Pint + PHPStan + commit**
 ```bash
 cd apps/api && ./vendor/bin/pint app/Modules/Accounting/Presentation && ./vendor/bin/phpstan analyse app/Modules/Accounting/Presentation/Controllers/ReportsController.php
-git add apps/api/app/Modules/Accounting/Presentation/Controllers/ReportsController.php \
-        apps/api/app/Modules/Accounting/Presentation/routes.php \
-        apps/api/tests/Feature/Modules/Accounting/Reports/SalesSummaryEndpointTest.php
+git add apps/api/app/Modules/Accounting/Presentation/Controllers/ReportsController.php apps/api/app/Modules/Accounting/Presentation/routes.php apps/api/tests/Feature/Accounting/SalesSummaryEndpointTest.php
 git commit -m "feat(reports): GET /reports/sales/summary owner endpoint"
 ```
 
 ---
 
-### Task 4: `fetchSalesSummary` API client + `useSalesSummary` hook
+### Task 5: `fetchSalesSummary` API client + `useSalesSummary` hook
 
 **Files:**
 - Modify: `apps/web/src/features/owner-dashboard/api/ownerReportsApi.ts`
 - Modify: `apps/web/src/features/owner-dashboard/hooks/useOwnerReports.ts`
-- Test: `apps/web/src/features/owner-dashboard/api/__tests__/ownerReportsApi.summary.test.ts`
+- Test: `apps/web/src/features/owner-dashboard/__tests__/ownerReportsApi.summary.test.tsx`
 
 **Interfaces:**
-- Produces: `SalesSummaryReport` type alias; `fetchSalesSummary(params: OwnerDateRangeParams): Promise<SalesSummaryReport>`; `useSalesSummary(params, canFetch?)` returning a TanStack query of `SalesSummaryReport`.
+- Produces: `SalesSummaryReport` alias; `fetchSalesSummary(params: OwnerDateRangeParams): Promise<SalesSummaryReport>`; `useSalesSummary(params, canFetch?)`.
 
 - [ ] **Step 1: Write the failing test**
-
-```ts
+```tsx
 import { describe, expect, it, vi } from 'vitest'
-import { fetchSalesSummary } from '../ownerReportsApi'
+import { fetchSalesSummary } from '../api/ownerReportsApi'
 import { apiGet } from '@/lib/api'
 
-vi.mock('@/lib/api', () => ({ apiGet: vi.fn().mockResolvedValue({ grossSales: '120.000' }) }))
+vi.mock('@/lib/api', () => ({ apiGet: vi.fn().mockResolvedValue({ grossSales: '120.00' }) }))
 
 describe('fetchSalesSummary', () => {
-  it('requests the summary endpoint with date + location params', async () => {
+  it('requests the summary endpoint with location params', async () => {
     await fetchSalesSummary({ from: '2026-06-01', to: '2026-06-30', location_ids: ['loc-1'] })
     expect(apiGet).toHaveBeenCalledWith(expect.stringContaining('/reports/sales/summary?'))
     expect(apiGet).toHaveBeenCalledWith(expect.stringContaining('location_ids%5B%5D=loc-1'))
@@ -583,13 +739,9 @@ describe('fetchSalesSummary', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run test to verify it fails** — `cd apps/web && pnpm vitest run src/features/owner-dashboard/__tests__/ownerReportsApi.summary.test.tsx` → FAIL.
 
-Run: `cd apps/web && pnpm vitest run src/features/owner-dashboard/api/__tests__/ownerReportsApi.summary.test.ts`
-Expected: FAIL — `fetchSalesSummary` is not exported.
-
-- [ ] **Step 3: Add the type + fetcher to `ownerReportsApi.ts`**
-
+- [ ] **Step 3: Add type + fetcher to `ownerReportsApi.ts`**
 ```ts
 export type SalesSummaryReport = App.Modules.Accounting.Application.DTOs.Reports.SalesSummaryData
 
@@ -598,16 +750,13 @@ export async function fetchSalesSummary(params: OwnerDateRangeParams): Promise<S
 }
 ```
 
-- [ ] **Step 4: Add the hook to `useOwnerReports.ts`**
-
-Add `fetchSalesSummary` + `SalesSummaryReport` to the import block, add a key, and the hook:
+- [ ] **Step 4: Add the hook + key to `useOwnerReports.ts`** (add `fetchSalesSummary`/`SalesSummaryReport` to imports)
 ```ts
   salesSummary: (params: OwnerDateRangeParams) => [...ownerReportKeys.all, 'sales-summary', params] as const,
 ```
 ```ts
 export function useSalesSummary(params: OwnerDateRangeParams, canFetch = true) {
   const enabled = useOwnerReportsEnabled() && canFetch
-
   return useQuery({
     queryKey: tenantScopedKey(ownerReportKeys.salesSummary(params)),
     queryFn: () => fetchSalesSummary(params),
@@ -616,34 +765,76 @@ export function useSalesSummary(params: OwnerDateRangeParams, canFetch = true) {
 }
 ```
 
-- [ ] **Step 5: Run test + typecheck**
-
-Run: `cd apps/web && pnpm vitest run src/features/owner-dashboard/api/__tests__/ownerReportsApi.summary.test.ts && pnpm typecheck`
-Expected: PASS; no TS errors (the generated `SalesSummaryData` type from Task 1 resolves).
+- [ ] **Step 5: Run test + typecheck** — `cd apps/web && pnpm vitest run src/features/owner-dashboard/__tests__/ownerReportsApi.summary.test.tsx && pnpm typecheck` → PASS.
 
 - [ ] **Step 6: Commit**
-
 ```bash
-git add apps/web/src/features/owner-dashboard/api/ownerReportsApi.ts \
-        apps/web/src/features/owner-dashboard/hooks/useOwnerReports.ts \
-        apps/web/src/features/owner-dashboard/api/__tests__/ownerReportsApi.summary.test.ts
+git add apps/web/src/features/owner-dashboard/api/ownerReportsApi.ts apps/web/src/features/owner-dashboard/hooks/useOwnerReports.ts apps/web/src/features/owner-dashboard/__tests__/ownerReportsApi.summary.test.tsx
 git commit -m "feat(reports): web sales-summary api client + hook"
 ```
 
 ---
 
-### Task 5: `SalesSummaryCards` KPI row component
+### Task 6: Big.js `formatQuantity` in `@/lib/decimal`
+
+**Why:** `@/lib/decimal` exports `formatCurrency` (Big.js) but no `formatQuantity`; the only `formatQuantity` (`lib/format.ts`) uses `parseFloat` (forbidden on quantity). Add a Big.js-backed one so the KPI cards format quantity without float.
+
+**Files:**
+- Modify: `apps/web/src/lib/decimal.ts`
+- Test: `apps/web/src/lib/__tests__/decimal.formatQuantity.test.ts`
+
+**Interfaces:**
+- Produces: `formatQuantity(amount: string | number, scale = 4): string` (Big.js `toFixed(scale)`, no float).
+
+- [ ] **Step 1: Write the failing test**
+```ts
+import { describe, expect, it } from 'vitest'
+import { formatQuantity } from '../decimal'
+
+describe('formatQuantity', () => {
+  it('formats a decimal string to 4 places without float', () => {
+    expect(formatQuantity('5')).toBe('5.0000')
+    expect(formatQuantity('5.5', 2)).toBe('5.50')
+  })
+})
+```
+
+- [ ] **Step 2: Run test to verify it fails** — `cd apps/web && pnpm vitest run src/lib/__tests__/decimal.formatQuantity.test.ts` → FAIL (not exported).
+
+- [ ] **Step 3: Add the function to `lib/decimal.ts`** (reuse the existing `Big`/`safeBig` imports already in that file)
+```ts
+export function formatQuantity(amount: string | number, scale = 4): string {
+  let big: Big
+  try {
+    big = typeof amount === 'number' ? new Big(amount) : safeBig(String(amount))
+  } catch {
+    big = new Big(0)
+  }
+  return big.toFixed(scale)
+}
+```
+
+- [ ] **Step 4: Run test + lint** — `cd apps/web && pnpm vitest run src/lib/__tests__/decimal.formatQuantity.test.ts && pnpm lint --max-warnings=0 src/lib/decimal.ts` → PASS.
+
+- [ ] **Step 5: Commit**
+```bash
+git add apps/web/src/lib/decimal.ts apps/web/src/lib/__tests__/decimal.formatQuantity.test.ts
+git commit -m "feat(reports): Big.js formatQuantity helper in lib/decimal"
+```
+
+---
+
+### Task 7: `SalesSummaryCards` KPI row component
 
 **Files:**
 - Create: `apps/web/src/features/owner-dashboard/components/SalesSummaryCards.tsx`
 - Test: `apps/web/src/features/owner-dashboard/components/__tests__/SalesSummaryCards.test.tsx`
 
 **Interfaces:**
-- Consumes: `SalesSummaryReport`, `StatCard` from `@/components/ui/StatCard`, `formatCurrency`/`formatQuantity` from `@/lib/decimal`.
-- Produces: `<SalesSummaryCards data={...} isLoading isError />` — 5 cards (Total sales, Transactions, Avg basket, Items sold, Returns). Skeleton while loading, error card on error. Delta chip on Total sales + Transactions via `StatCard.trend` (percent → `Number()` is allowed; percent is NOT money).
+- Consumes: `SalesSummaryReport`, `StatCard` (`@/components/ui/StatCard`), `formatCurrency`/`formatQuantity` (`@/lib/decimal`).
+- Produces: `<SalesSummaryCards data isLoading isError />` — 5 cards + skeleton + error card; delta chip on Total sales + Transactions via `StatCard.trend`.
 
 - [ ] **Step 1: Write the failing test**
-
 ```tsx
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
@@ -652,17 +843,18 @@ import { SalesSummaryCards } from '../SalesSummaryCards'
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }))
 
 const data = {
-  grossSales: '300.000', returnsAmount: '50.000', netSales: '250.000',
-  salesCount: 2, returnsCount: 1, itemsSold: '5.0000', averageBasket: '150.000',
-  delta: { grossSalesAbs: '150.000', grossSalesPct: '100.00', salesCountAbs: 1, salesCountPct: '50.00' },
+  currencyCode: 'EUR', grossSales: '300.00', returnsAmount: '50.00', netSales: '250.00',
+  salesCount: 2, returnsCount: 1, itemsSold: '5.0000', averageBasket: '150.00',
+  delta: { grossSalesAbs: '150.00', grossSalesPct: '100.00', salesCountAbs: 1, salesCountPct: '50.00' },
 }
 
 describe('SalesSummaryCards', () => {
-  it('renders five KPI cards with values', () => {
+  it('renders five KPI cards with formatted values', () => {
     render(<SalesSummaryCards data={data} isLoading={false} isError={false} />)
     expect(screen.getByText('reports:ownerDashboard.kpi.totalSales')).toBeInTheDocument()
     expect(screen.getByText('reports:ownerDashboard.kpi.transactions')).toBeInTheDocument()
     expect(screen.getByText('reports:ownerDashboard.kpi.returns')).toBeInTheDocument()
+    expect(screen.getByText('5.0000')).toBeInTheDocument()  // itemsSold via formatQuantity
   })
 
   it('renders an error card on error', () => {
@@ -677,13 +869,9 @@ describe('SalesSummaryCards', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd apps/web && pnpm vitest run src/features/owner-dashboard/components/__tests__/SalesSummaryCards.test.tsx`
-Expected: FAIL — component does not exist.
+- [ ] **Step 2: Run test to verify it fails** — `cd apps/web && pnpm vitest run src/features/owner-dashboard/components/__tests__/SalesSummaryCards.test.tsx` → FAIL.
 
 - [ ] **Step 3: Write the component**
-
 ```tsx
 import { useTranslation } from 'react-i18next'
 import { ShoppingBag, Receipt, Wallet, Package, Undo2 } from 'lucide-react'
@@ -719,99 +907,86 @@ export function SalesSummaryCards({ data, isLoading, isError }: SalesSummaryCard
     )
   }
 
-  const pct = (v: string | null): { value: number; label: string; isPositive: boolean } | undefined =>
+  const currency = data.currencyCode || 'EUR'
+  const pct = (v: string | null) =>
     v === null ? undefined : { value: Number(v), label: t('reports:ownerDashboard.kpi.vsPrevious'), isPositive: Number(v) >= 0 }
 
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-      <StatCard label={t('reports:ownerDashboard.kpi.totalSales')} value={formatCurrency(data.grossSales)} icon={ShoppingBag} trend={pct(data.delta.grossSalesPct)} />
+      <StatCard label={t('reports:ownerDashboard.kpi.totalSales')} value={formatCurrency(data.grossSales, true, currency)} icon={ShoppingBag} trend={pct(data.delta.grossSalesPct)} />
       <StatCard label={t('reports:ownerDashboard.kpi.transactions')} value={String(data.salesCount)} icon={Receipt} trend={pct(data.delta.salesCountPct)} />
-      <StatCard label={t('reports:ownerDashboard.kpi.avgBasket')} value={data.averageBasket ? formatCurrency(data.averageBasket) : '—'} icon={Wallet} />
+      <StatCard label={t('reports:ownerDashboard.kpi.avgBasket')} value={data.averageBasket ? formatCurrency(data.averageBasket, true, currency) : '—'} icon={Wallet} />
       <StatCard label={t('reports:ownerDashboard.kpi.itemsSold')} value={formatQuantity(data.itemsSold)} icon={Package} />
-      <StatCard label={t('reports:ownerDashboard.kpi.returns')} value={formatCurrency(data.returnsAmount)} icon={Undo2} />
+      <StatCard label={t('reports:ownerDashboard.kpi.returns')} value={formatCurrency(data.returnsAmount, true, currency)} icon={Undo2} />
     </div>
   )
 }
 ```
 
-> **Implementer note:** Confirm `formatQuantity` is exported from `@/lib/decimal`; if it lives elsewhere, import from the module the sibling widgets use. `formatCurrency(value)` defaults to EUR symbol — pass the tenant currency if the surrounding page has it; otherwise the default is acceptable for this iteration.
-
-- [ ] **Step 4: Add i18n keys**
-
-Add to `apps/web/src/locales/en/reports.json` (and the `fr` equivalent) under `ownerDashboard`:
+- [ ] **Step 4: Add i18n keys** — in `apps/web/src/locales/en/reports.json` and `fr/reports.json` under `ownerDashboard`:
 ```json
-"kpi": {
-  "totalSales": "Total sales",
-  "transactions": "Transactions",
-  "avgBasket": "Average basket",
-  "itemsSold": "Items sold",
-  "returns": "Returns",
-  "vsPrevious": "vs previous period",
-  "error": "Could not load summary"
-}
+"kpi": { "totalSales": "Total sales", "transactions": "Transactions", "avgBasket": "Average basket", "itemsSold": "Items sold", "returns": "Returns", "vsPrevious": "vs previous period", "error": "Could not load summary" }
 ```
-(French: "Ventes totales", "Transactions", "Panier moyen", "Articles vendus", "Retours", "vs période précédente", "Impossible de charger le résumé".)
+(fr: "Ventes totales","Transactions","Panier moyen","Articles vendus","Retours","vs période précédente","Impossible de charger le résumé".)
 
-- [ ] **Step 5: Run test + lint**
-
-Run: `cd apps/web && pnpm vitest run src/features/owner-dashboard/components/__tests__/SalesSummaryCards.test.tsx && pnpm lint --max-warnings=0 src/features/owner-dashboard/components/SalesSummaryCards.tsx`
-Expected: PASS; no ESLint errors (no `parseFloat`/`Number` on money — `Number()` is only on the percent delta, which is allowed).
+- [ ] **Step 5: Run test + lint** — `cd apps/web && pnpm vitest run src/features/owner-dashboard/components/__tests__/SalesSummaryCards.test.tsx && pnpm lint --max-warnings=0 src/features/owner-dashboard/components/SalesSummaryCards.tsx` → PASS (`Number()` is only on percent — allowed).
 
 - [ ] **Step 6: Commit**
-
 ```bash
-git add apps/web/src/features/owner-dashboard/components/SalesSummaryCards.tsx \
-        apps/web/src/features/owner-dashboard/components/__tests__/SalesSummaryCards.test.tsx \
-        apps/web/src/locales/en/reports.json apps/web/src/locales/fr/reports.json
+git add apps/web/src/features/owner-dashboard/components/SalesSummaryCards.tsx apps/web/src/features/owner-dashboard/components/__tests__/SalesSummaryCards.test.tsx apps/web/src/locales/en/reports.json apps/web/src/locales/fr/reports.json
 git commit -m "feat(reports): owner KPI summary cards with skeleton + error states"
 ```
 
 ---
 
-### Task 6: `showLocationSwitcher` layout seam
+### Task 8: `showLocationSwitcher` layout seam + integration test
 
 **Files:**
-- Modify: `apps/web/src/components/organisms/TopBar/TopBar.tsx` (add optional prop, render switcher conditionally)
-- Modify: `apps/web/src/components/templates/DashboardLayout/DashboardLayout.tsx` (compute + pass the prop based on route)
-- Test: `apps/web/src/components/organisms/TopBar/__tests__/TopBar.locationSwitcher.test.tsx`
+- Modify: `apps/web/src/components/organisms/TopBar/TopBar.tsx`
+- Modify: `apps/web/src/components/templates/DashboardLayout/DashboardLayout.tsx`
+- Test: `apps/web/src/components/templates/DashboardLayout/__tests__/DashboardLayout.switcher.test.tsx`
 
 **Interfaces:**
-- Produces: `TopBarProps.showLocationSwitcher?: boolean` (default `true`). When `false`, `<LocationSwitcher>` is not rendered.
+- Produces: `TopBarProps.showLocationSwitcher?: boolean` (default `true`); `DashboardLayout` hides the switcher on `/reports`.
 
-- [ ] **Step 1: Write the failing test**
-
+- [ ] **Step 1: Write the failing integration test (route-driven, not just the prop)**
 ```tsx
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
-import { TopBar } from '../TopBar'
+import { DashboardLayout } from '../DashboardLayout'
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k, i18n: { changeLanguage: vi.fn(), language: 'en' } }) }))
-vi.mock('../../LocationSwitcher', () => ({ LocationSwitcher: () => <div data-testid="location-switcher" /> }))
-vi.mock('../../CompanySelector', () => ({ CompanySelector: () => <div /> }))
+vi.mock('../../../organisms/LocationSwitcher', () => ({ LocationSwitcher: () => <div data-testid="location-switcher" /> }))
+// Mock the heavier children the layout renders so it mounts in jsdom:
+vi.mock('../../../organisms/Sidebar', () => ({ Sidebar: () => <div /> }))
+vi.mock('../../../organisms/CompanySelector', () => ({ CompanySelector: () => <div /> }))
 
-describe('TopBar location switcher seam', () => {
-  it('hides the location switcher when showLocationSwitcher is false', () => {
-    render(<MemoryRouter><TopBar showLocationSwitcher={false} /></MemoryRouter>)
+function renderAt(path: string) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <Routes><Route element={<DashboardLayout />}><Route path={path} element={<div>page</div>} /></Route></Routes>
+    </MemoryRouter>,
+  )
+}
+
+describe('DashboardLayout location switcher visibility', () => {
+  it('hides the switcher on /reports', () => {
+    renderAt('/reports')
     expect(screen.queryByTestId('location-switcher')).not.toBeInTheDocument()
   })
-
-  it('shows the location switcher by default', () => {
-    render(<MemoryRouter><TopBar /></MemoryRouter>)
+  it('shows the switcher on an operational route', () => {
+    renderAt('/inventory')
     expect(screen.getByTestId('location-switcher')).toBeInTheDocument()
   })
 })
 ```
 
-> If `TopBar` pulls other stores/hooks that break under render, mock them minimally (mirror existing TopBar tests if present). Keep mocks to what's needed to render.
+> **Implementer note:** The exact mock paths depend on `DashboardLayout`'s imports — adjust the relative `vi.mock` paths to match. Mock only what's needed to mount (Sidebar, CompanySelector, LocationSwitcher, any provider that throws in jsdom). If mounting the full layout proves brittle, fall back to a `TopBar`-prop unit test PLUS a thin assertion that `DashboardLayout` computes `showLocationSwitcher` from `useLocation().pathname` — but prefer the integration test.
 
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd apps/web && pnpm vitest run src/components/organisms/TopBar/__tests__/TopBar.locationSwitcher.test.tsx`
-Expected: FAIL — prop not honored (switcher always renders).
+- [ ] **Step 2: Run test to verify it fails** — `cd apps/web && pnpm vitest run src/components/templates/DashboardLayout/__tests__/DashboardLayout.switcher.test.tsx` → FAIL.
 
 - [ ] **Step 3: Add the prop in `TopBar.tsx`**
-
 ```tsx
 interface TopBarProps {
   onMenuClick?: () => void
@@ -821,65 +996,57 @@ interface TopBarProps {
 
 export function TopBar({ onMenuClick, onSearchClick, showLocationSwitcher = true }: TopBarProps) {
 ```
-Replace the unconditional render at line ~99:
+Replace the unconditional render (~line 99):
 ```tsx
 {showLocationSwitcher && <LocationSwitcher className="hidden lg:block" />}
 ```
 
 - [ ] **Step 4: Pass the prop from `DashboardLayout.tsx`**
-
-Add `useLocation` and derive the flag; render TopBar with it:
 ```tsx
 import { Outlet, useLocation } from 'react-router-dom'
-// inside the component:
+// in the component body:
 const location = useLocation()
 const showLocationSwitcher = !location.pathname.startsWith('/reports')
 // ...
 <TopBar onMenuClick={() => { setSidebarOpen(true) }} onSearchClick={openCommandPalette} showLocationSwitcher={showLocationSwitcher} />
 ```
+> Route knowledge lives in the LAYOUT, not the global `TopBar`. Do NOT mutate `locationStore` anywhere here.
 
-> Route knowledge lives in the LAYOUT (which owns routing context), not in the global `TopBar`. Do NOT mutate `locationStore` anywhere in this task.
-
-- [ ] **Step 5: Run test + typecheck**
-
-Run: `cd apps/web && pnpm vitest run src/components/organisms/TopBar/__tests__/TopBar.locationSwitcher.test.tsx && pnpm typecheck`
-Expected: PASS.
+- [ ] **Step 5: Run test + typecheck** — `cd apps/web && pnpm vitest run src/components/templates/DashboardLayout/__tests__/DashboardLayout.switcher.test.tsx && pnpm typecheck` → PASS.
 
 - [ ] **Step 6: Commit**
-
 ```bash
-git add apps/web/src/components/organisms/TopBar/TopBar.tsx \
-        apps/web/src/components/templates/DashboardLayout/DashboardLayout.tsx \
-        apps/web/src/components/organisms/TopBar/__tests__/TopBar.locationSwitcher.test.tsx
-git commit -m "feat(reports): hide header LocationSwitcher on /reports via layout prop seam"
+git add apps/web/src/components/organisms/TopBar/TopBar.tsx apps/web/src/components/templates/DashboardLayout/DashboardLayout.tsx apps/web/src/components/templates/DashboardLayout/__tests__/DashboardLayout.switcher.test.tsx
+git commit -m "feat(reports): hide header LocationSwitcher on /reports via layout seam"
 ```
 
 ---
 
-### Task 7: `SalesTrendChart` (rolled-up total trend)
+### Task 9: `SalesTrendChart` (rolled-up total trend)
 
 **Files:**
-- Create: `apps/web/src/features/owner-dashboard/components/SalesTrendChart.tsx`
 - Create: `apps/web/src/features/owner-dashboard/lib/rollupSalesByPeriod.ts`
+- Create: `apps/web/src/features/owner-dashboard/components/SalesTrendChart.tsx`
 - Test: `apps/web/src/features/owner-dashboard/lib/__tests__/rollupSalesByPeriod.test.ts`
 
 **Interfaces:**
-- Produces: `rollupSalesByPeriod(rows: SalesByLocationReport[]): { period: string; total: number }[]` — sums `gross_sales` per `period` across locations. `Number()` here is at the chart-adapter boundary ONLY (chart coordinates, not displayed money).
-- Produces: `<SalesTrendChart data={SalesByLocationReport[]} isLoading isError />` (ECharts line).
+- Produces: `rollupSalesByPeriod(rows: SalesByLocationReport[]): { period: string; total: number }[]` — sums `gross_sales` per `period`. `Number()` is at the ECharts coordinate boundary only (matches `SalesByLocationChart`).
+- Produces: `<SalesTrendChart data isLoading isError />` — builds an `EChartsOption` and passes it to `OwnerChart`.
 
-- [ ] **Step 1: Write the failing test**
-
+- [ ] **Step 1: Write the failing test (typed fixtures — no `as any`)**
 ```ts
 import { describe, expect, it } from 'vitest'
 import { rollupSalesByPeriod } from '../rollupSalesByPeriod'
+import type { SalesByLocationReport } from '../../api/ownerReportsApi'
+
+const rows: SalesByLocationReport[] = [
+  { period: '2026-06-01', company_id: 'c', company_name: 'C', location_id: 'a', location_name: 'A', gross_sales: '100', receipt_count: 1 },
+  { period: '2026-06-01', company_id: 'c', company_name: 'C', location_id: 'b', location_name: 'B', gross_sales: '50', receipt_count: 1 },
+  { period: '2026-06-02', company_id: 'c', company_name: 'C', location_id: 'a', location_name: 'A', gross_sales: '200', receipt_count: 1 },
+]
 
 describe('rollupSalesByPeriod', () => {
   it('sums gross sales per period across locations', () => {
-    const rows = [
-      { period: '2026-06-01', gross_sales: '100', location_id: 'a' },
-      { period: '2026-06-01', gross_sales: '50', location_id: 'b' },
-      { period: '2026-06-02', gross_sales: '200', location_id: 'a' },
-    ] as any
     expect(rollupSalesByPeriod(rows)).toEqual([
       { period: '2026-06-01', total: 150 },
       { period: '2026-06-02', total: 200 },
@@ -888,10 +1055,7 @@ describe('rollupSalesByPeriod', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd apps/web && pnpm vitest run src/features/owner-dashboard/lib/__tests__/rollupSalesByPeriod.test.ts`
-Expected: FAIL — module missing.
+- [ ] **Step 2: Run test to verify it fails** — `cd apps/web && pnpm vitest run src/features/owner-dashboard/lib/__tests__/rollupSalesByPeriod.test.ts` → FAIL.
 
 - [ ] **Step 3: Write the rollup + chart**
 
@@ -899,6 +1063,7 @@ Expected: FAIL — module missing.
 ```ts
 import type { SalesByLocationReport } from '../api/ownerReportsApi'
 
+// Number() here is the ECharts coordinate boundary only (mirrors SalesByLocationChart); displayed money stays server-string.
 export function rollupSalesByPeriod(rows: SalesByLocationReport[]): { period: string; total: number }[] {
   const byPeriod = new Map<string, number>()
   for (const row of rows) {
@@ -908,85 +1073,80 @@ export function rollupSalesByPeriod(rows: SalesByLocationReport[]): { period: st
 }
 ```
 
-`SalesTrendChart.tsx` (mirror the existing `OwnerChart`/`SalesByLocationChart` ECharts wrapper — reuse the shared `OwnerChart` frame if present for loading/error/empty states):
+`SalesTrendChart.tsx` (mirror `SalesByLocationChart`: build `option`, pass `option={option}`):
 ```tsx
-import ReactECharts from 'echarts-for-react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { OwnerChart } from './OwnerChart'
+import type { EChartsOption } from 'echarts'
 import { chartColors } from '@/lib/designTokens'
+import { OwnerChart } from './OwnerChart'
 import { rollupSalesByPeriod } from '../lib/rollupSalesByPeriod'
 import type { SalesByLocationReport } from '../api/ownerReportsApi'
 
 interface SalesTrendChartProps {
   data: SalesByLocationReport[]
-  isLoading: boolean
-  isError: boolean
+  isLoading?: boolean
+  isError?: boolean
 }
 
-export function SalesTrendChart({ data, isLoading, isError }: SalesTrendChartProps) {
+export function SalesTrendChart({ data, isLoading = false, isError = false }: SalesTrendChartProps) {
   const { t } = useTranslation(['reports'])
-  const series = rollupSalesByPeriod(data)
+  const series = useMemo(() => rollupSalesByPeriod(data), [data])
+
+  const option: EChartsOption = {
+    color: [chartColors.primary],
+    tooltip: { trigger: 'axis' as const },
+    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+    xAxis: { type: 'category' as const, data: series.map((p) => p.period) },
+    yAxis: { type: 'value' as const },
+    series: [{ type: 'line' as const, smooth: true, data: series.map((p) => p.total) }],
+  }
 
   return (
     <OwnerChart
       title={t('reports:ownerDashboard.salesTrend.title')}
+      option={option}
       isLoading={isLoading}
       isError={isError}
       isEmpty={series.length === 0}
-    >
-      <ReactECharts
-        option={{
-          xAxis: { type: 'category', data: series.map((p) => p.period) },
-          yAxis: { type: 'value' },
-          series: [{ type: 'line', smooth: true, data: series.map((p) => p.total), itemStyle: { color: chartColors.primary } }],
-          tooltip: { trigger: 'axis' },
-          grid: { left: 48, right: 16, top: 24, bottom: 32 },
-        }}
-        style={{ height: 280 }}
-      />
-    </OwnerChart>
+    />
   )
 }
 ```
 
-> **Implementer note:** Verify the exact props of the shared `OwnerChart` frame (`title/isLoading/isError/isEmpty/children`) and `chartColors.primary` in `@/lib/designTokens`; adapt names to match. If `OwnerChart` does not accept children, follow whatever wrapper `SalesByLocationChart.tsx` uses.
+- [ ] **Step 4: Add i18n key** — `reports.json` (en/fr): `ownerDashboard.salesTrend.title` = "Sales over time" / "Évolution des ventes".
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 5: Run test + typecheck + lint** — `cd apps/web && pnpm vitest run src/features/owner-dashboard/lib/__tests__/rollupSalesByPeriod.test.ts && pnpm typecheck && pnpm lint --max-warnings=0 src/features/owner-dashboard/components/SalesTrendChart.tsx src/features/owner-dashboard/lib/rollupSalesByPeriod.ts` → PASS.
 
-Run: `cd apps/web && pnpm vitest run src/features/owner-dashboard/lib/__tests__/rollupSalesByPeriod.test.ts && pnpm typecheck`
-Expected: PASS.
-
-- [ ] **Step 5: Commit**
-
+- [ ] **Step 6: Commit**
 ```bash
-git add apps/web/src/features/owner-dashboard/components/SalesTrendChart.tsx \
-        apps/web/src/features/owner-dashboard/lib/rollupSalesByPeriod.ts \
-        apps/web/src/features/owner-dashboard/lib/__tests__/rollupSalesByPeriod.test.ts
+git add apps/web/src/features/owner-dashboard/components/SalesTrendChart.tsx apps/web/src/features/owner-dashboard/lib/rollupSalesByPeriod.ts apps/web/src/features/owner-dashboard/lib/__tests__/rollupSalesByPeriod.test.ts apps/web/src/locales/en/reports.json apps/web/src/locales/fr/reports.json
 git commit -m "feat(reports): rolled-up sales-over-time trend chart"
 ```
 
 ---
 
-### Task 8: Owner Reports route + nav + relocate `OwnerDashboardPage` + retire orphan
+### Task 10: Owner Reports route + nav gating + relocate overview + retire orphan
 
 **Files:**
-- Modify: `apps/web/src/features/owner-dashboard/OwnerDashboardPage.tsx` (insert KPI row + trend at the top, before the widget grid; add `useSalesSummary`)
-- Modify: `apps/web/src/features/dashboard/Dashboard.tsx` (remove the `<OwnerDashboardPage />` embed at line ~314 and its import)
-- Modify: `apps/web/src/routes/index.tsx` (add `/reports` route rendering `OwnerDashboardPage`, gated `dashboard.owner`)
-- Modify: `apps/web/src/components/organisms/Sidebar/Sidebar.tsx` (add a "Reports" nav entry gated `dashboard.owner`)
-- Delete: `apps/web/src/features/reports/ReportsPage.tsx` (+ remove any route/nav references to it)
-- Test: `apps/web/src/features/owner-dashboard/__tests__/OwnerDashboardPage.test.tsx` (extend existing)
+- Modify: `apps/web/src/features/owner-dashboard/OwnerDashboardPage.tsx` (insert KPI row + trend; add `useSalesSummary`)
+- Modify: `apps/web/src/features/dashboard/Dashboard.tsx` (remove the `<OwnerDashboardPage />` embed + import)
+- Modify: `apps/web/src/routes/index.tsx` (replace the `/reports`→`/finance` redirect with a real route gated by `<RequirePermission permission="dashboard.owner">`)
+- Modify: `apps/web/src/hooks/usePermissions.ts` (add `ownerReports: ['dashboard.owner']` to `MODULE_PERMISSIONS`)
+- Modify: `apps/web/src/components/organisms/Sidebar/Sidebar.tsx` (add a "Reports" nav entry with `permission: 'ownerReports'`)
+- Delete: `apps/web/src/features/reports/ReportsPage.tsx` (+ remove its import/usage)
+- Test: extend `apps/web/src/features/owner-dashboard/__tests__/OwnerDashboardPage.test.tsx`; add `apps/web/src/hooks/__tests__/usePermissions.ownerReports.test.ts`
 
 **Interfaces:**
-- Consumes: `SalesSummaryCards` (Task 5), `SalesTrendChart` (Task 7), `useSalesSummary` (Task 4).
-- Produces: `/reports` route showing KPI row + trend + existing widgets; main Dashboard no longer renders the owner section.
+- Consumes: `SalesSummaryCards` (Task 7), `SalesTrendChart` (Task 9), `useSalesSummary` (Task 5).
+- Produces: `/reports` route (gated `dashboard.owner`); Sidebar "Reports" item gated via `ownerReports` module-permission; main Dashboard no longer renders the owner section.
 
-- [ ] **Step 1: Extend the existing test (red)**
+- [ ] **Step 1: Write the failing tests (red)**
 
-In `OwnerDashboardPage.test.tsx`, add a `useSalesSummary` mock to the `useOwnerReports` mock block and a new assertion:
+Add a `useSalesSummary` mock to the `useOwnerReports` mock block in `OwnerDashboardPage.test.tsx`:
 ```tsx
   useSalesSummary: () => ({
-    data: { grossSales: '300.000', returnsAmount: '50.000', netSales: '250.000', salesCount: 2, returnsCount: 1, itemsSold: '5.0000', averageBasket: '150.000', delta: { grossSalesAbs: '150.000', grossSalesPct: '100.00', salesCountAbs: 1, salesCountPct: '50.00' } },
+    data: { currencyCode: 'EUR', grossSales: '300.00', returnsAmount: '50.00', netSales: '250.00', salesCount: 2, returnsCount: 1, itemsSold: '5.0000', averageBasket: '150.00', delta: { grossSalesAbs: '150.00', grossSalesPct: '100.00', salesCountAbs: 1, salesCountPct: '50.00' } },
     isLoading: false, isError: false,
   }),
 ```
@@ -996,65 +1156,76 @@ In `OwnerDashboardPage.test.tsx`, add a `useSalesSummary` mock to the `useOwnerR
     expect(screen.getByText('reports:ownerDashboard.kpi.totalSales')).toBeInTheDocument()
   })
 ```
+New permission test `usePermissions.ownerReports.test.ts`:
+```ts
+import { describe, expect, it } from 'vitest'
+import { MODULE_PERMISSIONS } from '../usePermissions'
 
-- [ ] **Step 2: Run test to verify it fails**
+describe('ownerReports module permission', () => {
+  it('maps to dashboard.owner', () => {
+    expect(MODULE_PERMISSIONS.ownerReports).toEqual(['dashboard.owner'])
+  })
+})
+```
 
-Run: `cd apps/web && pnpm vitest run src/features/owner-dashboard/__tests__/OwnerDashboardPage.test.tsx`
-Expected: FAIL — KPI row not rendered yet.
+- [ ] **Step 2: Run tests to verify they fail** — `cd apps/web && pnpm vitest run src/features/owner-dashboard/__tests__/OwnerDashboardPage.test.tsx src/hooks/__tests__/usePermissions.ownerReports.test.ts` → FAIL.
 
-- [ ] **Step 3: Insert KPI row + trend into `OwnerDashboardPage`**
+- [ ] **Step 3: Add the module-permission mapping** — in `usePermissions.ts` `MODULE_PERMISSIONS`, add:
+```ts
+  ownerReports: ['dashboard.owner'],
+```
 
-Add imports + hook usage and render the row above the widget grid:
+- [ ] **Step 4: Insert KPI row + trend into `OwnerDashboardPage`**
 ```tsx
 import { SalesSummaryCards } from './components/SalesSummaryCards'
 import { SalesTrendChart } from './components/SalesTrendChart'
-import { useSalesByLocation, useSalesSummary, /* ...existing... */ } from './hooks/useOwnerReports'
-// inside the component, alongside other hooks:
+import { /* existing */, useSalesSummary } from './hooks/useOwnerReports'
+// in component, with other hooks:
 const summary = useSalesSummary(dateParams, canViewOwnerDashboard)
-// in JSX, right after <OwnerDashboardFilters .../>:
+// JSX, right after <OwnerDashboardFilters .../>:
 <SalesSummaryCards data={summary.data} isLoading={summary.isLoading} isError={summary.isError} />
 <SalesTrendChart data={sales.data ?? []} isLoading={sales.isLoading} isError={sales.isError} />
 ```
 
-- [ ] **Step 4: Remove the embed from the main Dashboard**
+- [ ] **Step 5: Remove the embed from the main Dashboard** — in `Dashboard.tsx` delete the `import { OwnerDashboardPage } from '../owner-dashboard'` and the `<OwnerDashboardPage />` usage (~line 314).
 
-In `Dashboard.tsx`, delete the `import { OwnerDashboardPage } from '../owner-dashboard'` line and the `<OwnerDashboardPage />` usage (~line 314).
+- [ ] **Step 6: Replace the `/reports` redirect with a gated route** — in `routes/index.tsx`, find the existing `/reports` → `/finance` redirect (search `path="reports"` / `Navigate to="/finance"`) and replace it with:
+```tsx
+import { OwnerDashboardPage } from '../features/owner-dashboard'
+// route entry (mirror sibling route style; nest under the DashboardLayout route as siblings are):
+<Route path="reports" element={<RequirePermission permission="dashboard.owner"><OwnerDashboardPage /></RequirePermission>} />
+```
+> `RequirePermission` already supports a `permission="..."` prop (verified — see the `permission="sales.create"` usages). Use `permission`, NOT `moduleKey`.
 
-- [ ] **Step 5: Add the route + nav + delete the orphan**
+- [ ] **Step 7: Add the Sidebar entry + delete the orphan**
+- In `Sidebar.tsx`, add a nav module/child "Reports": `{ key: 'reports', href: '/reports', icon: BarChart3, permission: 'ownerReports' }` following the existing nav structure (place sensibly near the top or under an owner group). Label via the sidebar's existing `t()` key mechanism (add the `reports` nav key to the sidebar i18n).
+- `grep -rn "ReportsPage" apps/web/src` and remove every reference, then delete `features/reports/ReportsPage.tsx`.
 
-- In `routes/index.tsx`, add a route for `/reports` rendering `OwnerDashboardPage`, gated with the existing permission-guard pattern (mirror how other `dashboard.owner`/permission-gated routes are declared in this file — search for `dashboard.owner` or an existing `RequirePermission`/guard wrapper and copy it).
-- In `Sidebar.tsx`, add a "Reports" entry (label via `t()`, gated `dashboard.owner`) following the existing nav-group pattern (lines ~262–278 for "Accounting & Reports"). Use a `BarChart3` lucide icon.
-- Delete `features/reports/ReportsPage.tsx` and remove any import/route/nav references to it (grep `ReportsPage` first: `grep -rn "ReportsPage" apps/web/src`).
+- [ ] **Step 8: Run tests + typecheck + lint**
+Run: `cd apps/web && pnpm vitest run src/features/owner-dashboard src/hooks/__tests__/usePermissions.ownerReports.test.ts && pnpm typecheck && pnpm lint --max-warnings=0 src/features/owner-dashboard src/routes/index.tsx src/components/organisms/Sidebar/Sidebar.tsx src/hooks/usePermissions.ts`
+Expected: PASS; no dangling `ReportsPage` references.
 
-- [ ] **Step 6: Run tests + typecheck + lint**
-
-Run: `cd apps/web && pnpm vitest run src/features/owner-dashboard && pnpm typecheck && pnpm lint --max-warnings=0 src/features/owner-dashboard src/routes/index.tsx src/components/organisms/Sidebar/Sidebar.tsx`
-Expected: PASS; no dangling `ReportsPage` references; no TS/lint errors.
-
-- [ ] **Step 7: Commit**
-
+- [ ] **Step 9: Commit**
 ```bash
-git add apps/web/src/features/owner-dashboard apps/web/src/features/dashboard/Dashboard.tsx \
-        apps/web/src/routes/index.tsx apps/web/src/components/organisms/Sidebar/Sidebar.tsx
+git add apps/web/src/features/owner-dashboard apps/web/src/features/dashboard/Dashboard.tsx apps/web/src/routes/index.tsx apps/web/src/hooks/usePermissions.ts apps/web/src/components/organisms/Sidebar/Sidebar.tsx apps/web/src/hooks/__tests__/usePermissions.ownerReports.test.ts apps/web/src/locales/en/common.json apps/web/src/locales/fr/common.json
 git rm apps/web/src/features/reports/ReportsPage.tsx
-git commit -m "feat(reports): dedicated owner Reports route + nav; relocate owner overview; retire orphan ReportsPage"
+git commit -m "feat(reports): gated owner Reports route + nav; relocate owner overview; retire orphan ReportsPage"
 ```
 
 ---
 
-### Task 9: Location scope multiselect + wiring
+### Task 11: Location scope multiselect + mandatory wiring
 
 **Files:**
-- Modify: `apps/web/src/features/owner-dashboard/components/OwnerDashboardFilters.tsx` (add an "All locations" + per-store multiselect; extend `OwnerDashboardFiltersValue` with `locationIds: string[]`)
-- Modify: `apps/web/src/features/owner-dashboard/OwnerDashboardPage.tsx` (pass `location_ids` into every hook's params)
+- Modify: `apps/web/src/features/owner-dashboard/components/OwnerDashboardFilters.tsx` (add multiselect; extend value with `locationIds: string[]`)
+- Modify: `apps/web/src/features/owner-dashboard/OwnerDashboardPage.tsx` (pass `location_ids` into EVERY owner hook, including `useLowStockAlerts` and `useSalesSummary`)
 - Test: `apps/web/src/features/owner-dashboard/components/__tests__/OwnerDashboardFilters.test.tsx`
 
 **Interfaces:**
-- Consumes: `useLocationStore.locations` as the read-only option source (NEVER `currentLocationId` / `switchLocation`).
-- Produces: `OwnerDashboardFiltersValue` gains `locationIds: string[]` (`[]` = all locations). Page maps it to `location_ids` (omit the param when empty so the backend returns all).
+- Consumes: `useLocationStore.locations` (read-only option source; NEVER `currentLocationId`/`switchLocation`).
+- Produces: `OwnerDashboardFiltersValue` gains `locationIds: string[]` (`[]` = all). Page maps to `location_ids` (omit when empty).
 
 - [ ] **Step 1: Write the failing test**
-
 ```tsx
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
@@ -1062,7 +1233,8 @@ import { OwnerDashboardFilters } from '../OwnerDashboardFilters'
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }))
 vi.mock('@/stores/locationStore', () => ({
-  useLocationStore: (sel: any) => sel({ locations: [{ id: 'loc-1', name: 'Tunis' }, { id: 'loc-2', name: 'Marsa' }] }),
+  useLocationStore: (sel: (s: { locations: { id: string; name: string }[] }) => unknown) =>
+    sel({ locations: [{ id: 'loc-1', name: 'Tunis' }, { id: 'loc-2', name: 'Marsa' }] }),
 }))
 
 describe('OwnerDashboardFilters location scope', () => {
@@ -1075,49 +1247,47 @@ describe('OwnerDashboardFilters location scope', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd apps/web && pnpm vitest run src/features/owner-dashboard/components/__tests__/OwnerDashboardFilters.test.tsx`
-Expected: FAIL — no location control.
+- [ ] **Step 2: Run test to verify it fails** — `cd apps/web && pnpm vitest run src/features/owner-dashboard/components/__tests__/OwnerDashboardFilters.test.tsx` → FAIL.
 
 - [ ] **Step 3: Extend the filter type + UI**
-
 - Add `locationIds: string[]` to `OwnerDashboardFiltersValue`.
-- Read options: `const locations = useLocationStore((s) => s.locations)`.
-- Render a checkbox per location (label = name, `aria-label`/`htmlFor` = name) plus an "All locations" reset; toggling updates `value.locationIds` via `onChange`. Use design tokens; strings via `t()` (add keys `reports:ownerDashboard.filters.allLocations`, `...filters.locations`).
-- `defaultFilters()` in `OwnerDashboardPage` must initialize `locationIds: []`.
+- `const locations = useLocationStore((s) => s.locations)`.
+- Render a checkbox per location (`<input type="checkbox" aria-label={loc.name} checked={value.locationIds.includes(loc.id)} onChange={...}>`) + an "All locations" reset that sets `locationIds: []`. Tokens + `t()` keys `reports:ownerDashboard.filters.allLocations` / `...filters.locations`. Tolerate empty `locations` (render nothing/just "All").
 
-- [ ] **Step 4: Wire `location_ids` into hooks**
-
-In `OwnerDashboardPage`, build a param spread:
+- [ ] **Step 4: Wire `location_ids` into ALL owner hooks** — in `OwnerDashboardPage`:
 ```tsx
 const locationParam = filters.locationIds.length > 0 ? { location_ids: filters.locationIds } : {}
 const dateParams = useMemo(() => ({ from: filters.from, to: filters.to, ...locationParam }), [filters.from, filters.to, filters.locationIds])
 ```
-Pass `dateParams` (now including `location_ids` when set) into `useSalesByLocation`, `useTopSkus`, `useRevenueByCategory`, `usePaymentMethodBreakdown`, `useCashRegisterReconciliation`, and `useSalesSummary`. (Stock alerts uses `location_ids` too — pass it through if the param shape allows.)
+Pass `dateParams` into `useSalesByLocation`, `useTopSkus`, `useRevenueByCategory`, `usePaymentMethodBreakdown`, `useCashRegisterReconciliation`, `useSalesSummary`. For `useLowStockAlerts`, pass `{ threshold_pct: 100, ...locationParam }` (its `StockAlertsParams` already accepts `location_ids`). Initialize `defaultFilters()` with `locationIds: []`.
 
-- [ ] **Step 5: Run tests + typecheck + lint**
-
-Run: `cd apps/web && pnpm vitest run src/features/owner-dashboard && pnpm typecheck && pnpm lint --max-warnings=0 src/features/owner-dashboard`
-Expected: PASS.
+- [ ] **Step 5: Run tests + typecheck + lint** — `cd apps/web && pnpm vitest run src/features/owner-dashboard && pnpm typecheck && pnpm lint --max-warnings=0 src/features/owner-dashboard` → PASS.
 
 - [ ] **Step 6: Commit**
-
 ```bash
 git add apps/web/src/features/owner-dashboard
-git commit -m "feat(reports): owner location scope multiselect wired through all owner reports"
+git commit -m "feat(reports): owner location scope multiselect wired through all owner reports incl. stock alerts"
 ```
 
 ---
 
-## Self-Review
+## Self-Review (r2)
 
-**Spec coverage (§ → task):**
-- §2.1 dedicated section → Task 8. §2.2 owner-only / dashboard.owner gate → Tasks 3, 8. §2.3 KPI row + trend → Tasks 5, 7, 8. §4 KPI SQL contract → Task 2 (+ DTO Task 1). §5 backend (new service, DTO, endpoint, reused request, TDD) → Tasks 1–3. §6 frontend (route, relocate, layout-seam switcher hide, location scope, KPI row, trend, comparison reuse, i18n/tokens) → Tasks 4–9. §7 test fixtures only / no demo seeder → respected (Task 2 uses `RefreshDatabase`; no seeder task). §8 out-of-scope (margin, POS location filter, exports, Z-aggregation, finance absorption, no SalesReportService refactor) → none added. §10 resolved Q's → deltas null-on-zero (Task 2), location source = `useLocationStore.locations` separate state (Task 9), gross+returns cards (Task 5).
-- Margin: correctly absent. Header switcher hidden via layout prop not route-sniff-in-TopBar: Task 6 ✓.
+**Codex BLOCKER/HIGH resolution:**
+- BLOCKER-1 (hand-rolled seed missing columns) → Task 2 trait reuses proven `Receipt::factory()`/`seedReceipt` with all required columns; Tasks 3–4 use it.
+- BLOCKER-2 (bare `getScale()` throws) → Task 3 resolves company `currency` and calls `getScale($currency)`; empty-scope uses `getScaleSafe(null,3)`.
+- BLOCKER-3 (nonexistent test helpers/namespace) → Tasks 3–4 live in `Tests\Feature\Accounting`, use the trait, `Sanctum::actingAs`, `companyHeaders()`.
+- BLOCKER-4 (`OwnerChart` children vs `option`) → Task 9 builds `EChartsOption` and passes `option={option}`.
+- HIGH-1 (`Number()` on money) → confined to the chart coordinate boundary with a comment, matching the existing `SalesByLocationChart` precedent; displayed money/KPIs use server strings + Big.js formatters.
+- HIGH-2 (Sidebar permission not gating) → Task 10 adds `MODULE_PERMISSIONS.ownerReports = ['dashboard.owner']`, nav `permission: 'ownerReports'`, and a real route guard `<RequirePermission permission="dashboard.owner">` replacing the `/reports`→`/finance` redirect; tested.
+- HIGH-3 (`formatQuantity` missing) → Task 6 adds a Big.js `formatQuantity` to `@/lib/decimal`.
+- HIGH-4 (multi-currency aggregation) → Task 3 `resolveCurrency()` enforces single currency + returns `currencyCode` in the DTO (Task 1).
+- HIGH-5 (stock-alerts conditional) → Task 11 wires `location_ids` into `useLowStockAlerts` mandatorily.
 
-**Placeholder scan:** No "TBD/TODO". Two "implementer notes" point to verifying EXISTING patterns (auth helper in Task 3, OwnerChart/formatQuantity names in Tasks 5/7) — these are explicit "match the sibling code" instructions, not deferred work, because the exact local helper names must be read at implementation time; each note names the file to copy from.
+**MEDIUM:** percent rounding (Task 3 `bcround`, test `66.67`); no `as any` (Task 9 typed fixtures); layout integration test (Task 8); thicker endpoint test incl. returns/scope/403 (Task 4).
 
-**Type consistency:** DTO field names (`grossSales`, `returnsAmount`, `salesCount`, `averageBasket`, `delta.grossSalesPct`…) are identical across Task 1 (PHP), Task 4 (TS alias), Task 5 (component), Task 8 (page mock). `fetchSalesSummary`/`useSalesSummary` names consistent Tasks 4→8. `rollupSalesByPeriod` consistent Task 7. `showLocationSwitcher` consistent Task 6. `OwnerDashboardFiltersValue.locationIds` consistent Task 9.
+**Placeholder scan:** no TBD/TODO; "implementer notes" point to matching existing sibling code (mock paths, factory drift) and name the file to copy from — explicit, not deferred work.
 
-**Known residual risk (flagged for Codex plan review):** SQLite vs PG numeric exactness in Task 2 assertions (mitigated: CASE/ABS portable; recommend PG test connection for exactness). Task 3 auth helpers depend on the existing endpoint test's pattern (explicit instruction to mirror). Sidebar/route guard wiring in Task 8 references existing patterns rather than reproducing the whole router.
+**Type consistency:** DTO field names (`currencyCode/grossSales/returnsAmount/netSales/salesCount/returnsCount/itemsSold/averageBasket/delta.{grossSalesAbs,grossSalesPct,salesCountAbs,salesCountPct}`) identical across Task 1 (PHP), 5 (TS), 7 (component), 10 (mock). `fetchSalesSummary`/`useSalesSummary` consistent 5→10. `rollupSalesByPeriod` consistent Task 9. `showLocationSwitcher` consistent Task 8. `OwnerDashboardFiltersValue.locationIds` consistent Task 11. `ownerReports` module key consistent Task 10.
+
+**Residual risk:** SQLite-vs-PG numeric exactness in Task 3 (mitigated: scale-friendly values + PG recommendation). `pos_receipts.total` is `decimal(12,2)` storage, so a TND third decimal is always 0 from this table — acceptable (display formats to resolver scale); not in scope to change the fiscal schema.
