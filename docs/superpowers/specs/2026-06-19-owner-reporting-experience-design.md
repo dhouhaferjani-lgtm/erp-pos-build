@@ -87,9 +87,11 @@ Scope: receipts where `is_voided = false AND training_flag = false` (verified co
 - **Per-store comparison:** frame the existing `SalesByLocationChart` explicitly as the comparison view; respect the scope multiselect.
 - **i18n + tokens:** all strings via the `reports` namespace `t()` keys (en + fr); any new `.tsx` uses `@/lib/designTokens` exclusively; if `TopBar` is touched for the prop seam, make a minimal prop-based change only — do not broaden existing color drift. (Resolves LOW-color.)
 
-## 7. Demo acceptance criteria (data — coordinated with the seeding session)
+## 7. Test-fixture & demo-data criteria
 
-The new surface is only convincing if the seed satisfies: ≥2 locations with sale receipts in the current period; nonzero sales in the prior equal-length period (for deltas); ≥1 return receipt; varied payment methods; enough distinct products for a top-SKU list; at least one zero-previous-period case handled gracefully (test-level if not in demo data). UI must not collapse if the summary endpoint errors (error card), nor look broken while loading (skeleton).
+**NO retroactive fiscal seeding.** The fiscal receipt chain is append-only and integrity-critical; we will not manufacture, backfill, or seed `pos_receipts` into the demo tenant — even for the demo. **Demo data comes from MANUAL sales** performed by the team (available in a couple of days). This work is **code-only**; the plan contains no demo-seeder task.
+
+The criteria below therefore apply ONLY to **TDD test fixtures** built in the ephemeral test DB (`RefreshDatabase`), never to any real/demo tenant: ≥2 locations with sale receipts in the current period; nonzero sales in the prior equal-length period (deltas); ≥1 return receipt; varied payment methods; enough distinct products for a top-SKU list; a zero-previous-period case. UI resilience is independent of data: the KPI row must render a skeleton while loading and an error card on failure, so the page never collapses regardless of how much manual data exists at demo time.
 
 ## 8. Explicitly OUT of scope tonight
 
