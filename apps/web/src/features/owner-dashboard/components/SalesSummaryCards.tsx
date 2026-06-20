@@ -47,19 +47,22 @@ export function SalesSummaryCards({ data, isLoading, isError }: SalesSummaryCard
           isPositive: Number(v) >= 0,
         }
 
+  const grossSalesTrend = pct(data.delta.grossSalesPct)
+  const salesCountTrend = pct(data.delta.salesCountPct)
+
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
       <StatCard
         label={t('reports:ownerDashboard.kpi.totalSales')}
         value={formatCurrency(data.grossSales, true, currency)}
         icon={ShoppingBag}
-        trend={pct(data.delta.grossSalesPct)}
+        {...(grossSalesTrend ? { trend: grossSalesTrend } : {})}
       />
       <StatCard
         label={t('reports:ownerDashboard.kpi.transactions')}
         value={String(data.salesCount)}
         icon={Receipt}
-        trend={pct(data.delta.salesCountPct)}
+        {...(salesCountTrend ? { trend: salesCountTrend } : {})}
       />
       <StatCard
         label={t('reports:ownerDashboard.kpi.avgBasket')}
