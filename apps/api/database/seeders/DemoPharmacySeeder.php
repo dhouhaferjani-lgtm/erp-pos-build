@@ -13,9 +13,13 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
@@ -323,7 +327,96 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
             $this->call(TunisiaTaxConfigurationSeeder::class);
             $this->seedTunisiaTerminals($this->shops);
             $this->seedTunisiaCashiers($this->company, $this->shops);
+
+            // Distribute front-of-house stock to the 4 POS shops.
+            // The warehouse (WH-01) already holds broad stock from the parent's
+            // seedStockLevels() — only the shops are seeded here.
+            $products = Product::where('company_id', $this->company->id)->get();
+            $this->seedTunisiaStock($this->company, $products);
         });
+    }
+
+    /**
+     * Distribute front-of-house stock to the 4 Tunisia POS shops.
+     *
+     * Strategy mirrors {@see ParapharmacyMultiBranchSeeder::seedMultiBranchStock}:
+     * each shop independently gets ~60% of the catalog in small quantities (2–15
+     * units). The warehouse (WH-01) stock was already seeded by the parent's
+     * {@see ParapharmacySeeder::seedStockLevels()} — this method ONLY touches
+     * the shop locations so warehouse stock is not duplicated.
+     *
+     * Additive / re-run-safe: uses {@see StockLevel::updateOrCreate} keyed on
+     * the non-variant partial-unique constraint `(tenant_id, product_id, location_id)`
+     * with `variant_id = NULL`, matching the SQLite/PG `stock_levels_non_variant`
+     * partial index from migration `2026_06_02_100005_add_variant_id_to_stock_levels`.
+     *
+     * Quantities are integers cast to string (no float casts; precision is
+     * `decimal(12,4)` but front-of-house whole-unit quantities need no bcmath
+     * precision here — the parent's `seedStockLevels` also uses plain integers).
+     *
+     * @param  Collection<int, Product>  $products
+     */
+    protected function seedTunisiaStock(Company $company, Collection $products): void
+    {
+        /** @var array<string, int> $shopRowCounts */
+        $shopRowCounts = [];
+
+        foreach ($this->shops as $shop) {
+            $shopRowCounts[$shop->code] = 0;
+        }
+
+        foreach ($products as $product) {
+            $category = $product->parapharmacyMetadata?->category;
+
+            foreach ($this->shops as $shop) {
+                // ~60% of products land at each shop (independent rolls per shop).
+                if (rand(1, 100) > 60) {
+                    continue;
+                }
+
+                $qty = $this->shopQuantityFor($category);
+
+                // Additive: update if already seeded (re-run safety), create otherwise.
+                // The non-variant unique key is (tenant_id, product_id, location_id)
+                // WHERE variant_id IS NULL — reflected here by omitting variant_id.
+                StockLevel::updateOrCreate(
+                    [
+                        'tenant_id'   => $company->tenant_id,
+                        'product_id'  => $product->id,
+                        'location_id' => $shop->id,
+                        'variant_id'  => null,
+                    ],
+                    [
+                        'company_id' => $company->id,
+                        'quantity'   => $qty,
+                        'reserved'   => '0',
+                    ],
+                );
+
+                $shopRowCounts[$shop->code]++;
+            }
+        }
+
+        foreach ($shopRowCounts as $code => $count) {
+            $this->command->info("✓ {$code} shop stock rows: {$count}");
+        }
+    }
+
+    /**
+     * Small front-of-house quantity by category for a POS shop.
+     *
+     * Medical devices and sports nutrition are slower-moving: 1–5 units.
+     * Everything else: 2–15 units. No floats — plain integer cast to string.
+     */
+    private function shopQuantityFor(?ParapharmacyCategory $category): string
+    {
+        $qty = match ($category) {
+            ParapharmacyCategory::MedicalDevice,
+            ParapharmacyCategory::SportsNutrition => rand(1, 5),
+            default                                => rand(2, 15),
+        };
+
+        return (string) $qty;
     }
 
     /**

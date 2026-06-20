@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\DemoPharmacySeeder;
@@ -172,6 +173,28 @@ final class DemoPharmacySeederTest extends TestCase
                     $membership->allowed_location_ids,
                     "{$email} must be scoped to {$shopCode} (id={$shop->id})"
                 );
+            }
+        });
+    }
+
+    public function test_distributes_stock_across_locations(): void
+    {
+        $this->seed(DemoPharmacySeeder::class);
+        Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail()->run(function () {
+            $wh = Location::where('code', 'WH-01')->firstOrFail();
+            $tun1 = Location::where('code', 'STORE-TUN1')->firstOrFail();
+
+            $whLevels = StockLevel::where('location_id', $wh->id)->count();
+            $shopLevels = StockLevel::where('location_id', $tun1->id)->count();
+
+            $this->assertGreaterThan($shopLevels, $whLevels, 'warehouse holds more SKUs than a shop');
+            $this->assertGreaterThan(0, $shopLevels, 'STORE-TUN1 must have at least 1 stock level');
+
+            // All 4 shops must have stock
+            foreach (['STORE-TUN1', 'STORE-TUN2', 'STORE-SOU', 'STORE-SFA'] as $code) {
+                $shop = Location::where('code', $code)->firstOrFail();
+                $count = StockLevel::where('location_id', $shop->id)->count();
+                $this->assertGreaterThan(0, $count, "{$code} must have stock levels");
             }
         });
     }
