@@ -30,6 +30,7 @@ use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Application\Services\IdentityIndexService;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\Contracts\ChartOfAccountsSeederContract;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Bus;
@@ -117,6 +118,8 @@ class ParapharmacySeeder extends Seeder
 
     /**
      * FQCN of the chart-of-accounts seeder to call during financial setup.
+     *
+     * @return class-string<ChartOfAccountsSeederContract>
      */
     protected function localeChartOfAccountsSeeder(): string
     {
@@ -328,9 +331,10 @@ class ParapharmacySeeder extends Seeder
     protected function createParapharmacyTenant(): Tenant
     {
         // Check if tenant already exists
-        $existingTenant = Tenant::where('slug', $this->localeTenantSlug())->first();
+        $slug = $this->localeTenantSlug();
+        $existingTenant = Tenant::where('slug', $slug)->first();
         if ($existingTenant) {
-            $this->command->warn('⚠ Tenant '.$this->localeTenantSlug().' already exists. Deleting and recreating...');
+            $this->command->warn('⚠ Tenant '.$slug.' already exists. Deleting and recreating...');
 
             // In db-per-tenant mode the central row delete does NOT drop the
             // physical tenant database (no TenantDeleted -> DeleteDatabase event
@@ -357,7 +361,7 @@ class ParapharmacySeeder extends Seeder
 
         $tenant = Tenant::create([
             'name' => 'PharmaBio France',
-            'slug' => $this->localeTenantSlug(),
+            'slug' => $slug,
             'status' => TenantStatus::Active,
             'plan' => 'professional',
             'vertical' => Vertical::Parapharmacy,
@@ -492,7 +496,7 @@ class ParapharmacySeeder extends Seeder
     {
         // Chart of accounts (locale-specific seeder, France default)
         $coaSeederClass = $this->localeChartOfAccountsSeeder();
-        /** @var \Database\Seeders\FranceChartOfAccountsSeeder $coaSeeder */
+        /** @var ChartOfAccountsSeederContract $coaSeeder */
         $coaSeeder = new $coaSeederClass;
         $coaSeeder->setCommand($this->command);
         $coaSeeder->run($company->id, $company->tenant_id);
