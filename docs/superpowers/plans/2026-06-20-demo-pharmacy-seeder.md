@@ -106,6 +106,8 @@ git commit -m "refactor(seeder): extract locale hooks from ParapharmacySeeder (F
 - Consumes: the `protected` locale hooks from Task 1; `createParapharmacyTenant()` (inherited; provisions tenant DB via `provisionTenantDatabase()`).
 - Produces: tenant slug `demo-pharmacy-tn`; a Tunisia `Company` (TND/TN); Tunisia COA + tax config seeded. `public function run(): void`.
 
+> **Revision (post Task-1 review):** The 7 locale hooks do NOT cover the company's **name/legal_name/address/tax_id/phone/email/timezone** — those are still France literals in the parent's company-creation method (the protected method `ParapharmacyMultiBranchSeeder` overrides as `createCompanyWithBranches`; find its parent counterpart, e.g. `createCompanyWithLocation`). So `DemoPharmacySeeder` must **override that company-creation method** to set full Tunisia identity (name "PharmaBio Tunisie SARL", a Tunis/Sousse address, matricule `1234567AM000`, TND/TN) — Task 2 creates the company + **warehouse only**; Task 3 extends the override to add the 4 shops. Also: **`TunisiaChartOfAccountsSeeder` must implement `ChartOfAccountsSeederContract`** (introduced in Task 1's fix) since `localeChartOfAccountsSeeder()` now returns `class-string<ChartOfAccountsSeederContract>`.
+
 - [ ] **Step 1: Write the failing test**
 
 ```php
@@ -188,8 +190,10 @@ git commit -m "feat(seeder): DemoPharmacySeeder Tunisia tenant + COA + tax confi
 - Test: `apps/api/tests/Feature/Seeders/DemoPharmacySeederTest.php`
 
 **Interfaces:**
-- Consumes: Task 2 company.
-- Produces: `protected function seedTunisiaBranches(Company $company): array` returning `['warehouse'=>Location, 'shops'=>Location[]]`. Location codes `WH-01`, `STORE-TUN1`, `STORE-TUN2`, `STORE-SOU`, `STORE-SFA`.
+- Consumes: Task 2 company-creation override (which already creates the company + warehouse with full Tunisia identity).
+- Produces: the company-creation override now returns all 5 locations as `['warehouse'=>Location, 'shops'=>Location[]]` (extend the Task 2 override to add the 4 shops). Location codes `WH-01`, `STORE-TUN1`, `STORE-TUN2`, `STORE-SOU`, `STORE-SFA`.
+
+> **Revision (post Task-1 review):** This is no longer a *new* method on top of a France company — it **extends Task 2's override of the parent company-creation method** to add the 4 shops (each with per-establishment matricule `1234567AM00{1..4}`). No France company identity should ever be created.
 
 - [ ] **Step 1: Write the failing test**
 
