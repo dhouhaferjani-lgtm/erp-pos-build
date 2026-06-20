@@ -50,6 +50,10 @@ x-api-env: &api-env
   LOG_CHANNEL: stack
   LOG_LEVEL: debug
   AUTO_SEED: "true"
+  # Seed the Tunisia parapharmacy demo tenant (idempotent — provisions
+  # demo-pharmacy-tn on first deploy, no-op afterwards). Override in the
+  # Dokploy env if you want to turn it off after the demo.
+  SEED_DEMO_PHARMACY: "${SEED_DEMO_PHARMACY:-true}"
 
 services:
   # ---------------------------------------------------------------------------
