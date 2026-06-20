@@ -76,6 +76,15 @@
       "amount": "Montant",
       "percentage": "Pourcentage"
     },
+    "kpi": {
+      "totalSales": "Ventes totales",
+      "transactions": "Transactions",
+      "avgBasket": "Panier moyen",
+      "itemsSold": "Articles vendus",
+      "returns": "Retours",
+      "vsPrevious": "vs période précédente",
+      "error": "Impossible de charger le résumé"
+    },
     "cashReconciliation": {
       "title": "Rapprochement Caisse"
     },

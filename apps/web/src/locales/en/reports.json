@@ -76,6 +76,15 @@
       "amount": "Amount",
       "percentage": "Percentage"
     },
+    "kpi": {
+      "totalSales": "Total sales",
+      "transactions": "Transactions",
+      "avgBasket": "Average basket",
+      "itemsSold": "Items sold",
+      "returns": "Returns",
+      "vsPrevious": "vs previous period",
+      "error": "Could not load summary"
+    },
     "cashReconciliation": {
       "title": "Cash Register Reconciliation"
     },
