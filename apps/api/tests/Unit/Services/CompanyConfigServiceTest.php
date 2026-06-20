@@ -83,6 +83,33 @@ class CompanyConfigServiceTest extends TestCase
         $this->assertContains('Identity', $config->allEnabledModules); // core default
     }
 
+    public function test_all_enabled_modules_is_a_sequential_list_when_default_overlaps_extra(): void
+    {
+        // Parapharmacy's default_modules include BatchExpiry AND it is also an
+        // enabled extra. array_unique() preserves keys, so without re-indexing
+        // the deduped value leaves a key gap that json_encode renders as an
+        // object ({"0":...,"11":...}) instead of an array — breaking the
+        // frontend's `all_enabled_modules.includes(...)`.
+        $tenant = Tenant::factory()->create([
+            'vertical' => 'parapharmacy',
+            'enabled_extras' => json_encode(['BatchExpiry', 'Loyalty', 'Ecommerce']),
+        ]);
+
+        $config = $this->service->getConfigForTenant($tenant);
+
+        $this->assertTrue(
+            array_is_list($config->allEnabledModules),
+            'all_enabled_modules must be a sequential list so it JSON-encodes as an array'
+        );
+        // No duplicate despite BatchExpiry appearing in both sources.
+        $this->assertSame(
+            count($config->allEnabledModules),
+            count(array_unique($config->allEnabledModules))
+        );
+        $this->assertContains('BatchExpiry', $config->allEnabledModules);
+        $this->assertContains('Loyalty', $config->allEnabledModules);
+    }
+
     public function test_get_config_handles_empty_extras(): void
     {
         $tenant = Tenant::factory()->create([
