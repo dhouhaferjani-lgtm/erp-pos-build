@@ -124,12 +124,9 @@ Then, as a setup step, **hand-ring ~20–30 sales** through the live Tauri POS a
 
 Concretely the manual mix: simple cash + card + **split payments**; a couple of **account-charge** sales; a couple of **refunds / partial refunds / return notes**; close a shift with a **Z-report** on at least one terminal.
 
-### 5.5a Prior-period sales for report deltas — OPEN (reopens D3)
+### 5.5a Prior-period sales for report deltas — RESOLVED: B1 (owner, 2026-06-20)
 
-The reporting deltas need **nonzero prior-period sales**. Sales rung today are all current-period, so the comparison would show meaningless 0→N deltas. Resolution depends on the report's comparison window (day/week/month — confirm with the reporting session) and is an owner decision:
-- **Option B1 — multi-day manual sales:** ring a handful of sales across 2–3 real days before the demo. Preserves D3 (no fiscal-event authoring). Works only if deltas are day- or short-window-based.
-- **Option B2 — minimal back-dated seeder:** author a *small* set of prior-period fiscal events (the heavy path dropped in D3, but scoped to "just enough for nonzero deltas"). Works for any window; reintroduces canonical-payload + hash-chain work.
-- **Option B3 — accept flat deltas for the demo** and caveat verbally.
+The reporting deltas need **nonzero prior-period sales**, but sales rung today are all current-period. **Decision: Option B1 — multi-day manual sales.** Ring a handful of real sales across **2–3 days before the demo** so a prior period is nonzero. Preserves D3 (no fiscal-event-authoring seeder; no extra seeder tasks). **Dependency:** this only works if the report's comparison window is day-/short-window-based — **confirm the window with the reporting session**; if it's month-over-month, revisit (would need B2). Not chosen: B2 (minimal back-dated seeder), B3 (flat deltas + caveat).
 
 This yields genuine fiscally-valid history that populates shift-history, Z-reports, and the analytics dashboard, and continues to grow during/after the demo.
 

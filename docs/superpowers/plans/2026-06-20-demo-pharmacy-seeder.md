@@ -656,7 +656,8 @@ These are runbook steps, tracked here for completeness; they run after the seede
 - [ ] Run seeder on staging: `php artisan db:seed --class=DemoPharmacySeeder --force` (AUTO_SEED=false → manual).
 - [ ] Add `apps/pos/.env.staging` (staging API + Reverb), build staging POS binary; install on demo laptop.
 - [ ] Claim the 4 `POS01` terminals; verify a sync round-trip projects to web-admin.
-- [ ] Manual sales must satisfy the **reporting acceptance criteria** (reporting-session note, 2026-06-20): ≥2 shops with current-period sales, ≥1 return receipt, varied payment methods (cash/card/split), enough products for a top-SKU list. **Prior-period sales for deltas is an OPEN owner decision — see spec §5.5a.**
+- [ ] Manual sales must satisfy the **reporting acceptance criteria** (reporting-session note, 2026-06-20): ≥2 shops with current-period sales, ≥1 return receipt, varied payment methods (cash/card/split), enough products for a top-SKU list.
+- [ ] **Prior-period (B1, owner-decided):** ring a handful of sales across **2–3 days before the demo** so prior-period deltas are nonzero. Confirm the report's comparison window is day-/short-window-based with the reporting session (if month-over-month, revisit).
 - [ ] Dry-run (day before): 1 sale/branch + Z-report → confirm all appear in web-admin; enrichment smoke test on 2–3 products (one `619` barcode, one null).
 - [ ] Produce the §8 gap report from observations; feed transaction-list/reporting items to the parallel reporting session.
 
