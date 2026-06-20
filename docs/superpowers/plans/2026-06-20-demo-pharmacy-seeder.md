@@ -274,7 +274,7 @@ git add -A && git commit -m "feat(seeder): 5-location Tunisia topology + validat
 - Test: `DemoPharmacySeederTest.php`
 
 **Interfaces:**
-- Consumes: Task 3 shops.
+- Consumes: the 4 shops via the **`protected array $shops` property** (`Location[]`) that Task 3's company-creation override populates (NOT a `['warehouse'=>,'shops'=>]` return — the parent destructures the override's return positionally as `[$company, $warehouse]`, so shops are exposed via the property).
 - Produces: `protected function seedTunisiaTerminals(array $shops): void`, `protected function seedTunisiaCashiers(Company $company, array $shops): void`.
 
 - [ ] **Step 1: Write the failing test**
