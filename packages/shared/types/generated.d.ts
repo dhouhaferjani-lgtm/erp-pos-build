@@ -179,6 +179,23 @@ location_name: string;
 gross_sales: string;
 receipt_count: number;
 };
+export type SalesSummaryData = {
+currencyCode: string;
+grossSales: string;
+returnsAmount: string;
+netSales: string;
+salesCount: number;
+returnsCount: number;
+itemsSold: string;
+averageBasket: string | null;
+delta: App.Modules.Accounting.Application.DTOs.Reports.SalesSummaryDeltaData;
+};
+export type SalesSummaryDeltaData = {
+grossSalesAbs: string;
+grossSalesPct: string | null;
+salesCountAbs: number;
+salesCountPct: string | null;
+};
 export type StockAlertData = {
 product_id: string;
 product_name: string;
@@ -1476,6 +1493,7 @@ target_margin_override: string | null;
 minimum_margin_override: string | null;
 created_at: string;
 updated_at: string | null;
+has_variants: boolean;
 primary_image_url: string | null;
 media: Array<App.Modules.Catalog.Application.DTOs.MediaAttachmentData>;
 parapharmacy_metadata: App.Modules.Product.Application.DTOs.ParapharmacyProductMetadataData | null;
@@ -1615,7 +1633,7 @@ declare namespace App.Modules.Taxation.Domain.Services {
 export type TaxSource = 'line' | 'product' | 'category' | 'company';
 }
 declare namespace App.Modules.Tenant.Domain.Enums {
-export type OnboardingStep = 'company_info' | 'tax_config' | 'payment_methods' | 'payment_repositories' | 'pos_terminal' | 'first_product';
+export type OnboardingStep = 'company_info' | 'tax_config' | 'payment_methods' | 'payment_repositories' | 'pos_terminal' | 'first_product' | 'product_options';
 export type SubscriptionPlan = 'trial' | 'starter' | 'professional' | 'enterprise';
 export type TenantStatus = 'active' | 'suspended' | 'pending' | 'archived';
 }
