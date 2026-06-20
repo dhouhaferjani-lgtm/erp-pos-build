@@ -11,6 +11,7 @@ use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Terminal;
@@ -371,7 +372,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                     'tenant_id' => $this->tenant->id,
                     'name' => $def['name'],
                     'password' => Hash::make('password'),
-                    'status' => 'active',
+                    'status' => UserStatus::Active,
                     'email_verified_at' => now(),
                     'preferences' => [],
                 ],

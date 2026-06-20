@@ -6,7 +6,10 @@ namespace Tests\Feature\Seeders;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\DemoPharmacySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -123,7 +126,8 @@ final class DemoPharmacySeederTest extends TestCase
     {
         $this->seed(DemoPharmacySeeder::class);
         Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail()->run(function () {
-            $terminals = \App\Modules\POS\Domain\Terminal::all();
+            // Finding 2: scope terminal query by code for robustness
+            $terminals = Terminal::where('code', 'POS01')->get();
             $this->assertCount(4, $terminals);
             foreach ($terminals as $t) {
                 $this->assertTrue($t->is_active);
@@ -132,10 +136,30 @@ final class DemoPharmacySeederTest extends TestCase
                 $this->assertSame('POS01', $t->code);
             }
 
-            $tun1 = \App\Modules\Company\Domain\Location::where('code', 'STORE-TUN1')->firstOrFail();
-            $cashier = User::where('email', 'tunis1.cashier@pharmabio.tn')->firstOrFail();
-            $membership = \App\Modules\Company\Domain\UserCompanyMembership::where('user_id', $cashier->id)->firstOrFail();
-            $this->assertContains($tun1->id, $membership->allowed_location_ids);
+            // Finding 1: verify ALL 4 cashiers are scoped to EXACTLY their own shop
+            $cashierShopPairs = [
+                'tunis1.cashier@pharmabio.tn' => 'STORE-TUN1',
+                'tunis2.cashier@pharmabio.tn' => 'STORE-TUN2',
+                'sousse.cashier@pharmabio.tn' => 'STORE-SOU',
+                'sfax.cashier@pharmabio.tn'   => 'STORE-SFA',
+            ];
+
+            foreach ($cashierShopPairs as $email => $shopCode) {
+                $shop = Location::where('code', $shopCode)->firstOrFail();
+                $cashier = User::where('email', $email)->firstOrFail();
+                $membership = UserCompanyMembership::where('user_id', $cashier->id)->firstOrFail();
+
+                $this->assertCount(
+                    1,
+                    $membership->allowed_location_ids,
+                    "{$email} must be scoped to exactly 1 location (got ".count($membership->allowed_location_ids).')'
+                );
+                $this->assertContains(
+                    $shop->id,
+                    $membership->allowed_location_ids,
+                    "{$email} must be scoped to {$shopCode} (id={$shop->id})"
+                );
+            }
         });
     }
 }
