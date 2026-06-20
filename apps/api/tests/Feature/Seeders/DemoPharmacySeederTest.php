@@ -118,4 +118,24 @@ final class DemoPharmacySeederTest extends TestCase
             );
         });
     }
+
+    public function test_seeds_active_unclaimed_terminals_and_scoped_cashiers(): void
+    {
+        $this->seed(DemoPharmacySeeder::class);
+        Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail()->run(function () {
+            $terminals = \App\Modules\POS\Domain\Terminal::all();
+            $this->assertCount(4, $terminals);
+            foreach ($terminals as $t) {
+                $this->assertTrue($t->is_active);
+                $this->assertNull($t->hardware_identifier); // unclaimed → POS-claimable
+                $this->assertNotNull($t->genesis_seed);
+                $this->assertSame('POS01', $t->code);
+            }
+
+            $tun1 = \App\Modules\Company\Domain\Location::where('code', 'STORE-TUN1')->firstOrFail();
+            $cashier = User::where('email', 'tunis1.cashier@pharmabio.tn')->firstOrFail();
+            $membership = \App\Modules\Company\Domain\UserCompanyMembership::where('user_id', $cashier->id)->firstOrFail();
+            $this->assertContains($tun1->id, $membership->allowed_location_ids);
+        });
+    }
 }

@@ -6,10 +6,18 @@ namespace Database\Seeders;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
-use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\Enums\LocationType;
+use App\Modules\Company\Domain\Enums\MembershipRole;
+use App\Modules\Company\Domain\Enums\MembershipStatus;
+use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\TerminalType;
+use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Spatie\Permission\Models\Role;
 
 /**
  * DemoPharmacySeeder — Tunisia parapharmacy demo fixture.
@@ -289,6 +297,104 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
         $tenant = Tenant::where('slug', $this->localeTenantSlug())->firstOrFail();
         $tenant->run(function (): void {
             $this->call(TunisiaTaxConfigurationSeeder::class);
+            $this->seedTunisiaTerminals($this->shops);
+            $this->seedTunisiaCashiers($this->company, $this->shops);
         });
+    }
+
+    /**
+     * Create one POS01 terminal per Tunisia shop, unclaimed (hardware_identifier NULL)
+     * so devices can claim them immediately on first launch.
+     *
+     * @param Location[] $shops
+     */
+    protected function seedTunisiaTerminals(array $shops): void
+    {
+        foreach ($shops as $shop) {
+            Terminal::firstOrCreate(
+                [
+                    'company_id' => $this->company->id,
+                    'location_id' => $shop->id,
+                    'code' => 'POS01',
+                ],
+                [
+                    'id' => Str::uuid()->toString(),
+                    'tenant_id' => $this->tenant->id,
+                    'type' => TerminalType::Physical,
+                    'name' => $shop->name.' — POS01',
+                    'genesis_seed' => bin2hex(random_bytes(32)),
+                    'current_sequence' => 0,
+                    'current_year' => (int) now()->format('Y'),
+                    'fiscal_schema_version' => 3,
+                    'is_active' => true,
+                    'activated_at' => now(),
+                    // hardware_identifier intentionally NULL — device claims on first launch
+                ],
+            );
+        }
+    }
+
+    /**
+     * Create one location-scoped cashier per Tunisia shop.
+     *
+     * Each cashier's membership pins allowed_location_ids to a single shop so
+     * the demo shows per-location isolation. Owner/manager (seeded by the parent)
+     * retain NULL (all locations) and are not touched here.
+     *
+     * @param Location[] $shops
+     */
+    protected function seedTunisiaCashiers(Company $company, array $shops): void
+    {
+        setPermissionsTeamId($this->tenant->id);
+
+        $cashierRole = Role::where('name', 'cashier')->where('guard_name', 'sanctum')->first();
+
+        $domain = $this->localeUserEmailDomain();
+
+        $definitions = [
+            'STORE-TUN1' => ['email' => "tunis1.cashier@{$domain}", 'pin' => '1111', 'name' => 'Caissier Tunis Lac'],
+            'STORE-TUN2' => ['email' => "tunis2.cashier@{$domain}", 'pin' => '2222', 'name' => 'Caissier Tunis Centre'],
+            'STORE-SOU'  => ['email' => "sousse.cashier@{$domain}", 'pin' => '3333', 'name' => 'Caissier Sousse'],
+            'STORE-SFA'  => ['email' => "sfax.cashier@{$domain}", 'pin' => '4444', 'name' => 'Caissier Sfax'],
+        ];
+
+        foreach ($shops as $shop) {
+            $def = $definitions[$shop->code] ?? null;
+            if ($def === null) {
+                continue;
+            }
+
+            $user = User::firstOrCreate(
+                ['email' => $def['email']],
+                [
+                    'id' => Str::uuid()->toString(),
+                    'tenant_id' => $this->tenant->id,
+                    'name' => $def['name'],
+                    'password' => Hash::make('password'),
+                    'status' => 'active',
+                    'email_verified_at' => now(),
+                    'preferences' => [],
+                ],
+            );
+
+            $this->recordIdentity($user, $this->tenant);
+
+            UserCompanyMembership::firstOrCreate(
+                ['user_id' => $user->id, 'company_id' => $company->id],
+                [
+                    'role' => MembershipRole::Cashier,
+                    'allowed_location_ids' => [$shop->id],
+                    'is_primary' => true,
+                    'status' => MembershipStatus::Active,
+                    'accepted_at' => now(),
+                ],
+            );
+
+            if ($cashierRole) {
+                $user->assignRole($cashierRole);
+            }
+
+            $user->update(['pos_pin' => Hash::make($def['pin'])]);
+        }
     }
 }
