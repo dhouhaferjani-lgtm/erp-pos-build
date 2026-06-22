@@ -1569,6 +1569,8 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
+        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+
         return $entry;
     }
 

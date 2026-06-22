@@ -35,9 +35,9 @@ Outcome:
 - Verification: `php artisan test tests/Feature/Accounting/InvoiceAndCreditNoteGLIntegrationTest.php`; `php artisan test --filter PartnerBalanceServiceTest`; `./vendor/bin/phpstan analyse --level=8 app/Modules/Accounting/Application/Services/AccountingService.php`; `./vendor/bin/pint --test app/Modules/Accounting/Application/Services/AccountingService.php tests/Feature/Accounting/InvoiceAndCreditNoteGLIntegrationTest.php`.
 - Reviews saved in `docs/superpowers/reviews/2026-06-22-h1-ar-partner-id-codex-review.md` and `docs/superpowers/reviews/2026-06-22-h1-ar-partner-id-opus-fallback-review.md`; true Opus review remains pending.
 
-## H-2 — Non-POS draft journal entries have no production posting cycle
+## H-2 — Non-POS AR/AP/advance/clearing journal entries have no production posting cycle
 
-status: IN PROGRESS
+status: DONE
 severity: HIGH  
 source: seed backlog + `06-draft-post-lifecycle.md`
 
@@ -81,7 +81,37 @@ Outcome so far:
 - Payment-tolerance reviews saved in `docs/superpowers/reviews/2026-06-22-h2-payment-tolerance-posting-codex-review.md` and `docs/superpowers/reviews/2026-06-22-h2-payment-tolerance-posting-opus-fallback-review.md`; true Opus review remains pending.
 - Supplier-advance refund reviews saved in `docs/superpowers/reviews/2026-06-22-h2-supplier-advance-refund-posting-codex-review.md` and `docs/superpowers/reviews/2026-06-22-h2-supplier-advance-refund-posting-opus-fallback-review.md`; true Opus review remains pending.
 - Customer-advance clearing reviews saved in `docs/superpowers/reviews/2026-06-22-h2-customer-advance-clearing-posting-codex-review.md` and `docs/superpowers/reviews/2026-06-22-h2-customer-advance-clearing-posting-opus-fallback-review.md`; true Opus review remains pending.
-- Remaining H-2 draft-producing flows still TODO: other non-POS draft creators, pending final completeness scan.
+- Final H-2 scan found AR/AP/advance/clearing production paths covered. Remaining non-partner operational draft creators are tracked separately under H-7.
+
+## H-7 — Operational non-partner GL writers remain draft-only
+
+status: IN PROGRESS
+severity: HIGH
+source: H-2 completeness scan, `GeneralLedgerService` source-type scan
+
+Claim: Outside the AR/AP/advance/clearing scope, some production operational GL writers still create Draft journal entries with no posting cycle, including expenses, voucher ledger entries, COGS, and inventory write-offs.
+
+Evidence:
+- `apps/api/app/Modules/Expense/Application/Services/ExpenseService.php:116` calls `GeneralLedgerService::createFromExpense()` with a real actor.
+- `apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:1540` creates `source_type = expense` as Draft.
+- `apps/api/app/Modules/Inventory/Listeners/PostCOGSOnInvoice.php:73` calls `createCOGSEntry()`.
+- `apps/api/app/Modules/Voucher/Application/Services/*` call `createVoucherLedgerEntry()`.
+- `apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:959`, `:1067`, `:1610` create `cogs`, `voucher_ledger`, and `batch_write_off` entries as Draft.
+
+Acceptance criteria:
+- Confirmed production operational writers either post immediately with a real actor/system actor or are explicitly classified/deferred with rationale.
+- Posting continues to use canonical `postEntry()` semantics and `JournalEntryPosted` event timing.
+- Tests cover each fixed path.
+
+Test plan:
+- Process one writer at a time.
+- Start with expenses because `ExpenseService::post()` already supplies a real `User`.
+
+Scope boundary: Non-partner operational GL lifecycle only; do not change AR/AP/advance/clearing behavior already completed in H-2.
+
+Outcome so far:
+- H-7.1 DONE — posted expenses now create posted `expense` journal entries. `GeneralLedgerService::createFromExpense()` posts through the canonical after-commit helper using the supplied user and expense currency. Red was observed first via `ExpenseService::post()` leaving the entry Draft.
+- H-7.1 verification: `php artisan test tests/Feature/Accounting/GLIntegrationTest.php --filter test_posting_expense_posts_expense_journal_entry`; `php artisan test tests/Feature/Accounting/GLIntegrationTest.php`.
 
 ## H-3 — Supplier invoice/payment AP production path is unwired
 

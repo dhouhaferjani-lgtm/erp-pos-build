@@ -22,6 +22,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Expense\Application\Services\ExpenseService;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -736,6 +737,36 @@ class GLIntegrationTest extends TestCase
         $cashLine = $journalEntry->lines->firstWhere('account_id', $this->cashAccount->id);
         $this->assertEquals('0.000', $cashLine->debit);
         $this->assertEquals('500.000', $cashLine->credit);
+    }
+
+    public function test_posting_expense_posts_expense_journal_entry(): void
+    {
+        $expense = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Expense,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'EXP-DRAFT',
+            'document_date' => now(),
+            'currency' => 'TND',
+            'subtotal' => '100.000',
+            'tax_amount' => '0.000',
+            'total' => '100.000',
+            'balance_due' => '0.000',
+        ]);
+
+        app(ExpenseService::class)->post($expense, $this->user);
+
+        $entry = JournalEntry::query()
+            ->where('source_type', 'expense')
+            ->where('source_id', $expense->id)
+            ->firstOrFail();
+
+        $this->assertSame(JournalEntryStatus::Posted, $entry->status);
+        $this->assertSame($this->user->id, $entry->posted_by);
+        $this->assertNotNull($entry->posted_at);
+        $this->assertNotNull($entry->fiscal_hash);
     }
 
     public function test_posting_partner_journal_entry_refreshes_partner_balance(): void
