@@ -744,6 +744,8 @@ final class GeneralLedgerService
      *
      * Debit: Customer Advances (4191) - clear the liability
      * Credit: Accounts Receivable (411) - reduce the receivable (with partner for subledger)
+     *
+     * @param  numeric-string  $amount
      */
     public function clearCustomerAdvanceToReceivable(
         string $companyId,
@@ -760,6 +762,24 @@ final class GeneralLedgerService
             $companyId, $partnerId, $invoiceId, $amount,
             $date, $description, $advanceAccount, $receivableAccount
         ): JournalEntry {
+            Partner::query()
+                ->whereKey($partnerId)
+                ->where('company_id', $companyId)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (bccomp($amount, '0', $this->scale()) <= 0) {
+                throw new \InvalidArgumentException('Customer advance clearing amount must be positive.');
+            }
+
+            $availableAdvance = $this->availableCustomerAdvanceMagnitude($companyId, $partnerId, $advanceAccount->id);
+
+            if (bccomp($amount, $availableAdvance, $this->scale()) > 0) {
+                throw new \InvalidArgumentException(
+                    "Cannot clear customer advance beyond available balance ({$availableAdvance})."
+                );
+            }
+
             $entryNumber = $this->generateEntryNumber($companyId);
 
             // Get tenant_id from company
@@ -802,6 +822,40 @@ final class GeneralLedgerService
         });
 
         return $entry;
+    }
+
+    /**
+     * @return numeric-string
+     */
+    private function availableCustomerAdvanceMagnitude(string $companyId, string $partnerId, string $advanceAccountId): string
+    {
+        $advanceBalance = $this->partnerBalanceService->getCustomerAdvanceBalance($companyId, $partnerId);
+
+        if (bccomp($advanceBalance, '0', $this->scale()) >= 0) {
+            return '0';
+        }
+
+        $postedAdvanceMagnitude = bcsub('0', $advanceBalance, $this->scale());
+
+        /** @var object{debit_total: numeric-string|null}|null $pendingDraftResult */
+        $pendingDraftResult = JournalLine::query()
+            ->join('journal_entries', 'journal_lines.journal_entry_id', '=', 'journal_entries.id')
+            ->where('journal_entries.company_id', $companyId)
+            ->where('journal_entries.status', JournalEntryStatus::Draft)
+            ->where('journal_entries.source_type', 'prepayment_application')
+            ->where('journal_lines.account_id', $advanceAccountId)
+            ->where('journal_lines.partner_id', $partnerId)
+            ->selectRaw('CAST(COALESCE(SUM(journal_lines.debit), 0) AS TEXT) as debit_total')
+            ->first();
+
+        $pendingDraftClearing = $pendingDraftResult->debit_total ?? '0';
+        $availableAfterDrafts = bcsub($postedAdvanceMagnitude, $pendingDraftClearing, $this->scale());
+
+        if (bccomp($availableAfterDrafts, '0', $this->scale()) <= 0) {
+            return '0';
+        }
+
+        return $availableAfterDrafts;
     }
 
     /**

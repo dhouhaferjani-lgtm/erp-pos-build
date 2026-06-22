@@ -556,7 +556,7 @@ Reviews:
 
 ## M-8 — Uncapped advance clearing
 
-status: TODO  
+status: DONE
 severity: MEDIUM  
 source: seed backlog M-7
 
@@ -573,6 +573,26 @@ Test plan:
 - Add failing test that attempts to clear more than available advance.
 
 Scope boundary: Customer advance clearing only.
+
+Outcome:
+- `clearCustomerAdvanceToReceivable()` now rejects non-positive clearing amounts and amounts above the currently available customer advance.
+- Available advance is calculated from posted customer-advance liability magnitude, minus existing draft `prepayment_application` clearings for the same company, partner, and customer-advance account.
+- Validation and draft journal creation now run inside one transaction after locking the partner row, so same-partner clearings serialize on PostgreSQL.
+- `PartnerBalanceService` balance helper docs now advertise `numeric-string` returns used by the bcmath guard.
+
+Verification:
+- Red observed first: `php artisan test tests/Feature/Accounting/GLIntegrationTest.php --filter test_customer_advance_clearing_cannot_exceed_available_advance` failed because a `60.000` clearing was created against only `40.000` posted advance.
+- Additional red observed: duplicate draft clearings were allowed against the same `40.000` advance, and `0.000` clearing created a journal entry.
+- Green after implementation: `php artisan test tests/Feature/Accounting/GLIntegrationTest.php --filter 'customer_advance_clearing'` passed 4 tests, 15 assertions.
+- `php artisan test tests/Feature/Accounting/GLIntegrationTest.php` passed 23 tests, 94 assertions.
+- `php artisan test --filter PartnerBalanceServiceTest` passed 18 tests, 35 assertions, with pre-existing PHPUnit 12 doc-comment metadata warnings.
+- `./vendor/bin/phpstan analyse app/Modules/Accounting/Domain/Services/GeneralLedgerService.php app/Modules/Accounting/Application/Services/PartnerBalanceService.php --level=8` passed.
+- `./vendor/bin/pint --test` passed on touched app/test files.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-m8-customer-advance-clearing-cap-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-m8-customer-advance-clearing-cap-opus-fallback-review.md`
 
 ## M-9 — Aged receivables uses float math
 

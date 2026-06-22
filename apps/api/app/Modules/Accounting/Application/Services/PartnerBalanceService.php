@@ -31,7 +31,7 @@ class PartnerBalanceService
      * For customers: positive = they owe us, negative = we owe them (credit balance)
      * For suppliers: positive = we owe them, negative = they owe us (debit balance)
      *
-     * @return array{balance: string, debit_total: string, credit_total: string, transaction_count: int}
+     * @return array{balance: numeric-string, debit_total: numeric-string, credit_total: numeric-string, transaction_count: int}
      */
     public function getPartnerBalance(
         string $companyId,
@@ -72,6 +72,8 @@ class PartnerBalanceService
 
     /**
      * Get customer receivable balance (what they owe us).
+     *
+     * @return numeric-string
      */
     public function getCustomerReceivableBalance(string $companyId, string $partnerId): string
     {
@@ -82,6 +84,8 @@ class PartnerBalanceService
 
     /**
      * Get customer advance balance (prepayments/credits we owe them).
+     *
+     * @return numeric-string
      */
     public function getCustomerAdvanceBalance(string $companyId, string $partnerId): string
     {
@@ -92,6 +96,8 @@ class PartnerBalanceService
 
     /**
      * Get supplier payable balance (what we owe them).
+     *
+     * @return numeric-string
      */
     public function getSupplierPayableBalance(string $companyId, string $partnerId): string
     {

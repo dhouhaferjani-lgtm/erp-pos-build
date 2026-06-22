@@ -496,6 +496,155 @@ class GLIntegrationTest extends TestCase
         Event::assertNotDispatched(PartnerBalanceUpdated::class);
     }
 
+    public function test_customer_advance_clearing_cannot_exceed_available_advance(): void
+    {
+        $service = app(GeneralLedgerService::class);
+
+        $service->createCustomerAdvanceJournalEntry(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            advanceId: (string) Str::uuid(),
+            amount: '40.000',
+            paymentMethodAccountId: $this->cashAccount->id,
+            date: now(),
+            user: $this->user,
+            description: 'Customer advance payment',
+            currencyCode: $this->company->currency
+        );
+
+        try {
+            $service->clearCustomerAdvanceToReceivable(
+                companyId: $this->company->id,
+                partnerId: $this->partner->id,
+                invoiceId: (string) Str::uuid(),
+                amount: '60.000',
+                date: now(),
+                description: 'Apply too much customer advance'
+            );
+            $this->fail('Customer advance clearing must not exceed the available advance balance.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertStringContainsString('Cannot clear customer advance beyond available balance', $exception->getMessage());
+        }
+
+        $this->assertDatabaseMissing('journal_entries', [
+            'source_type' => 'prepayment_application',
+            'description' => 'Apply too much customer advance',
+        ]);
+    }
+
+    public function test_customer_advance_clearing_requires_positive_amount(): void
+    {
+        $service = app(GeneralLedgerService::class);
+
+        try {
+            $service->clearCustomerAdvanceToReceivable(
+                companyId: $this->company->id,
+                partnerId: $this->partner->id,
+                invoiceId: (string) Str::uuid(),
+                amount: '0.000',
+                date: now(),
+                description: 'Apply zero customer advance'
+            );
+            $this->fail('Customer advance clearing must require a positive amount.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertStringContainsString('Customer advance clearing amount must be positive', $exception->getMessage());
+        }
+
+        $this->assertDatabaseMissing('journal_entries', [
+            'source_type' => 'prepayment_application',
+            'description' => 'Apply zero customer advance',
+        ]);
+    }
+
+    public function test_customer_advance_clearing_allows_available_advance_amount(): void
+    {
+        $service = app(GeneralLedgerService::class);
+        $invoiceId = (string) Str::uuid();
+
+        $service->createCustomerAdvanceJournalEntry(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            advanceId: (string) Str::uuid(),
+            amount: '40.000',
+            paymentMethodAccountId: $this->cashAccount->id,
+            date: now(),
+            user: $this->user,
+            description: 'Customer advance payment',
+            currencyCode: $this->company->currency
+        );
+
+        $journalEntry = $service->clearCustomerAdvanceToReceivable(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            invoiceId: $invoiceId,
+            amount: '40.000',
+            date: now(),
+            description: 'Apply customer advance'
+        );
+
+        $this->assertEquals(JournalEntryStatus::Draft, $journalEntry->status);
+        $this->assertSame('prepayment_application', $journalEntry->source_type);
+        $this->assertSame($invoiceId, $journalEntry->source_id);
+
+        $advanceLine = $journalEntry->lines->firstWhere('account_id', Account::findByPurposeOrFail(
+            $this->company->id,
+            SystemAccountPurpose::CustomerAdvance
+        )->id);
+        $receivableLine = $journalEntry->lines->firstWhere('account_id', $this->receivableAccount->id);
+
+        $this->assertEquals('40.000', $advanceLine->debit);
+        $this->assertEquals('0.000', $advanceLine->credit);
+        $this->assertEquals($this->partner->id, $advanceLine->partner_id);
+        $this->assertEquals('0.000', $receivableLine->debit);
+        $this->assertEquals('40.000', $receivableLine->credit);
+        $this->assertEquals($this->partner->id, $receivableLine->partner_id);
+    }
+
+    public function test_customer_advance_clearing_counts_existing_draft_clearings(): void
+    {
+        $service = app(GeneralLedgerService::class);
+
+        $service->createCustomerAdvanceJournalEntry(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            advanceId: (string) Str::uuid(),
+            amount: '40.000',
+            paymentMethodAccountId: $this->cashAccount->id,
+            date: now(),
+            user: $this->user,
+            description: 'Customer advance payment',
+            currencyCode: $this->company->currency
+        );
+
+        $service->clearCustomerAdvanceToReceivable(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            invoiceId: (string) Str::uuid(),
+            amount: '40.000',
+            date: now(),
+            description: 'Apply customer advance'
+        );
+
+        try {
+            $service->clearCustomerAdvanceToReceivable(
+                companyId: $this->company->id,
+                partnerId: $this->partner->id,
+                invoiceId: (string) Str::uuid(),
+                amount: '1.000',
+                date: now(),
+                description: 'Apply duplicate customer advance'
+            );
+            $this->fail('Draft advance clearings must reduce available advance for later clearings.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertStringContainsString('Cannot clear customer advance beyond available balance', $exception->getMessage());
+        }
+
+        $this->assertDatabaseMissing('journal_entries', [
+            'source_type' => 'prepayment_application',
+            'description' => 'Apply duplicate customer advance',
+        ]);
+    }
+
     public function test_supplier_invoice_creates_correct_journal_entry(): void
     {
         // Create supplier partner
