@@ -66,6 +66,15 @@ final class GeneralLedgerService
         $entry->refresh()->load('lines');
     }
 
+    private function postSystemGeneratedEntryAndDispatchPostedEvent(
+        JournalEntry $entry,
+        string $companyId,
+        ?string $currencyCode,
+    ): void {
+        $this->postEntryWithOptionalActor($entry, null, $currencyCode ?? $this->currencyCodeForCompany($companyId));
+        $entry->refresh()->load('lines');
+    }
+
     private function postEntryAndDispatchPostedEventAfterCommit(
         JournalEntry $entry,
         User $user,
@@ -81,6 +90,22 @@ final class GeneralLedgerService
         }
 
         $this->postEntryAndDispatchPostedEvent($entry, $user, $companyId, $currencyCode);
+    }
+
+    private function postSystemGeneratedEntryAndDispatchPostedEventAfterCommit(
+        JournalEntry $entry,
+        string $companyId,
+        ?string $currencyCode,
+    ): void {
+        if (DB::transactionLevel() > 0) {
+            DB::afterCommit(function () use ($entry, $companyId, $currencyCode): void {
+                $this->postSystemGeneratedEntryAndDispatchPostedEvent($entry, $companyId, $currencyCode);
+            });
+
+            return;
+        }
+
+        $this->postSystemGeneratedEntryAndDispatchPostedEvent($entry, $companyId, $currencyCode);
     }
 
     /**
@@ -907,7 +932,8 @@ final class GeneralLedgerService
         string $documentNumber,
         array $lineItems,
         \DateTimeInterface $date,
-        ?string $description = null
+        ?string $description = null,
+        ?string $currencyCode = null,
     ): ?JournalEntry {
         // Calculate total COGS.
         //
@@ -941,7 +967,7 @@ final class GeneralLedgerService
         $cogsAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold);
         $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
 
-        return DB::transaction(function () use (
+        $entry = DB::transaction(function () use (
             $companyId, $invoiceId, $documentNumber, $totalCOGS,
             $date, $description, $cogsAccount, $inventoryAccount
         ): JournalEntry {
@@ -985,6 +1011,10 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
+
+        $this->postSystemGeneratedEntryAndDispatchPostedEventAfterCommit($entry, $companyId, $currencyCode);
+
+        return $entry;
     }
 
     /**
@@ -1210,6 +1240,11 @@ final class GeneralLedgerService
      */
     public function postEntry(JournalEntry $entry, User $user, ?string $currencyCode = null): void
     {
+        $this->postEntryWithOptionalActor($entry, $user, $currencyCode);
+    }
+
+    private function postEntryWithOptionalActor(JournalEntry $entry, ?User $user, ?string $currencyCode = null): void
+    {
         if ($entry->status !== JournalEntryStatus::Draft) {
             throw new \InvalidArgumentException('Only draft entries can be posted');
         }
@@ -1245,7 +1280,7 @@ final class GeneralLedgerService
             'fiscal_hash' => $hash,
             'previous_hash' => $previousHash,
             'posted_at' => $postedAt,
-            'posted_by' => $user->id,
+            'posted_by' => $user?->id,
         ]);
 
         event(new JournalEntryPosted(

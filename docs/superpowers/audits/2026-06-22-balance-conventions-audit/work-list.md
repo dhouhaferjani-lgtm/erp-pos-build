@@ -114,6 +114,8 @@ Outcome so far:
 - H-7.1 verification: `php artisan test tests/Feature/Accounting/GLIntegrationTest.php --filter test_posting_expense_posts_expense_journal_entry`; `php artisan test tests/Feature/Accounting/GLIntegrationTest.php`.
 - H-7.2 DONE — voucher ledger GL entries now post through the ledger event's required `user_id`. `createVoucherLedgerEntry()` validates the ledger user before creating the journal entry and posts through the canonical helper with ledger currency. Red was observed first via voucher issuance leaving the linked GL entry Draft.
 - H-7.2 verification: `php artisan test tests/Feature/Voucher/VoucherIssuanceServiceTest.php --filter test_issue_from_refund_creates_voucher_ledger_and_g_l_entry`; `php artisan test tests/Feature/Voucher/VoucherIssuanceServiceTest.php tests/Feature/Voucher/VoucherRedemptionServiceTest.php --filter 'voucher_ledger|g_l_entry|rounding|redeem'`.
+- H-7.3 DONE — event-driven COGS GL entries now post as system-generated entries. `PostCOGSOnInvoice` passes the immutable invoice event currency into `createCOGSEntry()`, and the GL helper posts through the canonical balance/hash/event path with nullable `posted_by`, matching other event-derived posted entries where no actor is present on the immutable event. Red was observed first via `InvoicePosted` leaving the linked `cogs` entry Draft.
+- H-7.3 verification: `php artisan test tests/Feature/Accounting/StockMovementGLIntegrationTest.php --filter test_invoice_posted_listener_creates_posted_cogs_journal_entry`; `php artisan test tests/Feature/Accounting/StockMovementGLIntegrationTest.php`.
 
 ## H-3 — Supplier invoice/payment AP production path is unwired
 

@@ -76,6 +76,7 @@ final class PostCOGSOnInvoice
                 documentNumber: $event->documentNumber,
                 lineItems: $lineItems,
                 date: new \DateTimeImmutable($event->postedAt),
+                currencyCode: $event->currency,
             );
 
             if ($entry !== null) {
