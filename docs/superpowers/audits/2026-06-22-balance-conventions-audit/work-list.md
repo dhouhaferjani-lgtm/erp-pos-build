@@ -203,7 +203,7 @@ Reviews:
 
 ## H-6 — Partner balance/credit money fields still use scale 4
 
-status: TODO  
+status: DONE
 severity: HIGH  
 source: seed backlog M-4 + `09-unwired-precision-status.md`
 
@@ -224,6 +224,29 @@ Test plan:
 - Run partner balance tests.
 
 Scope boundary: Partner money fields only.
+
+Outcome:
+- Chose scale 3 for partner money fields; no 4-decimal cache exception was documented because these are ordinary currency money values, not quantities or tolerance metrics.
+- Added tenant migration `2026_06_22_130000_align_partner_money_fields_to_scale_3.php` to alter `partners.receivable_balance`, `credit_balance`, `payable_balance`, and `credit_limit` to `NUMERIC(15, 3)` on PostgreSQL.
+- Changed `Partner` casts for the four fields to `decimal:3`, and aligned `hasActiveCreditLimit()`, customer `net_balance`, and partner balance/liability cache calculations to scale 3.
+- Tightened create/update partner `credit_limit` validation to reject more than 3 decimal places.
+- Updated partner/POS/API and accounting expectations to the 3-decimal partner-money contract.
+
+Verification:
+- Red observed first: `php artisan test tests/Feature/Partner/PartnerMoneyPrecisionTest.php` failed because partner money casts returned `100.1250` instead of `100.125`.
+- Red observed first: `php artisan test --filter 'partner_.*credit_limit' tests/Feature/Service/IngressPrecisionTest.php` failed because 4-decimal partner credit limits were accepted.
+- Green after implementation: `php artisan test tests/Feature/Partner/PartnerMoneyPrecisionTest.php` passed 1 test, 1 PostgreSQL-only schema assertion skipped under SQLite.
+- Real PostgreSQL verification passed against isolated `autoerp_h6_test`: `DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5433 DB_DATABASE=autoerp_h6_test DB_USERNAME=autoerp DB_PASSWORD=autoerp_secret php artisan test tests/Feature/Partner/PartnerMoneyPrecisionTest.php` passed 2 tests, 13 assertions, including `information_schema.columns` precision/scale assertions.
+- `php artisan test --filter 'partner_.*credit_limit' tests/Feature/Service/IngressPrecisionTest.php` passed 3 tests, 5 assertions.
+- `php artisan test tests/Feature/Accounting/PartnerBalanceServiceTest.php tests/Feature/Accounting/GLIntegrationTest.php tests/Unit/Document/PurchaseOrderServiceTest.php tests/Feature/Partner/B2BPartnerTest.php tests/Feature/Partner/PartnerBalanceListTest.php tests/Feature/POS/PosCustomerSyncControllerTest.php` passed 76 tests, 311 assertions.
+- `php artisan test --filter PartnerBalanceServiceTest` passed 18 tests, 35 assertions, with pre-existing PHPUnit 12 doc-comment metadata warnings.
+- `./vendor/bin/phpstan analyse --level=8 app/Modules/Partner/Domain/Partner.php app/Modules/Accounting/Application/Services/PartnerBalanceService.php app/Modules/Partner/Presentation/Requests/CreatePartnerRequest.php app/Modules/Partner/Presentation/Requests/UpdatePartnerRequest.php` passed.
+- `./vendor/bin/pint` passed after fixing import order in `PartnerMoneyPrecisionTest`.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-h6-partner-money-precision-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-h6-partner-money-precision-opus-fallback-review.md`
 
 ## M-1 — Manual journal create/post bypasses accounting audit events
 

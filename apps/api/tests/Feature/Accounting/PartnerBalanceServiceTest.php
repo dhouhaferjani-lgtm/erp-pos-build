@@ -74,7 +74,7 @@ class PartnerBalanceServiceTest extends TestCase
             $this->customer->id
         );
 
-        $this->assertSame('0.0000', $result['balance']);
+        $this->assertSame('0.000', $result['balance']);
         $this->assertSame(0, $result['transaction_count']);
     }
 
@@ -87,7 +87,7 @@ class PartnerBalanceServiceTest extends TestCase
             $this->customer->id
         );
 
-        $this->assertSame('1000.0000', $balance);
+        $this->assertSame('1000.000', $balance);
     }
 
     public function test_payment_reduces_customer_receivable(): void
@@ -100,7 +100,7 @@ class PartnerBalanceServiceTest extends TestCase
             $this->customer->id
         );
 
-        $this->assertSame('600.0000', $balance);
+        $this->assertSame('600.000', $balance);
     }
 
     public function test_multiple_invoices_and_payments_calculate_correctly(): void
@@ -118,7 +118,7 @@ class PartnerBalanceServiceTest extends TestCase
             $this->customer->id
         );
 
-        $this->assertSame('800.0000', $balance);
+        $this->assertSame('800.000', $balance);
     }
 
     public function test_subledger_matches_control_account(): void
@@ -282,7 +282,7 @@ class PartnerBalanceServiceTest extends TestCase
 
         // Check cached values
         $this->customer->refresh();
-        $this->assertSame('1000.0000', $this->customer->receivable_balance);
+        $this->assertSame('1000.000', $this->customer->receivable_balance);
         $this->assertNotNull($this->customer->balance_updated_at);
     }
 
@@ -298,7 +298,7 @@ class PartnerBalanceServiceTest extends TestCase
         $this->service->refreshPartnerBalance($this->company->id, $this->customer->id);
 
         $this->customer->refresh();
-        $this->assertSame('50.0000', $this->customer->credit_balance);
+        $this->assertSame('50.000', $this->customer->credit_balance);
     }
 
     public function test_net_balance_subtracts_advance_credit_from_receivable(): void
@@ -310,10 +310,10 @@ class PartnerBalanceServiceTest extends TestCase
         $this->service->refreshPartnerBalance($this->company->id, $this->customer->id);
 
         $this->customer->refresh();
-        $this->assertSame('100.0000', $this->customer->receivable_balance);
-        $this->assertSame('30.0000', $this->customer->credit_balance);
+        $this->assertSame('100.000', $this->customer->receivable_balance);
+        $this->assertSame('30.000', $this->customer->credit_balance);
         // net = receivable - credit = 70 (NOT 130, which the signed-negative bug produced).
-        $this->assertSame('70.0000', $this->customer->net_balance);
+        $this->assertSame('70.000', $this->customer->net_balance);
     }
 
     public function test_credit_balance_clamps_to_zero_when_advance_overcleared(): void
@@ -328,7 +328,7 @@ class PartnerBalanceServiceTest extends TestCase
         $this->service->refreshPartnerBalance($this->company->id, $this->customer->id);
 
         $this->customer->refresh();
-        $this->assertSame('0.0000', $this->customer->credit_balance);
+        $this->assertSame('0.000', $this->customer->credit_balance);
     }
 
     public function test_payable_balance_is_stored_as_positive_magnitude(): void
@@ -347,8 +347,8 @@ class PartnerBalanceServiceTest extends TestCase
         $this->service->refreshPartnerBalance($this->company->id, $supplier->id);
 
         $supplier->refresh();
-        $this->assertSame('80.0000', $supplier->payable_balance);
-        $this->assertSame('80.0000', $supplier->net_balance);
+        $this->assertSame('80.000', $supplier->payable_balance);
+        $this->assertSame('80.000', $supplier->net_balance);
     }
 
     public function test_get_cached_or_calculate_balance_returns_cached_values(): void
@@ -363,7 +363,7 @@ class PartnerBalanceServiceTest extends TestCase
             staleMinutes: 60
         );
 
-        $this->assertSame('1000.0000', $result1['receivable_balance']);
+        $this->assertSame('1000.000', $result1['receivable_balance']);
         $this->assertTrue($result1['is_from_cache']);
         $this->assertNotNull($result1['balance_updated_at']);
     }
@@ -388,8 +388,8 @@ class PartnerBalanceServiceTest extends TestCase
         $this->customer->refresh();
         $customer2->refresh();
 
-        $this->assertSame('1000.0000', $this->customer->receivable_balance);
-        $this->assertSame('500.0000', $customer2->receivable_balance);
+        $this->assertSame('1000.000', $this->customer->receivable_balance);
+        $this->assertSame('500.000', $customer2->receivable_balance);
     }
 
     public function test_only_posted_entries_affect_balance(): void
@@ -438,7 +438,7 @@ class PartnerBalanceServiceTest extends TestCase
             $this->customer->id
         );
 
-        $this->assertSame('1000.0000', $balance);
+        $this->assertSame('1000.000', $balance);
     }
 
     // ========== Helper Methods ==========

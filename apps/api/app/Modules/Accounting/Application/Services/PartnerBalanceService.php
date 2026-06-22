@@ -60,7 +60,7 @@ class PartnerBalanceService
         $debitTotal = (string) ($result->debit_total ?? '0');
         /** @var numeric-string $creditTotal */
         $creditTotal = (string) ($result->credit_total ?? '0');
-        $balance = bcsub($debitTotal, $creditTotal, 4);
+        $balance = bcsub($debitTotal, $creditTotal, 3); // precision-ok: partner balance cache fields are currency money columns stored at scale 3.
 
         return [
             'balance' => $balance,
@@ -373,9 +373,9 @@ class PartnerBalanceService
         /** @var numeric-string $debitTotal */
         $debitTotal = $result['debit_total'];
         /** @var numeric-string $magnitude */
-        $magnitude = bcsub($creditTotal, $debitTotal, 4); // precision-ok: partners.*_balance is decimal(15,4); matches getPartnerBalance()
+        $magnitude = bcsub($creditTotal, $debitTotal, 3); // precision-ok: partner liability cache fields are currency money columns stored at scale 3.
 
-        if (bccomp($magnitude, '0', 4) >= 0) { // precision-ok: partners.*_balance is decimal(15,4); matches getPartnerBalance()
+        if (bccomp($magnitude, '0', 3) >= 0) { // precision-ok: partner liability cache fields are currency money columns stored at scale 3.
             return $magnitude;
         }
 
@@ -390,7 +390,7 @@ class PartnerBalanceService
             'signed_balance' => $magnitude,
         ]);
 
-        return '0.0000';
+        return '0.000';
     }
 
     /**

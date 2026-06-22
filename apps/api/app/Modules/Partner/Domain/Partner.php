@@ -147,15 +147,15 @@ class Partner extends Model
             'payment_terms' => PaymentTerms::class,
             'consolidation_frequency' => ConsolidationFrequency::class,
             'invoice_consolidation' => 'boolean',
-            'credit_limit' => 'decimal:4',
+            'credit_limit' => 'decimal:3',
             'discount_percentage' => 'decimal:2',
             'payment_terms_days' => 'integer',
             'tax_status' => PartnerTaxStatus::class,
             'tax_exemption_valid_until' => 'date',
             'withholding_exempt' => 'boolean',
-            'receivable_balance' => 'decimal:4',
-            'credit_balance' => 'decimal:4',
-            'payable_balance' => 'decimal:4',
+            'receivable_balance' => 'decimal:3',
+            'credit_balance' => 'decimal:3',
+            'payable_balance' => 'decimal:3',
             'balance_updated_at' => 'datetime',
             'is_active' => 'boolean',
             'account_status' => CustomerAccountStatus::class,
@@ -215,7 +215,7 @@ class Partner extends Model
             return false;
         }
 
-        return bccomp($this->credit_limit, '0', 4) > 0;
+        return bccomp($this->credit_limit, '0', 3) > 0;
     }
 
     public function getDisplayName(): string
@@ -275,7 +275,7 @@ class Partner extends Model
     {
         if ($this->isCustomer()) {
             // Customer: receivable minus any credit they have
-            return bcsub($this->receivable_balance ?? '0', $this->credit_balance ?? '0', 4);
+            return bcsub($this->receivable_balance ?? '0', $this->credit_balance ?? '0', 3);
         }
 
         // Supplier: what we owe them

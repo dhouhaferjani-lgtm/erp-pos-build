@@ -262,7 +262,7 @@ class GLIntegrationTest extends TestCase
         $this->assertEquals(JournalEntryStatus::Posted, $journalEntry->status);
         $this->assertNotNull($journalEntry->fiscal_hash);
         $this->assertEquals($this->user->id, $journalEntry->posted_by);
-        $this->assertEquals('180.0000', $this->partner->receivable_balance);
+        $this->assertEquals('180.000', $this->partner->receivable_balance);
         $this->assertNotNull($this->partner->balance_updated_at);
     }
 
@@ -434,7 +434,7 @@ class GLIntegrationTest extends TestCase
         $this->assertEquals(JournalEntryStatus::Posted, $journalEntry->status);
         $this->assertNotNull($journalEntry->fiscal_hash);
         $this->assertEquals($this->user->id, $journalEntry->posted_by);
-        $this->assertEquals('500.0000', $this->partner->credit_balance);
+        $this->assertEquals('500.000', $this->partner->credit_balance);
         $this->assertNotNull($this->partner->balance_updated_at);
     }
 
@@ -459,7 +459,7 @@ class GLIntegrationTest extends TestCase
         $this->partner->refresh();
 
         $this->assertEquals(JournalEntryStatus::Posted, $journalEntry->status);
-        $this->assertEquals('500.0000', $this->partner->credit_balance);
+        $this->assertEquals('500.000', $this->partner->credit_balance);
     }
 
     public function test_customer_advance_outer_transaction_rollback_does_not_emit_posting_events(): void
@@ -612,7 +612,7 @@ class GLIntegrationTest extends TestCase
 
         // Partner balance should now reflect posted entry
         $this->partner->refresh();
-        $this->assertEquals('119.0000', $this->partner->receivable_balance);
+        $this->assertEquals('119.000', $this->partner->receivable_balance);
         $this->assertNotNull($this->partner->balance_updated_at);
     }
 

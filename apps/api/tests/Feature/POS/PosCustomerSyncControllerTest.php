@@ -244,8 +244,8 @@ final class PosCustomerSyncControllerTest extends TestCase
             'email' => 'balance@example.test',
             'vat_number' => 'TN1234567A',
             'customer_category' => CustomerCategory::Individual,
-            'receivable_balance' => '125.5000',
-            'credit_balance' => '25.2500',
+            'receivable_balance' => '125.500',
+            'credit_balance' => '25.250',
             'balance_updated_at' => $balanceAt,
             'is_active' => false,
         ]);
@@ -263,8 +263,8 @@ final class PosCustomerSyncControllerTest extends TestCase
         $this->assertSame('balance@example.test', $row['email']);
         $this->assertSame('TN1234567A', $row['tax_number']);
         $this->assertSame('individual', $row['customer_category']);
-        $this->assertSame('125.5000', $row['receivable_balance']);
-        $this->assertSame('25.2500', $row['credit_balance']);
+        $this->assertSame('125.500', $row['receivable_balance']);
+        $this->assertSame('25.250', $row['credit_balance']);
         $this->assertSame($balanceAt->toISOString(), $row['balance_updated_at']);
         $this->assertSame(0, $row['is_active']);
         $this->assertArrayHasKey('sync_version', $row);
@@ -276,7 +276,7 @@ final class PosCustomerSyncControllerTest extends TestCase
     {
         $customer = $this->createCustomer([
             'name' => 'Charge Customer',
-            'credit_limit' => '500.0000',
+            'credit_limit' => '500.000',
             'payment_terms_days' => 15,
             'is_active' => true,
         ]);
@@ -287,7 +287,7 @@ final class PosCustomerSyncControllerTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.customers.0.id', $customer->id)
-            ->assertJsonPath('data.customers.0.credit_limit', '500.0000')
+            ->assertJsonPath('data.customers.0.credit_limit', '500.000')
             ->assertJsonPath('data.customers.0.payment_terms_days', 15)
             ->assertJsonPath('data.customers.0.charge_account_enabled', true)
             ->assertJsonPath('data.customers.0.charge_policy_version', 'phase4-v1');
@@ -325,8 +325,8 @@ final class PosCustomerSyncControllerTest extends TestCase
             'company_id' => $this->company->id,
             'type' => PartnerType::Customer,
             'is_active' => true,
-            'receivable_balance' => '0.0000',
-            'credit_balance' => '0.0000',
+            'receivable_balance' => '0.000',
+            'credit_balance' => '0.000',
         ], $overrides));
     }
 }

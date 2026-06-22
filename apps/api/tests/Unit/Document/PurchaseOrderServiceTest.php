@@ -148,7 +148,7 @@ class PurchaseOrderServiceTest extends TestCase
         $this->assertEquals('1000.000', $payableLine->credit);
 
         $this->partner->refresh();
-        $this->assertEquals('1000.0000', $this->partner->payable_balance);
+        $this->assertEquals('1000.000', $this->partner->payable_balance);
     }
 
     public function test_purchase_order_confirmed_listener_is_idempotent(): void
