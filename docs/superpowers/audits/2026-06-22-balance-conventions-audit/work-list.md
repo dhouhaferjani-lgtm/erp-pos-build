@@ -85,7 +85,7 @@ Outcome so far:
 
 ## H-7 — Operational non-partner GL writers remain draft-only
 
-status: IN PROGRESS
+status: DONE
 severity: HIGH
 source: H-2 completeness scan, `GeneralLedgerService` source-type scan
 
@@ -120,6 +120,7 @@ Outcome so far:
 - H-7.4 verification: `php artisan test tests/Feature/BatchExpiry/BatchWriteOffScalingTest.php --filter test_write_off_amount_uses_currency_scale_from_resolver`; `php artisan test tests/Feature/BatchExpiry/BatchWriteOffScalingTest.php`; `php artisan test tests/Feature/Inventory/InventoryTenantIsolationTest.php --filter test_batch_write_off_query_scopes_product_by_batch_tenant_and_company`.
 - H-7.5 DISCARDED — residual `UninvoicedDeliveryNoteService` draft adjustment/reversal writers are not confirmed production paths. Current reachability scan found `generateYearEndAdjustment()` / `generateReversalEntry()` referenced only by feature tests and archived docs, with no controller, route, command, listener, job, or app service caller under `apps/api/app`. If this service is wired later, its caller must supply an actor or explicit system-posting policy before posting the adjustment entries.
 - H-7.5 evidence: `rg -n "generateYearEndAdjustment|generateReversalEntry" apps/api/app apps/api/routes apps/api/tests docs` shows app definitions plus tests/archive docs only; `rg -n "Uninvoiced|uninvoiced" apps/api/app/Modules/*/Presentation apps/api/routes` finds no production presentation/API surface.
+- H-7 completeness note: remaining static `JournalEntryStatus::Draft` hits in `GeneralLedgerService` are either create-then-post helpers already covered by H-2/H-3/H-7, legacy direct helpers already classified in the discarded section, or POS-specific writers/bridges with existing tests asserting draft lifecycle outside this non-POS operational scope.
 
 ## H-3 — Supplier invoice/payment AP production path is unwired
 
