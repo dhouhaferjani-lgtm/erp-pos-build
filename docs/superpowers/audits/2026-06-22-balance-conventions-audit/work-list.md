@@ -4,7 +4,7 @@ Generated from Phase 0 audit on 2026-06-22 against HEAD `5cf94a1f04731258704792b
 
 ## H-1 — Production invoice/credit-note AR lines omit `partner_id`
 
-status: TODO  
+status: DONE
 severity: HIGH  
 source: seed backlog + `05-ar-ap-production-wiring.md`
 
@@ -27,6 +27,13 @@ Test plan:
 - Run `php artisan test --filter InvoiceAndCreditNoteGLIntegrationTest`.
 
 Scope boundary: `AccountingService` invoice/credit-note GL creation and directly related tests only.
+
+Outcome:
+- Added production-path assertions for invoice and credit-note AR `partner_id`.
+- Added guard assertions that revenue/VAT lines remain partnerless.
+- Tagged only the customer receivable AR lines in `AccountingService`.
+- Verification: `php artisan test tests/Feature/Accounting/InvoiceAndCreditNoteGLIntegrationTest.php`; `php artisan test --filter PartnerBalanceServiceTest`; `./vendor/bin/phpstan analyse --level=8 app/Modules/Accounting/Application/Services/AccountingService.php`; `./vendor/bin/pint --test app/Modules/Accounting/Application/Services/AccountingService.php tests/Feature/Accounting/InvoiceAndCreditNoteGLIntegrationTest.php`.
+- Reviews saved in `docs/superpowers/reviews/2026-06-22-h1-ar-partner-id-codex-review.md` and `docs/superpowers/reviews/2026-06-22-h1-ar-partner-id-opus-fallback-review.md`; true Opus review remains pending.
 
 ## H-2 — Non-POS draft journal entries have no production posting cycle
 
@@ -459,4 +466,3 @@ Scope boundary: No behavior changes unless a type is wired.
 - `GeneralLedgerService::createFromInvoice()` is the canonical posted invoice writer — DISCARDED. Production posted documents use `InvoicePostedListener` and `AccountingService`.
 - `partners.credit_balance`/`payable_balance` sign fix — DISCARDED as already shipped in `5e4fc0dab`; convention remains non-negative magnitude.
 - Reserved `FiscalEventType` cases must all be implemented immediately — DISCARDED as stated. Some cases are intentionally reserved; the actionable item is a policy/matrix test.
-

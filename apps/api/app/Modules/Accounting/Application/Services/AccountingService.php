@@ -144,6 +144,7 @@ final class AccountingService implements AccountingServiceInterface
         JournalLine::create([
             'journal_entry_id' => $entry->id,
             'account_id' => $arAccount->id,
+            'partner_id' => $invoice->partner_id,
             'debit' => $invoice->total,
             'credit' => '0',
             'description' => 'AR from Invoice '.$invoice->document_number,
@@ -260,6 +261,7 @@ final class AccountingService implements AccountingServiceInterface
         JournalLine::create([
             'journal_entry_id' => $entry->id,
             'account_id' => $arAccount->id,
+            'partner_id' => $creditNote->partner_id,
             'debit' => '0',
             'credit' => $creditNote->total,
             'description' => 'AR reversal from Credit Note '.$creditNote->document_number,

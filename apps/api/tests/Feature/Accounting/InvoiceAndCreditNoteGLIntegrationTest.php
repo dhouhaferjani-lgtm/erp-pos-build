@@ -304,6 +304,7 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         $this->assertNotNull($arLine, 'AR line should exist');
         $this->assertEquals('1190.000', $arLine->debit, 'AR should be debited for total invoice amount');
         $this->assertEquals('0.000', $arLine->credit);
+        $this->assertEquals($invoice->partner_id, $arLine->partner_id, 'AR line should be tagged with the invoice partner for subledger reporting');
 
         // ASSERT: Revenue credit line exists
         $revenueLines = $glEntry->lines()->whereHas('account', function ($q) {
@@ -314,6 +315,7 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         })->get();
 
         $this->assertGreaterThan(0, $revenueLines->count(), 'Revenue line(s) should exist');
+        $revenueLines->each(fn ($line) => $this->assertNull($line->partner_id, 'Revenue lines should not be partner-tagged'));
         $totalRevenueCredit = $revenueLines->sum(fn ($line) => (float) $line->credit);
         $this->assertEquals(1000.00, $totalRevenueCredit, 'Total revenue credits should equal subtotal');
 
@@ -325,6 +327,7 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         $this->assertNotNull($taxLine, 'VAT line should exist');
         $this->assertEquals('0.000', $taxLine->debit);
         $this->assertEquals('190.000', $taxLine->credit, 'VAT should be credited for tax amount');
+        $this->assertNull($taxLine->partner_id, 'VAT line should not be partner-tagged');
 
         // ASSERT: Balanced entry
         $totalDebits = $glEntry->lines()->sum('debit');
@@ -394,6 +397,7 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         $this->assertNotNull($arLine, 'AR line should exist');
         $this->assertEquals('0.000', $arLine->debit);
         $this->assertEquals('1190.000', $arLine->credit, 'AR should be credited (REVERSAL) for total credit note amount');
+        $this->assertEquals($creditNote->partner_id, $arLine->partner_id, 'AR reversal line should be tagged with the credit note partner for subledger reporting');
 
         // ASSERT: Revenue debit lines exist (REVERSED from invoice credit)
         $revenueLines = $glEntry->lines()->whereHas('account', function ($q) {
@@ -404,6 +408,7 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         })->get();
 
         $this->assertGreaterThan(0, $revenueLines->count(), 'Revenue line(s) should exist');
+        $revenueLines->each(fn ($line) => $this->assertNull($line->partner_id, 'Revenue reversal lines should not be partner-tagged'));
         $totalRevenueDebit = $revenueLines->sum(fn ($line) => (float) $line->debit);
         $this->assertEquals(1000.00, $totalRevenueDebit, 'Total revenue debits (REVERSAL) should equal subtotal');
 
@@ -415,6 +420,7 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         $this->assertNotNull($taxLine, 'VAT line should exist');
         $this->assertEquals('190.000', $taxLine->debit, 'VAT should be debited (REVERSAL) for tax amount');
         $this->assertEquals('0.000', $taxLine->credit);
+        $this->assertNull($taxLine->partner_id, 'VAT reversal line should not be partner-tagged');
 
         // ASSERT: Balanced entry
         $totalDebits = $glEntry->lines()->sum('debit');

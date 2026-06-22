@@ -120,6 +120,7 @@ Each item is DONE only when: claim re-verified; failing test written first and n
 
 - 2026-06-22 — Handover created. Seed backlog from 4 audits. Partner balance sign fix already shipped (`5e4fc0dab`). Awaiting Phase 0.
 - 2026-06-22 — Phase 0 audit completed on `fix/balance-ar-event-hardening` at `5cf94a1f04731258704792b7aa07f714e9c718c3`. Added audit reports `05`..`09` and ordered `work-list.md`. Baseline narrow accounting check passed: `php artisan test tests/Unit/Accounting/JournalEntryEntityTest.php tests/Unit/Accounting/DoubleEntryValidationTest.php` (17 tests, 27 assertions). Full PHPUnit intentionally not run per guardrail.
+- 2026-06-22 — H-1 DONE: production invoice and credit-note AR lines now carry `partner_id`; revenue/VAT lines remain partnerless. Red observed first in `InvoiceAndCreditNoteGLIntegrationTest` (2 failures for null AR `partner_id`), then green: `php artisan test tests/Feature/Accounting/InvoiceAndCreditNoteGLIntegrationTest.php` (6 tests, 77 assertions), `php artisan test --filter PartnerBalanceServiceTest` (18 tests, 35 assertions; pre-existing PHPUnit 12 doc-comment warnings), PHPStan L8 on `AccountingService`, and Pint. Codex review clean after LOW test-gap remediation; `opus-review: PENDING` with fallback second review clean.
 
 ---
 
