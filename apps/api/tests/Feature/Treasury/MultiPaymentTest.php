@@ -374,7 +374,7 @@ class MultiPaymentTest extends TestCase
             '500.00'
         );
 
-        $this->assertEquals('500.0000', $allocation->amount);
+        $this->assertEquals('500.000', $allocation->amount);
         $this->assertEquals($deposit->id, $allocation->payment_id);
         $this->assertEquals($this->invoice->id, $allocation->document_id);
 

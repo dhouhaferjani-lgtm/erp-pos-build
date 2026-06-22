@@ -149,7 +149,7 @@ final class PaymentAllocationServiceTolerancePersistenceTest extends TestCase
         $allocation = PaymentAllocation::where('payment_id', $payment->id)->firstOrFail();
 
         $this->assertSame($invoice->id, $allocation->document_id);
-        $this->assertSame('99.9500', $allocation->amount);
+        $this->assertSame('99.950', $allocation->amount);
         // tolerance_writeoff column is decimal(15,4) — assert non-null and equal to 0.05.
         $this->assertNotNull($allocation->tolerance_writeoff);
         $this->assertSame(0, bccomp((string) $allocation->tolerance_writeoff, '0.0500', 4));

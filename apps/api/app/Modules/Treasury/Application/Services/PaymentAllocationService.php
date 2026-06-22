@@ -41,6 +41,12 @@ class PaymentAllocationService
         return $this->scaleResolver->getScale($currencyCode);
     }
 
+    private function formatMoney(string $amount, ?string $currencyCode): string
+    {
+        /** @phpstan-ignore-next-line argument.type */
+        return bcadd($amount, '0', $this->scale($currencyCode));
+    }
+
     /**
      * Preview how a payment will be allocated
      *
@@ -466,6 +472,7 @@ class PaymentAllocationService
             ->where('tenant_id', $tenantId)
             ->findOrFail($companyId);
         $countryCode = (string) $company->country_code;
+        $companyCurrency = (string) $company->currency;
 
         foreach ($openInvoices as $invoice) {
             /** @phpstan-ignore-next-line argument.type */
@@ -504,8 +511,8 @@ class PaymentAllocationService
                 $allocations[] = [
                     'document_id' => $invoice->id,
                     'document_number' => $invoice->document_number,
-                    'amount' => $allocationAmount,
-                    'original_balance' => $invoiceBalance,
+                    'amount' => $this->formatMoney($allocationAmount, (string) $invoice->currency),
+                    'original_balance' => $this->formatMoney($invoiceBalance, (string) $invoice->currency),
                     'tolerance_writeoff' => $toleranceCheck->difference,
                 ];
 
@@ -525,8 +532,8 @@ class PaymentAllocationService
             $allocations[] = [
                 'document_id' => $invoice->id,
                 'document_number' => $invoice->document_number,
-                'amount' => $allocationAmount,
-                'original_balance' => $invoiceBalance,
+                'amount' => $this->formatMoney($allocationAmount, (string) $invoice->currency),
+                'original_balance' => $this->formatMoney($invoiceBalance, (string) $invoice->currency),
                 'tolerance_writeoff' => null,
             ];
 
@@ -549,8 +556,8 @@ class PaymentAllocationService
 
         return [
             'allocations' => $allocations,
-            'total_to_invoices' => $totalToInvoices,
-            'excess_amount' => $remainingAmount,
+            'total_to_invoices' => $this->formatMoney($totalToInvoices, $companyCurrency),
+            'excess_amount' => $this->formatMoney($remainingAmount, $companyCurrency),
             'excess_handling' => $excessHandling,
         ];
     }
@@ -570,6 +577,11 @@ class PaymentAllocationService
     {
         $allocations = [];
         $totalAllocated = '0.0000';
+        /** @var Company $company */
+        $company = Company::query()
+            ->where('tenant_id', $tenantId)
+            ->findOrFail($companyId);
+        $companyCurrency = (string) $company->currency;
 
         foreach ($manualAllocations as $manual) {
             $invoice = Document::query()
@@ -581,8 +593,8 @@ class PaymentAllocationService
             $allocations[] = [
                 'document_id' => $invoice->id,
                 'document_number' => $invoice->document_number,
-                'amount' => $manual['amount'],
-                'original_balance' => $invoiceBalance,
+                'amount' => $this->formatMoney($manual['amount'], (string) $invoice->currency),
+                'original_balance' => $this->formatMoney($invoiceBalance, (string) $invoice->currency),
                 'tolerance_writeoff' => null,
             ];
 
@@ -595,8 +607,8 @@ class PaymentAllocationService
 
         return [
             'allocations' => $allocations,
-            'total_to_invoices' => $totalAllocated,
-            'excess_amount' => $excessAmount,
+            'total_to_invoices' => $this->formatMoney($totalAllocated, $companyCurrency),
+            'excess_amount' => $this->formatMoney($excessAmount, $companyCurrency),
             'excess_handling' => bccomp($excessAmount, '0', 4) > 0 ? 'credit_balance' : null,
         ];
     }

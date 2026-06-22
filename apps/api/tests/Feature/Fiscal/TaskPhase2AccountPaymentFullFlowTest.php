@@ -207,7 +207,7 @@ final class TaskPhase2AccountPaymentFullFlowTest extends TestCase
 
         $allocation = PaymentAllocation::query()->where('payment_id', $payment->id)->firstOrFail();
         $this->assertSame($invoice->id, $allocation->document_id);
-        $this->assertSame('100.0000', $allocation->amount);
+        $this->assertSame('100.000', $allocation->amount);
 
         $this->assertDatabaseHas('fiscal_event_projections', [
             'fiscal_event_id' => $eventId,

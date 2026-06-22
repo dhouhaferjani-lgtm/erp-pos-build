@@ -229,7 +229,7 @@ class VendorPrepaymentRefundTest extends TestCase
 
         $allocation = PaymentAllocation::where('payment_id', $refund->id)->first();
         $this->assertNotNull($allocation);
-        $this->assertEquals('-1000.0000', $allocation->amount);
+        $this->assertEquals('-1000.000', $allocation->amount);
         $this->assertEquals($po->id, $allocation->document_id);
     }
 

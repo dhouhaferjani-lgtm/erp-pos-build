@@ -42,7 +42,7 @@ class PaymentAllocation extends Model
     protected function casts(): array
     {
         return [
-            'amount' => 'decimal:4',
+            'amount' => 'decimal:3',
             'tolerance_writeoff' => 'decimal:4',
         ];
     }

@@ -111,15 +111,15 @@ class PaymentAllocationServiceTest extends TestCase
         $preview = $this->service->previewAllocation(
             companyId: $this->company->id,
             partnerId: $this->partner->id,
-            paymentAmount: '250.0000',
+            paymentAmount: '250.000',
             allocationMethod: AllocationMethod::FIFO
         );
 
         $this->assertCount(2, $preview['allocations']);
-        $this->assertEquals('100.0000', $preview['allocations'][0]['amount']);
-        $this->assertEquals('150.0000', $preview['allocations'][1]['amount']);
-        $this->assertEquals('250.0000', $preview['total_to_invoices']);
-        $this->assertEquals('0.0000', $preview['excess_amount']);
+        $this->assertEquals('100.000', $preview['allocations'][0]['amount']);
+        $this->assertEquals('150.000', $preview['allocations'][1]['amount']);
+        $this->assertEquals('250.000', $preview['total_to_invoices']);
+        $this->assertEquals('0.000', $preview['excess_amount']);
         $this->assertNull($preview['excess_handling']);
     }
 
@@ -134,15 +134,15 @@ class PaymentAllocationServiceTest extends TestCase
         $preview = $this->service->previewAllocation(
             companyId: $this->company->id,
             partnerId: $this->partner->id,
-            paymentAmount: '120.0000',
+            paymentAmount: '120.000',
             allocationMethod: AllocationMethod::FIFO
         );
 
         $this->assertCount(2, $preview['allocations']);
-        $this->assertEquals('100.0000', $preview['allocations'][0]['amount']);
-        $this->assertEquals('20.0000', $preview['allocations'][1]['amount']);
-        $this->assertEquals('120.0000', $preview['total_to_invoices']);
-        $this->assertEquals('0.0000', $preview['excess_amount']);
+        $this->assertEquals('100.000', $preview['allocations'][0]['amount']);
+        $this->assertEquals('20.000', $preview['allocations'][1]['amount']);
+        $this->assertEquals('120.000', $preview['total_to_invoices']);
+        $this->assertEquals('0.000', $preview['excess_amount']);
     }
 
     /** @test */
@@ -156,16 +156,16 @@ class PaymentAllocationServiceTest extends TestCase
         $preview = $this->service->previewAllocation(
             companyId: $this->company->id,
             partnerId: $this->partner->id,
-            paymentAmount: '120.0000',
+            paymentAmount: '120.000',
             allocationMethod: AllocationMethod::DUE_DATE_PRIORITY
         );
 
         $this->assertCount(2, $preview['allocations']);
         // Should allocate to invoice2 first (earlier due date)
         $this->assertEquals($invoice2->id, $preview['allocations'][0]['document_id']);
-        $this->assertEquals('100.0000', $preview['allocations'][0]['amount']);
+        $this->assertEquals('100.000', $preview['allocations'][0]['amount']);
         $this->assertEquals($invoice1->id, $preview['allocations'][1]['document_id']);
-        $this->assertEquals('20.0000', $preview['allocations'][1]['amount']);
+        $this->assertEquals('20.000', $preview['allocations'][1]['amount']);
     }
 
     /** @test */
@@ -177,15 +177,15 @@ class PaymentAllocationServiceTest extends TestCase
         $preview = $this->service->previewAllocation(
             companyId: $this->company->id,
             partnerId: $this->partner->id,
-            paymentAmount: '100.0500',
+            paymentAmount: '100.050',
             allocationMethod: AllocationMethod::FIFO
         );
 
         $this->assertCount(1, $preview['allocations']);
-        $this->assertEquals('100.0000', $preview['allocations'][0]['amount']);
+        $this->assertEquals('100.000', $preview['allocations'][0]['amount']);
         $this->assertEquals('0.0500', $preview['allocations'][0]['tolerance_writeoff']);
-        $this->assertEquals('100.0500', $preview['total_to_invoices']);
-        $this->assertEquals('0.0000', $preview['excess_amount']);
+        $this->assertEquals('100.050', $preview['total_to_invoices']);
+        $this->assertEquals('0.000', $preview['excess_amount']);
         $this->assertEquals('tolerance_writeoff', $preview['excess_handling']);
     }
 
@@ -198,15 +198,15 @@ class PaymentAllocationServiceTest extends TestCase
         $preview = $this->service->previewAllocation(
             companyId: $this->company->id,
             partnerId: $this->partner->id,
-            paymentAmount: '99.9500',
+            paymentAmount: '99.950',
             allocationMethod: AllocationMethod::FIFO
         );
 
         $this->assertCount(1, $preview['allocations']);
-        $this->assertEquals('99.9500', $preview['allocations'][0]['amount']);
+        $this->assertEquals('99.950', $preview['allocations'][0]['amount']);
         $this->assertEquals('0.0500', $preview['allocations'][0]['tolerance_writeoff']);
-        $this->assertEquals('100.0000', $preview['total_to_invoices']);
-        $this->assertEquals('0.0000', $preview['excess_amount']);
+        $this->assertEquals('100.000', $preview['total_to_invoices']);
+        $this->assertEquals('0.000', $preview['excess_amount']);
         $this->assertEquals('tolerance_writeoff', $preview['excess_handling']);
     }
 
@@ -219,14 +219,14 @@ class PaymentAllocationServiceTest extends TestCase
         $preview = $this->service->previewAllocation(
             companyId: $this->company->id,
             partnerId: $this->partner->id,
-            paymentAmount: '150.0000',
+            paymentAmount: '150.000',
             allocationMethod: AllocationMethod::FIFO
         );
 
         $this->assertCount(1, $preview['allocations']);
-        $this->assertEquals('100.0000', $preview['allocations'][0]['amount']);
-        $this->assertEquals('100.0000', $preview['total_to_invoices']);
-        $this->assertEquals('50.0000', $preview['excess_amount']);
+        $this->assertEquals('100.000', $preview['allocations'][0]['amount']);
+        $this->assertEquals('100.000', $preview['total_to_invoices']);
+        $this->assertEquals('50.000', $preview['excess_amount']);
         $this->assertEquals('credit_balance', $preview['excess_handling']);
     }
 
@@ -259,7 +259,7 @@ class PaymentAllocationServiceTest extends TestCase
         $payment->refresh();
         $this->assertCount(1, $payment->allocations);
         $allocation = $payment->allocations()->firstOrFail();
-        $this->assertEquals('100.0000', $allocation->amount);
+        $this->assertEquals('100.000', $allocation->amount);
         $this->assertEquals($invoice->id, $allocation->document_id);
     }
 
@@ -292,7 +292,7 @@ class PaymentAllocationServiceTest extends TestCase
         $this->assertTrue($result['success']);
         $this->assertCount(1, $result['allocations']);
         $this->assertEquals($invoice->id, $result['allocations'][0]['document_id']);
-        $this->assertEquals('100.0000', $result['allocations'][0]['amount']);
+        $this->assertEquals('100.000', $result['allocations'][0]['amount']);
     }
 
     /** @test */

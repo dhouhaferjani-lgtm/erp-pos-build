@@ -157,7 +157,7 @@ Reviews:
 
 ## H-5 — Treasury allocation precision mismatch
 
-status: TODO  
+status: DONE
 severity: HIGH  
 source: `09-unwired-precision-status.md`
 
@@ -177,6 +177,29 @@ Test plan:
 - Add treasury allocation test with 3-decimal money.
 
 Scope boundary: Treasury allocation money columns; do not change quantity scale.
+
+Outcome:
+- Added tenant migration `2026_06_22_120000_widen_payment_allocations_amount_to_scale_3.php` to widen `payment_allocations.amount` to `NUMERIC(15, 3)` on PostgreSQL.
+- Changed `PaymentAllocation::$casts['amount']` to `decimal:3`; `tolerance_writeoff` remains `decimal:4`.
+- Tightened smart-payment allocation money validation from 4 decimals to 3 decimals, including `payment_amount` and manual allocation amounts.
+- Normalized `PaymentAllocationService` preview/result money outputs to currency scale while preserving four-decimal tolerance writeoffs.
+- Updated direct allocation cast expectations in Treasury/Fiscal tests to 3-decimal money.
+
+Verification:
+- Red observed first: `php artisan test tests/Feature/Treasury/PaymentAllocationPrecisionTest.php` failed because `PaymentAllocation::amount` returned `12.3450` instead of `12.345`.
+- Red observed first: `php artisan test --filter it_rejects_manual_allocation_amount_above_currency_scale` failed because smart-payment manual allocation accepted `99.9999`.
+- Green after implementation: `php artisan test tests/Feature/Treasury/PaymentAllocationPrecisionTest.php` passed 1 test, 1 PostgreSQL-only schema test skipped under SQLite.
+- Real PostgreSQL verification passed against isolated `autoerp_h5_test`: `DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5433 DB_DATABASE=autoerp_h5_test DB_USERNAME=autoerp DB_PASSWORD=autoerp_secret php artisan test tests/Feature/Treasury/PaymentAllocationPrecisionTest.php` passed 2 tests, 4 assertions, including `information_schema.columns` precision/scale assertion.
+- `php artisan test tests/Feature/Treasury/PaymentAllocationPrecisionTest.php tests/Feature/Treasury/SmartPaymentIntegrationTest.php tests/Unit/Treasury/PaymentAllocationServiceTest.php tests/Unit/Treasury/PaymentAllocationServiceTolerancePersistenceTest.php tests/Feature/Treasury/MultiPaymentTest.php tests/Feature/Treasury/PaymentRefundTest.php tests/Feature/Treasury/VendorPrepaymentRefundTest.php tests/Feature/Fiscal/TaskPhase2AccountPaymentFullFlowTest.php` passed 67 tests, 1 SQLite-skipped PostgreSQL schema assertion, 298 assertions.
+- `php artisan test tests/Feature/Treasury/PaymentTest.php tests/Feature/Treasury/TreasuryEventsTest.php tests/Feature/Treasury/PaymentRegistrationFlowTest.php tests/Feature/Document/CreditNoteAllocationTest.php tests/Unit/Document/PaymentStatusCalculationTest.php tests/Unit/Document/DocumentCacheValidationTest.php` passed 48 tests, 6 PostgreSQL-only skips, 147 assertions.
+- `php artisan test --filter PartnerBalanceServiceTest` passed 18 tests, 35 assertions, with pre-existing PHPUnit 12 doc-comment metadata warnings.
+- `./vendor/bin/phpstan analyse --level=8 app/Modules/Treasury/Domain/PaymentAllocation.php app/Modules/Treasury/Presentation/Controllers/SmartPaymentController.php app/Modules/Treasury/Application/Services/PaymentAllocationService.php` passed.
+- `./vendor/bin/pint --test` passed on changed app, migration, and test files.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-h5-payment-allocation-precision-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-h5-payment-allocation-precision-opus-fallback-review.md`
 
 ## H-6 — Partner balance/credit money fields still use scale 4
 
