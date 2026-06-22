@@ -474,7 +474,7 @@ Reviews:
 
 ## M-6 — Scheduled subledger reconciliation alert job is missing
 
-status: TODO  
+status: DONE
 severity: MEDIUM  
 source: seed backlog M-3
 
@@ -490,6 +490,26 @@ Test plan:
 - Add console/job test with seeded discrepancy.
 
 Scope boundary: Alerting only, not automatic repair.
+
+Outcome:
+- Added `accounting:check-subledger-reconciliation`, a scheduled per-tenant command that scans active companies and configured subledger purposes.
+- Default scan purposes are `customer_receivable`, `customer_advance`, and `supplier_payable`; `--purpose=*` can narrow/configure the scan.
+- Discrepancies are logged with structured tenant/company/purpose context and printed with `entries_without_partner`, control balance, subledger total, difference, and account code.
+- The command returns failure when discrepancies are found and does not mutate or repair balances.
+- Registered the command in `AccountingServiceProvider` and scheduled it daily at 02:30 with `withoutOverlapping()` and `runInBackground()`.
+
+Verification:
+- Red observed first: `php artisan test tests/Feature/Accounting/SubledgerReconciliationCommandTest.php` failed with `CommandNotFoundException` for `accounting:check-subledger-reconciliation`.
+- Green after implementation: `php artisan test tests/Feature/Accounting/SubledgerReconciliationCommandTest.php` passed 2 tests, 6 assertions.
+- `php artisan test --filter PartnerBalanceServiceTest` passed 18 tests, 35 assertions, with pre-existing PHPUnit 12 doc-comment metadata warnings.
+- `php artisan test tests/Feature/Accounting/GLIntegrationTest.php` passed 19 tests, 79 assertions.
+- `./vendor/bin/phpstan analyse --level=8 app/Modules/Accounting/Presentation/Console/CheckSubledgerReconciliationCommand.php app/Modules/Accounting/Providers/AccountingServiceProvider.php routes/console.php` passed.
+- `./vendor/bin/pint --test` passed on touched command, provider, scheduler, and test files.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-m6-subledger-reconciliation-alert-command-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-m6-subledger-reconciliation-alert-command-opus-fallback-review.md`
 
 ## M-7 — Both-type partner net balance ignores payable balance
 

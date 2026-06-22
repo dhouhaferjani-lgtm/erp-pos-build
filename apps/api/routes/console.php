@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Accounting\Presentation\Console\CheckSubledgerReconciliationCommand;
 use App\Modules\BatchExpiry\Jobs\DailyExpiryCheck;
 use App\Modules\Inventory\Application\Jobs\ExpireReservationsJob;
 use App\Modules\Scheduling\Infrastructure\Commands\ScheduleAppointmentReminders;
@@ -38,6 +39,12 @@ Schedule::job(DailyExpiryCheck::class)
 Schedule::command('enrichment:check-pending')
     ->everyFifteenMinutes()
     ->withoutOverlapping();
+
+// Schedule: Partner subledger/control-account reconciliation alert daily at 2:30 AM
+Schedule::command(CheckSubledgerReconciliationCommand::class)
+    ->dailyAt('02:30')
+    ->withoutOverlapping()
+    ->runInBackground();
 
 // Schedule: Dispatch TechnicianCertificationExpiring events daily at 3:00 AM
 Schedule::command(CheckExpiringCertifications::class)
