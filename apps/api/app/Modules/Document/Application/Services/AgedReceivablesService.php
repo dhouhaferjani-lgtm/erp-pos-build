@@ -285,9 +285,11 @@ class AgedReceivablesService
         // Recalculate balances with correct order
         $runningBalance = $openingBalance;
         foreach ($transactions as &$transaction) {
-            $debit = (float) $transaction['debit'];
-            $credit = (float) $transaction['credit'];
-            $runningBalance = bcadd(bcsub((string) $runningBalance, (string) $credit, $scale), (string) $debit, $scale);
+            /** @var numeric-string $debit */
+            $debit = $transaction['debit'];
+            /** @var numeric-string $credit */
+            $credit = $transaction['credit'];
+            $runningBalance = bcadd(bcsub($runningBalance, $credit, $scale), $debit, $scale);
             $transaction['balance'] = CurrencyScale::bcformat($runningBalance, $scale);
         }
 

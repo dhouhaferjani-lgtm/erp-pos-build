@@ -596,7 +596,7 @@ Reviews:
 
 ## M-9 — Aged receivables uses float math
 
-status: TODO  
+status: DONE
 severity: MEDIUM  
 source: `09-unwired-precision-status.md`
 
@@ -613,6 +613,22 @@ Test plan:
 - Add unit/feature test with 3-decimal values.
 
 Scope boundary: Aged receivables only.
+
+Outcome:
+- Removed `(float)` casts from `AgedReceivablesService::generateCustomerStatement()` running-balance recalculation.
+- Recalculation now consumes debit/credit as decimal strings and uses bcmath at the resolved currency scale.
+- Added regression coverage that forbids reintroducing float casts in the service and verifies TND scale-3 customer-statement balances.
+
+Verification:
+- Red observed first: `php artisan test tests/Feature/Document/AgedReceivablesScalingTest.php --filter customer_statement_running_balance_preserves_third_decimal_for_large_tnd_amount` showed drift from `100000000000.123` to `100000000000.120`, confirming the audited float precision failure mode. The permanent test was adjusted to avoid SQLite's own large-decimal storage rounding and directly guard the service against float casts.
+- Green after implementation: `php artisan test tests/Feature/Document/AgedReceivablesScalingTest.php` passed 3 tests, 6 assertions, with pre-existing PHPUnit 12 doc-comment metadata warnings.
+- `./vendor/bin/phpstan analyse app/Modules/Document/Application/Services/AgedReceivablesService.php --level=8` passed.
+- `./vendor/bin/pint --test app/Modules/Document/Application/Services/AgedReceivablesService.php tests/Feature/Document/AgedReceivablesScalingTest.php` passed.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-m9-aged-receivables-decimal-strings-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-m9-aged-receivables-decimal-strings-opus-fallback-review.md`
 
 ## M-10 — Module gating inconsistencies
 
