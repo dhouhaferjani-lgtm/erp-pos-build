@@ -293,16 +293,30 @@ export async function fetchZReports(terminalId: string, companyId: string): Prom
   });
 }
 
+function isNotFound(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'status' in err &&
+    (err as { status: unknown }).status === 404
+  );
+}
+
 export async function fetchShiftReceipts(shiftId: string): Promise<ShiftReceipt[]> {
   try {
     return await apiGet<ShiftReceipt[]>(`/pos/shifts/${shiftId}/receipts`);
   } catch (err) {
     const { useConnectivityStore } = await import('@/stores/connectivityStore');
-    if (!useConnectivityStore.getState().isOnline) {
-      // Offline: silent fallback to local SQLite.
+    const offline = !useConnectivityStore.getState().isOnline;
+    // A 404 means the server has no projection for this shift yet — a normal,
+    // transient state under the device-authoritative offline-first model: the
+    // device mints the shift id and authors SESSION_OPEN locally, and pos_shifts
+    // only lands server-side once the projection syncs. The device's own receipts
+    // already live in local SQLite, so read them instead of surfacing an error.
+    if (offline || isNotFound(err)) {
       return await fetchLocalShiftReceipts();
     }
-    // Online error: bubble up so the UI can surface it as a toast.
+    // Genuine online error (auth, 5xx, schema) — bubble up for the UI toast.
     throw err;
   }
 }
