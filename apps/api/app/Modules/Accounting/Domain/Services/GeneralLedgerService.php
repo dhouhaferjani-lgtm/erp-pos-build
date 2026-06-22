@@ -48,6 +48,44 @@ final class GeneralLedgerService
         return $this->scaleResolver->getScale();
     }
 
+    private function currencyCodeForCompany(string $companyId): string
+    {
+        /** @var string $currency */
+        $currency = Company::query()->whereKey($companyId)->value('currency');
+
+        return $currency;
+    }
+
+    private function postEntryAndRefreshPartnerBalance(
+        JournalEntry $entry,
+        User $user,
+        string $companyId,
+        string $partnerId,
+        ?string $currencyCode,
+    ): void {
+        $this->postEntry($entry, $user, $currencyCode ?? $this->currencyCodeForCompany($companyId));
+        $entry->refresh()->load('lines');
+        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
+    }
+
+    private function postEntryAndRefreshPartnerBalanceAfterCommit(
+        JournalEntry $entry,
+        User $user,
+        string $companyId,
+        string $partnerId,
+        ?string $currencyCode,
+    ): void {
+        if (DB::transactionLevel() > 0) {
+            DB::afterCommit(function () use ($entry, $user, $companyId, $partnerId, $currencyCode): void {
+                $this->postEntryAndRefreshPartnerBalance($entry, $user, $companyId, $partnerId, $currencyCode);
+            });
+
+            return;
+        }
+
+        $this->postEntryAndRefreshPartnerBalance($entry, $user, $companyId, $partnerId, $currencyCode);
+    }
+
     /**
      * Create journal entry from a posted invoice.
      * Debit: Accounts Receivable (total)
@@ -272,7 +310,8 @@ final class GeneralLedgerService
         string $paymentMethodAccountId,
         \DateTimeInterface $date,
         User $user,
-        ?string $description = null
+        ?string $description = null,
+        ?string $currencyCode = null
     ): JournalEntry {
         $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerAdvance);
 
@@ -318,8 +357,7 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
+        $this->postEntryAndRefreshPartnerBalanceAfterCommit($entry, $user, $companyId, $partnerId, $currencyCode);
 
         return $entry;
     }
@@ -610,9 +648,7 @@ final class GeneralLedgerService
         });
 
         if ($user !== null) {
-            $this->postEntry($entry, $user, $currencyCode);
-            $entry->refresh()->load('lines');
-            $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
+            $this->postEntryAndRefreshPartnerBalanceAfterCommit($entry, $user, $companyId, $partnerId, $currencyCode);
         }
 
         return $entry;

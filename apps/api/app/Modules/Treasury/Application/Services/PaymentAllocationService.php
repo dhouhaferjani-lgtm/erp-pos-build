@@ -289,7 +289,8 @@ class PaymentAllocationService
                         paymentMethodAccountId: $payment->repository->account_id,
                         date: $payment->payment_date,
                         user: $actor,
-                        description: "Prepayment on order - {$payment->reference}"
+                        description: "Prepayment on order - {$payment->reference}",
+                        currencyCode: $payment->currency
                     );
 
                     // If no invoice allocation, use this as main journal entry
@@ -317,7 +318,8 @@ class PaymentAllocationService
                         paymentMethodAccountId: $payment->repository->account_id,
                         date: $payment->payment_date,
                         user: $actor,
-                        description: "Customer advance from payment {$payment->reference}"
+                        description: "Customer advance from payment {$payment->reference}",
+                        currencyCode: $payment->currency
                     );
 
                     $advanceJournalEntryId = $advanceEntry->id;

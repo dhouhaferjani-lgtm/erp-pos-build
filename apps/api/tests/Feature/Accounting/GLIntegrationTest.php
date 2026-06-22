@@ -10,6 +10,8 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
+use App\Modules\Accounting\Domain\Events\PartnerBalanceUpdated;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
@@ -30,6 +32,8 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -262,6 +266,41 @@ class GLIntegrationTest extends TestCase
         $this->assertNotNull($this->partner->balance_updated_at);
     }
 
+    public function test_payment_received_outer_transaction_rollback_does_not_emit_posting_events(): void
+    {
+        Event::fake([JournalEntryPosted::class, PartnerBalanceUpdated::class]);
+
+        $paymentId = (string) Str::uuid();
+        $service = app(GeneralLedgerService::class);
+
+        try {
+            DB::transaction(function () use ($paymentId, $service): void {
+                $service->createPaymentReceivedJournalEntry(
+                    companyId: $this->company->id,
+                    partnerId: $this->partner->id,
+                    paymentId: $paymentId,
+                    amount: '120.00',
+                    paymentMethodAccountId: $this->cashAccount->id,
+                    date: now(),
+                    description: 'Customer payment received',
+                    user: $this->user,
+                    currencyCode: $this->company->currency
+                );
+
+                throw new \RuntimeException('rollback customer payment');
+            });
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('rollback customer payment', $exception->getMessage());
+        }
+
+        $this->assertDatabaseMissing('journal_entries', [
+            'source_type' => 'customer_payment',
+            'source_id' => $paymentId,
+        ]);
+        Event::assertNotDispatched(JournalEntryPosted::class);
+        Event::assertNotDispatched(PartnerBalanceUpdated::class);
+    }
+
     public function test_journal_entry_has_draft_status_initially(): void
     {
         $invoice = $this->createInvoice([
@@ -323,6 +362,91 @@ class GLIntegrationTest extends TestCase
         $this->assertEquals('0.000', $advanceLine->debit);
         $this->assertEquals('500.000', $advanceLine->credit);
         $this->assertEquals($this->partner->id, $advanceLine->partner_id);
+    }
+
+    public function test_customer_advance_posts_and_refreshes_credit_balance(): void
+    {
+        $service = app(GeneralLedgerService::class);
+
+        $journalEntry = $service->createCustomerAdvanceJournalEntry(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            advanceId: (string) Str::uuid(),
+            amount: '500.00',
+            paymentMethodAccountId: $this->cashAccount->id,
+            date: now(),
+            user: $this->user,
+            description: 'Customer advance payment',
+            currencyCode: $this->company->currency
+        );
+
+        $journalEntry->refresh();
+        $this->partner->refresh();
+
+        $this->assertEquals(JournalEntryStatus::Posted, $journalEntry->status);
+        $this->assertNotNull($journalEntry->fiscal_hash);
+        $this->assertEquals($this->user->id, $journalEntry->posted_by);
+        $this->assertEquals('500.0000', $this->partner->credit_balance);
+        $this->assertNotNull($this->partner->balance_updated_at);
+    }
+
+    public function test_customer_advance_omitted_currency_posts_without_company_context(): void
+    {
+        app(CompanyContext::class)->clear();
+
+        $service = app(GeneralLedgerService::class);
+
+        $journalEntry = $service->createCustomerAdvanceJournalEntry(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            advanceId: (string) Str::uuid(),
+            amount: '500.00',
+            paymentMethodAccountId: $this->cashAccount->id,
+            date: now(),
+            user: $this->user,
+            description: 'Customer advance payment'
+        );
+
+        $journalEntry->refresh();
+        $this->partner->refresh();
+
+        $this->assertEquals(JournalEntryStatus::Posted, $journalEntry->status);
+        $this->assertEquals('500.0000', $this->partner->credit_balance);
+    }
+
+    public function test_customer_advance_outer_transaction_rollback_does_not_emit_posting_events(): void
+    {
+        Event::fake([JournalEntryPosted::class, PartnerBalanceUpdated::class]);
+
+        $advanceId = (string) Str::uuid();
+        $service = app(GeneralLedgerService::class);
+
+        try {
+            DB::transaction(function () use ($advanceId, $service): void {
+                $service->createCustomerAdvanceJournalEntry(
+                    companyId: $this->company->id,
+                    partnerId: $this->partner->id,
+                    advanceId: $advanceId,
+                    amount: '500.00',
+                    paymentMethodAccountId: $this->cashAccount->id,
+                    date: now(),
+                    user: $this->user,
+                    description: 'Customer advance payment',
+                    currencyCode: $this->company->currency
+                );
+
+                throw new \RuntimeException('rollback customer advance');
+            });
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('rollback customer advance', $exception->getMessage());
+        }
+
+        $this->assertDatabaseMissing('journal_entries', [
+            'source_type' => 'advance',
+            'source_id' => $advanceId,
+        ]);
+        Event::assertNotDispatched(JournalEntryPosted::class);
+        Event::assertNotDispatched(PartnerBalanceUpdated::class);
     }
 
     public function test_supplier_invoice_creates_correct_journal_entry(): void

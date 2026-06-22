@@ -426,7 +426,8 @@ class PaymentController extends Controller
                         paymentMethodAccountId: $repository->account_id,
                         date: new \DateTimeImmutable($validated['payment_date']),
                         user: $user,
-                        description: "Customer advance from payment {$payment->reference}"
+                        description: "Customer advance from payment {$payment->reference}",
+                        currencyCode: $payment->currency
                     );
 
                     // Update payment type to indicate partial advance
@@ -736,7 +737,8 @@ class PaymentController extends Controller
                                 paymentMethodAccountId: $repository->account_id,
                                 date: new \DateTimeImmutable($validated['payment_date']),
                                 user: $user,
-                                description: "Customer advance from payment {$lastPayment->reference}"
+                                description: "Customer advance from payment {$lastPayment->reference}",
+                                currencyCode: $lastPayment->currency
                             );
                         }
                     }
@@ -881,7 +883,8 @@ class PaymentController extends Controller
                                     paymentMethodAccountId: $repository->account_id,
                                     date: new \DateTimeImmutable($validated['payment_date']),
                                     user: $user,
-                                    description: "Customer advance from payment {$lastPayment->reference}"
+                                    description: "Customer advance from payment {$lastPayment->reference}",
+                                    currencyCode: $lastPayment->currency
                                 );
                             }
                         }
