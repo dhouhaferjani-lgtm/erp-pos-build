@@ -1049,7 +1049,9 @@ final class GeneralLedgerService
             ));
         }
 
-        return DB::transaction(function () use ($ledgerRow, $voucher): JournalEntry {
+        $user = User::query()->findOrFail($ledgerRow->user_id);
+
+        $entry = DB::transaction(function () use ($ledgerRow, $voucher): JournalEntry {
             $companyId = $voucher->company_id;
             $entryNumber = $this->generateEntryNumber($companyId);
             /** @var numeric-string $rawAmount */
@@ -1098,6 +1100,10 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
+
+        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $voucher->company_id, (string) $ledgerRow->currency);
+
+        return $entry;
     }
 
     /**

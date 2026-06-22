@@ -112,6 +112,8 @@ Scope boundary: Non-partner operational GL lifecycle only; do not change AR/AP/a
 Outcome so far:
 - H-7.1 DONE — posted expenses now create posted `expense` journal entries. `GeneralLedgerService::createFromExpense()` posts through the canonical after-commit helper using the supplied user and expense currency. Red was observed first via `ExpenseService::post()` leaving the entry Draft.
 - H-7.1 verification: `php artisan test tests/Feature/Accounting/GLIntegrationTest.php --filter test_posting_expense_posts_expense_journal_entry`; `php artisan test tests/Feature/Accounting/GLIntegrationTest.php`.
+- H-7.2 DONE — voucher ledger GL entries now post through the ledger event's required `user_id`. `createVoucherLedgerEntry()` validates the ledger user before creating the journal entry and posts through the canonical helper with ledger currency. Red was observed first via voucher issuance leaving the linked GL entry Draft.
+- H-7.2 verification: `php artisan test tests/Feature/Voucher/VoucherIssuanceServiceTest.php --filter test_issue_from_refund_creates_voucher_ledger_and_g_l_entry`; `php artisan test tests/Feature/Voucher/VoucherIssuanceServiceTest.php tests/Feature/Voucher/VoucherRedemptionServiceTest.php --filter 'voucher_ledger|g_l_entry|rounding|redeem'`.
 
 ## H-3 — Supplier invoice/payment AP production path is unwired
 
