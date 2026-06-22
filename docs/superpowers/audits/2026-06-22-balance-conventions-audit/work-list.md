@@ -37,7 +37,7 @@ Outcome:
 
 ## H-2 — Non-POS draft journal entries have no production posting cycle
 
-status: IN PROGRESS
+status: DONE
 severity: HIGH  
 source: seed backlog + `06-draft-post-lifecycle.md`
 
@@ -106,7 +106,10 @@ Outcome so far:
 - Purchase-order supplier payments that would leave unallocated excess are rejected until a supplier-advance policy/writer exists.
 - Verification: `php artisan test --filter 'purchase_order_payment'`; `php artisan test tests/Feature/Treasury/PaymentTest.php tests/Feature/Accounting/GLIntegrationTest.php tests/Feature/Treasury/TreasuryEventsTest.php`; `php artisan test --filter PartnerBalanceServiceTest`; `./vendor/bin/phpstan analyse --level=8 app/Modules/Accounting/Domain/Services/GeneralLedgerService.php app/Modules/Treasury/Presentation/Controllers/PaymentController.php`; `./vendor/bin/pint --test app/Modules/Accounting/Domain/Services/GeneralLedgerService.php app/Modules/Treasury/Presentation/Controllers/PaymentController.php tests/Feature/Treasury/PaymentTest.php`.
 - Reviews saved in `docs/superpowers/reviews/2026-06-22-h3-supplier-payment-posting-codex-review.md` and `docs/superpowers/reviews/2026-06-22-h3-supplier-payment-posting-opus-fallback-review.md`; true Opus review remains pending.
-- Remaining H-3 work: production supplier invoice/AP recognition is still unwired; `PaymentController::storeMultiple()` and `PaymentAllocationService` still need separate supplier-payment policy/coverage if purchase-order allocations should flow through those surfaces.
+- H-3.2 DONE — `PurchaseOrderConfirmed` now has a production accounting listener that creates a posted `supplier_invoice` GL entry for confirmed purchase orders, debits PurchaseExpenses/VAT Deductible as applicable, credits partner-tagged SupplierPayable, refreshes payable balance after posting, and skips duplicate source entries on repeated event delivery.
+- Verification: `php artisan test tests/Unit/Document/PurchaseOrderServiceTest.php tests/Feature/Accounting/GLIntegrationTest.php tests/Feature/Treasury/PaymentTest.php`; `php artisan test --filter PartnerBalanceServiceTest`; `./vendor/bin/phpstan analyse --level=8 app/Modules/Accounting/Domain/Services/GeneralLedgerService.php app/Modules/Accounting/Listeners/PurchaseOrderConfirmedListener.php app/Providers/EventServiceProvider.php`; `./vendor/bin/pint --test app/Modules/Accounting/Domain/Services/GeneralLedgerService.php app/Modules/Accounting/Listeners/PurchaseOrderConfirmedListener.php app/Providers/EventServiceProvider.php tests/Unit/Document/PurchaseOrderServiceTest.php`.
+- Supplier payment extension note: `PaymentController::storeMultiple()` and `PaymentAllocationService` still need a separate supplier-payment policy/coverage item if purchase-order allocations should flow through those surfaces; they are not the confirmed production AP path covered by H-3.
+- Supplier invoice reviews saved in `docs/superpowers/reviews/2026-06-22-h3-supplier-invoice-posting-codex-review.md` and `docs/superpowers/reviews/2026-06-22-h3-supplier-invoice-posting-opus-fallback-review.md`; true Opus review remains pending.
 
 ## H-4 — `GeneralLedgerService::postEntry()` does not reject unbalanced entries
 

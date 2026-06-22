@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Document;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Listeners\PurchaseOrderConfirmedListener;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
@@ -33,12 +39,15 @@ class PurchaseOrderServiceTest extends TestCase
 
     private Partner $partner;
 
+    private User $user;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
 
         // Bind CompanyContext so CurrencyScaleResolver has context
         $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
@@ -53,10 +62,10 @@ class PurchaseOrderServiceTest extends TestCase
         ]);
 
         // Authenticate a user for confirmed_by tracking
-        $user = User::factory()->create([
+        $this->user = User::factory()->create([
             'tenant_id' => $this->tenant->id,
         ]);
-        $this->actingAs($user);
+        $this->actingAs($this->user);
     }
 
     public function test_confirms_purchase_order(): void
@@ -106,6 +115,68 @@ class PurchaseOrderServiceTest extends TestCase
         });
     }
 
+    public function test_confirmation_posts_supplier_invoice_gl_and_refreshes_payable_balance(): void
+    {
+        $purchaseExpenseAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::PurchaseExpenses);
+        $payableAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::SupplierPayable);
+
+        $purchaseOrder = $this->createDraftPurchaseOrder([
+            'subtotal' => '1000.00',
+            'currency' => 'EUR',
+        ]);
+
+        $confirmedPO = $this->service->confirm($purchaseOrder);
+
+        $journalEntry = JournalEntry::query()
+            ->where('source_type', 'supplier_invoice')
+            ->where('source_id', $confirmedPO->id)
+            ->with('lines')
+            ->firstOrFail();
+
+        $this->assertEquals(JournalEntryStatus::Posted, $journalEntry->status);
+
+        $expenseLine = $journalEntry->lines->firstWhere('account_id', $purchaseExpenseAccount->id);
+        $this->assertNotNull($expenseLine);
+        $this->assertNull($expenseLine->partner_id);
+        $this->assertEquals('1000.000', $expenseLine->debit);
+        $this->assertEquals('0.000', $expenseLine->credit);
+
+        $payableLine = $journalEntry->lines->firstWhere('account_id', $payableAccount->id);
+        $this->assertNotNull($payableLine);
+        $this->assertEquals($this->partner->id, $payableLine->partner_id);
+        $this->assertEquals('0.000', $payableLine->debit);
+        $this->assertEquals('1000.000', $payableLine->credit);
+
+        $this->partner->refresh();
+        $this->assertEquals('1000.0000', $this->partner->payable_balance);
+    }
+
+    public function test_purchase_order_confirmed_listener_is_idempotent(): void
+    {
+        $purchaseOrder = $this->service->confirm($this->createDraftPurchaseOrder([
+            'currency' => 'EUR',
+        ]));
+
+        $event = new PurchaseOrderConfirmed(
+            purchaseOrderId: $purchaseOrder->id,
+            tenantId: $purchaseOrder->tenant_id,
+            companyId: $purchaseOrder->company_id,
+            documentNumber: $purchaseOrder->document_number,
+            partnerId: $purchaseOrder->partner_id,
+            total: $purchaseOrder->total ?? '0.00',
+            currency: $purchaseOrder->currency,
+            confirmedBy: $this->user->id,
+            confirmedAt: now()->toIso8601String(),
+        );
+
+        app(PurchaseOrderConfirmedListener::class)->handle($event);
+
+        $this->assertSame(1, JournalEntry::query()
+            ->where('source_type', 'supplier_invoice')
+            ->where('source_id', $purchaseOrder->id)
+            ->count());
+    }
+
     public function test_throws_exception_if_not_draft(): void
     {
         // Arrange
@@ -141,7 +212,10 @@ class PurchaseOrderServiceTest extends TestCase
         $this->service->confirm($salesOrder);
     }
 
-    private function createDraftPurchaseOrder(): Document
+    /**
+     * @param  array<string, string>  $overrides
+     */
+    private function createDraftPurchaseOrder(array $overrides = [], string $lineTaxRate = '0.00'): Document
     {
         $po = Document::create([
             'tenant_id' => $this->tenant->id,
@@ -155,6 +229,7 @@ class PurchaseOrderServiceTest extends TestCase
             'subtotal' => '1000.00',
             'tax_amount' => '0.00',
             'total' => '1000.00',
+            ...$overrides,
         ]);
 
         // Add lines
@@ -164,7 +239,7 @@ class PurchaseOrderServiceTest extends TestCase
             'description' => 'Product A',
             'quantity' => '10.00',
             'unit_price' => '100.00',
-            'tax_rate' => '0.00',
+            'tax_rate' => $lineTaxRate,
             'line_total' => '1000.00',
         ]);
 

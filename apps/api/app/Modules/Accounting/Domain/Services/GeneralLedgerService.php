@@ -447,7 +447,8 @@ final class GeneralLedgerService
         string $expenseAccountId,
         \DateTimeInterface $date,
         User $user,
-        ?string $description = null
+        ?string $description = null,
+        ?string $currencyCode = null
     ): JournalEntry {
         $payableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierPayable);
         $vatAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::VatDeductible);
@@ -510,8 +511,7 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
+        $this->postEntryAndRefreshPartnerBalanceAfterCommit($entry, $user, $companyId, $partnerId, $currencyCode);
 
         return $entry;
     }
