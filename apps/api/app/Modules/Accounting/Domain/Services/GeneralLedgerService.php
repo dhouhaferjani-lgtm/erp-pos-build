@@ -362,9 +362,16 @@ final class GeneralLedgerService
         string $amount,
         string $paymentMethodAccountId,
         \DateTimeInterface $date,
-        ?string $description = null
+        ?string $description = null,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
     ): JournalEntry {
         $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierAdvance);
+        $user = null;
+        if ($postedByUserId !== null) {
+            /** @var User $user */
+            $user = User::query()->findOrFail($postedByUserId);
+        }
 
         $entry = DB::transaction(function () use (
             $companyId, $partnerId, $refundId, $amount, $paymentMethodAccountId,
@@ -409,6 +416,10 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
+
+        if ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
 
         return $entry;
     }

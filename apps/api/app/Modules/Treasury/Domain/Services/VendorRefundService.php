@@ -161,6 +161,8 @@ final class VendorRefundService
                     paymentMethodAccountId: $resolvedRepository->account_id,
                     date: now(),
                     description: "Supplier advance refund - {$lockedPo->document_number}".($reason ? " - {$reason}" : ''),
+                    postedByUserId: $userId,
+                    currencyCode: $payment->currency,
                 );
 
                 $payment->journal_entry_id = $journalEntry->id;
