@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DocumentFullyPaid;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
@@ -172,6 +173,10 @@ class PaymentController extends Controller
         // Validate each allocation - cap it at document balance (no overpayment per invoice)
         // Excess will be handled as customer advance
         $adjustedAllocations = [];
+        /** @var numeric-string $totalAdjustedAllocated */
+        $totalAdjustedAllocated = '0.00';
+        $hasPurchaseOrderAllocation = false;
+        $hasNonPurchaseOrderAllocation = false;
         foreach ($allocations as $allocation) {
             /** @var Document $document */
             $document = Document::query()
@@ -192,19 +197,46 @@ class PaymentController extends Controller
                 : $requestedAmount;
 
             if (bccomp($allocationAmount, '0', $this->scale()) > 0) {
+                if ($document->type === DocumentType::PurchaseOrder) {
+                    $hasPurchaseOrderAllocation = true;
+                } else {
+                    $hasNonPurchaseOrderAllocation = true;
+                }
+
                 $adjustedAllocations[] = [
                     'document_id' => $document->id,
                     'amount' => $allocationAmount,
                 ];
+                $totalAdjustedAllocated = bcadd($totalAdjustedAllocated, $allocationAmount, $this->scale());
             }
         }
 
+        if ($hasPurchaseOrderAllocation && $hasNonPurchaseOrderAllocation) {
+            return response()->json([
+                'error' => [
+                    'code' => 'MIXED_PAYMENT_DIRECTIONS',
+                    'message' => 'Purchase order payments cannot be mixed with customer document payments.',
+                ],
+            ], 422);
+        }
+
+        if ($hasPurchaseOrderAllocation && bccomp($totalAdjustedAllocated, $paymentAmount, $this->scale()) < 0) {
+            return response()->json([
+                'error' => [
+                    'code' => 'SUPPLIER_PAYMENT_REQUIRES_FULL_ALLOCATION',
+                    'message' => 'Supplier payments must be fully allocated to purchase orders.',
+                ],
+            ], 422);
+        }
+
         // Create payment and allocations in a transaction
-        $payment = DB::transaction(function () use ($validated, $user, $paymentAmount, $adjustedAllocations, $tenantId, $companyId) {
+        $payment = DB::transaction(function () use ($validated, $user, $paymentAmount, $adjustedAllocations, $tenantId, $companyId, $hasPurchaseOrderAllocation) {
             // Determine payment type: advance if no allocations, otherwise document payment
-            $paymentType = empty($adjustedAllocations)
-                ? PaymentType::Advance
-                : PaymentType::DocumentPayment;
+            $paymentType = match (true) {
+                $hasPurchaseOrderAllocation => PaymentType::SupplierPayment,
+                empty($adjustedAllocations) => PaymentType::Advance,
+                default => PaymentType::DocumentPayment,
+            };
 
             // Spec §13 writer-inventory row 2 — `PaymentController::store()` →
             // `web_admin`. `fiscal_event_id` stays NULL (no fiscal event for
@@ -349,22 +381,26 @@ class PaymentController extends Controller
                 $repository = $repoResult;
 
                 if ($repository instanceof PaymentRepository) {
-                    // Increment repository balance by payment amount
+                    // Incoming payments increase repository cash; supplier payments decrease it.
                     /** @var numeric-string $currentBalance */
                     $currentBalance = $repository->balance ?? '0.00';
                     $previousBalance = $currentBalance;
-                    $repository->balance = bcadd($currentBalance, $paymentAmount, $this->scale());
+                    /** @var numeric-string $repositoryChange */
+                    $repositoryChange = $payment->payment_type === PaymentType::SupplierPayment
+                        ? bcsub('0', $paymentAmount, $this->scale())
+                        : $paymentAmount;
+                    $repository->balance = bcadd($currentBalance, $repositoryChange, $this->scale());
                     $repository->save();
 
                     $newBalance = $repository->balance;
-                    DB::afterCommit(function () use ($repository, $tenantId, $companyId, $previousBalance, $newBalance, $paymentAmount, $validated): void {
+                    DB::afterCommit(function () use ($repository, $tenantId, $companyId, $previousBalance, $newBalance, $repositoryChange, $validated): void {
                         event(new RepositoryBalanceChanged(
                             repositoryId: $repository->id,
                             tenantId: $tenantId,
                             companyId: $companyId,
                             previousBalance: $previousBalance,
                             newBalance: $newBalance,
-                            changeAmount: $paymentAmount,
+                            changeAmount: $repositoryChange,
                             currency: $validated['currency'] ?? 'TND',
                             changedAt: now()->toIso8601String(),
                         ));
@@ -384,17 +420,29 @@ class PaymentController extends Controller
                 }
 
                 if ($repository instanceof PaymentRepository && $repository->account_id) {
-                    $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
-                        companyId: $companyId,
-                        partnerId: $validated['partner_id'],
-                        paymentId: $payment->id,
-                        amount: $totalAllocatedForGL,
-                        paymentMethodAccountId: $repository->account_id,
-                        date: new \DateTimeImmutable($validated['payment_date']),
-                        description: "Customer payment - {$payment->reference}",
-                        user: $user,
-                        currencyCode: $payment->currency
-                    );
+                    $journalEntry = $payment->payment_type === PaymentType::SupplierPayment
+                        ? $this->glService->createSupplierPaymentJournalEntry(
+                            companyId: $companyId,
+                            partnerId: $validated['partner_id'],
+                            paymentId: $payment->id,
+                            amount: $totalAllocatedForGL,
+                            paymentMethodAccountId: $repository->account_id,
+                            date: new \DateTimeImmutable($validated['payment_date']),
+                            user: $user,
+                            description: "Supplier payment - {$payment->reference}",
+                            currencyCode: $payment->currency
+                        )
+                        : $this->glService->createPaymentReceivedJournalEntry(
+                            companyId: $companyId,
+                            partnerId: $validated['partner_id'],
+                            paymentId: $payment->id,
+                            amount: $totalAllocatedForGL,
+                            paymentMethodAccountId: $repository->account_id,
+                            date: new \DateTimeImmutable($validated['payment_date']),
+                            description: "Customer payment - {$payment->reference}",
+                            user: $user,
+                            currencyCode: $payment->currency
+                        );
 
                     // Link journal entry to payment
                     $payment->journal_entry_id = $journalEntry->id;
@@ -406,7 +454,7 @@ class PaymentController extends Controller
             /** @var numeric-string $excessAmount */
             $excessAmount = bcsub($paymentAmount, $totalAllocatedForGL, $this->scale());
 
-            if (bccomp($excessAmount, '0', $this->scale()) > 0 && $repositoryId) {
+            if (bccomp($excessAmount, '0', $this->scale()) > 0 && $repositoryId && $payment->payment_type !== PaymentType::SupplierPayment) {
                 if (! $repository instanceof PaymentRepository) {
                     /** @var PaymentRepository|null $foundRepository */
                     $foundRepository = PaymentRepository::query()

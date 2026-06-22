@@ -76,7 +76,7 @@ Outcome so far:
 
 ## H-3 — Supplier invoice/payment AP production path is unwired
 
-status: TODO  
+status: IN PROGRESS
 severity: HIGH  
 source: seed backlog + `07-supplier-ap-production-path.md`
 
@@ -99,6 +99,14 @@ Test plan:
 - Add production API/service feature tests for supplier invoice/payment AP posting.
 
 Scope boundary: Supplier payable only; do not bundle supplier advance/refund policy unless the re-verification step proves it is required.
+
+Outcome so far:
+- H-3.1 DONE — `PaymentController::store()` now treats purchase-order allocations as outgoing supplier payments, posts a `supplier_payment` journal entry through `GeneralLedgerService::createSupplierPaymentJournalEntry()`, tags the SupplierPayable line with the supplier partner, posts the entry, refreshes partner payable balance after posting, and decreases the selected repository balance.
+- Purchase-order payments cannot be mixed with customer document payments in one call.
+- Purchase-order supplier payments that would leave unallocated excess are rejected until a supplier-advance policy/writer exists.
+- Verification: `php artisan test --filter 'purchase_order_payment'`; `php artisan test tests/Feature/Treasury/PaymentTest.php tests/Feature/Accounting/GLIntegrationTest.php tests/Feature/Treasury/TreasuryEventsTest.php`; `php artisan test --filter PartnerBalanceServiceTest`; `./vendor/bin/phpstan analyse --level=8 app/Modules/Accounting/Domain/Services/GeneralLedgerService.php app/Modules/Treasury/Presentation/Controllers/PaymentController.php`; `./vendor/bin/pint --test app/Modules/Accounting/Domain/Services/GeneralLedgerService.php app/Modules/Treasury/Presentation/Controllers/PaymentController.php tests/Feature/Treasury/PaymentTest.php`.
+- Reviews saved in `docs/superpowers/reviews/2026-06-22-h3-supplier-payment-posting-codex-review.md` and `docs/superpowers/reviews/2026-06-22-h3-supplier-payment-posting-opus-fallback-review.md`; true Opus review remains pending.
+- Remaining H-3 work: production supplier invoice/AP recognition is still unwired; `PaymentController::storeMultiple()` and `PaymentAllocationService` still need separate supplier-payment policy/coverage if purchase-order allocations should flow through those surfaces.
 
 ## H-4 — `GeneralLedgerService::postEntry()` does not reject unbalanced entries
 
