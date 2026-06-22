@@ -15,6 +15,7 @@ import { useTableState } from '../../hooks/useTableState'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { usePartnerBalanceRealtime } from './hooks/usePartnerBalanceRealtime'
+import { getNetBalance } from './partnerNetBalance'
 
 type StatusFilter = 'all' | 'active' | 'inactive'
 
@@ -60,15 +61,6 @@ export type PartnerType = 'customer' | 'supplier'
 
 interface PartnerListPageProps {
   partnerType?: PartnerType
-}
-
-function getNetBalance(partner: Partner, isCustomerView: boolean): number {
-  if (isCustomerView || partner.type === 'customer' || partner.type === 'both') {
-    const receivable = parseFloat(partner.receivable_balance ?? '0')
-    const credit = parseFloat(partner.credit_balance ?? '0')
-    return receivable - credit
-  }
-  return parseFloat(partner.payable_balance ?? '0')
 }
 
 export function PartnerListPage({ partnerType }: PartnerListPageProps) {

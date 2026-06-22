@@ -513,7 +513,7 @@ Reviews:
 
 ## M-7 — Both-type partner net balance ignores payable balance
 
-status: TODO  
+status: DONE
 severity: MEDIUM  
 source: seed backlog M-5
 
@@ -532,6 +532,27 @@ Test plan:
 - Add backend model/controller tests and web helper tests.
 
 Scope boundary: Display/calculation semantics only.
+
+Outcome:
+- Defined net-balance semantics consistently: customer position is `receivable_balance - credit_balance`; supplier position is `payable_balance`; `both` partner net exposure is `receivable_balance - credit_balance - payable_balance`.
+- Updated the backend model accessor, partner index SQL sort expression, and frontend list helper to use those semantics.
+- Moved the frontend helper into `partnerNetBalance.ts` so tests can cover the calculation without exporting non-component helpers from the page component.
+
+Verification:
+- Red observed first: `php artisan test tests/Unit/Partner/PartnerEntityTest.php --filter test_both_partner_net_balance_offsets_payable_against_customer_position` failed because the old accessor returned `900.000` instead of `650.000`.
+- Green after implementation: `php artisan test tests/Unit/Partner/PartnerEntityTest.php --filter test_both_partner_net_balance_offsets_payable_against_customer_position` passed 1 test, 1 assertion.
+- `php artisan test tests/Feature/Partner/PartnerBalanceListTest.php --filter test_sort_by_net_balance_offsets_both_partner_payable_balance` passed 1 test, 3 assertions.
+- `php artisan test tests/Unit/Partner/PartnerEntityTest.php tests/Feature/Partner/PartnerBalanceListTest.php` passed 22 tests, 78 assertions.
+- `pnpm --filter @autoerp/web test -- src/features/partners/partners.test.tsx` passed 42 tests. The run emitted pre-existing `--localstorage-file` and `/partners/1` route warnings.
+- `./vendor/bin/phpstan analyse app/Modules/Partner/Domain/Partner.php app/Modules/Partner/Presentation/Controllers/PartnerController.php --level=8` passed.
+- `pnpm --filter @autoerp/web typecheck` passed.
+- `pnpm --filter @autoerp/web exec eslint src/features/partners/PartnerListPage.tsx src/features/partners/partnerNetBalance.ts src/features/partners/partners.test.tsx` passed with 0 errors and existing warnings.
+- `./vendor/bin/pint --test` passed on touched backend files.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-m7-both-partner-net-balance-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-m7-both-partner-net-balance-opus-fallback-review.md`
 
 ## M-8 — Uncapped advance clearing
 

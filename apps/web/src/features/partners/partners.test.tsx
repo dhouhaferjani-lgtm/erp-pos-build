@@ -6,6 +6,7 @@ import { renderWithProviders } from '@/test/renderWithProviders'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { PartnerListPage } from './PartnerListPage'
+import { getNetBalance } from './partnerNetBalance'
 import { PartnerDetailPage } from './PartnerDetailPage'
 import { PartnerForm } from './PartnerForm'
 import {
@@ -158,6 +159,15 @@ describe('Partner Management', () => {
   })
 
   describe('PartnerListPage', () => {
+    it('calculates both partner net balance from receivable, credit, and payable', () => {
+      expect(getNetBalance({
+        type: 'both',
+        receivable_balance: '1000.000',
+        credit_balance: '100.000',
+        payable_balance: '250.000',
+      }, true)).toBe(650)
+    })
+
     it('renders the partner list page with title', () => {
       mockApiInstance.get.mockResolvedValue({
         data: makePartnersListResponse({ data: [] }),

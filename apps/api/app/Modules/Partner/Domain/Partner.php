@@ -292,9 +292,14 @@ class Partner extends Model
      */
     public function getNetBalanceAttribute(): string
     {
-        if ($this->isCustomer()) {
-            // Customer: receivable minus any credit they have
-            return bcsub($this->receivable_balance ?? '0', $this->credit_balance ?? '0', 3);
+        $customerPosition = bcsub($this->receivable_balance ?? '0', $this->credit_balance ?? '0', 3);
+
+        if ($this->type === PartnerType::Both) {
+            return bcsub($customerPosition, $this->payable_balance ?? '0', 3);
+        }
+
+        if ($this->type === PartnerType::Customer) {
+            return $customerPosition;
         }
 
         // Supplier: what we owe them

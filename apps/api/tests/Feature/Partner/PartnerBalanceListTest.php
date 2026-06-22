@@ -165,6 +165,37 @@ class PartnerBalanceListTest extends TestCase
         $this->assertEquals('Low Net', $data[1]['name']);
     }
 
+    public function test_sort_by_net_balance_offsets_both_partner_payable_balance(): void
+    {
+        Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Both Partner',
+            'type' => PartnerType::Both,
+            'receivable_balance' => '1000.000',
+            'credit_balance' => '100.000',
+            'payable_balance' => '250.000',
+        ]);
+
+        Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Customer Net Partner',
+            'type' => PartnerType::Customer,
+            'receivable_balance' => '800.000',
+            'credit_balance' => '0.000',
+            'payable_balance' => '0.000',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/partners?sort_by=net_balance&sort_dir=desc');
+
+        $response->assertOk();
+        $data = $response->json('data');
+        $this->assertEquals('Customer Net Partner', $data[0]['name']);
+        $this->assertEquals('Both Partner', $data[1]['name']);
+    }
+
     public function test_has_balance_filter_excludes_zero_balance_partners(): void
     {
         Partner::create([
