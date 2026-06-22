@@ -632,7 +632,7 @@ Reviews:
 
 ## M-10 — Module gating inconsistencies
 
-status: TODO  
+status: DONE
 severity: MEDIUM  
 source: `09-unwired-precision-status.md`
 
@@ -652,6 +652,25 @@ Test plan:
 - Add backend route tests and frontend route guard tests.
 
 Scope boundary: Module gating only.
+
+Outcome:
+- Added `module:Workshop` middleware to service catalog API routes.
+- Wrapped workshop work-order frontend routes with `ModuleGuard module="Workshop"`.
+- Added backend access-control coverage for service and service-category routes, and frontend route guard coverage for service/work-order route branches.
+
+Verification:
+- Red observed first: `php artisan test tests/Feature/Security/WorkshopModuleAccessControlTest.php --filter test_retail_vertical_cannot_access_workshop_route` failed because `/api/v1/services` and `/api/v1/service-categories` returned 200 for a retail tenant.
+- Red observed first: `pnpm --filter @autoerp/web test -- src/routes/routes.test.tsx` failed because the `workshop/work-orders` route branch lacked `<ModuleGuard module="Workshop">`.
+- Green after implementation: `php artisan test tests/Feature/Security/WorkshopModuleAccessControlTest.php` passed 12 tests, 23 assertions, with pre-existing PHPUnit 12 doc-comment metadata warnings.
+- `pnpm --filter @autoerp/web test -- src/routes/routes.test.tsx` passed 2 tests, with the pre-existing `--localstorage-file` warning.
+- `pnpm --filter @autoerp/web typecheck` passed.
+- `pnpm --filter @autoerp/web exec eslint src/routes/index.tsx src/routes/routes.test.tsx` passed.
+- `./vendor/bin/pint --test app/Modules/Service/Presentation/routes.php tests/Feature/Security/WorkshopModuleAccessControlTest.php` passed.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-m10-module-gating-alignment-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-m10-module-gating-alignment-opus-fallback-review.md`
 
 ## L-1 — Replace accounting/document/treasury magic-string statuses
 

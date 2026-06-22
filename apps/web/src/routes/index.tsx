@@ -1287,31 +1287,37 @@ export function AppRoutes() {
           <Route
             index
             element={
-              <RequirePermission permission="work-orders.view">
-                <SuspenseWrapper>
-                  <WorkshopWorkOrderListPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Workshop">
+                <RequirePermission permission="work-orders.view">
+                  <SuspenseWrapper>
+                    <WorkshopWorkOrderListPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="new"
             element={
-              <RequirePermission permission="work-orders.create">
-                <SuspenseWrapper>
-                  <WorkshopWorkOrderCreatePage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Workshop">
+                <RequirePermission permission="work-orders.create">
+                  <SuspenseWrapper>
+                    <WorkshopWorkOrderCreatePage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path=":id"
             element={
-              <RequirePermission permission="work-orders.view">
-                <SuspenseWrapper>
-                  <WorkshopWorkOrderDetailPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Workshop">
+                <RequirePermission permission="work-orders.view">
+                  <SuspenseWrapper>
+                    <WorkshopWorkOrderDetailPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
         </Route>
