@@ -1628,6 +1628,8 @@ final class GeneralLedgerService
         string $amount,
         MovementReason $reason,
         string $movementId,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
     ): ?JournalEntry {
         /** @var numeric-string $amount */
         if (bccomp($amount, '0', $this->scale()) <= 0) {
@@ -1637,7 +1639,12 @@ final class GeneralLedgerService
         $cogsAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold);
         $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
 
-        return DB::transaction(function () use (
+        $user = null;
+        if ($postedByUserId !== null) {
+            $user = User::query()->findOrFail($postedByUserId);
+        }
+
+        $entry = DB::transaction(function () use (
             $companyId, $batchNumber, $amount, $reason, $movementId,
             $cogsAccount, $inventoryAccount
         ): JournalEntry {
@@ -1679,6 +1686,12 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
+
+        if ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
+
+        return $entry;
     }
 
     /**

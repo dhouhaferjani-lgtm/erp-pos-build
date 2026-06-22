@@ -95,6 +95,8 @@ final class BatchWriteOffService
                     ),
                     reason: $movementReason,
                     movementId: $movement->id,
+                    postedByUserId: $userId,
+                    currencyCode: $company->currency,
                 );
             } catch (\RuntimeException $e) {
                 // GL accounts may not be configured — log but don't block

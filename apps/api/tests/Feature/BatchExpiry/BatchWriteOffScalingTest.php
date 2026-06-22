@@ -6,7 +6,9 @@ namespace Tests\Feature\BatchExpiry;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
@@ -222,5 +224,14 @@ final class BatchWriteOffScalingTest extends TestCase
             .'Found: ['.implode(', ', $debitAmounts).']. '
             .'If "124.01" is present, BatchWriteOffService still uses hardcoded bcmul scale 2.'
         );
+
+        $entry = JournalEntry::query()
+            ->where('source_type', 'batch_write_off')
+            ->firstOrFail();
+
+        $this->assertSame(JournalEntryStatus::Posted, $entry->status);
+        $this->assertSame($this->user->id, $entry->posted_by);
+        $this->assertNotNull($entry->posted_at);
+        $this->assertNotNull($entry->fiscal_hash);
     }
 }
