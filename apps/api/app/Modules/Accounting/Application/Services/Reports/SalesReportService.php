@@ -9,6 +9,7 @@ use App\Modules\Accounting\Application\DTOs\Reports\DateRangeData;
 use App\Modules\Accounting\Application\DTOs\Reports\PaymentMethodBreakdownData;
 use App\Modules\Accounting\Application\DTOs\Reports\SalesByLocationData;
 use App\Modules\Accounting\Application\DTOs\Reports\TopSkuData;
+use App\Modules\POS\Domain\Enums\ReceiptType;
 use Illuminate\Support\Facades\DB;
 
 final class SalesReportService
@@ -35,6 +36,10 @@ final class SalesReportService
             ->whereIn('pos_receipts.location_id', $locationIds)
             ->where('pos_receipts.is_voided', false)
             ->where('pos_receipts.training_flag', false)
+            // Breakdowns report SALES only; returns are a separate metric
+            // (OwnerSalesSummaryService). Excluding them keeps the drill-downs
+            // consistent with the headline KPIs regardless of return-total sign. (F-5)
+            ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
             ->groupByRaw($periodExpression)
             ->groupBy('companies.id', 'companies.name', 'locations.id', 'locations.name')
@@ -78,6 +83,10 @@ final class SalesReportService
             ->whereIn('pos_receipts.location_id', $locationIds)
             ->where('pos_receipts.is_voided', false)
             ->where('pos_receipts.training_flag', false)
+            // Breakdowns report SALES only; returns are a separate metric
+            // (OwnerSalesSummaryService). Excluding them keeps the drill-downs
+            // consistent with the headline KPIs regardless of return-total sign. (F-5)
+            ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
             ->groupBy('pos_receipt_lines.product_id', 'pos_receipt_lines.product_name', 'products.sku')
             ->selectRaw('pos_receipt_lines.product_id')
@@ -119,6 +128,10 @@ final class SalesReportService
             ->whereIn('pos_receipts.location_id', $locationIds)
             ->where('pos_receipts.is_voided', false)
             ->where('pos_receipts.training_flag', false)
+            // Breakdowns report SALES only; returns are a separate metric
+            // (OwnerSalesSummaryService). Excluding them keeps the drill-downs
+            // consistent with the headline KPIs regardless of return-total sign. (F-5)
+            ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
             ->groupBy('categories.id', 'categories.name')
             ->selectRaw('categories.id as category_id')
@@ -157,6 +170,10 @@ final class SalesReportService
             ->whereIn('pos_receipts.location_id', $locationIds)
             ->where('pos_receipts.is_voided', false)
             ->where('pos_receipts.training_flag', false)
+            // Breakdowns report SALES only; returns are a separate metric
+            // (OwnerSalesSummaryService). Excluding them keeps the drill-downs
+            // consistent with the headline KPIs regardless of return-total sign. (F-5)
+            ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
             ->groupBy('pos_receipt_payments.payment_type', 'payment_methods.name')
             ->selectRaw('pos_receipt_payments.payment_type')
