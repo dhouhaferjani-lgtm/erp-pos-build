@@ -775,10 +775,17 @@ final class GeneralLedgerService
         string $invoiceId,
         string $amount,
         \DateTimeInterface $date,
-        ?string $description = null
+        ?string $description = null,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
     ): JournalEntry {
         $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerAdvance);
         $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
+        $user = null;
+        if ($postedByUserId !== null) {
+            /** @var User $user */
+            $user = User::query()->findOrFail($postedByUserId);
+        }
 
         $entry = DB::transaction(function () use (
             $companyId, $partnerId, $invoiceId, $amount,
@@ -842,6 +849,10 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
+
+        if ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
 
         return $entry;
     }

@@ -68,6 +68,7 @@ class DocumentConversionController extends Controller
             $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice, [
                 'partial' => (bool) $request->input('partial', false),
                 'line_ids' => $request->input('line_ids'),
+                'actor_user_id' => $request->user()?->id !== null ? (string) $request->user()->id : null,
             ]);
 
             return response()->json([

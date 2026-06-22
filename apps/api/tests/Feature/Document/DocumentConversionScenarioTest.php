@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Document;
 
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
@@ -14,10 +19,13 @@ use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
+use App\Modules\Identity\Domain\Enums\UserStatus;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Vehicle\Domain\Vehicle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -93,6 +101,59 @@ class DocumentConversionScenarioTest extends TestCase
         $this->assertNotNull($invoice);
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
         $this->assertEquals($order->document_number, $invoice->reference);
+    }
+
+    #[Test]
+    public function it_posts_prepayment_application_when_order_invoice_conversion_has_actor(): void
+    {
+        $service = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => ProductType::Service,
+            'is_physical' => false,
+        ]);
+        $user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Conversion User',
+            'email' => 'conversion@example.com',
+            'password' => bcrypt('password'),
+            'status' => UserStatus::Active,
+        ]);
+        $cashAccount = $this->seedPrepaymentApplicationAccounts();
+        $order = $this->createConfirmedOrder([
+            ['product_id' => $service->id, 'description' => 'Oil Change Service'],
+        ]);
+
+        app(GeneralLedgerService::class)->createCustomerAdvanceJournalEntry(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            advanceId: (string) Str::uuid(),
+            amount: '40.000',
+            paymentMethodAccountId: $cashAccount->id,
+            date: now(),
+            user: $user,
+            description: 'Customer advance payment',
+            currencyCode: $this->company->currency,
+        );
+        PaymentAllocation::create([
+            'payment_id' => null,
+            'document_id' => $order->id,
+            'amount' => '40.000',
+        ]);
+
+        $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice, [
+            'actor_user_id' => $user->id,
+        ]);
+
+        $entry = JournalEntry::query()
+            ->where('source_type', 'prepayment_application')
+            ->where('source_id', $invoice->id)
+            ->firstOrFail();
+
+        $this->assertSame(JournalEntryStatus::Posted, $entry->status);
+        $this->assertSame($user->id, $entry->posted_by);
+        $this->assertNotNull($entry->posted_at);
+        $this->assertNotNull($entry->fiscal_hash);
     }
 
     #[Test]
@@ -450,6 +511,40 @@ class DocumentConversionScenarioTest extends TestCase
      *
      * @param  array<int, array{product_id: string|null, description: string}>  $lines
      */
+    private function seedPrepaymentApplicationAccounts(): Account
+    {
+        $cashAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '512',
+            'name' => 'Bank',
+            'type' => 'asset',
+            'is_active' => true,
+        ]);
+
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '411',
+            'name' => 'Customer Receivable',
+            'type' => 'asset',
+            'system_purpose' => SystemAccountPurpose::CustomerReceivable,
+            'is_active' => true,
+        ]);
+
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '4191',
+            'name' => 'Customer Advances',
+            'type' => 'liability',
+            'system_purpose' => SystemAccountPurpose::CustomerAdvance,
+            'is_active' => true,
+        ]);
+
+        return $cashAccount;
+    }
+
     private function createConfirmedOrder(array $lines): Document
     {
         $order = Document::create([
