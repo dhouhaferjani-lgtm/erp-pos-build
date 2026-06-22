@@ -674,7 +674,7 @@ Reviews:
 
 ## L-1 — Replace accounting/document/treasury magic-string statuses
 
-status: TODO  
+status: DONE
 severity: LOW  
 source: seed backlog L-2 + `09-unwired-precision-status.md`
 
@@ -694,6 +694,22 @@ Test plan:
 - Add/extend architecture test.
 
 Scope boundary: Enum-backed statuses only.
+
+Outcome:
+- Replaced audited enum-backed status string literals with `DocumentStatus`, `OpeningImportRowStatus`, and `PeriodStatus` enum cases.
+- Added `EnumBackedStatusLiteralTest` to prevent the exact audited literals from returning in the touched files.
+
+Verification:
+- Red observed first: `php artisan test tests/Architecture/EnumBackedStatusLiteralTest.php` failed on all six audited literals.
+- Green after implementation: `php artisan test tests/Architecture/EnumBackedStatusLiteralTest.php` passed 6 tests, 12 assertions, with pre-existing PHPUnit 12 doc-comment metadata warnings.
+- `php artisan test tests/Feature/Document/AgedReceivablesScalingTest.php tests/Unit/Treasury/PaymentAllocationServiceTest.php tests/Feature/Accounting/OpeningBalanceStagingPrecisionTest.php` passed 18 tests, 63 assertions, with pre-existing PHPUnit 12 doc-comment metadata warnings.
+- `./vendor/bin/phpstan analyse app/Modules/Document/Application/Services/AgedReceivablesService.php app/Modules/Treasury/Application/Services/PaymentAllocationService.php app/Modules/Accounting/Domain/OpeningBalanceBatch.php app/Modules/Accounting/Application/Services/FiscalPeriodResolverService.php --level=8` passed.
+- `./vendor/bin/pint --test` passed on touched app/test files.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-l1-enum-backed-status-literals-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-l1-enum-backed-status-literals-opus-fallback-review.md`
 
 ## L-2 — Statement running balance sign for liability statements
 

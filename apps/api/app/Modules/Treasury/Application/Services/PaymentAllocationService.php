@@ -425,11 +425,11 @@ class PaymentAllocationService
                 $q->where(function ($inner) {
                     // Posted invoices
                     $inner->where('type', DocumentType::Invoice)
-                        ->where('status', 'posted');
+                        ->where('status', DocumentStatus::Posted);
                 })->orWhere(function ($inner) {
                     // Confirmed sales orders (for prepayments)
                     $inner->where('type', DocumentType::SalesOrder)
-                        ->where('status', 'confirmed');
+                        ->where('status', DocumentStatus::Confirmed);
                 });
             })
             ->whereRaw('total > COALESCE((SELECT SUM(amount) FROM payment_allocations WHERE document_id = documents.id), 0)');
