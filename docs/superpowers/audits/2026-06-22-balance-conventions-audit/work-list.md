@@ -335,7 +335,7 @@ Reviews:
 
 ## M-3 — Fiscal event enum/validator/projector coverage needs a matrix
 
-status: TODO  
+status: DONE
 severity: MEDIUM  
 source: `08-event-sourcing-coverage.md`
 
@@ -355,6 +355,25 @@ Test plan:
 - Run `php artisan test --filter FiscalEventPayloadRegistryTest`.
 
 Scope boundary: Test/policy coverage first, no event renames.
+
+Outcome:
+- Added `FiscalEventCoveragePolicy`, an explicit matrix over every `FiscalEventType`.
+- Classified current fiscal events as `projected`, `audit-only`, or `reserved-unreachable`.
+- Added tests that fail if a new enum case lacks policy, a reserved case resolves a payload DTO, an implemented case lacks payload registry/validator coverage, projected policy drifts from registered projectors, or canonical reader policy points at a missing reader method.
+- Did not rename, restructure, or add fiscal events.
+
+Verification:
+- Red observed first: `php artisan test tests/Unit/Fiscal/FiscalEventCoveragePolicyTest.php` failed because `FiscalEventCoveragePolicy` did not exist.
+- Green after implementation: `php artisan test tests/Unit/Fiscal/FiscalEventCoveragePolicyTest.php` passed 4 tests, 122 assertions.
+- `php artisan test --filter FiscalEventPayloadRegistryTest` passed 23 tests, 153 assertions, with pre-existing PHPUnit 12 doc-comment metadata warnings from suite discovery.
+- `php artisan test tests/Feature/Fiscal/FiscalPayloadConstraintValidatorTest.php tests/Feature/Fiscal/FiscalEventProjectionDispatcherTest.php tests/Feature/Fiscal/FiscalEventProjectionsTableTest.php` passed 128 tests, 3 PostgreSQL-only skips, 288 assertions.
+- `./vendor/bin/phpstan analyse --level=8 app/Modules/Fiscal/Application/Services/FiscalEventCoveragePolicy.php` passed.
+- `./vendor/bin/pint` passed on touched files.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-m3-fiscal-event-coverage-policy-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-m3-fiscal-event-coverage-policy-opus-fallback-review.md`
 
 ## M-4 — Balance refresh is synchronous and often outside posting transaction
 
