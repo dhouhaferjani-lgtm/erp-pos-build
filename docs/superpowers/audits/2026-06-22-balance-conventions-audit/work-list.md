@@ -250,7 +250,7 @@ Reviews:
 
 ## M-1 — Manual journal create/post bypasses accounting audit events
 
-status: TODO  
+status: DONE
 severity: MEDIUM  
 source: `08-event-sourcing-coverage.md`
 
@@ -269,6 +269,26 @@ Test plan:
 - Add feature tests for manual journal create/post audit/event behavior.
 
 Scope boundary: Manual journal endpoints only.
+
+Outcome:
+- Manual journal creation now marks entries as `source_type=manual` with self-linked `source_id`, then dispatches the existing immutable `JournalEntryCreated` event after the route transaction completes.
+- Manual journal posting now delegates to `GeneralLedgerService::postEntry()`, reusing canonical balanced-entry validation, company-scoped hash-chain calculation, fiscal hash mutation, actor stamping, and `JournalEntryPosted` dispatch.
+- `DomainEventSubscriber` explicitly subscribes to `JournalEntryCreated` and `JournalEntryPosted`, persisting both as `JournalEntry` aggregate audit rows.
+
+Verification:
+- Red observed first: `php artisan test --filter 'manual_journal_entry_.*dispatches_audit_event' tests/Feature/Accounting/CreateJournalEntryTest.php` failed because neither manual create nor manual post dispatched journal audit events.
+- Red observed first: `php artisan test --filter 'journal_entry_.*event_creates_audit_entry' tests/Feature/Compliance/DomainEventSubscriberTest.php` failed because no `audit_events` rows were persisted for journal entry events.
+- Green after implementation: `php artisan test tests/Feature/Accounting/CreateJournalEntryTest.php` passed 10 tests, 22 assertions.
+- `php artisan test tests/Feature/Compliance/DomainEventSubscriberTest.php` passed 12 tests, 69 assertions.
+- `php artisan test tests/Feature/Accounting/AccountingEventsTest.php tests/Feature/Accounting/AccountingEventsExtendedTest.php tests/Feature/Accounting/JournalEntryHashChainMigrationTest.php tests/Feature/Accounting/JournalEntryImmutabilityTest.php` passed 46 tests, 73 assertions.
+- `php artisan test --filter 'posting_journal_entry_adds_hash|posting_unbalanced_journal_entry_is_rejected_without_mutation' tests/Feature/Accounting/GLIntegrationTest.php` passed 2 tests, 11 assertions.
+- `./vendor/bin/phpstan analyse --level=8 app/Modules/Accounting/Presentation/Controllers/JournalEntryController.php app/Modules/Compliance/Listeners/DomainEventSubscriber.php` passed.
+- `./vendor/bin/pint` passed on touched app/test files.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-m1-manual-journal-audit-events-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-m1-manual-journal-audit-events-opus-fallback-review.md`
 
 ## M-2 — Financial mutations lack fiscal/audit event policy
 

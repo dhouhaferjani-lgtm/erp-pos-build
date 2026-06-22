@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Compliance;
 
+use App\Modules\Accounting\Domain\Events\JournalEntryCreated;
+use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Compliance\Domain\AuditEvent;
@@ -238,6 +240,66 @@ class DomainEventSubscriberTest extends TestCase
         $this->assertEquals('750.00', $auditEvent->payload['amount']);
         $this->assertArrayHasKey('currency', $auditEvent->payload);
         $this->assertEquals('TND', $auditEvent->payload['currency']);
+    }
+
+    public function test_journal_entry_created_event_creates_audit_entry(): void
+    {
+        $entryId = Str::uuid()->toString();
+
+        event(new JournalEntryCreated(
+            journalEntryId: $entryId,
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            entryNumber: 'JE-2026-000001',
+            entryDate: '2026-06-22',
+            entryType: 'manual',
+            sourceType: 'manual',
+            sourceId: $entryId,
+            totalDebit: '100.000',
+            totalCredit: '100.000',
+            fiscalHash: '',
+            chainSequence: 0,
+            createdAt: now()->toIso8601String(),
+        ));
+
+        $auditEvent = AuditEvent::where('aggregate_id', $entryId)
+            ->where('event_type', 'journal_entry.created')
+            ->first();
+
+        $this->assertNotNull($auditEvent);
+        $this->assertEquals($this->company->id, $auditEvent->company_id);
+        $this->assertEquals('JournalEntry', $auditEvent->aggregate_type);
+        $this->assertEquals('journal_entry.created', $auditEvent->event_type);
+        $this->assertSame('JE-2026-000001', $auditEvent->payload['entry_number']);
+        $this->assertSame('manual', $auditEvent->payload['entry_type']);
+        $this->assertSame('100.000', $auditEvent->payload['total_debit']);
+    }
+
+    public function test_journal_entry_posted_event_creates_audit_entry(): void
+    {
+        $entryId = Str::uuid()->toString();
+
+        event(new JournalEntryPosted(
+            entryId: $entryId,
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            entryNumber: 'JE-2026-000002',
+            totalDebit: '250.000',
+            totalCredit: '250.000',
+            postedAt: now()->toIso8601String(),
+        ));
+
+        $auditEvent = AuditEvent::where('aggregate_id', $entryId)
+            ->where('event_type', 'accounting.journal_entry.posted')
+            ->first();
+
+        $this->assertNotNull($auditEvent);
+        $this->assertEquals($this->company->id, $auditEvent->company_id);
+        $this->assertEquals('JournalEntry', $auditEvent->aggregate_type);
+        $this->assertEquals('accounting.journal_entry.posted', $auditEvent->event_type);
+        $this->assertSame('JE-2026-000002', $auditEvent->payload['entry_number']);
+        $this->assertSame('250.000', $auditEvent->payload['total_debit']);
+        $this->assertArrayHasKey('posted_at', $auditEvent->payload);
     }
 
     public function test_audit_events_include_user_id_when_authenticated(): void

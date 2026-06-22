@@ -6,6 +6,8 @@ namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Events\JournalEntryCreated;
+use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -17,6 +19,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
@@ -121,6 +124,85 @@ class CreateJournalEntryTest extends TestCase
         $response->assertStatus(201);
         $this->assertEquals('draft', $response->json('data.status'));
         $this->assertNotEmpty($response->json('data.entry_number'));
+    }
+
+    public function test_manual_journal_entry_create_dispatches_audit_event(): void
+    {
+        Event::fake([JournalEntryCreated::class]);
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/journal-entries', [
+            'entry_date' => '2025-01-15',
+            'description' => 'Manual accrual',
+            'lines' => [
+                [
+                    'account_id' => $this->cashAccount->id,
+                    'debit' => '100.000',
+                    'credit' => '0.000',
+                    'description' => 'Cash received',
+                ],
+                [
+                    'account_id' => $this->revenueAccount->id,
+                    'debit' => '0.000',
+                    'credit' => '100.000',
+                    'description' => 'Revenue accrual',
+                ],
+            ],
+        ]);
+
+        $response->assertCreated();
+
+        Event::assertDispatched(
+            JournalEntryCreated::class,
+            fn (JournalEntryCreated $event): bool => $event->journalEntryId === $response->json('data.id')
+                && $event->tenantId === $this->tenant->id
+                && $event->companyId === $this->company->id
+                && $event->entryNumber === $response->json('data.entry_number')
+                && $event->entryDate === '2025-01-15'
+                && $event->entryType === 'manual'
+                && $event->sourceType === 'manual'
+                && $event->sourceId === $response->json('data.id')
+                && bccomp($event->totalDebit, '100.000', 3) === 0
+                && bccomp($event->totalCredit, '100.000', 3) === 0
+        );
+    }
+
+    public function test_manual_journal_entry_post_dispatches_audit_event(): void
+    {
+        $createResponse = $this->actingAs($this->user)->postJson('/api/v1/journal-entries', [
+            'entry_date' => '2025-01-15',
+            'description' => 'Manual posting',
+            'lines' => [
+                [
+                    'account_id' => $this->cashAccount->id,
+                    'debit' => '100.000',
+                    'credit' => '0.000',
+                ],
+                [
+                    'account_id' => $this->revenueAccount->id,
+                    'debit' => '0.000',
+                    'credit' => '100.000',
+                ],
+            ],
+        ]);
+        $createResponse->assertCreated();
+
+        Event::fake([JournalEntryPosted::class]);
+
+        $response = $this->actingAs($this->user)
+            ->postJson("/api/v1/journal-entries/{$createResponse->json('data.id')}/post");
+
+        $response->assertOk()
+            ->assertJsonPath('data.status', 'posted');
+
+        Event::assertDispatched(
+            JournalEntryPosted::class,
+            fn (JournalEntryPosted $event): bool => $event->entryId === $createResponse->json('data.id')
+                && $event->tenantId === $this->tenant->id
+                && $event->companyId === $this->company->id
+                && $event->entryNumber === $createResponse->json('data.entry_number')
+                && bccomp($event->totalDebit, '100.000', 3) === 0
+                && bccomp($event->totalCredit, '100.000', 3) === 0
+        );
     }
 
     public function test_journal_entry_requires_balanced_lines(): void

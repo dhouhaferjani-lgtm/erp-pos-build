@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Compliance\Listeners;
 
+use App\Modules\Accounting\Domain\Events\JournalEntryCreated;
+use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
 use App\Modules\Company\Domain\Events\CompanyUpdated;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Document\Domain\Events\DeliveryNoteConfirmed;
@@ -64,6 +66,36 @@ final class DomainEventSubscriber
     public function __construct(
         private readonly AuditService $auditService,
     ) {}
+
+    /**
+     * Handle JournalEntryCreated events.
+     */
+    public function handleJournalEntryCreated(JournalEntryCreated $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'JournalEntry',
+            aggregateId: $event->journalEntryId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditData(),
+        );
+    }
+
+    /**
+     * Handle JournalEntryPosted events.
+     */
+    public function handleJournalEntryPosted(JournalEntryPosted $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'JournalEntry',
+            aggregateId: $event->entryId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditPayload(),
+        );
+    }
 
     /**
      * Handle InvoicePosted events.
@@ -941,6 +973,10 @@ final class DomainEventSubscriber
     public function subscribe(Dispatcher $events): array
     {
         return [
+            // Accounting events (audit trail)
+            JournalEntryCreated::class => 'handleJournalEntryCreated',
+            JournalEntryPosted::class => 'handleJournalEntryPosted',
+
             // Fiscal events (compliance)
             InvoicePosted::class => 'handleInvoicePosted',
             InvoiceCancelled::class => 'handleInvoiceCancelled',
