@@ -172,6 +172,25 @@ class Partner extends Model
         return PartnerFactory::new();
     }
 
+    protected static function booted(): void
+    {
+        static::saving(static function (Partner $partner): void {
+            self::assertNonNegativeCachedLiabilityMagnitude('credit_balance', $partner->credit_balance);
+            self::assertNonNegativeCachedLiabilityMagnitude('payable_balance', $partner->payable_balance);
+        });
+    }
+
+    private static function assertNonNegativeCachedLiabilityMagnitude(string $attribute, ?string $value): void
+    {
+        if ($value === null || $value === '') {
+            return;
+        }
+
+        if (str_starts_with(ltrim($value), '-')) {
+            throw new \InvalidArgumentException("{$attribute} must be a non-negative magnitude.");
+        }
+    }
+
     /**
      * @return BelongsTo<Tenant, $this>
      */

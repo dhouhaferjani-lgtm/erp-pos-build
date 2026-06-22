@@ -429,7 +429,7 @@ Reviews:
 
 ## M-5 — Partner non-negative balance DB constraints are missing or unverified
 
-status: TODO  
+status: DONE
 severity: MEDIUM  
 source: seed backlog M-2
 
@@ -448,6 +448,29 @@ Test plan:
 - Add tenant migration and PG-only schema/constraint tests.
 
 Scope boundary: Cached partner balance columns only.
+
+Outcome:
+- Added tenant migration `2026_06_22_140000_add_partner_non_negative_balance_constraints.php`.
+- Migration normalizes stale negative cached `credit_balance`/`payable_balance` values to zero, clears `balance_updated_at`, and adds PostgreSQL CHECK constraints `partners_credit_balance_non_negative` and `partners_payable_balance_non_negative`.
+- Added a `Partner` model saving guard that rejects negative cached liability magnitudes before persistence.
+- Extended `PartnerMoneyPrecisionTest` with domain guard assertions, PG constraint metadata assertions, and direct negative-write rejection checks for both constrained columns.
+
+Verification:
+- Red observed first: `php artisan test tests/Feature/Partner/PartnerMoneyPrecisionTest.php --filter '/test_partner_(credit|payable)_balance_rejects_negative_cached_magnitude/'` failed because negative cached liability values saved.
+- Green after implementation: same filter passed 2 tests, 4 assertions.
+- SQLite/default `php artisan test tests/Feature/Partner/PartnerMoneyPrecisionTest.php` passed 3 tests, 4 PostgreSQL-only skips, 8 assertions.
+- Real PostgreSQL verification passed against isolated `autoerp_m5_test`: `DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5433 DB_DATABASE=autoerp_m5_test DB_USERNAME=autoerp DB_PASSWORD=autoerp_secret php artisan test tests/Feature/Partner/PartnerMoneyPrecisionTest.php` passed 7 tests, 22 assertions, including `pg_constraint` metadata and direct CHECK rejection checks.
+- `php artisan test --filter PartnerBalanceServiceTest` passed 18 tests, 35 assertions, with pre-existing PHPUnit 12 doc-comment metadata warnings.
+- `php artisan test tests/Feature/Partner/CreatePartnerTest.php tests/Feature/Partner/UpdatePartnerTest.php tests/Feature/Partner/PartnerBalanceListTest.php` passed 37 tests, 128 assertions.
+- `php artisan test tests/Feature/Partner/RecordCustomerDepositTest.php tests/Feature/Partner/B2BPartnerTest.php tests/Feature/Partner/ListPartnersTest.php` passed 33 tests, 147 assertions.
+- `php artisan test tests/Feature/Accounting/GLIntegrationTest.php tests/Feature/Accounting/POSAccountChargeJournalEntryTest.php` passed 28 tests, 151 assertions.
+- `./vendor/bin/phpstan analyse --level=8 app/Modules/Partner/Domain/Partner.php` passed.
+- `./vendor/bin/pint --test` passed on touched app, migration, and test files.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-m5-partner-non-negative-balance-constraints-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-m5-partner-non-negative-balance-constraints-opus-fallback-review.md`
 
 ## M-6 — Scheduled subledger reconciliation alert job is missing
 
