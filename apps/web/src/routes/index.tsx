@@ -5,6 +5,7 @@ import { RequireAuth } from '../features/auth'
 import { RequirePermission } from '../components/auth'
 import { ModuleGuard } from '../components/guards'
 import { LoadingSpinner } from '../components/atoms/Spinner'
+import { DashboardLanding } from './DashboardLanding'
 
 // Lazy loaded pages
 const LoginPage = lazy(() => import('../features/auth/LoginPage').then((m) => ({ default: m.LoginPage })))
@@ -466,8 +467,8 @@ export function AppRoutes() {
           </RequireAuth>
         }
       >
-        {/* Redirect root to dashboard */}
-        <Route index element={<Navigate to="/dashboard" replace />} />
+        {/* Redirect root: owners → owner reporting dashboard, others → generic (F-3) */}
+        <Route index element={<DashboardLanding />} />
 
         {/* Dashboard */}
         <Route
