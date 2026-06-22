@@ -292,7 +292,7 @@ Reviews:
 
 ## M-2 — Financial mutations lack fiscal/audit event policy
 
-status: TODO  
+status: DONE
 severity: MEDIUM  
 source: `08-event-sourcing-coverage.md`
 
@@ -312,6 +312,26 @@ Test plan:
 - Add fiscal/audit coverage matrix tests.
 
 Scope boundary: Classification and testable enforcement first; implement new fiscal event versions only after policy is explicit.
+
+Outcome:
+- Classified the scoped treasury financial mutation events as `audit-only`: `PaymentRefunded`, `PaymentReversed`, `PaymentAllocated`, and `ReconciliationCompleted`.
+- Added test enforcement that every scoped audit-only mutation event is present in `DomainEventSubscriber::subscribe()`.
+- Confirmed refund/reversal audit subscription already existed.
+- Added `DomainEventSubscriber` handlers and subscription entries for `PaymentAllocated` and `ReconciliationCompleted`, persisting them as `Payment` and `BankReconciliation` aggregate audit rows.
+- Did not introduce fiscal event versions or projectors in this item; full fiscal policy remains M-3.
+
+Verification:
+- Red observed first: `php artisan test --filter 'financial_mutation_event_policy|payment_allocated_event_creates_audit_entry|reconciliation_completed_event_creates_audit_entry' tests/Feature/Compliance/DomainEventSubscriberTest.php` failed because `PaymentAllocated` and `ReconciliationCompleted` were not subscribed and produced no audit rows.
+- Green after implementation: `php artisan test --filter 'financial_mutation_event_policy|payment_allocated_event_creates_audit_entry|reconciliation_completed_event_creates_audit_entry' tests/Feature/Compliance/DomainEventSubscriberTest.php` passed 3 tests, 20 assertions.
+- `php artisan test tests/Feature/Compliance/DomainEventSubscriberTest.php` passed 15 tests, 89 assertions.
+- `php artisan test tests/Feature/Treasury/TreasuryEventsTest.php tests/Feature/Treasury/TreasuryEventDispatchTest.php tests/Feature/Treasury/TreasuryEventsExtendedTest.php` passed 43 tests, 123 assertions.
+- `./vendor/bin/phpstan analyse --level=8 app/Modules/Compliance/Listeners/DomainEventSubscriber.php` passed.
+- `./vendor/bin/pint` passed on touched files.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-m2-financial-mutation-audit-policy-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-m2-financial-mutation-audit-policy-opus-fallback-review.md`
 
 ## M-3 — Fiscal event enum/validator/projector coverage needs a matrix
 

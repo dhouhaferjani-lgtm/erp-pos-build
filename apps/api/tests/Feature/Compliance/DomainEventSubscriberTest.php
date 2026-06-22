@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Compliance\Domain\AuditEvent;
+use App\Modules\Compliance\Listeners\DomainEventSubscriber;
 use App\Modules\Document\Domain\Events\DeliveryNoteConfirmed;
 use App\Modules\Document\Domain\Events\InvoiceCancelled;
 use App\Modules\Document\Domain\Events\InvoicePaid;
@@ -19,8 +20,13 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Events\PaymentAllocated;
 use App\Modules\Treasury\Domain\Events\PaymentRecorded;
+use App\Modules\Treasury\Domain\Events\PaymentRefunded;
+use App\Modules\Treasury\Domain\Events\PaymentReversed;
+use App\Modules\Treasury\Domain\Events\ReconciliationCompleted;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Events\Dispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
@@ -41,6 +47,19 @@ class DomainEventSubscriberTest extends TestCase
     private User $user;
 
     private Partner $partner;
+
+    /**
+     * @return array<class-string, string>
+     */
+    private static function financialMutationEventPolicy(): array
+    {
+        return [
+            PaymentRefunded::class => 'audit-only',
+            PaymentReversed::class => 'audit-only',
+            PaymentAllocated::class => 'audit-only',
+            ReconciliationCompleted::class => 'audit-only',
+        ];
+    }
 
     protected function setUp(): void
     {
@@ -240,6 +259,73 @@ class DomainEventSubscriberTest extends TestCase
         $this->assertEquals('750.00', $auditEvent->payload['amount']);
         $this->assertArrayHasKey('currency', $auditEvent->payload);
         $this->assertEquals('TND', $auditEvent->payload['currency']);
+    }
+
+    public function test_financial_mutation_event_policy_is_explicit_and_subscribed(): void
+    {
+        $subscriptions = app(DomainEventSubscriber::class)->subscribe(app(Dispatcher::class));
+
+        foreach (self::financialMutationEventPolicy() as $eventClass => $policy) {
+            $this->assertSame('audit-only', $policy);
+            $this->assertArrayHasKey($eventClass, $subscriptions, "{$eventClass} must be wired to DomainEventSubscriber");
+        }
+    }
+
+    public function test_payment_allocated_event_creates_audit_entry(): void
+    {
+        $paymentId = Str::uuid()->toString();
+        $documentId = Str::uuid()->toString();
+
+        event(new PaymentAllocated(
+            paymentId: $paymentId,
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            allocationMethod: 'fifo',
+            allocations: [
+                ['document_id' => $documentId, 'amount' => '250.000'],
+            ],
+            totalAllocated: '250.000',
+            excessAmount: '0.000',
+            allocatedAt: now()->toIso8601String(),
+        ));
+
+        $auditEvent = AuditEvent::where('aggregate_id', $paymentId)
+            ->where('event_type', 'payment.allocated')
+            ->first();
+
+        $this->assertNotNull($auditEvent);
+        $this->assertEquals($this->company->id, $auditEvent->company_id);
+        $this->assertEquals('Payment', $auditEvent->aggregate_type);
+        $this->assertSame('fifo', $auditEvent->payload['allocation_method']);
+        $this->assertSame('250.000', $auditEvent->payload['total_allocated']);
+        $this->assertSame(1, $auditEvent->payload['allocation_count']);
+    }
+
+    public function test_reconciliation_completed_event_creates_audit_entry(): void
+    {
+        $reconciliationId = Str::uuid()->toString();
+        $repositoryId = Str::uuid()->toString();
+
+        event(new ReconciliationCompleted(
+            reconciliationId: $reconciliationId,
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            repositoryId: $repositoryId,
+            matchedCount: 3,
+            matchedTotal: '1200.000',
+            completedAt: now()->toIso8601String(),
+        ));
+
+        $auditEvent = AuditEvent::where('aggregate_id', $reconciliationId)
+            ->where('event_type', 'treasury.reconciliation.completed')
+            ->first();
+
+        $this->assertNotNull($auditEvent);
+        $this->assertEquals($this->company->id, $auditEvent->company_id);
+        $this->assertEquals('BankReconciliation', $auditEvent->aggregate_type);
+        $this->assertSame($repositoryId, $auditEvent->payload['repository_id']);
+        $this->assertSame(3, $auditEvent->payload['matched_count']);
+        $this->assertSame('1200.000', $auditEvent->payload['matched_total']);
     }
 
     public function test_journal_entry_created_event_creates_audit_entry(): void

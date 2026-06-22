@@ -40,9 +40,11 @@ use App\Modules\POS\Domain\Events\TerminalSoftwareUpdated;
 use App\Modules\POS\Domain\Events\TerminalTrainingModeChanged;
 use App\Modules\POS\Domain\Events\ZReportGenerated;
 use App\Modules\Treasury\Domain\Events\InvoiceClosedWithTolerance;
+use App\Modules\Treasury\Domain\Events\PaymentAllocated;
 use App\Modules\Treasury\Domain\Events\PaymentRecorded;
 use App\Modules\Treasury\Domain\Events\PaymentRefunded;
 use App\Modules\Treasury\Domain\Events\PaymentReversed;
+use App\Modules\Treasury\Domain\Events\ReconciliationCompleted;
 use App\Shared\Domain\Events\DomainEvent;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Support\Facades\Auth;
@@ -223,6 +225,42 @@ final class DomainEventSubscriber
                 'payment_method_id' => $event->paymentMethodId,
                 'recorded_at' => $event->recordedAt,
             ]
+        );
+    }
+
+    /**
+     * Handle PaymentAllocated events.
+     *
+     * Audit-only policy: allocation changes financial settlement state but is
+     * not currently a fiscal-event projection.
+     */
+    public function handlePaymentAllocated(PaymentAllocated $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Payment',
+            aggregateId: $event->paymentId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditData(),
+        );
+    }
+
+    /**
+     * Handle ReconciliationCompleted events.
+     *
+     * Audit-only policy: reconciliation closes bank matching state but does
+     * not author fiscal receipt/ledger payloads.
+     */
+    public function handleReconciliationCompleted(ReconciliationCompleted $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'BankReconciliation',
+            aggregateId: $event->reconciliationId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditPayload(),
         );
     }
 
@@ -986,6 +1024,8 @@ final class DomainEventSubscriber
             PaymentRecorded::class => 'handlePaymentRecorded',
             PaymentRefunded::class => 'handlePaymentRefunded',
             PaymentReversed::class => 'handlePaymentReversed',
+            PaymentAllocated::class => 'handlePaymentAllocated',
+            ReconciliationCompleted::class => 'handleReconciliationCompleted',
             DocumentConverted::class => 'handleDocumentConverted',
 
             // Company events (compliance)
