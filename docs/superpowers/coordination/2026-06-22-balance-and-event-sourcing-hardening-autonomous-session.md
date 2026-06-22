@@ -34,6 +34,8 @@ Loop until all confirmed items are DONE or DISCARDED. Then run a **completeness 
 
 **Review independence:** Codex and Opus must each receive the diff + the item's acceptance criteria and be told to *refute*, not bless. Convergent findings = high signal. Resolve disagreements by re-reading the code, not by averaging opinions.
 
+**Review-runtime note (this session runs autonomously from inside the Codex app):** if an Opus reviewer is NOT reachable from the runtime, do not skip the second opinion — perform a **second, independent adversarial pass with fresh context and a different lens** (e.g. round 1 = correctness/sign/precision; round 2 = data-migration safety/idempotency/concurrency/event-immutability), each told to refute. Save both review files. Mark any item that did not get a true cross-model (Opus) review as `opus-review: PENDING` in the Progress Log so the owner can spot-check it later. Never let the absence of Opus silently collapse the dual-review gate into a single rubber-stamp.
+
 ---
 
 ## 2. Hard guardrails (NON-NEGOTIABLE — from CLAUDE.md + project memory)
