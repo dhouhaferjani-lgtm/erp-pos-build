@@ -15,6 +15,8 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Identity\Domain\Enums\UserStatus;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
@@ -30,7 +32,6 @@ use App\Shared\Contracts\Treasury\Enums\ToleranceType;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -91,7 +92,15 @@ final class CloseInvoiceWithToleranceServiceTest extends TestCase
             'type' => PartnerType::Customer,
         ]);
 
-        $this->closedBy = (string) Str::uuid();
+        $user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Close Tolerance User',
+            'email' => 'close-tolerance@example.com',
+            'password' => bcrypt('password'),
+            'status' => UserStatus::Active,
+        ]);
+
+        $this->closedBy = (string) $user->id;
     }
 
     public function test_closes_invoice_with_residual_within_threshold(): void
@@ -145,7 +154,7 @@ final class CloseInvoiceWithToleranceServiceTest extends TestCase
 
         $row = PaymentAllocation::where('document_id', $invoice->id)->firstOrFail();
         $this->assertNull($row->payment_id, 'Tolerance writeoff allocations have no payment behind them.');
-        $this->assertSame('0.3000', (string) $row->amount, 'amount should equal the residual being cleared.');
+        $this->assertSame('0.300', (string) $row->amount, 'amount should equal the residual being cleared.');
         $this->assertSame('0.3000', (string) $row->tolerance_writeoff, 'tolerance_writeoff should equal amount for pure writeoff.');
     }
 

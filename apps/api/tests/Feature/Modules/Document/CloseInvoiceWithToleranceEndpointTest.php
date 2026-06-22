@@ -6,6 +6,7 @@ namespace Tests\Feature\Modules\Document;
 
 use App\Models\Country;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
@@ -201,6 +202,10 @@ final class CloseInvoiceWithToleranceEndpointTest extends TestCase
         $this->assertSame(0, bccomp($totalDebit, '0.3000', 4), 'Debit total should equal write-off amount.');
         $this->assertSame(0, bccomp($totalCredit, '0.3000', 4), 'Credit total should equal write-off amount.');
         $this->assertSame(0, bccomp($totalDebit, $totalCredit, 4), 'Journal entry must balance.');
+        $this->assertSame(JournalEntryStatus::Posted, $entry->status);
+        $this->assertSame($this->authorizedUser->id, $entry->posted_by);
+        $this->assertNotNull($entry->posted_at);
+        $this->assertNotNull($entry->fiscal_hash);
     }
 
     public function test_returns_422_when_balance_over_tolerance(): void

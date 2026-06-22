@@ -164,7 +164,9 @@ class PaymentToleranceService implements PaymentToleranceCheckerContract
         string $amount,
         string $type,
         \DateTimeInterface $date,
-        ?string $description = null
+        ?string $description = null,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
     ): void {
         $this->glService->createPaymentToleranceJournalEntry(
             companyId: $companyId,
@@ -173,7 +175,9 @@ class PaymentToleranceService implements PaymentToleranceCheckerContract
             amount: $amount,
             type: $type,
             date: $date,
-            description: $description
+            description: $description,
+            postedByUserId: $postedByUserId,
+            currencyCode: $currencyCode,
         );
     }
 

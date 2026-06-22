@@ -655,9 +655,16 @@ final class GeneralLedgerService
         string $amount,
         string $type, // 'underpayment' or 'overpayment'
         \DateTimeInterface $date,
-        ?string $description = null
+        ?string $description = null,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
     ): JournalEntry {
         $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
+        $user = null;
+        if ($postedByUserId !== null) {
+            /** @var User $user */
+            $user = User::query()->findOrFail($postedByUserId);
+        }
 
         $writeoffPurpose = $type === 'underpayment'
             ? SystemAccountPurpose::PaymentToleranceExpense
@@ -732,6 +739,10 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
+
+        if ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
 
         return $entry;
     }

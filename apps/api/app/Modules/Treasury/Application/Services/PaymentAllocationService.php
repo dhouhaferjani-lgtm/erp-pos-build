@@ -212,7 +212,9 @@ class PaymentAllocationService
                         amount: $toleranceAmount,
                         type: $toleranceType,
                         date: $payment->payment_date,
-                        description: "Payment tolerance write-off for payment {$payment->reference}"
+                        description: "Payment tolerance write-off for payment {$payment->reference}",
+                        postedByUserId: $actor instanceof User ? $actor->id : null,
+                        currencyCode: $payment->currency,
                     );
                 }
 

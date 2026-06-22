@@ -6,11 +6,18 @@ namespace Tests\Unit\Treasury;
 
 use App\Models\Country;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\MembershipRole;
+use App\Modules\Company\Domain\Enums\MembershipStatus;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Identity\Domain\Enums\UserStatus;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
@@ -34,6 +41,8 @@ final class PaymentAllocationServiceTolerancePersistenceTest extends TestCase
     private Partner $partner;
 
     private PaymentMethod $paymentMethod;
+
+    private User $user;
 
     protected function setUp(): void
     {
@@ -80,6 +89,21 @@ final class PaymentAllocationServiceTolerancePersistenceTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Cash',
             'code' => 'CASH',
+        ]);
+
+        $this->user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Allocation User',
+            'email' => 'allocation@example.com',
+            'password' => bcrypt('password'),
+            'status' => UserStatus::Active,
+        ]);
+
+        UserCompanyMembership::create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'role' => MembershipRole::Accountant,
+            'status' => MembershipStatus::Active,
         ]);
 
         // GL accounts required by PaymentToleranceService::applyTolerance
@@ -139,6 +163,8 @@ final class PaymentAllocationServiceTolerancePersistenceTest extends TestCase
 
         $service = $this->app->make(PaymentAllocationService::class);
 
+        $this->actingAs($this->user);
+
         $result = $service->applyAllocation(
             paymentId: $payment->id,
             allocationMethod: AllocationMethod::FIFO,
@@ -153,6 +179,15 @@ final class PaymentAllocationServiceTolerancePersistenceTest extends TestCase
         // tolerance_writeoff column is decimal(15,4) — assert non-null and equal to 0.05.
         $this->assertNotNull($allocation->tolerance_writeoff);
         $this->assertSame(0, bccomp((string) $allocation->tolerance_writeoff, '0.0500', 4));
+
+        $entry = JournalEntry::query()
+            ->where('source_type', 'payment_tolerance')
+            ->where('source_id', $invoice->id)
+            ->firstOrFail();
+        $this->assertSame(JournalEntryStatus::Posted, $entry->status);
+        $this->assertSame($this->user->id, $entry->posted_by);
+        $this->assertNotNull($entry->posted_at);
+        $this->assertNotNull($entry->fiscal_hash);
     }
 
     private function createInvoice(string $number, string $total): Document
