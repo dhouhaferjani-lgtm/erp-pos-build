@@ -52,10 +52,10 @@ public ?string $assigned_technician_id,
 public string $workOrderNumber,
 ```
 
-69 of 73 existing tagged DTOs already do this. The four exceptions
-(Identity module: `UserData`, `AuthUserData`, `LoginData`,
-`LoginResponseData`) are in scope for the separate Phase C migration
-and will be fixed with a compat-shim release.
+Most existing tagged DTOs already do this. The remaining Identity DTO
+exceptions (`UserData`, `AuthUserData`, `LoginResponseData`) are in scope
+for the separate Phase C migration and will be fixed with a compat-shim
+release.
 
 ### 3. `#[DataCollectionOf]` for every collection property
 

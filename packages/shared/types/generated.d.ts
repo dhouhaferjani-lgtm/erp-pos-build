@@ -701,15 +701,6 @@ roles: Array<any>;
 permissions: Array<any>;
 emailVerified: boolean;
 };
-export type LoginData = {
-email: string;
-password: string;
-deviceName: string | null;
-deviceId: string | null;
-platform: string | null;
-platformVersion: string | null;
-appVersion: string | null;
-};
 export type LoginResponseData = {
 user: App.Modules.Identity.Application.DTOs.AuthUserData;
 token: string;
@@ -1984,19 +1975,6 @@ captured_at: string;
 captured_by_user_id: string | null;
 captured_by_display_name: string | null;
 reference: string | null;
-};
-export type PartNeedData = {
-work_order_id: string;
-work_order_line_id: string;
-product_id: string | null;
-display_name: string;
-quantity: string;
-unit: string;
-vehicle_id: string;
-vehicle_display_name: string;
-preferred_brand: string | null;
-urgency: string | null;
-notes: string | null;
 };
 export type WorkOrderAssignmentData = {
 id: string;

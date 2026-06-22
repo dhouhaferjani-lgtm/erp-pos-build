@@ -791,7 +791,7 @@ Reviews:
 
 ## L-4 — Orphaned DTO/service cleanup
 
-status: TODO  
+status: DONE
 severity: LOW  
 source: `09-unwired-precision-status.md`
 
@@ -810,6 +810,27 @@ Test plan:
 - Static reference test or architecture scan.
 
 Scope boundary: No behavior changes unless a type is wired.
+
+Outcome:
+- Confirmed no active runtime consumers for `InvoiceConsolidationService`, `ExpenseData`, `LoginData`, or `PartNeedData`.
+- Removed the four orphaned PHP definitions.
+- Refreshed `packages/shared/types/generated.d.ts`, removing the stale `LoginData` and `PartNeedData` exports.
+- Updated current architecture/conventions/POS docs that still named the removed DTO/service. Historical audit and plan docs were left as history.
+- Added `OrphanedTypesCleanupTest` to pin this cleanup.
+
+Verification:
+- Red observed first: `php artisan test tests/Architecture/OrphanedTypesCleanupTest.php` failed on all four still-present orphan files.
+- Green after cleanup: `php artisan test tests/Architecture/OrphanedTypesCleanupTest.php` passed 4 tests, 4 assertions.
+- `CACHE_STORE=array SESSION_DRIVER=array QUEUE_CONNECTION=sync php artisan typescript:transform` passed and transformed 349 PHP types.
+- `pnpm --filter @autoerp/web typecheck` passed.
+- `./vendor/bin/phpstan analyse tests/Architecture/OrphanedTypesCleanupTest.php --level=8` passed.
+- `./vendor/bin/pint --test tests/Architecture/OrphanedTypesCleanupTest.php` passed after formatting.
+- Active reference scan passed for `LoginData`, `PartNeedData`, `ExpenseData`, and `InvoiceConsolidationService` across active app/shared/current-doc paths.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-l4-orphaned-types-cleanup-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-l4-orphaned-types-cleanup-opus-fallback-review.md`; `opus-review: PENDING`.
 
 ## DISCARDED / Stale Or Deferred Claims
 

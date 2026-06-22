@@ -55,7 +55,7 @@ Module/
 - `UserStatus` (pending_verification, active, suspended)
 
 **DTOs**:
-- `AuthUserData`, `LoginData`, `LoginResponseData`, `UserData`
+- `AuthUserData`, `LoginResponseData`, `UserData`
 
 **Controllers**:
 - `AuthController` - Login, logout, token management
