@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
 use App\Modules\Accounting\Listeners\InvoicePostedListener;
 use App\Modules\Accounting\Listeners\PurchaseOrderConfirmedListener;
+use App\Modules\Accounting\Listeners\RefreshPartnerBalanceOnJournalEntryPosted;
 use App\Modules\Company\Domain\Events\CompanyCreated;
 use App\Modules\Company\Listeners\CreateFiscalYearsForNewCompany;
 use App\Modules\Compliance\Listeners\EnsureFraudSettingsOnCompanyCreated;
@@ -55,6 +57,9 @@ class EventServiceProvider extends ServiceProvider
             CreateFiscalYearsForNewCompany::class,
             RegisterCompanyWithGrowthAdvisor::class,
             EnsureFraudSettingsOnCompanyCreated::class,
+        ],
+        JournalEntryPosted::class => [
+            RefreshPartnerBalanceOnJournalEntryPosted::class,
         ],
         InvoicePosted::class => [
             InvoicePostedListener::class,

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
-use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
@@ -590,7 +589,7 @@ class GLIntegrationTest extends TestCase
         $this->assertEquals('500.000', $cashLine->credit);
     }
 
-    public function test_invoice_entry_refreshes_partner_balance(): void
+    public function test_posting_partner_journal_entry_refreshes_partner_balance(): void
     {
         $invoice = $this->createInvoice([
             'status' => DocumentStatus::Confirmed,
@@ -605,15 +604,25 @@ class GLIntegrationTest extends TestCase
         // Post the entry so it affects balance calculations
         $service->postEntry($journalEntry, $this->user);
 
-        // Balance is refreshed after posting - need to manually refresh again
-        // because postEntry doesn't call refreshPartnerBalance
-        $balanceService = app(PartnerBalanceService::class);
-        $balanceService->refreshPartnerBalance($this->company->id, $this->partner->id);
-
-        // Partner balance should now reflect posted entry
         $this->partner->refresh();
         $this->assertEquals('119.000', $this->partner->receivable_balance);
         $this->assertNotNull($this->partner->balance_updated_at);
+    }
+
+    public function test_draft_invoice_entry_creation_does_not_refresh_partner_balance(): void
+    {
+        $invoice = $this->createInvoice([
+            'status' => DocumentStatus::Confirmed,
+            'subtotal' => '100.00',
+            'tax_amount' => '19.00',
+            'total' => '119.00',
+        ]);
+
+        app(GeneralLedgerService::class)->createFromInvoice($invoice, $this->user);
+
+        $this->partner->refresh();
+        $this->assertEquals('0.000', $this->partner->receivable_balance);
+        $this->assertNull($this->partner->balance_updated_at);
     }
 
     private function createPostedReceivable(string $amount): JournalEntry

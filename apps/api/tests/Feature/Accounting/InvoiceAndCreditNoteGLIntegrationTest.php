@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Application\Services\AccountingService;
+use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
@@ -32,6 +33,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -638,7 +640,7 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         // We catch the RuntimeException that propagates from the listener.
         try {
             $this->postingService->post($invoice);
-        } catch (\RuntimeException $e) {
+        } catch (RuntimeException $e) {
             // Expected: listener fails due to missing AR account
             $this->assertStringContainsString('customer_receivable', $e->getMessage());
         }
@@ -651,6 +653,62 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
             $invoice->status,
             'Document should be Posted - fiscal chain was sealed before GL listener ran'
         );
+    }
+
+    public function test_invoice_gl_creation_rolls_back_when_partner_balance_refresh_fails(): void
+    {
+        $invoice = $this->createConfirmedInvoice([
+            [
+                'product' => $this->product1,
+                'quantity' => '1',
+                'unit_price' => '100.00',
+                'tax_rate' => '19.00',
+                'description' => 'Rollback invoice',
+            ],
+        ]);
+
+        $this->bindThrowingPartnerBalanceService();
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('partner balance refresh failed');
+
+        try {
+            app(AccountingService::class)->createInvoiceGLEntries($invoice);
+        } finally {
+            $this->assertDatabaseMissing('journal_entries', [
+                'source_id' => $invoice->id,
+                'source_type' => 'Document',
+            ]);
+            $this->assertDatabaseCount('journal_lines', 0);
+        }
+    }
+
+    public function test_credit_note_gl_creation_rolls_back_when_partner_balance_refresh_fails(): void
+    {
+        $creditNote = $this->createConfirmedCreditNote([
+            [
+                'product' => $this->product1,
+                'quantity' => '1',
+                'unit_price' => '100.00',
+                'tax_rate' => '19.00',
+                'description' => 'Rollback credit note',
+            ],
+        ]);
+
+        $this->bindThrowingPartnerBalanceService();
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('partner balance refresh failed');
+
+        try {
+            app(AccountingService::class)->createCreditNoteGLEntries($creditNote);
+        } finally {
+            $this->assertDatabaseMissing('journal_entries', [
+                'source_id' => $creditNote->id,
+                'source_type' => 'Document',
+            ]);
+            $this->assertDatabaseCount('journal_lines', 0);
+        }
     }
 
     /**
@@ -767,6 +825,17 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         }
 
         return $invoice->fresh(['lines', 'lines.product']);
+    }
+
+    private function bindThrowingPartnerBalanceService(): void
+    {
+        $this->app->instance(PartnerBalanceService::class, new class extends PartnerBalanceService
+        {
+            public function refreshPartnerBalance(string $companyId, string $partnerId): void
+            {
+                throw new RuntimeException('partner balance refresh failed');
+            }
+        });
     }
 
     /**

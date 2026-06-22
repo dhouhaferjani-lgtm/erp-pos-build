@@ -377,7 +377,7 @@ Reviews:
 
 ## M-4 — Balance refresh is synchronous and often outside posting transaction
 
-status: TODO  
+status: DONE
 severity: MEDIUM  
 source: seed backlog M-1 + `06-draft-post-lifecycle.md`
 
@@ -398,6 +398,34 @@ Test plan:
 - Add event/listener tests around `JournalEntryPosted`.
 
 Scope boundary: Address after H-2/H-4 clarify posting semantics.
+
+Outcome:
+- Added `RefreshPartnerBalanceOnJournalEntryPosted` and registered it for `JournalEntryPosted`.
+- `GeneralLedgerService::postEntry()` now drives partner cache refresh through the posted event for every posted entry with partner-tagged lines.
+- Removed direct partner balance refresh from draft-only GL builders so draft invoice, credit-note, generic payment, supplier advance reversal, tolerance, and customer-advance clearing creation does not mutate cached balances.
+- Existing immediately-posted customer advance, customer payment-received, supplier invoice, and supplier payment helpers now rely on the posted event instead of a second direct refresh.
+- Production invoice/credit-note GL writers in `AccountingService` still create already-posted entries directly, but now wrap journal header/line/hash/audit-event/balance-refresh work in one transaction. Balance-refresh failure rolls back the posted journal rows.
+- Kept POS account charge direct refresh because it is already transactionally equivalent and covered by rollback-on-refresh-failure tests.
+
+Verification:
+- Red observed first: `php artisan test tests/Feature/Accounting/GLIntegrationTest.php --filter test_posting_partner_journal_entry_refreshes_partner_balance` failed with cached receivable still `0.000`.
+- Red observed first: `php artisan test tests/Feature/Accounting/InvoiceAndCreditNoteGLIntegrationTest.php --filter test_invoice_gl_creation_rolls_back_when_partner_balance_refresh_fails` failed because the posted journal entry remained after refresh failure.
+- Green after implementation: M-4 GL regression filter passed 2 tests, 4 assertions.
+- Green after implementation: invoice/credit-note rollback filter passed 2 tests, 8 assertions.
+- `php artisan test tests/Feature/Accounting/GLIntegrationTest.php` passed 19 tests, 79 assertions.
+- `php artisan test tests/Feature/Accounting/InvoiceAndCreditNoteGLIntegrationTest.php tests/Feature/Accounting/InvoiceGLIntegrationTest.php tests/Feature/Accounting/CreditNoteGLIntegrationTest.php` passed 24 tests, 157 assertions.
+- `php artisan test tests/Feature/Accounting/DocumentGLIntegrationTest.php tests/Feature/Document/DocumentPostingServiceTest.php` passed 22 tests, 96 assertions.
+- `php artisan test tests/Feature/Accounting/POSAccountChargeJournalEntryTest.php` passed 9 tests, 72 assertions.
+- `php artisan test tests/Feature/Fiscal/TreasuryAccountChargeBridgeTest.php` passed 11 tests, 47 assertions.
+- `php artisan test tests/Feature/Treasury/PaymentTest.php` passed 16 tests, 49 assertions.
+- `php artisan test --filter PartnerBalanceServiceTest` passed 18 tests, 35 assertions, with pre-existing PHPUnit 12 doc-comment metadata warnings.
+- `./vendor/bin/phpstan analyse --level=8 app/Modules/Accounting/Listeners/RefreshPartnerBalanceOnJournalEntryPosted.php app/Modules/Accounting/Domain/Services/GeneralLedgerService.php app/Modules/Accounting/Application/Services/AccountingService.php app/Providers/EventServiceProvider.php` passed.
+- `./vendor/bin/pint --test` passed on touched app/test files.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-m4-posted-event-balance-refresh-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-m4-posted-event-balance-refresh-opus-fallback-review.md`
 
 ## M-5 — Partner non-negative balance DB constraints are missing or unverified
 

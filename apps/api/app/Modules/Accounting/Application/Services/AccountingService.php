@@ -16,6 +16,7 @@ use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Application service for accounting operations.
@@ -103,109 +104,111 @@ final class AccountingService implements AccountingServiceInterface
      */
     public function createInvoiceGLEntries(Document $invoice): string
     {
-        $entryNumber = $this->sourceEntryNumber('INV', $invoice);
+        return DB::transaction(function () use ($invoice): string {
+            $entryNumber = $this->sourceEntryNumber('INV', $invoice);
 
-        // Get hash chain data BEFORE creating entry
-        $previousHash = JournalEntry::getLastChainHash($invoice->company_id);
-        $chainSequence = JournalEntry::getNextChainSequence($invoice->company_id);
+            // Get hash chain data BEFORE creating entry
+            $previousHash = JournalEntry::getLastChainHash($invoice->company_id);
+            $chainSequence = JournalEntry::getNextChainSequence($invoice->company_id);
 
-        $entry = JournalEntry::create([
-            'tenant_id' => $invoice->tenant_id,
-            'company_id' => $invoice->company_id,
-            'entry_number' => $entryNumber,
-            'entry_date' => $invoice->document_date,
-            'description' => 'Invoice '.$invoice->document_number,
-            'status' => JournalEntryStatus::Posted,
-            'source_type' => 'Document',
-            'source_id' => $invoice->id,
-            'chain_sequence' => $chainSequence,
-            'previous_hash' => $previousHash,
-        ]);
+            $entry = JournalEntry::create([
+                'tenant_id' => $invoice->tenant_id,
+                'company_id' => $invoice->company_id,
+                'entry_number' => $entryNumber,
+                'entry_date' => $invoice->document_date,
+                'description' => 'Invoice '.$invoice->document_number,
+                'status' => JournalEntryStatus::Posted,
+                'source_type' => 'Document',
+                'source_id' => $invoice->id,
+                'chain_sequence' => $chainSequence,
+                'previous_hash' => $previousHash,
+            ]);
 
-        // Find required accounts via SystemAccountPurpose
-        $arAccount = $this->findAccountByPurpose(
-            $invoice->company_id,
-            SystemAccountPurpose::CustomerReceivable
-        );
-        $productRevenueAccount = $this->findAccountByPurpose(
-            $invoice->company_id,
-            SystemAccountPurpose::ProductRevenue
-        );
-        $serviceRevenueAccount = $this->findAccountByPurpose(
-            $invoice->company_id,
-            SystemAccountPurpose::ServiceRevenue
-        );
-        $vatCollectedAccount = $this->findAccountByPurpose(
-            $invoice->company_id,
-            SystemAccountPurpose::VatCollected
-        );
-
-        // 1. Create AR debit line (full invoice total)
-        JournalLine::create([
-            'journal_entry_id' => $entry->id,
-            'account_id' => $arAccount->id,
-            'partner_id' => $invoice->partner_id,
-            'debit' => $invoice->total,
-            'credit' => '0',
-            'description' => 'AR from Invoice '.$invoice->document_number,
-        ]);
-
-        // 2. Create Revenue credit lines (one per invoice line)
-        foreach ($invoice->lines as $line) {
-            // Determine revenue account based on product/service type
-            $revenueAccount = $this->getRevenueAccountForLine(
-                $line,
-                $productRevenueAccount,
-                $serviceRevenueAccount
+            // Find required accounts via SystemAccountPurpose
+            $arAccount = $this->findAccountByPurpose(
+                $invoice->company_id,
+                SystemAccountPurpose::CustomerReceivable
+            );
+            $productRevenueAccount = $this->findAccountByPurpose(
+                $invoice->company_id,
+                SystemAccountPurpose::ProductRevenue
+            );
+            $serviceRevenueAccount = $this->findAccountByPurpose(
+                $invoice->company_id,
+                SystemAccountPurpose::ServiceRevenue
+            );
+            $vatCollectedAccount = $this->findAccountByPurpose(
+                $invoice->company_id,
+                SystemAccountPurpose::VatCollected
             );
 
+            // 1. Create AR debit line (full invoice total)
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
-                'account_id' => $revenueAccount->id,
-                'debit' => '0',
-                'credit' => $line->line_total,
-                'description' => 'Revenue from Invoice '.$invoice->document_number.' - Line '.$line->line_number,
+                'account_id' => $arAccount->id,
+                'partner_id' => $invoice->partner_id,
+                'debit' => $invoice->total,
+                'credit' => '0',
+                'description' => 'AR from Invoice '.$invoice->document_number,
             ]);
-        }
 
-        // 3. Create VAT credit lines (grouped by tax rate)
-        $taxByRate = $this->groupTaxByRate($invoice->lines);
-        foreach ($taxByRate as $rate => $amount) {
-            if (bccomp($amount, '0', $this->scale()) > 0) {
+            // 2. Create Revenue credit lines (one per invoice line)
+            foreach ($invoice->lines as $line) {
+                // Determine revenue account based on product/service type
+                $revenueAccount = $this->getRevenueAccountForLine(
+                    $line,
+                    $productRevenueAccount,
+                    $serviceRevenueAccount
+                );
+
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
-                    'account_id' => $vatCollectedAccount->id,
+                    'account_id' => $revenueAccount->id,
                     'debit' => '0',
-                    'credit' => $amount,
-                    'description' => 'VAT '.$rate.'% from Invoice '.$invoice->document_number,
+                    'credit' => $line->line_total,
+                    'description' => 'Revenue from Invoice '.$invoice->document_number.' - Line '.$line->line_number,
                 ]);
             }
-        }
 
-        // 4. Calculate and set fiscal_hash AFTER lines are created
-        $freshEntry = $entry->fresh(['lines']);
-        if ($freshEntry === null) {
-            throw new \RuntimeException('Failed to reload journal entry after creation');
-        }
+            // 3. Create VAT credit lines (grouped by tax rate)
+            $taxByRate = $this->groupTaxByRate($invoice->lines);
+            foreach ($taxByRate as $rate => $amount) {
+                if (bccomp($amount, '0', $this->scale()) > 0) {
+                    JournalLine::create([
+                        'journal_entry_id' => $entry->id,
+                        'account_id' => $vatCollectedAccount->id,
+                        'debit' => '0',
+                        'credit' => $amount,
+                        'description' => 'VAT '.$rate.'% from Invoice '.$invoice->document_number,
+                    ]);
+                }
+            }
 
-        $hash = $this->hashService->calculateHash($freshEntry, $previousHash);
-        $entry->update(['fiscal_hash' => $hash]);
+            // 4. Calculate and set fiscal_hash AFTER lines are created
+            $freshEntry = $entry->fresh(['lines']);
+            if ($freshEntry === null) {
+                throw new \RuntimeException('Failed to reload journal entry after creation');
+            }
 
-        // Dispatch JournalEntryCreated event for audit trail
-        $entry = $entry->fresh(['lines']);
-        if ($entry === null) {
-            throw new \RuntimeException('Failed to reload journal entry after hash update');
-        }
+            $hash = $this->hashService->calculateHash($freshEntry, $previousHash);
+            $entry->update(['fiscal_hash' => $hash]);
 
-        $this->dispatchJournalEntryCreatedEvent($entry, 'invoice');
+            // Dispatch JournalEntryCreated event for audit trail
+            $entry = $entry->fresh(['lines']);
+            if ($entry === null) {
+                throw new \RuntimeException('Failed to reload journal entry after hash update');
+            }
 
-        // Refresh cached partner balance after GL entry creation
-        $this->partnerBalanceService->refreshPartnerBalance(
-            $invoice->company_id,
-            $invoice->partner_id
-        );
+            $this->dispatchJournalEntryCreatedEvent($entry, 'invoice');
 
-        return $entry->id;
+            // Refresh cached partner balance after GL entry creation
+            $this->partnerBalanceService->refreshPartnerBalance(
+                $invoice->company_id,
+                $invoice->partner_id
+            );
+
+            return $entry->id;
+        });
     }
 
     /**
@@ -220,109 +223,111 @@ final class AccountingService implements AccountingServiceInterface
      */
     public function createCreditNoteGLEntries(Document $creditNote): string
     {
-        $entryNumber = $this->sourceEntryNumber('CN', $creditNote);
+        return DB::transaction(function () use ($creditNote): string {
+            $entryNumber = $this->sourceEntryNumber('CN', $creditNote);
 
-        // Get hash chain data BEFORE creating entry
-        $previousHash = JournalEntry::getLastChainHash($creditNote->company_id);
-        $chainSequence = JournalEntry::getNextChainSequence($creditNote->company_id);
+            // Get hash chain data BEFORE creating entry
+            $previousHash = JournalEntry::getLastChainHash($creditNote->company_id);
+            $chainSequence = JournalEntry::getNextChainSequence($creditNote->company_id);
 
-        $entry = JournalEntry::create([
-            'tenant_id' => $creditNote->tenant_id,
-            'company_id' => $creditNote->company_id,
-            'entry_number' => $entryNumber,
-            'entry_date' => $creditNote->document_date,
-            'description' => 'Credit Note '.$creditNote->document_number,
-            'status' => JournalEntryStatus::Posted,
-            'source_type' => 'Document',
-            'source_id' => $creditNote->id,
-            'chain_sequence' => $chainSequence,
-            'previous_hash' => $previousHash,
-        ]);
+            $entry = JournalEntry::create([
+                'tenant_id' => $creditNote->tenant_id,
+                'company_id' => $creditNote->company_id,
+                'entry_number' => $entryNumber,
+                'entry_date' => $creditNote->document_date,
+                'description' => 'Credit Note '.$creditNote->document_number,
+                'status' => JournalEntryStatus::Posted,
+                'source_type' => 'Document',
+                'source_id' => $creditNote->id,
+                'chain_sequence' => $chainSequence,
+                'previous_hash' => $previousHash,
+            ]);
 
-        // Find required accounts via SystemAccountPurpose
-        $arAccount = $this->findAccountByPurpose(
-            $creditNote->company_id,
-            SystemAccountPurpose::CustomerReceivable
-        );
-        $productRevenueAccount = $this->findAccountByPurpose(
-            $creditNote->company_id,
-            SystemAccountPurpose::ProductRevenue
-        );
-        $serviceRevenueAccount = $this->findAccountByPurpose(
-            $creditNote->company_id,
-            SystemAccountPurpose::ServiceRevenue
-        );
-        $vatCollectedAccount = $this->findAccountByPurpose(
-            $creditNote->company_id,
-            SystemAccountPurpose::VatCollected
-        );
-
-        // 1. Create AR credit line (full credit note total) - REVERSED from invoice
-        JournalLine::create([
-            'journal_entry_id' => $entry->id,
-            'account_id' => $arAccount->id,
-            'partner_id' => $creditNote->partner_id,
-            'debit' => '0',
-            'credit' => $creditNote->total,
-            'description' => 'AR reversal from Credit Note '.$creditNote->document_number,
-        ]);
-
-        // 2. Create Revenue debit lines (one per credit note line) - REVERSED from invoice
-        foreach ($creditNote->lines as $line) {
-            // Determine revenue account based on product/service type
-            $revenueAccount = $this->getRevenueAccountForLine(
-                $line,
-                $productRevenueAccount,
-                $serviceRevenueAccount
+            // Find required accounts via SystemAccountPurpose
+            $arAccount = $this->findAccountByPurpose(
+                $creditNote->company_id,
+                SystemAccountPurpose::CustomerReceivable
+            );
+            $productRevenueAccount = $this->findAccountByPurpose(
+                $creditNote->company_id,
+                SystemAccountPurpose::ProductRevenue
+            );
+            $serviceRevenueAccount = $this->findAccountByPurpose(
+                $creditNote->company_id,
+                SystemAccountPurpose::ServiceRevenue
+            );
+            $vatCollectedAccount = $this->findAccountByPurpose(
+                $creditNote->company_id,
+                SystemAccountPurpose::VatCollected
             );
 
+            // 1. Create AR credit line (full credit note total) - REVERSED from invoice
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
-                'account_id' => $revenueAccount->id,
-                'debit' => $line->line_total,
-                'credit' => '0',
-                'description' => 'Revenue reversal from Credit Note '.$creditNote->document_number.' - Line '.$line->line_number,
+                'account_id' => $arAccount->id,
+                'partner_id' => $creditNote->partner_id,
+                'debit' => '0',
+                'credit' => $creditNote->total,
+                'description' => 'AR reversal from Credit Note '.$creditNote->document_number,
             ]);
-        }
 
-        // 3. Create VAT debit lines (grouped by tax rate) - REVERSED from invoice
-        $taxByRate = $this->groupTaxByRate($creditNote->lines);
-        foreach ($taxByRate as $rate => $amount) {
-            if (bccomp($amount, '0', $this->scale()) > 0) {
+            // 2. Create Revenue debit lines (one per credit note line) - REVERSED from invoice
+            foreach ($creditNote->lines as $line) {
+                // Determine revenue account based on product/service type
+                $revenueAccount = $this->getRevenueAccountForLine(
+                    $line,
+                    $productRevenueAccount,
+                    $serviceRevenueAccount
+                );
+
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
-                    'account_id' => $vatCollectedAccount->id,
-                    'debit' => $amount,
+                    'account_id' => $revenueAccount->id,
+                    'debit' => $line->line_total,
                     'credit' => '0',
-                    'description' => 'VAT reversal '.$rate.'% from Credit Note '.$creditNote->document_number,
+                    'description' => 'Revenue reversal from Credit Note '.$creditNote->document_number.' - Line '.$line->line_number,
                 ]);
             }
-        }
 
-        // 4. Calculate and set fiscal_hash AFTER lines are created
-        $freshEntry = $entry->fresh(['lines']);
-        if ($freshEntry === null) {
-            throw new \RuntimeException('Failed to reload journal entry after creation');
-        }
+            // 3. Create VAT debit lines (grouped by tax rate) - REVERSED from invoice
+            $taxByRate = $this->groupTaxByRate($creditNote->lines);
+            foreach ($taxByRate as $rate => $amount) {
+                if (bccomp($amount, '0', $this->scale()) > 0) {
+                    JournalLine::create([
+                        'journal_entry_id' => $entry->id,
+                        'account_id' => $vatCollectedAccount->id,
+                        'debit' => $amount,
+                        'credit' => '0',
+                        'description' => 'VAT reversal '.$rate.'% from Credit Note '.$creditNote->document_number,
+                    ]);
+                }
+            }
 
-        $hash = $this->hashService->calculateHash($freshEntry, $previousHash);
-        $entry->update(['fiscal_hash' => $hash]);
+            // 4. Calculate and set fiscal_hash AFTER lines are created
+            $freshEntry = $entry->fresh(['lines']);
+            if ($freshEntry === null) {
+                throw new \RuntimeException('Failed to reload journal entry after creation');
+            }
 
-        // Dispatch JournalEntryCreated event for audit trail
-        $entry = $entry->fresh(['lines']);
-        if ($entry === null) {
-            throw new \RuntimeException('Failed to reload journal entry after hash update');
-        }
+            $hash = $this->hashService->calculateHash($freshEntry, $previousHash);
+            $entry->update(['fiscal_hash' => $hash]);
 
-        $this->dispatchJournalEntryCreatedEvent($entry, 'credit_note');
+            // Dispatch JournalEntryCreated event for audit trail
+            $entry = $entry->fresh(['lines']);
+            if ($entry === null) {
+                throw new \RuntimeException('Failed to reload journal entry after hash update');
+            }
 
-        // Refresh cached partner balance after GL entry creation
-        $this->partnerBalanceService->refreshPartnerBalance(
-            $creditNote->company_id,
-            $creditNote->partner_id
-        );
+            $this->dispatchJournalEntryCreatedEvent($entry, 'credit_note');
 
-        return $entry->id;
+            // Refresh cached partner balance after GL entry creation
+            $this->partnerBalanceService->refreshPartnerBalance(
+                $creditNote->company_id,
+                $creditNote->partner_id
+            );
+
+            return $entry->id;
+        });
     }
 
     /**

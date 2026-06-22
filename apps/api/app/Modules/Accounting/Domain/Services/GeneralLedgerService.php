@@ -56,34 +56,31 @@ final class GeneralLedgerService
         return $currency;
     }
 
-    private function postEntryAndRefreshPartnerBalance(
+    private function postEntryAndDispatchPostedEvent(
         JournalEntry $entry,
         User $user,
         string $companyId,
-        string $partnerId,
         ?string $currencyCode,
     ): void {
         $this->postEntry($entry, $user, $currencyCode ?? $this->currencyCodeForCompany($companyId));
         $entry->refresh()->load('lines');
-        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
     }
 
-    private function postEntryAndRefreshPartnerBalanceAfterCommit(
+    private function postEntryAndDispatchPostedEventAfterCommit(
         JournalEntry $entry,
         User $user,
         string $companyId,
-        string $partnerId,
         ?string $currencyCode,
     ): void {
         if (DB::transactionLevel() > 0) {
-            DB::afterCommit(function () use ($entry, $user, $companyId, $partnerId, $currencyCode): void {
-                $this->postEntryAndRefreshPartnerBalance($entry, $user, $companyId, $partnerId, $currencyCode);
+            DB::afterCommit(function () use ($entry, $user, $companyId, $currencyCode): void {
+                $this->postEntryAndDispatchPostedEvent($entry, $user, $companyId, $currencyCode);
             });
 
             return;
         }
 
-        $this->postEntryAndRefreshPartnerBalance($entry, $user, $companyId, $partnerId, $currencyCode);
+        $this->postEntryAndDispatchPostedEvent($entry, $user, $companyId, $currencyCode);
     }
 
     /**
@@ -153,9 +150,6 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
-
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($invoice->company_id, $invoice->partner_id);
 
         return $entry;
     }
@@ -229,9 +223,6 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($creditNote->company_id, $creditNote->partner_id);
-
         return $entry;
     }
 
@@ -286,11 +277,6 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
-
-        // Refresh partner cached balance after GL write
-        if ($partnerId !== null) {
-            $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
-        }
 
         return $entry;
     }
@@ -357,7 +343,7 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        $this->postEntryAndRefreshPartnerBalanceAfterCommit($entry, $user, $companyId, $partnerId, $currencyCode);
+        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
 
         return $entry;
     }
@@ -423,9 +409,6 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
-
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
 
         return $entry;
     }
@@ -511,7 +494,7 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        $this->postEntryAndRefreshPartnerBalanceAfterCommit($entry, $user, $companyId, $partnerId, $currencyCode);
+        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
 
         return $entry;
     }
@@ -577,7 +560,7 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        $this->postEntryAndRefreshPartnerBalanceAfterCommit($entry, $user, $companyId, $partnerId, $currencyCode);
+        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
 
         return $entry;
     }
@@ -648,7 +631,7 @@ final class GeneralLedgerService
         });
 
         if ($user !== null) {
-            $this->postEntryAndRefreshPartnerBalanceAfterCommit($entry, $user, $companyId, $partnerId, $currencyCode);
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
         }
 
         return $entry;
@@ -750,9 +733,6 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
-
         return $entry;
     }
 
@@ -820,9 +800,6 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
-
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
 
         return $entry;
     }
