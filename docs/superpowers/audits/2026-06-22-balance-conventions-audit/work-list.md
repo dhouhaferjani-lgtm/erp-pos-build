@@ -113,7 +113,7 @@ Outcome so far:
 
 ## H-4 — `GeneralLedgerService::postEntry()` does not reject unbalanced entries
 
-status: TODO  
+status: DONE
 severity: HIGH  
 source: seed backlog re-verified in `06-draft-post-lifecycle.md`
 
@@ -134,6 +134,26 @@ Test plan:
 - Run targeted accounting tests.
 
 Scope boundary: `postEntry()` validation only.
+
+Outcome:
+- `GeneralLedgerService::postEntry()` now loads journal lines and compares total debit/credit at the selected currency scale before any status, hash, posted timestamp, or actor mutation.
+- Unbalanced draft entries throw `InvalidArgumentException` with a covered `Cannot post unbalanced journal entry` message and do not dispatch `JournalEntryPosted`.
+- Existing valid posting paths remain green.
+- The posting hash test fixture was corrected from an internally inconsistent `total=120.00`/line total `100.00` setup to a balanced invoice so it continues to exercise successful posting under the new guard.
+
+Verification:
+- Red observed first: `php artisan test --filter test_posting_unbalanced_journal_entry_is_rejected_without_mutation` failed because the unbalanced draft posted.
+- Green after implementation: `php artisan test --filter test_posting_unbalanced_journal_entry_is_rejected_without_mutation` passed 1 test, 7 assertions.
+- `php artisan test --filter test_posting_journal_entry_adds_hash` passed 1 test, 4 assertions.
+- `php artisan test tests/Feature/Accounting/GLIntegrationTest.php tests/Feature/Accounting/DocumentGLIntegrationTest.php tests/Feature/Accounting/GeneralLedgerHashServiceTest.php` passed 40 tests, 160 assertions.
+- `php artisan test --filter PartnerBalanceServiceTest` passed 18 tests, 35 assertions, with pre-existing PHPUnit 12 doc-comment metadata warnings.
+- `./vendor/bin/phpstan analyse --level=8 app/Modules/Accounting/Domain/Services/GeneralLedgerService.php` passed.
+- `./vendor/bin/pint --test app/Modules/Accounting/Domain/Services/GeneralLedgerService.php tests/Feature/Accounting/GLIntegrationTest.php` passed.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-h4-post-entry-balance-guard-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-h4-post-entry-balance-guard-opus-fallback-review.md`
 
 ## H-5 — Treasury allocation precision mismatch
 

@@ -318,7 +318,7 @@ class GLIntegrationTest extends TestCase
     {
         $invoice = $this->createInvoice([
             'status' => DocumentStatus::Confirmed,
-            'total' => '120.00',
+            'total' => '100.00',
         ]);
 
         $service = app(GeneralLedgerService::class);
@@ -331,6 +331,54 @@ class GLIntegrationTest extends TestCase
         $this->assertNotNull($journalEntry->fiscal_hash);
         $this->assertNotNull($journalEntry->posted_at);
         $this->assertEquals($this->user->id, $journalEntry->posted_by);
+    }
+
+    public function test_posting_unbalanced_journal_entry_is_rejected_without_mutation(): void
+    {
+        Event::fake([JournalEntryPosted::class]);
+
+        $journalEntry = JournalEntry::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'entry_number' => 'JE-UNBALANCED-001',
+            'entry_date' => now(),
+            'description' => 'Unbalanced draft',
+            'status' => JournalEntryStatus::Draft,
+        ]);
+
+        JournalLine::create([
+            'journal_entry_id' => $journalEntry->id,
+            'account_id' => $this->cashAccount->id,
+            'debit' => '100.00',
+            'credit' => '0',
+            'description' => 'Debit side',
+            'line_order' => 0,
+        ]);
+
+        JournalLine::create([
+            'journal_entry_id' => $journalEntry->id,
+            'account_id' => $this->revenueAccount->id,
+            'debit' => '0',
+            'credit' => '90.00',
+            'description' => 'Short credit side',
+            'line_order' => 1,
+        ]);
+
+        try {
+            app(GeneralLedgerService::class)->postEntry($journalEntry, $this->user);
+            $this->fail('Unbalanced journal entries must not be posted.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertStringContainsString('Cannot post unbalanced journal entry', $exception->getMessage());
+        }
+
+        $journalEntry->refresh();
+
+        $this->assertEquals(JournalEntryStatus::Draft, $journalEntry->status);
+        $this->assertNull($journalEntry->fiscal_hash);
+        $this->assertNull($journalEntry->previous_hash);
+        $this->assertNull($journalEntry->posted_at);
+        $this->assertNull($journalEntry->posted_by);
+        Event::assertNotDispatched(JournalEntryPosted::class);
     }
 
     public function test_customer_advance_creates_correct_journal_entry(): void

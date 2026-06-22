@@ -1144,6 +1144,27 @@ final class GeneralLedgerService
             throw new \InvalidArgumentException('Only draft entries can be posted');
         }
 
+        $entry->load('lines');
+        /** @var numeric-string $totalDebit */
+        $totalDebit = '0';
+        /** @var numeric-string $totalCredit */
+        $totalCredit = '0';
+
+        $scale = $currencyCode !== null
+            ? $this->scaleResolver->getScale($currencyCode)
+            : $this->scale();
+
+        foreach ($entry->lines as $line) {
+            $totalDebit = bcadd($totalDebit, $line->debit, $scale);
+            $totalCredit = bcadd($totalCredit, $line->credit, $scale);
+        }
+
+        if (bccomp($totalDebit, $totalCredit, $scale) !== 0) {
+            throw new \InvalidArgumentException(
+                "Cannot post unbalanced journal entry: total debit {$totalDebit} does not equal total credit {$totalCredit}."
+            );
+        }
+
         $previousHash = $this->getPreviousHash($entry->company_id);
         $hash = $this->calculateHash($entry, $previousHash);
 
@@ -1156,20 +1177,6 @@ final class GeneralLedgerService
             'posted_at' => $postedAt,
             'posted_by' => $user->id,
         ]);
-
-        // Calculate total debits and credits from lines for the event
-        $entry->load('lines');
-        $totalDebit = '0';
-        $totalCredit = '0';
-
-        $scale = $currencyCode !== null
-            ? $this->scaleResolver->getScale($currencyCode)
-            : $this->scale();
-
-        foreach ($entry->lines as $line) {
-            $totalDebit = bcadd($totalDebit, $line->debit, $scale);
-            $totalCredit = bcadd($totalCredit, $line->credit, $scale);
-        }
 
         event(new JournalEntryPosted(
             entryId: $entry->id,
