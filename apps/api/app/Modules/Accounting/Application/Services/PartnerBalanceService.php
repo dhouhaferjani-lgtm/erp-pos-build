@@ -271,15 +271,23 @@ class PartnerBalanceService
         $transactions = $query->get();
         /** @var numeric-string $runningBalance */
         $runningBalance = '0';
+        $isCreditNormalPurpose = in_array($purpose, [
+            SystemAccountPurpose::CustomerAdvance,
+            SystemAccountPurpose::SupplierPayable,
+        ], true);
 
-        return $transactions->map(function (object $tx) use (&$runningBalance): object {
+        return $transactions->map(function (object $tx) use (&$runningBalance, $isCreditNormalPurpose): object {
             /** @var numeric-string $credit */
             $credit = (string) ($tx->credit ?? '0');
             /** @var numeric-string $debit */
             $debit = (string) ($tx->debit ?? '0');
+            /** @var numeric-string $increase */
+            $increase = $isCreditNormalPurpose ? $credit : $debit;
+            /** @var numeric-string $decrease */
+            $decrease = $isCreditNormalPurpose ? $debit : $credit;
             $runningBalance = bcadd(
-                bcsub($runningBalance, $credit, 4),
-                $debit,
+                bcsub($runningBalance, $decrease, 4),
+                $increase,
                 4
             );
             $tx->running_balance = $runningBalance;

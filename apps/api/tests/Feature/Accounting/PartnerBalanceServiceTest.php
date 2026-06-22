@@ -253,6 +253,41 @@ class PartnerBalanceServiceTest extends TestCase
         $this->assertSame('600.0000', $last->running_balance);
     }
 
+    public function test_customer_advance_statement_uses_credit_normal_running_balance(): void
+    {
+        $this->createCustomerAdvanceEntry('50.00');
+        $this->clearCustomerAdvanceEntry('20.00');
+
+        $statement = $this->service->getPartnerStatement(
+            $this->company->id,
+            $this->customer->id,
+            SystemAccountPurpose::CustomerAdvance
+        );
+
+        $this->assertCount(2, $statement);
+        $this->assertSame('50.0000', $statement[0]->running_balance);
+        $this->assertSame('30.0000', $statement[1]->running_balance);
+    }
+
+    public function test_supplier_payable_statement_uses_credit_normal_running_balance(): void
+    {
+        $supplier = Partner::factory()->supplier()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        $this->createSupplierPayableEntry($supplier->id, '80.00');
+
+        $statement = $this->service->getPartnerStatement(
+            $this->company->id,
+            $supplier->id,
+            SystemAccountPurpose::SupplierPayable
+        );
+
+        $this->assertCount(1, $statement);
+        $this->assertSame('80.0000', $statement[0]->running_balance);
+    }
+
     public function test_partner_statement_filters_by_date(): void
     {
         // Create entries on different dates

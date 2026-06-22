@@ -713,7 +713,7 @@ Reviews:
 
 ## L-2 — Statement running balance sign for liability statements
 
-status: TODO  
+status: DONE
 severity: LOW  
 source: seed backlog L-3
 
@@ -729,6 +729,22 @@ Test plan:
 - Add statement tests for `SupplierPayable` and `CustomerAdvance`.
 
 Scope boundary: Statement presentation only.
+
+Outcome:
+- `getPartnerStatement()` now keeps debit-normal running balances for receivable/general statements and uses credit-normal running balances for `CustomerAdvance` and `SupplierPayable`.
+- Added statement regression tests for customer advance credit/debit movement and supplier payable credit movement.
+
+Verification:
+- Red observed first: `php artisan test --filter 'statement_uses_credit_normal'` failed because the customer advance and supplier payable statement balances were negative (`-50.0000`, `-80.0000`).
+- Green after implementation: `php artisan test --filter 'statement_uses_credit_normal'` passed 2 tests, 5 assertions, with pre-existing PHPUnit 12 doc-comment metadata warnings.
+- `php artisan test --filter PartnerBalanceServiceTest` passed 20 tests, 40 assertions, with pre-existing PHPUnit 12 doc-comment metadata warnings.
+- `./vendor/bin/phpstan analyse app/Modules/Accounting/Application/Services/PartnerBalanceService.php --level=8` passed.
+- `./vendor/bin/pint --test app/Modules/Accounting/Application/Services/PartnerBalanceService.php tests/Feature/Accounting/PartnerBalanceServiceTest.php` passed.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-l2-liability-statement-running-balance-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-l2-liability-statement-running-balance-opus-fallback-review.md`; `opus-review: PENDING`.
 
 ## L-3 — Centralize net-balance formula
 
