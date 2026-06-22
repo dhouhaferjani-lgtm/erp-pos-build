@@ -558,7 +558,9 @@ final class GeneralLedgerService
         string $amount,
         string $paymentMethodAccountId,
         \DateTimeInterface $date,
-        ?string $description = null
+        ?string $description = null,
+        ?User $user = null,
+        ?string $currencyCode = null
     ): JournalEntry {
         $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
 
@@ -607,8 +609,11 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
+        if ($user !== null) {
+            $this->postEntry($entry, $user, $currencyCode);
+            $entry->refresh()->load('lines');
+            $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
+        }
 
         return $entry;
     }

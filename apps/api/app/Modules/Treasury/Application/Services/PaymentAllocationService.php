@@ -267,7 +267,9 @@ class PaymentAllocationService
                         amount: $allocatedToInvoices,
                         paymentMethodAccountId: $payment->repository->account_id,
                         date: $payment->payment_date,
-                        description: "Customer payment - {$payment->reference}"
+                        description: "Customer payment - {$payment->reference}",
+                        user: $actor instanceof User ? $actor : null,
+                        currencyCode: $payment->currency
                     );
 
                     $journalEntryId = $journalEntry->id;

@@ -37,7 +37,7 @@ Outcome:
 
 ## H-2 — Non-POS draft journal entries have no production posting cycle
 
-status: TODO  
+status: IN PROGRESS
 severity: HIGH  
 source: seed backlog + `06-draft-post-lifecycle.md`
 
@@ -60,6 +60,15 @@ Test plan:
 - Run the corresponding feature test plus `PartnerBalanceServiceTest`.
 
 Scope boundary: Process one flow at a time; do not rewrite the entire accounting lifecycle in one patch.
+
+Outcome so far:
+- H-2.1 DONE — production customer payment-received paths now post when a real actor is supplied and refresh balances only after posting.
+- `GeneralLedgerService::createPaymentReceivedJournalEntry()` preserves the existing positional description parameter, accepts optional `user` and `currencyCode`, posts with explicit currency when supplied, and leaves legacy no-user callers draft-only for later H-2 slices.
+- `PaymentAllocationService` and `PaymentController` pass the actor and payment currency for live customer payment-received GL entries.
+- `PaymentController::storeMultiple()` now creates posted customer-payment GL entries for manual and automatic excess invoice allocations when the payment repository has an accounting account.
+- Verification: `php artisan test tests/Feature/Accounting/GLIntegrationTest.php tests/Feature/Treasury/MultiPaymentTest.php tests/Feature/Treasury/PaymentTest.php tests/Feature/Treasury/TreasuryEventsTest.php`; `php artisan test --filter PartnerBalanceServiceTest`; `./vendor/bin/phpstan analyse --level=8 app/Modules/Accounting/Domain/Services/GeneralLedgerService.php app/Modules/Treasury/Application/Services/PaymentAllocationService.php app/Modules/Treasury/Presentation/Controllers/PaymentController.php`; `./vendor/bin/pint --test app/Modules/Accounting/Domain/Services/GeneralLedgerService.php app/Modules/Treasury/Application/Services/PaymentAllocationService.php app/Modules/Treasury/Presentation/Controllers/PaymentController.php tests/Feature/Accounting/GLIntegrationTest.php tests/Feature/Treasury/MultiPaymentTest.php`.
+- Reviews saved in `docs/superpowers/reviews/2026-06-22-h2-payment-received-posting-codex-review.md` and `docs/superpowers/reviews/2026-06-22-h2-payment-received-posting-opus-fallback-review.md`; true Opus review remains pending.
+- Remaining H-2 draft-producing flows still TODO: customer advances, supplier advances, payment tolerance, customer-advance clearing, and other non-POS draft creators.
 
 ## H-3 — Supplier invoice/payment AP production path is unwired
 

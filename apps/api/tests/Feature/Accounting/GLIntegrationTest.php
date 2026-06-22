@@ -11,6 +11,7 @@ use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
@@ -233,6 +234,34 @@ class GLIntegrationTest extends TestCase
         $this->assertEquals('120.000', $receivableLine->credit);
     }
 
+    public function test_payment_received_posts_and_refreshes_balance_when_user_is_supplied(): void
+    {
+        $this->createPostedReceivable('300.00');
+
+        $service = app(GeneralLedgerService::class);
+
+        $journalEntry = $service->createPaymentReceivedJournalEntry(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            paymentId: (string) Str::uuid(),
+            amount: '120.00',
+            paymentMethodAccountId: $this->cashAccount->id,
+            date: now(),
+            description: 'Customer payment received',
+            user: $this->user,
+            currencyCode: $this->company->currency
+        );
+
+        $journalEntry->refresh();
+        $this->partner->refresh();
+
+        $this->assertEquals(JournalEntryStatus::Posted, $journalEntry->status);
+        $this->assertNotNull($journalEntry->fiscal_hash);
+        $this->assertEquals($this->user->id, $journalEntry->posted_by);
+        $this->assertEquals('180.0000', $this->partner->receivable_balance);
+        $this->assertNotNull($this->partner->balance_updated_at);
+    }
+
     public function test_journal_entry_has_draft_status_initially(): void
     {
         $invoice = $this->createInvoice([
@@ -413,6 +442,44 @@ class GLIntegrationTest extends TestCase
         $this->partner->refresh();
         $this->assertEquals('119.0000', $this->partner->receivable_balance);
         $this->assertNotNull($this->partner->balance_updated_at);
+    }
+
+    private function createPostedReceivable(string $amount): JournalEntry
+    {
+        $entry = JournalEntry::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'entry_number' => 'JE-OPEN-001',
+            'entry_date' => now(),
+            'description' => 'Opening receivable',
+            'status' => JournalEntryStatus::Posted,
+            'source_type' => 'test_receivable',
+            'source_id' => (string) Str::uuid(),
+            'posted_at' => now(),
+            'posted_by' => $this->user->id,
+        ]);
+
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $this->receivableAccount->id,
+            'partner_id' => $this->partner->id,
+            'debit' => $amount,
+            'credit' => '0',
+            'description' => 'Opening receivable',
+            'line_order' => 0,
+        ]);
+
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $this->revenueAccount->id,
+            'partner_id' => null,
+            'debit' => '0',
+            'credit' => $amount,
+            'description' => 'Opening revenue',
+            'line_order' => 1,
+        ]);
+
+        return $entry->load('lines');
     }
 
     private function createInvoice(array $attributes): Document

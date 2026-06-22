@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Treasury;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -626,6 +631,72 @@ class MultiPaymentTest extends TestCase
         $this->assertEquals($this->cashMethod->id, $payments[1]->payment_method_id);
         $this->assertEquals($this->cashRegister->id, $payments[0]->repository_id);
         $this->assertEquals($safebox->id, $payments[1]->repository_id);
+    }
+
+    public function test_multi_payment_manual_excess_allocation_posts_customer_payment_gl(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $bankAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::Bank);
+        $this->cashRegister->update(['account_id' => $bankAccount->id]);
+        $this->bankAccount->update(['account_id' => $bankAccount->id]);
+
+        $secondInvoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::Invoice,
+            'document_number' => 'INV-2025-0003',
+            'partner_id' => $this->customer->id,
+            'document_date' => now(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => '166.67',
+            'tax_amount' => '33.33',
+            'total' => '200.00',
+            'balance_due' => '200.00',
+            'currency' => 'EUR',
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->customer->id,
+            'document_id' => $this->invoice->id,
+            'currency' => 'EUR',
+            'payment_date' => now()->toDateString(),
+            'payments' => [
+                [
+                    'payment_method_id' => $this->cashMethod->id,
+                    'repository_id' => $this->cashRegister->id,
+                    'amount' => '1190.00',
+                ],
+                [
+                    'payment_method_id' => $this->cardMethod->id,
+                    'repository_id' => $this->bankAccount->id,
+                    'amount' => '200.00',
+                ],
+            ],
+            'excess_allocation_method' => 'manual',
+            'excess_allocations' => [
+                [
+                    'document_id' => $secondInvoice->id,
+                    'amount' => '200.00',
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(201);
+
+        $excessPaymentId = $response->json('data.payments.1.id');
+        $this->assertIsString($excessPaymentId);
+
+        $journalEntry = JournalEntry::query()
+            ->where('source_type', 'customer_payment')
+            ->where('source_id', $excessPaymentId)
+            ->first();
+
+        $this->assertNotNull($journalEntry);
+        $this->assertEquals(JournalEntryStatus::Posted, $journalEntry->status);
+        $this->assertNotNull($journalEntry->fiscal_hash);
+
+        $secondInvoice->refresh();
+        $this->assertEquals('0.000', $secondInvoice->balance_due);
     }
 
     public function test_apply_deposit_only_completed_deposits(): void

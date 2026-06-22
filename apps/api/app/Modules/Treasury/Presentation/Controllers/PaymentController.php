@@ -391,7 +391,9 @@ class PaymentController extends Controller
                         amount: $totalAllocatedForGL,
                         paymentMethodAccountId: $repository->account_id,
                         date: new \DateTimeImmutable($validated['payment_date']),
-                        description: "Customer payment - {$payment->reference}"
+                        description: "Customer payment - {$payment->reference}",
+                        user: $user,
+                        currencyCode: $payment->currency
                     );
 
                     // Link journal entry to payment
@@ -663,7 +665,9 @@ class PaymentController extends Controller
                                 amount: $allocationForThisPayment,
                                 paymentMethodAccountId: $repository->account_id,
                                 date: new \DateTimeImmutable($validated['payment_date']),
-                                description: "Customer payment - {$payment->reference}"
+                                description: "Customer payment - {$payment->reference}",
+                                user: $user,
+                                currencyCode: $payment->currency
                             );
                             $payment->journal_entry_id = $journalEntry->id;
                             $payment->save();
@@ -754,6 +758,8 @@ class PaymentController extends Controller
                             'amount' => $allocAmount,
                         ]);
 
+                        $this->createPostedExcessAllocationJournalEntry($lastPayment, $allocAmount, $user);
+
                         // Update target document balance
                         /** @var numeric-string $targetBalance */
                         $targetBalance = $targetDoc->balance_due ?? $targetDoc->total;
@@ -817,6 +823,8 @@ class PaymentController extends Controller
                             'document_id' => $targetDoc->id,
                             'amount' => $allocAmount,
                         ]);
+
+                        $this->createPostedExcessAllocationJournalEntry($lastPayment, $allocAmount, $user);
 
                         // Update target document balance
                         /** @var numeric-string $targetBalance */
@@ -906,6 +914,40 @@ class PaymentController extends Controller
                 'excess_handling' => $result['excess_handling'],
             ],
         ], 201);
+    }
+
+    private function createPostedExcessAllocationJournalEntry(Payment $payment, string $amount, User $user): void
+    {
+        if ($payment->repository_id === null) {
+            return;
+        }
+
+        /** @var PaymentRepository|null $repository */
+        $repository = PaymentRepository::query()
+            ->where('tenant_id', $payment->tenant_id)
+            ->where('company_id', $payment->company_id)
+            ->find($payment->repository_id);
+
+        if ($repository === null || $repository->account_id === null) {
+            return;
+        }
+
+        $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
+            companyId: $payment->company_id,
+            partnerId: $payment->partner_id,
+            paymentId: $payment->id,
+            amount: $amount,
+            paymentMethodAccountId: $repository->account_id,
+            date: $payment->payment_date,
+            description: "Customer payment - {$payment->reference}",
+            user: $user,
+            currencyCode: $payment->currency
+        );
+
+        if ($payment->journal_entry_id === null) {
+            $payment->journal_entry_id = $journalEntry->id;
+            $payment->save();
+        }
     }
 
     /**
