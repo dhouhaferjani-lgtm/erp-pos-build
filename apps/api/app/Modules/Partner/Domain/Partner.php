@@ -292,18 +292,50 @@ class Partner extends Model
      */
     public function getNetBalanceAttribute(): string
     {
-        $customerPosition = bcsub($this->receivable_balance ?? '0', $this->credit_balance ?? '0', 3);
+        return self::netBalance(
+            $this->type,
+            $this->receivable_balance,
+            $this->credit_balance,
+            $this->payable_balance
+        );
+    }
 
-        if ($this->type === PartnerType::Both) {
-            return bcsub($customerPosition, $this->payable_balance ?? '0', 3);
+    /**
+     * @param  numeric-string|null  $receivableBalance
+     * @param  numeric-string|null  $creditBalance
+     * @param  numeric-string|null  $payableBalance
+     * @return numeric-string
+     */
+    public static function netBalance(
+        PartnerType $type,
+        ?string $receivableBalance,
+        ?string $creditBalance,
+        ?string $payableBalance
+    ): string {
+        $customerPosition = bcsub($receivableBalance ?? '0', $creditBalance ?? '0', 3);
+
+        if ($type === PartnerType::Both) {
+            return bcsub($customerPosition, $payableBalance ?? '0', 3);
         }
 
-        if ($this->type === PartnerType::Customer) {
+        if ($type === PartnerType::Customer) {
             return $customerPosition;
         }
 
-        // Supplier: what we owe them
-        return $this->payable_balance ?? '0';
+        return $payableBalance ?? '0';
+    }
+
+    public static function netBalanceSqlExpression(): string
+    {
+        return sprintf(
+            "CASE
+                WHEN type = '%s' THEN payable_balance
+                WHEN type = '%s' THEN receivable_balance - credit_balance - payable_balance
+                ELSE receivable_balance - credit_balance
+            END",
+            PartnerType::Supplier->value,
+            PartnerType::Both->value
+        );
     }
 
     /**

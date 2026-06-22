@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, Users, Mail, Phone, FileText, Receipt, Upload } from 'lucide-react'
 import { api } from '../../lib/api'
+import { bccomp } from '../../lib/decimal'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { formatCurrency } from '../../lib/formatCurrency'
 import { SearchInput } from '../../components/molecules/SearchInput'
@@ -30,6 +31,7 @@ interface Partner {
   receivable_balance: string | null
   credit_balance: string | null
   payable_balance: string | null
+  net_balance: string | null
   created_at: string
 }
 
@@ -304,12 +306,14 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
             <tbody className="divide-y divide-gray-200 bg-white">
               {partners.map((partner) => {
                 const balance = getNetBalance(partner, isCustomerView)
+                const balanceComparison = bccomp(balance, '0')
                 const balanceColor =
-                  balance > 0
+                  balanceComparison > 0
                     ? 'text-red-600 font-medium'
-                    : balance < 0
+                    : balanceComparison < 0
                       ? 'text-green-600 font-medium'
                       : 'text-gray-400'
+                const displayBalance = balance.startsWith('-') ? balance.slice(1) : balance
 
                 return (
                   <tr key={partner.id} className="hover:bg-gray-50">
@@ -350,8 +354,8 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
                       {partner.tax_id ?? '-'}
                     </td>
                     <td className={`whitespace-nowrap px-4 py-4 text-sm text-end ${balanceColor}`}>
-                      {balance !== 0
-                        ? formatCurrency(Math.abs(balance), currency, i18n.language)
+                      {balanceComparison !== 0
+                        ? formatCurrency(displayBalance, currency, i18n.language)
                         : '-'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-4">

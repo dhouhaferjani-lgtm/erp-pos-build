@@ -99,6 +99,7 @@ class PartnerBalanceListTest extends TestCase
                         'receivable_balance',
                         'credit_balance',
                         'payable_balance',
+                        'net_balance',
                     ],
                 ],
                 'meta' => ['current_page', 'last_page', 'per_page', 'total', 'from', 'to'],
@@ -106,7 +107,8 @@ class PartnerBalanceListTest extends TestCase
             ])
             ->assertJsonPath('data.0.receivable_balance', '1500.000')
             ->assertJsonPath('data.0.credit_balance', '200.000')
-            ->assertJsonPath('data.0.payable_balance', '0.000');
+            ->assertJsonPath('data.0.payable_balance', '0.000')
+            ->assertJsonPath('data.0.net_balance', '1300.000');
     }
 
     public function test_sort_by_receivable_balance(): void

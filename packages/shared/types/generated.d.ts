@@ -1222,6 +1222,7 @@ notes: string | null;
 receivable_balance: string | null;
 credit_balance: string | null;
 payable_balance: string | null;
+net_balance: string;
 street_address: string | null;
 street_address_2: string | null;
 city: string | null;

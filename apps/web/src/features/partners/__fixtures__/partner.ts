@@ -25,6 +25,7 @@ export interface PartnerListRow {
   receivable_balance?: string | null
   credit_balance?: string | null
   payable_balance?: string | null
+  net_balance?: string | null
   created_at: string
 }
 
@@ -88,6 +89,7 @@ export function makePartnerListRow(
     receivable_balance: null,
     credit_balance: null,
     payable_balance: null,
+    net_balance: null,
     created_at: '2025-01-01T00:00:00Z',
     ...overrides,
   }

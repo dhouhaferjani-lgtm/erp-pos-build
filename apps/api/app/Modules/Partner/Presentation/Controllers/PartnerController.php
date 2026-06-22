@@ -93,14 +93,7 @@ class PartnerController extends Controller
 
         $query = Partner::query()
             ->where('company_id', $companyId)
-            ->selectRaw("
-                *,
-                CASE
-                    WHEN type = 'supplier' THEN payable_balance
-                    WHEN type = 'both' THEN receivable_balance - credit_balance - payable_balance
-                    ELSE receivable_balance - credit_balance
-                END AS net_balance
-            ");
+            ->selectRaw('*, '.Partner::netBalanceSqlExpression().' AS net_balance');
 
         $this->applyFilters($query, $filters, $filterConfig);
         $this->applySorting($query, $sortParams);

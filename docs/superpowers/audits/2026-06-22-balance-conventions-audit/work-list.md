@@ -748,7 +748,7 @@ Reviews:
 
 ## L-3 — Centralize net-balance formula
 
-status: TODO  
+status: DONE
 severity: LOW  
 source: seed backlog L-4
 
@@ -766,6 +766,28 @@ Test plan:
 - Add regression tests around API DTO values and frontend rendering.
 
 Scope boundary: Formula reuse only.
+
+Outcome:
+- Moved backend net-balance calculation into `Partner::netBalance()` and the list SQL expression into `Partner::netBalanceSqlExpression()`.
+- `PartnerController` now consumes the model-provided SQL expression for sortable list rows instead of embedding the CASE expression inline.
+- `PartnerData` and generated shared TypeScript types now expose `net_balance`.
+- Frontend partner list display prefers API `net_balance` and keeps fallback arithmetic on decimal-string helpers.
+
+Verification:
+- Red observed first: `php artisan test tests/Feature/Partner/PartnerBalanceListTest.php --filter test_balance_fields_appear_in_list_response` failed because list rows did not include `net_balance`.
+- Red observed first: `pnpm --filter @autoerp/web test -- src/features/partners/partners.test.tsx -t "uses API net balance"` failed because the frontend helper recomputed `650` instead of using API `700.000`.
+- Green after implementation: `php artisan test tests/Feature/Partner/PartnerBalanceListTest.php tests/Unit/Partner/PartnerEntityTest.php` passed 22 tests, 80 assertions.
+- `pnpm --filter @autoerp/web test -- src/features/partners/partners.test.tsx` passed 43 tests, with pre-existing localstorage and `/partners/1` route warnings.
+- `pnpm --filter @autoerp/web typecheck` passed.
+- `pnpm --filter @autoerp/web exec eslint src/features/partners/PartnerListPage.tsx src/features/partners/partnerNetBalance.ts src/features/partners/partners.test.tsx src/features/partners/__fixtures__/partner.ts` passed with 0 errors and pre-existing warnings.
+- `CACHE_STORE=array SESSION_DRIVER=array QUEUE_CONNECTION=sync php artisan typescript:transform` passed and transformed 351 PHP types.
+- `./vendor/bin/phpstan analyse app/Modules/Partner/Domain/Partner.php app/Modules/Partner/Presentation/Controllers/PartnerController.php app/Modules/Partner/Application/DTOs/PartnerData.php --level=8` passed.
+- `./vendor/bin/pint --test app/Modules/Partner/Domain/Partner.php app/Modules/Partner/Presentation/Controllers/PartnerController.php app/Modules/Partner/Application/DTOs/PartnerData.php tests/Feature/Partner/PartnerBalanceListTest.php` passed.
+- `git diff --check` passed.
+
+Reviews:
+- `docs/superpowers/reviews/2026-06-22-l3-centralize-net-balance-formula-codex-review.md`
+- `docs/superpowers/reviews/2026-06-22-l3-centralize-net-balance-formula-opus-fallback-review.md`; `opus-review: PENDING`.
 
 ## L-4 — Orphaned DTO/service cleanup
 

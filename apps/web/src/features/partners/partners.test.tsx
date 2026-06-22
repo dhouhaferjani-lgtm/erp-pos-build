@@ -165,7 +165,17 @@ describe('Partner Management', () => {
         receivable_balance: '1000.000',
         credit_balance: '100.000',
         payable_balance: '250.000',
-      }, true)).toBe(650)
+      }, true)).toBe('650.000')
+    })
+
+    it('uses API net balance when provided', () => {
+      expect(getNetBalance({
+        type: 'both',
+        receivable_balance: '1000.000',
+        credit_balance: '100.000',
+        payable_balance: '250.000',
+        net_balance: '700.000',
+      }, true)).toBe('700.000')
     })
 
     it('renders the partner list page with title', () => {
