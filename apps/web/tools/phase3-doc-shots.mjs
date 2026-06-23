@@ -7,7 +7,10 @@ import { mkdir } from 'node:fs/promises';
 
 const BASE = process.env.AUDIT_BASE || 'http://localhost:8089';
 const EMAIL = process.env.AUDIT_EMAIL || 'owner@cafe-tunis.tn';
-const PASSWORD = process.env.AUDIT_PASSWORD || 'password';
+const PASSWORD = process.env.AUDIT_PASSWORD;
+if (!PASSWORD) {
+  throw new Error('AUDIT_PASSWORD must be set (no hardcoded fallback).');
+}
 const LABEL = process.env.LABEL || 'shot';
 const OUT =
   process.env.AUDIT_OUT ||

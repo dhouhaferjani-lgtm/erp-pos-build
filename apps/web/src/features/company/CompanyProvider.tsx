@@ -90,16 +90,18 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
       setCompanies(data)
       // After setting companies, default to first if none selected (first time user)
       // Use setTimeout to ensure persist middleware has completed
-      setTimeout(() => {
+      const defaultTimer = setTimeout(() => {
         const state = useCompanyStore.getState()
         if (!state.currentCompanyId && data.length > 0) {
           setCurrentCompany(data[0].id)
         }
       }, 0)
+      return () => { clearTimeout(defaultTimer) }
     } else if (isError) {
       // If we can't fetch companies, log error but don't break the app
       setLoading(false)
     }
+    return undefined
   }, [data, isLoading, isError, error, setCompanies, setLoading, setCurrentCompany])
 
   // Reset company store on logout

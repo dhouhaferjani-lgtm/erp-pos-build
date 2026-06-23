@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { JSX } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronRight, ChevronDown, Folder, FolderOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -36,7 +36,7 @@ export function CategoryTree({
     })
   }
 
-  const renderCategory = (category: CategoryTreeNode, level: number = 0): JSX.Element => {
+  const renderCategory = (category: CategoryTreeNode, level: number = 0): ReactNode => {
     const hasChildren = category.children && category.children.length > 0
     const isExpanded = expandedIds.has(category.id)
     const isSelected = selectedId === category.id

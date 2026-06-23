@@ -34,6 +34,14 @@ interface PaymentMethodExtended {
   variable_fee_percentage: string | null
 }
 
+// Capability badge — module scope so React preserves it across renders.
+function CapabilityBadge({ enabled, label }: { enabled: boolean; label: string }) {
+  if (!enabled) return null
+  return (
+    <span className={cn(tokens.badge.base, tokens.badge.blue)}>{label}</span>
+  )
+}
+
 export function PaymentMethodsPage() {
   const { t } = useTranslation(['common', 'treasury'])
   const queryClient = useQueryClient()
@@ -85,14 +93,6 @@ export function PaymentMethodsPage() {
       return `${method.fixed_fee_amount} + ${method.variable_fee_percentage}%`
     }
     return t('treasury:paymentMethods.feeTypes.none')
-  }
-
-  // Capability badge component
-  const CapabilityBadge = ({ enabled, label }: { enabled: boolean; label: string }) => {
-    if (!enabled) return null
-    return (
-      <span className={cn(tokens.badge.base, tokens.badge.blue)}>{label}</span>
-    )
   }
 
   const columns: DataTableColumn<PaymentMethodExtended>[] = [
