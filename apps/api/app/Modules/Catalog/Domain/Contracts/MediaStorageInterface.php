@@ -39,4 +39,17 @@ interface MediaStorageInterface
      * Delete the file at the given disk and path.
      */
     public function delete(string $disk, string $path): void;
+
+    /**
+     * Stream the file at the given disk and path as a download response.
+     *
+     * Preserves the original filename and MIME type in the response headers
+     * (Content-Disposition: attachment; filename="…", Content-Type: …).
+     *
+     * @param  string  $disk  Storage disk identifier (e.g. 's3').
+     * @param  string  $path  Path within the disk.
+     * @param  string  $filename  Original filename to surface in Content-Disposition.
+     * @param  string  $mimeType  MIME type to use in Content-Type header.
+     */
+    public function download(string $disk, string $path, string $filename, string $mimeType): StreamedResponse;
 }

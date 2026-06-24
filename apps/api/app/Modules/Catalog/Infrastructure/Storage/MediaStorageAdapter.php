@@ -105,4 +105,12 @@ final class MediaStorageAdapter implements MediaStorageInterface
     {
         Storage::disk($disk)->delete($path);
     }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function download(string $disk, string $path, string $filename, string $mimeType): StreamedResponse
+    {
+        return Storage::disk($disk)->download($path, $filename, ['Content-Type' => $mimeType]);
+    }
 }
