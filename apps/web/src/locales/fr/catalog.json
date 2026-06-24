@@ -1,7 +1,16 @@
 {
   "editor": {
     "sections": "SECTIONS",
-    "complete": "complet"
+    "complete": "complet",
+    "hero": {
+      "barcodePlaceholder": "Scanner ou saisir le code-barres",
+      "namePlaceholder": "Nom du produit",
+      "refreshLabel": "Actualiser l'enrichissement",
+      "enrichmentLoading": "Synerivia…",
+      "enrichmentSuccess": "Synerivia · {{count}} champs",
+      "enrichmentFields": "{{count}} champs",
+      "enrichmentUnavailable": "Synerivia · indisponible"
+    }
   },
   "compositeItem": "Article composé",
   "compositeItems": "Articles composés",

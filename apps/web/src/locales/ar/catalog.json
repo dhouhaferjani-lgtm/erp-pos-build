@@ -1,7 +1,16 @@
 {
   "editor": {
     "sections": "الأقسام",
-    "complete": "مكتمل"
+    "complete": "مكتمل",
+    "hero": {
+      "barcodePlaceholder": "امسح أو اكتب الباركود",
+      "namePlaceholder": "اسم المنتج",
+      "refreshLabel": "تحديث الإثراء",
+      "enrichmentLoading": "Synerivia…",
+      "enrichmentSuccess": "Synerivia · {{count}} حقول",
+      "enrichmentFields": "{{count}} حقول",
+      "enrichmentUnavailable": "Synerivia · غير متاح"
+    }
   },
   "compositeItem": "عنصر مركب",
   "compositeItems": "عناصر مركبة",

@@ -1,7 +1,16 @@
 {
   "editor": {
     "sections": "SECTIONS",
-    "complete": "complete"
+    "complete": "complete",
+    "hero": {
+      "barcodePlaceholder": "Scan or type barcode",
+      "namePlaceholder": "Product name",
+      "refreshLabel": "Refresh enrichment",
+      "enrichmentLoading": "Synerivia…",
+      "enrichmentSuccess": "Synerivia · {{count}} fields",
+      "enrichmentFields": "{{count}} fields",
+      "enrichmentUnavailable": "Synerivia · unavailable"
+    }
   },
   "compositeItem": "Composite Item",
   "compositeItems": "Composite Items",
