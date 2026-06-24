@@ -18,35 +18,39 @@ Recognize supplier liabilities (Accounts Payable) and inventory at the **correct
 
 ## 3. The accounting model (Tunisian SCE = French PCG numbering)
 
-GL accounts (seed/confirm in the Tunisia chart):
+**GL legs resolve via `SystemAccountPurpose` enums, NOT hardcoded account numbers** (the codebase pattern — `Account::findByPurposeOrFail`). The seeded Tunisia chart's actual numbers are shown for reference, but the spec/code must use the purpose. (Review H-3/H-4.)
 
-| Account | Name | Role |
-|---|---|---|
-| Class 3 (e.g. `3xx`) | Stocks | Inventory asset (perpetual) |
-| **408** | Fournisseurs – Factures non parvenues | **GR-IR accrual** (goods received, not yet invoiced) |
-| **401** | Fournisseurs | **Accounts Payable** |
-| **4366** | Taxes sur le chiffre d'affaires déductibles (subdiv. 43666 récupérable) | **Deductible (input) VAT** — booked only at invoice |
-| `6xx` non-recoverable | Droits de timbre (non-recoverable) — *exact account to confirm in chart* | **Timbre fiscal** on purchase invoices (non-recoverable charge) |
-| 4091 *(Phase 2)* | Avances et acomptes versés sur commandes | Supplier advances (import/invoice-first) |
+| Purpose (`SystemAccountPurpose`) | Seeded TN account | Role | Status |
+|---|---|---|---|
+| `Inventory` | class 3 | Inventory asset (perpetual) | exists |
+| `SupplierPayable` | 401 Fournisseurs | Accounts Payable | exists |
+| `VatDeductible` | **4456** TVA déductible (NOT 4366 — see §13) | Deductible input VAT — booked only at invoice | exists (`SystemAccountPurpose.php:28`) |
+| **`GoodsReceivedNotInvoiced`** *(NEW)* | **408** Fournisseurs – Factures non parvenues (seeded `:140`) | **GR-IR accrual** (goods received, not yet invoiced) | **ADD purpose + seed mapping** (mirror of `UninvoicedRevenue`=418 on the sales side) |
+| **`PurchaseStampDuty`** *(NEW, non-recoverable)* | class-6 expense (exact account to seed/confirm) | **Timbre fiscal** on purchase invoices — non-recoverable charge | **ADD purpose + seed account/mapping** |
+| `SupplierAdvance` (4091) *(Phase 2)* | 4091 Avances et acomptes | Supplier advances (import) | exists |
+
+**New work this introduces (Phase 1):** add two `SystemAccountPurpose` cases (`GoodsReceivedNotInvoiced` → 408; `PurchaseStampDuty` → a non-recoverable class-6 account), seed their account mappings in every relevant chart seeder (Tunisia confirmed has 408 at `:140`; the timbre expense account may need seeding), with a real-PG verification that the mappings resolve.
 
 **Double-entry, domestic receipt-first:**
 
+(accounts referenced by purpose; seeded numbers in parentheses)
+
 1. **Goods receipt** (`GoodsReceiptService::receiveGoods`, partial-aware, received-qty × unit cost), **VAT-excluded**:
-   - `Dr Inventory (class 3)` = received qty × cost (HT)
-   - `Cr 408` = same (HT)
+   - `Dr Inventory` (class 3) = received qty × cost (HT)
+   - `Cr GoodsReceivedNotInvoiced` (408) = same (HT)
    - Partial receipts post incrementally (each receipt posts its received delta). No VAT, no AP yet.
 
 2. **Supplier invoice posted** (clears the accrual into AP, books VAT, books non-recoverable timbre):
-   - `Dr 408` = invoiced goods HT (clears the matched accrual)
-   - `Dr 4366` = recoverable VAT
-   - `Dr 6xx timbre (non-recoverable)` = fixed stamp duty per invoice
-   - `Cr 401 (partner-tagged supplier)` = gross TTC = HT + recoverable VAT + timbre
-   - **Invariant:** debits == credits at storage scale (decimal(15,3)); timbre is NOT added to 4366.
+   - `Dr GoodsReceivedNotInvoiced` (408) = invoiced goods HT (clears the matched accrual)
+   - `Dr VatDeductible` (4456) = recoverable VAT
+   - `Dr PurchaseStampDuty` (class-6, non-recoverable) = fixed stamp duty per invoice
+   - `Cr SupplierPayable` (401, partner-tagged) = gross TTC = HT + recoverable VAT + timbre
+   - **Invariant:** debits == credits at storage scale (decimal(15,3)); timbre is NOT added to `VatDeductible`.
 
 3. **Payment** (existing treasury path, against a *real* payable):
-   - `Dr 401 (partner-tagged)` / `Cr Treasury/Repository` — reduces `payable_balance` toward 0.
+   - `Dr SupplierPayable` (401, partner-tagged) / `Cr Treasury/Repository` — reduces `payable_balance` toward 0.
 
-**Stamp duty (timbre):** a fixed per-invoice amount (e.g. 0.600 / 1.000 TND), **non-recoverable** → it increases the gross payable to 401 and is expensed (class-6 non-recoverable charge), never posted to 4366. It is invoice-level, not per-line.
+**Stamp duty (timbre):** a fixed per-invoice amount (e.g. 0.600 / 1.000 TND), **non-recoverable** → it increases the gross payable to `SupplierPayable` (401) and is expensed via `PurchaseStampDuty` (class-6 non-recoverable charge), never posted to `VatDeductible`. It is invoice-level, not per-line.
 
 ## 4. Procurement-AP policy (config — future-safe, minimal in Phase 1)
 
@@ -66,12 +70,13 @@ A small config object resolved per purchase, seeded per vertical:
 - A **new `supplier_invoice` `DocumentType`** in the **existing unified `documents` table** (alongside `purchase_order`, `quote`, `invoice`, `credit_note`, `delivery_note`). No new top-level table — reuse the unified document model + lines.
 - **Links:** `source_document_id` → the PO; a receipt linkage (the goods-receipt operation(s) it matches). Supports a supplier invoice spanning multiple partial receipts of one PO, and (future) one invoice across POs is out of scope.
 - **Lifecycle (DocumentStatus / a dedicated supplier-invoice status):** `draft` → `matched` (3-way computed) → `posted` (GL posted, accrual cleared) → `paid`. Enums only, no magic strings.
-- **Attachment:** the source PDF/scan via the **existing `Media` module `AttachmentService`**, stored on the **S3/MinIO disk** (NOT `local`). No media-subsystem refactor — Phase 1 simply sets `storage_disk` to the configured object-storage disk. (The disk/MinIO unification + S3/R2 swap is a separate session.)
+- **Attachment:** the source PDF/scan via the **existing `Media` module `AttachmentService`** (a SupplierInvoice IS a `Document`, so `AttachmentService::upload(Document, ...)` works directly). **Required small change (review H-5):** `AttachmentService::getStorageDisk()` currently hardcodes `return 'local'` (`:197`); make it return the configured object-storage disk (env-driven, e.g. `MEDIA_DISK`/`FILESYSTEM_DISK`, default-safe) so supplier-invoice attachments land on **MinIO/S3, not local**. This is the minimal routing fix only — NOT the media-subsystem unification (kill-disk / default-S3 / R2 swap), which remains a separate session.
 - **Navigation home:** a findable, searchable list under **Purchases → Supplier Invoices**, filterable by supplier, status, match status, date; opening one shows lines, the linked PO/receipt, the match result, and the attachment.
 
 ## 6. Three-way matching
 
 - Compare, per matched line: **PO** (agreed unit price) ↔ **goods receipt** (received quantity) ↔ **supplier invoice** (billed qty × billed price).
+- **Receipt quantity source (review M-6):** `GoodsReceiptService` keeps no first-class receipt-operation record — it tracks **cumulative `quantity_received` per PO line**. Phase 1 matches the invoiced quantity against that cumulative received-so-far quantity (sufficient for domestic 3-way: an invoice line is "received" if `invoiced_qty <= quantity_received`). Precise per-physical-receipt linkage (which receipt an invoice covers) is an explicit **future extension point** — add a durable goods-receipt record (or link via stock movements) only if/when per-receipt audit linkage is required; not built in Phase 1.
 - Compute a **match status**: `matched` (within tolerance), `price_variance`, `quantity_variance`, or `exception` (beyond tolerance / unreceived).
 - **Variance tolerance** reuses the precision contract; thresholds are config (small percentage + max-amount, mirroring the tender-tolerance dual-threshold pattern) — defaulted, not hand-typed constants.
 - **Enforcement** per `match_enforcement`: `warn` surfaces the status and lets the user post anyway (advisory, the Odoo "Should be paid" pattern); `block` refuses to post an `exception`-status invoice.
@@ -89,6 +94,8 @@ A small config object resolved per purchase, seeded per vertical:
 2. **R-2** (Codex remediation): fix `GeneralLedgerService::postEntry` to set `chain_sequence` so the new receipt/invoice GL posts verify under `GeneralLedgerHashService::verifyChain`. Phase 1's GL posting MUST go through the corrected canonical posting path.
 3. Phase 1 builds on the corrected base.
 
+**Hard gate (review B-1/B-2):** the Codex review confirmed BOTH are still unsatisfied on current dev — `PurchaseOrderConfirmedListener` still posts AP at PO confirmation, and `postEntry()` still omits `chain_sequence`. **Phase 1 implementation must not begin until R-1 and R-2 have landed** (else the new AP collides with the old, and every new GL post fails `verifyChain`).
+
 ## 9. Cross-cutting conventions (must hold)
 
 - **Precision contract:** all money via `CurrencyScale::bcformatStrict` at TND scale 3; never float; constructor-inject `CurrencyScaleResolverInterface`; quantities scale 4. Timbre, VAT, and HT each rounded once at the boundary.
@@ -99,7 +106,7 @@ A small config object resolved per purchase, seeded per vertical:
 
 ## 10. Testing strategy
 
-- **GL correctness (Feature, real entries):** receipt posts `Dr Inventory / Cr 408` VAT-excluded; invoice posts `Dr 408 + Dr 4366 + Dr timbre / Cr 401` and debits==credits; timbre never hits 4366; payment clears 401. Verify `verifyChain()` passes after both posts (depends on R-2).
+- **GL correctness (Feature, real entries):** receipt posts `Dr Inventory / Cr GoodsReceivedNotInvoiced` VAT-excluded; invoice posts `Dr GoodsReceivedNotInvoiced + Dr VatDeductible + Dr PurchaseStampDuty / Cr SupplierPayable` and debits==credits; timbre never hits `VatDeductible`; payment clears `SupplierPayable`. Resolve every leg by purpose (assert the resolved account, not a literal number). Verify `verifyChain()` passes after both posts (depends on R-2).
 - **Partial receipts:** two partial receipts accrue 408 incrementally; an invoice matching both clears correctly.
 - **Matcher:** matched / price-variance / quantity-variance / exception cases; `warn` allows post, `block` refuses an exception.
 - **Policy resolver:** vertical default applied; unsupported `ordered` mode fails loudly.
@@ -116,11 +123,12 @@ A small config object resolved per purchase, seeded per vertical:
 ## 12. Fiscal-compliance cautions
 
 - VAT booked **only** at a compliant invoice (Art. 9/18) — receipt/408 is strictly VAT-excluded.
-- Timbre is **non-recoverable** — never to 4366; confirm the exact class-6 stamp-duty account number in the seeded Tunisia chart.
+- Timbre is **non-recoverable** — never to `VatDeductible`; confirm the exact class-6 stamp-duty account number in the seeded Tunisia chart.
 - A compliant Tunisian *facture* carries mandatory mentions (supplier + client matricule fiscal, date, HT, VAT rates/amounts); the SupplierInvoice document should capture these fields for audit even though Phase 1 does not generate the supplier's facture (the supplier does).
 - Confirm whether Tunisian e-invoicing (El Fatoora/TTN, 2026 expansion) imposes any inbound supplier-invoice capture obligation — flagged, not assumed.
 
 ## 13. Open items (non-blocking; parameterized)
 
-- Exact class-6 account number for non-recoverable timbre on purchases (chart seed detail).
+- **Deductible-VAT account numbering (review H-3):** the seeded Tunisia chart uses `4456` (French-PCG), while the strict Tunisian SCE number is `4366/43666`. Phase 1 resolves via `SystemAccountPurpose::VatDeductible` (so it works regardless), but confirm with the accountant whether the seeded chart should be corrected to `4366` — a chart-correctness question separate from this build.
+- Exact class-6 account number for non-recoverable timbre on purchases (chart seed detail; needs a `PurchaseStampDuty` purpose + seeded account).
 - Default 3-way variance tolerance values (start from the existing tender-tolerance defaults: small % + max-amount).
