@@ -655,7 +655,7 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         );
     }
 
-    public function test_invoice_gl_creation_rolls_back_when_partner_balance_refresh_fails(): void
+    public function test_invoice_gl_creation_persists_when_partner_balance_refresh_fails(): void
     {
         $invoice = $this->createConfirmedInvoice([
             [
@@ -669,21 +669,25 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
 
         $this->bindThrowingPartnerBalanceService();
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('partner balance refresh failed');
+        $journalEntryId = app(AccountingService::class)->createInvoiceGLEntries($invoice);
 
-        try {
-            app(AccountingService::class)->createInvoiceGLEntries($invoice);
-        } finally {
-            $this->assertDatabaseMissing('journal_entries', [
-                'source_id' => $invoice->id,
-                'source_type' => 'Document',
-            ]);
-            $this->assertDatabaseCount('journal_lines', 0);
-        }
+        $entry = JournalEntry::query()->with('lines')->find($journalEntryId);
+        $this->assertNotNull($entry);
+        $this->assertSame($invoice->id, $entry->source_id);
+        $this->assertGreaterThan(0, $entry->lines->count());
+
+        $this->customer->refresh();
+        $this->assertNull($this->customer->balance_updated_at);
+
+        $this->app->forgetInstance(PartnerBalanceService::class);
+        app(PartnerBalanceService::class)->refreshPartnerBalance($this->company->id, $this->customer->id);
+
+        $this->customer->refresh();
+        $this->assertSame('119.000', $this->customer->receivable_balance);
+        $this->assertNotNull($this->customer->balance_updated_at);
     }
 
-    public function test_credit_note_gl_creation_rolls_back_when_partner_balance_refresh_fails(): void
+    public function test_credit_note_gl_creation_persists_when_partner_balance_refresh_fails(): void
     {
         $creditNote = $this->createConfirmedCreditNote([
             [
@@ -697,18 +701,21 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
 
         $this->bindThrowingPartnerBalanceService();
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('partner balance refresh failed');
+        $journalEntryId = app(AccountingService::class)->createCreditNoteGLEntries($creditNote);
 
-        try {
-            app(AccountingService::class)->createCreditNoteGLEntries($creditNote);
-        } finally {
-            $this->assertDatabaseMissing('journal_entries', [
-                'source_id' => $creditNote->id,
-                'source_type' => 'Document',
-            ]);
-            $this->assertDatabaseCount('journal_lines', 0);
-        }
+        $entry = JournalEntry::query()->with('lines')->find($journalEntryId);
+        $this->assertNotNull($entry);
+        $this->assertSame($creditNote->id, $entry->source_id);
+        $this->assertGreaterThan(0, $entry->lines->count());
+
+        $this->customer->refresh();
+        $this->assertNull($this->customer->balance_updated_at);
+
+        $this->app->forgetInstance(PartnerBalanceService::class);
+        app(PartnerBalanceService::class)->refreshPartnerBalance($this->company->id, $this->customer->id);
+
+        $this->customer->refresh();
+        $this->assertNotNull($this->customer->balance_updated_at);
     }
 
     /**
