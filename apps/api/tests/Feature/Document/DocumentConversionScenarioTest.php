@@ -98,7 +98,6 @@ class DocumentConversionScenarioTest extends TestCase
         // Should allow direct conversion to invoice
         $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
-        $this->assertNotNull($invoice);
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
         $this->assertEquals($order->document_number, $invoice->reference);
     }
@@ -157,6 +156,77 @@ class DocumentConversionScenarioTest extends TestCase
     }
 
     #[Test]
+    public function it_converts_order_when_transferred_prepayment_is_already_cleared(): void
+    {
+        $service = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => ProductType::Service,
+            'is_physical' => false,
+        ]);
+        $user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Stale Advance Conversion User',
+            'email' => 'stale-advance-conversion@example.com',
+            'password' => bcrypt('password'),
+            'status' => UserStatus::Active,
+        ]);
+        $cashAccount = $this->seedPrepaymentApplicationAccounts();
+        $order = $this->createConfirmedOrder([
+            ['product_id' => $service->id, 'description' => 'Oil Change Service'],
+        ]);
+
+        $glService = app(GeneralLedgerService::class);
+        $glService->createCustomerAdvanceJournalEntry(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            advanceId: (string) Str::uuid(),
+            amount: '40.000',
+            paymentMethodAccountId: $cashAccount->id,
+            date: now(),
+            user: $user,
+            description: 'Customer advance payment',
+            currencyCode: $this->company->currency,
+        );
+        $glService->clearCustomerAdvanceToReceivable(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            invoiceId: (string) Str::uuid(),
+            amount: '40.000',
+            date: now(),
+            description: 'Advance already cleared',
+            postedByUserId: $user->id,
+            currencyCode: $this->company->currency,
+        );
+        PaymentAllocation::create([
+            'payment_id' => null,
+            'document_id' => $order->id,
+            'amount' => '40.000',
+        ]);
+
+        $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice, [
+            'actor_user_id' => $user->id,
+        ]);
+
+        $invoice->refresh();
+        $allocation = PaymentAllocation::query()->firstOrFail();
+
+        $this->assertSame($invoice->id, $allocation->document_id);
+        $this->assertSame('79.000', $invoice->balance_due);
+        $this->assertTrue($invoice->payload['prepayments_transferred']['gl_entry_skipped'] ?? false);
+        $this->assertStringContainsString(
+            'Cannot clear customer advance beyond available balance',
+            $invoice->payload['prepayments_transferred']['gl_skip_reason'] ?? ''
+        );
+        $this->assertFalse(
+            JournalEntry::query()
+                ->where('source_type', 'prepayment_application')
+                ->where('source_id', $invoice->id)
+                ->exists()
+        );
+    }
+
+    #[Test]
     public function it_auto_creates_delivery_note_for_products_only_orders(): void
     {
         // Create a physical product
@@ -175,7 +245,6 @@ class DocumentConversionScenarioTest extends TestCase
         // Should auto-create a delivery note and proceed with invoicing
         $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
-        $this->assertNotNull($invoice);
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
     }
 
@@ -206,7 +275,6 @@ class DocumentConversionScenarioTest extends TestCase
         // Should auto-create a delivery note for physical items and proceed
         $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
-        $this->assertNotNull($invoice);
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
     }
 
@@ -228,7 +296,6 @@ class DocumentConversionScenarioTest extends TestCase
 
         // Create delivery note first
         $delivery = $this->converterRegistry->convert($order, DocumentType::DeliveryNote);
-        $this->assertNotNull($delivery);
 
         // Refresh order to get updated payload
         $order->refresh();
@@ -236,7 +303,6 @@ class DocumentConversionScenarioTest extends TestCase
         // Now invoicing should be allowed
         $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
-        $this->assertNotNull($invoice);
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
     }
 
@@ -257,8 +323,7 @@ class DocumentConversionScenarioTest extends TestCase
         ]);
 
         // First conversion should succeed
-        $invoice1 = $this->converterRegistry->convert($order, DocumentType::Invoice);
-        $this->assertNotNull($invoice1);
+        $this->converterRegistry->convert($order, DocumentType::Invoice);
 
         // Refresh order to get updated payload
         $order->refresh();
@@ -281,7 +346,6 @@ class DocumentConversionScenarioTest extends TestCase
         // Manual lines without product_id should be treated as services
         $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
-        $this->assertNotNull($invoice);
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
     }
 
@@ -303,7 +367,6 @@ class DocumentConversionScenarioTest extends TestCase
 
         // Create delivery note first (required for physical products)
         $delivery = $this->converterRegistry->convert($order, DocumentType::DeliveryNote);
-        $this->assertNotNull($delivery);
 
         // Verify DN is not yet marked as invoiced
         $delivery->refresh();
@@ -312,7 +375,6 @@ class DocumentConversionScenarioTest extends TestCase
         // Refresh order and convert to invoice
         $order->refresh();
         $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
-        $this->assertNotNull($invoice);
 
         // Verify DN is now marked as invoiced
         $delivery->refresh();
@@ -506,11 +568,6 @@ class DocumentConversionScenarioTest extends TestCase
         $this->assertEquals($vehicle->id, $invoice->vehicle_id);
     }
 
-    /**
-     * Create a confirmed sales order with the given lines.
-     *
-     * @param  array<int, array{product_id: string|null, description: string}>  $lines
-     */
     private function seedPrepaymentApplicationAccounts(): Account
     {
         $cashAccount = Account::create([
@@ -545,6 +602,11 @@ class DocumentConversionScenarioTest extends TestCase
         return $cashAccount;
     }
 
+    /**
+     * Create a confirmed sales order with the given lines.
+     *
+     * @param  array<int, array{product_id: string|null, description: string}>  $lines
+     */
     private function createConfirmedOrder(array $lines): Document
     {
         $order = Document::create([
