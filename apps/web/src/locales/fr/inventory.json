@@ -2,18 +2,18 @@
   "barcodeLookup": {
     "placeholder": "Scanner ou saisir le code-barres…",
     "searching": "Recherche en cours…",
-    "catalogFound": "Donn\u00e9es du catalogue Syneriva",
+    "catalogFound": "Données du catalogue Syneriva",
     "confidence": "Confiance : {{tier}}",
-    "notInCatalog": "Absent du catalogue \u2014 saisissez les d\u00e9tails manuellement",
-    "catalogUnavailable": "Catalogue indisponible \u2014 saisissez les d\u00e9tails manuellement",
+    "notInCatalog": "Absent du catalogue — saisissez les détails manuellement",
+    "catalogUnavailable": "Catalogue indisponible — saisissez les détails manuellement",
     "invalidBarcode": "Format de code-barres invalide",
     "enrichmentCheckbox": "Soumettre pour enrichissement catalogue",
-    "enrichmentDescription": "Les donn\u00e9es produit seront enrichies par Syneriva apr\u00e8s l'enregistrement",
-    "toastSavedWithCatalog": "Produit enregistr\u00e9 avec les donn\u00e9es du catalogue.",
-    "toastSavedWithEnrichment": "Produit enregistr\u00e9. Soumis pour enrichissement catalogue.",
-    "toastEnrichmentFailed": "Produit enregistr\u00e9 mais la soumission d'enrichissement a \u00e9chou\u00e9.",
+    "enrichmentDescription": "Les données produit seront enrichies par Syneriva après l'enregistrement",
+    "toastSavedWithCatalog": "Produit enregistré avec les données du catalogue.",
+    "toastSavedWithEnrichment": "Produit enregistré. Soumis pour enrichissement catalogue.",
+    "toastEnrichmentFailed": "Produit enregistré mais la soumission d'enrichissement a échoué.",
     "clearBarcode": "Effacer le code-barres",
-    "toastProductSaved": "Produit enregistr\u00e9 avec succ\u00e8s."
+    "toastProductSaved": "Produit enregistré avec succès."
   },
   "goodsReceipt": {
     "title": "Bons de reception",
@@ -817,5 +817,14 @@
         "description": "Concevoir et gérer les menus de produits"
       }
     }
+  },
+  "bulk": {
+    "selected": "{{count}} sélectionné(s)",
+    "selectAll": "Sélectionner tous les produits",
+    "selectRow": "Sélectionner {{name}}",
+    "printLabels": "Imprimer les étiquettes",
+    "preparing": "Préparation…",
+    "clear": "Effacer la sélection",
+    "noVariants": "Aucune variante à étiqueter pour les produits sélectionnés."
   }
 }

@@ -817,5 +817,14 @@
         "description": "Design and manage product menus"
       }
     }
+  },
+  "bulk": {
+    "selected": "{{count}} selected",
+    "selectAll": "Select all products",
+    "selectRow": "Select {{name}}",
+    "printLabels": "Print labels",
+    "preparing": "Preparing…",
+    "clear": "Clear selection",
+    "noVariants": "No variants to label for the selected products."
   }
 }
