@@ -291,6 +291,8 @@ class FEFOInventoryService
     {
         $query = Batch::query()
             ->where('company_id', $companyId)
+            ->where('is_active', true)
+            ->where('is_recalled', false)
             ->where('expiry_date', '<', now()->startOfDay())
             ->whereHas('batchStock', function (Builder $q) use ($locationId): void {
                 $q->whereRaw('available_quantity > 0');

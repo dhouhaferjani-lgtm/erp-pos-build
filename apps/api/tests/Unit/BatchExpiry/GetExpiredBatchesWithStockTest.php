@@ -153,6 +153,80 @@ class GetExpiredBatchesWithStockTest extends TestCase
     }
 
     /**
+     * A recalled expired lot with available stock must be EXCLUDED from write-off
+     * candidates. Recalled lots are handled via the dedicated recall workflow.
+     *
+     * Before the fix, getExpiredBatchesWithStock omitted the is_recalled guard,
+     * so recalled lots incorrectly appeared in the write-off candidate list.
+     */
+    public function test_recalled_expired_lot_with_available_stock_is_excluded(): void
+    {
+        // Expired batch — recalled (is_recalled = true) — must NOT appear
+        $batch = Batch::create([
+            'uuid' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'batch_number' => 'RECALLED-EXPIRED-01',
+            'expiry_date' => now()->subDays(5),
+            'is_active' => true,
+            'is_expired' => true,
+            'is_recalled' => true, // recalled → exclude from write-off
+        ]);
+
+        BatchStock::create([
+            'tenant_id' => $this->tenant->id,
+            'batch_id' => $batch->id,
+            'location_id' => $this->location->id,
+            'quantity' => '4.0000',
+            'reserved_quantity' => '0.0000', // available = 4 → would appear without guard
+        ]);
+
+        $result = $this->service->getExpiredBatchesWithStock(
+            companyId: $this->company->id,
+        );
+
+        $this->assertCount(0, $result, 'Recalled expired lot must not appear in write-off candidates');
+    }
+
+    /**
+     * An inactive expired lot with available stock must be EXCLUDED from write-off
+     * candidates. Only active lots should be presented for write-off.
+     *
+     * Before the fix, getExpiredBatchesWithStock omitted the is_active guard,
+     * so deactivated lots incorrectly appeared in the write-off candidate list.
+     */
+    public function test_inactive_expired_lot_with_available_stock_is_excluded(): void
+    {
+        // Expired batch — inactive (is_active = false) — must NOT appear
+        $batch = Batch::create([
+            'uuid' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'batch_number' => 'INACTIVE-EXPIRED-01',
+            'expiry_date' => now()->subDays(5),
+            'is_active' => false, // deactivated → exclude from write-off
+            'is_expired' => true,
+            'is_recalled' => false,
+        ]);
+
+        BatchStock::create([
+            'tenant_id' => $this->tenant->id,
+            'batch_id' => $batch->id,
+            'location_id' => $this->location->id,
+            'quantity' => '4.0000',
+            'reserved_quantity' => '0.0000', // available = 4 → would appear without guard
+        ]);
+
+        $result = $this->service->getExpiredBatchesWithStock(
+            companyId: $this->company->id,
+        );
+
+        $this->assertCount(0, $result, 'Inactive expired lot must not appear in write-off candidates');
+    }
+
+    /**
      * Expired lots with zero quantity (nothing on hand) must be excluded.
      */
     public function test_zero_quantity_expired_lot_is_excluded(): void
