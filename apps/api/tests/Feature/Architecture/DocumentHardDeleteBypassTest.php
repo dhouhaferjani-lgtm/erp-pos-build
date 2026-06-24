@@ -30,15 +30,6 @@ use SplFileInfo;
 final class DocumentHardDeleteBypassTest extends TestCase
 {
     /**
-     * Relative paths (from app/Modules root) that are explicitly allowed to
-     * contain a documents bypass pattern.  Empty by default — add only when
-     * a legitimate exception is reviewed and documented.
-     *
-     * @var list<string>
-     */
-    private const ALLOWED_BYPASS_FILES = [];
-
-    /**
      * Regex patterns that indicate a query-builder hard-delete on the documents
      * table, bypassing the Eloquent observer.
      *
@@ -97,9 +88,9 @@ final class DocumentHardDeleteBypassTest extends TestCase
 
             $relativePath = ltrim(str_replace($modulesDir, '', $file->getPathname()), '/');
 
-            if (in_array($relativePath, self::ALLOWED_BYPASS_FILES, true)) {
-                continue;
-            }
+            // If a legitimate hard-delete on `documents` is ever added (e.g. in a migration
+            // or seeder), add an explicit check here with that file's relative path and
+            // document why MediaServiceInterface::purgeOwner is called explicitly.
 
             foreach (self::BYPASS_PATTERNS as $pattern) {
                 if ((bool) preg_match($pattern, $content)) {
