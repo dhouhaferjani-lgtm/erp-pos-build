@@ -1,4 +1,8 @@
 {
+  "editor": {
+    "sections": "SECTIONS",
+    "complete": "complet"
+  },
   "compositeItem": "Article composé",
   "compositeItems": "Articles composés",
   "recipe": "Recette",

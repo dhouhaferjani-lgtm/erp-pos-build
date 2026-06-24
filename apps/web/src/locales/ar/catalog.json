@@ -1,4 +1,8 @@
 {
+  "editor": {
+    "sections": "الأقسام",
+    "complete": "مكتمل"
+  },
   "compositeItem": "عنصر مركب",
   "compositeItems": "عناصر مركبة",
   "recipe": "وصفة",
