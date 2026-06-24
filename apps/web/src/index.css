@@ -388,9 +388,10 @@ body {
      Override the :root structural defaults: hairline borders over soft
      shadows, tighter corners. designTokens.ts reads these so cards/
      inputs/buttons adopt the crisp structure for this vertical only. */
-  --radius-input:  6px;
-  --radius-button: 8px;
-  --radius-card:   10px;
+  /* Radii pinned to the Add-Product mock (docs/handoff/mocks) */
+  --radius-input:  8px;
+  --radius-button: 9px;
+  --radius-card:   14px;
   --radius-sheet:  16px;
   --border-hairline:   1px solid var(--theme-neutral-200); /* #E0E4E9 */
   --elevation-input:   none;                       /* flat inputs — hairline border carries them */
@@ -403,7 +404,7 @@ body {
      this vertical (font-mono = font-family: var(--font-mono)). The
      font-family declaration switches inherited body/UI text to Public
      Sans for IziPOS content. Fonts loaded via index.html. */
-  --font-display: 'Space Grotesk', 'Montserrat', system-ui, sans-serif; /* section / page titles */
+  --font-display: 'Montserrat', system-ui, sans-serif; /* section / page titles */
   --font-ui:      'Public Sans', system-ui, sans-serif;                 /* labels & body */
   --font-mono:    'IBM Plex Mono', ui-monospace, monospace;             /* prices, SKUs, qty, codes */
   --font-sans:    'Public Sans', system-ui, sans-serif;                 /* Tailwind font-sans utility */
