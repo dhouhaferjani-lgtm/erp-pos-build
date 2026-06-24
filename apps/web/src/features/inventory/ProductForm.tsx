@@ -28,6 +28,14 @@ import { useProductConfig } from '../../contexts/ProductConfigContext'
 import { TaxConfigurationField } from '../../components/molecules/TaxConfigurationField'
 import { inventoryProductsInvalidationPredicate } from './_invalidation'
 import { buildProductPayload } from './productPayload'
+import { BarcodeHero } from '../products/editor/components/BarcodeHero'
+import { SectionNav } from '../products/editor/components/SectionNav'
+import type { EditorSection } from '../products/editor/components/SectionNav'
+import { EditorSectionCard } from '../products/editor/components/EditorSectionCard'
+import { RelatedOperationsRail } from '../products/editor/components/RelatedOperationsRail'
+import { BeforePublishChecklist } from '../products/editor/components/BeforePublishChecklist'
+import type { ChecklistItem } from '../products/editor/components/BeforePublishChecklist'
+import { useScrollSpy } from '../products/editor/hooks/useScrollSpy'
 
 interface Product {
   id: string
@@ -324,6 +332,52 @@ export function ProductForm() {
     }
   }
 
+  // --- Editor layout: sections, scroll-spy, completeness, checklist ---------
+  // Watch the fields that drive the "before publish" checklist + completeness.
+  const nameValue = watch('name')
+  const skuValue = watch('sku')
+  const salePriceValue = watch('sale_price')
+  const taxConfigValue = watch('tax_configuration_id')
+  const taxRateValue = watch('tax_rate')
+  const barcodeValue = watch('barcode')
+
+  const hasTax = (taxConfigValue ?? '') !== '' || (taxRateValue ?? '') !== ''
+  const checklistItems: ChecklistItem[] = [
+    { key: 'name', satisfied: nameValue.trim().length > 0 },
+    { key: 'sku', satisfied: skuValue.trim().length > 0 },
+    { key: 'salePrice', satisfied: salePriceValue.trim().length > 0 },
+    { key: 'tax', satisfied: hasTax },
+  ]
+  const satisfiedCount = checklistItems.filter((item) => item.satisfied).length
+  const completenessPercent = Math.round((satisfiedCount / checklistItems.length) * 100)
+
+  // Section descriptors: General + Pricing + Inventory are always present; the
+  // vertical-gated Pharmacy section and the always-present Suppliers section
+  // follow. Markers are re-derived from order so they stay sequential.
+  const sectionDefs: Array<{ id: string; labelKey: string }> = [
+    { id: 'section-general', labelKey: 'catalog:editor.sectionLabels.general' },
+    { id: 'section-pricing', labelKey: 'catalog:editor.sectionLabels.pricing' },
+    { id: 'section-inventory', labelKey: 'catalog:editor.sectionLabels.inventory' },
+    ...(isParapharmacy
+      ? [{ id: 'section-pharmacy', labelKey: 'catalog:editor.sectionLabels.pharmacy' }]
+      : []),
+    { id: 'section-suppliers', labelKey: 'catalog:editor.sectionLabels.suppliers' },
+  ]
+  const sectionIds = sectionDefs.map((s) => s.id)
+  const activeSectionId = useScrollSpy(sectionIds)
+  const sections: EditorSection[] = sectionDefs.map((s, index) => ({
+    id: s.id,
+    label: t(s.labelKey),
+    marker: String(index + 1).padStart(2, '0'),
+  }))
+
+  const handleSectionSelect = (sectionId: string): void => {
+    const el = document.getElementById(sectionId)
+    if (el !== null) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
+
   if (isEditing && isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -334,9 +388,10 @@ export function ProductForm() {
 
   return (
     <div className="flex min-h-full flex-col gap-6">
-      {/* Header */}
+      {/* Header — single page-level <h1> + subtitle */}
       <PageHeader
         title={isEditing ? t('inventory:products.edit') : t('inventory:products.new')}
+        subtitle={t('catalog:editor.subtitle')}
         breadcrumb={
           <Link
             to="/inventory/products"
@@ -353,6 +408,15 @@ export function ProductForm() {
         className="mb-0"
       />
 
+      {/* Barcode-first hero: the barcode + name inputs are bound to the
+          existing form fields (single source of truth for `barcode`). */}
+      <BarcodeHero
+        barcode={barcodeValue}
+        onBarcodeChange={(value) => { setValue('barcode', value, { shouldDirty: true }) }}
+        name={nameValue}
+        onNameChange={(value) => { setValue('name', value, { shouldDirty: true }) }}
+      />
+
       {/* Form */}
       <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="flex flex-1 flex-col gap-6">
         {/* Catalog Lookup Banner */}
@@ -365,357 +429,417 @@ export function ProductForm() {
           }
         />
 
-        {/* Basic Information */}
-        <div className={tokens.card.base}>
-          <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('inventory:products.sections.basicInfo')}</h2>
-          <div className="grid gap-6 sm:grid-cols-2">
-            <FormField
-              label={`${t('inventory:products.name')} *`}
-              htmlFor="name"
-              error={errors.name?.message}
-            >
-              <Input
-                type="text"
-                id="name"
-                error={Boolean(errors.name)}
-                className={prefilledFields.has('name') ? colors.success[50] : ''}
-                {...register('name', {
-                  required: t('inventory:products.nameRequired'),
-                  onChange: () => {
-                    setPrefilledFields((prev) => {
-                      if (!prev.has('name')) return prev
-                      const next = new Set(prev)
-                      next.delete('name')
-                      return next
-                    })
-                  },
-                })}
-              />
-            </FormField>
+        {/* Two-column body: sticky section nav (left) + section cards (centre)
+            + related-operations / before-publish rail (right). */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[12rem_minmax(0,1fr)_16rem]">
+          {/* Left: sticky section navigator with scroll-spy + completeness */}
+          <div className="hidden lg:block">
+            <SectionNav
+              sections={sections}
+              activeId={activeSectionId}
+              onSelect={handleSectionSelect}
+              completenessPercent={completenessPercent}
+            />
+          </div>
 
-            <FormField
-              label={`${t('inventory:products.sku')} *`}
-              htmlFor="sku"
-              error={errors.sku?.message}
+          {/* Centre: stacked section cards */}
+          <div className="flex min-w-0 flex-col gap-6">
+            {/* 01 — General */}
+            <EditorSectionCard
+              id="section-general"
+              marker="01"
+              title={t('catalog:editor.sectionLabels.general')}
             >
-              <Input
-                type="text"
-                id="sku"
-                error={Boolean(errors.sku)}
-                {...register('sku', { required: t('inventory:products.skuRequired') })}
-              />
-            </FormField>
-
-            <div>
-              <div className="flex items-center gap-2 mt-6">
-                <Checkbox
-                  id="is_physical"
-                  {...register('is_physical')}
+              <FormField
+                label={`${t('inventory:products.name')} *`}
+                htmlFor="name"
+                error={errors.name?.message}
+              >
+                <Input
+                  type="text"
+                  id="name"
+                  error={Boolean(errors.name)}
+                  className={prefilledFields.has('name') ? colors.success[50] : ''}
+                  {...register('name', {
+                    required: t('inventory:products.nameRequired'),
+                    onChange: () => {
+                      setPrefilledFields((prev) => {
+                        if (!prev.has('name')) return prev
+                        const next = new Set(prev)
+                        next.delete('name')
+                        return next
+                      })
+                    },
+                  })}
                 />
-                <label htmlFor="is_physical" className={tokens.label.base}>
-                  {t('inventory:products.isPhysical')}
-                </label>
-              </div>
-              <p className={tokens.helperText.base}>
-                {t('inventory:products.isPhysicalHelper')}
-              </p>
-            </div>
+              </FormField>
 
-            {showBatchTracking && (
-              <div data-testid="batch-tracking-section">
+              <FormField
+                label={`${t('inventory:products.sku')} *`}
+                htmlFor="sku"
+                error={errors.sku?.message}
+              >
+                <Input
+                  type="text"
+                  id="sku"
+                  error={Boolean(errors.sku)}
+                  {...register('sku', { required: t('inventory:products.skuRequired') })}
+                />
+              </FormField>
+
+              <div>
                 <div className="flex items-center gap-2 mt-6">
                   <Checkbox
-                    id="requires_batch_tracking"
-                    {...register('requires_batch_tracking')}
+                    id="is_physical"
+                    {...register('is_physical')}
                   />
-                  <label htmlFor="requires_batch_tracking" className={tokens.label.base}>
-                    {t('inventory:products.requiresBatchTracking')}
+                  <label htmlFor="is_physical" className={tokens.label.base}>
+                    {t('inventory:products.isPhysical')}
                   </label>
                 </div>
                 <p className={tokens.helperText.base}>
-                  {t('inventory:products.requiresBatchTrackingHelper')}
+                  {t('inventory:products.isPhysicalHelper')}
                 </p>
-
-                {requiresBatchTracking && (
-                  <FormField
-                    label={t('inventory:products.defaultShelfLifeDays')}
-                    htmlFor="default_shelf_life_days"
-                    className="mt-3"
-                  >
-                    <Input
-                      type="number"
-                      id="default_shelf_life_days"
-                      min={0}
-                      placeholder={t('inventory:products.defaultShelfLifeDaysPlaceholder')}
-                      {...register('default_shelf_life_days', {
-                        setValueAs: (value: string): number | null =>
-                          value === '' || value === null ? null : Number(value),
-                      })}
-                    />
-                  </FormField>
-                )}
               </div>
-            )}
 
-            <FormField label={t('catalog.products.category')} htmlFor="category">
-              <CategorySelect
-                value={categoryId}
-                onChange={(id) => { setValue('category_id', id); }}
-                className="mt-1"
-              />
-            </FormField>
-
-            <FormField label={t('inventory:products.unit')} htmlFor="unit">
-              <Input
-                type="text"
-                id="unit"
-                placeholder={t('inventory:products.unitPlaceholder')}
-                {...register('unit')}
-              />
-            </FormField>
-
-            <div>
-              <BarcodeLookupInput
-                onProductData={handleProductData}
-                onLookupStateChange={handleLookupStateChange}
-                defaultBarcode={product?.barcode ?? ''}
-              />
-              <input type="hidden" {...register('barcode')} />
-
-              {/* Enrichment opt-in checkbox */}
-              {lookupState === 'not_found' && (
-                <div className={cn('mt-3 flex items-center gap-2.5 rounded-lg px-3.5 py-3', colors.neutral[100])}>
-                  <Checkbox
-                    id="enrichment-opt-in"
-                    checked={enrichmentOptIn}
-                    onChange={(e) => setEnrichmentOptIn(e.target.checked)}
-                  />
-                  <label htmlFor="enrichment-opt-in" className="text-sm">
-                    <span className="font-medium">{t('inventory:barcodeLookup.enrichmentCheckbox')}</span>
-                    <br />
-                    <span className="text-xs opacity-70">{t('inventory:barcodeLookup.enrichmentDescription')}</span>
-                  </label>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="is_active"
-                {...register('is_active')}
-              />
-              <label htmlFor="is_active" className={tokens.label.base}>
-                {t('active')}
-              </label>
-            </div>
-
-            <FormField
-              className="sm:col-span-2"
-              label={t('inventory:products.description')}
-              htmlFor="description"
-            >
-              <Textarea
-                id="description"
-                rows={3}
-                className={prefilledFields.has('description') ? colors.success[50] : ''}
-                {...register('description', {
-                  onChange: () => {
-                    setPrefilledFields((prev) => {
-                      if (!prev.has('description')) return prev
-                      const next = new Set(prev)
-                      next.delete('description')
-                      return next
-                    })
-                  },
-                })}
-              />
-            </FormField>
-          </div>
-        </div>
-
-        {/* Pricing */}
-        <div className={tokens.card.base}>
-          <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('inventory:products.sections.pricing')}</h2>
-          <div className="grid gap-6 sm:grid-cols-3">
-            <FormField label={t('inventory:products.salePrice')} htmlFor="sale_price">
-              <Controller
-                name="sale_price"
-                control={control}
-                render={({ field }) => (
-                  <MoneyInput
-                    id="sale_price"
-                    currency={currency}
-                    value={field.value ?? ''}
-                    onChange={field.onChange}
-                    onBlur={field.onBlur}
-                  />
-                )}
-              />
-            </FormField>
-
-            {/* Cost (WAC) - Read-only when editing */}
-            {isEditing && product && (
-              <FormField
-                label={t('inventory:products.costWac')}
-                htmlFor="cost_wac"
-                helperText={t('inventory:products.costWacHelper')}
-              >
-                <Input
-                  id="cost_wac"
-                  type="text"
-                  value={product.cost_price ? parseFloat(product.cost_price).toFixed(decimals) : (0).toFixed(decimals)}
-                  readOnly
-                  className={cn(colors.neutral[50], textColors.tertiary, 'cursor-not-allowed')}
+              <FormField label={t('catalog.products.category')} htmlFor="category">
+                <CategorySelect
+                  value={categoryId}
+                  onChange={(id) => { setValue('category_id', id); }}
+                  className="mt-1"
                 />
               </FormField>
-            )}
 
-            <TaxConfigurationField
-              label={t('inventory:products.fields.taxRate', 'Tax Rate')}
-              value={watch('tax_configuration_id')}
-              onChange={(configId, taxRate) => {
-                setValue('tax_configuration_id', configId)
-                setValue('tax_rate', taxRate)
-              }}
-            />
-          </div>
-        </div>
+              {/* Barcode lookup engine — drives catalog lookup + enrichment.
+                  The barcode field itself is owned by the hero above. */}
+              <div className="sm:col-span-2">
+                <BarcodeLookupInput
+                  onProductData={handleProductData}
+                  onLookupStateChange={handleLookupStateChange}
+                  defaultBarcode={product?.barcode ?? ''}
+                />
 
-        {/* Automotive Information - Otospex only */}
-        {isOtospex && (
-          <div className={tokens.card.base}>
-            <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('inventory:products.sections.automotiveInfo')}</h2>
+                {/* Enrichment opt-in checkbox */}
+                {lookupState === 'not_found' && (
+                  <div className={cn('mt-3 flex items-center gap-2.5 rounded-lg px-3.5 py-3', colors.neutral[100])}>
+                    <Checkbox
+                      id="enrichment-opt-in"
+                      checked={enrichmentOptIn}
+                      onChange={(e) => setEnrichmentOptIn(e.target.checked)}
+                    />
+                    <label htmlFor="enrichment-opt-in" className="text-sm">
+                      <span className="font-medium">{t('inventory:barcodeLookup.enrichmentCheckbox')}</span>
+                      <br />
+                      <span className="text-xs opacity-70">{t('inventory:barcodeLookup.enrichmentDescription')}</span>
+                    </label>
+                  </div>
+                )}
+              </div>
 
-            {/* OEM Numbers */}
-            <div className="mb-6">
-              <label className={cn(tokens.label.base, 'mb-2')}>
-                {t('inventory:products.oemNumbers')}
-              </label>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="is_active"
+                  {...register('is_active')}
+                />
+                <label htmlFor="is_active" className={tokens.label.base}>
+                  {t('active')}
+                </label>
+              </div>
+
+              <FormField
+                className="sm:col-span-2"
+                label={t('inventory:products.description')}
+                htmlFor="description"
+              >
+                <Textarea
+                  id="description"
+                  rows={3}
+                  className={prefilledFields.has('description') ? colors.success[50] : ''}
+                  {...register('description', {
+                    onChange: () => {
+                      setPrefilledFields((prev) => {
+                        if (!prev.has('description')) return prev
+                        const next = new Set(prev)
+                        next.delete('description')
+                        return next
+                      })
+                    },
+                  })}
+                />
+              </FormField>
+            </EditorSectionCard>
+
+            {/* 02 — Pricing & Tax */}
+            <EditorSectionCard
+              id="section-pricing"
+              marker="02"
+              title={t('catalog:editor.sectionLabels.pricing')}
+            >
+              <FormField label={t('inventory:products.salePrice')} htmlFor="sale_price">
+                <Controller
+                  name="sale_price"
+                  control={control}
+                  render={({ field }) => (
+                    <MoneyInput
+                      id="sale_price"
+                      currency={currency}
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                    />
+                  )}
+                />
+              </FormField>
+
+              {/* Cost (WAC) - Read-only when editing */}
+              {isEditing && product && (
+                <FormField
+                  label={t('inventory:products.costWac')}
+                  htmlFor="cost_wac"
+                  helperText={t('inventory:products.costWacHelper')}
+                >
+                  <Input
+                    id="cost_wac"
+                    type="text"
+                    value={product.cost_price ? parseFloat(product.cost_price).toFixed(decimals) : (0).toFixed(decimals)}
+                    readOnly
+                    className={cn(colors.neutral[50], textColors.tertiary, 'cursor-not-allowed')}
+                  />
+                </FormField>
+              )}
+
+              <div className="sm:col-span-2">
+                <TaxConfigurationField
+                  label={t('inventory:products.fields.taxRate', 'Tax Rate')}
+                  value={watch('tax_configuration_id')}
+                  onChange={(configId, taxRate) => {
+                    setValue('tax_configuration_id', configId)
+                    setValue('tax_rate', taxRate)
+                  }}
+                />
+              </div>
+            </EditorSectionCard>
+
+            {/* 03 — Inventory & Units */}
+            <EditorSectionCard
+              id="section-inventory"
+              marker="03"
+              title={t('catalog:editor.sectionLabels.inventory')}
+            >
+              <FormField label={t('inventory:products.unit')} htmlFor="unit">
                 <Input
                   type="text"
-                  className="mt-0 flex-1"
-                  value={oemInput}
-                  onChange={(e) => { setOemInput(e.target.value) }}
-                  onKeyDown={handleOemKeyDown}
-                  placeholder={t('inventory:products.oemPlaceholder')}
+                  id="unit"
+                  placeholder={t('inventory:products.unitPlaceholder')}
+                  {...register('unit')}
                 />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="gap-1"
-                  onClick={handleAddOem}
-                >
-                  <Plus className="h-4 w-4" />
-                  {t('actions.add')}
-                </Button>
-              </div>
-              {oemNumbers.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {oemNumbers.map((oem, index) => (
-                    <span
-                      key={index}
-                      className={cn('inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-sm font-mono', colors.neutral[100], textColors.secondary)}
+              </FormField>
+
+              {showBatchTracking && (
+                <div data-testid="batch-tracking-section">
+                  <div className="flex items-center gap-2 mt-6">
+                    <Checkbox
+                      id="requires_batch_tracking"
+                      {...register('requires_batch_tracking')}
+                    />
+                    <label htmlFor="requires_batch_tracking" className={tokens.label.base}>
+                      {t('inventory:products.requiresBatchTracking')}
+                    </label>
+                  </div>
+                  <p className={tokens.helperText.base}>
+                    {t('inventory:products.requiresBatchTrackingHelper')}
+                  </p>
+
+                  {requiresBatchTracking && (
+                    <FormField
+                      label={t('inventory:products.defaultShelfLifeDays')}
+                      htmlFor="default_shelf_life_days"
+                      className="mt-3"
                     >
-                      {oem}
-                      <button
-                        type="button"
-                        onClick={() => { handleRemoveOem(index) }}
-                        className={cn(textColors.disabled, textColors.hoverSecondary)}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </span>
-                  ))}
+                      <Input
+                        type="number"
+                        id="default_shelf_life_days"
+                        min={0}
+                        placeholder={t('inventory:products.defaultShelfLifeDaysPlaceholder')}
+                        {...register('default_shelf_life_days', {
+                          setValueAs: (value: string): number | null =>
+                            value === '' || value === null ? null : Number(value),
+                        })}
+                      />
+                    </FormField>
+                  )}
                 </div>
               )}
-            </div>
+            </EditorSectionCard>
 
-            {/* Cross References */}
-            <div>
-              <label className={cn(tokens.label.base, 'mb-2')}>
-                {t('inventory:products.crossReferences')}
-              </label>
-              <div className="space-y-2">
-                {crossRefFields.map((field, index) => (
-                  <div key={field.id} className="flex gap-2">
+            {/* Automotive Information - Otospex only (no section nav entry; it
+                is a vertical-exclusive block layered between inventory and the
+                vertical-gated pharmacy/suppliers sections). */}
+            {isOtospex && (
+              <div className={tokens.card.base}>
+                <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('inventory:products.sections.automotiveInfo')}</h2>
+
+                {/* OEM Numbers */}
+                <div className="mb-6">
+                  <label className={cn(tokens.label.base, 'mb-2')}>
+                    {t('inventory:products.oemNumbers')}
+                  </label>
+                  <div className="flex gap-2">
                     <Input
                       type="text"
                       className="mt-0 flex-1"
-                      // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-                      {...register(`cross_references.${index}.brand` as const)}
-                      placeholder={t('inventory:products.brand')}
-                    />
-                    <Input
-                      type="text"
-                      className="mt-0 flex-1"
-                      // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-                      {...register(`cross_references.${index}.reference` as const)}
-                      placeholder={t('inventory:products.reference')}
+                      value={oemInput}
+                      onChange={(e) => { setOemInput(e.target.value) }}
+                      onKeyDown={handleOemKeyDown}
+                      placeholder={t('inventory:products.oemPlaceholder')}
                     />
                     <Button
                       type="button"
                       variant="secondary"
-                      className="p-2"
-                      onClick={() => { removeCrossRef(index) }}
+                      className="gap-1"
+                      onClick={handleAddOem}
                     >
-                      <X className="h-4 w-4" />
+                      <Plus className="h-4 w-4" />
+                      {t('actions.add')}
                     </Button>
                   </div>
-                ))}
+                  {oemNumbers.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {oemNumbers.map((oem, index) => (
+                        <span
+                          key={index}
+                          className={cn('inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-sm font-mono', colors.neutral[100], textColors.secondary)}
+                        >
+                          {oem}
+                          <button
+                            type="button"
+                            onClick={() => { handleRemoveOem(index) }}
+                            className={cn(textColors.disabled, textColors.hoverSecondary)}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Cross References */}
+                <div>
+                  <label className={cn(tokens.label.base, 'mb-2')}>
+                    {t('inventory:products.crossReferences')}
+                  </label>
+                  <div className="space-y-2">
+                    {crossRefFields.map((field, index) => (
+                      <div key={field.id} className="flex gap-2">
+                        <Input
+                          type="text"
+                          className="mt-0 flex-1"
+                          // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+                          {...register(`cross_references.${index}.brand` as const)}
+                          placeholder={t('inventory:products.brand')}
+                        />
+                        <Input
+                          type="text"
+                          className="mt-0 flex-1"
+                          // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+                          {...register(`cross_references.${index}.reference` as const)}
+                          placeholder={t('inventory:products.reference')}
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="p-2"
+                          onClick={() => { removeCrossRef(index) }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { appendCrossRef({ brand: '', reference: '' }) }}
+                    className={cn('mt-2 inline-flex items-center gap-1 text-sm', textColors.brand)}
+                  >
+                    <Plus className="h-4 w-4" />
+                    {t('inventory:products.addCrossReference')}
+                  </button>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => { appendCrossRef({ brand: '', reference: '' }) }}
-                className={cn('mt-2 inline-flex items-center gap-1 text-sm', textColors.brand)}
-              >
-                <Plus className="h-4 w-4" />
-                {t('inventory:products.addCrossReference')}
-              </button>
-            </div>
-          </div>
-        )}
+            )}
 
-        {/* Parapharmacy Metadata - Only for parapharmacy vertical */}
-        {isParapharmacy && (
-          <ParapharmacyMetadataFields
-            control={control}
-            register={register}
-            errors={errors}
-          />
-        )}
-
-        {/* Product Images Section - Only when editing. ProductImageSection
-            renders its own (translated) section header. */}
-        {isEditing && id && (
-          <div className={tokens.card.base}>
-            <ProductImageSection productId={id} />
-          </div>
-        )}
-
-        {/* Variants Section - Only when editing (matrix generation needs a persisted product id) */}
-        {isEditing && id && (
-          <div className={tokens.card.base}>
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Layers className={cn('h-5 w-5', textColors.disabled)} />
-                <h2 className={tokens.heading.section}>
-                  {t('catalog:variants.title')}
-                </h2>
-              </div>
-              <label className="inline-flex items-center gap-2">
-                <Checkbox
-                  checked={showVariants}
-                  onChange={(e) => { setShowVariants(e.target.checked) }}
+            {/* Pharmacy — parapharmacy vertical only. ParapharmacyMetadataFields
+                renders its own card chrome + (translated) section header. */}
+            {isParapharmacy && (
+              <div id="section-pharmacy" className="scroll-mt-24">
+                <ParapharmacyMetadataFields
+                  control={control}
+                  register={register}
+                  errors={errors}
                 />
-                <span className={cn('text-sm', textColors.secondary)}>
-                  {t('catalog:variants.hasVariants')}
-                </span>
-              </label>
-            </div>
-            {showVariants && <ProductVariantMatrixEditor productId={id} />}
+              </div>
+            )}
+
+            {/* Suppliers — no product-level supplier fields exist on this form;
+                suppliers are managed in Purchases. Render an informational card
+                with a link to the suppliers route (no new data fields). */}
+            <EditorSectionCard
+              id="section-suppliers"
+              marker={isParapharmacy ? '05' : '04'}
+              title={t('catalog:editor.sectionLabels.suppliers')}
+              contentClassName="sm:grid-cols-1"
+            >
+              <p className={cn('text-sm', textColors.tertiary)}>
+                {t('catalog:editor.suppliers.managedHint')}
+              </p>
+              <Link
+                to="/purchases/suppliers"
+                className={cn('inline-flex items-center gap-1 text-sm', textColors.brand)}
+              >
+                {t('catalog:editor.suppliers.manageLink')}
+              </Link>
+            </EditorSectionCard>
+
+            {/* Product Images Section - Only when editing. ProductImageSection
+                renders its own (translated) section header. */}
+            {isEditing && id && (
+              <div className={tokens.card.base}>
+                <ProductImageSection productId={id} />
+              </div>
+            )}
+
+            {/* Variants Section - Only when editing (matrix generation needs a persisted product id) */}
+            {isEditing && id && (
+              <div className={tokens.card.base}>
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Layers className={cn('h-5 w-5', textColors.disabled)} />
+                    <h2 className={tokens.heading.section}>
+                      {t('catalog:variants.title')}
+                    </h2>
+                  </div>
+                  <label className="inline-flex items-center gap-2">
+                    <Checkbox
+                      checked={showVariants}
+                      onChange={(e) => { setShowVariants(e.target.checked) }}
+                    />
+                    <span className={cn('text-sm', textColors.secondary)}>
+                      {t('catalog:variants.hasVariants')}
+                    </span>
+                  </label>
+                </div>
+                {showVariants && <ProductVariantMatrixEditor productId={id} />}
+              </div>
+            )}
           </div>
-        )}
+
+          {/* Right rail: related operations + before-publish checklist */}
+          <aside className="flex flex-col gap-6">
+            <RelatedOperationsRail disabled={!isEditing} />
+            <BeforePublishChecklist items={checklistItems} />
+          </aside>
+        </div>
 
         {/* Form Actions */}
         <StickyFormFooter>

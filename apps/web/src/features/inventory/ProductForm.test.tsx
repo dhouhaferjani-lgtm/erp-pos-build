@@ -129,3 +129,44 @@ describe('ProductForm (canonical layout)', () => {
     expect(save).toHaveAttribute('type', 'submit')
   })
 })
+
+describe('ProductForm (Direction-A editor layout smoke)', () => {
+  it('renders the barcode-first hero (barcode + name inputs)', () => {
+    const { container } = render(<ProductForm />)
+    // Hero binds the barcode field; its input carries the mono scan class.
+    const monoInput = container.querySelector('input.font-mono')
+    expect(monoInput).not.toBeNull()
+  })
+
+  it('renders the section nav with the General / Pricing / Inventory labels', () => {
+    render(<ProductForm />)
+    // Echo-key i18n: labels resolve to the raw key, asserted via substring.
+    expect(
+      screen.getAllByText(/editor\.sectionLabels\.general/i).length,
+    ).toBeGreaterThanOrEqual(1)
+    expect(
+      screen.getAllByText(/editor\.sectionLabels\.pricing/i).length,
+    ).toBeGreaterThanOrEqual(1)
+    expect(
+      screen.getAllByText(/editor\.sectionLabels\.inventory/i).length,
+    ).toBeGreaterThanOrEqual(1)
+  })
+
+  it('renders the section cards anchored by id for scroll-spy', () => {
+    const { container } = render(<ProductForm />)
+    expect(container.querySelector('#section-general')).not.toBeNull()
+    expect(container.querySelector('#section-pricing')).not.toBeNull()
+    expect(container.querySelector('#section-inventory')).not.toBeNull()
+    expect(container.querySelector('#section-suppliers')).not.toBeNull()
+  })
+
+  it('renders the related-operations rail and the before-publish checklist', () => {
+    render(<ProductForm />)
+    expect(
+      screen.getByText(/editor\.related\.title/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/editor\.checklist\.title/i),
+    ).toBeInTheDocument()
+  })
+})

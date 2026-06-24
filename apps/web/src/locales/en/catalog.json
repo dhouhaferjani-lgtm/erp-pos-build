@@ -10,6 +10,32 @@
       "enrichmentSuccess": "Synerivia · {{count}} fields",
       "enrichmentFields": "{{count}} fields",
       "enrichmentUnavailable": "Synerivia · unavailable"
+    },
+    "subtitle": "Scan a barcode to auto-fill from Synerivia, or type by hand.",
+    "sectionLabels": {
+      "general": "General",
+      "pricing": "Pricing & Tax",
+      "inventory": "Inventory & Units",
+      "pharmacy": "Pharmacy",
+      "suppliers": "Suppliers"
+    },
+    "related": {
+      "title": "Related operations",
+      "newCount": "New stock count",
+      "startPurchase": "Start a purchase",
+      "startSale": "Start a sale / quote",
+      "viewMovements": "View stock movements"
+    },
+    "checklist": {
+      "title": "Before publish",
+      "name": "Has a product name",
+      "sku": "Has a SKU",
+      "salePrice": "Has a sale price",
+      "tax": "Has a tax rate"
+    },
+    "suppliers": {
+      "managedHint": "Suppliers are managed in Purchases. Link this product to a supplier from a purchase order.",
+      "manageLink": "Go to suppliers"
     }
   },
   "compositeItem": "Composite Item",

@@ -10,6 +10,32 @@
       "enrichmentSuccess": "Synerivia · {{count}} حقول",
       "enrichmentFields": "{{count}} حقول",
       "enrichmentUnavailable": "Synerivia · غير متاح"
+    },
+    "subtitle": "امسح الباركود للتعبئة التلقائية من Synerivia، أو اكتب يدويًا.",
+    "sectionLabels": {
+      "general": "عام",
+      "pricing": "السعر والضريبة",
+      "inventory": "المخزون والوحدات",
+      "pharmacy": "الصيدلية",
+      "suppliers": "الموردون"
+    },
+    "related": {
+      "title": "العمليات ذات الصلة",
+      "newCount": "جرد مخزون جديد",
+      "startPurchase": "بدء عملية شراء",
+      "startSale": "بدء بيع / عرض سعر",
+      "viewMovements": "عرض حركات المخزون"
+    },
+    "checklist": {
+      "title": "قبل النشر",
+      "name": "يحتوي على اسم المنتج",
+      "sku": "يحتوي على رمز SKU",
+      "salePrice": "يحتوي على سعر بيع",
+      "tax": "يحتوي على معدل ضريبة"
+    },
+    "suppliers": {
+      "managedHint": "تتم إدارة الموردين في المشتريات. اربط هذا المنتج بمورد من أمر شراء.",
+      "manageLink": "الذهاب إلى الموردين"
     }
   },
   "compositeItem": "عنصر مركب",

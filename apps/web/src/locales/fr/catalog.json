@@ -10,6 +10,32 @@
       "enrichmentSuccess": "Synerivia · {{count}} champs",
       "enrichmentFields": "{{count}} champs",
       "enrichmentUnavailable": "Synerivia · indisponible"
+    },
+    "subtitle": "Scannez un code-barres pour pré-remplir depuis Synerivia, ou saisissez manuellement.",
+    "sectionLabels": {
+      "general": "Général",
+      "pricing": "Prix & Taxes",
+      "inventory": "Stock & Unités",
+      "pharmacy": "Pharmacie",
+      "suppliers": "Fournisseurs"
+    },
+    "related": {
+      "title": "Opérations liées",
+      "newCount": "Nouvel inventaire",
+      "startPurchase": "Démarrer un achat",
+      "startSale": "Démarrer une vente / un devis",
+      "viewMovements": "Voir les mouvements de stock"
+    },
+    "checklist": {
+      "title": "Avant publication",
+      "name": "Possède un nom de produit",
+      "sku": "Possède une référence (SKU)",
+      "salePrice": "Possède un prix de vente",
+      "tax": "Possède un taux de taxe"
+    },
+    "suppliers": {
+      "managedHint": "Les fournisseurs sont gérés dans Achats. Liez ce produit à un fournisseur depuis un bon de commande.",
+      "manageLink": "Aller aux fournisseurs"
     }
   },
   "compositeItem": "Article composé",
