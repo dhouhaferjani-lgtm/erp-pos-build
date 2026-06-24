@@ -457,6 +457,7 @@ export function ProductForm() {
         onBarcodeChange={(value) => { setValue('barcode', value, { shouldDirty: true }) }}
         name={nameValue}
         onNameChange={(value) => { setValue('name', value, { shouldDirty: true }) }}
+        onManualRefresh={() => { /* TODO(stage-4): trigger manual Synerivia re-fetch */ }}
       />
 
       {/* Form */}

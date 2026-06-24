@@ -1,6 +1,6 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { tokens, textColors, colors, borderColors } from '@/lib/designTokens'
+import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 
 interface LivePosTileProps {
@@ -34,16 +34,13 @@ export function LivePosTile({ name, price }: LivePosTileProps): React.JSX.Elemen
         {/* Image placeholder — diagonal hatch echoes the mock's empty-image state */}
         <div
           aria-hidden="true"
-          className={cn(
-            'h-[84px] bg-[repeating-linear-gradient(45deg,var(--color-gray-50)_0,var(--color-gray-50)_8px,var(--color-gray-100)_8px,var(--color-gray-100)_16px)]',
-            colors.neutral[100],
-          )}
+          className="h-[84px] bg-[repeating-linear-gradient(45deg,var(--color-gray-50)_0,var(--color-gray-50)_8px,var(--color-gray-100)_8px,var(--color-gray-100)_16px)]"
         />
         <div className="px-2.5 py-2">
           <div className={cn('text-[13px] font-semibold leading-tight', textColors.primary)}>
             {displayName}
           </div>
-          <div className="mt-0.5 font-mono text-[13px] font-semibold text-secondary-600">
+          <div className="mt-0.5 font-mono text-[13px] font-semibold text-secondary-500">
             {price}
           </div>
         </div>

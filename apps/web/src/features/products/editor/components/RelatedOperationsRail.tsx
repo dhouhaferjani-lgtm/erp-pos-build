@@ -1,7 +1,7 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ClipboardList, Truck, ShoppingCart, ChevronRight } from 'lucide-react'
+import { SquarePen, Truck, ShoppingCart, ChevronRight } from 'lucide-react'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 
@@ -29,7 +29,7 @@ const OPERATIONS: readonly RelatedOperation[] = [
     key: 'newCount',
     subtitleKey: 'subtitleNewCount',
     to: '/inventory/counting/create',
-    icon: ClipboardList,
+    icon: SquarePen,
     chip: 'bg-secondary-50 text-secondary-600',
   },
   {
