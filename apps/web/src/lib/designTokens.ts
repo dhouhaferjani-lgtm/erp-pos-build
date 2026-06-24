@@ -282,7 +282,7 @@ export const tokens = {
    * Input field styles
    */
   input: {
-    base: 'mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed',
+    base: 'mt-1 block w-full rounded-[var(--radius-input)] border border-gray-300 px-3 py-2 shadow-[var(--elevation-input)] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed',
     error: 'border-red-500 focus:border-red-500 focus:ring-red-500',
     success: 'border-green-500 focus:border-green-500 focus:ring-green-500',
   },
@@ -291,7 +291,7 @@ export const tokens = {
    * Select dropdown styles
    */
   select: {
-    base: 'mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed',
+    base: 'mt-1 block w-full rounded-[var(--radius-input)] border border-gray-300 px-3 py-2 shadow-[var(--elevation-input)] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed',
     error: 'border-red-500 focus:border-red-500 focus:ring-red-500',
   },
 
@@ -299,7 +299,7 @@ export const tokens = {
    * Textarea styles
    */
   textarea: {
-    base: 'mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed resize-y',
+    base: 'mt-1 block w-full rounded-[var(--radius-input)] border border-gray-300 px-3 py-2 shadow-[var(--elevation-input)] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed resize-y',
     error: 'border-red-500 focus:border-red-500 focus:ring-red-500',
   },
 
@@ -349,7 +349,7 @@ export const tokens = {
    * Button styles (variants)
    */
   button: {
-    base: 'inline-flex items-center justify-center rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+    base: 'inline-flex items-center justify-center rounded-[var(--radius-button)] font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
     primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
     secondary: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-gray-500',
     danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
@@ -389,7 +389,7 @@ export const tokens = {
    * Card styles
    */
   card: {
-    base: 'rounded-lg border border-gray-200 bg-white p-6 shadow-sm',
+    base: 'rounded-[var(--radius-card)] border border-gray-200 bg-white p-6 shadow-[var(--elevation-card)]',
     hover: 'hover:shadow-md transition-shadow',
     // Hover variants for interactive cards (selection UI, list rows).
     hoverPrimary: 'hover:border-blue-400 hover:bg-blue-50',
