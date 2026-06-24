@@ -18,7 +18,9 @@ use App\Shared\DTOs\Media\MediaAttachmentView;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
  * Document attachment controller — Phase 2 unified media subsystem.
@@ -92,6 +94,11 @@ class DocumentAttachmentController extends Controller
                 'data' => $this->toJson($view),
                 'message' => __('messages.attachment.uploaded'),
             ], 201);
+        } catch (ValidationException $e) {
+            // Defense-in-depth: service-layer MIME guard fires if FormRequest
+            // allow-list and service allow-list diverge (should not happen in
+            // normal operation but protects against config drift).
+            return response()->json(['error' => $e->getMessage()], 422);
         } catch (\InvalidArgumentException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
@@ -108,6 +115,11 @@ class DocumentAttachmentController extends Controller
                 $attachment,
                 $documentModel->tenant_id,
             );
+        } catch (NotFoundHttpException $e) {
+            // abort(404) from resolveDocument or MediaService — propagate as a
+            // clean Laravel 404 rather than re-wrapping it in a JSON {error: ""}
+            // body (which produces an empty-message 404 and breaks error handling).
+            throw $e;
         } catch (\RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 404);
         }

@@ -111,6 +111,10 @@ final class MediaStorageAdapter implements MediaStorageInterface
      */
     public function download(string $disk, string $path, string $filename, string $mimeType): StreamedResponse
     {
+        if (! Storage::disk($disk)->exists($path)) {
+            throw new \RuntimeException('Attachment file not found on storage.');
+        }
+
         return Storage::disk($disk)->download($path, $filename, ['Content-Type' => $mimeType]);
     }
 }
