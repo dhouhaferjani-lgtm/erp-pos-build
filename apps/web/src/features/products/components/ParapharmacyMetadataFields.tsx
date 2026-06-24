@@ -1,8 +1,9 @@
 import { useTranslation } from 'react-i18next'
 import { useFieldArray, type Control, type UseFormRegister, type FieldErrors } from 'react-hook-form'
 import { Plus, X } from 'lucide-react'
+import { Input, Select, Textarea } from '../../../components/atoms'
 
- 
+
 interface ParapharmacyMetadataFieldsProps {
   control: Control<any>
   register: UseFormRegister<any>
@@ -33,10 +34,9 @@ export function ParapharmacyMetadataFields({
           <label htmlFor="parapharmacy_category" className="block text-sm font-medium text-gray-700">
             {t('products:parapharmacy.category')} *
           </label>
-          <select
+          <Select
             id="parapharmacy_category"
             {...register('parapharmacy_metadata.category', { required: t('validation:required') || 'Required' })}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             <option value="">{t('common:actions.select')}</option>
             <option value="supplement">{t('products:parapharmacy.categories.supplement')}</option>
@@ -46,7 +46,7 @@ export function ParapharmacyMetadataFields({
             <option value="baby_care">{t('products:parapharmacy.categories.baby_care')}</option>
             <option value="sports_nutrition">{t('products:parapharmacy.categories.sports_nutrition')}</option>
             <option value="other">{t('products:parapharmacy.categories.other')}</option>
-          </select>
+          </Select>
           {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
           {(errors as any)?.parapharmacy_metadata?.category && (
             <p className="mt-1 text-sm text-red-600">
@@ -61,10 +61,9 @@ export function ParapharmacyMetadataFields({
           <label htmlFor="dosage_form" className="block text-sm font-medium text-gray-700">
             {t('products:parapharmacy.dosageForm')}
           </label>
-          <select
+          <Select
             id="dosage_form"
             {...register('parapharmacy_metadata.dosage_form')}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             <option value="">{t('common:actions.select')}</option>
             <option value="capsule">{t('products:parapharmacy.dosageForms.capsule')}</option>
@@ -78,7 +77,7 @@ export function ParapharmacyMetadataFields({
             <option value="spray">{t('products:parapharmacy.dosageForms.spray')}</option>
             <option value="patch">{t('products:parapharmacy.dosageForms.patch')}</option>
             <option value="other">{t('products:parapharmacy.dosageForms.other')}</option>
-          </select>
+          </Select>
         </div>
 
         {/* Active Ingredients */}
@@ -89,17 +88,17 @@ export function ParapharmacyMetadataFields({
           <div className="space-y-2">
             {ingredientFields.map((field, index) => (
               <div key={field.id} className="flex gap-2">
-                <input
+                <Input
                   type="text"
                   {...register(`parapharmacy_metadata.active_ingredients.${index}.name`)}
                   placeholder={t('products:parapharmacy.ingredientName')}
-                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="flex-1 w-auto"
                 />
-                <input
+                <Input
                   type="text"
                   {...register(`parapharmacy_metadata.active_ingredients.${index}.concentration`)}
                   placeholder={t('products:parapharmacy.concentration')}
-                  className="w-40 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-40"
                 />
                 <button
                   type="button"
@@ -126,11 +125,10 @@ export function ParapharmacyMetadataFields({
           <label htmlFor="usage_instructions" className="block text-sm font-medium text-gray-700">
             {t('products:parapharmacy.usageInstructions')}
           </label>
-          <textarea
+          <Textarea
             id="usage_instructions"
             rows={3}
             {...register('parapharmacy_metadata.usage_instructions')}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
 
@@ -139,11 +137,10 @@ export function ParapharmacyMetadataFields({
           <label htmlFor="warnings" className="block text-sm font-medium text-gray-700">
             {t('products:parapharmacy.warnings')}
           </label>
-          <textarea
+          <Textarea
             id="warnings"
             rows={3}
             {...register('parapharmacy_metadata.warnings')}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
 
@@ -152,11 +149,10 @@ export function ParapharmacyMetadataFields({
           <label htmlFor="contraindications" className="block text-sm font-medium text-gray-700">
             {t('products:parapharmacy.contraindications')}
           </label>
-          <textarea
+          <Textarea
             id="contraindications"
             rows={3}
             {...register('parapharmacy_metadata.contraindications')}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
 
@@ -166,13 +162,12 @@ export function ParapharmacyMetadataFields({
             <label htmlFor="minimum_age" className="block text-sm font-medium text-gray-700">
               {t('products:parapharmacy.minimumAge')}
             </label>
-            <input
+            <Input
               type="number"
               id="minimum_age"
               min="0"
               step="1"
               {...register('parapharmacy_metadata.minimum_age', { valueAsNumber: true })}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
 
@@ -180,16 +175,15 @@ export function ParapharmacyMetadataFields({
             <label htmlFor="age_restriction" className="block text-sm font-medium text-gray-700">
               {t('products:parapharmacy.ageRestriction')}
             </label>
-            <select
+            <Select
               id="age_restriction"
               {...register('parapharmacy_metadata.age_restriction')}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               <option value="">{t('common:actions.select')}</option>
               <option value="adult_only">{t('products:parapharmacy.ageRestrictions.adult_only')}</option>
               <option value="children_only">{t('products:parapharmacy.ageRestrictions.children_only')}</option>
               <option value="all_ages">{t('products:parapharmacy.ageRestrictions.all_ages')}</option>
-            </select>
+            </Select>
           </div>
         </div>
 
@@ -211,11 +205,10 @@ export function ParapharmacyMetadataFields({
           <label htmlFor="regulatory_code" className="block text-sm font-medium text-gray-700">
             {t('products:parapharmacy.regulatoryCode')}
           </label>
-          <input
+          <Input
             type="text"
             id="regulatory_code"
             {...register('parapharmacy_metadata.regulatory_code')}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
 
@@ -224,11 +217,10 @@ export function ParapharmacyMetadataFields({
           <label htmlFor="storage_requirements" className="block text-sm font-medium text-gray-700">
             {t('products:parapharmacy.storageRequirements')}
           </label>
-          <textarea
+          <Textarea
             id="storage_requirements"
             rows={2}
             {...register('parapharmacy_metadata.storage_requirements')}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
       </div>
