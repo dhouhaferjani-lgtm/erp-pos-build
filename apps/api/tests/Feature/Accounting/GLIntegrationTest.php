@@ -682,6 +682,8 @@ class GLIntegrationTest extends TestCase
         );
 
         $this->assertNotNull($journalEntry);
+        $this->assertEquals(JournalEntryStatus::Posted, $journalEntry->status);
+        $this->assertNotNull($journalEntry->fiscal_hash);
         $this->assertCount(3, $journalEntry->lines);
 
         // Expense should be debited
@@ -725,6 +727,8 @@ class GLIntegrationTest extends TestCase
         );
 
         $this->assertNotNull($journalEntry);
+        $this->assertEquals(JournalEntryStatus::Posted, $journalEntry->status);
+        $this->assertNotNull($journalEntry->fiscal_hash);
         $this->assertCount(2, $journalEntry->lines);
 
         // Accounts Payable should be debited (reduces liability, with partner for subledger)

@@ -19,9 +19,9 @@ Branch: cut a fresh `fix/opus-remediation` off current `origin/dev`. Commit per 
 - `407cea426` — `PaymentController::store` supplier-payment branch, `GeneralLedgerService::createSupplierPaymentJournalEntry`, `PaymentTest` supplier-payment assertions.
 - **KEEP** M-5 (the non-negative payable guard/constraint is correct and harmless when payable stays 0), M-7, M-6, M-3 — they tolerate `payable_balance == 0` (the pre-Codex state).
 
-**Acceptance:** confirming a PO posts no GL; paying a PO does not drive `payable_balance` negative / no constraint violation; supplier-payment path behaves as pre-Codex; `git grep` shows no remaining `createSupplierInvoiceJournalEntry`/`PurchaseOrderConfirmedListener` references; scoped tests green; PHPStan L8 + Pint clean.
+**Acceptance:** confirming a PO posts no GL; paying a PO does not drive `payable_balance` negative / no constraint violation; supplier-payment path behaves as pre-Codex; `git grep` shows no remaining `PurchaseOrderConfirmedListener` references or `PaymentType::SupplierPayment` branch in `PaymentController`; direct `createSupplierInvoiceJournalEntry`/`createSupplierPaymentJournalEntry` helpers remain posted/hash-covered because they predate the reverted pair; scoped tests green; PHPStan L8 + Pint clean.
 
-**Re-introduce later (separate designed feature, accountant sign-off):** no GL at PO confirm → `Dr Inventory / Cr GR-IR (goods-received-not-invoiced)` at goods receipt → `Dr GR-IR + Dr recoverable-VAT / Cr SupplierPayable` at supplier invoice (split recoverable vs non-recoverable tax + stamp duty per `TaxCalculationService::determineRecoverability`) → payment clears AP. Tracks H-3 properly.
+**Re-introduce later (separate designed feature, accountant sign-off):** no GL at PO confirm → `Dr Inventory / Cr GR-IR (goods-received-not-invoiced)` at goods receipt → `Dr GR-IR + Dr recoverable-VAT / Cr SupplierPayable` at supplier invoice (split recoverable vs non-recoverable tax + stamp duty per `TaxCalculationService::determineRecoverability`) → payment clears AP. Tracks H-3 properly. Until that design lands, the reverted pre-Codex PO payment path remains economically customer-payment-shaped by owner decision and must not be treated as a correct supplier-AP model.
 
 > Makes H-3.1's other findings (partner-id match H-3.1/H1, payable round-trip/idempotency) MOOT — they vanish with the revert.
 
