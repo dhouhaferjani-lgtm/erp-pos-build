@@ -13,7 +13,7 @@ import {
   type VariantLabelDialogVariant,
 } from '../catalog/components/VariantLabelDialog'
 import { cn } from '../../lib/utils'
-import { tokens, textColors, borderColors } from '../../lib/designTokens'
+import { colors, tokens, textColors, borderColors } from '../../lib/designTokens'
 import { useCompanyStore } from '../../stores/companyStore'
 import { useAuthStore } from '../../stores/authStore'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
@@ -518,7 +518,7 @@ export function ProductListPage() {
               t('inventory:bulk.selectRow', { name: product.name }),
             selectAllLabel: t('inventory:bulk.selectAll'),
           }}
-          className={cn('rounded-lg border bg-white', borderColors.light)}
+          className={cn('rounded-lg border', colors.white, borderColors.light)}
           emptyState={
             <div className="py-6">
               <EmptyState

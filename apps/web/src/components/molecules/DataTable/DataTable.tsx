@@ -1,6 +1,6 @@
 import type React from 'react'
 import { cn } from '@/lib/utils'
-import { colors, textColors, tokens } from '@/lib/designTokens'
+import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
 import { EmptyState } from '@/components/molecules/EmptyState'
 import { Checkbox } from '@/components/atoms'
 
@@ -167,7 +167,7 @@ export function DataTable<T>({
   )
 
   const renderSkeletonBody = () => (
-    <tbody className="divide-y divide-gray-200">
+    <tbody className={cn('divide-y', borderColors.divideDefault)}>
       {Array.from({ length: loadingRowCount }).map((_, rowIndex) => (
         <tr key={`skeleton-${String(rowIndex)}`}>
           {hasSelection ? (
@@ -186,7 +186,7 @@ export function DataTable<T>({
   )
 
   const renderBody = () => (
-    <tbody className="divide-y divide-gray-200">
+    <tbody className={cn('divide-y', borderColors.divideDefault)}>
       {data.map((row, rowIndex) => {
         const handleClick = isInteractive
           ? () => onRowClick?.(row)
