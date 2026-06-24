@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Catalog\Domain\Contracts;
 
-use App\Modules\Catalog\Domain\Enums\MediaOwnerType;
 use App\Modules\Catalog\Domain\Media\MediaAttachment;
+use App\Modules\Media\Domain\Enums\MediaOwnerType;
 
 interface MediaAttachmentRepositoryInterface
 {

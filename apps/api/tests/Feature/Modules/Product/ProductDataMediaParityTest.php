@@ -6,11 +6,11 @@ namespace Tests\Feature\Modules\Product;
 
 use App\Enums\Vertical;
 use App\Modules\Catalog\Application\DTOs\ProductMediaData;
-use App\Modules\Catalog\Domain\Enums\MediaAssetType;
-use App\Modules\Catalog\Domain\Enums\MediaOwnerType;
-use App\Modules\Catalog\Domain\Enums\MediaRole;
-use App\Modules\Catalog\Domain\Enums\MediaSource;
-use App\Modules\Catalog\Domain\Enums\MediaStatus;
+use App\Modules\Media\Domain\Enums\MediaAssetType;
+use App\Modules\Media\Domain\Enums\MediaOwnerType;
+use App\Modules\Media\Domain\Enums\MediaRole;
+use App\Modules\Media\Domain\Enums\MediaSource;
+use App\Modules\Media\Domain\Enums\MediaStatus;
 use App\Modules\Catalog\Domain\Media\MediaAsset;
 use App\Modules\Catalog\Domain\Media\MediaAttachment;
 use App\Modules\Company\Domain\Company;

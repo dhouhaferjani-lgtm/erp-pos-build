@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Catalog\Presentation\Controllers;
 
 use App\Modules\Catalog\Domain\Contracts\MediaStorageInterface;
-use App\Modules\Catalog\Domain\Enums\MediaAssetType;
-use App\Modules\Catalog\Domain\Enums\MediaSource;
-use App\Modules\Catalog\Domain\Enums\MediaStatus;
 use App\Modules\Catalog\Domain\Media\MediaAsset;
 use App\Modules\Catalog\Domain\Media\MediaAttachment;
+use App\Modules\Media\Domain\Enums\MediaAssetType;
+use App\Modules\Media\Domain\Enums\MediaSource;
+use App\Modules\Media\Domain\Enums\MediaStatus;
 use App\Modules\Tenant\Application\Services\TenancyResolver;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Architecture\CrossTenantRoute;

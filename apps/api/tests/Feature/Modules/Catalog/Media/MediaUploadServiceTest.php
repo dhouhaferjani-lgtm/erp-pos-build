@@ -6,8 +6,8 @@ namespace Tests\Feature\Modules\Catalog\Media;
 
 use App\Modules\Catalog\Application\Jobs\GenerateRenditions;
 use App\Modules\Catalog\Application\Services\MediaUploadService;
-use App\Modules\Catalog\Domain\Enums\MediaSource;
-use App\Modules\Catalog\Domain\Enums\MediaStatus;
+use App\Modules\Media\Domain\Enums\MediaSource;
+use App\Modules\Media\Domain\Enums\MediaStatus;
 use App\Modules\Catalog\Domain\Media\MediaAsset;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;

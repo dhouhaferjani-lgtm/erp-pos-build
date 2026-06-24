@@ -6,9 +6,9 @@ namespace App\Modules\Product\Application\Services;
 
 use App\Modules\Catalog\Application\Services\MediaAttachmentService;
 use App\Modules\Catalog\Application\Services\MediaUploadService;
-use App\Modules\Catalog\Domain\Enums\MediaOwnerType;
-use App\Modules\Catalog\Domain\Enums\MediaRole;
 use App\Modules\Import\Domain\ImportJob;
+use App\Modules\Media\Domain\Enums\MediaOwnerType;
+use App\Modules\Media\Domain\Enums\MediaRole;
 use App\Modules\Product\Domain\Product;
 use Exception;
 use Illuminate\Http\UploadedFile;

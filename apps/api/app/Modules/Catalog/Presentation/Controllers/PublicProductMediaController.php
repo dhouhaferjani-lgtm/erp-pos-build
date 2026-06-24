@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Catalog\Presentation\Controllers;
 
 use App\Modules\Catalog\Application\Services\MediaUrlResolver;
-use App\Modules\Catalog\Domain\Enums\MediaOwnerType;
-use App\Modules\Catalog\Domain\Enums\MediaRole;
-use App\Modules\Catalog\Domain\Enums\MediaStatus;
 use App\Modules\Catalog\Domain\Media\MediaAsset;
 use App\Modules\Catalog\Domain\Media\MediaAttachment;
+use App\Modules\Media\Domain\Enums\MediaOwnerType;
+use App\Modules\Media\Domain\Enums\MediaRole;
+use App\Modules\Media\Domain\Enums\MediaStatus;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Database\Eloquent\Builder;

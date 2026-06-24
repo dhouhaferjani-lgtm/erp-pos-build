@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Catalog\Domain\Media;
 
-use App\Modules\Catalog\Domain\Enums\RenditionFormat;
-use App\Modules\Catalog\Domain\Enums\RenditionName;
+use App\Modules\Media\Domain\Enums\RenditionFormat;
+use App\Modules\Media\Domain\Enums\RenditionName;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;

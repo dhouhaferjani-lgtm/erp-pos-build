@@ -7,7 +7,7 @@ namespace App\Modules\Catalog\Application\Jobs;
 use App\Jobs\Concerns\BindsTenantContext;
 use App\Modules\Catalog\Application\Services\RenditionService;
 use App\Modules\Catalog\Domain\Contracts\MediaAssetRepositoryInterface;
-use App\Modules\Catalog\Domain\Enums\MediaSource;
+use App\Modules\Media\Domain\Enums\MediaSource;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;

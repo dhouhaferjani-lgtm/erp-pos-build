@@ -6,9 +6,9 @@ namespace Database\Seeders;
 
 use App\Modules\Catalog\Application\Services\MediaAttachmentService;
 use App\Modules\Catalog\Application\Services\MediaUploadService;
-use App\Modules\Catalog\Domain\Enums\MediaOwnerType;
-use App\Modules\Catalog\Domain\Enums\MediaRole;
 use App\Modules\Catalog\Domain\Media\MediaAttachment;
+use App\Modules\Media\Domain\Enums\MediaOwnerType;
+use App\Modules\Media\Domain\Enums\MediaRole;
 use App\Modules\Product\Domain\Product;
 use Illuminate\Database\Seeder;
 

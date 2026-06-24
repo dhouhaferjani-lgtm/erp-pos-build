@@ -8,8 +8,8 @@ use App\Modules\Catalog\Application\DTOs\MediaAttachmentData;
 use App\Modules\Catalog\Application\DTOs\ProductMediaData;
 use App\Modules\Catalog\Application\Services\MediaUrlResolver;
 use App\Modules\Catalog\Domain\Contracts\MediaAttachmentRepositoryInterface;
-use App\Modules\Catalog\Domain\Enums\MediaOwnerType;
-use App\Modules\Catalog\Domain\Enums\MediaRole;
+use App\Modules\Media\Domain\Enums\MediaOwnerType;
+use App\Modules\Media\Domain\Enums\MediaRole;
 use App\Shared\Contracts\CatalogMediaQueryInterface;
 
 /**

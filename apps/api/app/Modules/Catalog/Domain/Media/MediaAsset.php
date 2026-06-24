@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Catalog\Domain\Media;
 
-use App\Modules\Catalog\Domain\Enums\MediaAssetType;
-use App\Modules\Catalog\Domain\Enums\MediaSource;
-use App\Modules\Catalog\Domain\Enums\MediaStatus;
+use App\Modules\Media\Domain\Enums\MediaAssetType;
+use App\Modules\Media\Domain\Enums\MediaSource;
+use App\Modules\Media\Domain\Enums\MediaStatus;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;

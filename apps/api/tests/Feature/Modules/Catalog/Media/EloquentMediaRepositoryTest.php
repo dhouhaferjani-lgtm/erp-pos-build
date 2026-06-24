@@ -6,11 +6,11 @@ namespace Tests\Feature\Modules\Catalog\Media;
 
 use App\Modules\Catalog\Domain\Contracts\MediaAssetRepositoryInterface;
 use App\Modules\Catalog\Domain\Contracts\MediaAttachmentRepositoryInterface;
-use App\Modules\Catalog\Domain\Enums\MediaAssetType;
-use App\Modules\Catalog\Domain\Enums\MediaOwnerType;
-use App\Modules\Catalog\Domain\Enums\MediaRole;
-use App\Modules\Catalog\Domain\Enums\MediaSource;
-use App\Modules\Catalog\Domain\Enums\MediaStatus;
+use App\Modules\Media\Domain\Enums\MediaAssetType;
+use App\Modules\Media\Domain\Enums\MediaOwnerType;
+use App\Modules\Media\Domain\Enums\MediaRole;
+use App\Modules\Media\Domain\Enums\MediaSource;
+use App\Modules\Media\Domain\Enums\MediaStatus;
 use App\Modules\Catalog\Domain\Media\MediaAsset;
 use App\Modules\Catalog\Domain\Media\MediaAttachment;
 use Illuminate\Foundation\Testing\RefreshDatabase;

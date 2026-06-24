@@ -6,10 +6,10 @@ namespace App\Modules\Catalog\Application\Services;
 
 use App\Modules\Catalog\Domain\Contracts\MediaStorageInterface;
 use App\Modules\Catalog\Domain\Contracts\RenditionGeneratorInterface;
-use App\Modules\Catalog\Domain\Enums\RenditionFormat;
-use App\Modules\Catalog\Domain\Enums\RenditionName;
 use App\Modules\Catalog\Domain\Media\MediaAsset;
 use App\Modules\Catalog\Domain\Media\MediaRendition;
+use App\Modules\Media\Domain\Enums\RenditionFormat;
+use App\Modules\Media\Domain\Enums\RenditionName;
 use RuntimeException;
 
 /**

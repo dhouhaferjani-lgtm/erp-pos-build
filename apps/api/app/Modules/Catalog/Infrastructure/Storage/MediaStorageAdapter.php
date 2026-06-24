@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Catalog\Infrastructure\Storage;
 
 use App\Modules\Catalog\Domain\Contracts\MediaStorageInterface;
-use App\Modules\Catalog\Domain\Enums\MediaSource;
-use App\Modules\Catalog\Domain\Enums\RenditionName;
 use App\Modules\Catalog\Domain\Media\MediaAsset;
 use App\Modules\Catalog\Domain\Media\MediaAttachment;
 use App\Modules\Catalog\Domain\Media\MediaRendition;
+use App\Modules\Media\Domain\Enums\MediaSource;
+use App\Modules\Media\Domain\Enums\RenditionName;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;

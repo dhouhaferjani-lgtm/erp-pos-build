@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Catalog\Domain\Enums;
+namespace App\Modules\Media\Domain\Enums;
 
 enum RenditionFormat: string
 {
