@@ -112,12 +112,14 @@ final class PartnerMoneyPrecisionTest extends TestCase
 
         $this->assertCount(2, $constraints, 'partner non-negative liability constraints not found');
 
-        $definitions = collect($constraints)->mapWithKeys(
-            static fn (object $constraint): array => [$constraint->conname => $constraint->definition]
-        );
+        $definitions = [];
+        foreach ($constraints as $constraint) {
+            $row = (array) $constraint;
+            $definitions[(string) $row['conname']] = (string) $row['definition'];
+        }
 
-        $this->assertStringContainsString('credit_balance >=', $definitions->get('partners_credit_balance_non_negative'));
-        $this->assertStringContainsString('payable_balance >=', $definitions->get('partners_payable_balance_non_negative'));
+        $this->assertStringContainsString('credit_balance >=', $definitions['partners_credit_balance_non_negative']);
+        $this->assertStringContainsString('payable_balance >=', $definitions['partners_payable_balance_non_negative']);
     }
 
     public function test_partner_credit_balance_constraint_rejects_direct_negative_writes_on_postgresql(): void
