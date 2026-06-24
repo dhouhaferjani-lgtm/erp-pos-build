@@ -82,11 +82,8 @@ final class MediaService implements MediaServiceInterface
             $role,
             0,
             $tenantId,
+            $caption,
         );
-
-        if ($caption !== null) {
-            $attachment->update(['caption' => $caption]);
-        }
 
         return $this->buildView($asset, $attachment, $userId);
     }

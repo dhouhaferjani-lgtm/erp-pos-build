@@ -43,6 +43,7 @@ final class MediaAttachmentService
      * @param  MediaRole  $role  Role for this attachment.
      * @param  int  $sort  Display sort order (0-based).
      * @param  string  $tenantId  Tenant scope guard.
+     * @param  string|null  $caption  Optional human-readable caption stored on the attachment row.
      */
     public function attach(
         string $assetId,
@@ -51,8 +52,9 @@ final class MediaAttachmentService
         MediaRole $role,
         int $sort,
         string $tenantId,
+        ?string $caption = null,
     ): MediaAttachment {
-        return DB::transaction(function () use ($assetId, $ownerType, $ownerId, $role, $sort, $tenantId): MediaAttachment {
+        return DB::transaction(function () use ($assetId, $ownerType, $ownerId, $role, $sort, $tenantId, $caption): MediaAttachment {
             if ($role === MediaRole::Primary) {
                 // Demote any existing PRIMARY for this slot before inserting the new one.
                 MediaAttachment::where('tenant_id', $tenantId)
@@ -71,6 +73,7 @@ final class MediaAttachmentService
                 'owner_id' => $ownerId,
                 'role' => $role,
                 'sort_order' => $sort,
+                'caption' => $caption,
             ]);
         });
     }

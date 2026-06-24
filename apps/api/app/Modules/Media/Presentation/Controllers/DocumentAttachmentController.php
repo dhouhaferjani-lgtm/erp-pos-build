@@ -57,6 +57,10 @@ class DocumentAttachmentController extends Controller
 
     public function store(UploadDocumentMediaRequest $request, string $document): JsonResponse
     {
+        if ($request->user() === null) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
         $documentModel = $this->resolveDocument($document);
 
         $file = $request->file('file');

@@ -280,6 +280,28 @@ final class DocumentAttachmentApiContractTest extends TestCase
             ->assertStatus(404);
     }
 
+    /**
+     * @test
+     *
+     * A user in companyA tries to POST a file to a document that belongs to
+     * companyA2 (same tenant, different company). The resolveDocument() company
+     * gate must return 404 before any upload is attempted.
+     */
+    public function test_store_rejects_cross_company_same_tenant_document(): void
+    {
+        Storage::fake('s3');
+        Queue::fake();
+
+        [$userA, $documentA2] = $this->seedCrossCompanySameTenantFixture();
+
+        $this->actingAs($userA, 'sanctum')
+            ->postJson(
+                "/api/v1/documents/{$documentA2->id}/attachments",
+                ['file' => $this->fakePdf('secret.pdf')],
+            )
+            ->assertStatus(404);
+    }
+
     // -----------------------------------------------------------------------
     // Private seeding helpers
     // -----------------------------------------------------------------------
