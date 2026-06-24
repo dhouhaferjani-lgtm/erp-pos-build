@@ -476,8 +476,11 @@ export function ProductForm() {
             nav card (left) + section cards (centre) + Live-on-POS / before-
             publish / related-operations rail (right). */}
         <div className="grid grid-cols-1 gap-[18px] lg:grid-cols-[188px_minmax(0,1fr)_300px] lg:items-start">
-          {/* Left: sticky section navigator with scroll-spy + completeness */}
-          <div className="hidden lg:block">
+          {/* Left: sticky section navigator with scroll-spy + completeness.
+              Sticky lives on the grid item (not the inner card) so its
+              containing block is the full-height grid track and it has room
+              to travel as the centre column scrolls. */}
+          <div className="hidden lg:sticky lg:top-0 lg:block lg:self-start">
             <SectionNav
               sections={sections}
               activeId={activeSectionId}
