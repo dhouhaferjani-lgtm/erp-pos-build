@@ -7,6 +7,7 @@ namespace App\Modules\Catalog\Application\Jobs;
 use App\Jobs\Concerns\BindsTenantContext;
 use App\Modules\Catalog\Application\Services\RenditionService;
 use App\Modules\Catalog\Domain\Contracts\MediaAssetRepositoryInterface;
+use App\Modules\Media\Domain\Enums\MediaAssetType;
 use App\Modules\Media\Domain\Enums\MediaSource;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -72,6 +73,15 @@ final class GenerateRenditions implements ShouldQueue
             $asset = $assets->find($this->mediaAssetId, $this->tenantId);
 
             if ($asset === null || $asset->source === MediaSource::ExternalUrl) {
+                return;
+            }
+
+            // Non-image assets have no rendition pipeline.  If this job was somehow
+            // dispatched for a Document/Video/etc., mark it Ready (so it is visible in
+            // read queries that filter on Ready) and return without generating renditions.
+            if ($asset->type !== MediaAssetType::Image) {
+                $assets->markReady($asset);
+
                 return;
             }
 

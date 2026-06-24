@@ -6,13 +6,16 @@ namespace Tests\Feature\Modules\Catalog\Media;
 
 use App\Modules\Catalog\Application\Jobs\GenerateRenditions;
 use App\Modules\Catalog\Application\Services\MediaUploadService;
+use App\Modules\Catalog\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Enums\MediaAssetType;
+use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaSource;
 use App\Modules\Media\Domain\Enums\MediaStatus;
-use App\Modules\Catalog\Domain\Media\MediaAsset;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -275,6 +278,77 @@ final class MediaUploadServiceTest extends TestCase
         $this->expectException(ValidationException::class);
 
         $this->service->registerExternalUrl($tenantId, $productId, 'https://[::1]/image.jpg');
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 1.2 — generic upload() + non-image READY-at-upload
+    // -----------------------------------------------------------------------
+
+    public function test_upload_for_document_stores_pdf_under_documents_path_without_renditions(): void
+    {
+        Storage::fake('s3');
+        Queue::fake();
+
+        $tenantId = (string) Str::uuid();
+        $ownerId = (string) Str::uuid();
+        $userId = (string) Str::uuid();
+
+        $file = UploadedFile::fake()->create('invoice.pdf', 100, 'application/pdf');
+
+        $asset = $this->service->upload(
+            $tenantId,
+            MediaOwnerType::Document,
+            $ownerId,
+            $file,
+            $userId,
+            MediaAssetType::Document,
+            ['application/pdf'],
+        );
+
+        self::assertSame(MediaAssetType::Document, $asset->type);
+        self::assertSame(MediaStatus::Ready, $asset->status);  // R-B1: non-image MUST be Ready at upload
+        self::assertSame('s3', $asset->storage_disk);
+        self::assertStringStartsWith("documents/{$tenantId}/{$ownerId}/", $asset->storage_path);
+        self::assertStringEndsWith('/original.pdf', $asset->storage_path);
+        Storage::disk('s3')->assertExists($asset->storage_path);
+        Queue::assertNotPushed(GenerateRenditions::class);  // non-image → no renditions job
+    }
+
+    public function test_upload_rejects_mime_not_in_allow_list(): void
+    {
+        Storage::fake('s3');
+
+        $this->expectException(ValidationException::class);
+
+        $this->service->upload(
+            't',
+            MediaOwnerType::Document,
+            'd',
+            UploadedFile::fake()->create('x.exe', 1, 'application/x-msdownload'),
+            null,
+            MediaAssetType::Document,
+            ['application/pdf'],
+        );
+    }
+
+    public function test_upload_for_product_still_dispatches_renditions(): void
+    {
+        Storage::fake('s3');
+        Queue::fake();
+
+        $tenantId = (string) Str::uuid();
+        $productId = (string) Str::uuid();
+
+        $asset = $this->service->uploadForProduct(
+            $tenantId,
+            $productId,
+            UploadedFile::fake()->image('p.jpg', 10, 10),
+            'u',
+        );
+
+        self::assertSame(MediaAssetType::Image, $asset->type);
+        self::assertSame(MediaStatus::Uploaded, $asset->status);
+        Queue::assertPushed(GenerateRenditions::class);
     }
 
     // -----------------------------------------------------------------------
