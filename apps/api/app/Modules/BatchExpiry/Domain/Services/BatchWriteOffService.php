@@ -59,6 +59,26 @@ final class BatchWriteOffService
         return DB::transaction(function () use ($batch, $locationId, $quantity, $movementReason, $userId, $notes): StockMovement {
             $productId = (string) $batch->product_id;
 
+            // Resolve the unit cost at the time of write-off so that a future
+            // Phase C "reverse write-off" entry can recover the ORIGINAL cost from
+            // the movement row itself — not by recomputing from a now-changed WAC.
+            // We use the same fallback chain as calculateWriteOffAmount:
+            //   cost_price (the persisted WAC) ?? '0.00'
+            // (weighted_average_cost is a virtual accessor not in the @property
+            // list; cost_price is the DB-persisted WAC column and the canonical
+            // fallback used by calculateWriteOffAmount.)
+            // The product is scoped to the batch's own tenant + company for
+            // defense-in-depth (mirrors calculateWriteOffAmount's scope guard).
+            $product = Product::query()
+                ->where('tenant_id', $batch->tenant_id)
+                ->where('company_id', $batch->company_id)
+                ->find($productId);
+
+            /** @var numeric-string $writeOffUnitCost */
+            $writeOffUnitCost = $product !== null
+                ? (string) ($product->cost_price ?? '0.00')
+                : '0.00';
+
             // 1. Deduct AGGREGATE stock only. We intentionally do NOT pass batchId
             //    here: issue() with a batchId also decrements inventory_batch_stock
             //    internally, which — combined with issueBatchStock() below — would
@@ -72,6 +92,7 @@ final class BatchWriteOffService
                 userId: $userId,
                 expectedCompanyId: $batch->company_id,
                 reason: $movementReason,
+                unitCost: $writeOffUnitCost,
             );
 
             // 2. Deduct batch-level stock (sole batch-stock writer; performs the

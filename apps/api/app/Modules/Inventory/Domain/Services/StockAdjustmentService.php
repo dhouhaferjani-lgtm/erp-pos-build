@@ -37,6 +37,16 @@ final class StockAdjustmentService
      */
     private const SCALE = 4;
 
+    /**
+     * Precision at which cost columns (unit_cost, total_cost) are persisted at rest.
+     *
+     * Mirrors WeightedAverageCostService::COST_SCALE. Costs are stored at 6 decimal
+     * places to prevent compounding downward bias when the WAC formula repeatedly
+     * truncates to the currency scale; rounding to the currency scale happens only
+     * at the GL/COGS posting (and display) boundary.
+     */
+    private const COST_SCALE = 6;
+
     public function __construct(
         private readonly ProductVariantLookup $variantLookup,
         private readonly ProductCostLock $costLock,
@@ -46,6 +56,10 @@ final class StockAdjustmentService
      * Receive stock into a location (e.g., from purchase order).
      *
      * @param  numeric-string  $quantity
+     * @param  numeric-string|null  $unitCost  Per-unit cost at COST_SCALE=6; when provided,
+     *                                         unit_cost and total_cost are persisted on the
+     *                                         movement row so reversals can recover the original
+     *                                         cost without recomputing from a changed WAC.
      * @param  int|null  $batchId  Optional batch ID for batch-tracked products
      */
     public function receive(
@@ -58,10 +72,11 @@ final class StockAdjustmentService
         ?string $expectedCompanyId = null,
         ?string $variantId = null,
         ?MovementReason $reason = null,
+        ?string $unitCost = null,
     ): StockMovement {
         $this->assertVariantConsistency($productId, $variantId);
 
-        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId, $variantId, $reason): StockMovement {
+        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId, $variantId, $reason, $unitCost): StockMovement {
             $companyId = $expectedCompanyId ?? $this->resolveCompanyId($locationId);
 
             // WAC serialization seam: take the per-product advisory lock FIRST
@@ -69,7 +84,7 @@ final class StockAdjustmentService
             // key is product-grain ([$productId]) even when the row we touch is
             // variant-scoped — variant cost is advisory only; WAC stays
             // product-grain (§6.7).
-            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $companyId, $variantId, $reason): StockMovement {
+            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $companyId, $variantId, $reason, $unitCost): StockMovement {
                 $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId, $variantId);
 
                 /** @var numeric-string $quantityBefore */
@@ -91,6 +106,7 @@ final class StockAdjustmentService
                     userId: $userId,
                     variantId: $variantId,
                     reason: $reason,
+                    unitCost: $unitCost,
                 );
 
                 // Record batch movement if batch ID provided
@@ -154,6 +170,10 @@ final class StockAdjustmentService
      * Issue stock from a location (e.g., for sales order).
      *
      * @param  numeric-string  $quantity
+     * @param  numeric-string|null  $unitCost  Per-unit cost at COST_SCALE=6; when provided,
+     *                                         unit_cost and total_cost are persisted on the
+     *                                         movement row so reversals can recover the original
+     *                                         cost without recomputing from a changed WAC.
      * @param  int|null  $batchId  Optional batch ID for batch-tracked products
      *
      * @throws InsufficientStockException
@@ -168,13 +188,14 @@ final class StockAdjustmentService
         ?string $expectedCompanyId = null,
         ?string $variantId = null,
         ?MovementReason $reason = null,
+        ?string $unitCost = null,
     ): StockMovement {
         $this->assertVariantConsistency($productId, $variantId);
 
         // Pure decrement: NO advisory seam (mustNotLock). It mutates an existing
         // variant-scoped row via lockStockLevel()'s row lock, which serializes it
         // against any in-flight recompute holding that row.
-        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId, $variantId, $reason): StockMovement {
+        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId, $variantId, $reason, $unitCost): StockMovement {
             $stockLevel = $this->lockStockLevel($productId, $locationId, $expectedCompanyId ?? $this->resolveCompanyId($locationId), $variantId);
 
             /** @var numeric-string $available */
@@ -208,6 +229,7 @@ final class StockAdjustmentService
                 userId: $userId,
                 variantId: $variantId,
                 reason: $reason,
+                unitCost: $unitCost,
             );
 
             // Record batch movement if batch ID provided (negative quantity for issue)
@@ -765,6 +787,16 @@ final class StockAdjustmentService
 
     /**
      * Record a stock movement.
+     *
+     * @param  numeric-string  $quantity
+     * @param  numeric-string  $quantityBefore
+     * @param  numeric-string  $quantityAfter
+     * @param  numeric-string|null  $unitCost  Per-unit cost at COST_SCALE=6; when provided,
+     *                                         unit_cost and total_cost are persisted so
+     *                                         Phase C reversals can recover the original cost
+     *                                         from the row itself (not from a now-changed WAC).
+     *                                         Mirrors the WeightedAverageCostService precision:
+     *                                         total_cost = bcmul(unitCost, quantity, COST_SCALE).
      */
     private function recordMovement(
         string $tenantId,
@@ -779,6 +811,7 @@ final class StockAdjustmentService
         string $userId,
         ?string $variantId = null,
         ?MovementReason $reason = null,
+        ?string $unitCost = null,
     ): StockMovement {
         // Scope the Location lookup to $companyId (derived from the upstream
         // trusted StockLevel). A forged locationId from another company would
@@ -786,6 +819,17 @@ final class StockAdjustmentService
         $location = Location::query()
             ->where('company_id', $companyId)
             ->findOrFail($locationId);
+
+        // Persist cost columns at COST_SCALE=6 — the same internal precision used
+        // by WeightedAverageCostService — so Phase C reversals can recover the
+        // original write-off cost from the row itself. total_cost is derived via
+        // bcmath; no native float arithmetic is used.
+        $persistedUnitCost = null;
+        $persistedTotalCost = null;
+        if ($unitCost !== null) {
+            $persistedUnitCost = bcadd($unitCost, '0', self::COST_SCALE);
+            $persistedTotalCost = bcmul($unitCost, $quantity, self::COST_SCALE);
+        }
 
         return StockMovement::create([
             'tenant_id' => $tenantId,
@@ -798,6 +842,8 @@ final class StockAdjustmentService
             'quantity' => $quantity,
             'quantity_before' => $quantityBefore,
             'quantity_after' => $quantityAfter,
+            'unit_cost' => $persistedUnitCost,
+            'total_cost' => $persistedTotalCost,
             'reference' => $reference,
             'user_id' => $userId,
         ]);
