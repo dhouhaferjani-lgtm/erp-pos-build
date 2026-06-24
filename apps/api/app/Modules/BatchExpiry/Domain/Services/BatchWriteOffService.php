@@ -59,18 +59,22 @@ final class BatchWriteOffService
         return DB::transaction(function () use ($batch, $locationId, $quantity, $movementReason, $userId, $notes): StockMovement {
             $productId = (string) $batch->product_id;
 
-            // 1. Deduct aggregate stock via StockAdjustmentService
+            // 1. Deduct AGGREGATE stock only. We intentionally do NOT pass batchId
+            //    here: issue() with a batchId also decrements inventory_batch_stock
+            //    internally, which — combined with issueBatchStock() below — would
+            //    double-decrement the lot (and block writing off a lot's full
+            //    on-hand). issueBatchStock() is the single authority for batch stock.
             $movement = $this->stockAdjustmentService->issue(
                 productId: $productId,
                 locationId: $locationId,
                 quantity: $quantity,
                 reference: "Write-off: Batch {$batch->batch_number}".($notes !== null ? " - {$notes}" : ''),
                 userId: $userId,
-                batchId: (int) $batch->id,
                 expectedCompanyId: $batch->company_id,
             );
 
-            // 2. Deduct batch-level stock
+            // 2. Deduct batch-level stock (sole batch-stock writer; performs the
+            //    availability check and links the movement to the batch ledger).
             $this->batchStockService->issueBatchStock(
                 tenantId: $batch->tenant_id,
                 batchId: (int) $batch->id,
