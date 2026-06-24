@@ -7,6 +7,7 @@ namespace Tests\Feature\BatchExpiry;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\BatchExpiry\Domain\Services\BatchWriteOffService;
@@ -216,6 +217,68 @@ final class BatchWriteOffCostPersistenceTest extends TestCase
             'unit_cost' => '1.234000',
             'total_cost' => '124.017000',
         ]);
+    }
+
+    /**
+     * B2-review fix: movement unit_cost and GL write-off amount must come from
+     * the SAME per-unit cost source (resolveUnitCost).
+     *
+     * If BatchWriteOffService::writeOff() ever reads unit cost from a DIFFERENT
+     * expression than calculateWriteOffAmount() uses, the GL debit and the
+     * persisted movement unit_cost diverge — a Phase C reversal would then
+     * reconstruct the wrong journal entry.
+     *
+     * Guard: set cost_price = 1.234, write off 100.5000 units.
+     *   - movement.unit_cost = 1.234000  (resolveUnitCost)
+     *   - GL debit            = 124.017  (resolveUnitCost × qty, at TND scale 3)
+     *   - GL debit / qty      = 1.234    (round-trip back to the per-unit basis)
+     *
+     * A divergence (e.g. writeOff reads cost_price='1.234', calculateWriteOffAmount
+     * reads a hypothetical weighted_average_cost='2.000') would produce:
+     *   movement.unit_cost = '1.234000' but GL debit / qty ≠ '1.234' → test fails.
+     */
+    public function test_movement_unit_cost_and_gl_amount_share_the_same_per_unit_basis(): void
+    {
+        // Seed a fresh StockLevel (this test reuses the same product/batch from setUp).
+        // setUp already seeded 100.5000; reset is not needed — we write off all 100.5000.
+        $movement = app(BatchWriteOffService::class)->writeOff(
+            batch: $this->batch,
+            locationId: $this->warehouse->id,
+            quantity: '100.5000',
+            reason: 'expiry',
+            userId: $this->user->id,
+        );
+
+        // 1. movement.unit_cost from the service (resolveUnitCost path)
+        $movementUnitCost = (string) $movement->unit_cost;
+        $this->assertNotNull($movementUnitCost, 'unit_cost must be set');
+
+        // 2. GL journal line debit (the calculateWriteOffAmount path)
+        $debitLine = JournalLine::query()
+            ->where('debit', '>', '0')
+            ->first();
+        $this->assertNotNull($debitLine, 'A GL debit line must exist after write-off');
+        $glDebit = (string) $debitLine->debit; // e.g. '124.017' (TND scale 3)
+
+        // 3. Round-trip: GL debit ÷ quantity should equal the per-unit cost basis.
+        //    We use scale 6 (cost scale) for the division so the result is precise.
+        //    Expected: bcdiv('124.017', '100.5000', 6) = '1.234000'
+        $impliedUnitCost = bcdiv($glDebit, '100.5000', 6);
+
+        // Normalise movement.unit_cost to cost scale 6 (it is already stored at scale 6).
+        $storedUnitCostNormalised = bcadd($movementUnitCost, '0', 6);
+
+        $this->assertSame(
+            $storedUnitCostNormalised,
+            $impliedUnitCost,
+            sprintf(
+                'movement.unit_cost (%s) and GL amount ÷ qty (%s ÷ 100.5000 = %s) must share the same per-unit cost basis. '
+                .'If they differ, resolveUnitCost() is not being used consistently in both paths.',
+                $movementUnitCost,
+                $glDebit,
+                $impliedUnitCost,
+            ),
+        );
     }
 
     /**

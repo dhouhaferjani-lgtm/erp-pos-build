@@ -62,22 +62,17 @@ final class BatchWriteOffService
             // Resolve the unit cost at the time of write-off so that a future
             // Phase C "reverse write-off" entry can recover the ORIGINAL cost from
             // the movement row itself — not by recomputing from a now-changed WAC.
-            // We use the same fallback chain as calculateWriteOffAmount:
-            //   cost_price (the persisted WAC) ?? '0.00'
-            // (weighted_average_cost is a virtual accessor not in the @property
-            // list; cost_price is the DB-persisted WAC column and the canonical
-            // fallback used by calculateWriteOffAmount.)
-            // The product is scoped to the batch's own tenant + company for
-            // defense-in-depth (mirrors calculateWriteOffAmount's scope guard).
+            // We use resolveUnitCost() — the SAME method used by calculateWriteOffAmount —
+            // so that the persisted movement unit_cost and the GL debit always share a
+            // single source of truth. A divergence would cause a Phase C reversing
+            // journal entry to reconstruct the wrong amount.
             $product = Product::query()
                 ->where('tenant_id', $batch->tenant_id)
                 ->where('company_id', $batch->company_id)
                 ->find($productId);
 
             /** @var numeric-string $writeOffUnitCost */
-            $writeOffUnitCost = $product !== null
-                ? (string) ($product->cost_price ?? '0.00')
-                : '0.00';
+            $writeOffUnitCost = $this->resolveUnitCost($product);
 
             // 1. Deduct AGGREGATE stock only. We intentionally do NOT pass batchId
             //    here: issue() with a batchId also decrements inventory_batch_stock
@@ -166,12 +161,36 @@ final class BatchWriteOffService
         }
 
         /** @var numeric-string $unitCost */
-        $unitCost = (string) ($product->weighted_average_cost ?? $product->cost_price ?? '0.00');
+        $unitCost = $this->resolveUnitCost($product);
         /** @var numeric-string $quantity */
 
         // Resolve scale from the company's own currency (context-safe AND
         // fiscally correct: EUR→2, TND→3) so a service-direct caller (queue job /
         // cross-module orchestrator) does not depend on a bound CompanyContext.
         return bcmul($quantity, $unitCost, $this->scaleResolver->getScale($currency));
+    }
+
+    /**
+     * Resolve the per-unit cost for a write-off, used in BOTH the GL amount
+     * calculation (calculateWriteOffAmount) and the movement cost snapshot
+     * (writeOff). A single private method guarantees the two call-sites always
+     * read from the same source, so that a future Phase C reversing journal
+     * entry — which reads unit_cost from the stored movement row — will exactly
+     * reconstruct the original write-off GL entry.
+     *
+     * Fallback chain (callers annotate the return as numeric-string via @var):
+     *   weighted_average_cost (virtual accessor, if ever added) ?? cost_price (DB-persisted WAC) ?? '0.00'
+     *
+     * Returns a string that is always numeric; callers narrow to numeric-string
+     * via @var annotation since PHPStan cannot statically prove the chain above
+     * is always numeric from the @property string type on Product.
+     */
+    private function resolveUnitCost(?Product $product): string
+    {
+        if ($product === null) {
+            return '0.00';
+        }
+
+        return (string) ($product->weighted_average_cost ?? $product->cost_price ?? '0.00');
     }
 }
