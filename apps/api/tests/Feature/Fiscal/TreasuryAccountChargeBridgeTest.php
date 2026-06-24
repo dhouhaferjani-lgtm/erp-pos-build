@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Fiscal;
 
+use App\Modules\Accounting\Application\Services\GeneralLedgerHashService;
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
@@ -294,6 +295,7 @@ final class TreasuryAccountChargeBridgeTest extends TestCase
             ledgerService: new GeneralLedgerService(
                 $partnerBalanceService ?? new PartnerBalanceService,
                 new FixedCurrencyScaleResolver(3),
+                new GeneralLedgerHashService(new FixedCurrencyScaleResolver(3)),
             ),
         );
     }

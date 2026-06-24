@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Domain\Services;
 
+use App\Modules\Accounting\Application\Services\GeneralLedgerHashService;
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\DTOs\CreatePOSChargeJournalEntryCommand;
@@ -41,6 +42,7 @@ final class GeneralLedgerService
     public function __construct(
         private readonly PartnerBalanceService $partnerBalanceService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly GeneralLedgerHashService $hashService,
     ) {}
 
     private function scale(): int
@@ -50,8 +52,10 @@ final class GeneralLedgerService
 
     private function currencyCodeForCompany(string $companyId): string
     {
-        /** @var string $currency */
         $currency = Company::query()->whereKey($companyId)->value('currency');
+        if (! is_string($currency) || $currency === '') {
+            throw new \RuntimeException("Cannot resolve currency for company {$companyId}.");
+        }
 
         return $currency;
     }
@@ -944,7 +948,9 @@ final class GeneralLedgerService
         // TOTAL exactly once, HALF-UP, to the currency scale at this GL posting
         // boundary. The single rounded $totalCOGS is used for BOTH the debit and
         // the credit leg, so the entry balances by construction.
-        $scale = $this->scale();
+        $scale = $currencyCode !== null
+            ? $this->scaleResolver->getScale($currencyCode)
+            : $this->scale();
         $working = $scale + 6; // headroom beyond the 6-dp at-rest cost precision
         $totalCOGSPrecise = '0';
         foreach ($lineItems as $item) {
@@ -1254,10 +1260,9 @@ final class GeneralLedgerService
         $totalDebit = '0';
         /** @var numeric-string $totalCredit */
         $totalCredit = '0';
+        $companyCurrencyCode = $this->currencyCodeForCompany($entry->company_id);
 
-        $scale = $currencyCode !== null
-            ? $this->scaleResolver->getScale($currencyCode)
-            : $this->scale();
+        $scale = $this->scaleResolver->getScale($currencyCode ?? $companyCurrencyCode);
 
         foreach ($entry->lines as $line) {
             $totalDebit = bcadd($totalDebit, $line->debit, $scale);
@@ -1270,13 +1275,15 @@ final class GeneralLedgerService
             );
         }
 
-        $previousHash = $this->getPreviousHash($entry->company_id);
-        $hash = $this->calculateHash($entry, $previousHash);
+        $previousHash = JournalEntry::getLastChainHash($entry->company_id);
+        $chainSequence = JournalEntry::getNextChainSequence($entry->company_id);
+        $hash = $this->hashService->calculateHash($entry, $previousHash, $companyCurrencyCode);
 
         $postedAt = now();
 
         $entry->update([
             'status' => JournalEntryStatus::Posted,
+            'chain_sequence' => $chainSequence,
             'fiscal_hash' => $hash,
             'previous_hash' => $previousHash,
             'posted_at' => $postedAt,
@@ -1730,33 +1737,5 @@ final class GeneralLedgerService
     private function isPositive(string $amount, int $scale): bool
     {
         return bccomp($amount, '0', $scale) > 0;
-    }
-
-    private function calculateHash(JournalEntry $entry, string $previousHash): string
-    {
-        $data = json_encode([
-            'entry_number' => $entry->entry_number,
-            'entry_date' => $entry->entry_date->toDateString(),
-            'description' => $entry->description,
-            'lines' => $entry->lines->map(fn ($line) => [
-                'account_id' => $line->account_id,
-                'debit' => $line->debit,
-                'credit' => $line->credit,
-            ])->toArray(),
-        ]);
-
-        return hash('sha256', $previousHash.'|'.$data);
-    }
-
-    private function getPreviousHash(string $companyId): string
-    {
-        $lastPosted = JournalEntry::query()
-            ->where('company_id', $companyId)
-            ->where('status', JournalEntryStatus::Posted)
-            ->whereNotNull('fiscal_hash')
-            ->orderByDesc('posted_at')
-            ->first();
-
-        return $lastPosted !== null ? $lastPosted->fiscal_hash ?? '' : '';
     }
 }
