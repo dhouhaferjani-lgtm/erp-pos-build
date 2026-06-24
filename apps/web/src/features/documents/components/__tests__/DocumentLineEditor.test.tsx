@@ -12,6 +12,10 @@ import { DocumentLineEditor, type DocumentLine } from '../DocumentLineEditor'
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
+const companyConfigMock = vi.hoisted(() => ({
+  enabledModules: ['Workshop'] as string[],
+}))
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
@@ -47,6 +51,8 @@ vi.mock('react-i18next', () => ({
         'sales:lineItems.actions.searchProducts': 'Search products',
         'sales:lineItems.actions.addBlankLine': 'Add blank line',
         'sales:lineItems.actions.clickToEdit': 'Click to edit',
+        'sales:lineItems.tabs.product': 'Product',
+        'sales:lineItems.tabs.service': 'Service',
         'sales:lineItems.serviceBadge': 'Service',
         'common:table.actionsColumn': 'Actions',
       }
@@ -84,7 +90,10 @@ vi.mock('../../../components/atoms/TaxConfigurationSelect', () => ({
 
 // Mock CompanyConfigContext — useLineDesignationFeature calls useCompanyConfig
 vi.mock('@/contexts/CompanyConfigContext', () => ({
-  useCompanyConfig: () => ({ config: { line_designation_override_enabled: true } }),
+  useCompanyConfig: () => ({
+    config: { line_designation_override_enabled: true },
+    hasModule: (moduleName: string) => companyConfigMock.enabledModules.includes(moduleName),
+  }),
 }))
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -122,6 +131,7 @@ describe('DocumentLineEditor — designation cells', () => {
 
   beforeEach(() => {
     onChange = vi.fn()
+    companyConfigMock.enabledModules = ['Workshop']
   })
 
   it('shows overridden indicator when description differs from snapshot', () => {
@@ -239,6 +249,33 @@ describe('DocumentLineEditor — designation cells', () => {
     expect(screen.getByText('€35.00')).toBeInTheDocument()
     expect(screen.getByText('€5.50')).toBeInTheDocument()
     expect(screen.getByText('€40.50')).toBeInTheDocument()
+  })
+
+  it('hides the service search tab when Workshop module is disabled', async () => {
+    companyConfigMock.enabledModules = []
+    const user = userEvent.setup()
+
+    render(<DocumentLineEditor lines={[]} onChange={onChange} />, {
+      wrapper: createWrapper(),
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Search products' }))
+
+    expect(screen.getByRole('button', { name: 'Product' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Service' })).not.toBeInTheDocument()
+  })
+
+  it('shows the service search tab when Workshop module is enabled', async () => {
+    const user = userEvent.setup()
+
+    render(<DocumentLineEditor lines={[]} onChange={onChange} />, {
+      wrapper: createWrapper(),
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Search products' }))
+
+    expect(screen.getByRole('button', { name: 'Product' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Service' })).toBeInTheDocument()
   })
 
   it('recalculates a line total when quantity changes', async () => {
