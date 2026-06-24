@@ -33,8 +33,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * created_at desc (listForOwner — R-M1); the repository's forOwners() orders
  * by sort_order which is intentionally different.
  *
- * Lives in Catalog Application for now (Phase 1) and may be moved to
- * App\Modules\Media in Phase 4 once the models migrate there.
+ * Concrete implementation of the owner-agnostic {@see MediaServiceInterface};
+ * lives in the Media module.
  */
 final class MediaService implements MediaServiceInterface
 {

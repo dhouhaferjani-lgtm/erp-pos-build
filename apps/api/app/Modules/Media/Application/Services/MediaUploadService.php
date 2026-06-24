@@ -17,7 +17,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Service for uploading and registering media assets in the catalog sub-system.
+ * Service for uploading and registering media assets in the media subsystem.
  *
  * Entry points:
  *
