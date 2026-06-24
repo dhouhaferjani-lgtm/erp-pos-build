@@ -99,4 +99,30 @@ enum MovementReason: string
             self::POSReturn => 'POS Return',
         };
     }
+
+    /**
+     * Reasons selectable in the manual stock-adjustment screen. Excludes
+     * document/POS-driven reasons (set by their own flows) and CountCorrection
+     * (reserved for the counting flow).
+     *
+     * @return list<self>
+     */
+    public static function manualAdjustmentCases(): array
+    {
+        return [
+            self::AdjustmentPositive,
+            self::AdjustmentNegative,
+            self::Damage,
+            self::WriteOff,
+            self::OpeningBalance,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function manualAdjustmentValues(): array
+    {
+        return array_map(static fn (self $reason): string => $reason->value, self::manualAdjustmentCases());
+    }
 }

@@ -233,6 +233,10 @@
     "reasons": {
       "inventoryCount": "Inventory Count",
       "damage": "Damage/Loss",
+      "adjustmentIncrease": "Correction (Increase)",
+      "adjustmentDecrease": "Correction (Decrease)",
+      "writeOff": "Write-Off",
+      "openingBalance": "Opening Balance",
       "correction": "Correction",
       "other": "Other",
       "stockTransfer": "Stock Transfer"

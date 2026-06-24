@@ -307,6 +307,7 @@ final class IngressPrecisionTest extends TestCase
                 'product_id' => $this->product->id,
                 'location_id' => $this->warehouse->id,
                 'new_quantity' => '45.1234',
+                'reason_code' => 'adjustment_negative',
                 'reason' => 'Physical count — sub-unit adjustment',
             ]);
 
@@ -343,6 +344,7 @@ final class IngressPrecisionTest extends TestCase
                 'product_id' => $this->product->id,
                 'location_id' => $this->warehouse->id,
                 'new_quantity' => '0',
+                'reason_code' => 'write_off',
                 'reason' => 'All units damaged',
             ]);
 
