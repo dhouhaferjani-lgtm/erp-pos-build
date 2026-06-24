@@ -52,7 +52,9 @@ final class MediaBoundaryTest extends TestCase
 
     public function test_no_catalog_enum_leak_in_media_document_or_shared_contracts(): void
     {
-        $appBase = dirname(__DIR__, 4).'/app';
+        // dirname depth 3 from tests/Feature/Architecture → apps/api/app (NOT depth 4
+        // which resolves to the non-existent apps/app and causes a silent vacuous pass).
+        $appBase = dirname(__DIR__, 3).'/app';
 
         $scanDirs = [
             $appBase.'/Modules/Media',
@@ -60,18 +62,24 @@ final class MediaBoundaryTest extends TestCase
             $appBase.'/Shared/Contracts',
         ];
 
+        // Guard: every expected scan dir must exist. A missing dir means the path
+        // computation is wrong and the scan would silently cover nothing.
+        foreach ($scanDirs as $dir) {
+            $this->assertDirectoryExists(
+                $dir,
+                "Boundary scan dir does not exist — path computation likely wrong: {$dir}",
+            );
+        }
+
         $forbiddenPatterns = [
             'App\\Modules\\Catalog\\Domain\\Enums\\Media',
             'App\\Modules\\Catalog\\Domain\\Enums\\Rendition',
         ];
 
         $violations = [];
+        $filesScanned = 0;
 
         foreach ($scanDirs as $dir) {
-            if (! is_dir($dir)) {
-                continue;
-            }
-
             $iterator = new RecursiveIteratorIterator(
                 new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
             );
@@ -81,6 +89,8 @@ final class MediaBoundaryTest extends TestCase
                 if ($file->getExtension() !== 'php') {
                     continue;
                 }
+
+                $filesScanned++;
 
                 $content = file_get_contents($file->getPathname());
                 if ($content === false) {
@@ -98,6 +108,14 @@ final class MediaBoundaryTest extends TestCase
                 }
             }
         }
+
+        // Guard: the scan must have examined at least one PHP file.  Zero means the
+        // dirs exist but are empty, which is almost certainly a setup error.
+        $this->assertGreaterThan(
+            0,
+            $filesScanned,
+            'Boundary scan examined no PHP files — scan dirs exist but appear empty; path likely wrong.',
+        );
 
         self::assertEmpty(
             $violations,

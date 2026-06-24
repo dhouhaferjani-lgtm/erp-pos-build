@@ -56,6 +56,8 @@ final class DocumentHardDeleteBypassTest extends TestCase
         "/DB::table\(['\"]documents['\"]\).{0,500}->delete\(\)/s",
         // DB::table('documents')…->forceDelete() within ~500 chars (DOTALL)
         "/DB::table\(['\"]documents['\"]\).{0,500}->forceDelete\(\)/s",
+        // DB::statement / DB::unprepared with a raw DELETE … FROM documents
+        "/DB::(statement|unprepared)\(['\"][^'\"]*DELETE[^'\"]*FROM\s+documents/i",
     ];
 
     /**

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Modules\Document;
 
-use App\Modules\Catalog\Domain\Media\MediaAsset;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Document\Domain\Document;
@@ -21,6 +20,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\MediaServiceInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -129,7 +129,10 @@ final class DocumentMediaCascadeTest extends TestCase
             'owner_id' => $doc->id,
         ]);
 
-        $assetCount = MediaAsset::where('tenant_id', $this->tenant->id)->count();
+        $assetCount = DB::table('media_assets')
+            ->where('tenant_id', $this->tenant->id)
+            ->whereNull('deleted_at')
+            ->count();
         self::assertSame(1, $assetCount, 'One asset must exist before hard-delete');
 
         // Hard-delete the document — observer must fire and purge media
@@ -162,12 +165,17 @@ final class DocumentMediaCascadeTest extends TestCase
 
         self::assertSame(
             0,
-            MediaAsset::where('tenant_id', $this->tenant->id)->count(),
+            DB::table('media_assets')
+                ->where('tenant_id', $this->tenant->id)
+                ->whereNull('deleted_at')
+                ->count(),
             'No READY assets must remain after hard-delete',
         );
         self::assertSame(
             2,
-            MediaAsset::withTrashed()->where('tenant_id', $this->tenant->id)->count(),
+            DB::table('media_assets')
+                ->where('tenant_id', $this->tenant->id)
+                ->count(),
             'Both assets must be soft-deleted after hard-delete',
         );
     }
@@ -199,7 +207,10 @@ final class DocumentMediaCascadeTest extends TestCase
         // Asset must still be READY (not soft-deleted)
         self::assertSame(
             1,
-            MediaAsset::where('tenant_id', $this->tenant->id)->count(),
+            DB::table('media_assets')
+                ->where('tenant_id', $this->tenant->id)
+                ->whereNull('deleted_at')
+                ->count(),
             'Asset must remain READY after soft-delete',
         );
     }
