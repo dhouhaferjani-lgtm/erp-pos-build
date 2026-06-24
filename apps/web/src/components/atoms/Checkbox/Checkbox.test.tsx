@@ -39,4 +39,36 @@ describe('Checkbox', () => {
     render(<Checkbox aria-label="agree" ref={ref} />)
     expect(ref.current).toBeInstanceOf(HTMLInputElement)
   })
+
+  it('sets the DOM indeterminate property when indeterminate is true', () => {
+    render(<Checkbox aria-label="agree" indeterminate />)
+    const el = screen.getByLabelText('agree') as HTMLInputElement
+    expect(el.indeterminate).toBe(true)
+  })
+
+  it('does not set indeterminate by default', () => {
+    render(<Checkbox aria-label="agree" />)
+    const el = screen.getByLabelText('agree') as HTMLInputElement
+    expect(el.indeterminate).toBe(false)
+  })
+
+  it('still forwards the ref while managing indeterminate internally', () => {
+    const ref = { current: null as HTMLInputElement | null }
+    render(<Checkbox aria-label="agree" ref={ref} indeterminate />)
+    expect(ref.current).toBeInstanceOf(HTMLInputElement)
+    expect(ref.current?.indeterminate).toBe(true)
+  })
+
+  it('keeps checked/onChange working alongside indeterminate', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(
+      <Checkbox aria-label="agree" indeterminate checked={false} onChange={onChange} />,
+    )
+    const el = screen.getByLabelText('agree') as HTMLInputElement
+    expect(el.indeterminate).toBe(true)
+    expect(el).not.toBeChecked()
+    await user.click(el)
+    expect(onChange).toHaveBeenCalledTimes(1)
+  })
 })

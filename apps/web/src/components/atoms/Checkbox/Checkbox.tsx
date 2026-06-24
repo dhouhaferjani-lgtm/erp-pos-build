@@ -1,8 +1,20 @@
-import { forwardRef, type InputHTMLAttributes } from 'react'
+import {
+  forwardRef,
+  useEffect,
+  useRef,
+  type InputHTMLAttributes,
+} from 'react'
 import { tokens } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
 
-export type CheckboxProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>
+export type CheckboxProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & {
+  /**
+   * Renders the native "indeterminate" (dash) state. There is no HTML attribute
+   * for this — the property is only settable on the DOM element — so we manage
+   * it via an internal ref + effect, merged with any forwarded ref.
+   */
+  indeterminate?: boolean
+}
 
 /**
  * Checkbox - Boolean input primitive component
@@ -25,10 +37,28 @@ export type CheckboxProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>
  * ```
  */
 export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
-  ({ className, ...props }, ref) => {
+  ({ className, indeterminate, ...props }, ref) => {
     const classes = cn(tokens.checkbox.base, className)
+    const innerRef = useRef<HTMLInputElement | null>(null)
 
-    return <input ref={ref} type="checkbox" className={classes} {...props} />
+    // Merge the internal ref (used to drive `indeterminate`) with whatever ref
+    // the caller forwarded (object ref or callback ref).
+    const setRefs = (node: HTMLInputElement | null) => {
+      innerRef.current = node
+      if (typeof ref === 'function') {
+        ref(node)
+      } else if (ref) {
+        ref.current = node
+      }
+    }
+
+    useEffect(() => {
+      if (innerRef.current) {
+        innerRef.current.indeterminate = Boolean(indeterminate)
+      }
+    }, [indeterminate])
+
+    return <input ref={setRefs} type="checkbox" className={classes} {...props} />
   }
 )
 
