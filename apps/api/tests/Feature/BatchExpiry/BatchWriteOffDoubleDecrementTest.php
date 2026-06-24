@@ -18,6 +18,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
@@ -196,5 +197,22 @@ final class BatchWriteOffDoubleDecrementTest extends TestCase
         $this->assertSame(1, BatchMovement::query()
             ->where('batch_id', $this->batch->id)
             ->count());
+    }
+
+    public function test_write_off_persists_the_typed_movement_reason(): void
+    {
+        $movement = app(BatchWriteOffService::class)->writeOff(
+            batch: $this->batch,
+            locationId: $this->warehouse->id,
+            quantity: '100.5000',
+            reason: 'expiry',
+            userId: $this->user->id,
+        );
+
+        $this->assertSame(MovementReason::Expiry, $movement->reason);
+        $this->assertDatabaseHas('stock_movements', [
+            'id' => $movement->id,
+            'reason' => 'expiry',
+        ]);
     }
 }

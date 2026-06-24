@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Domain\Services;
 use App\Modules\BatchExpiry\Domain\Entities\BatchMovement;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Events\ReservationCreated;
 use App\Modules\Inventory\Domain\Events\ReservationCreatedV2;
@@ -56,10 +57,11 @@ final class StockAdjustmentService
         ?int $batchId = null,
         ?string $expectedCompanyId = null,
         ?string $variantId = null,
+        ?MovementReason $reason = null,
     ): StockMovement {
         $this->assertVariantConsistency($productId, $variantId);
 
-        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId, $variantId): StockMovement {
+        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId, $variantId, $reason): StockMovement {
             $companyId = $expectedCompanyId ?? $this->resolveCompanyId($locationId);
 
             // WAC serialization seam: take the per-product advisory lock FIRST
@@ -67,7 +69,7 @@ final class StockAdjustmentService
             // key is product-grain ([$productId]) even when the row we touch is
             // variant-scoped — variant cost is advisory only; WAC stays
             // product-grain (§6.7).
-            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $companyId, $variantId): StockMovement {
+            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $companyId, $variantId, $reason): StockMovement {
                 $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId, $variantId);
 
                 /** @var numeric-string $quantityBefore */
@@ -88,6 +90,7 @@ final class StockAdjustmentService
                     reference: $reference,
                     userId: $userId,
                     variantId: $variantId,
+                    reason: $reason,
                 );
 
                 // Record batch movement if batch ID provided
@@ -164,13 +167,14 @@ final class StockAdjustmentService
         ?int $batchId = null,
         ?string $expectedCompanyId = null,
         ?string $variantId = null,
+        ?MovementReason $reason = null,
     ): StockMovement {
         $this->assertVariantConsistency($productId, $variantId);
 
         // Pure decrement: NO advisory seam (mustNotLock). It mutates an existing
         // variant-scoped row via lockStockLevel()'s row lock, which serializes it
         // against any in-flight recompute holding that row.
-        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId, $variantId): StockMovement {
+        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId, $variantId, $reason): StockMovement {
             $stockLevel = $this->lockStockLevel($productId, $locationId, $expectedCompanyId ?? $this->resolveCompanyId($locationId), $variantId);
 
             /** @var numeric-string $available */
@@ -203,6 +207,7 @@ final class StockAdjustmentService
                 reference: $reference,
                 userId: $userId,
                 variantId: $variantId,
+                reason: $reason,
             );
 
             // Record batch movement if batch ID provided (negative quantity for issue)
@@ -576,14 +581,15 @@ final class StockAdjustmentService
         string $userId,
         ?string $expectedCompanyId = null,
         ?string $variantId = null,
+        ?MovementReason $reasonCode = null,
     ): StockMovement {
         $this->assertVariantConsistency($productId, $variantId);
 
-        return DB::transaction(function () use ($productId, $locationId, $newQuantity, $reason, $userId, $expectedCompanyId, $variantId): StockMovement {
+        return DB::transaction(function () use ($productId, $locationId, $newQuantity, $reason, $userId, $expectedCompanyId, $variantId, $reasonCode): StockMovement {
             $companyId = $expectedCompanyId ?? $this->resolveCompanyId($locationId);
 
             // WAC serialization seam (product-grain advisory key; §6.7).
-            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $newQuantity, $reason, $userId, $companyId, $variantId): StockMovement {
+            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $newQuantity, $reason, $userId, $companyId, $variantId, $reasonCode): StockMovement {
                 $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId, $variantId);
 
                 /** @var numeric-string $quantityBefore */
@@ -604,6 +610,7 @@ final class StockAdjustmentService
                     reference: $reason,
                     userId: $userId,
                     variantId: $variantId,
+                    reason: $reasonCode,
                 );
 
                 // Dispatch StockMovementRecorded event after transaction commits
@@ -771,6 +778,7 @@ final class StockAdjustmentService
         string $reference,
         string $userId,
         ?string $variantId = null,
+        ?MovementReason $reason = null,
     ): StockMovement {
         // Scope the Location lookup to $companyId (derived from the upstream
         // trusted StockLevel). A forged locationId from another company would
@@ -786,6 +794,7 @@ final class StockAdjustmentService
             'variant_id' => $variantId,
             'location_id' => $locationId,
             'movement_type' => $type,
+            'reason' => $reason,
             'quantity' => $quantity,
             'quantity_before' => $quantityBefore,
             'quantity_after' => $quantityAfter,
