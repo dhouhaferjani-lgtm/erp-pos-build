@@ -115,7 +115,7 @@ final class MediaService implements MediaServiceInterface
                 /** @var Relation<MediaAsset, MediaAttachment, *> $relation */
                 $relation->where('tenant_id', $tenantId);
             }])
-            ->orderBy('created_at', 'desc')
+            ->orderBy('media_attachments.created_at', 'desc')
             ->get()
             ->all();
 

@@ -226,6 +226,73 @@ final class MediaServiceTest extends TestCase
     }
 
     // -----------------------------------------------------------------------
+    // download / detach — 404 when attachment belongs to a different TENANT
+    // -----------------------------------------------------------------------
+
+    public function test_download_returns_404_for_foreign_tenant(): void
+    {
+        Storage::fake('s3');
+        Queue::fake();
+
+        $tenantA = (string) Str::uuid();
+        $tenantB = (string) Str::uuid();
+        $docId = (string) Str::uuid();
+
+        // Attach a file in tenantA
+        $view = $this->svc->attachUpload(
+            MediaOwnerType::Document,
+            $docId,
+            $tenantA,
+            UploadedFile::fake()->create('secret.pdf', 10, 'application/pdf'),
+            null,
+            MediaRole::Datasheet,
+            null,
+            ['application/pdf'],
+            MediaAssetType::Document,
+        );
+
+        $this->expectException(HttpException::class);
+
+        // Attempting to download the same attachment from tenantB must 404
+        $this->svc->download(MediaOwnerType::Document, $docId, $view->id, $tenantB);
+    }
+
+    public function test_detach_does_not_touch_foreign_tenant_attachment(): void
+    {
+        Storage::fake('s3');
+        Queue::fake();
+
+        $tenantA = (string) Str::uuid();
+        $tenantB = (string) Str::uuid();
+        $docId = (string) Str::uuid();
+
+        // Attach a file in tenantA
+        $view = $this->svc->attachUpload(
+            MediaOwnerType::Document,
+            $docId,
+            $tenantA,
+            UploadedFile::fake()->create('sensitive.pdf', 10, 'application/pdf'),
+            null,
+            MediaRole::Datasheet,
+            null,
+            ['application/pdf'],
+            MediaAssetType::Document,
+        );
+
+        $this->expectException(HttpException::class);
+
+        try {
+            // Attempting to detach from tenantB must 404 …
+            $this->svc->detach(MediaOwnerType::Document, $docId, $view->id, $tenantB);
+        } finally {
+            // … AND the original attachment + asset must remain intact
+            $list = $this->svc->listForOwner(MediaOwnerType::Document, $docId, $tenantA);
+            self::assertCount(1, $list, 'Original attachment must still exist after a foreign-tenant detach attempt');
+            self::assertSame($view->id, $list[0]->id, 'Original attachment id must be unchanged');
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // detach — removes link and soft-deletes the now-orphaned asset
     // -----------------------------------------------------------------------
 
