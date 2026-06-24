@@ -1,0 +1,129 @@
+/* ============================================================
+   IZI POS — Theme Layer  (vertical: izipos)
+   ============================================================
+   Drop this block into apps/web/src/index.css, AFTER the
+   existing [data-product="otospex"] block.
+
+   WHY THIS IS ALL YOU NEED:
+   index.css already has an @theme bridge that maps Tailwind's
+   blue-* / gray-* / primary-* / secondary-* utilities onto the
+   --theme-* / --color-* custom properties. So defining the IZI POS
+   palette here re-skins EVERY existing `bg-blue-600`, focus ring,
+   active-nav state, badge, etc. with ZERO component edits.
+
+   BRAND DECISION (anchored in the IZI POS logo):
+   - PRIMARY  = navy  → default actions, focus rings, links, active nav.
+   - SECONDARY= orange → sparing accent: the one hero CTA per screen,
+                          highlights, the logo mark. Reserving orange
+                          for `secondary` keeps dense screens calm and
+                          avoids "orange fatigue" (matches how Otospex
+                          uses deep-blue primary + pink secondary).
+
+   The DashboardLayout already sets data-product={product}; ensure
+   ProductConfigContext resolves the IziPOS vertical to "izipos".
+   To make IZI POS the DEFAULT (no scope), move these vars into :root
+   and replace the current "Deep Ocean" block.
+   ============================================================ */
+
+[data-product="izipos"] {
+  /* Primary scale (IZI POS navy) */
+  --theme-primary-50:  #E5ECF4;
+  --theme-primary-100: #C2D0E0;
+  --theme-primary-200: #8FA6C2;
+  --theme-primary-300: #5B7AA3;
+  --theme-primary-400: #3A5C88;
+  --theme-primary-500: #2B4A72;
+  --theme-primary-600: #1E3A5F; /* base — primary buttons, focus, active nav */
+  --theme-primary-700: #18324F;
+  --theme-primary-800: #14283F;
+  --theme-primary-900: #0F2236;
+  --theme-primary-950: #0B1726;
+
+  /* Secondary scale (IZI POS orange — accent) */
+  --theme-secondary-50:  #FEF3EC;
+  --theme-secondary-100: #FDE6D8;
+  --theme-secondary-200: #FBC9AC;
+  --theme-secondary-300: #F59E6E;
+  --theme-secondary-400: #F07C3C;
+  --theme-secondary-500: #EA661A; /* base accent */
+  --theme-secondary-600: #D45915;
+  --theme-secondary-700: #B84E12;
+  --theme-secondary-800: #8A3A0D;
+  --theme-secondary-900: #6E2E0A;
+  --theme-secondary-950: #3A1804;
+
+  /* Neutral scale (navy-tinted grays). gray-900 = brand navy so the
+     dark IziPOS sidebar (bg-gray-900) reads as the brand color. */
+  --theme-neutral-50:  #F6F7F8;
+  --theme-neutral-100: #ECEEF1;
+  --theme-neutral-200: #E0E4E9;
+  --theme-neutral-300: #D2D8DF;
+  --theme-neutral-400: #9AA5B2;
+  --theme-neutral-500: #6B7787;
+  --theme-neutral-600: #4C5A6B;
+  --theme-neutral-700: #344150;
+  --theme-neutral-800: #1E2D3C;
+  --theme-neutral-900: #14283F;
+  --theme-neutral-950: #0B1726;
+
+  /* Semantic colors */
+  --theme-success: #1F8A5B;
+  --theme-warning: #C77E00;
+  --theme-error:   #D64545;
+  --theme-info:    var(--theme-primary-600);
+
+  /* Chart palette (ECharts/canvas — read at runtime by chartColors) */
+  --chart-primary:   var(--theme-primary-600);
+  --chart-success:   var(--theme-success);
+  --chart-warning:   var(--theme-warning);
+  --chart-danger:    var(--theme-error);
+  --chart-neutral:   var(--theme-neutral-500);
+  --chart-secondary: var(--theme-secondary-500);
+  --chart-cyan:      #2B8C9E;
+  --chart-violet:    #6E5BAE;
+
+  /* --- Tailwind --color-* overrides ---
+     Required because @theme resolves var() at :root scope; a descendant
+     selector's --theme-* override does NOT propagate to --color-* on its
+     own (same note as the existing Otospex block). Keep in sync with the
+     scales above. */
+  --color-primary-50:  #E5ECF4; --color-primary-100: #C2D0E0; --color-primary-200: #8FA6C2;
+  --color-primary-300: #5B7AA3; --color-primary-400: #3A5C88; --color-primary-500: #2B4A72;
+  --color-primary-600: #1E3A5F; --color-primary-700: #18324F; --color-primary-800: #14283F;
+  --color-primary-900: #0F2236; --color-primary-950: #0B1726;
+
+  --color-secondary-50:  #FEF3EC; --color-secondary-100: #FDE6D8; --color-secondary-200: #FBC9AC;
+  --color-secondary-300: #F59E6E; --color-secondary-400: #F07C3C; --color-secondary-500: #EA661A;
+  --color-secondary-600: #D45915; --color-secondary-700: #B84E12; --color-secondary-800: #8A3A0D;
+  --color-secondary-900: #6E2E0A; --color-secondary-950: #3A1804;
+
+  --color-blue-50:  #E5ECF4; --color-blue-100: #C2D0E0; --color-blue-200: #8FA6C2;
+  --color-blue-300: #5B7AA3; --color-blue-400: #3A5C88; --color-blue-500: #2B4A72;
+  --color-blue-600: #1E3A5F; --color-blue-700: #18324F; --color-blue-800: #14283F;
+  --color-blue-900: #0F2236; --color-blue-950: #0B1726;
+
+  --color-gray-50:  #F6F7F8; --color-gray-100: #ECEEF1; --color-gray-200: #E0E4E9;
+  --color-gray-300: #D2D8DF; --color-gray-400: #9AA5B2; --color-gray-500: #6B7787;
+  --color-gray-600: #4C5A6B; --color-gray-700: #344150; --color-gray-800: #1E2D3C;
+  --color-gray-900: #14283F; --color-gray-950: #0B1726;
+
+  /* --- Structure (Direction A — "Crisp / Operational") ---
+     The chosen visual language. Color is unchanged; these encode the
+     STRUCTURE: hairline borders over soft shadows, tight corners, mono
+     numerics. Wire into lib/designTokens.ts so cards/inputs/buttons read
+     them instead of hardcoded radii/shadows. */
+  --radius-input:  6px;
+  --radius-button: 8px;
+  --radius-card:   10px;
+  --radius-sheet:  16px;
+  --radius-pill:   9999px;
+
+  --border-hairline: 1px solid var(--theme-neutral-200); /* #E0E4E9 */
+  --elevation-card:    none;                       /* resting cards are FLAT — use the hairline border */
+  --elevation-overlay: 0 8px 28px rgba(20,40,63,.14); /* reserve shadow for dropdowns / modals / toasts */
+  --focus-ring: 0 0 0 3px rgba(234,102,26,.18);    /* the one place navy gives way to orange */
+
+  --font-display: 'Space Grotesk', 'Montserrat', sans-serif; /* section / page titles */
+  --font-ui:      'Public Sans', system-ui, sans-serif;       /* labels & body */
+  --font-mono:    'IBM Plex Mono', monospace;                 /* prices, SKUs, qty, codes — all aligned numbers */
+}
