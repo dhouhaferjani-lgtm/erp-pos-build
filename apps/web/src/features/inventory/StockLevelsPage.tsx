@@ -66,7 +66,7 @@ export function StockLevelsPage() {
   const [selectedStock, setSelectedStock] = useState<StockLevel | null>(null)
   const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>('adjust')
   const [adjustmentQuantity, setAdjustmentQuantity] = useState('')
-  const [adjustmentReason, setAdjustmentReason] = useState('inventory_count')
+  const [adjustmentReason, setAdjustmentReason] = useState('adjustment_negative')
   const [adjustmentNotes, setAdjustmentNotes] = useState('')
   const [transferLocationId, setTransferLocationId] = useState('')
 
@@ -91,7 +91,7 @@ export function StockLevelsPage() {
   })
 
   const adjustMutation = useMutation({
-    mutationFn: async (data: { product_id: string; location_id: string; new_quantity: string; reason: string }) => {
+    mutationFn: async (data: { product_id: string; location_id: string; new_quantity: string; reason_code: string; reason: string }) => {
       return apiPost<StockMovement>('/stock-movements/adjust', data)
     },
     onSuccess: async () => {
@@ -187,14 +187,14 @@ export function StockLevelsPage() {
     setSelectedStock(stock)
     setAdjustmentType(type)
     setAdjustmentQuantity(type === 'adjust' ? stock.quantity : '')
-    setAdjustmentReason('inventory_count')
+    setAdjustmentReason('adjustment_negative')
     setAdjustmentNotes('')
   }
 
   const closeModal = () => {
     setSelectedStock(null)
     setAdjustmentQuantity('')
-    setAdjustmentReason('inventory_count')
+    setAdjustmentReason('adjustment_negative')
     setAdjustmentNotes('')
     setTransferLocationId('')
   }
@@ -203,10 +203,11 @@ export function StockLevelsPage() {
     if (!selectedStock) return
 
     const reasonLabels: Record<string, string> = {
-      inventory_count: t('inventory:stock.reasons.inventoryCount'),
+      adjustment_positive: t('inventory:stock.reasons.adjustmentIncrease'),
+      adjustment_negative: t('inventory:stock.reasons.adjustmentDecrease'),
       damage: t('inventory:stock.reasons.damage'),
-      correction: t('inventory:stock.reasons.correction'),
-      other: t('inventory:stock.reasons.other'),
+      write_off: t('inventory:stock.reasons.writeOff'),
+      opening_balance: t('inventory:stock.reasons.openingBalance'),
     }
     const reasonLabel = reasonLabels[adjustmentReason] ?? adjustmentReason
     const reference = adjustmentNotes ? `${reasonLabel}: ${adjustmentNotes}` : reasonLabel
@@ -216,6 +217,7 @@ export function StockLevelsPage() {
         product_id: selectedStock.product_id,
         location_id: selectedStock.location_id,
         new_quantity: adjustmentQuantity,
+        reason_code: adjustmentReason,
         reason: reference,
       })
     } else if (adjustmentType === 'receive') {
@@ -582,10 +584,11 @@ export function StockLevelsPage() {
                     value={adjustmentReason}
                     onChange={(e) => { setAdjustmentReason(e.target.value) }}
                   >
-                    <option value="inventory_count">{t('inventory:stock.reasons.inventoryCount')}</option>
+                    <option value="adjustment_negative">{t('inventory:stock.reasons.adjustmentDecrease')}</option>
+                    <option value="adjustment_positive">{t('inventory:stock.reasons.adjustmentIncrease')}</option>
                     <option value="damage">{t('inventory:stock.reasons.damage')}</option>
-                    <option value="correction">{t('inventory:stock.reasons.correction')}</option>
-                    <option value="other">{t('inventory:stock.reasons.other')}</option>
+                    <option value="write_off">{t('inventory:stock.reasons.writeOff')}</option>
+                    <option value="opening_balance">{t('inventory:stock.reasons.openingBalance')}</option>
                   </Select>
                 </div>
               )}

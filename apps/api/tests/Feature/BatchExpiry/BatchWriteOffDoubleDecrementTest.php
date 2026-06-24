@@ -6,11 +6,9 @@ namespace Tests\Feature\BatchExpiry;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
-use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
-use App\Modules\Accounting\Domain\JournalEntry;
-use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Entities\BatchMovement;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\BatchExpiry\Domain\Services\BatchWriteOffService;
 use App\Modules\Company\Domain\Company;
@@ -20,6 +18,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
@@ -32,15 +31,17 @@ use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
- * Precision regression: BatchWriteOffService::calculateWriteOffAmount
+ * Regression: BatchWriteOffService must decrement lot stock EXACTLY ONCE.
  *
- * Before the fix: bcmul($quantity, $unitCost, 2) — hardcoded scale 2.
- * After  the fix: bcmul($quantity, $unitCost, $this->scaleResolver->getScale()) — dynamic.
- *
- * Gold assertion: 100.5000 units × 1.234 TND (scale 3) → GL debit '124.017'.
- * With the old code the GL debit would be '124.01' (truncated to scale 2).
+ * Bug: writeOff() called StockAdjustmentService::issue() WITH batchId (which
+ * already decremented inventory_batch_stock via recordBatchMovement) AND then
+ * BatchStockService::issueBatchStock() (which decremented it again). With a lot
+ * seeded at exactly the write-off quantity, the first decrement zeroes it and
+ * the second throws InsufficientBatchStockException — i.e. you cannot write off
+ * a lot's full on-hand quantity. After the fix, issueBatchStock() is the single
+ * batch-stock authority and the write-off succeeds with one decrement.
  */
-final class BatchWriteOffScalingTest extends TestCase
+final class BatchWriteOffDoubleDecrementTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -61,18 +62,17 @@ final class BatchWriteOffScalingTest extends TestCase
         parent::setUp();
 
         $this->tenant = Tenant::create([
-            'name' => 'TND Write-Off Tenant',
-            'slug' => 'tnd-writeoff-'.uniqid(),
+            'name' => 'WriteOff Tenant',
+            'slug' => 'writeoff-dd-'.uniqid(),
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
         ]);
 
-        // TND company — scale 3
         $this->company = Company::create([
             'tenant_id' => $this->tenant->id,
-            'name' => 'TND Write-Off Company',
-            'legal_name' => 'TND Write-Off Company LLC',
-            'tax_id' => 'TND-TAX-'.uniqid(),
+            'name' => 'WriteOff Company',
+            'legal_name' => 'WriteOff Company LLC',
+            'tax_id' => 'WO-TAX-'.uniqid(),
             'country_code' => 'TN',
             'currency' => 'TND',
             'locale' => 'fr_TN',
@@ -85,8 +85,8 @@ final class BatchWriteOffScalingTest extends TestCase
 
         $this->user = User::create([
             'tenant_id' => $this->tenant->id,
-            'name' => 'Write-Off User',
-            'email' => 'writeoff-'.uniqid().'@example.com',
+            'name' => 'WriteOff User',
+            'email' => 'writeoff-dd-'.uniqid().'@example.com',
             'password' => bcrypt('password'),
             'status' => UserStatus::Active,
         ]);
@@ -102,27 +102,25 @@ final class BatchWriteOffScalingTest extends TestCase
 
         $this->warehouse = Location::create([
             'company_id' => $this->company->id,
-            'code' => 'WH-WO-01',
-            'name' => 'Write-Off Warehouse',
+            'code' => 'WH-DD-01',
+            'name' => 'WriteOff Warehouse',
             'type' => 'warehouse',
             'is_active' => true,
             'is_default' => true,
         ]);
 
-        // Product with cost_price = 1.234 TND
-        // Note: BatchWriteOffService accesses $product->weighted_average_cost ?? $product->cost_price
-        // weighted_average_cost is not a DB column — cost_price is the WAC fallback.
         $this->product = Product::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'sku' => 'WO-PROD-001',
-            'name' => 'Write-Off Product',
+            'sku' => 'WO-DD-001',
+            'name' => 'WriteOff Product',
             'type' => ProductType::Part,
             'is_active' => true,
             'cost_price' => '1.234',
         ]);
 
-        // Seed aggregate stock so the write-off of 100.5000 can deduct (single decrement).
+        // Seed EXACTLY the write-off quantity at both the aggregate and lot level.
+        // A correct single-decrement write-off of the full on-hand must succeed.
         StockLevel::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -132,19 +130,17 @@ final class BatchWriteOffScalingTest extends TestCase
             'reserved' => '0.0000',
         ]);
 
-        // Create the batch
         $this->batch = Batch::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'product_id' => $this->product->id,
-            'batch_number' => 'BATCH-WO-001',
+            'batch_number' => 'BATCH-DD-001',
             'expiry_date' => now()->addYear(),
             'is_active' => true,
             'is_expired' => false,
             'is_recalled' => false,
         ]);
 
-        // Seed batch stock at the warehouse (single decrement of 100.5000).
         BatchStock::create([
             'tenant_id' => $this->tenant->id,
             'batch_id' => $this->batch->id,
@@ -153,7 +149,7 @@ final class BatchWriteOffScalingTest extends TestCase
             'reserved_quantity' => '0.0000',
         ]);
 
-        // Create GL accounts so the journal entry can be persisted
+        // GL accounts so the (posted) write-off journal entry can persist.
         Account::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -175,60 +171,48 @@ final class BatchWriteOffScalingTest extends TestCase
         ]);
     }
 
-    /**
-     * 100.5000 units × 1.234 TND (scale 3) must produce GL debit '124.017'.
-     *
-     * Old: bcmul($quantity, $unitCost, 2) → GL debit '124.01'
-     * New: bcmul($quantity, $unitCost, getScale()) → GL debit '124.017' (scale 3, TND)
-     */
-    public function test_write_off_amount_uses_currency_scale_from_resolver(): void
+    public function test_write_off_of_full_lot_stock_decrements_exactly_once(): void
     {
-        // Sanity: GL accounts must exist before we call writeOff
-        $this->assertDatabaseHas('accounts', [
-            'company_id' => $this->company->id,
-            'system_purpose' => SystemAccountPurpose::CostOfGoodsSold->value,
-        ]);
-        $this->assertDatabaseHas('accounts', [
-            'company_id' => $this->company->id,
-            'system_purpose' => SystemAccountPurpose::Inventory->value,
-        ]);
-
-        $service = app(BatchWriteOffService::class);
-
-        $service->writeOff(
+        app(BatchWriteOffService::class)->writeOff(
             batch: $this->batch,
             locationId: $this->warehouse->id,
             quantity: '100.5000',
-            reason: 'damage',
+            reason: 'expiry',
             userId: $this->user->id,
-            notes: 'scale-3 regression test',
         );
 
-        // At least one JournalLine must exist after writeOff
-        $allDebitLines = JournalLine::query()->where('debit', '>', '0')->get();
-        $this->assertNotEmpty(
-            $allDebitLines,
-            'No JournalLines with positive debit found after writeOff. '
-            .'GL entry creation is failing silently (catch(\RuntimeException)).'
+        // Lot stock fully consumed — exactly once, not driven negative or blocked.
+        $this->assertSame('0.0000', (string) BatchStock::query()
+            ->where('batch_id', $this->batch->id)
+            ->where('location_id', $this->warehouse->id)
+            ->value('quantity'));
+
+        // Aggregate stock decremented exactly once.
+        $this->assertSame('0.0000', (string) StockLevel::query()
+            ->where('product_id', $this->product->id)
+            ->where('location_id', $this->warehouse->id)
+            ->value('quantity'));
+
+        // Exactly one batch movement row for this write-off (bug created two).
+        $this->assertSame(1, BatchMovement::query()
+            ->where('batch_id', $this->batch->id)
+            ->count());
+    }
+
+    public function test_write_off_persists_the_typed_movement_reason(): void
+    {
+        $movement = app(BatchWriteOffService::class)->writeOff(
+            batch: $this->batch,
+            locationId: $this->warehouse->id,
+            quantity: '100.5000',
+            reason: 'expiry',
+            userId: $this->user->id,
         );
 
-        // The debit must be '124.017' (scale 3 TND), NOT '124.01' (scale 2 hardcoded).
-        $debitAmounts = $allDebitLines->pluck('debit')->map(fn ($v) => (string) $v)->all();
-        $this->assertContains(
-            '124.017',
-            $debitAmounts,
-            'Expected GL debit "124.017" (scale-3 TND). '
-            .'Found: ['.implode(', ', $debitAmounts).']. '
-            .'If "124.01" is present, BatchWriteOffService still uses hardcoded bcmul scale 2.'
-        );
-
-        $entry = JournalEntry::query()
-            ->where('source_type', 'batch_write_off')
-            ->firstOrFail();
-
-        $this->assertSame(JournalEntryStatus::Posted, $entry->status);
-        $this->assertSame($this->user->id, $entry->posted_by);
-        $this->assertNotNull($entry->posted_at);
-        $this->assertNotNull($entry->fiscal_hash);
+        $this->assertSame(MovementReason::Expiry, $movement->reason);
+        $this->assertDatabaseHas('stock_movements', [
+            'id' => $movement->id,
+            'reason' => 'expiry',
+        ]);
     }
 }

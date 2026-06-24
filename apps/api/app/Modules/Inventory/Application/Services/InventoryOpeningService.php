@@ -16,6 +16,7 @@ use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Accounting\Domain\OpeningBalanceImportRow;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\StockLevel;
@@ -282,6 +283,7 @@ class InventoryOpeningService
                         'product_id' => $productId,
                         'location_id' => $locationId,
                         'movement_type' => MovementType::Opening,
+                        'reason' => MovementReason::OpeningBalance,
                         'quantity' => $quantity,
                         'quantity_before' => $quantityBefore,
                         'quantity_after' => $quantityAfter,
@@ -358,11 +360,14 @@ class InventoryOpeningService
                     'line_order' => 1,
                 ]);
 
+                // Mark batch as validated BEFORE marking rows posted.
+                // markBatchValidated checks valid row count, which would be 0
+                // after markRowsPosted flips all rows to Posted. Matches the
+                // ordering used in AccountingOpeningService::postBatch.
+                $this->batchService->markBatchValidated($batch, $userId);
+
                 // Mark rows as posted
                 $this->batchService->markRowsPosted($rowEntityMap);
-
-                // Mark batch as validated (posted)
-                $this->batchService->markBatchValidated($batch, $userId);
 
                 return $entry->load('lines');
             });

@@ -233,6 +233,10 @@
     "reasons": {
       "inventoryCount": "Inventory Count",
       "damage": "Damage/Loss",
+      "adjustmentIncrease": "Correction (Increase)",
+      "adjustmentDecrease": "Correction (Decrease)",
+      "writeOff": "Write-Off",
+      "openingBalance": "Opening Balance",
       "correction": "Correction",
       "other": "Other",
       "stockTransfer": "Stock Transfer"
@@ -817,5 +821,14 @@
         "description": "Design and manage product menus"
       }
     }
+  },
+  "bulk": {
+    "selected": "{{count}} selected",
+    "selectAll": "Select all products",
+    "selectRow": "Select {{name}}",
+    "printLabels": "Print labels",
+    "preparing": "Preparing…",
+    "clear": "Clear selection",
+    "noVariants": "No variants to label for the selected products."
   }
 }
