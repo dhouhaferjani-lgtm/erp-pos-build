@@ -277,7 +277,13 @@ class FEFOInventoryService
     }
 
     /**
-     * Get all expired batches with remaining stock.
+     * Get all expired batches with remaining available (un-reserved) stock.
+     *
+     * Only lots where `available_quantity > 0` are returned — lots whose
+     * entire on-hand quantity is reserved are excluded, as there is nothing
+     * free to write off.  Both `quantity` (on-hand total) and
+     * `reserved_quantity` are present on each loaded BatchStock row so the
+     * caller can display the full picture to the operator.
      *
      * @return Collection<int, Batch>
      */
@@ -287,7 +293,7 @@ class FEFOInventoryService
             ->where('company_id', $companyId)
             ->where('expiry_date', '<', now()->startOfDay())
             ->whereHas('batchStock', function (Builder $q) use ($locationId): void {
-                $q->whereRaw('quantity > 0');
+                $q->whereRaw('available_quantity > 0');
                 if ($locationId) {
                     $q->whereRaw('location_id = ?', [$locationId]);
                 }
