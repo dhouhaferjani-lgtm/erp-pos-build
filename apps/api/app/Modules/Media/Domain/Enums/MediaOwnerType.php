@@ -9,4 +9,15 @@ enum MediaOwnerType: string
     case Product = 'PRODUCT';
     case ProductVariant = 'PRODUCT_VARIANT';
     case Category = 'CATEGORY';
+    case Document = 'DOCUMENT';
+
+    public function storageSegment(): string
+    {
+        return match ($this) {
+            self::Product => 'products',
+            self::ProductVariant => 'product-variants',
+            self::Category => 'categories',
+            self::Document => 'documents',
+        };
+    }
 }
