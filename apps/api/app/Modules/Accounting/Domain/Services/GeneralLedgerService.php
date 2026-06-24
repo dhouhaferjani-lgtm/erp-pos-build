@@ -1264,16 +1264,23 @@ final class GeneralLedgerService
         $totalDebit = '0';
         /** @var numeric-string $totalCredit */
         $totalCredit = '0';
+        /** @var numeric-string $eventTotalDebit */
+        $eventTotalDebit = '0';
+        /** @var numeric-string $eventTotalCredit */
+        $eventTotalCredit = '0';
         $companyCurrencyCode = $this->currencyCodeForCompany($entry->company_id);
 
-        $scale = $this->scaleResolver->getScale($currencyCode ?? $companyCurrencyCode);
+        $currencyScale = $this->scaleResolver->getScale($currencyCode ?? $companyCurrencyCode);
+        $balanceScale = max(3, $currencyScale);
 
         foreach ($entry->lines as $line) {
-            $totalDebit = bcadd($totalDebit, $line->debit, $scale);
-            $totalCredit = bcadd($totalCredit, $line->credit, $scale);
+            $totalDebit = bcadd($totalDebit, $line->debit, $balanceScale);
+            $totalCredit = bcadd($totalCredit, $line->credit, $balanceScale);
+            $eventTotalDebit = bcadd($eventTotalDebit, $line->debit, $currencyScale);
+            $eventTotalCredit = bcadd($eventTotalCredit, $line->credit, $currencyScale);
         }
 
-        if (bccomp($totalDebit, $totalCredit, $scale) !== 0) {
+        if (bccomp($totalDebit, $totalCredit, $balanceScale) !== 0) {
             throw new \InvalidArgumentException(
                 "Cannot post unbalanced journal entry: total debit {$totalDebit} does not equal total credit {$totalCredit}."
             );
@@ -1299,8 +1306,8 @@ final class GeneralLedgerService
             tenantId: $entry->tenant_id,
             companyId: $entry->company_id,
             entryNumber: $entry->entry_number,
-            totalDebit: $totalDebit,
-            totalCredit: $totalCredit,
+            totalDebit: $eventTotalDebit,
+            totalCredit: $eventTotalCredit,
             postedAt: $postedAt->toIso8601String(),
         ));
     }
