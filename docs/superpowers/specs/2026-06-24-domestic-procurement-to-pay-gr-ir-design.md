@@ -70,7 +70,10 @@ A small config object resolved per purchase, seeded per vertical:
 - A **new `supplier_invoice` `DocumentType`** in the **existing unified `documents` table** (alongside `purchase_order`, `quote`, `invoice`, `credit_note`, `delivery_note`). No new top-level table — reuse the unified document model + lines.
 - **Links:** `source_document_id` → the PO; a receipt linkage (the goods-receipt operation(s) it matches). Supports a supplier invoice spanning multiple partial receipts of one PO, and (future) one invoice across POs is out of scope.
 - **Lifecycle (DocumentStatus / a dedicated supplier-invoice status):** `draft` → `matched` (3-way computed) → `posted` (GL posted, accrual cleared) → `paid`. Enums only, no magic strings.
-- **Attachment:** the source PDF/scan via the **existing `Media` module `AttachmentService`** (a SupplierInvoice IS a `Document`, so `AttachmentService::upload(Document, ...)` works directly). **Required small change (review H-5):** `AttachmentService::getStorageDisk()` currently hardcodes `return 'local'` (`:197`); make it return the configured object-storage disk (env-driven, e.g. `MEDIA_DISK`/`FILESYSTEM_DISK`, default-safe) so supplier-invoice attachments land on **MinIO/S3, not local**. This is the minimal routing fix only — NOT the media-subsystem unification (kill-disk / default-S3 / R2 swap), which remains a separate session.
+- **Attachment — use the unified `MediaAsset` system, NOT legacy `DocumentAttachment` (owner guidance 2026-06-24, supersedes review H-5):** attach the source PDF/scan via the unified **`MediaAsset`** system (`Catalog/Domain/Media/{MediaAsset,MediaAttachment,MediaRendition}`; `media_assets` file table + `media_attachments` link table; MinIO-backed). Add a **`MediaOwnerType::SupplierInvoice`** enum case; create a `MediaAsset` + a `MediaAttachment` linked by `(owner_type = SupplierInvoice, owner_id = <supplier_invoice document id>)`.
+  - **Do NOT extend the legacy `Media` module `DocumentAttachment` / `AttachmentService`** (local-disk, hard FK) — that system is being retired; adding supplier invoices to it would create a third consumer of the path we're removing.
+  - **Coordination (a dedicated media-unification session is being kicked off):** MediaAsset is being promoted out of `Catalog` into a shared/first-class module and documents are being migrated onto it. Therefore (1) **coordinate the `SupplierInvoice` owner-type naming** with that session so we don't diverge, and (2) keep the SupplierInvoice→media integration **thin and isolated behind a small port** so it can be repointed when MediaAsset moves modules. Mirrors the stock-adjustment feature's choice.
+  - Refs: `docs/superpowers/specs/2026-06-12-media-subsystem-architecture-design.md`; `docs/superpowers/plans/2026-06-23-stock-adjustment-writeoff-audit-and-plan.md` (§6-D + Media-unification note).
 - **Navigation home:** a findable, searchable list under **Purchases → Supplier Invoices**, filterable by supplier, status, match status, date; opening one shows lines, the linked PO/receipt, the match result, and the attachment.
 
 ## 6. Three-way matching
@@ -111,13 +114,13 @@ A small config object resolved per purchase, seeded per vertical:
 - **Matcher:** matched / price-variance / quantity-variance / exception cases; `warn` allows post, `block` refuses an exception.
 - **Policy resolver:** vertical default applied; unsupported `ordered` mode fails loudly.
 - **Precision:** TND scale-3 amounts; a timbre + VAT + HT sum reconciles exactly with no float drift.
-- **Document lifecycle + attachment:** draft→matched→posted→paid; attachment stored to the S3/MinIO disk (asserts `storage_disk != 'local'`).
+- **Document lifecycle + attachment:** draft→matched→posted→paid; attaching a PDF creates a `MediaAsset` + a `MediaAttachment` with `owner_type = SupplierInvoice` / `owner_id = <doc id>` (assert the link via the unified MediaAsset system — NOT a legacy `DocumentAttachment` row).
 - **db-per-tenant:** GL/accounts/documents resolve in the tenant DB.
 
 ## 11. Explicitly out of scope (Phase 2 / other sessions)
 
 - **Import / invoice-first:** bill-on-ordered, supplier advances (4091), landed-cost capitalization (CIF + customs duty), import VAT (TVA à l'importation) from the customs attestation. The policy enum + document model accommodate it; no code path in Phase 1.
-- **Media-system unification:** consolidating disk + MinIO, defaulting object storage everywhere, S3/R2 swappability. Phase 1 rides the existing `AttachmentService` on the MinIO disk only.
+- **Media-system unification:** promoting `MediaAsset` out of `Catalog` into a shared module, migrating legacy `DocumentAttachment` onto it, S3/R2 swappability (its own session). Phase 1 only **consumes** the existing `MediaAsset` system (adds one `MediaOwnerType` case) behind a thin port; it does not refactor or move the media module.
 - **Vendor/item-level policy overrides** (resolver seam exists; unbuilt).
 
 ## 12. Fiscal-compliance cautions
