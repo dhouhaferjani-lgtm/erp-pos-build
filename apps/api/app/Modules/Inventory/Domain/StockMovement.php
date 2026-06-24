@@ -139,6 +139,26 @@ class StockMovement extends Model
     }
 
     /**
+     * Row-level stock direction, derived from the signed
+     * quantity_before -> quantity_after delta. Use this instead of
+     * MovementType::isInbound() (ambiguous for adjustments) or the `quantity`
+     * magnitude (whose sign convention is inconsistent across writers). 'flat'
+     * covers zero-delta rows such as WAC cost adjustments (before == after).
+     *
+     * @return 'in'|'out'|'flat'
+     */
+    public function directionForRow(): string
+    {
+        $cmp = bccomp((string) $this->quantity_after, (string) $this->quantity_before, 4);
+
+        return match (true) {
+            $cmp > 0 => 'in',
+            $cmp < 0 => 'out',
+            default => 'flat',
+        };
+    }
+
+    /**
      * Scope to filter by tenant.
      *
      * @param  Builder<static>  $query
