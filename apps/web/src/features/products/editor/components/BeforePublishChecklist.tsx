@@ -12,8 +12,10 @@ export interface ChecklistItem {
 
 /**
  * BeforePublishChecklist — right-rail card listing the required-field checks
- * derived from the live form state. Green check when satisfied, neutral circle
- * when still pending.
+ * derived from the live form state. Matches the mock:
+ * - 11px 700 uppercase tracked "Before publish" label.
+ * - Each row: a brand-GREEN ✓ (theme-success) when satisfied / a muted ○ when
+ *   pending, with the label text in gray-700 / muted gray respectively.
  */
 export function BeforePublishChecklist({
   items,
@@ -24,18 +26,27 @@ export function BeforePublishChecklist({
 
   return (
     <div className={tokens.card.base}>
-      <h3 className={cn(tokens.heading.section, 'mb-3 font-[family-name:var(--font-display)]')}>
+      <h3
+        className={cn(
+          'mb-3 text-[11px] font-bold uppercase tracking-[0.1em]',
+          textColors.tertiary,
+        )}
+      >
         {t('editor.checklist.title')}
       </h3>
-      <ul className="flex flex-col gap-1.5" role="list">
+      <ul className="flex flex-col gap-2.5" role="list">
         {items.map((item) => (
           <li
             key={item.key}
             data-satisfied={item.satisfied}
-            className="flex items-center gap-2.5 text-sm"
+            className="flex items-center gap-2.5 text-[13.5px]"
           >
             {item.satisfied ? (
-              <Check className={cn('h-4 w-4 shrink-0', textColors.success)} aria-hidden="true" />
+              // Brand green check via theme var (no semantic token resolves to #1F8A5B)
+              <Check
+                className="h-4 w-4 shrink-0 text-[var(--theme-success)]"
+                aria-hidden="true"
+              />
             ) : (
               <Circle className={cn('h-4 w-4 shrink-0', textColors.disabled)} aria-hidden="true" />
             )}

@@ -7,9 +7,9 @@ import type { EditorSection } from './SectionNav'
 // i18n is initialised globally in src/test/setup.ts (imports ../lib/i18n)
 
 const sections: EditorSection[] = [
-  { id: 'identity', label: 'Identity', marker: '01' },
-  { id: 'pricing', label: 'Pricing', marker: '02' },
-  { id: 'media', label: 'Media', marker: '03' },
+  { id: 'identity', label: 'Identity' },
+  { id: 'pricing', label: 'Pricing' },
+  { id: 'media', label: 'Media' },
 ]
 
 describe('SectionNav', () => {
@@ -27,7 +27,7 @@ describe('SectionNav', () => {
     expect(screen.getByText('Media')).toBeInTheDocument()
   })
 
-  it('renders each section marker', () => {
+  it('does NOT render numeric ordinal markers (mock dropped 01/02/03)', () => {
     render(
       <SectionNav
         sections={sections}
@@ -36,9 +36,24 @@ describe('SectionNav', () => {
         completenessPercent={0}
       />,
     )
-    expect(screen.getByText('01')).toBeInTheDocument()
-    expect(screen.getByText('02')).toBeInTheDocument()
-    expect(screen.getByText('03')).toBeInTheDocument()
+    expect(screen.queryByText('01')).toBeNull()
+    expect(screen.queryByText('02')).toBeNull()
+    expect(screen.queryByText('03')).toBeNull()
+  })
+
+  it('applies the orange left-accent inset shadow to the active item only', () => {
+    render(
+      <SectionNav
+        sections={sections}
+        activeId="pricing"
+        onSelect={vi.fn()}
+        completenessPercent={30}
+      />,
+    )
+    const active = screen.getByRole('button', { name: /pricing/i })
+    expect(active.style.boxShadow).toContain('inset 2px 0 0')
+    const idle = screen.getByRole('button', { name: /identity/i })
+    expect(idle.style.boxShadow).toBe('')
   })
 
   it('marks the active item with aria-current="step"', () => {

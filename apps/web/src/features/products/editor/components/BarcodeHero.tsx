@@ -1,8 +1,7 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Loader2, RefreshCw } from 'lucide-react'
-import { Input } from '@/components/atoms/Input/Input'
-import { tokens } from '@/lib/designTokens'
+import { ImageIcon, Loader2, RefreshCw, Sparkles, Barcode } from 'lucide-react'
+import { colors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 
 /**
@@ -21,16 +20,27 @@ export interface EnrichmentStatus {
   fieldsCount?: number
 }
 
+/*
+ * Dark hero input surfaces. The navy band is gray-900 (theme token), but the
+ * INSET input/refresh surfaces inside it have no close theme token — these
+ * arbitrary hexes come straight from the mock (band #14283F = gray-900;
+ * input bg #0F2138; input/refresh border #2C4A6E; input text #EAF1FA;
+ * helper #6E86A5). Kept literal & commented per the task brief.
+ */
+const HERO_INPUT_BASE =
+  'w-full rounded-[var(--radius-input)] border border-[#2C4A6E] bg-[#0F2138] text-[#EAF1FA] ' +
+  'placeholder:text-[#5B7AA3] focus:border-[#5B7AA3] focus:outline-none focus:ring-0 ' +
+  'disabled:cursor-not-allowed disabled:opacity-60'
+
 /**
- * BarcodeHero — compact (≤64px tall) hero bar for the product editor.
+ * BarcodeHero — the dark navy "barcode-first" hero band of the product editor.
  *
- * Direction-A "Crisp / Operational":
- * - Flat/hairline, mono numerics, navy structure.
- * - Orange (secondary-500) is the ONE reserved accent — NOT used here; the
- *   hero uses gray badge tokens only.
- * - Barcode input comes FIRST with `font-mono` for scan-readability.
- * - Status pill is only visible when `status.state !== 'idle'`.
- * - Refresh button only rendered when `onManualRefresh` is provided.
+ * Mirrors the mock's hero (gray-900 band, radius 12px): a 52×52 thumbnail
+ * placeholder, a mono barcode input + a name input on dark surfaces, a green
+ * "Synerivia · N fields" enrichment pill (hidden while idle — enrichment is
+ * Stage 4), a 38×38 refresh button, and a full-width helper line.
+ *
+ * Barcode + name inputs are controlled and bound to the form fields upstream.
  */
 export function BarcodeHero(props: {
   barcode: string
@@ -48,71 +58,98 @@ export function BarcodeHero(props: {
   const activeStatus = status != null && status.state !== 'idle' ? status : null
   const isLoading = activeStatus !== null && activeStatus.state === 'loading'
 
-  // Badge color: red for error, gray for loading/success
-  const badgeVariant = activeStatus?.state === 'error' ? tokens.badge.red : tokens.badge.gray
-
   return (
-    <div className="flex flex-row items-center gap-3 py-2">
-      {/* Barcode input — mono font for scan-readability; fixed width so name can grow */}
-      <Input
-        type="text"
-        value={barcode}
-        onChange={(e) => {
-          onBarcodeChange(e.target.value)
-        }}
-        placeholder={t('editor.hero.barcodePlaceholder')}
-        disabled={disabled}
-        className={cn('w-48 shrink-0 font-mono')}
-        aria-label={t('editor.hero.barcodePlaceholder')}
-      />
-
-      {/* Product name input — grows to fill remaining width */}
-      <Input
-        type="text"
-        value={name}
-        onChange={(e) => {
-          onNameChange(e.target.value)
-        }}
-        placeholder={t('editor.hero.namePlaceholder')}
-        disabled={disabled}
-        className="min-w-0 flex-1"
-        aria-label={t('editor.hero.namePlaceholder')}
-      />
-
-      {/* Enrichment status pill — hidden when idle or no status */}
-      {activeStatus !== null && (
-        <span className={cn(tokens.badge.base, badgeVariant)}>
-          {activeStatus.state === 'loading' && (
-            <>
-              <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden="true" />
-              {t('editor.hero.enrichmentLoading')}
-            </>
-          )}
-          {activeStatus.state === 'success' && (
-            <span className="font-mono">
-              {t('editor.hero.enrichmentSuccess', { count: activeStatus.fieldsCount ?? 0 })}
-            </span>
-          )}
-          {activeStatus.state === 'error' && t('editor.hero.enrichmentUnavailable')}
-        </span>
-      )}
-
-      {/* Manual refresh button — only rendered when callback is provided */}
-      {onManualRefresh != null && (
-        <button
-          type="button"
-          aria-label={t('editor.hero.refreshLabel')}
-          onClick={onManualRefresh}
-          disabled={isLoading}
-          className={cn(
-            tokens.button.base,
-            tokens.button.ghost,
-            tokens.button.sizes.sm,
-          )}
+    <div className={cn('rounded-xl px-3.5 py-3', colors.neutral[900])}>
+      <div className="flex flex-wrap items-center gap-3">
+        {/* 52×52 thumbnail placeholder */}
+        <div
+          aria-hidden="true"
+          className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[9px] border border-[#2C4A6E] bg-[#1E3A57] text-[#7E97B5]"
         >
-          <RefreshCw className="h-4 w-4" aria-hidden="true" />
-        </button>
-      )}
+          <ImageIcon className="h-5 w-5" />
+        </div>
+
+        {/* Barcode input — mono for scan-readability, fixed width */}
+        <div className="relative w-60 shrink-0">
+          <Barcode
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#5B7AA3]"
+          />
+          <input
+            type="text"
+            value={barcode}
+            onChange={(e) => {
+              onBarcodeChange(e.target.value)
+            }}
+            placeholder={t('editor.hero.barcodePlaceholder')}
+            disabled={disabled}
+            aria-label={t('editor.hero.barcodePlaceholder')}
+            className={cn(HERO_INPUT_BASE, 'py-[9px] pl-9 pr-3 font-mono text-[15px]')}
+          />
+        </div>
+
+        {/* Product name input — grows to fill remaining width */}
+        <div className="min-w-[12rem] flex-1">
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => {
+              onNameChange(e.target.value)
+            }}
+            placeholder={t('editor.hero.namePlaceholder')}
+            disabled={disabled}
+            aria-label={t('editor.hero.namePlaceholder')}
+            className={cn(HERO_INPUT_BASE, 'px-3 py-[9px] text-[15px] font-semibold')}
+          />
+        </div>
+
+        {/* Enrichment status pill — hidden when idle or no status. Green
+            "Synerivia · N fields" treatment; dark-surface arbitrary hexes. */}
+        {activeStatus !== null && (
+          <span
+            className={cn(
+              'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold',
+              activeStatus.state === 'error'
+                ? 'bg-[rgba(214,69,69,.18)] text-[#F0A6A6]'
+                : 'bg-[rgba(31,138,91,.18)] text-[#7BE0B0]',
+            )}
+          >
+            {activeStatus.state === 'loading' && (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                {t('editor.hero.enrichmentLoading')}
+              </>
+            )}
+            {activeStatus.state === 'success' && (
+              <>
+                <Sparkles className="h-3 w-3" aria-hidden="true" />
+                <span className="font-mono">
+                  {t('editor.hero.enrichmentSuccess', { count: activeStatus.fieldsCount ?? 0 })}
+                </span>
+              </>
+            )}
+            {activeStatus.state === 'error' && t('editor.hero.enrichmentUnavailable')}
+          </span>
+        )}
+
+        {/* 38×38 refresh button — only rendered when callback is provided */}
+        {onManualRefresh != null && (
+          <button
+            type="button"
+            aria-label={t('editor.hero.refreshLabel')}
+            onClick={onManualRefresh}
+            disabled={isLoading}
+            className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[var(--radius-input)] border border-[#2C4A6E] bg-transparent text-[#9FB4CE] transition-colors hover:border-[#5B7AA3] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
+
+        {/* Full-width helper line — 11px muted, indented to clear the thumbnail */}
+        <p className="basis-full pl-16 text-[11px] text-[#6E86A5]">
+          {t('editor.hero.helper')}
+        </p>
+      </div>
     </div>
   )
 }

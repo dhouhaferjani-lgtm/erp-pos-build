@@ -1,19 +1,18 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { textColors } from '@/lib/designTokens'
+import { tokens, textColors, colors } from '@/lib/designTokens'
+import { cn } from '@/lib/utils'
 import { CompletenessMeter } from './CompletenessMeter'
 
 /**
  * EditorSection — descriptor for a single navigable section in the product
- * editor. Task 1.5 passes an array of these to SectionNav.
+ * editor. There is NO numeric ordinal marker (the mock dropped 01/02/03).
  */
 export interface EditorSection {
   /** DOM element id that scroll-spy observes and click-to-scroll targets. */
   id: string
   /** Human-readable section label (untranslated — caller owns the string). */
   label: string
-  /** Zero-padded ordinal marker, e.g. "01", "02". */
-  marker: string
 }
 
 interface SectionNavProps {
@@ -27,14 +26,15 @@ interface SectionNavProps {
 }
 
 /**
- * SectionNav — sticky left-column section navigator for the product editor.
- *
- * Direction A "Crisp / Operational":
- * - Navy structure, one orange accent (secondary-500), hairline/flat styling.
- * - Uppercase 11px tracked "SECTIONS" rail header.
- * - Mono "01/02/03" markers; section labels in UI font.
- * - Active indicator: left border + text in secondary-500 (theme-bridged).
- * - Inactive items: textColors.disabled (text-gray-400 → nearest token).
+ * SectionNav — sticky left-column section navigator, styled as a white card to
+ * match the mock:
+ * - White card (tokens.card.base): hairline border, radius 14px, padding.
+ * - "SECTIONS" rail header: 11px 700 tracked uppercase, gray-400.
+ * - Nav items: padding 9px/12px, radius 8px.
+ *   - active = bg primary-50 (#E5ECF4) + navy text + weight 600 + an ORANGE
+ *     left accent (`inset 2px 0 0` secondary-500) via box-shadow.
+ *   - idle   = transparent + gray-600 + weight 500.
+ * - Hairline divider, then the green CompletenessMeter.
  */
 export function SectionNav({
   sections,
@@ -47,10 +47,15 @@ export function SectionNav({
   return (
     <nav
       aria-label={t('editor.sections')}
-      className="sticky top-6 flex h-fit w-full flex-col gap-1"
+      className={cn(tokens.card.base, 'sticky top-0 flex h-fit w-full flex-col gap-0.5 p-3')}
     >
-      {/* Rail header — uppercase 11px tracked, textColors.disabled */}
-      <p className={`mb-3 text-[11px] uppercase tracking-[0.12em] ${textColors.disabled}`}>
+      {/* Rail header — uppercase 11px 700 tracked, gray-400 */}
+      <p
+        className={cn(
+          'px-3 pb-2 pt-1.5 text-[11px] font-bold uppercase tracking-[0.1em]',
+          textColors.disabled,
+        )}
+      >
         {t('editor.sections')}
       </p>
 
@@ -67,28 +72,27 @@ export function SectionNav({
                 onClick={() => {
                   onSelect(section.id)
                 }}
-                className={[
-                  'flex w-full items-center gap-2.5 border-l-2 py-1.5 pl-3 pr-2 text-left transition-colors duration-150',
+                // Orange left accent on the active item via inset box-shadow
+                // (secondary-500 = #EA661A) — the one reserved accent.
+                style={isActive ? { boxShadow: 'inset 2px 0 0 var(--color-secondary-500)' } : undefined}
+                className={cn(
+                  'w-full rounded-lg px-3 py-[9px] text-left text-sm transition-all duration-150',
                   isActive
-                    ? /* ONE orange accent — theme-bridged secondary-500 */
-                      'border-secondary-500 text-secondary-500'
-                    : `border-transparent ${textColors.disabled} ${textColors.hoverSecondary}`,
-                ].join(' ')}
+                    ? cn('bg-primary-50 font-semibold', textColors.primary)
+                    : cn('bg-transparent font-medium', textColors.tertiary, textColors.hoverPrimary),
+                )}
               >
-                {/* Mono ordinal marker */}
-                <span className="shrink-0 font-mono text-[11px] uppercase tracking-[0.12em]">
-                  {section.marker}
-                </span>
-
-                {/* Section label */}
-                <span className="text-sm font-medium">{section.label}</span>
+                {section.label}
               </button>
             </li>
           )
         })}
       </ul>
 
-      {/* Completeness meter at the bottom of the rail */}
+      {/* Hairline divider */}
+      <div className={cn('mx-1 my-2 h-px', colors.neutral[100])} />
+
+      {/* Completeness meter (green) */}
       <CompletenessMeter percent={completenessPercent} />
     </nav>
   )

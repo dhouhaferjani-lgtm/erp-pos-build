@@ -123,10 +123,16 @@ describe('ProductForm (canonical layout)', () => {
     expect(priceInput).toHaveAttribute('inputmode', 'decimal')
   })
 
-  it('renders a submit button', () => {
+  it('renders Save-draft and Publish submit buttons targeting the form', () => {
     render(<ProductForm />)
-    const save = screen.getByRole('button', { name: 'actions.save' })
-    expect(save).toHaveAttribute('type', 'submit')
+    // Chrome parity (1.7a): the footer Save/Cancel were replaced by header
+    // Cancel (ghost) + Save draft (outline) + Publish (primary). Save draft and
+    // Publish both submit the form for now (Publish = primary) via `form=`.
+    const publish = screen.getByRole('button', { name: 'catalog:editor.actions.publish' })
+    expect(publish).toHaveAttribute('type', 'submit')
+    expect(publish).toHaveAttribute('form', 'product-editor-form')
+    const saveDraft = screen.getByRole('button', { name: 'catalog:editor.actions.saveDraft' })
+    expect(saveDraft).toHaveAttribute('type', 'submit')
   })
 })
 

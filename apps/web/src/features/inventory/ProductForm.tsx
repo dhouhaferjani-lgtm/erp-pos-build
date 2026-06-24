@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Plus, X, Layers } from 'lucide-react'
+import { Plus, X, Layers } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost, apiPatch } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
@@ -12,8 +12,6 @@ import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { colors, tokens, textColors } from '../../lib/designTokens'
 import { CategorySelect } from '../../components/catalog/CategorySelect'
-import { StickyFormFooter } from '../../components/molecules/StickyFormFooter/StickyFormFooter'
-import { PageHeader } from '../../components/molecules/PageHeader'
 import { Button, Checkbox, FormField, Input, Textarea, MoneyInput } from '../../components/atoms'
 import { BarcodeLookupInput } from './components/BarcodeLookupInput'
 import { CatalogBanner } from './components/CatalogBanner'
@@ -35,7 +33,9 @@ import { EditorSectionCard } from '../products/editor/components/EditorSectionCa
 import { RelatedOperationsRail } from '../products/editor/components/RelatedOperationsRail'
 import { BeforePublishChecklist } from '../products/editor/components/BeforePublishChecklist'
 import type { ChecklistItem } from '../products/editor/components/BeforePublishChecklist'
+import { LivePosTile } from '../products/editor/components/LivePosTile'
 import { useScrollSpy } from '../products/editor/hooks/useScrollSpy'
+import { formatCurrency } from '../../lib/formatCurrency'
 
 interface Product {
   id: string
@@ -109,7 +109,7 @@ export function ProductForm() {
   const isParapharmacy = config?.vertical === 'parapharmacy'
   const showBatchTracking = hasModule('BatchExpiry') || hasModule('Inventory')
   const { isOtospex } = useProductConfig()
-  const { currency, decimals } = useCurrency()
+  const { currency, decimals, locale } = useCurrency()
 
   const [showVariants, setShowVariants] = useState(false)
   const [oemInput, setOemInput] = useState('')
@@ -365,11 +365,14 @@ export function ProductForm() {
   ]
   const sectionIds = sectionDefs.map((s) => s.id)
   const activeSectionId = useScrollSpy(sectionIds)
-  const sections: EditorSection[] = sectionDefs.map((s, index) => ({
+  const sections: EditorSection[] = sectionDefs.map((s) => ({
     id: s.id,
     label: t(s.labelKey),
-    marker: String(index + 1).padStart(2, '0'),
   }))
+
+  // Live POS preview price — formatted from the current sale_price for the
+  // right-rail tile. Empty/zero until the operator enters a price.
+  const livePosPrice = formatCurrency(salePriceValue.trim() === '' ? 0 : salePriceValue, currency, locale)
 
   const handleSectionSelect = (sectionId: string): void => {
     const el = document.getElementById(sectionId)
@@ -387,26 +390,65 @@ export function ProductForm() {
   }
 
   return (
-    <div className="flex min-h-full flex-col gap-6">
-      {/* Header — single page-level <h1> + subtitle */}
-      <PageHeader
-        title={isEditing ? t('inventory:products.edit') : t('inventory:products.new')}
-        subtitle={t('catalog:editor.subtitle')}
-        breadcrumb={
-          <Link
-            to="/inventory/products"
-            className={cn(
-              'inline-flex items-center gap-2 text-sm',
-              textColors.tertiary,
-              textColors.hoverPrimary,
-            )}
-          >
-            <ArrowLeft className="h-4 w-4" />
+    <div className="flex min-h-full flex-col gap-[18px]">
+      {/* Page header — breadcrumb, single <h1> (Montserrat 800 26px navy) +
+          subtitle on the left, action buttons on the right. The buttons live
+          OUTSIDE the <form> below but target it via `form=` so they submit.
+          Save draft + Publish both submit for now (Publish = primary); the
+          draft/publish split lands with the status workflow (stubbed). */}
+      <div>
+        <div className={cn('mb-4 flex items-center gap-2 text-sm', textColors.tertiary)}>
+          <Link to="/inventory/products" className={textColors.hoverPrimary}>
             {t('actions.back')}
           </Link>
-        }
-        className="mb-0"
-      />
+        </div>
+        <div className="flex flex-wrap items-start gap-4">
+          <div className="min-w-0 flex-1">
+            <h1
+              className={cn(
+                'font-[family-name:var(--font-display)] text-[26px] font-extrabold tracking-[-0.02em]',
+                textColors.primary,
+              )}
+            >
+              {isEditing ? t('inventory:products.edit') : t('inventory:products.new')}
+            </h1>
+            <p className={cn('mt-1.5 text-sm', textColors.tertiary)}>{t('catalog:editor.subtitle')}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => { void navigate('/inventory/products') }}
+              className={cn(
+                'rounded-[var(--radius-button)] px-2.5 py-2 text-sm font-semibold',
+                textColors.tertiary,
+                textColors.hoverPrimary,
+              )}
+            >
+              {t('actions.cancel')}
+            </button>
+            <button
+              type="submit"
+              form="product-editor-form"
+              disabled={isSubmitting}
+              className={cn(
+                'whitespace-nowrap rounded-[var(--radius-button)] border border-primary-100 bg-white px-4 py-2 text-sm font-semibold',
+                textColors.brand,
+                'hover:bg-primary-50 disabled:opacity-50',
+              )}
+            >
+              {t('catalog:editor.actions.saveDraft')}
+            </button>
+            <button
+              type="submit"
+              form="product-editor-form"
+              disabled={isSubmitting}
+              className="whitespace-nowrap rounded-[var(--radius-button)] bg-secondary-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_1px_2px_rgba(138,58,13,.3)] hover:bg-secondary-600 disabled:opacity-50"
+            >
+              {isSubmitting ? t('status.saving') : t('catalog:editor.actions.publish')}
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Barcode-first hero: the barcode + name inputs are bound to the
           existing form fields (single source of truth for `barcode`). */}
@@ -418,7 +460,7 @@ export function ProductForm() {
       />
 
       {/* Form */}
-      <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="flex flex-1 flex-col gap-6">
+      <form id="product-editor-form" onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="flex flex-1 flex-col gap-[18px]">
         {/* Catalog Lookup Banner */}
         <CatalogBanner
           state={lookupState}
@@ -429,9 +471,10 @@ export function ProductForm() {
           }
         />
 
-        {/* Two-column body: sticky section nav (left) + section cards (centre)
-            + related-operations / before-publish rail (right). */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[12rem_minmax(0,1fr)_16rem]">
+        {/* Three-column body (mock grid 188px / 1fr / 300px): sticky section
+            nav card (left) + section cards (centre) + Live-on-POS / before-
+            publish / related-operations rail (right). */}
+        <div className="grid grid-cols-1 gap-[18px] lg:grid-cols-[188px_minmax(0,1fr)_300px] lg:items-start">
           {/* Left: sticky section navigator with scroll-spy + completeness */}
           <div className="hidden lg:block">
             <SectionNav
@@ -443,11 +486,10 @@ export function ProductForm() {
           </div>
 
           {/* Centre: stacked section cards */}
-          <div className="flex min-w-0 flex-col gap-6">
-            {/* 01 — General */}
+          <div className="flex min-w-0 flex-col gap-4">
+            {/* General */}
             <EditorSectionCard
               id="section-general"
-              marker="01"
               title={t('catalog:editor.sectionLabels.general')}
             >
               <FormField
@@ -569,10 +611,9 @@ export function ProductForm() {
               </FormField>
             </EditorSectionCard>
 
-            {/* 02 — Pricing & Tax */}
+            {/* Pricing & Tax */}
             <EditorSectionCard
               id="section-pricing"
-              marker="02"
               title={t('catalog:editor.sectionLabels.pricing')}
             >
               <FormField label={t('inventory:products.salePrice')} htmlFor="sale_price">
@@ -620,10 +661,9 @@ export function ProductForm() {
               </div>
             </EditorSectionCard>
 
-            {/* 03 — Inventory & Units */}
+            {/* Inventory & Units */}
             <EditorSectionCard
               id="section-inventory"
-              marker="03"
               title={t('catalog:editor.sectionLabels.inventory')}
             >
               <FormField label={t('inventory:products.unit')} htmlFor="unit">
@@ -786,7 +826,6 @@ export function ProductForm() {
                 with a link to the suppliers route (no new data fields). */}
             <EditorSectionCard
               id="section-suppliers"
-              marker={isParapharmacy ? '05' : '04'}
               title={t('catalog:editor.sectionLabels.suppliers')}
               contentClassName="sm:grid-cols-1"
             >
@@ -834,26 +873,14 @@ export function ProductForm() {
             )}
           </div>
 
-          {/* Right rail: related operations + before-publish checklist */}
-          <aside className="flex flex-col gap-6">
-            <RelatedOperationsRail disabled={!isEditing} />
+          {/* Right rail (mock order): Live on POS preview, before-publish
+              checklist, then related operations. */}
+          <aside className="flex flex-col gap-4">
+            <LivePosTile name={nameValue} price={livePosPrice} />
             <BeforePublishChecklist items={checklistItems} />
+            <RelatedOperationsRail disabled={!isEditing} />
           </aside>
         </div>
-
-        {/* Form Actions */}
-        <StickyFormFooter>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => { void navigate('/inventory/products') }}
-          >
-            {t('actions.cancel')}
-          </Button>
-          <Button type="submit" variant="primary" disabled={isSubmitting}>
-            {isSubmitting ? t('status.saving') : t('actions.save')}
-          </Button>
-        </StickyFormFooter>
       </form>
     </div>
   )
