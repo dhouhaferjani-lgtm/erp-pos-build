@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Application\Listeners;
 
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
@@ -89,6 +90,7 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
                 userId: $event->completedBy,
                 expectedCompanyId: $counting->company_id,
                 variantId: $item->variant_id,
+                reasonCode: MovementReason::CountCorrection,
             );
 
             $adjustedCount++;
