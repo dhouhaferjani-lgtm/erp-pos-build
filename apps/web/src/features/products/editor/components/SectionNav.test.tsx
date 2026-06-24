@@ -41,7 +41,7 @@ describe('SectionNav', () => {
     expect(screen.getByText('03')).toBeInTheDocument()
   })
 
-  it('marks the active item with aria-current="true"', () => {
+  it('marks the active item with aria-current="step"', () => {
     render(
       <SectionNav
         sections={sections}
@@ -51,7 +51,7 @@ describe('SectionNav', () => {
       />,
     )
     const activeItem = screen.getByRole('button', { name: /pricing/i })
-    expect(activeItem).toHaveAttribute('aria-current', 'true')
+    expect(activeItem).toHaveAttribute('aria-current', 'step')
   })
 
   it('does not mark inactive items with aria-current', () => {
@@ -64,7 +64,7 @@ describe('SectionNav', () => {
       />,
     )
     const identityButton = screen.getByRole('button', { name: /identity/i })
-    expect(identityButton).not.toHaveAttribute('aria-current', 'true')
+    expect(identityButton).not.toHaveAttribute('aria-current')
   })
 
   it('calls onSelect with the section id when an item is clicked', async () => {

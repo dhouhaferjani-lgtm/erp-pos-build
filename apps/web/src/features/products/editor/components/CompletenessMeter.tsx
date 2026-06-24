@@ -33,7 +33,7 @@ export function CompletenessMeter({ percent }: CompletenessMeterProps): React.JS
       </div>
 
       {/* Label */}
-      <p className="mt-1.5 text-[11px] text-gray-500">
+      <p className={`mt-1.5 text-[11px] ${textColors.tertiary}`}>
         <span>{t('editor.complete')}</span>{' '}
         <span className={`font-mono ${textColors.secondary}`}>{clamped}%</span>
       </p>

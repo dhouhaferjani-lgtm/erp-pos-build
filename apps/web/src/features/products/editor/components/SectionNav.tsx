@@ -63,7 +63,7 @@ export function SectionNav({
             <li key={section.id}>
               <button
                 type="button"
-                aria-current={isActive ? 'true' : undefined}
+                aria-current={isActive ? 'step' : undefined}
                 onClick={() => {
                   onSelect(section.id)
                 }}
