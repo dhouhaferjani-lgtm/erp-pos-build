@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Application\Services;
 
-use App\Modules\Catalog\Application\Services\MediaAttachmentService;
-use App\Modules\Catalog\Application\Services\MediaUploadService;
 use App\Modules\Import\Domain\ImportJob;
+use App\Modules\Media\Application\Services\MediaAttachmentService;
+use App\Modules\Media\Application\Services\MediaUploadService;
 use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaRole;
 use App\Modules\Product\Domain\Product;

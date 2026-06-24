@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Catalog\Infrastructure\Persistence;
+namespace App\Modules\Media\Infrastructure\Persistence;
 
-use App\Modules\Catalog\Domain\Contracts\MediaAttachmentRepositoryInterface;
-use App\Modules\Catalog\Domain\Media\MediaAsset;
-use App\Modules\Catalog\Domain\Media\MediaAttachment;
+use App\Modules\Media\Domain\Contracts\MediaAttachmentRepositoryInterface;
 use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaStatus;
+use App\Modules\Media\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Media\MediaAttachment;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\Relation;
 

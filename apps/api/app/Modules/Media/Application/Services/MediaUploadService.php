@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Catalog\Application\Services;
+namespace App\Modules\Media\Application\Services;
 
-use App\Modules\Catalog\Application\Jobs\GenerateRenditions;
-use App\Modules\Catalog\Domain\Media\MediaAsset;
+use App\Modules\Media\Application\Jobs\GenerateRenditions;
 use App\Modules\Media\Domain\Enums\MediaAssetType;
 use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaSource;
 use App\Modules\Media\Domain\Enums\MediaStatus;
+use App\Modules\Media\Domain\Media\MediaAsset;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;

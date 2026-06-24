@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Catalog\Infrastructure\Storage;
+namespace App\Modules\Media\Infrastructure\Storage;
 
-use App\Modules\Catalog\Domain\Contracts\MediaStorageInterface;
-use App\Modules\Catalog\Domain\Media\MediaAsset;
-use App\Modules\Catalog\Domain\Media\MediaAttachment;
-use App\Modules\Catalog\Domain\Media\MediaRendition;
+use App\Modules\Media\Domain\Contracts\MediaStorageInterface;
 use App\Modules\Media\Domain\Enums\MediaSource;
 use App\Modules\Media\Domain\Enums\RenditionName;
+use App\Modules\Media\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Media\MediaAttachment;
+use App\Modules\Media\Domain\Media\MediaRendition;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;

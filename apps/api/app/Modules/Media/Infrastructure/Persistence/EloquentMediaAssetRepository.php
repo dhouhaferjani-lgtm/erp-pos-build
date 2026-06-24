@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Catalog\Infrastructure\Persistence;
+namespace App\Modules\Media\Infrastructure\Persistence;
 
-use App\Modules\Catalog\Domain\Contracts\MediaAssetRepositoryInterface;
-use App\Modules\Catalog\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Contracts\MediaAssetRepositoryInterface;
 use App\Modules\Media\Domain\Enums\MediaStatus;
+use App\Modules\Media\Domain\Media\MediaAsset;
 
 final readonly class EloquentMediaAssetRepository implements MediaAssetRepositoryInterface
 {

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Catalog\Application\DTOs;
 
-use App\Modules\Catalog\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Media\MediaAsset;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 

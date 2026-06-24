@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Modules\Catalog\Media;
 
-use App\Modules\Catalog\Application\Services\RenditionService;
+use App\Modules\Media\Application\Services\RenditionService;
 use App\Modules\Media\Domain\Enums\MediaAssetType;
 use App\Modules\Media\Domain\Enums\MediaSource;
 use App\Modules\Media\Domain\Enums\MediaStatus;
 use App\Modules\Media\Domain\Enums\RenditionFormat;
-use App\Modules\Catalog\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Media\MediaAsset;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;

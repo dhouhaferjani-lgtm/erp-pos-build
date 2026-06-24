@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Catalog\Application\Services;
+namespace App\Modules\Media\Application\Services;
 
-use App\Modules\Catalog\Domain\Contracts\MediaStorageInterface;
-use App\Modules\Catalog\Domain\Media\MediaAsset;
-use App\Modules\Catalog\Domain\Media\MediaAttachment;
-use App\Modules\Catalog\Domain\Media\MediaRendition;
+use App\Modules\Media\Domain\Contracts\MediaStorageInterface;
 use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaRole;
 use App\Modules\Media\Domain\Enums\MediaSource;
+use App\Modules\Media\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Media\MediaAttachment;
+use App\Modules\Media\Domain\Media\MediaRendition;
 use Illuminate\Support\Facades\DB;
 
 /**

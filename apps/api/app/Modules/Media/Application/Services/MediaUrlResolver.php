@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Catalog\Application\Services;
+namespace App\Modules\Media\Application\Services;
 
-use App\Modules\Catalog\Domain\Media\MediaAsset;
-use App\Modules\Catalog\Domain\Media\MediaAttachment;
 use App\Modules\Media\Domain\Enums\MediaSource;
+use App\Modules\Media\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Media\MediaAttachment;
 use Illuminate\Support\Facades\URL;
 
 /**

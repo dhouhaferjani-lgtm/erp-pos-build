@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Catalog\Infrastructure\Rendition;
+namespace App\Modules\Media\Infrastructure\Rendition;
 
-use App\Modules\Catalog\Domain\Contracts\RenditionGeneratorInterface;
+use App\Modules\Media\Domain\Contracts\RenditionGeneratorInterface;
 use RuntimeException;
 
 /**

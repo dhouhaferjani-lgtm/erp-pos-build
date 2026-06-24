@@ -14,9 +14,9 @@ use App\Modules\Media\Domain\Enums\MediaSource;
 use App\Modules\Media\Domain\Enums\MediaStatus;
 use App\Modules\Media\Domain\Enums\RenditionFormat;
 use App\Modules\Media\Domain\Enums\RenditionName;
-use App\Modules\Catalog\Domain\Media\MediaAsset;
-use App\Modules\Catalog\Domain\Media\MediaAttachment;
-use App\Modules\Catalog\Domain\Media\MediaRendition;
+use App\Modules\Media\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Media\MediaAttachment;
+use App\Modules\Media\Domain\Media\MediaRendition;
 use Tests\TestCase;
 
 /**

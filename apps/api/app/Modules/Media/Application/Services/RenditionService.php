@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Catalog\Application\Services;
+namespace App\Modules\Media\Application\Services;
 
-use App\Modules\Catalog\Domain\Contracts\MediaStorageInterface;
-use App\Modules\Catalog\Domain\Contracts\RenditionGeneratorInterface;
-use App\Modules\Catalog\Domain\Media\MediaAsset;
-use App\Modules\Catalog\Domain\Media\MediaRendition;
+use App\Modules\Media\Domain\Contracts\MediaStorageInterface;
+use App\Modules\Media\Domain\Contracts\RenditionGeneratorInterface;
 use App\Modules\Media\Domain\Enums\RenditionFormat;
 use App\Modules\Media\Domain\Enums\RenditionName;
+use App\Modules\Media\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Media\MediaRendition;
 use RuntimeException;
 
 /**

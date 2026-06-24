@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Catalog\Application\Jobs;
+namespace App\Modules\Media\Application\Jobs;
 
 use App\Jobs\Concerns\BindsTenantContext;
-use App\Modules\Catalog\Application\Services\RenditionService;
-use App\Modules\Catalog\Domain\Contracts\MediaAssetRepositoryInterface;
+use App\Modules\Media\Application\Services\RenditionService;
+use App\Modules\Media\Domain\Contracts\MediaAssetRepositoryInterface;
 use App\Modules\Media\Domain\Enums\MediaAssetType;
 use App\Modules\Media\Domain\Enums\MediaSource;
 use Illuminate\Bus\Queueable;

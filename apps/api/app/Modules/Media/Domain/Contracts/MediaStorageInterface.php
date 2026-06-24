@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Catalog\Domain\Contracts;
+namespace App\Modules\Media\Domain\Contracts;
 
-use App\Modules\Catalog\Domain\Media\MediaAttachment;
+use App\Modules\Media\Domain\Media\MediaAttachment;
 use Illuminate\Http\RedirectResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 

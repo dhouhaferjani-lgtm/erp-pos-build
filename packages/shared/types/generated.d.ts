@@ -472,16 +472,9 @@ attribute_value_id: string;
 declare namespace App.Modules.Catalog.Domain.Enums {
 export type AttributeDataType = 'text' | 'numeric' | 'boolean' | 'date' | 'selection' | 'color' | 'image';
 export type ComponentType = 'product' | 'composite_item';
-export type MediaAssetType = 'IMAGE' | 'DOCUMENT' | 'VIDEO' | 'EXTERNAL_VIDEO' | 'SPIN_360';
-export type MediaOwnerType = 'PRODUCT' | 'PRODUCT_VARIANT' | 'CATEGORY';
-export type MediaRole = 'PRIMARY' | 'GALLERY' | 'DATASHEET' | 'MANUAL' | 'VIDEO_POSTER' | 'SPIN' | 'SWATCH';
-export type MediaSource = 'UPLOAD' | 'EXTERNAL_URL';
-export type MediaStatus = 'UPLOADED' | 'PROCESSING' | 'READY' | 'FAILED';
 export type PriceAdjustmentType = 'absolute' | 'percentage' | 'override';
 export type PricingMode = 'standard' | 'fixed_bundle';
 export type ProductionType = 'made_to_order' | 'batch' | 'stock';
-export type RenditionFormat = 'WEBP' | 'JPEG';
-export type RenditionName = 'THUMBNAIL' | 'SMALL' | 'WEB' | 'ZOOM';
 export type SelectionType = 'single' | 'multiple';
 export type VerticalType = 'fnb' | 'manufacturing' | 'sewing' | 'bakery' | 'generic';
 }
@@ -985,6 +978,15 @@ export type ListingStatus = 'active' | 'out_of_stock' | 'suspended' | 'delisted'
 export type MarketplaceOrderStatus = 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'disputed';
 export type SellerStatus = 'active' | 'suspended' | 'pending_review';
 export type SellerType = 'erp_tenant' | 'external' | 'syneriva';
+}
+declare namespace App.Modules.Media.Domain.Enums {
+export type MediaAssetType = 'IMAGE' | 'DOCUMENT' | 'VIDEO' | 'EXTERNAL_VIDEO' | 'SPIN_360';
+export type MediaOwnerType = 'PRODUCT' | 'PRODUCT_VARIANT' | 'CATEGORY' | 'DOCUMENT';
+export type MediaRole = 'PRIMARY' | 'GALLERY' | 'DATASHEET' | 'MANUAL' | 'VIDEO_POSTER' | 'SPIN' | 'SWATCH';
+export type MediaSource = 'UPLOAD' | 'EXTERNAL_URL';
+export type MediaStatus = 'UPLOADED' | 'PROCESSING' | 'READY' | 'FAILED';
+export type RenditionFormat = 'WEBP' | 'JPEG';
+export type RenditionName = 'THUMBNAIL' | 'SMALL' | 'WEB' | 'ZOOM';
 }
 declare namespace App.Modules.Menu.Application.DTOs {
 export type ActiveMenuData = {

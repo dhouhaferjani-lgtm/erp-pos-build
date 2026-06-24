@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Modules\Catalog\Media;
 
-use App\Modules\Catalog\Application\Services\MediaUrlResolver;
+use App\Modules\Media\Application\Services\MediaUrlResolver;
 use App\Modules\Media\Domain\Enums\MediaAssetType;
 use App\Modules\Media\Domain\Enums\MediaSource;
 use App\Modules\Media\Domain\Enums\MediaStatus;
-use App\Modules\Catalog\Domain\Media\MediaAsset;
-use App\Modules\Catalog\Domain\Media\MediaAttachment;
+use App\Modules\Media\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Media\MediaAttachment;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Tests\TestCase;

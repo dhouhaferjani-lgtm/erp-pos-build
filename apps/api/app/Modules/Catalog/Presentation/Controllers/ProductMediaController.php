@@ -4,18 +4,18 @@ declare(strict_types=1);
 
 namespace App\Modules\Catalog\Presentation\Controllers;
 
-use App\Modules\Catalog\Application\Services\MediaAttachmentService;
-use App\Modules\Catalog\Application\Services\MediaUploadService;
-use App\Modules\Catalog\Application\Services\MediaUrlResolver;
-use App\Modules\Catalog\Domain\Contracts\MediaStorageInterface;
-use App\Modules\Catalog\Domain\Media\MediaAsset;
-use App\Modules\Catalog\Domain\Media\MediaAttachment;
 use App\Modules\Catalog\Presentation\Requests\AttachMediaRequest;
 use App\Modules\Catalog\Presentation\Requests\ReorderMediaRequest;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Media\Application\Services\MediaAttachmentService;
+use App\Modules\Media\Application\Services\MediaUploadService;
+use App\Modules\Media\Application\Services\MediaUrlResolver;
+use App\Modules\Media\Domain\Contracts\MediaStorageInterface;
 use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaRole;
 use App\Modules\Media\Domain\Enums\MediaStatus;
+use App\Modules\Media\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Media\MediaAttachment;
 use App\Modules\Product\Domain\Product;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;

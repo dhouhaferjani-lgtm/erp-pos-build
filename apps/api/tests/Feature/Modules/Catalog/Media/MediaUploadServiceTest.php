@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Modules\Catalog\Media;
 
-use App\Modules\Catalog\Application\Jobs\GenerateRenditions;
-use App\Modules\Catalog\Application\Services\MediaUploadService;
-use App\Modules\Catalog\Domain\Media\MediaAsset;
+use App\Modules\Media\Application\Jobs\GenerateRenditions;
+use App\Modules\Media\Application\Services\MediaUploadService;
+use App\Modules\Media\Domain\Media\MediaAsset;
 use App\Modules\Media\Domain\Enums\MediaAssetType;
 use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaSource;

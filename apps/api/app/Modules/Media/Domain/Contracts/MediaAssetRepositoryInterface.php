@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Catalog\Domain\Contracts;
+namespace App\Modules\Media\Domain\Contracts;
 
-use App\Modules\Catalog\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Media\MediaAsset;
 
 interface MediaAssetRepositoryInterface
 {
