@@ -112,6 +112,138 @@ describe('DataTable', () => {
     expect(onRowClick).toHaveBeenCalledWith(rows[1])
   })
 
+  describe('row selection (opt-in)', () => {
+    it('renders no checkbox column when selection is undefined', () => {
+      setup()
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    })
+
+    it('renders a header checkbox and one checkbox per row when selection is provided', () => {
+      setup({
+        selection: {
+          selectedIds: new Set<string>(),
+          getRowLabel: (row: Row) => `Select ${row.name}`,
+          onToggle: vi.fn(),
+          onToggleAll: vi.fn(),
+        },
+      })
+      // 1 header + 2 rows = 3 checkboxes
+      expect(screen.getAllByRole('checkbox')).toHaveLength(3)
+    })
+
+    it('marks a row checkbox checked when its id is selected', () => {
+      setup({
+        selection: {
+          selectedIds: new Set<string>(['1']),
+          getRowLabel: (row: Row) => `Select ${row.name}`,
+          onToggle: vi.fn(),
+          onToggleAll: vi.fn(),
+        },
+      })
+      const checkbox = screen.getByLabelText('Select Alice') as HTMLInputElement
+      expect(checkbox).toBeChecked()
+    })
+
+    it('calls onToggle with the row id when a row checkbox is clicked', () => {
+      const onToggle = vi.fn()
+      setup({
+        selection: {
+          selectedIds: new Set<string>(),
+          getRowLabel: (row: Row) => `Select ${row.name}`,
+          onToggle,
+          onToggleAll: vi.fn(),
+        },
+      })
+      fireEvent.click(screen.getByLabelText('Select Alice'))
+      expect(onToggle).toHaveBeenCalledWith('1')
+    })
+
+    it('does NOT fire onRowClick when a row checkbox is clicked', () => {
+      const onRowClick = vi.fn()
+      setup({
+        onRowClick,
+        selection: {
+          selectedIds: new Set<string>(),
+          getRowLabel: (row: Row) => `Select ${row.name}`,
+          onToggle: vi.fn(),
+          onToggleAll: vi.fn(),
+        },
+      })
+      fireEvent.click(screen.getByLabelText('Select Alice'))
+      expect(onRowClick).not.toHaveBeenCalled()
+    })
+
+    it('header checkbox is checked when all selectable rows are selected', () => {
+      setup({
+        selection: {
+          selectedIds: new Set<string>(['1', '2']),
+          getRowLabel: (row: Row) => `Select ${row.name}`,
+          onToggle: vi.fn(),
+          onToggleAll: vi.fn(),
+        },
+      })
+      const header = screen.getByLabelText('Select all') as HTMLInputElement
+      expect(header).toBeChecked()
+      expect(header.indeterminate).toBe(false)
+    })
+
+    it('header checkbox is indeterminate when only some rows are selected', () => {
+      setup({
+        selection: {
+          selectedIds: new Set<string>(['1']),
+          getRowLabel: (row: Row) => `Select ${row.name}`,
+          onToggle: vi.fn(),
+          onToggleAll: vi.fn(),
+        },
+      })
+      const header = screen.getByLabelText('Select all') as HTMLInputElement
+      expect(header).not.toBeChecked()
+      expect(header.indeterminate).toBe(true)
+    })
+
+    it('header checkbox is unchecked and not indeterminate when none selected', () => {
+      setup({
+        selection: {
+          selectedIds: new Set<string>(),
+          getRowLabel: (row: Row) => `Select ${row.name}`,
+          onToggle: vi.fn(),
+          onToggleAll: vi.fn(),
+        },
+      })
+      const header = screen.getByLabelText('Select all') as HTMLInputElement
+      expect(header).not.toBeChecked()
+      expect(header.indeterminate).toBe(false)
+    })
+
+    it('calls onToggleAll when the header checkbox is clicked', () => {
+      const onToggleAll = vi.fn()
+      setup({
+        selection: {
+          selectedIds: new Set<string>(),
+          getRowLabel: (row: Row) => `Select ${row.name}`,
+          onToggle: vi.fn(),
+          onToggleAll,
+        },
+      })
+      fireEvent.click(screen.getByLabelText('Select all'))
+      expect(onToggleAll).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not render a checkbox for rows excluded by isRowSelectable', () => {
+      setup({
+        selection: {
+          selectedIds: new Set<string>(),
+          getRowLabel: (row: Row) => `Select ${row.name}`,
+          onToggle: vi.fn(),
+          onToggleAll: vi.fn(),
+          isRowSelectable: (row) => row.id !== 2,
+        },
+      })
+      expect(screen.getByLabelText('Select Alice')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Select Bob')).not.toBeInTheDocument()
+    })
+  })
+
   it('uses keyExtractor for row keys without React key warnings', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     setup()

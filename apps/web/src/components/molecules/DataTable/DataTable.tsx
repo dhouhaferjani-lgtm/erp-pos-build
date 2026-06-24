@@ -2,6 +2,7 @@ import type React from 'react'
 import { cn } from '@/lib/utils'
 import { colors, textColors, tokens } from '@/lib/designTokens'
 import { EmptyState } from '@/components/molecules/EmptyState'
+import { Checkbox } from '@/components/atoms'
 
 /**
  * Canonical column descriptor for {@link DataTable}.
@@ -34,6 +35,29 @@ export interface DataTableColumn<T> {
   width?: string
 }
 
+/**
+ * Opt-in row-selection capability for {@link DataTable}. When supplied, the
+ * table renders a LEADING checkbox column (header = select-all, one checkbox per
+ * selectable row). When omitted, the table renders exactly as before.
+ *
+ * Selection state is fully owned by the caller — DataTable is presentational and
+ * only emits toggle intents.
+ */
+export interface DataTableSelection<T> {
+  /** Ids (as produced by `keyExtractor`, coerced to string) currently selected. */
+  selectedIds: Set<string>
+  /** Toggle a single row's selection. */
+  onToggle: (id: string) => void
+  /** Toggle all currently-visible selectable rows. */
+  onToggleAll: () => void
+  /** Optional predicate gating which rows are selectable. Defaults to all. */
+  isRowSelectable?: (row: T) => boolean
+  /** Optional accessible label builder for a row's checkbox. */
+  getRowLabel?: (row: T) => string
+  /** Optional accessible label for the header select-all checkbox. */
+  selectAllLabel?: string
+}
+
 export interface DataTableProps<T> {
   columns: DataTableColumn<T>[]
   data: T[]
@@ -46,6 +70,8 @@ export interface DataTableProps<T> {
   /** Custom empty-state node; overrides `emptyTitle`/`emptyDescription`. */
   emptyState?: React.ReactNode
   onRowClick?: (row: T) => void
+  /** Opt-in row selection. When provided, a leading checkbox column renders. */
+  selection?: DataTableSelection<T>
   className?: string
 }
 
@@ -86,13 +112,41 @@ export function DataTable<T>({
   emptyDescription,
   emptyState,
   onRowClick,
+  selection,
   className,
 }: DataTableProps<T>) {
   const isInteractive = Boolean(onRowClick)
+  const hasSelection = Boolean(selection)
+
+  const isRowSelectable = (row: T): boolean =>
+    selection?.isRowSelectable ? selection.isRowSelectable(row) : true
+
+  const selectableRows = selection ? data.filter(isRowSelectable) : []
+  const selectedCount = selection
+    ? selectableRows.filter((row, index) =>
+        selection.selectedIds.has(String(keyExtractor(row, index))),
+      ).length
+    : 0
+  const allSelected =
+    selectableRows.length > 0 && selectedCount === selectableRows.length
+  const someSelected = selectedCount > 0 && !allSelected
 
   const renderHeader = () => (
     <thead className={tokens.table.header}>
       <tr>
+        {hasSelection ? (
+          <th
+            scope="col"
+            className="px-4 py-2 w-px"
+          >
+            <Checkbox
+              aria-label={selection?.selectAllLabel ?? 'Select all'}
+              checked={allSelected}
+              indeterminate={someSelected}
+              onChange={() => selection?.onToggleAll()}
+            />
+          </th>
+        ) : null}
         {columns.map((column) => (
           <th
             key={column.key}
@@ -116,6 +170,11 @@ export function DataTable<T>({
     <tbody className="divide-y divide-gray-200">
       {Array.from({ length: loadingRowCount }).map((_, rowIndex) => (
         <tr key={`skeleton-${String(rowIndex)}`}>
+          {hasSelection ? (
+            <td className="px-4 py-3 w-px">
+              <div className={cn('animate-pulse h-4 w-4 rounded', colors.neutral[200])} />
+            </td>
+          ) : null}
           {columns.map((column) => (
             <td key={column.key} className="px-4 py-3">
               <div className={cn('animate-pulse h-4 w-3/4 rounded', colors.neutral[200])} />
@@ -153,6 +212,31 @@ export function DataTable<T>({
             role={isInteractive ? 'button' : undefined}
             tabIndex={isInteractive ? 0 : undefined}
           >
+            {hasSelection ? (
+              <td
+                className="px-4 py-3 w-px"
+                onClick={(event) => {
+                  // Selecting a row must never trigger the row's onRowClick.
+                  event.stopPropagation()
+                }}
+              >
+                {isRowSelectable(row) ? (
+                  <Checkbox
+                    aria-label={
+                      selection?.getRowLabel
+                        ? selection.getRowLabel(row)
+                        : 'Select row'
+                    }
+                    checked={selection?.selectedIds.has(
+                      String(keyExtractor(row, rowIndex)),
+                    )}
+                    onChange={() =>
+                      selection?.onToggle(String(keyExtractor(row, rowIndex)))
+                    }
+                  />
+                ) : null}
+              </td>
+            ) : null}
             {columns.map((column) => (
               <td
                 key={column.key}
