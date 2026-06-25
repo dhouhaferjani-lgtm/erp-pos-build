@@ -18,7 +18,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $reason
  * @property array<string, mixed> $result
  */
-class GroupedWriteOff extends Model
+final class GroupedWriteOff extends Model
 {
     use HasUuids;
 

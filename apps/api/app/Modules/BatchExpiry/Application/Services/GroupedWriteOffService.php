@@ -22,8 +22,9 @@ use Illuminate\Support\Facades\DB;
 /**
  * Writes off MULTIPLE lots in ONE atomic, all-or-nothing, idempotent operation.
  *
- * Deadlock-freedom rests on a SINGLE canonical cross-domain lock order that is
- * COMPATIBLE with the single-lot {@see BatchWriteOffService} path:
+ * Deadlock-freedom (scoped to the WRITE-OFF FAMILY) rests on a SINGLE canonical
+ * cross-domain lock order that is COMPATIBLE with the single-lot
+ * {@see BatchWriteOffService} path:
  *
  *   1. stock_levels rows FIRST, ordered by (product_id, variant_id, location_id)
  *      ascending.
@@ -33,6 +34,13 @@ use Illuminate\Support\Facades\DB;
  * aggregate stock_levels row, then issueBatchStock() locks the lot row — so a
  * grouped call and a concurrent single-lot call acquire the two domains in the
  * same global order and cannot form a cross-domain cycle.
+ *
+ * SCOPE OF THE GUARANTEE: this canonical order is global only ACROSS THE WRITE-OFF
+ * FAMILY (grouped + single-lot). It is NOT yet globally deadlock-free against every
+ * stock_levels writer: a concurrent multi-line POS sale (ReceiptCreationService)
+ * locks stock_levels rows in UNSORTED line order and could form a cross-cycle with
+ * a grouped write-off. Closing that requires the POS path to adopt the SAME
+ * (product_id, variant_id, location_id) sort — see TODO(deadlock) in acquireLocks().
  *
  * CRITICAL: ALL locks are acquired up front (acquireLocks), BEFORE ANY mutation.
  * The per-line work then reuses BatchWriteOffService::writeOff(); the row re-locks
@@ -142,6 +150,24 @@ final class GroupedWriteOffService
         // 2. CANONICAL LOCK ORDER — acquire ALL locks before ANY mutation.
         $this->acquireLocks($data, $batches, $companyId);
 
+        // 2b. IDEMPOTENCY double-check UNDER the locks (TOCTOU guard). A concurrent
+        //     first-time request O carrying the same key may still have been
+        //     uncommitted — and therefore invisible to the top-of-apply
+        //     findExisting() under READ COMMITTED. We then BLOCKED in acquireLocks()
+        //     on O's row locks; once O COMMITS and releases them, its
+        //     grouped_write_offs record becomes visible to us. Re-read it here and
+        //     REPLAY (no stock mutation) instead of falling through to
+        //     assertSufficientStock(), which would otherwise throw a SPURIOUS
+        //     InsufficientBatchStockException for a write-off that already succeeded
+        //     — violating the "replay returns the same result" contract. The
+        //     post-rollback UniqueConstraintViolationException catch in
+        //     writeOffGroup() remains the backstop for the residual window where O
+        //     commits between this re-check and our own GroupedWriteOff::create().
+        $existing = $this->findExisting($tenantId, $data->idempotencyKey);
+        if ($existing !== null) {
+            return GroupedWriteOffResult::fromArray($existing->result);
+        }
+
         // 3. Validate every lot under the locks (all-or-nothing).
         $this->assertSufficientStock($data, $companyId);
 
@@ -161,10 +187,16 @@ final class GroupedWriteOffService
                 userId: $userId,
             );
 
+            // unit_cost/total_cost are decimal:6 casts on StockMovement (NOT an
+            // explicit string cast), so reading them THROUGH the cast risks a float
+            // round-trip that sheds scale ("2.000000" -> "2"/"2.0"), violating the
+            // precision contract. getRawOriginal() bypasses the cast and returns the
+            // raw full-scale DB string StockAdjustmentService persisted (bcadd/bcmul
+            // at COST_SCALE=6).
             /** @var numeric-string $unitCost */
-            $unitCost = (string) ($movement->unit_cost ?? '0.000000');
+            $unitCost = (string) ($movement->getRawOriginal('unit_cost') ?? '0.000000');
             /** @var numeric-string $totalCost */
-            $totalCost = (string) ($movement->total_cost ?? '0.000000');
+            $totalCost = (string) ($movement->getRawOriginal('total_cost') ?? '0.000000');
 
             $movements[] = new GroupedWriteOffMovementResult(
                 batchId: $line->batchId,
@@ -197,9 +229,21 @@ final class GroupedWriteOffService
     }
 
     /**
-     * Acquire every lock the group needs, in the canonical global order, BEFORE any
+     * Acquire every lock the group needs, in the canonical order, BEFORE any
      * mutation. Locking the whole set up front (rather than interleaving lock/mutate
      * per line) is what makes concurrent grouped/single-lot write-offs deadlock-free.
+     *
+     * Deadlock-freedom here is guaranteed only ACROSS THE WRITE-OFF FAMILY (grouped +
+     * single-lot), which share this (product_id, variant_id, location_id) → batch_id
+     * acquisition order.
+     *
+     * TODO(deadlock): this order is NOT yet shared by every stock_levels writer. The
+     * multi-line POS sale (App\Modules\Pos\...\ReceiptCreationService) locks
+     * stock_levels rows in UNSORTED cart-line order and can therefore form a
+     * cross-cycle with a concurrent grouped write-off. To be globally deadlock-free,
+     * the POS path must sort its stock_levels lock acquisition by the SAME
+     * (product_id, variant_id, location_id) key. That fix belongs in the POS module,
+     * NOT here.
      *
      * @param  Collection<int, Batch>  $batches
      */

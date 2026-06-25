@@ -35,7 +35,9 @@ return new class extends Migration
             $table->uuid('location_id');
             $table->string('idempotency_key');
             $table->string('reason');
-            $table->json('result');
+            // jsonb on PostgreSQL (the production driver); the Eloquent `array`
+            // cast is identical across json/jsonb. sqlite treats both as TEXT.
+            $table->jsonb('result');
             $table->timestamps();
 
             $table->unique(['tenant_id', 'idempotency_key']);

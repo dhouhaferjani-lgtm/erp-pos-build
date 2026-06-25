@@ -9,9 +9,12 @@ use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\BatchExpiry\Application\DTOs\GroupedWriteOffData;
 use App\Modules\BatchExpiry\Application\DTOs\GroupedWriteOffLine;
+use App\Modules\BatchExpiry\Application\DTOs\GroupedWriteOffMovementResult;
+use App\Modules\BatchExpiry\Application\DTOs\GroupedWriteOffResult;
 use App\Modules\BatchExpiry\Application\Services\GroupedWriteOffService;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
+use App\Modules\BatchExpiry\Domain\Entities\GroupedWriteOff;
 use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
@@ -31,6 +34,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -203,6 +207,15 @@ final class GroupedWriteOffServiceTest extends TestCase
             ->value('quantity');
     }
 
+    private function stockLevelQuantity(Product $product): string
+    {
+        return (string) StockLevel::query()
+            ->where('product_id', $product->id)
+            ->where('location_id', $this->warehouse->id)
+            ->whereNull('variant_id')
+            ->value('quantity');
+    }
+
     /**
      * GATE: canonical lock-acquisition order is deterministic regardless of the
      * order lines are supplied in. stock_levels (product_ids) ascending FIRST,
@@ -249,11 +262,19 @@ final class GroupedWriteOffServiceTest extends TestCase
     }
 
     /**
-     * GATE: two grouped requests over OVERLAPPING lots in OPPOSITE line order must
-     * not oversell. The second (which would exceed availability) rolls back wholly;
-     * the first remains intact and no stock goes negative.
+     * GATE: a second grouped write-off whose combined demand exceeds the
+     * availability LEFT by a prior group rolls back wholly; the first remains
+     * intact and no stock goes negative.
+     *
+     * NOTE: this is a SEQUENTIAL (single-connection) test — it proves the logical
+     * no-oversell invariant only. It does NOT prove concurrency: it cannot
+     * interleave two live transactions, so it cannot demonstrate that genuinely
+     * concurrent groups locking these rows in opposite order neither deadlock nor
+     * oversell. That requires a Postgres two-connection deadlock/oversell proof
+     * (a known CI gap; see the deadlock-freedom scope note in the task report and
+     * AtomicFEFOConsumptionConcurrencyTest for the established pattern).
      */
-    public function test_overlapping_groups_do_not_oversell(): void
+    public function test_second_group_fails_when_availability_depleted(): void
     {
         $service = $this->service();
 
@@ -375,6 +396,13 @@ final class GroupedWriteOffServiceTest extends TestCase
         // Neither lot changed; no movements; no idempotency record.
         $this->assertSame('10.0000', $this->batchStockQuantity($this->batchA));
         $this->assertSame('10.0000', $this->batchStockQuantity($this->batchB));
+
+        // AGGREGATE stock_levels unchanged too — the rolled-back group must not have
+        // decremented the product-level aggregate for ANY line (issue() runs before
+        // the short lot throws inside the same transaction).
+        $this->assertSame('10.0000', $this->stockLevelQuantity($this->productA));
+        $this->assertSame('10.0000', $this->stockLevelQuantity($this->productB));
+
         $this->assertSame(
             0,
             StockMovement::query()->where('reason', MovementReason::Expiry->value)->count(),
@@ -423,9 +451,83 @@ final class GroupedWriteOffServiceTest extends TestCase
             $expectedTotal = bcmul('2.000000', $movementResult->quantity, 6);
             $this->assertSame($expectedTotal, (string) $movement->total_cost);
 
-            // Result DTO mirrors the persisted row.
+            // Result DTO mirrors the persisted row. The DTO cost strings are read
+            // via getRawOriginal() (bypassing the decimal:6 cast), so this asserts
+            // the persisted cost retains FULL scale ("2.000000"), not a float-shed
+            // "2"/"2.0" — guarding the precision contract.
             $this->assertSame('2.000000', $movementResult->unitCost);
             $this->assertSame($expectedTotal, $movementResult->totalCost);
         }
+    }
+
+    /**
+     * GATE (IMPORTANT A — idempotency TOCTOU): when a grouped_write_offs record
+     * already exists for the key, the service REPLAYS the stored result and mutates
+     * NO stock — never throwing a spurious InsufficientBatchStockException.
+     *
+     * This is the logic the after-locks double-check relies on: a concurrent winner
+     * O commits its record; the duplicate request re-reads it via findExisting() and
+     * replays via GroupedWriteOffResult::fromArray() WITHOUT touching stock. Here we
+     * stand in for O by pre-inserting a committed record.
+     *
+     * sqlite caveat: a single in-memory connection CANNOT reproduce the real
+     * blocking interleave (duplicate blocks in acquireLocks() until O commits, then
+     * re-reads the now-visible record UNDER the locks). It proves only the shared
+     * replay logic — findExisting() -> fromArray() with no mutation. The true
+     * two-connection blocking proof requires Postgres (see the task report).
+     */
+    public function test_replay_returns_stored_result_without_mutating_stock(): void
+    {
+        // Stand in for a concurrent winner O that already applied + COMMITTED.
+        $storedResult = new GroupedWriteOffResult(
+            idempotencyKey: 'double-check-key',
+            replayed: false,
+            movements: [
+                new GroupedWriteOffMovementResult(
+                    batchId: (int) $this->batchA->id,
+                    movementId: (string) Str::uuid(),
+                    quantity: '5.0000',
+                    unitCost: '2.000000',
+                    totalCost: '10.000000',
+                ),
+            ],
+        );
+
+        GroupedWriteOff::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->warehouse->id,
+            'idempotency_key' => 'double-check-key',
+            'reason' => MovementReason::Expiry->value,
+            'result' => $storedResult->toArray(),
+        ]);
+
+        $stockBefore = $this->batchStockQuantity($this->batchA);
+        $movementsBefore = StockMovement::query()->count();
+
+        $result = $this->service()->writeOffGroup(
+            new GroupedWriteOffData(
+                locationId: $this->warehouse->id,
+                lines: [new GroupedWriteOffLine(batchId: (int) $this->batchA->id, quantity: '5.0000')],
+                reason: MovementReason::Expiry,
+                idempotencyKey: 'double-check-key',
+            ),
+            $this->user->id,
+        );
+
+        // Replayed from the stored record: flagged, same movement id, NO mutation.
+        $this->assertTrue($result->replayed, 'An existing record must be replayed, not re-applied.');
+        $this->assertSame(
+            $storedResult->movements[0]->movementId,
+            $result->movements[0]->movementId,
+            'Replay must return the stored movement id.',
+        );
+        $this->assertSame($stockBefore, $this->batchStockQuantity($this->batchA), 'Replay must not touch stock.');
+        $this->assertSame($movementsBefore, StockMovement::query()->count(), 'Replay must not create a movement.');
+        $this->assertSame(
+            1,
+            \DB::table('grouped_write_offs')->where('idempotency_key', 'double-check-key')->count(),
+            'Replay must not insert a second ledger row.',
+        );
     }
 }
