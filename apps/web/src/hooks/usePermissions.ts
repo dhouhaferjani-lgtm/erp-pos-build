@@ -218,6 +218,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   'workshop-payroll': ['workshop.payroll.view'],
   'workshop-work-orders': ['work-orders.view'],
   scheduling: ['scheduling.appointments.view'],
+  'batches.write-off': ['batches.write-off'],
 }
 
 /**
