@@ -9,6 +9,9 @@ import type {
   ExpiringProduct,
   BatchStockByLocation,
   FEFOResult,
+  ExpiredBatch,
+  GroupedWriteOffPayload,
+  GroupedWriteOffResult,
 } from '../types'
 
 /**
@@ -151,4 +154,32 @@ export async function getProductBatches(
     `/products/${productId}/batch-stock`,
     variantId != null ? { variant_id: variantId } : undefined,
   )
+}
+
+/**
+ * Get all expired batches that still have available (un-reserved) stock.
+ * Intended for the expiry write-off UI.
+ *
+ * GET /api/v1/batches/expired
+ *
+ * @param locationId - Optional UUID to scope results to a single storage location.
+ */
+export async function getExpiredBatches(locationId?: string): Promise<ExpiredBatch[]> {
+  return apiGet<ExpiredBatch[]>(
+    '/batches/expired',
+    locationId !== undefined ? { location_id: locationId } : undefined,
+  )
+}
+
+/**
+ * Submit a grouped (multi-lot) write-off.
+ *
+ * POST /api/v1/batches/write-off-grouped
+ *
+ * Returns HTTP 201 on first application and HTTP 200 on idempotent replay
+ * (same `idempotency_key`, stock not touched again).  The `replayed` flag in
+ * the result distinguishes the two cases.
+ */
+export async function groupedWriteOff(payload: GroupedWriteOffPayload): Promise<GroupedWriteOffResult> {
+  return apiPost<GroupedWriteOffResult>('/batches/write-off-grouped', payload)
 }
