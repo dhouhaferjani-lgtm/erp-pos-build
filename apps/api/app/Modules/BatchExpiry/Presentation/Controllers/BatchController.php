@@ -7,15 +7,19 @@ namespace App\Modules\BatchExpiry\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Exceptions\WriteOffAlreadyReversedException;
 use App\Modules\BatchExpiry\Domain\Repositories\BatchRepositoryInterface;
 use App\Modules\BatchExpiry\Domain\Services\BatchWriteOffService;
 use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
+use App\Modules\BatchExpiry\Domain\Services\ReverseWriteOffService;
 use App\Modules\BatchExpiry\Presentation\Requests\CreateBatchRequest;
+use App\Modules\BatchExpiry\Presentation\Requests\ReverseWriteOffRequest;
 use App\Modules\BatchExpiry\Presentation\Requests\TransferBatchStockRequest;
 use App\Modules\BatchExpiry\Presentation\Requests\UpdateBatchRequest;
 use App\Modules\BatchExpiry\Presentation\Requests\WriteOffBatchRequest;
 use App\Modules\BatchExpiry\Presentation\Resources\BatchResource;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Inventory\Domain\StockMovement;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -30,6 +34,7 @@ class BatchController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly BatchStockService $batchStockService,
         private readonly BatchWriteOffService $batchWriteOffService,
+        private readonly ReverseWriteOffService $reverseWriteOffService,
     ) {}
 
     /**
@@ -402,6 +407,67 @@ class BatchController extends Controller
 
         return response()->json([
             'data' => new BatchResource($result),
+        ]);
+    }
+
+    /**
+     * Reverse a previously posted write-off, restoring aggregate + batch stock
+     * and posting a reversing journal entry.
+     *
+     * POST /api/v1/stock-movements/{movementId}/reverse-write-off
+     */
+    public function reverseWriteOff(ReverseWriteOffRequest $request, string $movementId): JsonResponse
+    {
+        if (! Str::isUuid($movementId)) {
+            return response()->json([
+                'error' => [
+                    'code' => 'MOVEMENT_NOT_FOUND',
+                    'message' => 'Stock movement not found',
+                ],
+            ], 404);
+        }
+
+        // Scope the movement to the current company so a cross-company id is a 404.
+        $movement = StockMovement::query()
+            ->where('id', $movementId)
+            ->where('company_id', $this->companyContext->requireCompanyId())
+            ->first();
+
+        if ($movement === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'MOVEMENT_NOT_FOUND',
+                    'message' => 'Stock movement not found',
+                ],
+            ], 404);
+        }
+
+        try {
+            $inverse = $this->reverseWriteOffService->reverse(
+                original: $movement,
+                userId: (string) auth()->id(),
+            );
+        } catch (WriteOffAlreadyReversedException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'WRITE_OFF_ALREADY_REVERSED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 409);
+        } catch (\DomainException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'WRITE_OFF_REVERSAL_FAILED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        }
+
+        return response()->json([
+            'data' => [
+                'reversal_movement_id' => $inverse->id,
+                'original_movement_id' => $movement->id,
+            ],
         ]);
     }
 }

@@ -25,6 +25,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/batches/{uuid}/transfer', [BatchController::class, 'transfer']);
     Route::post('/batches/{uuid}/write-off', [BatchController::class, 'writeOff']);
 
+    // Write-off reversal (targets the write-off stock_movement, not the batch).
+    Route::post('/stock-movements/{movementId}/reverse-write-off', [BatchController::class, 'reverseWriteOff'])
+        ->middleware('can:batches.write-off');
+
     // Batch traceability
     Route::get('/batches/{uuid}/traceability', [BatchTraceabilityController::class, 'forwardTrace']);
     Route::get('/partners/{partnerId}/batch-history', [BatchTraceabilityController::class, 'backwardTrace']);

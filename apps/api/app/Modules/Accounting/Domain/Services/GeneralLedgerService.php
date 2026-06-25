@@ -1713,6 +1713,96 @@ final class GeneralLedgerService
     }
 
     /**
+     * Reverse a posted/draft inventory write-off journal entry (Phase C / C2).
+     *
+     * Looks up the ORIGINAL write-off entry by its canonical
+     * (source_type='batch_write_off', source_id=$originalMovementId) coordinates,
+     * then mirror-reverses it: every line is copied with debit/credit FLIPPED, so
+     * the reversing entry balances by construction and its amount EQUALS the
+     * original exactly (the lines are copied verbatim — no recomputation, no
+     * float). The new entry is tagged source_type='batch_write_off_reversal',
+     * source_id=$reversalMovementId so it points at the inverse stock movement.
+     *
+     * Status is MIRRORED:
+     *  - If the original is Posted, the reversal is posted synchronously (so the
+     *    reversal's fiscal status is deterministic within the caller's
+     *    transaction; afterCommit posting would not fire under test transactions).
+     *  - If the original is Draft, the reversal is left Draft.
+     *
+     * ABSENT case: if no original write-off entry exists (e.g. the original
+     * write-off amount was non-positive, or the original GL posting was swallowed
+     * because GL accounts were unconfigured), this returns NULL and creates
+     * nothing — the caller still restores stock.
+     */
+    public function reverseInventoryWriteOffEntry(
+        string $companyId,
+        string $originalMovementId,
+        string $reversalMovementId,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
+    ): ?JournalEntry {
+        $original = JournalEntry::query()
+            ->where('company_id', $companyId)
+            ->where('source_type', 'batch_write_off')
+            ->where('source_id', $originalMovementId)
+            ->with('lines')
+            ->first();
+
+        if ($original === null) {
+            // ABSENT: no journal entry to mirror — caller restores stock only.
+            return null;
+        }
+
+        $wasPosted = $original->status === JournalEntryStatus::Posted;
+
+        $user = null;
+        if ($wasPosted && $postedByUserId !== null) {
+            $user = User::query()->findOrFail($postedByUserId);
+        }
+
+        $entry = DB::transaction(function () use ($companyId, $original, $reversalMovementId): JournalEntry {
+            $company = Company::findOrFail($companyId);
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => now()->toDateString(),
+                'description' => "Reversal of batch write-off (orig {$original->entry_number})",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'batch_write_off_reversal',
+                'source_id' => $reversalMovementId,
+            ]);
+
+            $lineOrder = 0;
+            foreach ($original->lines as $line) {
+                // Mirror-reverse: swap debit <-> credit, keep account + partner.
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $line->account_id,
+                    'partner_id' => $line->partner_id,
+                    'debit' => $line->credit,
+                    'credit' => $line->debit,
+                    'description' => 'Reversal: '.($line->description ?? ''),
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+
+            return $entry->load('lines');
+        });
+
+        // Mirror the original's posted status. Post synchronously (not afterCommit)
+        // so the reversal status is deterministic in the caller's transaction.
+        if ($user !== null) {
+            $this->postEntry($entry, $user, $currencyCode ?? $this->currencyCodeForCompany($companyId));
+            $entry->refresh()->load('lines');
+        }
+
+        return $entry;
+    }
+
+    /**
      * Get account by system purpose - the ONLY way to lookup system accounts.
      *
      * NEVER use hardcoded account codes like '411' or '1200'.
