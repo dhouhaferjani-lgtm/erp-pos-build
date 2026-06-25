@@ -16,7 +16,7 @@ use Illuminate\Validation\Rule;
  * middleware; authorize() mirrors the existing single-lot pattern as a
  * belt-and-suspenders guard.
  */
-class GroupedWriteOffRequest extends FormRequest
+final class GroupedWriteOffRequest extends FormRequest
 {
     public function __construct(
         private readonly CompanyContext $companyContext,

@@ -12,6 +12,7 @@ use App\Modules\BatchExpiry\Application\Services\GroupedWriteOffService;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
 use App\Modules\BatchExpiry\Presentation\Requests\GroupedWriteOffRequest;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use Illuminate\Http\JsonResponse;
 
@@ -27,6 +28,7 @@ final class GroupedWriteOffController extends Controller
 {
     public function __construct(
         private readonly GroupedWriteOffService $groupedWriteOffService,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     /**
@@ -54,12 +56,29 @@ final class GroupedWriteOffController extends Controller
         // Map reason string → enum (expiry|damage|other).
         $reason = $this->resolveReason($reasonString);
 
-        // Resolve each batch UUID → integer id (company-scoped; the FormRequest
-        // already validated existence so a missing row is never expected here).
+        // Resolve each batch UUID → integer id, scoped to the caller's company.
+        // Defense-in-depth: the FormRequest already rejected foreign/missing UUIDs,
+        // but a fiscal write-off must never rely on a single guard. Company-scoping
+        // here ensures a compromised request that bypassed FormRequest still cannot
+        // touch another company's stock.
         $uuids = array_map(static fn (array $line): string => (string) $line['batch_id'], $rawLines);
         $uuidToId = Batch::query()
             ->whereIn('uuid', $uuids)
+            ->where('company_id', $this->companyContext->requireCompanyId())
             ->pluck('id', 'uuid');
+
+        // Parity guard: every UUID submitted must have resolved to a company-owned
+        // batch. A mismatch means at least one UUID was silently dropped (cross-company
+        // batch, deleted row, or duplicate line). Proceeding with a partial set would
+        // write off fewer lots than requested with no indication to the caller.
+        if ($uuidToId->count() !== count($uuids)) {
+            return response()->json([
+                'error' => [
+                    'code' => 'BATCH_RESOLUTION_FAILED',
+                    'message' => 'One or more batch IDs could not be resolved for the current company.',
+                ],
+            ], 422);
+        }
 
         // Build the typed line DTOs.
         /** @var list<GroupedWriteOffLine> $lines */

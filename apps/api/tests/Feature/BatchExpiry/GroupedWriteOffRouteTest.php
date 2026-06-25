@@ -18,6 +18,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Enums\ProductType;
@@ -444,11 +445,30 @@ final class GroupedWriteOffRouteTest extends TestCase
 
     public function test_all_three_reason_values_are_accepted(): void
     {
-        foreach (['expiry', 'damage', 'other'] as $idx => $reason) {
+        // Verify both that the request succeeds and that the stored reason enum
+        // matches the expected mapping (expiry→Expiry, damage→Damage, other→WriteOff).
+        $expectedMappings = [
+            'expiry' => MovementReason::Expiry,
+            'damage' => MovementReason::Damage,
+            'other' => MovementReason::WriteOff,
+        ];
+
+        foreach ($expectedMappings as $apiReason => $expectedReason) {
             $response = $this->actingAs($this->user, 'sanctum')
-                ->postJson('/api/v1/batches/write-off-grouped', $this->validPayload("reason-key-{$idx}", $reason));
+                ->postJson('/api/v1/batches/write-off-grouped', $this->validPayload("reason-key-{$apiReason}", $apiReason));
 
             $response->assertCreated();
+
+            $movementId = $response->json('data.movements.0.movement_id');
+            $this->assertNotNull($movementId, "No movement_id returned for reason '{$apiReason}'");
+
+            $movement = StockMovement::query()->where('id', $movementId)->first();
+            $this->assertNotNull($movement, "StockMovement {$movementId} not found for reason '{$apiReason}'");
+            $this->assertSame(
+                $expectedReason,
+                $movement->reason,
+                "Expected MovementReason::{$expectedReason->name} for API reason '{$apiReason}', got {$movement->reason?->value}",
+            );
         }
     }
 
@@ -497,6 +517,46 @@ final class GroupedWriteOffRouteTest extends TestCase
 
         // Exactly one StockMovement (not two)
         $this->assertSame(1, StockMovement::query()
+            ->where('product_id', $this->product->id)
+            ->count());
+    }
+
+    // -----------------------------------------------------------------------
+    // Controller parity guard
+    // -----------------------------------------------------------------------
+
+    /**
+     * Two lines that share the same batch_id each pass FormRequest validation
+     * independently (both reference an existing, company-owned batch UUID).
+     * The controller's parity guard fires because pluck('id','uuid') collapses
+     * duplicates and returns 1 entry while count($uuids) == 2 — directly
+     * exercising the guard that prevents a partial resolution from silently
+     * writing off fewer lots than requested.
+     */
+    public function test_parity_guard_rejects_duplicate_batch_ids(): void
+    {
+        $payload = [
+            'location_id' => $this->warehouse->id,
+            'lines' => [
+                ['batch_id' => $this->batch->uuid, 'quantity' => '2.0000'],
+                ['batch_id' => $this->batch->uuid, 'quantity' => '3.0000'],
+            ],
+            'reason' => 'expiry',
+            'idempotency_key' => 'parity-guard-dupe-test',
+        ];
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/batches/write-off-grouped', $payload);
+
+        $response->assertUnprocessable();
+        $this->assertSame('BATCH_RESOLUTION_FAILED', $response->json('error.code'));
+
+        // No stock was decremented — the guard fired before any write.
+        $this->assertSame('50.0000', (string) BatchStock::query()
+            ->where('batch_id', $this->batch->id)
+            ->where('location_id', $this->warehouse->id)
+            ->value('quantity'));
+        $this->assertSame(0, StockMovement::query()
             ->where('product_id', $this->product->id)
             ->count());
     }
