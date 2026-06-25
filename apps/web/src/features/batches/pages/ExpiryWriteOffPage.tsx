@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { isApiError } from '../../../lib/api'
 import { cn } from '../../../lib/utils'
-import { tokens, textColors, borderColors } from '../../../lib/designTokens'
+import { tokens, textColors, borderColors, colors } from '../../../lib/designTokens'
 import { formatQuantity } from '../../../lib/format'
 import { bccomp, bcadd } from '../../../lib/decimal'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
@@ -276,7 +276,7 @@ export function ExpiryWriteOffPage() {
             data={batches}
             keyExtractor={(batch) => batch.uuid}
             isLoading={isLoading}
-            className={cn('rounded-lg border bg-white', borderColors.light)}
+            className={cn('rounded-lg border', colors.white, borderColors.light)}
             emptyTitle={t('expiryWriteOff.empty.title')}
             emptyDescription={t('expiryWriteOff.empty.description')}
             {...(canWriteOff

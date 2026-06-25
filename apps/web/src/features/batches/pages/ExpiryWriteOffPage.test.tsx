@@ -213,7 +213,19 @@ describe('ExpiryWriteOffPage (B4b)', () => {
     await act(async () => {
       await capturedCallbacks.onSuccess?.()
     })
-    expect(mockInvalidateQueries).toHaveBeenCalled()
+    // One call per predicate: batches, stock-levels, stock-movements.
+    expect(mockInvalidateQueries).toHaveBeenCalledTimes(3)
+    // Spot-check the batches predicate (first call) so dropping or mis-scoping
+    // that invalidation is caught by the test.
+    const firstCall = mockInvalidateQueries.mock.calls[0][0] as {
+      predicate: (q: { queryKey: readonly unknown[] }) => boolean
+    }
+    expect(firstCall.predicate({
+      queryKey: ['batches', 'expired', 'loc-1', 'tenant-1', 'company-1'],
+    })).toBe(true)
+    expect(firstCall.predicate({
+      queryKey: ['products', 'tenant-1', 'company-1'],
+    })).toBe(false)
   })
 
   it('renders the title via an i18n key (no raw user-facing string)', () => {
