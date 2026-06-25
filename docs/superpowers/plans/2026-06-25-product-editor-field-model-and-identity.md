@@ -1,0 +1,154 @@
+# Product Editor — Field Model, Identity & Controls Plan
+
+> Companion to `2026-06-24-izipos-product-editor.md`. This refines Stage 1.7b (content parity) + Stage 2/3 into a **reuse-and-expand, no-regression** field model grounded in the actual code + industry best practice. Pixel source: `docs/handoff/mocks/IZI POS - Add Product.dc.html`.
+
+**Guiding principles (from the product owner):**
+1. **Rearrange & restyle what works** — don't rebuild. The existing `BarcodeLookupInput` *becomes* the hero barcode (same logic, moved up + restyled). Same for every field that already exists.
+2. **No regressions** — every field/datum the form (or backend) supports per vertical survives into the new design. Reuse, then expand.
+3. **Add genuinely-missing-but-sensible fields** as planned nullable additions (e.g. units-per-pack), never ad hoc.
+4. **Two apps × multiple verticals** — base + IziPOS(parapharmacy) + Otospex(automotive); the editor conditionally surfaces each vertical's data.
+5. **Ergonomic, non-blocking entry** — minimum required info always present, but never block the user (auto-derive identity).
+6. **Right control for the job** — styled checkbox for single save-on-submit booleans; toggle only for "feature on/off"; radio/select for genuine multi-choice (research below).
+
+---
+
+## 1. Identity strategy — barcode-first, never blocking
+
+**Research (cited):** SKU is the *internal* key (you control format; must be unique; 8–16 chars; `-`/`_` only; avoid O/0,I/1; no dates/prices). Barcode (EAN/UPC) is the *standardized, scannable* key used at POS. Auto-generated codes are acceptable for non-blocking entry. Sources: Shopify SKUs, erplain, Onsight.
+
+**Decision (matches owner intent):** the product is always identifiable without blocking the user.
+- **Barcode = the primary scannable identity.** Required *in effect*: if the user leaves it blank, **auto-generate an internal barcode** in our own numbering scheme (e.g. prefix `IZI-` + tenant short + zero-padded sequence, or a GS1-style internal range). Stored in `barcode`. If a real EAN/UPC is later known, the user can overwrite it.
+- **SKU stays the unique DB key (required, unique per tenant)** — but **auto-populate it** (from the barcode, or a slug of the name) when the user leaves it blank, and keep it **editable before save**. So the user is never blocked, and the unique-SKU invariant the system relies on is preserved.
+- **Net UX:** user can create a product with just **name + sale price** (as the mock subtitle promises). SKU + barcode auto-fill, both editable.
+
+**Backend work this implies (Stage I — Identity):**
+- A `BarcodeGenerator` service (Application layer, constructor-injected) producing a unique internal barcode; wire into product-create when `barcode` is empty. Add a per-tenant sequence or collision-checked random.
+- An SKU auto-populate rule (FE first: derive from barcode/name on blur if empty; BE fallback: generate if still empty at create, guaranteeing uniqueness with a suffix on collision).
+- **OPEN DECISION (owner):** barcode is currently **non-unique by design** (variants/imports can share). Do we (a) keep it non-unique but always-populated (safest, recommended), or (b) add a per-tenant unique index on `barcode` (cleaner identity, but risks colliding with existing duplicate/imported/variant data — needs a data audit + migration)? Recommend **(a)** now, revisit (b) after a duplicate audit.
+- Keep `BarcodeLookupInput`'s debounce/scanner/enrichment exactly as-is; the generator only fills the gap when the user never enters one.
+
+---
+
+## 2. Units model — per-product override + packaging
+
+**Reality:** full `units` table (code/name/symbol/conversion_factor/decimal_places/rounding/is_base/is_system) + `unit_categories`, managed in `UnitsSettingsPage`. Products have legacy `unit` (string) AND nullable `unit_id` (FK). The form only uses the free-text string today.
+
+**Decision:**
+- **"Unit of measure" → a `unit_id` select** sourced from the tenant's configured units (the per-product override the owner described). Build a `UnitSelect` atom (searchable select over `GET /units`, grouped by category). On save, send `unit_id`; **keep writing the `unit` string too** (mirror the selected unit's `code`/`symbol`) so legacy readers + existing products don't regress during the transition.
+- **No-regression:** products that only have the legacy string still display it; the select pre-selects the matching unit by `code` when possible, else shows the raw string as a fallback option.
+- **Packaging (mock "Units per pack" / "Sold as") — NEW, nullable:**
+  - `units_per_pack` — nullable integer (e.g. 24 tablets per box). Add migration + DTO + validation (`nullable|integer|min:1`).
+  - "Sold as" — a nullable second `sold_as_unit_id` FK (the selling unit when it differs from the stock unit, e.g. stock in "tablet", sold as "box of 24"). Add nullable FK. **OPEN DECISION (owner):** include "Sold as" now, or just `units_per_pack` for v1? Recommend `units_per_pack` now (simple, clearly useful) and defer `sold_as_unit_id` unless you confirm the dual-unit selling model is needed at launch.
+
+---
+
+## 3. Controls — checkbox vs toggle vs radio
+
+**Research (cited):** for a **single** on/off that applies **on form submit**, a **checkbox is correct**; a **toggle** implies an *instant* effect; **radio** is only for 2+ *mutually exclusive* options. Sources: Sparkbox, UXtweak, Helsinki DS.
+
+**Decisions:**
+- Build a small **`Toggle` (switch) atom** in `components/atoms` (none exists) — styled like the mock's batch toggle (track `success` when on, knob, label).
+- **Use `Toggle`** for "feature on/off" semantics that read as a mode: `requires_batch_tracking` ("Track batches & expiry" — matches the mock toggle), `is_universal_fit` (automotive).
+- **Keep styled `Checkbox`** (restyled to the mock's checked-square) for save-on-submit attributes: `is_active` (Active/sellable), `is_active_for_ecommerce`, `requires_consultation`, "Eligible for discounts". (Per research these are *not* toggles.)
+- **`type` / physical:** replace the bare "Physical Product" checkbox with the mock's **Type select** (Storable/Consumable/Service/Part), and derive `is_physical` from the chosen type (service ⇒ non-physical) so we keep the fiscal-workflow flag without a redundant control.
+- **Radio:** reserve for true 2–3 mutually-exclusive cases only; everything multi-option in the mock is already a `Select` (Age restriction, Dosage form) — keep selects. (We will NOT convert single booleans to radios — that's the anti-pattern the owner's idea would hit.)
+
+---
+
+## 4. Barcode-lookup → hero (rearrange, don't rebuild)
+
+- The hero's plain barcode `<Input>` is replaced by the **existing `BarcodeLookupInput` logic**, restyled for the dark band (mono, dark surface). Move `onProductData`/`onLookupStateChange`/prefill-highlight wiring up with it. The "Synerivia · N fields" pill = the `found` lookup state's field count; the helper line + refresh = manual re-run (this is also where Stage-4 inline enrichment lands).
+- Remove the duplicate `BarcodeLookupInput` from General (resolves the "two barcodes"). The enrichment opt-in (shown on `not_found`) moves to the hero (small inline row under the band) so it's not lost.
+- Risk to handle: the hidden `register('barcode')` backing field must stay wired through the hero so submit still sends `barcode`.
+
+---
+
+## 5. Full field model (reuse + expand, per section, per vertical)
+
+Legend: **REUSE** = field/logic already exists, just rearrange+restyle · **WIRE** = in backend schema but not in form yet (add the control) · **NEW** = needs a nullable migration + DTO + validation.
+
+### Hero (all verticals)
+| Field | Status | Notes |
+|---|---|---|
+| barcode (+ lookup/scanner/enrichment) | REUSE | move `BarcodeLookupInput` up; auto-gen internal if blank (§1) |
+| name | REUSE | hero name input (single source) |
+| enrichment status pill / refresh | REUSE/Stage-4 | from lookup state |
+
+### 01 General
+| Field | Status | Control | Notes |
+|---|---|---|---|
+| SKU | REUSE | Input + help | auto-populate if blank, editable (§1); keep required+unique |
+| Type | WIRE | Select | Storable/Consumable/Service/Part; derives `is_physical` |
+| Description | REUSE | Textarea | |
+| Brand | NEW (Stage 2) | BrandSelect | normalized lookup + inline create |
+| Manufacturer | NEW (Stage 2) | ManufacturerSelect | normalized lookup + inline create |
+| Unit of measure | WIRE | UnitSelect (`unit_id`) | §2; mirror legacy `unit` string |
+| Country of origin | NEW (Stage 2) | CountrySelect | ISO-3166 |
+| Category | REUSE | CategorySelect | keep (real functionality the mock omits — place in General) |
+| Active (sellable) | REUSE | Checkbox (styled) | `is_active` |
+| Active for e-commerce | WIRE | Checkbox (styled) | `is_active_for_ecommerce` |
+
+### 02 Pricing & Tax
+| Field | Status | Control | Notes |
+|---|---|---|---|
+| Purchase price | WIRE | MoneyInput | editable at create (seeds cost); help "Ex-tax, from supplier" |
+| Margin | NEW (computed, not stored) | read-only | from sale vs purchase/cost |
+| Sale price * | REUSE | MoneyInput | TTC (tax-inclusive), per precision rule 19 |
+| Cost (WAC) | REUSE | read-only (edit mode) | keep as-is |
+| Tax rate / class * | REUSE | TaxConfigurationField | |
+| Loyalty points | NEW (defer/placeholder) | Input | belongs to Loyalty module — placeholder now, wire later or gate |
+| Eligible for discounts | NEW (defer/placeholder) | Checkbox | confirm ownership (pricing vs promotions) |
+
+### 03 Inventory & Units
+| Field | Status | Control | Notes |
+|---|---|---|---|
+| Opening stock (ONCE) | Stage 3 | QuantityInput | inline opening balance — **gated on the parallel StockMovement reason work** |
+| Opening unit cost | Stage 3 | MoneyInput | |
+| As-of date | Stage 3 | date Input | |
+| Units per pack | NEW | Input(int) | §2 nullable |
+| Sold as | NEW (decision) | UnitSelect | §2 — defer unless confirmed |
+| Shelf / aisle | NEW (decision) | Input | inventory location; per-location really lives in Inventory module — confirm whether product-level default is wanted |
+| Reorder point / qty | WIRE? | Input | per-location in Inventory module; product-level default = NEW nullable if wanted — confirm |
+| Track batches & expiry | WIRE | **Toggle** | `requires_batch_tracking` (+ `default_shelf_life_days` when on) |
+| Lock-after-movement note | Stage 3 | info banner | |
+
+### Media & Files
+| Status | Notes |
+|---|---|
+| DEFERRED (decision earlier) | gallery is visual chrome only until the parallel media-unification lands; build the visual grid (featured/PRIMARY, thumbs, leaflet/PDF, video, add-tile) as placeholders, wire to `ProductImageSection`/MediaRole after. |
+
+### Pharmacy (IziPOS / parapharmacy gate) — all REUSE
+category*, dosage_form, age_restriction, active_ingredients[], usage_instructions, warnings, contraindications, minimum_age, requires_consultation (checkbox), regulatory_code, storage_requirements — re-lay-out the **already-atom-refactored** `ParapharmacyMetadataFields` to the mock's 3-col grid. **Expansion (optional):** `key_components`, `health_claims`, `certifications` exist in schema but aren't rendered — add array builders if wanted (not in mock; confirm).
+
+### Automotive (Otospex gate) — REUSE + big WIRE
+Currently only `oem_numbers` + `cross_references` render. Backend supports far more. This is **not a regression** (never in form) but is the biggest expansion: article_number, supplier_brand, product_group_name, brand_quality_tier, article_status, weight_kg, dimensions, is_universal_fit (Toggle), tire specs (width/aspect/rim/speed/load/season), glass specs (type/tinting), vehicles[], criteria[], superseded_by_product_id. **Scope decision:** the live mock is IziPOS/pharmacy; build base+IziPOS parity first, then a dedicated **Automotive section** pass for Otospex (own task wave). Flagged so it's not forgotten.
+
+---
+
+## 6. Revised task sequence (supersedes the simple Stage 1.7b)
+
+1. **`Toggle` atom** (+ test) — needed by Inventory/automotive.
+2. **`UnitSelect` atom** over `GET /units` (+ test) — for Unit of measure.
+3. **General parity** (1.7b-1, retry): SKU(+auto-populate help), Type select (derive is_physical), Description, Brand/Mfr/Country placeholders, UnitSelect, Category (kept), Active + Active-for-ecommerce — remove the General barcode/name duplication; restyle checkboxes.
+4. **Barcode-into-hero** (1.7b-1b): move `BarcodeLookupInput` into the hero; remove from General; preserve lookup/scanner/enrichment + hidden barcode register.
+5. **Pricing parity** (1.7b-3a): Purchase price (wire), computed Margin, Sale price, Tax, (Loyalty/Discounts placeholders).
+6. **Inventory parity** (1.7b-3b): Units-per-pack (NEW), Track-batches Toggle (wire `requires_batch_tracking`+`default_shelf_life_days`), placeholders for shelf/reorder pending decisions; opening-balance block stubbed (real impl = Stage 3, gated).
+7. **Pharmacy re-lay-out** (1.7b-4): 3-col grid on existing fields.
+8. **Media visual** (1.7b-5): gallery placeholders (deferred backend).
+9. **Backend — Identity** (Stage I): BarcodeGenerator + SKU auto-populate; tests.
+10. **Backend — new nullable fields** (Stage F): `units_per_pack` (+ `sold_as_unit_id`/shelf/reorder if confirmed); DTO + `typescript:transform` + validation; wire the WIRE fields (`type`, `unit_id`, `is_active_for_ecommerce`, `requires_batch_tracking`, `default_shelf_life_days`, `purchase_price`) through Create/Update requests + ProductData.
+11. **Stage 2** (brands/manufacturers/country) — makes the General placeholders real.
+12. **Automotive section** (Otospex) — separate wave.
+13. **Stage 3** (opening balance) — last, gated on StockMovement reason work.
+
+Each is a TDD task; no-regression guard = the existing ProductForm test suites must stay green throughout.
+
+---
+
+## 7. Open decisions for the owner (don't block; recommendations given)
+1. **Barcode uniqueness** — keep non-unique-but-always-populated (recommended) vs add a per-tenant unique index after a duplicate audit.
+2. **"Sold as" dual-unit selling** — include now or defer (recommend `units_per_pack` now, `sold_as` later).
+3. **Shelf/aisle + reorder point/qty** — these are per-location Inventory concerns; want product-level *defaults* surfaced here as NEW nullable fields, or leave to the Inventory module (linked)?
+4. **Loyalty points / Eligible-for-discounts** — confirm module ownership (Loyalty/Promotions) before wiring vs placeholder.
+5. **Pharmacy expansion** (`key_components`/`health_claims`/`certifications`) — add now (not in mock) or later?
+6. **Automotive section** — confirm it's a follow-on wave after IziPOS parity (recommended).
