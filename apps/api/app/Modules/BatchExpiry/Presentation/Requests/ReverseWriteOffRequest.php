@@ -21,12 +21,15 @@ class ReverseWriteOffRequest extends FormRequest
     }
 
     /**
+     * The reversal target is identified solely by the route's {movementId}; the
+     * request carries no body fields. (A previous `notes` rule was dead — neither
+     * the controller nor the service ever read it — so it was removed rather than
+     * silently dropping client input.)
+     *
      * @return array<string, array<int, mixed>>
      */
     public function rules(): array
     {
-        return [
-            'notes' => ['nullable', 'string', 'max:1000'],
-        ];
+        return [];
     }
 }

@@ -34,6 +34,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -324,6 +325,73 @@ final class ReverseWriteOffServiceTest extends TestCase
 
         $original->refresh();
         $this->expectException(WriteOffAlreadyReversedException::class);
+        $this->service()->reverse($original, $this->user->id);
+    }
+
+    /**
+     * Critical (review fix): reversing a movement that is ITSELF a reversal must
+     * be rejected — otherwise stock + lot are inflated AGAIN with no offsetting JE
+     * (the inverse's JE has source_type batch_write_off_reversal, not
+     * batch_write_off), chainable for unbounded phantom stock.
+     */
+    public function test_reverse_of_reversal_is_rejected(): void
+    {
+        $original = $this->writeOffAll();
+        $inverse = $this->service()->reverse($original, $this->user->id);
+
+        // Post-reversal both ledgers are restored. Snapshot everything that a
+        // (wrongly-allowed) reverse-of-reversal would mutate.
+        $this->assertSame('100.5000', (string) StockLevel::query()
+            ->where('product_id', $this->product->id)
+            ->where('location_id', $this->warehouse->id)
+            ->value('quantity'));
+        $this->assertSame('100.5000', (string) BatchStock::query()
+            ->where('batch_id', $this->batch->id)
+            ->where('location_id', $this->warehouse->id)
+            ->value('quantity'));
+
+        $movementsBefore = StockMovement::query()->count();
+        $batchMovementsBefore = BatchMovement::query()->count();
+        $journalEntriesBefore = JournalEntry::query()->count();
+
+        try {
+            $this->service()->reverse($inverse, $this->user->id);
+            $this->fail('Expected reverse-of-reversal to be rejected.');
+        } catch (\DomainException $e) {
+            // Expected: a reversal is not itself reversible.
+        }
+
+        // No phantom stock: aggregate AND lot are UNCHANGED.
+        $this->assertSame('100.5000', (string) StockLevel::query()
+            ->where('product_id', $this->product->id)
+            ->where('location_id', $this->warehouse->id)
+            ->value('quantity'));
+        $this->assertSame('100.5000', (string) BatchStock::query()
+            ->where('batch_id', $this->batch->id)
+            ->where('location_id', $this->warehouse->id)
+            ->value('quantity'));
+
+        // No new movement / batch movement / journal entry was created.
+        $this->assertSame($movementsBefore, StockMovement::query()->count(), 'no new stock movement');
+        $this->assertSame($batchMovementsBefore, BatchMovement::query()->count(), 'no new batch movement');
+        $this->assertSame($journalEntriesBefore, JournalEntry::query()->count(), 'no new journal entry');
+    }
+
+    /**
+     * Review fix (MINOR 2): the tenant_id half of the scoping guard is exercised
+     * in isolation — same company context, but the movement carries a different
+     * tenant_id, so only the tenant predicate can reject it.
+     */
+    public function test_cross_tenant_original_is_rejected(): void
+    {
+        $original = $this->writeOffAll();
+
+        // Keep the SAME bound company; make ONLY the tenant differ so the
+        // tenant_id half of the guard (not the company_id half) does the work.
+        $original->tenant_id = (string) Str::uuid();
+        $original->save();
+
+        $this->expectException(\DomainException::class);
         $this->service()->reverse($original, $this->user->id);
     }
 

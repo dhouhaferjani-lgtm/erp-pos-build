@@ -418,6 +418,18 @@ class BatchController extends Controller
      */
     public function reverseWriteOff(ReverseWriteOffRequest $request, string $movementId): JsonResponse
     {
+        // Belt-and-suspenders behind the auth:sanctum middleware: never let an
+        // empty user id reach the service (a `(string) null` would become '').
+        $userId = auth()->id();
+        if ($userId === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'UNAUTHENTICATED',
+                    'message' => 'Authentication required',
+                ],
+            ], 401);
+        }
+
         if (! Str::isUuid($movementId)) {
             return response()->json([
                 'error' => [
@@ -445,7 +457,7 @@ class BatchController extends Controller
         try {
             $inverse = $this->reverseWriteOffService->reverse(
                 original: $movement,
-                userId: (string) auth()->id(),
+                userId: (string) $userId,
             );
         } catch (WriteOffAlreadyReversedException $e) {
             return response()->json([

@@ -11,6 +11,7 @@ use App\Modules\BatchExpiry\Domain\Exceptions\WriteOffAlreadyReversedException;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
+use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockMovement;
 use Illuminate\Database\QueryException;
@@ -74,6 +75,29 @@ final class ReverseWriteOffService
                 'Only expiry/damage/write-off movements can be reversed; '
                 .'movement '.$original->id.' has reason '
                 .($reason instanceof MovementReason ? $reason->value : 'null').'.'
+            );
+        }
+
+        // 1a-bis. Reject a target that is itself a reversal. A reversal's inverse
+        //         movement carries reverses_movement_id != null AND inherits a
+        //         reversible reason (via receive(reason: $original->reason)), so it
+        //         would otherwise sail past every other guard and inflate aggregate
+        //         + lot stock AGAIN with NO offsetting JE (its JE source_type is
+        //         batch_write_off_reversal, not batch_write_off) — chainable for
+        //         unbounded phantom stock. A reversal is not itself reversible.
+        if ($original->reverses_movement_id !== null) {
+            throw new \DomainException(
+                'Movement '.$original->id.' is itself a reversal and cannot be reversed.'
+            );
+        }
+
+        // 1a-ter. Defense in depth: a forward write-off is an ISSUE (outbound)
+        //          movement; the inverse a reversal creates is a RECEIPT. Reject
+        //          anything that is not the write-off issue movement.
+        if ($original->movement_type !== MovementType::Issue) {
+            throw new \DomainException(
+                'Only write-off issue movements can be reversed; movement '
+                .$original->id.' is of type '.$original->movement_type->value.'.'
             );
         }
 
@@ -153,8 +177,12 @@ final class ReverseWriteOffService
             });
         } catch (QueryException $e) {
             // Race-safe backstop: a concurrent reversal tripped the partial unique
-            // index on reverses_movement_id.
-            if ($this->isUniqueViolation($e)) {
+            // index on reverses_movement_id. ONLY that specific constraint is
+            // translated to "already reversed" — any OTHER unique violation (e.g.
+            // a journal_entries.entry_number collision or a stock_levels index
+            // race) is a genuine fault and must surface, not be mis-reported as a
+            // 409 on this fiscal path.
+            if ($this->isReversesMovementUniqueViolation($e)) {
                 throw WriteOffAlreadyReversedException::forMovement($original->id);
             }
 
@@ -163,15 +191,29 @@ final class ReverseWriteOffService
     }
 
     /**
-     * Detect a unique-constraint violation across drivers (PG SQLSTATE 23505;
-     * SQLite reports "UNIQUE constraint failed" in the driver message).
+     * Detect a unique-constraint violation specifically on the
+     * `reverses_movement_id` partial unique index (the double-reverse guard) —
+     * and ONLY that one.
+     *
+     * PG raises SQLSTATE 23505 naming the index
+     * `stock_movements_reverses_movement_id_unique`; SQLite reports
+     * "UNIQUE constraint failed: stock_movements.reverses_movement_id". Both
+     * mention `reverses_movement_id`, so we require a unique violation that also
+     * references that column/index. Every other unique violation is rethrown.
      */
-    private function isUniqueViolation(QueryException $e): bool
+    private function isReversesMovementUniqueViolation(QueryException $e): bool
     {
-        if (($e->getCode()) === '23505') {
-            return true;
+        $message = strtolower($e->getMessage());
+
+        $isUniqueViolation = $e->getCode() === '23505'
+            || str_contains($message, 'unique constraint')
+            || str_contains($message, 'unique');
+
+        if (! $isUniqueViolation) {
+            return false;
         }
 
-        return str_contains(strtolower($e->getMessage()), 'unique');
+        return str_contains($message, 'stock_movements_reverses_movement_id_unique')
+            || str_contains($message, 'reverses_movement_id');
     }
 }
