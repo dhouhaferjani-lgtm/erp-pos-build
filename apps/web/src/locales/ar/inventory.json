@@ -7,6 +7,10 @@
       "consumable": "مستهلك"
     },
     "unitOfMeasure": "وحدة القياس",
-    "isActiveForEcommerce": "نشط للتجارة الإلكترونية"
+    "isActiveForEcommerce": "نشط للتجارة الإلكترونية",
+    "purchasePrice": "سعر الشراء",
+    "purchasePriceHelper": "بدون ضريبة، من المورد",
+    "margin": "الهامش",
+    "marginIndicative": "هامش إجمالي استرشادي (سعر البيع يشمل الضريبة؛ الهامش الصافي الدقيق يُضاف لاحقًا)"
   }
 }

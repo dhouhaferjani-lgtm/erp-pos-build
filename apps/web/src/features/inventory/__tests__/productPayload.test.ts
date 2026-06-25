@@ -13,6 +13,7 @@ function makeFormData(overrides: Partial<ProductFormData> = {}): ProductFormData
     category_id: null,
     description: '',
     sale_price: '12.500',
+    purchase_price: '',
     // The form copies the selected tax configuration's 4-decimal percentage_rate
     // into tax_rate; the backend rejects >2dp, and the value is redundant.
     tax_rate: '19.0000',
@@ -147,5 +148,19 @@ describe('buildProductPayload', () => {
     )
     expect(payload.type).toBe('consumable')
     expect(payload.is_physical).toBe(true)
+  })
+
+  it('includes purchase_price in the payload when provided', () => {
+    const payload = buildProductPayload(
+      makeFormData({ purchase_price: '60.000' }),
+      { isParapharmacy: false },
+    )
+    expect(payload.purchase_price).toBe('60.000')
+  })
+
+  it('includes empty purchase_price in the payload (default state)', () => {
+    const payload = buildProductPayload(makeFormData(), { isParapharmacy: false })
+    expect(payload).toHaveProperty('purchase_price')
+    expect(payload.purchase_price).toBe('')
   })
 })

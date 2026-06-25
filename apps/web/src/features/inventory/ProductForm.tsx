@@ -35,6 +35,7 @@ import type { ChecklistItem } from '../products/editor/components/BeforePublishC
 import { LivePosTile } from '../products/editor/components/LivePosTile'
 import { useScrollSpy } from '../products/editor/hooks/useScrollSpy'
 import { formatCurrency } from '../../lib/formatCurrency'
+import { bcsub, bcdiv, bcmul } from '../../lib/decimal'
 import { UnitDropdown } from '../uom/components/UnitDropdown'
 import type { ProductType } from '../products/types'
 
@@ -49,6 +50,7 @@ interface Product {
   category_id: number | null
   description: string | null
   sale_price: string | null
+  purchase_price: string | null
   cost_price: string | null
   tax_rate: string | null
   default_tax_configuration_id: string | null
@@ -92,6 +94,7 @@ export interface ProductFormData {
   category_id: number | null
   description: string
   sale_price: string
+  purchase_price: string
   tax_rate: string
   tax_configuration_id: string | null
   unit: string
@@ -116,7 +119,7 @@ export function ProductForm() {
   const isParapharmacy = config?.vertical === 'parapharmacy'
   const showBatchTracking = hasModule('BatchExpiry') || hasModule('Inventory')
   const { isOtospex } = useProductConfig()
-  const { currency, decimals, locale } = useCurrency()
+  const { currency, locale } = useCurrency()
 
   const [showVariants, setShowVariants] = useState(false)
   const [oemInput, setOemInput] = useState('')
@@ -146,6 +149,7 @@ export function ProductForm() {
       category_id: null,
       description: '',
       sale_price: '',
+      purchase_price: '',
       tax_rate: '',
       tax_configuration_id: null,
       unit: 'pcs',
@@ -244,6 +248,7 @@ export function ProductForm() {
         category_id: product.category_id ?? null,
         description: product.description ?? '',
         sale_price: product.sale_price ?? '',
+        purchase_price: product.purchase_price ?? '',
         tax_rate: product.tax_rate ?? '',
         tax_configuration_id: product.default_tax_configuration_id ?? null,
         unit: product.unit ?? 'pcs',
@@ -350,9 +355,33 @@ export function ProductForm() {
   const nameValue = watch('name')
   const skuValue = watch('sku')
   const salePriceValue = watch('sale_price')
+  const purchasePriceValue = watch('purchase_price')
   const taxConfigValue = watch('tax_configuration_id')
   const taxRateValue = watch('tax_rate')
   const barcodeValue = watch('barcode')
+
+  // Compute indicative gross margin = (sale − purchase) / sale × 100
+  // Only shown when both prices are non-empty and sale > 0.
+  // NOTE: sale_price is TTC (tax-inclusive) while purchase_price is HT (ex-tax),
+  // so this is an indicative margin only — a tax-exact net margin is a later refinement.
+  // Precision rule 19: all arithmetic via big.js helpers, never parseFloat/Number.
+  const indicativeMargin: string | null = (() => {
+    const saleStr = salePriceValue.trim()
+    const purchaseStr = purchasePriceValue.trim()
+    if (saleStr === '' || purchaseStr === '') return null
+    // bcdiv throws on division by zero — guard via the zero string check
+    if (saleStr === '0') return null
+    // Also guard via big comparison (handles '0.000', '0.00', etc.)
+    try {
+      const diff = bcsub(saleStr, purchaseStr, 4)
+      const ratio = bcdiv(diff, saleStr, 6)
+      const percent = bcmul(ratio, '100', 1)
+      // Don't show if either side is effectively zero (purchase >= sale edge cases are allowed — negative margin is valid)
+      return percent
+    } catch {
+      return null
+    }
+  })()
 
   const hasTax = (taxConfigValue ?? '') !== '' || (taxRateValue ?? '') !== ''
   const checklistItems: ChecklistItem[] = [
@@ -663,6 +692,27 @@ export function ProductForm() {
               id="section-pricing"
               title={t('catalog:editor.sectionLabels.pricing')}
             >
+              {/* Purchase Price — ex-tax, from supplier */}
+              <FormField
+                label={t('inventory:products.purchasePrice')}
+                htmlFor="purchase_price"
+                helperText={t('inventory:products.purchasePriceHelper')}
+              >
+                <Controller
+                  name="purchase_price"
+                  control={control}
+                  render={({ field }) => (
+                    <MoneyInput
+                      id="purchase_price"
+                      currency={currency}
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                    />
+                  )}
+                />
+              </FormField>
+
               <FormField label={t('inventory:products.salePrice')} htmlFor="sale_price">
                 <Controller
                   name="sale_price"
@@ -679,6 +729,23 @@ export function ProductForm() {
                 />
               </FormField>
 
+              {/* Indicative Gross Margin — read-only, computed, not stored */}
+              {indicativeMargin !== null && (
+                <FormField
+                  label={t('inventory:products.margin')}
+                  htmlFor="indicative_margin"
+                  helperText={t('inventory:products.marginIndicative')}
+                >
+                  <Input
+                    id="indicative_margin"
+                    type="text"
+                    value={`${indicativeMargin}%`}
+                    readOnly
+                    className={cn(colors.neutral[50], textColors.tertiary, 'cursor-not-allowed')}
+                  />
+                </FormField>
+              )}
+
               {/* Cost (WAC) - Read-only when editing */}
               {isEditing && product && (
                 <FormField
@@ -689,7 +756,7 @@ export function ProductForm() {
                   <Input
                     id="cost_wac"
                     type="text"
-                    value={product.cost_price ? parseFloat(product.cost_price).toFixed(decimals) : (0).toFixed(decimals)}
+                    value={formatCurrency(product.cost_price ?? '0', currency, locale)}
                     readOnly
                     className={cn(colors.neutral[50], textColors.tertiary, 'cursor-not-allowed')}
                   />
