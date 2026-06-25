@@ -14,6 +14,14 @@
 
 ## 1. Identity strategy — barcode-first, never blocking
 
+> **FINAL DECISION (2026-06-25, owner): ship the simplest thing now (YAGNI to go-live).**
+> - **Keep ONE `barcode` field** (optional, as today — no new schema, no regression). Whatever the user enters is THE barcode linked to the product. Most of the time it's a real EAN-13.
+> - **No internal-barcode minting built now.** When a non-EAN value is entered it's simply stored as-is (our internal/other-subsystem code). The future dual handling (mint internal RCN when blank; lookup that inspects the **format** — EAN-13 vs internal — to resolve) is documented in §8 and built post-go-live, **minted centrally on the Synerivia platform**. Design must not block this (don't hard-assume single-format), but don't build it yet.
+> - **SKU stays required + unique** for now (auto-populate-from-name/barcode is a later nicety, not a blocker now).
+> - **Immediate editor work = ZERO backend identity change**: just move the existing `BarcodeLookupInput` into the hero (§4).
+>
+> The rest of this section is the *future* rationale, retained for when we revisit post-launch.
+
 **Research (cited):** SKU is the *internal* key (you control format; must be unique; 8–16 chars; `-`/`_` only; avoid O/0,I/1; no dates/prices). Barcode (EAN/UPC) is the *standardized, scannable* key used at POS. Auto-generated codes are acceptable for non-blocking entry. Sources: Shopify SKUs, erplain, Onsight.
 
 **Decision (matches owner intent):** the product is always identifiable without blocking the user.
@@ -176,4 +184,4 @@ Each is a TDD task; no-regression guard = the existing ProductForm test suites m
 
 **Recommendation:** target **Option C** (it's the only one that holds up for variants + packaging + EAN-added-later + multi-supplier and matches how POS/ERP systems model this), but **phase it**: Phase 1 ships the primary `barcode` + a permanent `internal_barcode` mint (≈ Option B behaviour) behind a `product_barcodes`-shaped service so the UI/contract don't change when the table lands; Phase 2 promotes to the full 1-to-many table + "additional barcodes" UI. The hero always edits the *primary* barcode; the internal RCN is minted on blank and shown as a read-only "internal code" chip.
 
-**This is the owner decision to make:** A (replace), B (two fields), or C (1-to-many, phased) — and confirm platform-side minting. Until chosen, the editor uses the existing single `barcode` field (no regression) and the mint is stubbed.
+**DECIDED (2026-06-25, owner):** **single `barcode` field now** (closest to Option A, but *designed not to block* C) — YAGNI until go-live. Lookup resolves internal-vs-EAN **by format** (EAN-13 vs other) when the full logic is built; minting is **central on the Synerivia platform** (parts may already exist here/on the platform — verify before building). No minting, no extra columns, no uniqueness constraint now. Post-go-live we can promote to B or C without a UI/contract change since the hero edits a single "primary barcode" either way. Action now: **move the existing `BarcodeLookupInput` into the hero; nothing else.**
