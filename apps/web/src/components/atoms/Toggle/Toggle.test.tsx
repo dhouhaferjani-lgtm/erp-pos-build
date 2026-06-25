@@ -74,4 +74,9 @@ describe('Toggle', () => {
     render(<Toggle aria-label="Track batches" label="Track batches & expiry" />)
     expect(screen.getByText('Track batches & expiry')).toBeInTheDocument()
   })
+
+  it('aria-checked is always present as "false" when checked is omitted', () => {
+    render(<Toggle aria-label="x" />)
+    expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'false')
+  })
 })
