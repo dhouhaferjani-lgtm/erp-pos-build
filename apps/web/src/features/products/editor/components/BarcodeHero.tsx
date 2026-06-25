@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { ImageIcon, Loader2, RefreshCw, Sparkles, Barcode } from 'lucide-react'
 import { colors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
+import { useCatalogBarcodeLookup } from '@/features/inventory/hooks/useCatalogBarcodeLookup'
+import type { SuggestedProduct, LookupState } from '@/features/inventory/types/platform'
 
 /**
  * Enrichment state for the Synerivia enrichment service slot.
@@ -41,6 +43,11 @@ const HERO_INPUT_BASE =
  * Stage 4), a 38×38 refresh button, and a full-width helper line.
  *
  * Barcode + name inputs are controlled and bound to the form fields upstream.
+ *
+ * When `onProductData` and `onLookupStateChange` are provided, the hero drives
+ * the catalog barcode lookup engine (debounce + scanner detection) directly
+ * from the barcode input value — eliminating the need for a separate
+ * BarcodeLookupInput in the General section.
  */
 export function BarcodeHero(props: {
   barcode: string
@@ -50,9 +57,32 @@ export function BarcodeHero(props: {
   status?: EnrichmentStatus | null
   onManualRefresh?: () => void
   disabled?: boolean
+  /** Called when the catalog lookup returns a matched product. */
+  onProductData?: (data: SuggestedProduct) => void
+  /** Called when the lookup state transitions (idle → searching → found | not_found | error). */
+  onLookupStateChange?: (state: LookupState) => void
 }): React.JSX.Element {
-  const { barcode, onBarcodeChange, name, onNameChange, status, onManualRefresh, disabled } = props
+  const {
+    barcode,
+    onBarcodeChange,
+    name,
+    onNameChange,
+    status,
+    onManualRefresh,
+    disabled,
+    onProductData,
+    onLookupStateChange,
+  } = props
   const { t } = useTranslation('catalog')
+
+  // Wire up the lookup engine when callbacks are provided.
+  // No-op callbacks are used so the hook is always called (Rules of Hooks).
+  const { isSearching } = useCatalogBarcodeLookup({
+    barcode,
+    onProductData: onProductData ?? (() => undefined),
+    onLookupStateChange: onLookupStateChange ?? (() => undefined),
+    onScan: onBarcodeChange,
+  })
 
   // Narrow: activeStatus is non-null and non-idle when the pill should be visible
   const activeStatus = status != null && status.state !== 'idle' ? status : null
@@ -82,7 +112,7 @@ export function BarcodeHero(props: {
               onBarcodeChange(e.target.value)
             }}
             placeholder={t('editor.hero.barcodePlaceholder')}
-            disabled={disabled}
+            disabled={disabled === true || isSearching}
             aria-label={t('editor.hero.barcodePlaceholder')}
             className={cn(HERO_INPUT_BASE, 'py-[9px] pl-9 pr-3 font-mono text-[15px]')}
           />

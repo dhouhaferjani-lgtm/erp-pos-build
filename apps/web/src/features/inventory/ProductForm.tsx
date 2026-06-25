@@ -13,7 +13,6 @@ import { useCompanyStore } from '../../stores/companyStore'
 import { colors, tokens, textColors } from '../../lib/designTokens'
 import { CategorySelect } from '../../components/catalog/CategorySelect'
 import { Button, Checkbox, FormField, Input, Select, Textarea, MoneyInput } from '../../components/atoms'
-import { BarcodeLookupInput } from './components/BarcodeLookupInput'
 import { CatalogBanner } from './components/CatalogBanner'
 import { useProductSubmission } from './api/platformQueries'
 import type { LookupState, SuggestedProduct } from './types/platform'
@@ -465,14 +464,35 @@ export function ProductForm() {
       </div>
 
       {/* Barcode-first hero: the barcode + name inputs are bound to the
-          existing form fields (single source of truth for `barcode`). */}
+          existing form fields (single source of truth for `barcode`).
+          The hero drives the catalog lookup engine (debounce + scanner) —
+          no separate BarcodeLookupInput in the General section. */}
       <BarcodeHero
         barcode={barcodeValue}
         onBarcodeChange={(value) => { setValue('barcode', value, { shouldDirty: true }) }}
         name={nameValue}
         onNameChange={(value) => { setValue('name', value, { shouldDirty: true }) }}
+        onProductData={handleProductData}
+        onLookupStateChange={handleLookupStateChange}
         onManualRefresh={() => { /* TODO(stage-4): trigger manual Synerivia re-fetch */ }}
       />
+
+      {/* Enrichment opt-in — shown under the hero when barcode not found in
+          catalog so the operator can submit for enrichment on save. */}
+      {lookupState === 'not_found' && (
+        <div className={cn('flex items-center gap-2.5 rounded-lg px-3.5 py-3', colors.neutral[100])}>
+          <Checkbox
+            id="enrichment-opt-in"
+            checked={enrichmentOptIn}
+            onChange={(e) => setEnrichmentOptIn(e.target.checked)}
+          />
+          <label htmlFor="enrichment-opt-in" className="text-sm">
+            <span className="font-medium">{t('inventory:barcodeLookup.enrichmentCheckbox')}</span>
+            <br />
+            <span className="text-xs opacity-70">{t('inventory:barcodeLookup.enrichmentDescription')}</span>
+          </label>
+        </div>
+      )}
 
       {/* Form */}
       <form id="product-editor-form" onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="flex flex-1 flex-col gap-[18px]">
@@ -594,32 +614,6 @@ export function ProductForm() {
                   className="mt-1"
                 />
               </FormField>
-
-              {/* Barcode lookup engine — drives catalog lookup + enrichment.
-                  The barcode field itself is owned by the hero above. */}
-              <div className="sm:col-span-2">
-                <BarcodeLookupInput
-                  onProductData={handleProductData}
-                  onLookupStateChange={handleLookupStateChange}
-                  defaultBarcode={product?.barcode ?? ''}
-                />
-
-                {/* Enrichment opt-in checkbox */}
-                {lookupState === 'not_found' && (
-                  <div className={cn('mt-3 flex items-center gap-2.5 rounded-lg px-3.5 py-3', colors.neutral[100])}>
-                    <Checkbox
-                      id="enrichment-opt-in"
-                      checked={enrichmentOptIn}
-                      onChange={(e) => setEnrichmentOptIn(e.target.checked)}
-                    />
-                    <label htmlFor="enrichment-opt-in" className="text-sm">
-                      <span className="font-medium">{t('inventory:barcodeLookup.enrichmentCheckbox')}</span>
-                      <br />
-                      <span className="text-xs opacity-70">{t('inventory:barcodeLookup.enrichmentDescription')}</span>
-                    </label>
-                  </div>
-                )}
-              </div>
 
               <div className="flex items-center gap-2">
                 <Checkbox

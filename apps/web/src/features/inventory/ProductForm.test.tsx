@@ -68,8 +68,9 @@ vi.mock('../catalog/hooks/useVariants', () => ({
 vi.mock('../../components/catalog/CategorySelect', () => ({
   CategorySelect: () => <div data-testid="category-select" />,
 }))
-vi.mock('./components/BarcodeLookupInput', () => ({
-  BarcodeLookupInput: () => <div data-testid="barcode-lookup" />,
+// BarcodeHero: keep the real component but mock the lookup hook it now uses
+vi.mock('@/features/inventory/hooks/useCatalogBarcodeLookup', () => ({
+  useCatalogBarcodeLookup: vi.fn(() => ({ isSearching: false })),
 }))
 vi.mock('./components/CatalogBanner', () => ({
   CatalogBanner: () => null,
@@ -211,5 +212,21 @@ describe('ProductForm (Direction-A editor layout smoke)', () => {
     expect(
       screen.getByText(/editor\.checklist\.title/i),
     ).toBeInTheDocument()
+  })
+})
+
+describe('ProductForm (barcode lookup in hero — no General duplicate)', () => {
+  it('General section does NOT render a standalone barcode-lookup label/input', () => {
+    const { container } = render(<ProductForm />)
+    // The old BarcodeLookupInput rendered a <label for="barcode-lookup">
+    // After the refactor it must not exist anywhere in the DOM.
+    expect(container.querySelector('#barcode-lookup')).toBeNull()
+    expect(screen.queryByLabelText(/inventory:products\.barcode/i)).not.toBeInTheDocument()
+  })
+
+  it('hero mono barcode input is still present (single lookup surface)', () => {
+    const { container } = render(<ProductForm />)
+    const monoInputs = container.querySelectorAll('input.font-mono')
+    expect(monoInputs).toHaveLength(1)
   })
 })

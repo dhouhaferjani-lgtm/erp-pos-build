@@ -6,6 +6,14 @@ import type { EnrichmentStatus } from './BarcodeHero'
 
 // i18n is initialised globally in src/test/setup.ts (imports ../lib/i18n)
 
+// ---------------------------------------------------------------------------
+// Mock the lookup hook so BarcodeHero tests stay purely visual / callback tests
+// and don't need to wire real React-Query + auth stores.
+// ---------------------------------------------------------------------------
+vi.mock('@/features/inventory/hooks/useCatalogBarcodeLookup', () => ({
+  useCatalogBarcodeLookup: vi.fn(() => ({ isSearching: false })),
+}))
+
 describe('BarcodeHero', () => {
   it('renders barcode and name inputs', () => {
     render(
@@ -206,5 +214,60 @@ describe('BarcodeHero', () => {
       />,
     )
     expect(screen.getByRole('button')).toBeDisabled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// BarcodeHero — lookup engine integration (new props)
+// ---------------------------------------------------------------------------
+describe('BarcodeHero lookup integration', () => {
+  it('renders exactly ONE barcode input (no duplicate)', () => {
+    render(
+      <BarcodeHero
+        barcode=""
+        onBarcodeChange={vi.fn()}
+        name=""
+        onNameChange={vi.fn()}
+        onProductData={vi.fn()}
+        onLookupStateChange={vi.fn()}
+      />,
+    )
+    // There should be exactly 2 textbox inputs: barcode + name (no second barcode)
+    const inputs = screen.getAllByRole('textbox')
+    expect(inputs).toHaveLength(2)
+    // The mono (barcode) input is first
+    expect(inputs[0]).toHaveClass('font-mono')
+  })
+
+  it('still renders when onProductData and onLookupStateChange are omitted (backward-compatible)', () => {
+    render(
+      <BarcodeHero
+        barcode=""
+        onBarcodeChange={vi.fn()}
+        name=""
+        onNameChange={vi.fn()}
+      />,
+    )
+    const inputs = screen.getAllByRole('textbox')
+    expect(inputs).toHaveLength(2)
+  })
+
+  it('disables the barcode input while isSearching=true', async () => {
+    const mod = await import('@/features/inventory/hooks/useCatalogBarcodeLookup')
+    vi.mocked(mod.useCatalogBarcodeLookup).mockReturnValueOnce({ isSearching: true })
+
+    render(
+      <BarcodeHero
+        barcode="12345678"
+        onBarcodeChange={vi.fn()}
+        name=""
+        onNameChange={vi.fn()}
+        onProductData={vi.fn()}
+        onLookupStateChange={vi.fn()}
+      />,
+    )
+    const inputs = screen.getAllByRole('textbox')
+    // First input (barcode) should be disabled while searching
+    expect(inputs[0]).toBeDisabled()
   })
 })
