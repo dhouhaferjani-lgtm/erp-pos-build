@@ -17,7 +17,7 @@ use Illuminate\Support\Str;
  * Assigns system_purpose values to key accounts for country-agnostic GL operations.
  *
  * Implements {@see ChartOfAccountsSeederContract} so it can be returned
- * type-safely from {@see \Database\Seeders\DemoPharmacySeeder::localeChartOfAccountsSeeder()}.
+ * type-safely from {@see DemoPharmacySeeder::localeChartOfAccountsSeeder()}.
  */
 final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeederContract
 {
@@ -137,7 +137,8 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
                 'system_purpose' => SystemAccountPurpose::SupplierPayable->value, 'is_system' => true],
             ['code' => '4011', 'name' => 'Fournisseurs - Achats de biens', 'type' => 'liability', 'parent_code' => '401'],
             ['code' => '4017', 'name' => 'Fournisseurs - Retenues de garantie', 'type' => 'liability', 'parent_code' => '401'],
-            ['code' => '408', 'name' => 'Fournisseurs - Factures non parvenues', 'type' => 'liability', 'parent_code' => '40'],
+            ['code' => '408', 'name' => 'Fournisseurs - Factures non parvenues', 'type' => 'liability', 'parent_code' => '40',
+                'system_purpose' => SystemAccountPurpose::GoodsReceivedNotInvoiced->value, 'is_system' => true],
             ['code' => '409', 'name' => 'Fournisseurs débiteurs', 'type' => 'asset', 'parent_code' => '40',
                 'system_purpose' => SystemAccountPurpose::SupplierAdvance->value, 'is_system' => true],
             ['code' => '41', 'name' => 'Clients et comptes rattachés', 'type' => 'asset', 'parent_code' => '4', 'is_system' => true],
@@ -200,6 +201,8 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
             ['code' => '627', 'name' => 'Services bancaires et assimilés', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '628', 'name' => 'Cotisations et divers', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '63', 'name' => 'Impôts, taxes et versements assimilés', 'type' => 'expense', 'parent_code' => '6'],
+            ['code' => '6354', 'name' => 'Droits d\'enregistrement et de timbre', 'type' => 'expense', 'parent_code' => '63',
+                'system_purpose' => SystemAccountPurpose::PurchaseStampDuty->value, 'is_system' => true],
             ['code' => '64', 'name' => 'Charges de personnel', 'type' => 'expense', 'parent_code' => '6'],
             ['code' => '641', 'name' => 'Rémunérations du personnel', 'type' => 'expense', 'parent_code' => '64'],
             ['code' => '645', 'name' => 'Charges de sécurité sociale et de prévoyance', 'type' => 'expense', 'parent_code' => '64'],
