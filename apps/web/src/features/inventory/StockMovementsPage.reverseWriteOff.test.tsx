@@ -85,8 +85,11 @@ vi.mock('../batches/api/batches', () => ({
 }))
 
 // ── TanStack Query ────────────────────────────────────────────────────────────
-// We capture the onError callback so test-gate 4 (409 toast) can fire it.
-const capturedCallbacks: { onError?: (err: unknown) => void } = {}
+// We capture the onError / onSuccess callbacks so tests can fire them directly.
+const capturedCallbacks: {
+  onError?: (err: unknown) => void
+  onSuccess?: () => void | Promise<void>
+} = {}
 const mockMutate = vi.fn()
 const mockInvalidateQueries = vi.fn()
 
@@ -172,10 +175,11 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
     useQuery: () => mockQueryReturn,
     useMutation: (opts: {
       mutationFn: unknown
-      onSuccess?: unknown
+      onSuccess?: () => void | Promise<void>
       onError?: (err: unknown) => void
     }) => {
       if (opts.onError) capturedCallbacks.onError = opts.onError
+      if (opts.onSuccess) capturedCallbacks.onSuccess = opts.onSuccess
       return { mutate: mockMutate, isPending: false }
     },
     useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
@@ -252,16 +256,20 @@ describe('StockMovementsPage — reverse write-off action (C3)', () => {
     await user.click(
       screen.getByRole('button', { name: 'movements.actions.reverse' }),
     )
-    // After the dialog opens, there are two buttons with the same label:
-    // the row action button + the ConfirmDialog confirm button.
-    // The dialog confirm button is the last one in the DOM (portal renders
-    // at document.body, after the table).
-    const reverseButtons = screen.getAllByRole('button', {
-      name: 'movements.actions.reverse',
-    })
-    const confirmBtn = reverseButtons[reverseButtons.length - 1]
+    // ConfirmDialog exposes data-testid="confirm-dialog-confirm" on its confirm
+    // button, giving a portal-order-independent stable selector.
+    const confirmBtn = screen.getByTestId('confirm-dialog-confirm')
     await user.click(confirmBtn)
     expect(mockMutate).toHaveBeenCalledWith('wo-1')
+  })
+
+  it('invalidates stock-movements and stock-levels queries on successful reversal', async () => {
+    setup()
+    await act(async () => {
+      await capturedCallbacks.onSuccess?.()
+    })
+    // onSuccess calls invalidateQueries twice: stock-movements then stock-levels
+    expect(mockInvalidateQueries).toHaveBeenCalledTimes(2)
   })
 
   it('shows an error toast when the onError callback is invoked with a 409', () => {

@@ -98,6 +98,10 @@ export function StockMovementsPage() {
       if (currentLocationId) params.append('location_id', currentLocationId)
       if (movementFilter !== 'all' && movementFilter !== 'transfer' && movementFilter !== 'write_off') {
         params.append('movement_type', movementFilter)
+      } else if (movementFilter === 'write_off') {
+        // Write-offs are always movement_type=issue; narrow the backend scan
+        // to issue movements and let the client-side reason filter do the rest.
+        params.append('movement_type', 'issue')
       }
       const queryString = params.toString()
       const response = await api.get<StockMovementsResponse>(`/stock-movements${queryString ? `?${queryString}` : ''}`)
