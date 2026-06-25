@@ -108,6 +108,14 @@
     "brand": "Brand",
     "reference": "Reference",
     "type": "Product Type",
+    "typePlaceholder": "Select type…",
+    "typeOptions": {
+      "part": "Part",
+      "service": "Service",
+      "consumable": "Consumable"
+    },
+    "unitOfMeasure": "Unit of Measure",
+    "isActiveForEcommerce": "Active for E-commerce",
     "isPhysical": "Physical Product",
     "isPhysicalHelper": "Uncheck for non-physical items (e.g., digital goods). Services should be created in the Services module.",
     "requiresBatchTracking": "Track batches / expiry",

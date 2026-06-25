@@ -100,6 +100,7 @@ import frAdmin from '../locales/fr/admin.json'
 // Arabic: fully translated AutoSpecs + shared foundations (🟠-4 Tunisia Go-Live).
 // Other namespaces still fall back to the EN bundle below.
 import arCommon from '../locales/ar/common.json'
+import arInventory from '../locales/ar/inventory.json'
 import arValidation from '../locales/ar/validation.json'
 import arWorkshopBundles from '../locales/ar/workshop-bundles.json'
 import arWorkshopTechnicians from '../locales/ar/workshop-technicians.json'
@@ -228,7 +229,7 @@ const resources = {
     common: arCommon,
     auth: enAuth,
     sales: enSales,
-    inventory: enInventory,
+    inventory: { ...enInventory, ...arInventory, products: { ...enInventory.products, ...arInventory.products } },
     treasury: enTreasury,
     validation: arValidation,
     pricing: enPricing,

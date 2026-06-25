@@ -108,6 +108,14 @@
     "brand": "Marque",
     "reference": "Référence",
     "type": "Type de produit",
+    "typePlaceholder": "Sélectionner un type…",
+    "typeOptions": {
+      "part": "Pièce",
+      "service": "Service",
+      "consumable": "Consommable"
+    },
+    "unitOfMeasure": "Unité de mesure",
+    "isActiveForEcommerce": "Actif pour le e-commerce",
     "isPhysical": "Produit physique",
     "isPhysicalHelper": "Décochez pour les articles non physiques (ex. biens numériques). Les services doivent être créés dans le module Services.",
     "requiresBatchTracking": "Suivre les lots / la péremption",

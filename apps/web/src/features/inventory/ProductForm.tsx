@@ -12,7 +12,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { colors, tokens, textColors } from '../../lib/designTokens'
 import { CategorySelect } from '../../components/catalog/CategorySelect'
-import { Button, Checkbox, FormField, Input, Textarea, MoneyInput } from '../../components/atoms'
+import { Button, Checkbox, FormField, Input, Select, Textarea, MoneyInput } from '../../components/atoms'
 import { BarcodeLookupInput } from './components/BarcodeLookupInput'
 import { CatalogBanner } from './components/CatalogBanner'
 import { useProductSubmission } from './api/platformQueries'
@@ -36,12 +36,17 @@ import type { ChecklistItem } from '../products/editor/components/BeforePublishC
 import { LivePosTile } from '../products/editor/components/LivePosTile'
 import { useScrollSpy } from '../products/editor/hooks/useScrollSpy'
 import { formatCurrency } from '../../lib/formatCurrency'
+import { UnitDropdown } from '../uom/components/UnitDropdown'
+import type { ProductType } from '../products/types'
 
 interface Product {
   id: string
   name: string
   sku: string
+  type: ProductType | null
   is_physical: boolean
+  is_active_for_ecommerce: boolean
+  unit_id: string | null
   category_id: number | null
   description: string | null
   sale_price: string | null
@@ -81,7 +86,10 @@ interface ParapharmacyMetadata {
 export interface ProductFormData {
   name: string
   sku: string
+  type: ProductType | null
   is_physical: boolean
+  is_active_for_ecommerce: boolean
+  unit_id: string | null
   category_id: number | null
   description: string
   sale_price: string
@@ -132,7 +140,10 @@ export function ProductForm() {
     defaultValues: {
       name: '',
       sku: '',
+      type: null,
       is_physical: true,
+      is_active_for_ecommerce: false,
+      unit_id: null,
       category_id: null,
       description: '',
       sale_price: '',
@@ -227,7 +238,10 @@ export function ProductForm() {
       reset({
         name: product.name,
         sku: product.sku,
+        type: product.type ?? null,
         is_physical: product.is_physical ?? true,
+        is_active_for_ecommerce: product.is_active_for_ecommerce ?? false,
+        unit_id: product.unit_id ?? null,
         category_id: product.category_id ?? null,
         description: product.description ?? '',
         sale_price: product.sale_price ?? '',
@@ -533,20 +547,44 @@ export function ProductForm() {
                 />
               </FormField>
 
-              <div>
-                <div className="flex items-center gap-2 mt-6">
-                  <Checkbox
-                    id="is_physical"
-                    {...register('is_physical')}
-                  />
-                  <label htmlFor="is_physical" className={tokens.label.base}>
-                    {t('inventory:products.isPhysical')}
-                  </label>
-                </div>
-                <p className={tokens.helperText.base}>
-                  {t('inventory:products.isPhysicalHelper')}
-                </p>
-              </div>
+              {/* Product Type — drives is_physical automatically (service→false, else true).
+                  The hidden is_physical value stays in the form to keep payload consistent
+                  with the backend's own type↔is_physical derivation. */}
+              <FormField label={t('inventory:products.type')} htmlFor="type">
+                <Controller
+                  name="type"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      id="type"
+                      value={field.value ?? ''}
+                      onChange={(e) => {
+                        const raw = e.target.value
+                        const val: ProductType | null =
+                          raw === 'part' || raw === 'service' || raw === 'consumable' ? raw : null
+                        field.onChange(val)
+                        setValue('is_physical', val !== 'service')
+                      }}
+                    >
+                      <option value="">{t('inventory:products.typePlaceholder')}</option>
+                      <option value="part">{t('inventory:products.typeOptions.part')}</option>
+                      <option value="service">{t('inventory:products.typeOptions.service')}</option>
+                      <option value="consumable">{t('inventory:products.typeOptions.consumable')}</option>
+                    </Select>
+                  )}
+                />
+              </FormField>
+
+              {/* Unit of measure — reuses the UnitDropdown atom from features/uom.
+                  The legacy free-text `unit` Input in the Inventory section stays
+                  untouched (a later Inventory task removes it; the backend mirrors
+                  unit_id→unit server-side). */}
+              <FormField label={t('inventory:products.unitOfMeasure')} htmlFor="unit_id">
+                <UnitDropdown
+                  value={watch('unit_id') ?? undefined}
+                  onChange={(id) => { setValue('unit_id', id || null) }}
+                />
+              </FormField>
 
               <FormField label={t('catalog.products.category')} htmlFor="category">
                 <CategorySelect
@@ -589,6 +627,16 @@ export function ProductForm() {
                 />
                 <label htmlFor="is_active" className={tokens.label.base}>
                   {t('active')}
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="is_active_for_ecommerce"
+                  {...register('is_active_for_ecommerce')}
+                />
+                <label htmlFor="is_active_for_ecommerce" className={tokens.label.base}>
+                  {t('inventory:products.isActiveForEcommerce')}
                 </label>
               </div>
 

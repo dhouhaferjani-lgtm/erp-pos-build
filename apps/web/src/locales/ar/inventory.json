@@ -1,0 +1,12 @@
+{
+  "products": {
+    "typePlaceholder": "اختر النوع…",
+    "typeOptions": {
+      "part": "قطعة",
+      "service": "خدمة",
+      "consumable": "مستهلك"
+    },
+    "unitOfMeasure": "وحدة القياس",
+    "isActiveForEcommerce": "نشط للتجارة الإلكترونية"
+  }
+}
