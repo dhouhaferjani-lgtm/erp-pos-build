@@ -114,5 +114,35 @@
     "expiringDescription": "Products with batches expiring soon",
     "daysThreshold": "Within {{days}} days",
     "noBatchesExpiring": "No batches expiring within the selected period"
+  },
+
+  "expiryWriteOff": {
+    "title": "Write Off Expired Lots",
+    "subtitle": "Select expired lots, set the quantity to remove, then confirm a single write-off.",
+    "loadError": "Failed to load expired lots",
+    "selectedCount": "{{count}} lot selected",
+    "selectedCount_other": "{{count}} lots selected",
+    "columns": {
+      "onHand": "On Hand",
+      "writeOffQuantity": "Write-off Qty"
+    },
+    "actions": {
+      "writeOffSelected": "Write Off Selected",
+      "selectAll": "Select all lots"
+    },
+    "empty": {
+      "title": "No expired lots",
+      "description": "There are no expired lots with available stock at this location."
+    },
+    "confirm": {
+      "title": "Write off expired lots",
+      "message": "Write off {{count}} lot? This permanently removes the stock and cannot be undone from here.",
+      "message_other": "Write off {{count}} lots? This permanently removes the stock and cannot be undone from here."
+    },
+    "toast": {
+      "success": "Expired lots written off",
+      "shortStock": "A selected lot no longer has enough stock. Refresh and try again.",
+      "error": "Failed to write off expired lots"
+    }
   }
 }
