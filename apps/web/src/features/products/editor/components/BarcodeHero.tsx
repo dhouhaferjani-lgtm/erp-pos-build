@@ -35,6 +35,13 @@ const HERO_INPUT_BASE =
   'disabled:cursor-not-allowed disabled:opacity-60'
 
 /**
+ * Stable no-op for the optional lookup callbacks. Module-scope so the hook's
+ * effect dependencies stay referentially stable across renders when a caller
+ * omits the callbacks (the backward-compat path).
+ */
+const NOOP = (): void => undefined
+
+/**
  * BarcodeHero — the dark navy "barcode-first" hero band of the product editor.
  *
  * Mirrors the mock's hero (gray-900 band, radius 12px): a 52×52 thumbnail
@@ -79,8 +86,8 @@ export function BarcodeHero(props: {
   // No-op callbacks are used so the hook is always called (Rules of Hooks).
   const { isSearching } = useCatalogBarcodeLookup({
     barcode,
-    onProductData: onProductData ?? (() => undefined),
-    onLookupStateChange: onLookupStateChange ?? (() => undefined),
+    onProductData: onProductData ?? NOOP,
+    onLookupStateChange: onLookupStateChange ?? NOOP,
     onScan: onBarcodeChange,
   })
 
