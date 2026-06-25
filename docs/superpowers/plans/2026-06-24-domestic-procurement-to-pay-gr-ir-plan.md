@@ -22,7 +22,9 @@
 
 ## Stage 0 — Prerequisite gate (no code)
 
-- [ ] **0.1** Confirm R-1 landed: `git grep -n "PurchaseOrderConfirmedListener"` shows the listener removed/unwired (no AP posted at PO confirmation). Confirm R-2 landed: `GeneralLedgerService::postEntry` sets `chain_sequence` and a `verifyChain()` test passes after a `postEntry` post. **If either is missing, STOP** — do not start Stage A.
+**STATUS 2026-06-25 — prerequisites DONE on `fix/opus-remediation` (Codex), not yet on `origin/dev`:** R-1 (`4224ed05f`, revert supplier-AP pair) and R-2 (`d3dc07f7a`, unify GL hash chain → `postEntry` sets `chain_sequence`) are committed and **Opus-APPROVED** (`docs/superpowers/reviews/2026-06-23-r-{1,2}-opus-review.md`, no blockers). R-3…R-9 also done. The branch is **ahead 11 / behind 5** vs `origin/dev` — it must be **rebased over current dev and FF-pushed** before this gate is truly open. (Note: R-1 kept the pre-existing `createSupplierInvoiceJournalEntry` method — only the PO-confirm *wiring* was reverted; we still do NOT reuse it, see C3.)
+
+- [ ] **0.1** Once the remediation batch is on `origin/dev`: confirm `git grep -n "PurchaseOrderConfirmed" apps/api/app/Providers/EventServiceProvider.php` is empty (R-1 landed) and `GeneralLedgerService::postEntry` sets `chain_sequence` with a `verifyChain()` test green (R-2 landed). **If either is missing on dev, STOP** — do not start Stage A.
 
 ---
 
@@ -154,9 +156,11 @@ public function test_grir_and_timbre_accounts_are_purpose_mapped(): void
 - [ ] Steps 2-4: run-fail → implement the locked, idempotent transaction + the new poster (NOT `createSupplierInvoiceJournalEntry`) → run-pass.
 - [ ] **Step 5 — commit:** `feat(accounting): post supplier-invoice GR-IR clearing under lock + idempotency`
 
-### Task C4 — Payment clears 401
+### Task C4 — Payment clears 401 (supersedes the R-1 backwards baseline)
 
-- [ ] Verify/extend the existing treasury payment path so paying a supplier invoice debits `SupplierPayable` (401, partner-tagged) and reduces `payable_balance`. Red-first test (payment → 401 debit, payable_balance down), implement (this is the correct re-home of the reverted H-3.1 mechanic, now against a real payable), green, commit.
+> **Context (R-1 Opus review L-2):** after the R-1 revert, paying a supplier PO is **cash-direction-backwards** (increments repository cash, posts a `customer_payment` Dr Bank/Cr AR against the supplier-as-partner; `payable_balance` stays `0.000`). That is the *accepted deferred baseline*, explicitly to be fixed here. Its passing test (`PaymentTest::…document_payment_flow_without_supplier_payable_gl`) must be updated/replaced — do not treat it as the desired behavior.
+
+- [ ] Extend the treasury payment path so paying a supplier invoice debits `SupplierPayable` (401, partner-tagged) and reduces `payable_balance` (the correct supplier-payment direction). Red-first test (payment → 401 debit, `payable_balance` down, M-5 `>= 0` CHECK respected), implement, replace the backwards baseline test, green, commit.
 
 ---
 
@@ -179,16 +183,12 @@ public function test_grir_and_timbre_accounts_are_purpose_mapped(): void
 
 ---
 
-## Stage E — Attachment via unified MediaAsset (thin port)
+## Stage E — Attachment via unified MediaAsset (thin port) — ✅ ALREADY DONE by Codex (`9a2a83c62`)
 
-### Task E1 — `MediaOwnerType::SupplierInvoice` + document upload port + `SourceDocument` role
+**Status 2026-06-25:** implemented + tested in the remediation batch (lands with the FF-push). `MediaOwnerType::SupplierInvoice` + `MediaRole::SourceDocument` added; a `SupplierInvoiceSourceDocumentUploader` port (Procurement) + `MediaAssetSupplierInvoiceSourceDocumentUploader` adapter (thin port over Catalog), DTO, `ProcurementServiceProvider`, and `SupplierInvoiceAttachmentTest` (2 passed, 21 assertions). Legacy `DocumentAttachment`/`AttachmentService` untouched. Matches this spec exactly.
 
-**Files:**
-- Modify: `app/Modules/Catalog/Domain/Enums/MediaOwnerType.php` (`:7` add `SupplierInvoice`), `MediaRole.php` (`:7` add `SourceDocument`)
-- Create: a supplier-invoice **document upload port** (interface in the Procurement module) + an adapter that stores `MediaAssetType::Document` (PDF/scan MIME, skip image renditions) and creates a `MediaAttachment(owner_type=SupplierInvoice, owner_id=<doc id>, role=SourceDocument)` on the **s3/MinIO** disk.
-- Test: `apps/api/tests/Feature/Procurement/SupplierInvoiceAttachmentTest.php`
-
-- [ ] TDD: uploading a PDF to a supplier invoice creates a `MediaAsset` (type `Document`, disk `s3`) + a `MediaAttachment` linked by owner_type/owner_id/role; the Procurement code depends only on its own port interface (does NOT import `Catalog\…` models directly — coordinate the owner-type name with the media-unification session). Red→implement→green→commit. **Do NOT touch legacy `DocumentAttachment`/`AttachmentService`.**
+### Task E1 — VERIFY (not build)
+- [ ] After the batch lands on dev: run `php artisan test --filter=SupplierInvoiceAttachmentTest` (green); confirm the adapter stores `MediaAssetType::Document` on the `s3` disk and creates a `MediaAttachment(owner_type=SupplierInvoice, role=SourceDocument)`; confirm Procurement code imports only its own port interface (not `Catalog\…` models). If all hold, mark Stage E complete — no rebuild.
 
 ---
 
