@@ -1024,6 +1024,125 @@ final class GeneralLedgerService
     }
 
     /**
+     * Create GR-IR journal entry when goods are received against a purchase order.
+     *
+     * Posts a balanced, hash-chained entry:
+     *   Debit:  Inventory (asset increases — stock on hand)
+     *   Credit: GoodsReceivedNotInvoiced / 408 (accrued liability until supplier invoice matches)
+     *
+     * Amount = CurrencyScale::bcround(bcmul($unitCost, $qty, $scale+2), $scale)
+     * computed entirely from numeric strings — never floats.
+     *
+     * No VAT line: under Code de la TVA Art. 9/18, TVA is deductible only
+     * at invoice receipt, not at physical delivery.
+     *
+     * No partner_id on either leg: 408 is an accrual account, not a
+     * partner sub-ledger entry (that happens at the 401-payable step).
+     *
+     * Idempotent: if a GR-IR entry already exists for $movementId (source_type
+     * = 'goods_receipt', source_id = $movementId), the method is a no-op and
+     * returns null. The StockMovement UUID is unique per receipt line, so a
+     * genuine re-delivery produces a new movement and a new entry; only true
+     * retries of the same movement are suppressed.
+     *
+     * @param  string  $receivedQty  Quantity received (4 dp), must be a numeric string
+     * @param  string  $unitCost  Landed unit cost from PO line (3+ dp), captured as string before any float cast, must be numeric
+     */
+    public function createGoodsReceiptGrIrEntry(
+        string $companyId,
+        string $movementId,
+        string $receivedQty,
+        string $unitCost,
+        string $currency,
+    ): ?JournalEntry {
+        // Idempotency: skip if already posted for this movement
+        if (JournalEntry::where('source_type', 'goods_receipt')->where('source_id', $movementId)->exists()) {
+            return null;
+        }
+
+        if (! is_numeric($unitCost)) {
+            throw new \InvalidArgumentException("GR-IR: unitCost must be a numeric string, got: {$unitCost}");
+        }
+
+        if (! is_numeric($receivedQty)) {
+            throw new \InvalidArgumentException("GR-IR: receivedQty must be a numeric string, got: {$receivedQty}");
+        }
+
+        $scale = $this->scaleResolver->getScale($currency);
+
+        // Compute amount from strings; round HALF-UP once at the posting boundary.
+        // $unitCost and $receivedQty are narrowed to numeric-string by the is_numeric() guards above.
+        $amount = CurrencyScale::bcround(bcmul($unitCost, $receivedQty, $scale + 2), $scale);
+
+        if (bccomp($amount, '0', $scale) <= 0) {
+            return null;
+        }
+
+        $inventoryAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::Inventory);
+        $grirAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::GoodsReceivedNotInvoiced);
+
+        /** @var JournalEntry|null $entry */
+        $entry = DB::transaction(function () use (
+            $companyId,
+            $movementId,
+            $amount,
+            $inventoryAccount,
+            $grirAccount,
+        ): ?JournalEntry {
+            // Re-check idempotency inside the transaction to guard concurrent retries
+            if (JournalEntry::where('source_type', 'goods_receipt')->where('source_id', $movementId)->exists()) {
+                return null;
+            }
+
+            $company = Company::findOrFail($companyId);
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => now()->toDateString(),
+                'description' => 'Goods Receipt GR-IR accrual',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'goods_receipt',
+                'source_id' => $movementId,
+            ]);
+
+            // Debit: Inventory (asset increases on receipt)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $inventoryAccount->id,
+                'partner_id' => null,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => 'Goods received — inventory',
+                'line_order' => 0,
+            ]);
+
+            // Credit: GoodsReceivedNotInvoiced / 408 (accrued payable until invoice)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $grirAccount->id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => 'Goods received — 408 GR-IR accrual',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        if ($entry === null) {
+            return null;
+        }
+
+        $this->postSystemGeneratedEntryAndDispatchPostedEventAfterCommit($entry, $companyId, $currency);
+
+        return $entry;
+    }
+
+    /**
      * Create a GL journal entry for a voucher ledger event.
      *
      * IMPORTANT: Voucher redemption MUST NOT route through createPOSPaymentEntry()
