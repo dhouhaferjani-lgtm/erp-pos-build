@@ -120,10 +120,14 @@ Legend: **REUSE** = field/logic already exists, just rearrange+restyle · **WIRE
 | Track batches & expiry | WIRE | **Toggle** | `requires_batch_tracking` (+ `default_shelf_life_days` when on) |
 | Lock-after-movement note | Stage 3 | info banner | |
 
-### Media & Files
-| Status | Notes |
-|---|---|
-| DEFERRED (decision earlier) | gallery is visual chrome only until the parallel media-unification lands; build the visual grid (featured/PRIMARY, thumbs, leaflet/PDF, video, add-tile) as placeholders, wire to `ProductImageSection`/MediaRole after. |
+### Media & Files — **FIRST-CLASS (un-deferred 2026-06-25; media unification landed `4722aafe9`)**
+Build the real gallery; do NOT placeholder it. **Reuse, don't rebuild.**
+- **Display:** read straight off the product payload — `ProductData.primary_image_url` + `media: MediaAttachmentData[]` (already on my branch; no separate fetch). FE `Product` type already has `primary_image`/media.
+- **CRUD:** the stable façade `/api/v1/products/{product}/images` (index/store/update/destroy/reorder/{image}/download) via `features/products/api/productImages.ts` (contract unchanged — thin layer over the new `media_assets`/`media_attachments` engine). Public read: `/api/v1/public/products/{product}/images`.
+- **Components:** reuse `features/products/components/{ProductImageUpload, ProductImageGallery, ProductImageSection, ProductPrimaryImageDisplay, ImageGalleryModal}`; `ProductImageSection` already wires into the form. **Restyle** the gallery to the mock grid (featured ★ PRIMARY tile + thumbs + leaflet/PDF + video + dashed add-tile, drag-reorder caption) using design tokens + `t()` (enforced).
+- **Capabilities available** (adopt as the mock wants): WebP renditions (thumbnail/sm/web via short-lived signed URLs), alt/caption fields, sort/reorder, single enforced PRIMARY, external-URL images, **variant-level media** (owner-agnostic engine → per-variant galleries supported).
+- **Branch note:** the core contract above is on my branch today; the newest extras land fully when `4722aafe9` reaches `origin/dev` — rebase then to pick up renditions/variant media. No blocker for building the section now.
+- **Resolves Codex §9.1 + staged-plan decision 2:** edit-mode `ProductImageSection` stays (no regression) AND the new create-mode gallery ships. Media is no longer a deferral.
 
 ### Pharmacy (IziPOS / parapharmacy gate) — all REUSE
 category*, dosage_form, age_restriction, active_ingredients[], usage_instructions, warnings, contraindications, minimum_age, requires_consultation (checkbox), regulatory_code, storage_requirements — re-lay-out the **already-atom-refactored** `ParapharmacyMetadataFields` to the mock's 3-col grid. **Expansion (optional):** `key_components`, `health_claims`, `certifications` exist in schema but aren't rendered — add array builders if wanted (not in mock; confirm).
@@ -142,7 +146,7 @@ Currently only `oem_numbers` + `cross_references` render. Backend supports far m
 5. **Pricing parity** (1.7b-3a): Purchase price (wire), computed Margin, Sale price, Tax, (Loyalty/Discounts placeholders).
 6. **Inventory parity** (1.7b-3b): Units-per-pack (NEW), Track-batches Toggle (wire `requires_batch_tracking`+`default_shelf_life_days`), placeholders for shelf/reorder pending decisions; opening-balance block stubbed (real impl = Stage 3, gated).
 7. **Pharmacy re-lay-out** (1.7b-4): 3-col grid on existing fields.
-8. **Media visual** (1.7b-5): gallery placeholders (deferred backend).
+8. **Media section** (1.7b-5): real gallery — reuse `ProductImageSection`/`ProductImageGallery`/`ProductImageUpload`/`ImageGalleryModal` + `productImages.ts`, restyled to the mock grid; read `ProductData.media[]`/`primary_image_url`. NO LONGER deferred (media unification landed). Adopt renditions/variant-media after rebasing onto `4722aafe9` when it hits `origin/dev`.
 9. **Backend — Identity** (Stage I): BarcodeGenerator + SKU auto-populate; tests.
 10. **Backend — new nullable fields** (Stage F): `units_per_pack` (+ `sold_as_unit_id`/shelf/reorder if confirmed); DTO + `typescript:transform` + validation; wire the WIRE fields (`type`, `unit_id`, `is_active_for_ecommerce`, `requires_batch_tracking`, `default_shelf_life_days`, `purchase_price`) through Create/Update requests + ProductData.
 11. **Stage 2** (brands/manufacturers/country) — makes the General placeholders real.
