@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Models\Country;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -110,6 +111,48 @@ class ZReportPdfTest extends TestCase
         $this->assertStringContainsString('123 Test Street', $html);
         $this->assertStringContainsString('75001', $html);
         $this->assertStringContainsString('Paris', $html);
+    }
+
+    /** @test */
+    public function it_renders_branch_tax_id_with_localized_country_label(): void
+    {
+        // Arrange: Tunisian multi-branch tenant — the establishment (location)
+        // carries its own Matricule Fiscal that must appear instead of the
+        // company-level one, labelled per Tunisian convention.
+        Country::create([
+            'code' => 'TN',
+            'name' => 'Tunisia',
+            'currency_code' => 'TND',
+            'tax_id_label' => 'Matricule Fiscal',
+        ]);
+        $this->company->update(['country_code' => 'TN', 'tax_id' => 'COMPANY-MF-0000']);
+        $this->location->update(['address_country' => 'TN', 'tax_id' => 'BRANCH-MF-1234']);
+
+        $zReport = $this->createTestZReport();
+
+        // Act: render via the service so the resolution wiring is exercised
+        $html = view('pos.z-report', $this->reportService->viewDataFor($zReport))->render();
+
+        // Assert: branch matricule + Tunisian label, never the company matricule
+        $this->assertStringContainsString('BRANCH-MF-1234', $html);
+        $this->assertStringContainsString('Matricule Fiscal', $html);
+        $this->assertStringNotContainsString('COMPANY-MF-0000', $html);
+    }
+
+    /** @test */
+    public function it_falls_back_to_company_tax_id_when_branch_has_none(): void
+    {
+        // Arrange: location has no override → company tax id is shown
+        $this->company->update(['tax_id' => 'COMPANY-ONLY-TAX']);
+        $this->location->update(['tax_id' => null]);
+
+        $zReport = $this->createTestZReport();
+
+        // Act
+        $html = view('pos.z-report', $this->reportService->viewDataFor($zReport))->render();
+
+        // Assert
+        $this->assertStringContainsString('COMPANY-ONLY-TAX', $html);
     }
 
     /** @test */

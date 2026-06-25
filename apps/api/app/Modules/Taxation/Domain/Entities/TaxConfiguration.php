@@ -43,6 +43,8 @@ class TaxConfiguration extends Model
         'applies_to',
         'is_default',
         'is_active',
+        'effective_from',
+        'effective_to',
         'sequence_order',
         'stacks_on',
         'applicable_document_types',
@@ -59,6 +61,8 @@ class TaxConfiguration extends Model
         'fixed_amount' => 'decimal:3',
         'is_default' => 'boolean',
         'is_active' => 'boolean',
+        'effective_from' => 'date',
+        'effective_to' => 'date',
         'sequence_order' => 'integer',
         'applicable_document_types' => 'array',
         'is_stamp_duty' => 'boolean',
@@ -124,14 +128,38 @@ class TaxConfiguration extends Model
     }
 
     /**
-     * Scope for ordering by sequence
+     * Scope for configurations in force on a given date.
+     *
+     * A row applies when the date falls within its [effective_from, effective_to]
+     * window; a null bound means open-ended on that side. Lets rate history be
+     * time-versioned (e.g. a stamp/VAT rate change) without mutating prior rows.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeEffectiveOn(Builder $query, string $date): Builder
+    {
+        return $query
+            ->where(function (Builder $q) use ($date): void {
+                $q->whereNull('effective_from')->orWhere('effective_from', '<=', $date);
+            })
+            ->where(function (Builder $q) use ($date): void {
+                $q->whereNull('effective_to')->orWhere('effective_to', '>=', $date);
+            });
+    }
+
+    /**
+     * Scope for ordering by sequence.
+     *
+     * Tie-broken by created_at so the applied order is deterministic when two
+     * configs share a sequence_order (important for reproducible fiscal output).
      *
      * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeOrdered(Builder $query): Builder
     {
-        return $query->orderBy('sequence_order', 'asc');
+        return $query->orderBy('sequence_order', 'asc')->orderBy('created_at', 'asc');
     }
 
     /**

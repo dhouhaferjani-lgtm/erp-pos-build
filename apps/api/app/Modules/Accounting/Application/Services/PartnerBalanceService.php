@@ -12,6 +12,7 @@ use App\Modules\Partner\Domain\Partner;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Service for managing partner balances from the General Ledger subledger.
@@ -30,7 +31,7 @@ class PartnerBalanceService
      * For customers: positive = they owe us, negative = we owe them (credit balance)
      * For suppliers: positive = we owe them, negative = they owe us (debit balance)
      *
-     * @return array{balance: string, debit_total: string, credit_total: string, transaction_count: int}
+     * @return array{balance: numeric-string, debit_total: numeric-string, credit_total: numeric-string, transaction_count: int}
      */
     public function getPartnerBalance(
         string $companyId,
@@ -59,7 +60,7 @@ class PartnerBalanceService
         $debitTotal = (string) ($result->debit_total ?? '0');
         /** @var numeric-string $creditTotal */
         $creditTotal = (string) ($result->credit_total ?? '0');
-        $balance = bcsub($debitTotal, $creditTotal, 4);
+        $balance = bcsub($debitTotal, $creditTotal, 3); // precision-ok: partner balance cache fields are currency money columns stored at scale 3.
 
         return [
             'balance' => $balance,
@@ -71,6 +72,8 @@ class PartnerBalanceService
 
     /**
      * Get customer receivable balance (what they owe us).
+     *
+     * @return numeric-string
      */
     public function getCustomerReceivableBalance(string $companyId, string $partnerId): string
     {
@@ -81,6 +84,8 @@ class PartnerBalanceService
 
     /**
      * Get customer advance balance (prepayments/credits we owe them).
+     *
+     * @return numeric-string
      */
     public function getCustomerAdvanceBalance(string $companyId, string $partnerId): string
     {
@@ -91,6 +96,8 @@ class PartnerBalanceService
 
     /**
      * Get supplier payable balance (what we owe them).
+     *
+     * @return numeric-string
      */
     public function getSupplierPayableBalance(string $companyId, string $partnerId): string
     {
@@ -264,15 +271,23 @@ class PartnerBalanceService
         $transactions = $query->get();
         /** @var numeric-string $runningBalance */
         $runningBalance = '0';
+        $isCreditNormalPurpose = in_array($purpose, [
+            SystemAccountPurpose::CustomerAdvance,
+            SystemAccountPurpose::SupplierPayable,
+        ], true);
 
-        return $transactions->map(function (object $tx) use (&$runningBalance): object {
+        return $transactions->map(function (object $tx) use (&$runningBalance, $isCreditNormalPurpose): object {
             /** @var numeric-string $credit */
             $credit = (string) ($tx->credit ?? '0');
             /** @var numeric-string $debit */
             $debit = (string) ($tx->debit ?? '0');
+            /** @var numeric-string $increase */
+            $increase = $isCreditNormalPurpose ? $credit : $debit;
+            /** @var numeric-string $decrease */
+            $decrease = $isCreditNormalPurpose ? $debit : $credit;
             $runningBalance = bcadd(
-                bcsub($runningBalance, $credit, 4),
-                $debit,
+                bcsub($runningBalance, $decrease, 4),
+                $increase,
                 4
             );
             $tx->running_balance = $runningBalance;
@@ -322,10 +337,22 @@ class PartnerBalanceService
             SystemAccountPurpose::SupplierPayable
         );
 
+        // `receivable_balance` is a debit-normal asset, so its natural
+        // GL balance (debit - credit) is already the positive "they owe us"
+        // magnitude. `credit_balance` (Customer Advances) and `payable_balance`
+        // (Supplier Payable) are credit-normal liabilities whose natural GL
+        // balance is NEGATIVE when owed; the denormalized cache stores them as
+        // non-negative MAGNITUDES (credit - debit), the convention every reader
+        // (Partner::getNetBalanceAttribute, PartnerController net_balance, the
+        // POS creditRulesEngine) and the non-negative fiscal balance-snapshot
+        // payload require. See docs/superpowers/reviews/2026-06-20-partner-credit-balance-sign-codex-review.md.
+        $creditBalance = $this->liabilityMagnitude($creditResult, $companyId, $partnerId, 'customer_advance');
+        $payableBalance = $this->liabilityMagnitude($payableResult, $companyId, $partnerId, 'supplier_payable');
+
         $partner->update([
             'receivable_balance' => $receivableResult['balance'],
-            'credit_balance' => $creditResult['balance'],
-            'payable_balance' => $payableResult['balance'],
+            'credit_balance' => $creditBalance,
+            'payable_balance' => $payableBalance,
             'balance_updated_at' => now(),
         ]);
 
@@ -337,10 +364,47 @@ class PartnerBalanceService
             tenantId: $partner->tenant_id,
             companyId: $partner->company_id,
             receivableBalance: (string) $receivableResult['balance'],
-            creditBalance: (string) $creditResult['balance'],
-            payableBalance: (string) $payableResult['balance'],
+            creditBalance: $creditBalance,
+            payableBalance: $payableBalance,
             netBalance: (string) $freshPartner->net_balance,
         ));
+    }
+
+    /**
+     * Non-negative magnitude of a credit-normal subledger (Customer Advances,
+     * Supplier Payable). `getPartnerBalance` returns `debit - credit`, which is
+     * negative while the liability is owed; the cache stores the unsigned
+     * magnitude `credit - debit`. A net-debit position (e.g. an over-cleared
+     * advance) clamps to zero rather than caching a negative "credit"/"payable".
+     *
+     * @param  array{balance: string, debit_total: string, credit_total: string, transaction_count: int}  $result
+     * @return numeric-string
+     */
+    private function liabilityMagnitude(array $result, string $companyId, string $partnerId, string $subledger): string
+    {
+        /** @var numeric-string $creditTotal */
+        $creditTotal = $result['credit_total'];
+        /** @var numeric-string $debitTotal */
+        $debitTotal = $result['debit_total'];
+        /** @var numeric-string $magnitude */
+        $magnitude = bcsub($creditTotal, $debitTotal, 3); // precision-ok: partner liability cache fields are currency money columns stored at scale 3.
+
+        if (bccomp($magnitude, '0', 3) >= 0) { // precision-ok: partner liability cache fields are currency money columns stored at scale 3.
+            return $magnitude;
+        }
+
+        // Net-debit position on a credit-normal subledger (e.g. an over-cleared
+        // advance or overpaid payable). The cache contract is non-negative, so
+        // we clamp to zero — but surface the anomaly for reconciliation, since a
+        // negative liability magnitude usually signals a GL posting error.
+        Log::warning('Net-debit position on a credit-normal partner subledger; clamping cached balance to zero', [
+            'company_id' => $companyId,
+            'partner_id' => $partnerId,
+            'subledger' => $subledger,
+            'signed_balance' => $magnitude,
+        ]);
+
+        return '0.000';
     }
 
     /**

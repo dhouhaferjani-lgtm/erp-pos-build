@@ -131,6 +131,8 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         $partial = $options['partial'] ?? false;
         /** @var array<int, string>|null $lineIds */
         $lineIds = $options['line_ids'] ?? null;
+        /** @var string|null $actorUserId */
+        $actorUserId = $options['actor_user_id'] ?? null;
 
         if ($source->type !== DocumentType::SalesOrder) {
             throw new \InvalidArgumentException('Source document must be a sales order');
@@ -162,7 +164,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         }
         // scenario === 'services_only': allow direct invoicing
 
-        return DB::transaction(function () use ($source, $partial, $lineIds, $autoCreatedDeliveryNote): Document {
+        return DB::transaction(function () use ($source, $partial, $lineIds, $autoCreatedDeliveryNote, $actorUserId): Document {
             $invoice = $this->createTargetDocument($source, DocumentType::Invoice, [
                 'due_date' => now()->addDays(30),
             ]);
@@ -188,7 +190,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
             $this->copyVehicleContext($source, $invoice);
 
             // Transfer any prepayments from the order to the invoice
-            $this->transferPrepayments($source, $invoice);
+            $this->transferPrepayments($source, $invoice, $actorUserId);
 
             // Update order payload
             $additionalPayload = [];
@@ -346,7 +348,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
     /**
      * Transfer prepayments from a sales order to the resulting invoice.
      */
-    private function transferPrepayments(Document $order, Document $invoice): void
+    private function transferPrepayments(Document $order, Document $invoice, ?string $actorUserId): void
     {
         // Get all payment allocations from the sales order
         $allocations = PaymentAllocation::where('document_id', $order->id)->get();
@@ -402,10 +404,12 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                     $invoice->id,
                     $totalPrepaid,
                     now(),
-                    "Prepayment applied from order {$order->document_number} to invoice {$invoice->document_number}"
+                    "Prepayment applied from order {$order->document_number} to invoice {$invoice->document_number}",
+                    $actorUserId,
+                    (string) $invoice->currency,
                 );
-            } catch (\RuntimeException $e) {
-                // If accounts are not configured, log warning but don't fail the conversion
+            } catch (\InvalidArgumentException|\RuntimeException $e) {
+                // If GL clearing cannot be created, log warning but don't fail the conversion.
                 Log::warning(
                     'Could not create GL entry for prepayment transfer: '.$e->getMessage(),
                     [

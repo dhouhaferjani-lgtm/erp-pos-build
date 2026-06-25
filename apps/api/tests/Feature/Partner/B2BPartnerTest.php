@@ -85,7 +85,7 @@ class B2BPartnerTest extends TestCase
                 'company_legal_name' => 'ACME Corporation SAS',
                 'business_registration_number' => '73282932000074',
                 'payment_terms' => 'net_30',
-                'credit_limit' => '50000.0000',
+                'credit_limit' => '50000.000',
                 'discount_percentage' => '5.00',
                 'invoice_consolidation' => true,
                 'consolidation_frequency' => 'monthly',
@@ -245,7 +245,7 @@ class B2BPartnerTest extends TestCase
             ->patchJson("/api/v1/partners/{$partner->id}", [
                 'company_legal_name' => 'Updated Legal Name SAS',
                 'payment_terms' => 'net_60',
-                'credit_limit' => '25000.0000',
+                'credit_limit' => '25000.000',
                 'discount_percentage' => '10.00',
                 'invoice_consolidation' => true,
                 'consolidation_frequency' => 'weekly',
@@ -268,7 +268,7 @@ class B2BPartnerTest extends TestCase
             'customer_category' => 'business',
             'company_legal_name' => 'Old Legal Name',
             'payment_terms' => 'net_30',
-            'credit_limit' => '10000.0000',
+            'credit_limit' => '10000.000',
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -361,7 +361,7 @@ class B2BPartnerTest extends TestCase
             'customer_category' => 'business',
             'company_legal_name' => 'Show Legal Name',
             'payment_terms' => 'net_90',
-            'credit_limit' => '100000.0000',
+            'credit_limit' => '100000.000',
             'discount_percentage' => '15.50',
             'invoice_consolidation' => false,
         ]);
@@ -372,7 +372,7 @@ class B2BPartnerTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('data.company_legal_name', 'Show Legal Name')
             ->assertJsonPath('data.payment_terms', 'net_90')
-            ->assertJsonPath('data.credit_limit', '100000.0000')
+            ->assertJsonPath('data.credit_limit', '100000.000')
             ->assertJsonPath('data.discount_percentage', '15.50')
             ->assertJsonPath('data.invoice_consolidation', false)
             ->assertJsonPath('data.consolidation_frequency', null);

@@ -3,10 +3,17 @@ import { usePageTitle } from '../../hooks/usePageTitle'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Plus, Package, Grid, List, Upload } from 'lucide-react'
+import { toast } from 'sonner'
+import { Plus, Package, Grid, List, Upload, Tags, X } from 'lucide-react'
 import { api } from '../../lib/api'
+import { usePermissions } from '../../hooks/usePermissions'
+import { getVariantsForProduct } from '../catalog/api/variantApi'
+import {
+  VariantLabelDialog,
+  type VariantLabelDialogVariant,
+} from '../catalog/components/VariantLabelDialog'
 import { cn } from '../../lib/utils'
-import { tokens, textColors, borderColors } from '../../lib/designTokens'
+import { colors, tokens, textColors, borderColors } from '../../lib/designTokens'
 import { useCompanyStore } from '../../stores/companyStore'
 import { useAuthStore } from '../../stores/authStore'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
@@ -126,6 +133,16 @@ export function ProductListPage() {
   )
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [filterPanelOpen, setFilterPanelOpen] = useState(false)
+  const { hasPermission } = usePermissions()
+
+  // --- Bulk selection + label printing ---
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [isPreparingLabels, setIsPreparingLabels] = useState(false)
+  const [labelDialogOpen, setLabelDialogOpen] = useState(false)
+  const [labelVariants, setLabelVariants] = useState<VariantLabelDialogVariant[]>([])
+  const [labelProductName, setLabelProductName] = useState<string | undefined>(
+    undefined,
+  )
 
   const tableState = useTableState({
     defaultSort: { column: 'name', direction: 'asc' },
@@ -150,6 +167,64 @@ export function ProductListPage() {
   }, [tableState.sortColumn, tableState.sortDirection, tableState.filters])
 
   const products = data?.data ?? []
+  const canPrintLabels = hasPermission('catalog.labels.print')
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const toggleAllSelected = () => {
+    setSelectedIds((prev) =>
+      prev.size === products.length && products.length > 0
+        ? new Set()
+        : new Set(products.map((product) => product.id)),
+    )
+  }
+
+  const clearSelection = () => {
+    setSelectedIds(new Set())
+  }
+
+  const handlePrintLabels = async () => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+
+    setIsPreparingLabels(true)
+    try {
+      const lists = await Promise.all(ids.map((id) => getVariantsForProduct(id)))
+      const variants: VariantLabelDialogVariant[] = lists
+        .flat()
+        .filter((variant) => variant.is_active)
+        .map((variant) => ({ id: variant.id, name_suffix: variant.name_suffix }))
+
+      if (variants.length === 0) {
+        toast.error(t('inventory:bulk.noVariants'))
+        return
+      }
+
+      // When exactly one product is selected we can title the dialog with it.
+      const onlyProductName =
+        ids.length === 1
+          ? products.find((product) => product.id === ids[0])?.name
+          : undefined
+
+      setLabelVariants(variants)
+      setLabelProductName(onlyProductName)
+      setLabelDialogOpen(true)
+    } catch {
+      toast.error(t('inventory:bulk.noVariants'))
+    } finally {
+      setIsPreparingLabels(false)
+    }
+  }
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
@@ -388,6 +463,42 @@ export function ProductListPage() {
         )}
       </div>
 
+      {/* Bulk selection action bar (list view only) */}
+      {viewMode === 'list' && selectedIds.size > 0 && (
+        <div
+          className={cn(
+            'flex items-center justify-between gap-3 rounded-lg border px-4 py-2',
+            borderColors.light,
+            tokens.table.header,
+          )}
+        >
+          <span className={cn('text-sm font-medium', textColors.primary)}>
+            {t('inventory:bulk.selected', { count: selectedIds.size })}
+          </span>
+          <div className="flex items-center gap-2">
+            {canPrintLabels && (
+              <Button
+                variant="secondary"
+                className="gap-2"
+                disabled={isPreparingLabels}
+                onClick={() => {
+                  void handlePrintLabels()
+                }}
+              >
+                <Tags className="h-4 w-4" />
+                {isPreparingLabels
+                  ? t('inventory:bulk.preparing')
+                  : t('inventory:bulk.printLabels')}
+              </Button>
+            )}
+            <Button variant="ghost" className="gap-2" onClick={clearSelection}>
+              <X className="h-4 w-4" />
+              {t('inventory:bulk.clear')}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       {error ? (
         <div className={cn(tokens.alert.base, tokens.alert.error)}>
@@ -399,7 +510,15 @@ export function ProductListPage() {
           data={products}
           keyExtractor={(product) => product.id}
           isLoading={isLoading}
-          className={cn('rounded-lg border bg-white', borderColors.light)}
+          selection={{
+            selectedIds,
+            onToggle: toggleSelected,
+            onToggleAll: toggleAllSelected,
+            getRowLabel: (product) =>
+              t('inventory:bulk.selectRow', { name: product.name }),
+            selectAllLabel: t('inventory:bulk.selectAll'),
+          }}
+          className={cn('rounded-lg border', colors.white, borderColors.light)}
           emptyState={
             <div className="py-6">
               <EmptyState
@@ -501,6 +620,17 @@ export function ProductListPage() {
           onPerPageChange={tableState.setPerPage}
         />
       )}
+
+      <VariantLabelDialog
+        open={labelDialogOpen}
+        onClose={() => {
+          setLabelDialogOpen(false)
+        }}
+        variants={labelVariants}
+        {...(labelProductName !== undefined
+          ? { productName: labelProductName }
+          : {})}
+      />
     </div>
   )
 }

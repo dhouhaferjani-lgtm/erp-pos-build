@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Providers;
 
+use App\Modules\Document\Application\Observers\DocumentMediaCascadeObserver;
 use App\Modules\Document\Application\Projections\DocumentAccountChargeFactureBridge;
 use App\Modules\Document\Domain\Contracts\DocumentVehicleContextWriterInterface;
+use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Services\Conversion\Converters\DeliveryNoteToInvoiceConverter;
 use App\Modules\Document\Domain\Services\Conversion\Converters\InvoiceToCreditNoteConverter;
 use App\Modules\Document\Domain\Services\Conversion\Converters\PurchaseOrderToGoodsReceiptConverter;
@@ -54,5 +56,6 @@ class DocumentServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadRoutesFrom(__DIR__.'/../Presentation/routes.php');
+        Document::observe(DocumentMediaCascadeObserver::class);
     }
 }

@@ -69,7 +69,7 @@ class SmartPaymentController extends Controller
                 'string',
                 ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
             ],
-            'payment_amount' => ['required', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'payment_amount' => ['required', 'string', 'regex:/^\d+(\.\d{1,3})?$/'],
             'allocation_method' => ['required', new Enum(AllocationMethod::class)],
             'manual_allocations' => ['nullable', 'array'],
             'manual_allocations.*.document_id' => [
@@ -77,7 +77,7 @@ class SmartPaymentController extends Controller
                 'string',
                 ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
             ],
-            'manual_allocations.*.amount' => ['required_with:manual_allocations', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'manual_allocations.*.amount' => ['required_with:manual_allocations', 'string', 'regex:/^\d+(\.\d{1,3})?$/'],
         ]);
 
         $preview = $this->allocationService->previewAllocation(
@@ -125,7 +125,7 @@ class SmartPaymentController extends Controller
                 'string',
                 ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
             ],
-            'manual_allocations.*.amount' => ['required_with:manual_allocations', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'manual_allocations.*.amount' => ['required_with:manual_allocations', 'string', 'regex:/^\d+(\.\d{1,3})?$/'],
         ]);
 
         $result = $this->allocationService->applyAllocation(

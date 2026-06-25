@@ -5,6 +5,7 @@ import { RequireAuth } from '../features/auth'
 import { RequirePermission } from '../components/auth'
 import { ModuleGuard } from '../components/guards'
 import { LoadingSpinner } from '../components/atoms/Spinner'
+import { DashboardLanding } from './DashboardLanding'
 
 // Lazy loaded pages
 const LoginPage = lazy(() => import('../features/auth/LoginPage').then((m) => ({ default: m.LoginPage })))
@@ -69,6 +70,9 @@ const BankReconciliationPage = lazy(() => import('../features/treasury/BankRecon
 const WithholdingCertificatesList = lazy(() => import('../features/withholding').then((m) => ({ default: m.WithholdingCertificatesList })))
 const WithholdingCertificateDetail = lazy(() => import('../features/withholding').then((m) => ({ default: m.WithholdingCertificateDetail })))
 const SalesWithholdingTrackingPage = lazy(() => import('../features/withholding/pages/SalesWithholdingTrackingPage').then((m) => ({ default: m.SalesWithholdingTrackingPage })))
+
+// Owner dashboard (reports)
+const OwnerDashboardPage = lazy(() => import('../features/owner-dashboard').then((m) => ({ default: m.OwnerDashboardPage })))
 
 // Reports module
 // Hub pages
@@ -463,8 +467,8 @@ export function AppRoutes() {
           </RequireAuth>
         }
       >
-        {/* Redirect root to dashboard */}
-        <Route index element={<Navigate to="/dashboard" replace />} />
+        {/* Redirect root: owners → owner reporting dashboard, others → generic (F-3) */}
+        <Route index element={<DashboardLanding />} />
 
         {/* Dashboard */}
         <Route
@@ -1283,31 +1287,37 @@ export function AppRoutes() {
           <Route
             index
             element={
-              <RequirePermission permission="work-orders.view">
-                <SuspenseWrapper>
-                  <WorkshopWorkOrderListPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Workshop">
+                <RequirePermission permission="work-orders.view">
+                  <SuspenseWrapper>
+                    <WorkshopWorkOrderListPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="new"
             element={
-              <RequirePermission permission="work-orders.create">
-                <SuspenseWrapper>
-                  <WorkshopWorkOrderCreatePage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Workshop">
+                <RequirePermission permission="work-orders.create">
+                  <SuspenseWrapper>
+                    <WorkshopWorkOrderCreatePage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path=":id"
             element={
-              <RequirePermission permission="work-orders.view">
-                <SuspenseWrapper>
-                  <WorkshopWorkOrderDetailPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Workshop">
+                <RequirePermission permission="work-orders.view">
+                  <SuspenseWrapper>
+                    <WorkshopWorkOrderDetailPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
         </Route>
@@ -1578,8 +1588,17 @@ export function AppRoutes() {
           />
         </Route>
 
-        {/* Reports - redirect to Finance hub */}
-        <Route path="reports" element={<Navigate to="/finance" replace />} />
+        {/* Owner Reports dashboard */}
+        <Route
+          path="reports"
+          element={
+            <RequirePermission permission="dashboard.owner">
+              <SuspenseWrapper>
+                <OwnerDashboardPage />
+              </SuspenseWrapper>
+            </RequirePermission>
+          }
+        />
 
         {/* Marketing Hub */}
         <Route

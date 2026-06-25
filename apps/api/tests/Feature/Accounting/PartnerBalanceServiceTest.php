@@ -74,7 +74,7 @@ class PartnerBalanceServiceTest extends TestCase
             $this->customer->id
         );
 
-        $this->assertSame('0.0000', $result['balance']);
+        $this->assertSame('0.000', $result['balance']);
         $this->assertSame(0, $result['transaction_count']);
     }
 
@@ -87,7 +87,7 @@ class PartnerBalanceServiceTest extends TestCase
             $this->customer->id
         );
 
-        $this->assertSame('1000.0000', $balance);
+        $this->assertSame('1000.000', $balance);
     }
 
     public function test_payment_reduces_customer_receivable(): void
@@ -100,7 +100,7 @@ class PartnerBalanceServiceTest extends TestCase
             $this->customer->id
         );
 
-        $this->assertSame('600.0000', $balance);
+        $this->assertSame('600.000', $balance);
     }
 
     public function test_multiple_invoices_and_payments_calculate_correctly(): void
@@ -118,7 +118,7 @@ class PartnerBalanceServiceTest extends TestCase
             $this->customer->id
         );
 
-        $this->assertSame('800.0000', $balance);
+        $this->assertSame('800.000', $balance);
     }
 
     public function test_subledger_matches_control_account(): void
@@ -253,6 +253,41 @@ class PartnerBalanceServiceTest extends TestCase
         $this->assertSame('600.0000', $last->running_balance);
     }
 
+    public function test_customer_advance_statement_uses_credit_normal_running_balance(): void
+    {
+        $this->createCustomerAdvanceEntry('50.00');
+        $this->clearCustomerAdvanceEntry('20.00');
+
+        $statement = $this->service->getPartnerStatement(
+            $this->company->id,
+            $this->customer->id,
+            SystemAccountPurpose::CustomerAdvance
+        );
+
+        $this->assertCount(2, $statement);
+        $this->assertSame('50.0000', $statement[0]->running_balance);
+        $this->assertSame('30.0000', $statement[1]->running_balance);
+    }
+
+    public function test_supplier_payable_statement_uses_credit_normal_running_balance(): void
+    {
+        $supplier = Partner::factory()->supplier()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        $this->createSupplierPayableEntry($supplier->id, '80.00');
+
+        $statement = $this->service->getPartnerStatement(
+            $this->company->id,
+            $supplier->id,
+            SystemAccountPurpose::SupplierPayable
+        );
+
+        $this->assertCount(1, $statement);
+        $this->assertSame('80.0000', $statement[0]->running_balance);
+    }
+
     public function test_partner_statement_filters_by_date(): void
     {
         // Create entries on different dates
@@ -282,8 +317,73 @@ class PartnerBalanceServiceTest extends TestCase
 
         // Check cached values
         $this->customer->refresh();
-        $this->assertSame('1000.0000', $this->customer->receivable_balance);
+        $this->assertSame('1000.000', $this->customer->receivable_balance);
         $this->assertNotNull($this->customer->balance_updated_at);
+    }
+
+    public function test_credit_balance_is_stored_as_positive_magnitude(): void
+    {
+        // A 50.00 customer advance CREDITS the Customer Advances liability with
+        // the partner attached, so the raw subledger sign is debit - credit = -50.
+        // The denormalized cache must store the MAGNITUDE (50) — the convention
+        // every reader (net_balance, POS creditRulesEngine) and the non-negative
+        // fiscal balance-snapshot payload assume.
+        $this->createCustomerAdvanceEntry('50.00');
+
+        $this->service->refreshPartnerBalance($this->company->id, $this->customer->id);
+
+        $this->customer->refresh();
+        $this->assertSame('50.000', $this->customer->credit_balance);
+    }
+
+    public function test_net_balance_subtracts_advance_credit_from_receivable(): void
+    {
+        // They owe us 100 on an invoice and hold a 30 advance credit.
+        $this->createInvoiceEntry('100.00');
+        $this->createCustomerAdvanceEntry('30.00');
+
+        $this->service->refreshPartnerBalance($this->company->id, $this->customer->id);
+
+        $this->customer->refresh();
+        $this->assertSame('100.000', $this->customer->receivable_balance);
+        $this->assertSame('30.000', $this->customer->credit_balance);
+        // net = receivable - credit = 70 (NOT 130, which the signed-negative bug produced).
+        $this->assertSame('70.000', $this->customer->net_balance);
+    }
+
+    public function test_credit_balance_clamps_to_zero_when_advance_overcleared(): void
+    {
+        // 40 credited as advance, then 60 cleared back to receivable (debit side):
+        // raw subledger = 40 - 60 = -20 (a net-debit advance — an anomaly). The
+        // cache stores a non-negative magnitude, so it clamps to 0 rather than
+        // caching a negative "credit".
+        $this->createCustomerAdvanceEntry('40.00');
+        $this->clearCustomerAdvanceEntry('60.00');
+
+        $this->service->refreshPartnerBalance($this->company->id, $this->customer->id);
+
+        $this->customer->refresh();
+        $this->assertSame('0.000', $this->customer->credit_balance);
+    }
+
+    public function test_payable_balance_is_stored_as_positive_magnitude(): void
+    {
+        // A supplier invoice CREDITS Accounts Payable (a liability) with the
+        // supplier attached, so the raw subledger sign is debit - credit = -80.
+        // The cache must store the MAGNITUDE (80) — net_balance for a supplier
+        // returns payable_balance directly and the total_payable aggregate sums it,
+        // both assuming a non-negative magnitude.
+        $supplier = Partner::factory()->supplier()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $this->createSupplierPayableEntry($supplier->id, '80.00');
+
+        $this->service->refreshPartnerBalance($this->company->id, $supplier->id);
+
+        $supplier->refresh();
+        $this->assertSame('80.000', $supplier->payable_balance);
+        $this->assertSame('80.000', $supplier->net_balance);
     }
 
     public function test_get_cached_or_calculate_balance_returns_cached_values(): void
@@ -298,7 +398,7 @@ class PartnerBalanceServiceTest extends TestCase
             staleMinutes: 60
         );
 
-        $this->assertSame('1000.0000', $result1['receivable_balance']);
+        $this->assertSame('1000.000', $result1['receivable_balance']);
         $this->assertTrue($result1['is_from_cache']);
         $this->assertNotNull($result1['balance_updated_at']);
     }
@@ -323,8 +423,8 @@ class PartnerBalanceServiceTest extends TestCase
         $this->customer->refresh();
         $customer2->refresh();
 
-        $this->assertSame('1000.0000', $this->customer->receivable_balance);
-        $this->assertSame('500.0000', $customer2->receivable_balance);
+        $this->assertSame('1000.000', $this->customer->receivable_balance);
+        $this->assertSame('500.000', $customer2->receivable_balance);
     }
 
     public function test_only_posted_entries_affect_balance(): void
@@ -373,7 +473,7 @@ class PartnerBalanceServiceTest extends TestCase
             $this->customer->id
         );
 
-        $this->assertSame('1000.0000', $balance);
+        $this->assertSame('1000.000', $balance);
     }
 
     // ========== Helper Methods ==========
@@ -428,6 +528,123 @@ class PartnerBalanceServiceTest extends TestCase
             'journal_entry_id' => $entry->id,
             'account_id' => $revenueAccount->id,
             'partner_id' => null,
+            'debit' => '0.00',
+            'credit' => $amount,
+        ]);
+    }
+
+    private function createCustomerAdvanceEntry(string $amount): void
+    {
+        $advanceAccount = Account::findByPurposeOrFail(
+            $this->company->id,
+            SystemAccountPurpose::CustomerAdvance
+        );
+        $bankAccount = Account::findByPurposeOrFail(
+            $this->company->id,
+            SystemAccountPurpose::Bank
+        );
+
+        $entry = JournalEntry::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'entry_number' => 'ADV-'.uniqid(),
+            'entry_date' => now(),
+            'description' => 'Customer advance received',
+            'status' => JournalEntryStatus::Posted,
+        ]);
+
+        // Debit: Bank/Cash
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $bankAccount->id,
+            'partner_id' => null,
+            'debit' => $amount,
+            'credit' => '0.00',
+        ]);
+
+        // Credit: Customer Advances (liability - with partner for subledger)
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $advanceAccount->id,
+            'partner_id' => $this->customer->id,
+            'debit' => '0.00',
+            'credit' => $amount,
+        ]);
+    }
+
+    private function clearCustomerAdvanceEntry(string $amount): void
+    {
+        $advanceAccount = Account::findByPurposeOrFail(
+            $this->company->id,
+            SystemAccountPurpose::CustomerAdvance
+        );
+        $receivableAccount = Account::findByPurposeOrFail(
+            $this->company->id,
+            SystemAccountPurpose::CustomerReceivable
+        );
+
+        $entry = JournalEntry::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'entry_number' => 'ADVCLR-'.uniqid(),
+            'entry_date' => now(),
+            'description' => 'Clear customer advance to receivable',
+            'status' => JournalEntryStatus::Posted,
+        ]);
+
+        // Debit: Customer Advances (clear the liability) - with partner
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $advanceAccount->id,
+            'partner_id' => $this->customer->id,
+            'debit' => $amount,
+            'credit' => '0.00',
+        ]);
+
+        // Credit: Customer Receivable - with partner
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $receivableAccount->id,
+            'partner_id' => $this->customer->id,
+            'debit' => '0.00',
+            'credit' => $amount,
+        ]);
+    }
+
+    private function createSupplierPayableEntry(string $partnerId, string $amount): void
+    {
+        $payableAccount = Account::findByPurposeOrFail(
+            $this->company->id,
+            SystemAccountPurpose::SupplierPayable
+        );
+        $bankAccount = Account::findByPurposeOrFail(
+            $this->company->id,
+            SystemAccountPurpose::Bank
+        );
+
+        $entry = JournalEntry::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'entry_number' => 'SINV-'.uniqid(),
+            'entry_date' => now(),
+            'description' => 'Supplier invoice',
+            'status' => JournalEntryStatus::Posted,
+        ]);
+
+        // Debit: Bank/expense side (no partner)
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $bankAccount->id,
+            'partner_id' => null,
+            'debit' => $amount,
+            'credit' => '0.00',
+        ]);
+
+        // Credit: Accounts Payable (with partner for subledger)
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $payableAccount->id,
+            'partner_id' => $partnerId,
             'debit' => '0.00',
             'credit' => $amount,
         ]);

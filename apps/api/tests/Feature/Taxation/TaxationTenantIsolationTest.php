@@ -153,6 +153,7 @@ final class TaxationTenantIsolationTest extends TestCase
         Permission::findOrCreate('tax-config.view', 'sanctum');
         Permission::findOrCreate('tax-config.manage', 'sanctum');
         Permission::findOrCreate('taxation.withholding_rules.manage', 'sanctum');
+        Permission::findOrCreate('taxation.tax_configurations.manage', 'sanctum');
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenantB->id);
         $this->seed(RolesAndPermissionsSeeder::class);
@@ -163,6 +164,7 @@ final class TaxationTenantIsolationTest extends TestCase
         Permission::findOrCreate('tax-config.view', 'sanctum');
         Permission::findOrCreate('tax-config.manage', 'sanctum');
         Permission::findOrCreate('taxation.withholding_rules.manage', 'sanctum');
+        Permission::findOrCreate('taxation.tax_configurations.manage', 'sanctum');
 
         $this->userA = User::create([
             'tenant_id' => $this->tenantA->id,
@@ -178,6 +180,7 @@ final class TaxationTenantIsolationTest extends TestCase
             'withholding.view', 'withholding.manage',
             'tax-config.view', 'tax-config.manage',
             'taxation.withholding_rules.manage',
+            'taxation.tax_configurations.manage',
         ]);
 
         UserCompanyMembership::create([

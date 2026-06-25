@@ -119,6 +119,7 @@ export const PERMISSIONS = {
   'catalog.variants.create': ['admin', 'manager'],
   'catalog.variants.update': ['admin', 'manager'],
   'catalog.variants.delete': ['admin'],
+  'catalog.labels.print': ['admin', 'manager'],
 
   // Workshop Service Bundles
   'workshop-bundles.view': ['admin', 'manager', 'technician'],
@@ -194,6 +195,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   vehicles: ['vehicles.view'],
   services: ['services.view'],
   reports: ['reports.view'],
+  ownerReports: ['dashboard.owner'],
   finance: ['accounts.view', 'journal.view'],
   pricing: ['pricing.view'],
   accounts: ['accounts.view'],

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Application\Services\AccountingService;
+use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
@@ -32,6 +33,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -304,6 +306,7 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         $this->assertNotNull($arLine, 'AR line should exist');
         $this->assertEquals('1190.000', $arLine->debit, 'AR should be debited for total invoice amount');
         $this->assertEquals('0.000', $arLine->credit);
+        $this->assertEquals($invoice->partner_id, $arLine->partner_id, 'AR line should be tagged with the invoice partner for subledger reporting');
 
         // ASSERT: Revenue credit line exists
         $revenueLines = $glEntry->lines()->whereHas('account', function ($q) {
@@ -314,6 +317,7 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         })->get();
 
         $this->assertGreaterThan(0, $revenueLines->count(), 'Revenue line(s) should exist');
+        $revenueLines->each(fn ($line) => $this->assertNull($line->partner_id, 'Revenue lines should not be partner-tagged'));
         $totalRevenueCredit = $revenueLines->sum(fn ($line) => (float) $line->credit);
         $this->assertEquals(1000.00, $totalRevenueCredit, 'Total revenue credits should equal subtotal');
 
@@ -325,6 +329,7 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         $this->assertNotNull($taxLine, 'VAT line should exist');
         $this->assertEquals('0.000', $taxLine->debit);
         $this->assertEquals('190.000', $taxLine->credit, 'VAT should be credited for tax amount');
+        $this->assertNull($taxLine->partner_id, 'VAT line should not be partner-tagged');
 
         // ASSERT: Balanced entry
         $totalDebits = $glEntry->lines()->sum('debit');
@@ -394,6 +399,7 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         $this->assertNotNull($arLine, 'AR line should exist');
         $this->assertEquals('0.000', $arLine->debit);
         $this->assertEquals('1190.000', $arLine->credit, 'AR should be credited (REVERSAL) for total credit note amount');
+        $this->assertEquals($creditNote->partner_id, $arLine->partner_id, 'AR reversal line should be tagged with the credit note partner for subledger reporting');
 
         // ASSERT: Revenue debit lines exist (REVERSED from invoice credit)
         $revenueLines = $glEntry->lines()->whereHas('account', function ($q) {
@@ -404,6 +410,7 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         })->get();
 
         $this->assertGreaterThan(0, $revenueLines->count(), 'Revenue line(s) should exist');
+        $revenueLines->each(fn ($line) => $this->assertNull($line->partner_id, 'Revenue reversal lines should not be partner-tagged'));
         $totalRevenueDebit = $revenueLines->sum(fn ($line) => (float) $line->debit);
         $this->assertEquals(1000.00, $totalRevenueDebit, 'Total revenue debits (REVERSAL) should equal subtotal');
 
@@ -415,6 +422,7 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         $this->assertNotNull($taxLine, 'VAT line should exist');
         $this->assertEquals('190.000', $taxLine->debit, 'VAT should be debited (REVERSAL) for tax amount');
         $this->assertEquals('0.000', $taxLine->credit);
+        $this->assertNull($taxLine->partner_id, 'VAT reversal line should not be partner-tagged');
 
         // ASSERT: Balanced entry
         $totalDebits = $glEntry->lines()->sum('debit');
@@ -632,7 +640,7 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         // We catch the RuntimeException that propagates from the listener.
         try {
             $this->postingService->post($invoice);
-        } catch (\RuntimeException $e) {
+        } catch (RuntimeException $e) {
             // Expected: listener fails due to missing AR account
             $this->assertStringContainsString('customer_receivable', $e->getMessage());
         }
@@ -645,6 +653,69 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
             $invoice->status,
             'Document should be Posted - fiscal chain was sealed before GL listener ran'
         );
+    }
+
+    public function test_invoice_gl_creation_persists_when_partner_balance_refresh_fails(): void
+    {
+        $invoice = $this->createConfirmedInvoice([
+            [
+                'product' => $this->product1,
+                'quantity' => '1',
+                'unit_price' => '100.00',
+                'tax_rate' => '19.00',
+                'description' => 'Rollback invoice',
+            ],
+        ]);
+
+        $this->bindThrowingPartnerBalanceService();
+
+        $journalEntryId = app(AccountingService::class)->createInvoiceGLEntries($invoice);
+
+        $entry = JournalEntry::query()->with('lines')->find($journalEntryId);
+        $this->assertNotNull($entry);
+        $this->assertSame($invoice->id, $entry->source_id);
+        $this->assertGreaterThan(0, $entry->lines->count());
+
+        $this->customer->refresh();
+        $this->assertNull($this->customer->balance_updated_at);
+
+        $this->app->forgetInstance(PartnerBalanceService::class);
+        app(PartnerBalanceService::class)->refreshPartnerBalance($this->company->id, $this->customer->id);
+
+        $this->customer->refresh();
+        $this->assertSame('119.000', $this->customer->receivable_balance);
+        $this->assertNotNull($this->customer->balance_updated_at);
+    }
+
+    public function test_credit_note_gl_creation_persists_when_partner_balance_refresh_fails(): void
+    {
+        $creditNote = $this->createConfirmedCreditNote([
+            [
+                'product' => $this->product1,
+                'quantity' => '1',
+                'unit_price' => '100.00',
+                'tax_rate' => '19.00',
+                'description' => 'Rollback credit note',
+            ],
+        ]);
+
+        $this->bindThrowingPartnerBalanceService();
+
+        $journalEntryId = app(AccountingService::class)->createCreditNoteGLEntries($creditNote);
+
+        $entry = JournalEntry::query()->with('lines')->find($journalEntryId);
+        $this->assertNotNull($entry);
+        $this->assertSame($creditNote->id, $entry->source_id);
+        $this->assertGreaterThan(0, $entry->lines->count());
+
+        $this->customer->refresh();
+        $this->assertNull($this->customer->balance_updated_at);
+
+        $this->app->forgetInstance(PartnerBalanceService::class);
+        app(PartnerBalanceService::class)->refreshPartnerBalance($this->company->id, $this->customer->id);
+
+        $this->customer->refresh();
+        $this->assertNotNull($this->customer->balance_updated_at);
     }
 
     /**
@@ -761,6 +832,17 @@ class InvoiceAndCreditNoteGLIntegrationTest extends TestCase
         }
 
         return $invoice->fresh(['lines', 'lines.product']);
+    }
+
+    private function bindThrowingPartnerBalanceService(): void
+    {
+        $this->app->instance(PartnerBalanceService::class, new class extends PartnerBalanceService
+        {
+            public function refreshPartnerBalance(string $companyId, string $partnerId): void
+            {
+                throw new RuntimeException('partner balance refresh failed');
+            }
+        });
     }
 
     /**

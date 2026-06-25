@@ -6,6 +6,7 @@ namespace Tests\Feature\Voucher;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
@@ -137,6 +138,10 @@ final class VoucherIssuanceServiceTest extends TestCase
         $this->assertCount(2, $entry->lines);
         $this->assertEquals('voucher_ledger', $entry->source_type);
         $this->assertEquals($ledger->id, $entry->source_id);
+        $this->assertSame(JournalEntryStatus::Posted, $entry->status);
+        $this->assertSame($this->issuer->id, $entry->posted_by);
+        $this->assertNotNull($entry->posted_at);
+        $this->assertNotNull($entry->fiscal_hash);
 
         // Debit = SalesReturnsClearing
         $clearingAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::SalesReturnsClearing);

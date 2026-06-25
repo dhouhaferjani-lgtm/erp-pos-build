@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Application\Services;
 
+use App\Modules\Company\Domain\Enums\PeriodStatus;
 use App\Modules\Company\Domain\FiscalPeriod;
 use App\Modules\Company\Domain\FiscalYear;
 use Carbon\Carbon;
@@ -64,7 +65,7 @@ class FiscalPeriodResolverService
             ->where('company_id', $companyId)
             ->where('start_date', '<=', $today)
             ->where('end_date', '>=', $today)
-            ->where('status', 'open')
+            ->where('status', PeriodStatus::Open)
             ->orderBy('start_date')
             ->first();
 
@@ -248,7 +249,7 @@ class FiscalPeriodResolverService
             ->where('company_id', $companyId)
             ->where('start_date', '<=', $date)
             ->where('end_date', '>=', $date)
-            ->where('status', 'open')
+            ->where('status', PeriodStatus::Open)
             ->first();
 
         return $period !== null;
@@ -266,7 +267,7 @@ class FiscalPeriodResolverService
     {
         return FiscalPeriod::query()
             ->where('fiscal_year_id', $fiscalYearId)
-            ->where('status', 'open')
+            ->where('status', PeriodStatus::Open)
             ->orderBy('period_number')
             ->get();
     }

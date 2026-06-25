@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Modules\Catalog\Media;
 
-use App\Modules\Catalog\Application\Jobs\GenerateRenditions;
-use App\Modules\Catalog\Application\Services\RenditionService;
-use App\Modules\Catalog\Domain\Contracts\MediaAssetRepositoryInterface;
-use App\Modules\Catalog\Domain\Enums\MediaAssetType;
-use App\Modules\Catalog\Domain\Enums\MediaSource;
-use App\Modules\Catalog\Domain\Enums\MediaStatus;
-use App\Modules\Catalog\Domain\Media\MediaAsset;
+use App\Modules\Media\Application\Jobs\GenerateRenditions;
+use App\Modules\Media\Application\Services\RenditionService;
+use App\Modules\Media\Domain\Contracts\MediaAssetRepositoryInterface;
+use App\Modules\Media\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Enums\MediaAssetType;
+use App\Modules\Media\Domain\Enums\MediaSource;
+use App\Modules\Media\Domain\Enums\MediaStatus;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -156,6 +156,37 @@ final class GenerateRenditionsJobTest extends TestCase
         self::assertNotNull($fresh);
         self::assertSame(MediaStatus::Uploaded, $fresh->status, 'ExternalUrl asset must be skipped');
         self::assertSame(0, $fresh->renditions()->count());
+    }
+
+    public function test_job_skips_non_image_document_asset_and_marks_ready(): void
+    {
+        Storage::fake('s3');
+
+        $tenant = $this->makeTenant('generate-renditions-doc-'.Str::random(6));
+
+        // A Document asset that was created UPLOADED (defensive: should have been Ready,
+        // but if somehow queued anyway, the job must handle it gracefully).
+        $asset = MediaAsset::create([
+            'tenant_id' => $tenant->id,
+            'type' => MediaAssetType::Document,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Uploaded,
+            'storage_disk' => 's3',
+            'storage_path' => 'documents/'.$tenant->id.'/doc-1/invoice.pdf',
+            'mime_type' => 'application/pdf',
+            'file_size' => 1024,
+        ]);
+
+        (new GenerateRenditions($tenant->id, $asset->id))
+            ->handle(
+                $this->app->make(RenditionService::class),
+                $this->app->make(MediaAssetRepositoryInterface::class),
+            );
+
+        $fresh = MediaAsset::withoutGlobalScopes()->find($asset->id);
+        self::assertNotNull($fresh);
+        self::assertSame(MediaStatus::Ready, $fresh->status, 'Document asset must be marked Ready with no renditions');
+        self::assertSame(0, $fresh->renditions()->count(), 'Document asset must have zero renditions');
     }
 
     public function test_job_marks_failed_and_rethrows_when_generate_throws(): void

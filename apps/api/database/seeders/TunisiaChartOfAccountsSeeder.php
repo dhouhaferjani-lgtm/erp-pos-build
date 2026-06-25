@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use Database\Seeders\Contracts\ChartOfAccountsSeederContract;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -14,8 +15,11 @@ use Illuminate\Support\Str;
  *
  * Seeds a standard Tunisian chart of accounts for a given company.
  * Assigns system_purpose values to key accounts for country-agnostic GL operations.
+ *
+ * Implements {@see ChartOfAccountsSeederContract} so it can be returned
+ * type-safely from {@see \Database\Seeders\DemoPharmacySeeder::localeChartOfAccountsSeeder()}.
  */
-class TunisiaChartOfAccountsSeeder extends Seeder
+final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeederContract
 {
     /**
      * Run the database seeds.

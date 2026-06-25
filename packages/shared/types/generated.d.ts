@@ -179,6 +179,23 @@ location_name: string;
 gross_sales: string;
 receipt_count: number;
 };
+export type SalesSummaryData = {
+currencyCode: string;
+grossSales: string;
+returnsAmount: string;
+netSales: string;
+salesCount: number;
+returnsCount: number;
+itemsSold: string;
+averageBasket: string | null;
+delta: App.Modules.Accounting.Application.DTOs.Reports.SalesSummaryDeltaData;
+};
+export type SalesSummaryDeltaData = {
+grossSalesAbs: string;
+grossSalesPct: string | null;
+salesCountAbs: number;
+salesCountPct: string | null;
+};
 export type StockAlertData = {
 product_id: string;
 product_name: string;
@@ -455,16 +472,9 @@ attribute_value_id: string;
 declare namespace App.Modules.Catalog.Domain.Enums {
 export type AttributeDataType = 'text' | 'numeric' | 'boolean' | 'date' | 'selection' | 'color' | 'image';
 export type ComponentType = 'product' | 'composite_item';
-export type MediaAssetType = 'IMAGE' | 'DOCUMENT' | 'VIDEO' | 'EXTERNAL_VIDEO' | 'SPIN_360';
-export type MediaOwnerType = 'PRODUCT' | 'PRODUCT_VARIANT' | 'CATEGORY';
-export type MediaRole = 'PRIMARY' | 'GALLERY' | 'DATASHEET' | 'MANUAL' | 'VIDEO_POSTER' | 'SPIN' | 'SWATCH';
-export type MediaSource = 'UPLOAD' | 'EXTERNAL_URL';
-export type MediaStatus = 'UPLOADED' | 'PROCESSING' | 'READY' | 'FAILED';
 export type PriceAdjustmentType = 'absolute' | 'percentage' | 'override';
 export type PricingMode = 'standard' | 'fixed_bundle';
 export type ProductionType = 'made_to_order' | 'batch' | 'stock';
-export type RenditionFormat = 'WEBP' | 'JPEG';
-export type RenditionName = 'THUMBNAIL' | 'SMALL' | 'WEB' | 'ZOOM';
 export type SelectionType = 'single' | 'multiple';
 export type VerticalType = 'fnb' | 'manufacturing' | 'sewing' | 'bakery' | 'generic';
 }
@@ -684,15 +694,6 @@ roles: Array<any>;
 permissions: Array<any>;
 emailVerified: boolean;
 };
-export type LoginData = {
-email: string;
-password: string;
-deviceName: string | null;
-deviceId: string | null;
-platform: string | null;
-platformVersion: string | null;
-appVersion: string | null;
-};
 export type LoginResponseData = {
 user: App.Modules.Identity.Application.DTOs.AuthUserData;
 token: string;
@@ -747,7 +748,7 @@ export type CountingExecutionMode = 'parallel' | 'sequential';
 export type CountingScopeType = 'product_location' | 'product' | 'location' | 'category' | 'full_inventory';
 export type CountingStatus = 'draft' | 'scheduled' | 'count_1_in_progress' | 'count_1_completed' | 'count_2_in_progress' | 'count_2_completed' | 'count_3_in_progress' | 'count_3_completed' | 'pending_review' | 'finalized' | 'cancelled';
 export type ItemResolutionMethod = 'pending' | 'auto_all_match' | 'auto_counters_agree' | 'third_count_decisive' | 'manual_override';
-export type MovementReason = 'goods_receipt' | 'customer_return' | 'adjustment_positive' | 'transfer_in' | 'production_output' | 'opening_balance' | 'delivery' | 'supplier_return' | 'adjustment_negative' | 'transfer_out' | 'damage' | 'expiry' | 'write_off' | 'consumption' | 'pos_sale' | 'pos_return';
+export type MovementReason = 'goods_receipt' | 'customer_return' | 'adjustment_positive' | 'transfer_in' | 'production_output' | 'opening_balance' | 'delivery' | 'supplier_return' | 'adjustment_negative' | 'count_correction' | 'transfer_out' | 'damage' | 'expiry' | 'write_off' | 'consumption' | 'pos_sale' | 'pos_return';
 export type MovementType = 'receipt' | 'issue' | 'transfer_in' | 'transfer_out' | 'adjustment' | 'opening';
 export type ReleaseReason = 'delivered' | 'cancelled' | 'expired' | 'manual_release' | 'converted' | 'order_modified' | 'insufficient_stock';
 export type ReservationSource = 'sales_order' | 'ecommerce_cart' | 'marketplace_order' | 'manual_hold' | 'customer_return_pending' | 'quality_check' | 'transfer_pending' | 'work_order';
@@ -978,6 +979,15 @@ export type MarketplaceOrderStatus = 'pending' | 'confirmed' | 'processing' | 's
 export type SellerStatus = 'active' | 'suspended' | 'pending_review';
 export type SellerType = 'erp_tenant' | 'external' | 'syneriva';
 }
+declare namespace App.Modules.Media.Domain.Enums {
+export type MediaAssetType = 'IMAGE' | 'DOCUMENT' | 'VIDEO' | 'EXTERNAL_VIDEO' | 'SPIN_360';
+export type MediaOwnerType = 'PRODUCT' | 'PRODUCT_VARIANT' | 'CATEGORY' | 'DOCUMENT';
+export type MediaRole = 'PRIMARY' | 'GALLERY' | 'DATASHEET' | 'MANUAL' | 'VIDEO_POSTER' | 'SPIN' | 'SWATCH';
+export type MediaSource = 'UPLOAD' | 'EXTERNAL_URL';
+export type MediaStatus = 'UPLOADED' | 'PROCESSING' | 'READY' | 'FAILED';
+export type RenditionFormat = 'WEBP' | 'JPEG';
+export type RenditionName = 'THUMBNAIL' | 'SMALL' | 'WEB' | 'ZOOM';
+}
 declare namespace App.Modules.Menu.Application.DTOs {
 export type ActiveMenuData = {
 id: string;
@@ -1205,6 +1215,7 @@ notes: string | null;
 receivable_balance: string | null;
 credit_balance: string | null;
 payable_balance: string | null;
+net_balance: string;
 street_address: string | null;
 street_address_2: string | null;
 city: string | null;
@@ -1476,6 +1487,7 @@ target_margin_override: string | null;
 minimum_margin_override: string | null;
 created_at: string;
 updated_at: string | null;
+has_variants: boolean;
 primary_image_url: string | null;
 media: Array<App.Modules.Catalog.Application.DTOs.MediaAttachmentData>;
 parapharmacy_metadata: App.Modules.Product.Application.DTOs.ParapharmacyProductMetadataData | null;
@@ -1615,7 +1627,7 @@ declare namespace App.Modules.Taxation.Domain.Services {
 export type TaxSource = 'line' | 'product' | 'category' | 'company';
 }
 declare namespace App.Modules.Tenant.Domain.Enums {
-export type OnboardingStep = 'company_info' | 'tax_config' | 'payment_methods' | 'payment_repositories' | 'pos_terminal' | 'first_product';
+export type OnboardingStep = 'company_info' | 'tax_config' | 'payment_methods' | 'payment_repositories' | 'pos_terminal' | 'first_product' | 'product_options';
 export type SubscriptionPlan = 'trial' | 'starter' | 'professional' | 'enterprise';
 export type TenantStatus = 'active' | 'suspended' | 'pending' | 'archived';
 }
@@ -1965,19 +1977,6 @@ captured_at: string;
 captured_by_user_id: string | null;
 captured_by_display_name: string | null;
 reference: string | null;
-};
-export type PartNeedData = {
-work_order_id: string;
-work_order_line_id: string;
-product_id: string | null;
-display_name: string;
-quantity: string;
-unit: string;
-vehicle_id: string;
-vehicle_display_name: string;
-preferred_brand: string | null;
-urgency: string | null;
-notes: string | null;
 };
 export type WorkOrderAssignmentData = {
 id: string;

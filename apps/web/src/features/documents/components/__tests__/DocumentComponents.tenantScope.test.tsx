@@ -64,6 +64,15 @@ vi.mock('@/components/atoms/TaxConfigurationSelect', () => ({
   TaxConfigurationSelect: () => <select aria-label="tax-configuration" />,
 }))
 
+vi.mock('@/contexts/CompanyConfigContext', () => ({
+  useCompanyConfig: () => ({
+    config: null,
+    isLoading: false,
+    error: null,
+    hasModule: (moduleName: string) => moduleName === 'Workshop',
+  }),
+}))
+
 vi.mock('../DesignationCell', () => ({
   DesignationCell: () => <span>designation</span>,
 }))

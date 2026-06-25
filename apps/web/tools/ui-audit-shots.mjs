@@ -5,7 +5,10 @@ import { mkdir } from 'node:fs/promises';
 
 const BASE = process.env.AUDIT_BASE || 'http://localhost:8089';
 const EMAIL = process.env.AUDIT_EMAIL || 'admin@demo.local';
-const PASSWORD = process.env.AUDIT_PASSWORD || 'password';
+const PASSWORD = process.env.AUDIT_PASSWORD;
+if (!PASSWORD) {
+  throw new Error('AUDIT_PASSWORD must be set (no hardcoded fallback).');
+}
 const OUT = process.env.AUDIT_OUT || '/Users/houssamr/Projects/syneriva/apps/erp/docs/superpowers/audits/ui-audit-2026-06-14/screens';
 
 // Representative routes per cluster (one or two per feature area).

@@ -102,6 +102,8 @@ function taxConfigurationFixture(id: string): TaxConfiguration {
     is_active: true,
     is_stamp_duty: false,
     is_recoverable: true,
+    effective_from: null,
+    effective_to: null,
     created_at: '2026-05-11T09:00:00Z',
     updated_at: '2026-05-11T09:00:00Z',
   }

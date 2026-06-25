@@ -200,7 +200,7 @@ class PaymentRefundTest extends TestCase
         // Refund should have a negative allocation matching original
         $refundAllocations = $refund->allocations;
         $this->assertCount(1, $refundAllocations);
-        $this->assertEquals('-500.0000', $refundAllocations->first()->amount);
+        $this->assertEquals('-500.000', $refundAllocations->first()->amount);
         $this->assertEquals($this->invoice->id, $refundAllocations->first()->document_id);
     }
 

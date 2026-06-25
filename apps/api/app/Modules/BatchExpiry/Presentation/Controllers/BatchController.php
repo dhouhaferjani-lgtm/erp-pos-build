@@ -218,6 +218,27 @@ class BatchController extends Controller
     }
 
     /**
+     * Get all expired batches that still have available (un-reserved) stock.
+     *
+     * Intended for the pharmacy expiry write-off UI: lists every expired lot
+     * where `available_quantity > 0` so operators can select lots to write off.
+     *
+     * Optional query parameter:
+     *   - `location_id` — scope results to a single storage location.
+     */
+    public function expired(Request $request): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+        $locationId = $request->input('location_id') !== null ? (string) $request->input('location_id') : null;
+
+        $batches = $this->fefoService->getExpiredBatchesWithStock($companyId, $locationId);
+
+        return response()->json([
+            'data' => BatchResource::collection($batches),
+        ]);
+    }
+
+    /**
      * Get batch stock levels by location.
      */
     public function stock(string $uuid): JsonResponse

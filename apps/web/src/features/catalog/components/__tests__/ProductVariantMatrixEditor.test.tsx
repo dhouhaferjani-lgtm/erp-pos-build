@@ -57,6 +57,27 @@ vi.mock('../../hooks/useVariants', () => ({
   useDeleteVariant: () => ({ mutateAsync: mockDeleteMutate, isPending: false }),
 }))
 
+// VariantLabelDialog pulls in label formats + the label API; stub them so the
+// editor renders the dialog without hitting the network.
+vi.mock('../../hooks/useLabels', () => ({
+  useLabelFormats: () => ({
+    data: [
+      {
+        key: 'avery-l7160',
+        label: 'Avery L7160',
+        label_width_mm: 63.5,
+        label_height_mm: 38.1,
+        rows: 7,
+        cols: 3,
+      },
+    ],
+  }),
+}))
+vi.mock('../../api/labelApi', () => ({
+  prepareVariantLabels: vi.fn(),
+  downloadVariantLabelsPdf: vi.fn(),
+}))
+
 function variant(over: Record<string, unknown>) {
   return {
     id: 'v1',
@@ -107,6 +128,48 @@ describe('ProductVariantMatrixEditor', () => {
   it('prompts to select axes when there are no variants', () => {
     render(<ProductVariantMatrixEditor productId="p1" />)
     expect(screen.getByText('catalog:variants.noVariants')).toBeInTheDocument()
+  })
+
+  it('hides the print-labels button when there are no variants', () => {
+    render(<ProductVariantMatrixEditor productId="p1" />)
+    expect(
+      screen.queryByRole('button', { name: 'catalog:labels.printLabels' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('opens the label dialog seeded with the product variants when print-labels is clicked', async () => {
+    const user = userEvent.setup()
+    mockVariants = [
+      variant({ id: 'v1', name_suffix: 'Red / S' }),
+      variant({ id: 'v2', name_suffix: 'Blue / M' }),
+    ]
+    render(<ProductVariantMatrixEditor productId="p1" />)
+
+    await user.click(
+      screen.getByRole('button', { name: 'catalog:labels.printLabels' }),
+    )
+
+    // Dialog is open (its format select is present) and seeded with both
+    // variants — assert via the dialog's per-variant quantity inputs, whose
+    // aria-labels are unique to the dialog.
+    expect(
+      await screen.findByRole('option', { name: 'Avery L7160' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByLabelText('catalog:labels.quantityFor {"name":"Red / S"}'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByLabelText('catalog:labels.quantityFor {"name":"Blue / M"}'),
+    ).toBeInTheDocument()
+  })
+
+  it('hides the print-labels button without the catalog.labels.print permission', () => {
+    mockVariants = [variant({ id: 'v1', name_suffix: 'Red / S' })]
+    mockHasPermission = vi.fn((p: string) => p !== 'catalog.labels.print')
+    render(<ProductVariantMatrixEditor productId="p1" />)
+    expect(
+      screen.queryByRole('button', { name: 'catalog:labels.printLabels' }),
+    ).not.toBeInTheDocument()
   })
 
   it('reveals value chips when an axis is checked and counts the combinations', async () => {

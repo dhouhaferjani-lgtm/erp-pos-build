@@ -6,6 +6,7 @@ namespace App\Modules\Accounting\Domain;
 
 use App\Modules\Accounting\Domain\Enums\OpeningBatchStatus;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
+use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
@@ -214,7 +215,7 @@ class OpeningBalanceBatch extends Model
      */
     public function getValidRowCount(): int
     {
-        return $this->rows()->where('status', 'VALID')->count();
+        return $this->rows()->where('status', OpeningImportRowStatus::Valid)->count();
     }
 
     /**
@@ -222,7 +223,7 @@ class OpeningBalanceBatch extends Model
      */
     public function getInvalidRowCount(): int
     {
-        return $this->rows()->where('status', 'INVALID')->count();
+        return $this->rows()->where('status', OpeningImportRowStatus::Invalid)->count();
     }
 
     /**

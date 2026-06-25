@@ -64,6 +64,8 @@ class WorkshopModuleAccessControlTest extends TestCase
             'scheduling_bays_index' => ['method' => 'GET', 'uri' => '/api/v1/scheduling/bays'],
             'scheduling_appointments_index' => ['method' => 'GET', 'uri' => '/api/v1/scheduling/appointments'],
             'scheduling_calendar_day' => ['method' => 'GET', 'uri' => '/api/v1/scheduling/calendar/day'],
+            'services_index' => ['method' => 'GET', 'uri' => '/api/v1/services'],
+            'service_categories_index' => ['method' => 'GET', 'uri' => '/api/v1/service-categories'],
             'workshop_bundles_index' => ['method' => 'GET', 'uri' => '/api/v1/workshop/bundles'],
             'workshop_work_orders_index' => ['method' => 'GET', 'uri' => '/api/v1/workshop/work-orders'],
             'workshop_technicians_index' => ['method' => 'GET', 'uri' => '/api/v1/workshop/technicians'],

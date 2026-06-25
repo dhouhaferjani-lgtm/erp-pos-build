@@ -20,6 +20,26 @@ vi.mock('@/hooks/usePermissions', () => ({
 }))
 
 vi.mock('../hooks/useOwnerReports', () => ({
+  useSalesSummary: () => ({
+    data: {
+      currencyCode: 'EUR',
+      grossSales: '300.00',
+      returnsAmount: '50.00',
+      netSales: '250.00',
+      salesCount: 2,
+      returnsCount: 1,
+      itemsSold: '5.0000',
+      averageBasket: '150.00',
+      delta: {
+        grossSalesAbs: '150.00',
+        grossSalesPct: '100.00',
+        salesCountAbs: 1,
+        salesCountPct: '50.00',
+      },
+    },
+    isLoading: false,
+    isError: false,
+  }),
   useSalesByLocation: () => ({
     data: [
       {
@@ -77,6 +97,11 @@ describe('OwnerDashboardPage', () => {
   it('renders chart-backed widgets through the shared owner chart wrapper', () => {
     render(<OwnerDashboardPage />)
 
-    expect(screen.getAllByTestId('owner-chart')).toHaveLength(3)
+    expect(screen.getAllByTestId('owner-chart')).toHaveLength(4)
+  })
+
+  it('renders the KPI summary row', () => {
+    render(<OwnerDashboardPage />)
+    expect(screen.getByText('reports:ownerDashboard.kpi.totalSales')).toBeInTheDocument()
   })
 })

@@ -11,7 +11,21 @@
       "granularity": "تجميع حسب",
       "day": "يوم",
       "week": "أسبوع",
-      "month": "شهر"
+      "month": "شهر",
+      "allLocations": "جميع المواقع",
+      "locations": "المواقع"
+    },
+    "salesTrend": {
+      "title": "المبيعات عبر الزمن"
+    },
+    "kpi": {
+      "totalSales": "إجمالي المبيعات",
+      "transactions": "المعاملات",
+      "avgBasket": "متوسط السلة",
+      "itemsSold": "العناصر المباعة",
+      "returns": "المرتجعات",
+      "vsPrevious": "مقارنةً بالفترة السابقة",
+      "error": "تعذّر تحميل الملخص"
     },
     "salesByLocation": {
       "title": "المبيعات حسب الموقع",

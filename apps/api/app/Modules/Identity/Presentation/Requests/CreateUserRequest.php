@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Identity\Presentation\Requests;
 
 use App\Modules\Identity\Domain\User;
+use App\Modules\Identity\Presentation\Rules\AssignableRole;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -37,7 +38,7 @@ class CreateUserRequest extends FormRequest
                 Rule::unique('users', 'email')->where('tenant_id', $currentUser->tenant_id)->whereNotNull('email'),
             ],
             'phone' => ['nullable', 'string', 'regex:/^\+?[0-9]{7,20}$/'],
-            'role' => ['required', 'string', 'exists:roles,name'],
+            'role' => ['required', 'string', 'exists:roles,name', new AssignableRole($currentUser)],
             'locale' => ['nullable', 'string', 'max:10'],
             'timezone' => ['nullable', 'string', 'max:50'],
         ];

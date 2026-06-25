@@ -307,6 +307,13 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         { key: 'keyComponents', href: '/parapharmacy/key-components', icon: Package },
       ],
     },
+    // Owner Reports dashboard — gated to dashboard.owner permission via ownerReports mapping.
+    {
+      key: 'reports',
+      href: '/reports',
+      icon: BarChart3,
+      permission: 'ownerReports',
+    },
     // Settings — the only bottom item. Its sub-pages (refund policies,
     // customer-history audit, …) are reached from the Settings hub page.
     {

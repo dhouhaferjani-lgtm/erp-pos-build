@@ -55,9 +55,10 @@ vi.mock('@/stores/terminalStore', () => ({
   },
 }));
 
+let mockIsOnline = false;
 vi.mock('@/stores/connectivityStore', () => ({
   useConnectivityStore: {
-    getState: vi.fn(() => ({ isOnline: false })),
+    getState: vi.fn(() => ({ isOnline: mockIsOnline })),
   },
 }));
 
@@ -74,6 +75,8 @@ function offlineReceiptsCall() {
 beforeEach(() => {
   vi.mocked(queryAll).mockClear();
   vi.mocked(queryAll).mockResolvedValue([]);
+  vi.mocked(apiGet).mockReset();
+  mockIsOnline = false;
 });
 
 describe('generateXReport (local path)', () => {
@@ -96,5 +99,31 @@ describe('fetchShiftReceipts (offline fallback)', () => {
     const call = offlineReceiptsCall();
     expect(call).toBeDefined();
     expect((call![2] as unknown[])[1]).toBe('2026-06-12 08:54:51');
+  });
+
+  it('falls back to local receipts on a 404 even while online (device shift not yet projected)', async () => {
+    // Device-authoritative offline-first shifts: the device mints the shift id and
+    // authors SESSION_OPEN locally; the server only gets a pos_shifts row after the
+    // projection syncs. Until then GET /pos/shifts/{id}/receipts 404s. The device's
+    // own receipts live in local SQLite, so the panel must read them, not error.
+    mockIsOnline = true;
+    vi.mocked(apiGet).mockRejectedValue(
+      Object.assign(new Error('Request failed (404)'), { status: 404 }),
+    );
+
+    const result = await fetchShiftReceipts('shift-1');
+
+    expect(offlineReceiptsCall()).toBeDefined();
+    expect(result).toEqual([]);
+  });
+
+  it('rethrows a non-404 server error while online so genuine failures surface', async () => {
+    mockIsOnline = true;
+    vi.mocked(apiGet).mockRejectedValue(
+      Object.assign(new Error('Request failed (500)'), { status: 500 }),
+    );
+
+    await expect(fetchShiftReceipts('shift-1')).rejects.toThrow('Request failed (500)');
+    expect(offlineReceiptsCall()).toBeUndefined();
   });
 });

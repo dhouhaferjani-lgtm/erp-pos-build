@@ -20,6 +20,8 @@ export interface TaxConfiguration {
   is_active: boolean
   is_stamp_duty: boolean
   is_recoverable: boolean
+  effective_from: string | null
+  effective_to: string | null
   created_at: string
   updated_at: string
 }
@@ -36,6 +38,10 @@ export interface TaxConfigurationFormData {
   applicable_document_types: string[]
   is_active: boolean
   is_recoverable?: boolean
+  is_stamp_duty?: boolean
+  is_default?: boolean
+  effective_from?: string | null
+  effective_to?: string | null
 }
 
 export interface DocumentType {

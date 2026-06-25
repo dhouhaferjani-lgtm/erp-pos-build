@@ -92,8 +92,8 @@ class UpdateProductRequest extends FormRequest
             'category_id' => ['sometimes', 'nullable', 'integer', ScopedExists::company('categories', $company->id)],
             'is_physical' => ['sometimes', 'boolean'],
             'description' => ['sometimes', 'nullable', 'string', 'max:5000'],
-            'sale_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'purchase_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'sale_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'purchase_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'tax_rate' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             // api.unmapped.011 (api.catalog): tax_configurations is a
             // country-scoped global reference table (no tenant_id /
@@ -193,8 +193,8 @@ class UpdateProductRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'sale_price.regex' => 'Sale price must have at most 2 decimal places.',
-            'purchase_price.regex' => 'Purchase price must have at most 2 decimal places.',
+            'sale_price.regex' => 'Sale price must have at most 3 decimal places.',
+            'purchase_price.regex' => 'Purchase price must have at most 3 decimal places.',
             'tax_rate.regex' => 'Tax rate must have at most 2 decimal places.',
         ];
     }

@@ -10,6 +10,7 @@ use App\Modules\Catalog\Presentation\Controllers\ModifierGroupController;
 use App\Modules\Catalog\Presentation\Controllers\ProductVariantController;
 use App\Modules\Catalog\Presentation\Controllers\RecipeController;
 use App\Modules\Catalog\Presentation\Controllers\RecipeLineController;
+use App\Modules\Catalog\Presentation\Controllers\VariantLabelController;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Support\Facades\Route;
@@ -98,4 +99,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // CompositeItemVariantController `variants/{id}` routes in the CompositeItems group.
     Route::patch('product-variants/{id}', [ProductVariantController::class, 'update'])->middleware('can:catalog.variants.update');
     Route::delete('product-variants/{id}', [ProductVariantController::class, 'destroy'])->middleware('can:catalog.variants.delete');
+
+    // Variant label printing — sheet format registry + prepare a print batch
+    // (assign sku-as-barcode where missing).
+    Route::get('labels/formats', [VariantLabelController::class, 'formats'])->middleware('can:catalog.labels.print');
+    Route::post('labels/variants/prepare', [VariantLabelController::class, 'prepare'])->middleware('can:catalog.labels.print');
+    Route::post('labels/variants/pdf', [VariantLabelController::class, 'pdf'])->middleware('can:catalog.labels.print');
 });

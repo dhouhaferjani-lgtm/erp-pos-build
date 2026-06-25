@@ -239,5 +239,26 @@
       "date": "Date",
       "image": "Image"
     }
+  },
+  "labels": {
+    "title": "Imprimer les étiquettes de variantes",
+    "titleFor": "Imprimer les étiquettes — {{name}}",
+    "printLabels": "Imprimer les étiquettes",
+    "format": "Format d'étiquette",
+    "quantity": "Quantité par variante",
+    "quantityFor": "Quantité pour {{name}}",
+    "startCell": "Cellule de départ (facultatif)",
+    "readyCount": "{{count}} étiquette(s) prête(s) à imprimer",
+    "skipped": "{{count}} variante(s) ignorée(s)",
+    "skippedReason": {
+      "not_found": "Variante introuvable",
+      "barcode_conflict": "Le code-barres est en conflit avec un autre article",
+      "product_unavailable": "Le produit est indisponible",
+      "error": "Impossible de préparer l'étiquette"
+    },
+    "nothingPrintable": "Rien à imprimer — aucune variante n'a de code-barres utilisable.",
+    "download": "Télécharger le PDF",
+    "generating": "Génération…",
+    "cancel": "Annuler"
   }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Tenant\Application\Services;
 
 use App\Enums\Vertical;
+use App\Models\CountryTaxRate;
 use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
 use App\Modules\Billing\Domain\Plan;
 use App\Modules\Billing\Domain\TenantSubscription;
@@ -238,13 +239,21 @@ class TenantInitializationService
      */
     private function setDefaultTaxRate(Company $company): void
     {
-        $defaultTaxRate = match (strtoupper($company->country_code)) {
-            'TN' => '19.00',  // Tunisia TVA 19%
-            'FR' => '20.00',  // France TVA 20%
-            default => '0.00',
-        };
+        // Read the country's standard rate from the seeded country_tax_rates
+        // reference data (seeded in step 2.5, before this runs) rather than
+        // hardcoding per-country literals. For TN/FR seedTaxConfigurations()
+        // subsequently overwrites this with the same value from the is_default
+        // tax_configurations row and additionally sets the FK; for other seeded
+        // countries (e.g. DE/IT) this is the authoritative default; unknown
+        // countries fall back to 0.00.
+        $defaultTaxRate = CountryTaxRate::query()
+            ->where('country_code', strtoupper($company->country_code))
+            ->where('is_default', true)
+            ->value('rate');
 
-        $company->update(['default_tax_rate' => $defaultTaxRate]);
+        $company->update([
+            'default_tax_rate' => $defaultTaxRate !== null ? (string) $defaultTaxRate : '0.00',
+        ]);
     }
 
     /**

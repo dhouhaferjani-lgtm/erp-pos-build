@@ -11,11 +11,13 @@
             @if($company->address_city || $company->address_postal_code)
                 {{ $company->address_postal_code }} {{ $company->address_city }}<br>
             @endif
-            @if($company->tax_id)
-                {{ __('Tax ID') }}: {{ $company->tax_id }}<br>
+            @php($sellerTaxIdDisplay = ($sellerTaxId ?? null) ?? $company->tax_id)
+            @php($sellerVatDisplay = ($sellerVat ?? null) ?? $company->vat_number)
+            @if($sellerTaxIdDisplay)
+                {{ ($sellerTaxLabel ?? null) ?? __('Tax ID') }}: {{ $sellerTaxIdDisplay }}<br>
             @endif
-            @if($company->vat_number)
-                {{ __('VAT') }}: {{ $company->vat_number }}
+            @if($sellerVatDisplay)
+                {{ __('VAT') }}: {{ $sellerVatDisplay }}
             @endif
         </div>
     </div>

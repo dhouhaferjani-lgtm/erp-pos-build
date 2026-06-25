@@ -184,10 +184,31 @@ export function formatCurrency(
   const decimals = scale ?? getDecimals(currency)
   let big: Big
   try {
-    big = typeof amount === 'number' ? new Big(amount) : safeBig(String(amount))
+    big = typeof amount === 'number' ? new Big(amount) : safeBig(amount)
   } catch {
     big = new Big(0)
   }
   const formatted = big.toFixed(decimals)
   return includeCurrency ? `${formatted} ${currency}` : formatted
+}
+
+/**
+ * Format decimal as quantity string
+ *
+ * @param amount Amount (as string or number)
+ * @param scale Decimal places (default: 4)
+ * @returns Formatted quantity string
+ *
+ * @example
+ * formatQuantity('5') // '5.0000'
+ * formatQuantity('5.5', 2) // '5.50'
+ */
+export function formatQuantity(amount: string | number, scale: number = 4): string {
+  let big: Big
+  try {
+    big = typeof amount === 'number' ? new Big(amount) : safeBig(amount)
+  } catch {
+    big = new Big(0)
+  }
+  return big.toFixed(scale)
 }

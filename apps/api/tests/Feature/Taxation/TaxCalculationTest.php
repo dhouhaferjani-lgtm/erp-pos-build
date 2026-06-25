@@ -293,6 +293,148 @@ class TaxCalculationTest extends TestCase
         $this->assertEquals('120.000', $result->total, 'Total should be 120.000');
     }
 
+    public function test_it_excludes_tax_configs_outside_their_effective_window(): void
+    {
+        // An EXPIRED document-level surcharge: effective window ended yesterday.
+        TaxConfiguration::create([
+            'country_code' => 'TN',
+            'tax_type' => 'FIXED_AMOUNT',
+            'name' => 'Expired Stamp Surcharge',
+            'code' => 'STAMP_TN_EXPIRED',
+            'fixed_amount' => '5.000',
+            'applies_to' => 'DOCUMENT_TOTAL',
+            'is_default' => false,
+            'is_active' => true,
+            'sequence_order' => 8,
+            'stacks_on' => 'SUBTOTAL',
+            'applicable_document_types' => ['TAX_INVOICE'],
+            'is_stamp_duty' => true,
+            'is_recoverable' => false,
+            'effective_from' => now()->subYear()->toDateString(),
+            'effective_to' => now()->subDay()->toDateString(),
+        ]);
+
+        // A NOT-YET-EFFECTIVE surcharge: effective window starts tomorrow.
+        TaxConfiguration::create([
+            'country_code' => 'TN',
+            'tax_type' => 'FIXED_AMOUNT',
+            'name' => 'Future Stamp Surcharge',
+            'code' => 'STAMP_TN_FUTURE',
+            'fixed_amount' => '7.000',
+            'applies_to' => 'DOCUMENT_TOTAL',
+            'is_default' => false,
+            'is_active' => true,
+            'sequence_order' => 9,
+            'stacks_on' => 'SUBTOTAL',
+            'applicable_document_types' => ['TAX_INVOICE'],
+            'is_stamp_duty' => true,
+            'is_recoverable' => false,
+            'effective_from' => now()->addDay()->toDateString(),
+            'effective_to' => null,
+        ]);
+
+        $invoice = Document::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->tunisianCompany->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Invoice,
+            'status' => DocumentStatus::Posted,
+            'fiscal_category' => FiscalCategory::TaxInvoice,
+            'document_date' => now(),
+            'document_number' => 'INV-TN-EFFDATE-001',
+            'currency' => 'TND',
+            'subtotal' => '100.00',
+            'tax_amount' => '19.00',
+            'total' => '120.000',
+        ]);
+
+        DocumentLine::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->tunisianCompany->id,
+            'document_id' => $invoice->id,
+            'description' => 'Product D',
+            'quantity' => '1',
+            'unit_price' => '100.00',
+            'tax_rate' => '19.00',
+            'line_total' => '100.00',
+            'line_number' => 1,
+        ]);
+
+        $invoice->refresh();
+
+        app(CompanyContext::class)->setCompanyId($this->tunisianCompany->id);
+        $service = app(TaxCalculationService::class);
+        $result = $service->calculateDocumentTaxes($invoice);
+
+        // Only the seeded, null-dated 1.000 TND invoice stamp applies. Neither the
+        // expired (5.000) nor the future (7.000) surcharge is within the document's
+        // effective window, so the stamp total must stay 1.000.
+        $this->assertEquals('1.000', $result->stampDutyAmount, 'Out-of-window configs must not apply');
+        $this->assertEquals('20.000', $result->totalTaxAmount, 'Total tax should be 19 VAT + 1 stamp only');
+    }
+
+    public function test_it_applies_a_tax_config_whose_effective_window_includes_the_document_date(): void
+    {
+        // A surcharge whose window brackets today must apply.
+        TaxConfiguration::create([
+            'country_code' => 'TN',
+            'tax_type' => 'FIXED_AMOUNT',
+            'name' => 'Current Stamp Surcharge',
+            'code' => 'STAMP_TN_CURRENT',
+            'fixed_amount' => '2.000',
+            'applies_to' => 'DOCUMENT_TOTAL',
+            'is_default' => false,
+            'is_active' => true,
+            'sequence_order' => 7,
+            'stacks_on' => 'SUBTOTAL',
+            'applicable_document_types' => ['TAX_INVOICE'],
+            'is_stamp_duty' => true,
+            'is_recoverable' => false,
+            'effective_from' => now()->subDay()->toDateString(),
+            'effective_to' => now()->addDay()->toDateString(),
+        ]);
+
+        $invoice = Document::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->tunisianCompany->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Invoice,
+            'status' => DocumentStatus::Posted,
+            'fiscal_category' => FiscalCategory::TaxInvoice,
+            'document_date' => now(),
+            'document_number' => 'INV-TN-EFFDATE-002',
+            'currency' => 'TND',
+            'subtotal' => '100.00',
+            'tax_amount' => '19.00',
+            'total' => '122.000',
+        ]);
+
+        DocumentLine::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->tunisianCompany->id,
+            'document_id' => $invoice->id,
+            'description' => 'Product E',
+            'quantity' => '1',
+            'unit_price' => '100.00',
+            'tax_rate' => '19.00',
+            'line_total' => '100.00',
+            'line_number' => 1,
+        ]);
+
+        $invoice->refresh();
+
+        app(CompanyContext::class)->setCompanyId($this->tunisianCompany->id);
+        $service = app(TaxCalculationService::class);
+        $result = $service->calculateDocumentTaxes($invoice);
+
+        // Seeded 1.000 stamp + the in-window 2.000 surcharge = 3.000.
+        $this->assertEquals('3.000', $result->stampDutyAmount, 'In-window config must apply and stack');
+    }
+
     /**
      * NOTE: TaxCalculationService applies document-level taxes
      * (e.g. Tunisia stamp duty) based purely on `fiscal_category` and

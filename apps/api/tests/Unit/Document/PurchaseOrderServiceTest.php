@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Document;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
@@ -33,12 +35,15 @@ class PurchaseOrderServiceTest extends TestCase
 
     private Partner $partner;
 
+    private User $user;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
 
         // Bind CompanyContext so CurrencyScaleResolver has context
         $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
@@ -53,10 +58,10 @@ class PurchaseOrderServiceTest extends TestCase
         ]);
 
         // Authenticate a user for confirmed_by tracking
-        $user = User::factory()->create([
+        $this->user = User::factory()->create([
             'tenant_id' => $this->tenant->id,
         ]);
-        $this->actingAs($user);
+        $this->actingAs($this->user);
     }
 
     public function test_confirms_purchase_order(): void
@@ -106,6 +111,24 @@ class PurchaseOrderServiceTest extends TestCase
         });
     }
 
+    public function test_confirmation_does_not_post_supplier_invoice_gl(): void
+    {
+        $purchaseOrder = $this->createDraftPurchaseOrder([
+            'subtotal' => '1000.00',
+            'currency' => 'EUR',
+        ]);
+
+        $confirmedPO = $this->service->confirm($purchaseOrder);
+
+        $this->assertSame(0, JournalEntry::query()
+            ->where('source_type', 'supplier_invoice')
+            ->where('source_id', $confirmedPO->id)
+            ->count());
+
+        $this->partner->refresh();
+        $this->assertEquals('0.000', $this->partner->payable_balance);
+    }
+
     public function test_throws_exception_if_not_draft(): void
     {
         // Arrange
@@ -141,7 +164,10 @@ class PurchaseOrderServiceTest extends TestCase
         $this->service->confirm($salesOrder);
     }
 
-    private function createDraftPurchaseOrder(): Document
+    /**
+     * @param  array<string, string>  $overrides
+     */
+    private function createDraftPurchaseOrder(array $overrides = [], string $lineTaxRate = '0.00'): Document
     {
         $po = Document::create([
             'tenant_id' => $this->tenant->id,
@@ -155,6 +181,7 @@ class PurchaseOrderServiceTest extends TestCase
             'subtotal' => '1000.00',
             'tax_amount' => '0.00',
             'total' => '1000.00',
+            ...$overrides,
         ]);
 
         // Add lines
@@ -164,7 +191,7 @@ class PurchaseOrderServiceTest extends TestCase
             'description' => 'Product A',
             'quantity' => '10.00',
             'unit_price' => '100.00',
-            'tax_rate' => '0.00',
+            'tax_rate' => $lineTaxRate,
             'line_total' => '1000.00',
         ]);
 

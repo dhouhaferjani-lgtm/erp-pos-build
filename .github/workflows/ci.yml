@@ -537,6 +537,10 @@ jobs:
         #     one-virtual-admin-terminal-per-company invariant is enforced by
         #     the PG unique index. SQLite covers resolver behavior; PG is the
         #     production truth for duplicate rejection.
+        #   - PaymentAllocationPrecisionTest + PartnerMoneyPrecisionTest
+        #     (Feature, remediation R-9): PG-only information_schema and
+        #     pg_constraint checks that pin DECIMAL(15,3) money columns and
+        #     partner cached-liability non-negative constraints.
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
@@ -546,7 +550,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|AccountChargeProjectionTest|TreasuryAccountChargeBridgeTest|DocumentAccountChargeFactureBridgeTest|TaskPhase3AccountChargeFullFlowTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest|DeviceLossIncidentTest|VirtualAdminTerminalResolverTest|WacSerializationConcurrencyTest|ZReportImmutabilityTest|ZReportProjectionTest|GenerateZReportWithCountsTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|AccountChargeProjectionTest|TreasuryAccountChargeBridgeTest|DocumentAccountChargeFactureBridgeTest|TaskPhase3AccountChargeFullFlowTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest|DeviceLossIncidentTest|VirtualAdminTerminalResolverTest|PaymentAllocationPrecisionTest|PartnerMoneyPrecisionTest|WacSerializationConcurrencyTest|ZReportImmutabilityTest|ZReportProjectionTest|GenerateZReportWithCountsTest"
 
   t6-phase0b-pgsql:
     name: T6 Phase 0b — database-per-tenant flip (PHPUnit + PostgreSQL)

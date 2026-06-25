@@ -8,12 +8,14 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Events\RoleAssigned;
 use App\Modules\Identity\Domain\Events\RoleRemoved;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Identity\Presentation\Requests\AssignRoleRequest;
+use App\Modules\Identity\Presentation\Requests\StoreRoleRequest;
+use App\Modules\Identity\Presentation\Requests\UpdateRoleRequest;
 use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
@@ -111,17 +113,13 @@ class RoleController extends Controller
      * Create a new role.
      */
     #[CrossTenantRoute(reason: 'Spatie TeamScope auto-scoping: Role::create() inserts the new role with team_id auto-stamped by Spatie\'s permission registrar (SetPermissionsTeam middleware sets the active team_id). $role->syncPermissions(...) operates on the just-created role, which is also team-scoped.')]
-    public function store(Request $request): JsonResponse
+    public function store(StoreRoleRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255', 'unique:roles,name'],
-            'permissions' => ['array'],
-            'permissions.*' => ['string', 'exists:permissions,name'],
-        ]);
+        $validated = $request->validated();
 
         $role = Role::create([
             'name' => $validated['name'],
-            'guard_name' => 'web',
+            'guard_name' => 'sanctum',
         ]);
 
         if (! empty($validated['permissions'])) {
@@ -151,7 +149,7 @@ class RoleController extends Controller
      * Update a role.
      */
     #[CrossTenantRoute(reason: 'Spatie TeamScope auto-scoping: Role::findOrFail($id) is filtered by team_id (Spatie global scope set by SetPermissionsTeam middleware); a role from a different team would 404 here. System-role guard (super-admin/admin/owner) prevents renaming protected role names.')]
-    public function update(Request $request, int $id): JsonResponse
+    public function update(UpdateRoleRequest $request, int $id): JsonResponse
     {
         $role = Role::findOrFail($id);
 
@@ -166,11 +164,7 @@ class RoleController extends Controller
             ], 422);
         }
 
-        $validated = $request->validate([
-            'name' => ['sometimes', 'string', 'max:255', Rule::unique('roles', 'name')->ignore($role->id)],
-            'permissions' => ['sometimes', 'array'],
-            'permissions.*' => ['string', 'exists:permissions,name'],
-        ]);
+        $validated = $request->validated();
 
         if (isset($validated['name'])) {
             $role->name = $validated['name'];
@@ -270,11 +264,9 @@ class RoleController extends Controller
     /**
      * Assign a role to a user.
      */
-    public function assignRole(Request $request, string $userId): JsonResponse
+    public function assignRole(AssignRoleRequest $request, string $userId): JsonResponse
     {
-        $validated = $request->validate([
-            'role' => ['required', 'string', 'exists:roles,name'],
-        ]);
+        $validated = $request->validated();
 
         $user = $this->resolveTenantUser($userId);
 
@@ -312,11 +304,9 @@ class RoleController extends Controller
     /**
      * Remove a role from a user.
      */
-    public function removeRole(Request $request, string $userId): JsonResponse
+    public function removeRole(AssignRoleRequest $request, string $userId): JsonResponse
     {
-        $validated = $request->validate([
-            'role' => ['required', 'string', 'exists:roles,name'],
-        ]);
+        $validated = $request->validated();
 
         $user = $this->resolveTenantUser($userId);
 

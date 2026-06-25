@@ -90,8 +90,8 @@ class CreateProductRequest extends FormRequest
             'type' => ['nullable', new Enum(ProductType::class)],
             'is_physical' => ['sometimes', 'boolean'],
             'description' => ['nullable', 'string', 'max:5000'],
-            'sale_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'purchase_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'sale_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'purchase_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             // api.unmapped.012 (api.catalog): tax_configurations is a
             // country-scoped global reference table (no tenant_id /
@@ -193,8 +193,8 @@ class CreateProductRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'sale_price.regex' => 'Sale price must have at most 2 decimal places.',
-            'purchase_price.regex' => 'Purchase price must have at most 2 decimal places.',
+            'sale_price.regex' => 'Sale price must have at most 3 decimal places.',
+            'purchase_price.regex' => 'Purchase price must have at most 3 decimal places.',
             'tax_rate.regex' => 'Tax rate must have at most 2 decimal places.',
         ];
     }

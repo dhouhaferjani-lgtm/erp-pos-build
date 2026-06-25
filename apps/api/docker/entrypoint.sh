@@ -149,6 +149,21 @@ else
         echo "  AUTO_SEED not enabled, skipping database seeding"
         echo "  To enable automatic seeding on first deploy, set AUTO_SEED=true"
     fi
+
+    # Tunisia parapharmacy DEMO tenant (DemoPharmacySeeder). Independent of
+    # AUTO_SEED. The seeder is additive/idempotent — it provisions the
+    # demo-pharmacy-tn tenant on first run and is a safe no-op afterwards, so
+    # it can run on every deploy. Uses the DIRECT db host because provisioning
+    # the per-tenant database is DDL (must not go through PgBouncer).
+    if [ "$SEED_DEMO_PHARMACY" = "true" ]; then
+        echo ""
+        echo "Seeding Tunisia parapharmacy demo (DemoPharmacySeeder, idempotent)..."
+        if DB_HOST="$DIRECT_DB_HOST" php artisan db:seed --class=DemoPharmacySeeder --force; then
+            echo "  Demo seed: [completed]"
+        else
+            echo "  Demo seed: [failed - check logs]"
+        fi
+    fi
 fi
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Document\Application\Services;
 
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Treasury\Domain\Payment;
@@ -45,7 +46,7 @@ class AgedReceivablesService
         // Get all posted invoices with outstanding balance
         $query = Document::where('company_id', $companyId)
             ->where('type', DocumentType::Invoice)
-            ->where('status', 'posted')
+            ->where('status', DocumentStatus::Posted)
             ->whereRaw('balance_due > 0')
             ->with(['partner']);
 
@@ -194,7 +195,7 @@ class AgedReceivablesService
         $openingBalance = (string) (Document::where('company_id', $companyId)
             ->where('partner_id', $partnerId)
             ->where('type', DocumentType::Invoice)
-            ->where('status', 'posted')
+            ->where('status', DocumentStatus::Posted)
             ->where('document_date', '<', $fromDate)
             ->sum('balance_due'));
 
@@ -206,7 +207,7 @@ class AgedReceivablesService
         $invoices = Document::where('company_id', $companyId)
             ->where('partner_id', $partnerId)
             ->where('type', DocumentType::Invoice)
-            ->where('status', 'posted')
+            ->where('status', DocumentStatus::Posted)
             ->whereBetween('document_date', [$fromDate, $toDate])
             ->orderBy('document_date')
             ->orderBy('document_number')
@@ -258,7 +259,7 @@ class AgedReceivablesService
         $creditNotes = Document::where('company_id', $companyId)
             ->where('partner_id', $partnerId)
             ->where('type', DocumentType::CreditNote)
-            ->where('status', 'posted')
+            ->where('status', DocumentStatus::Posted)
             ->whereBetween('document_date', [$fromDate, $toDate])
             ->orderBy('document_date')
             ->get();
@@ -285,9 +286,11 @@ class AgedReceivablesService
         // Recalculate balances with correct order
         $runningBalance = $openingBalance;
         foreach ($transactions as &$transaction) {
-            $debit = (float) $transaction['debit'];
-            $credit = (float) $transaction['credit'];
-            $runningBalance = bcadd(bcsub((string) $runningBalance, (string) $credit, $scale), (string) $debit, $scale);
+            /** @var numeric-string $debit */
+            $debit = $transaction['debit'];
+            /** @var numeric-string $credit */
+            $credit = $transaction['credit'];
+            $runningBalance = bcadd(bcsub($runningBalance, $credit, $scale), $debit, $scale);
             $transaction['balance'] = CurrencyScale::bcformat($runningBalance, $scale);
         }
 
@@ -322,7 +325,7 @@ class AgedReceivablesService
 
         $overdueInvoices = Document::where('company_id', $companyId)
             ->where('type', DocumentType::Invoice)
-            ->where('status', 'posted')
+            ->where('status', DocumentStatus::Posted)
             ->whereNotNull('due_date')
             ->where('due_date', '<', $today)
             ->whereRaw('balance_due > 0')

@@ -15,8 +15,9 @@
                 @if($company->address_city || $company->address_postal_code)
                     {{ $company->address_postal_code }} {{ $company->address_city }}<br>
                 @endif
-                @if($company->tax_id)
-                    {{ __('Tax ID') }}: {{ $company->tax_id }}
+                @php($sellerTaxIdDisplay = ($sellerTaxId ?? null) ?? $company->tax_id)
+                @if($sellerTaxIdDisplay)
+                    {{ ($sellerTaxLabel ?? null) ?? __('Tax ID') }}: {{ $sellerTaxIdDisplay }}
                 @endif
             </div>
         </div>

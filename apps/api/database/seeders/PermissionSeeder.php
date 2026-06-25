@@ -115,6 +115,10 @@ class PermissionSeeder extends Seeder
             // Taxation - Withholding Rules (Admin)
             'taxation.withholding_rules.manage',
 
+            // Taxation - Tax Configurations (Admin): create/edit/delete tax
+            // rates, types, stamp duties and their document-type applicability.
+            'taxation.tax_configurations.manage',
+
             // Inventory
             'inventory.view',
             'inventory.adjust',
@@ -210,6 +214,7 @@ class PermissionSeeder extends Seeder
             'ledger.view',
             'reports.view',
             'pricing.view',
+            'taxation.tax_configurations.manage',
         ]);
 
         // 4. Sales Rep

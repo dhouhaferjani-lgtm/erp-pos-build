@@ -11,6 +11,7 @@ import { AddQuickProductModal } from '../../../components/organisms/AddQuickProd
 import { TaxConfigurationSelect } from '../../../components/atoms/TaxConfigurationSelect/TaxConfigurationSelect'
 import { MoneyInput } from '../../../components/atoms/MoneyInput/MoneyInput'
 import { LineItemsTable, QuantityCell, type LineItemsTableColumn } from '../../../components/molecules/line-items/LineItemsTable'
+import { useCompanyConfig } from '../../../contexts/CompanyConfigContext'
 import { DesignationCell } from './DesignationCell'
 import { NotesCell } from './NotesCell'
 import { useLineDesignationFeature } from '../hooks/useLineDesignationFeature'
@@ -100,6 +101,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const { hasModule } = useCompanyConfig()
   const designationFeatureEnabled = useLineDesignationFeature()
   const [searchQuery, setSearchQuery] = useState('')
   const [searchTab, setSearchTab] = useState<SearchTab>('product')
@@ -111,6 +113,8 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
   const companyLocale = currentCompany?.locale.replace('_', '-') ?? 'en-US'
+  const canSearchServices = hasModule('Workshop')
+  const activeSearchTab: SearchTab = canSearchServices ? searchTab : 'product'
 
   // Fetch products for search
   const { data: productsData, isLoading: isLoadingProducts } = useQuery({
@@ -132,7 +136,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
       const response = await api.get<ServicesResponse>(`/services${params}`)
       return response.data
     },
-    enabled: tenantId !== null && companyId !== null && showProductSearch && searchTab === 'service',
+    enabled: tenantId !== null && companyId !== null && showProductSearch && canSearchServices && activeSearchTab === 'service',
     staleTime: 30000,
   })
 
@@ -498,17 +502,19 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                   <button
                     type="button"
                     onClick={() => { setSearchTab('product'); setSearchQuery('') }}
-                    className={`flex-1 px-4 py-2 text-sm font-medium ${searchTab === 'product' ? `border-b-2 ${borderColors.primary} ${textColors.brand}` : `${textColors.disabled} ${textColors.hoverSecondary}`}`}
+                    className={`flex-1 px-4 py-2 text-sm font-medium ${activeSearchTab === 'product' ? `border-b-2 ${borderColors.primary} ${textColors.brand}` : `${textColors.disabled} ${textColors.hoverSecondary}`}`}
                   >
                     {t('sales:lineItems.tabs.product')}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => { setSearchTab('service'); setSearchQuery('') }}
-                    className={`flex-1 px-4 py-2 text-sm font-medium ${searchTab === 'service' ? `border-b-2 ${borderColors.primary} ${textColors.brand}` : `${textColors.disabled} ${textColors.hoverSecondary}`}`}
-                  >
-                    {t('sales:lineItems.tabs.service')}
-                  </button>
+                  {canSearchServices && (
+                    <button
+                      type="button"
+                      onClick={() => { setSearchTab('service'); setSearchQuery('') }}
+                      className={`flex-1 px-4 py-2 text-sm font-medium ${activeSearchTab === 'service' ? `border-b-2 ${borderColors.primary} ${textColors.brand}` : `${textColors.disabled} ${textColors.hoverSecondary}`}`}
+                    >
+                      {t('sales:lineItems.tabs.service')}
+                    </button>
+                  )}
                 </div>
                 <div className="p-3">
                   <div className="relative">
@@ -518,7 +524,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                       onChange={(e) => {
                         setSearchQuery(e.target.value)
                       }}
-                      placeholder={searchTab === 'product' ? t('sales:lineItems.actions.searchProductsPlaceholder') : t('sales:lineItems.actions.searchServicesPlaceholder')}
+                      placeholder={activeSearchTab === 'product' ? t('sales:lineItems.actions.searchProductsPlaceholder') : t('sales:lineItems.actions.searchServicesPlaceholder')}
                       className={`${tokens.input.base} pe-10 ps-3 text-sm`}
                       autoFocus
                     />
@@ -536,7 +542,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                   </div>
                 </div>
                 <div className={`max-h-60 overflow-y-auto border-t ${borderColors.light}`}>
-                  {searchTab === 'product' ? (
+                  {activeSearchTab === 'product' ? (
                     <>
                       {isLoadingProducts ? (
                         <div className={`p-4 text-center text-sm ${textColors.disabled}`}>
@@ -620,7 +626,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                   )}
                 </div>
                 <div className={`space-y-1 border-t ${borderColors.light} p-2`}>
-                  {searchTab === 'product' && (
+                  {activeSearchTab === 'product' && (
                     <button
                       type="button"
                       onClick={() => {

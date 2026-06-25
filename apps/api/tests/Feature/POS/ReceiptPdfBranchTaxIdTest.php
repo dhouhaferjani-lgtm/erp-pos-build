@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Models\Country;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
@@ -40,7 +41,25 @@ class ReceiptPdfBranchTaxIdTest extends TestCase
         $this->assertStringContainsString('COMPANY-TAX', $html);
     }
 
-    private function makeReceipt(?string $branchTaxId): Receipt
+    public function test_receipt_renders_localized_country_tax_id_label(): void
+    {
+        Country::create([
+            'code' => 'TN',
+            'name' => 'Tunisia',
+            'currency_code' => 'TND',
+            'tax_id_label' => 'Matricule Fiscal',
+        ]);
+
+        $receipt = $this->makeReceipt('BRANCH-MF-1234', 'TN');
+
+        $service = $this->app->make(ReceiptPdfService::class);
+        $html = view('pos.receipt', $service->viewDataFor($receipt))->render();
+
+        $this->assertStringContainsString('BRANCH-MF-1234', $html);
+        $this->assertStringContainsString('Matricule Fiscal', $html);
+    }
+
+    private function makeReceipt(?string $branchTaxId, string $countryCode = 'FR'): Receipt
     {
         $this->app->instance(CurrencyScaleResolverInterface::class, new class implements CurrencyScaleResolverInterface
         {
@@ -60,6 +79,7 @@ class ReceiptPdfBranchTaxIdTest extends TestCase
             'tenant_id' => $tenant->id,
             'name' => 'Receipt Company',
             'tax_id' => 'COMPANY-TAX',
+            'country_code' => $countryCode,
             'currency' => 'EUR',
             'locale' => 'fr_FR',
         ]);
@@ -67,6 +87,7 @@ class ReceiptPdfBranchTaxIdTest extends TestCase
             'company_id' => $company->id,
             'name' => 'Branch',
             'tax_id' => $branchTaxId,
+            'address_country' => $countryCode,
         ]);
         $terminal = Terminal::factory()->create([
             'tenant_id' => $tenant->id,

@@ -135,7 +135,7 @@
 - [x] Monthly invoice consolidation for B2B:
   - `partner.invoice_consolidation` boolean
   - `partner.consolidation_frequency` enum: `weekly` | `monthly`
-  - `InvoiceConsolidationService` with `shouldConsolidate()` and `getNextConsolidationDate()`
+  - Consolidation scheduling policy is tracked separately from the current runtime services
 
 #### 2.2 Frontend Customer Forms ✅ DONE
 **Completed** — B2B form sections, contact sub-form, credit limit warning
@@ -509,7 +509,7 @@ Phase 4 (Engagement) ✅ COMPLETE (except 4.4):
 | B2B fields | `app/Modules/Partner/Domain/Enums/PaymentTerms.php` | `src/features/partners/components/B2BFieldsSection.tsx` |
 | Tax validation | `app/Modules/Partner/Domain/Services/TaxIdValidationService.php` | `src/features/partners/hooks/useTaxIdValidation.ts` |
 | Contact persons | `app/Modules/Contact/Domain/PartyContact.php` | `src/features/partners/components/ContactPersonsSubForm.tsx` |
-| Invoice consolidation | `app/Modules/Partner/Application/Services/InvoiceConsolidationService.php` | — |
+| Invoice consolidation | Policy/scheduling backlog | — |
 | POS receipts | `app/Modules/POS/Domain/Receipt.php` | `src/features/pos/api/receiptApi.ts` |
 | Receipt creation | `app/Modules/POS/Application/Services/ReceiptCreationService.php` | `src/features/pos/pages/POSPage/` |
 | Orders | `app/Modules/POS/Domain/Order.php` | `src/features/pos/api/orderApi.ts` |

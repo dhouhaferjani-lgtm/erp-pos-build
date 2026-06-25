@@ -6,7 +6,9 @@ namespace Tests\Feature\BatchExpiry;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
@@ -120,16 +122,13 @@ final class BatchWriteOffScalingTest extends TestCase
             'cost_price' => '1.234',
         ]);
 
-        // Seed aggregate stock level so StockAdjustmentService::issue can deduct.
-        // We seed 500 units: StockAdjustmentService::issue (batchId path) deducts
-        // 100.5000 from batch stock internally, then BatchWriteOffService also calls
-        // issueBatchStock for a second 100.5000 deduction → need at least 201.0000.
+        // Seed aggregate stock so the write-off of 100.5000 can deduct (single decrement).
         StockLevel::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'product_id' => $this->product->id,
             'location_id' => $this->warehouse->id,
-            'quantity' => '500.0000',
+            'quantity' => '100.5000',
             'reserved' => '0.0000',
         ]);
 
@@ -145,12 +144,12 @@ final class BatchWriteOffScalingTest extends TestCase
             'is_recalled' => false,
         ]);
 
-        // Seed batch stock at the warehouse (same reasoning: need >= 201.0000)
+        // Seed batch stock at the warehouse (single decrement of 100.5000).
         BatchStock::create([
             'tenant_id' => $this->tenant->id,
             'batch_id' => $this->batch->id,
             'location_id' => $this->warehouse->id,
-            'quantity' => '500.0000',
+            'quantity' => '100.5000',
             'reserved_quantity' => '0.0000',
         ]);
 
@@ -222,5 +221,14 @@ final class BatchWriteOffScalingTest extends TestCase
             .'Found: ['.implode(', ', $debitAmounts).']. '
             .'If "124.01" is present, BatchWriteOffService still uses hardcoded bcmul scale 2.'
         );
+
+        $entry = JournalEntry::query()
+            ->where('source_type', 'batch_write_off')
+            ->firstOrFail();
+
+        $this->assertSame(JournalEntryStatus::Posted, $entry->status);
+        $this->assertSame($this->user->id, $entry->posted_by);
+        $this->assertNotNull($entry->posted_at);
+        $this->assertNotNull($entry->fiscal_hash);
     }
 }

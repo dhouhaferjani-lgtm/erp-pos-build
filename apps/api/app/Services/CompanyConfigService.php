@@ -62,8 +62,13 @@ class CompanyConfigService
             // Decode enabled extras from JSON
             $enabledExtras = $this->decodeExtras($tenant->enabled_extras);
 
-            // Merge default modules with enabled extras
-            $allEnabledModules = array_unique(array_merge($defaultModules, $enabledExtras));
+            // Merge default modules with enabled extras. array_values() re-indexes
+            // after array_unique() (which preserves keys) so the result is a
+            // sequential list — otherwise an overlap (e.g. parapharmacy's
+            // BatchExpiry is both a default module and an enabled extra) leaves a
+            // key gap that json_encode renders as an object, breaking the
+            // frontend's `all_enabled_modules.includes(...)`.
+            $allEnabledModules = array_values(array_unique(array_merge($defaultModules, $enabledExtras)));
 
             return CompanyConfig::fromArray([
                 'vertical' => $vertical,

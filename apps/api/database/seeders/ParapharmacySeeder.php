@@ -30,6 +30,7 @@ use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Application\Services\IdentityIndexService;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\Contracts\ChartOfAccountsSeederContract;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Bus;
@@ -94,6 +95,103 @@ class ParapharmacySeeder extends Seeder
      * while the default connection is swapped to the tenant database.
      */
     private ?IdentityIndexService $identityIndexService = null;
+
+    // ==================== Locale hooks ====================
+    // Override these in a subclass to localise the seeder for a different
+    // country without changing any France behaviour.
+
+    /**
+     * ISO 3166-1 alpha-2 country code for the company and tenant.
+     */
+    protected function localeCountryCode(): string
+    {
+        return 'FR';
+    }
+
+    /**
+     * ISO 4217 currency code for the company and tenant.
+     */
+    protected function localeCurrency(): string
+    {
+        return 'EUR';
+    }
+
+    /**
+     * FQCN of the chart-of-accounts seeder to call during financial setup.
+     *
+     * @return class-string<ChartOfAccountsSeederContract>
+     */
+    protected function localeChartOfAccountsSeeder(): string
+    {
+        return FranceChartOfAccountsSeeder::class;
+    }
+
+    /**
+     * Default VAT rate used when seeding product pricing.
+     */
+    protected function localeDefaultVatRate(): float
+    {
+        return 20.00;
+    }
+
+    /**
+     * EAN-13 barcode prefix (GS1 country code, typically 3 digits).
+     */
+    protected function localeBarcodePrefix(): string
+    {
+        return '300';
+    }
+
+    /**
+     * Partner factory state name applied to customers and suppliers.
+     * Must correspond to a named state on the Partner factory (e.g. `france()`).
+     */
+    protected function localePartnerFactoryState(): string
+    {
+        return 'france';
+    }
+
+    /**
+     * Tenant slug used both for existence checks and for tenant creation.
+     */
+    protected function localeTenantSlug(): string
+    {
+        return 'pharmabio-france';
+    }
+
+    /**
+     * Tenant display name stored in the central tenants row.
+     */
+    protected function localeTenantName(): string
+    {
+        return 'PharmaBio France';
+    }
+
+    /**
+     * Tenant tax ID stored in the central tenants row.
+     */
+    protected function localeTenantTaxId(): string
+    {
+        return 'FR12345678901';
+    }
+
+    /**
+     * Tenant timezone stored in the central tenants settings column.
+     */
+    protected function localeTenantTimezone(): string
+    {
+        return 'Europe/Paris';
+    }
+
+    /**
+     * Email domain used for the 3 test user accounts (owner/manager/cashier).
+     */
+    protected function localeUserEmailDomain(): string
+    {
+        return 'pharmabio.fr';
+    }
+
+    // ==================== Scale helpers ====================
 
     /**
      * Resolve the catalog scale at run time. Reads the
@@ -213,7 +311,8 @@ class ParapharmacySeeder extends Seeder
         $this->command->info('🏪 Creating company...');
         [$this->company, $this->location] = $this->createCompanyWithLocation($this->tenant);
         $this->command->info("✓ Company: {$this->company->name}");
-        $this->command->info("✓ Location: {$this->location->name} (POS enabled)");
+        $locationSuffix = $this->location->pos_enabled ? '(POS enabled)' : '(warehouse)';
+        $this->command->info("✓ Location: {$this->location->name} {$locationSuffix}");
 
         // 4. Setup financial foundation
         $this->command->info('💰 Setting up financial foundation...');
@@ -249,10 +348,11 @@ class ParapharmacySeeder extends Seeder
         $this->command->newLine();
         $this->command->info('✅ Parapharmacy company seeded successfully!');
         $this->command->newLine();
+        $d = $this->localeUserEmailDomain();
         $this->command->info('🔑 Test Credentials:');
-        $this->command->info('   Owner:   owner@pharmabio.fr / password');
-        $this->command->info('   Manager: manager@pharmabio.fr / password');
-        $this->command->info('   Cashier: cashier@pharmabio.fr / password');
+        $this->command->info("   Owner:   owner@{$d} / password");
+        $this->command->info("   Manager: manager@{$d} / password");
+        $this->command->info("   Cashier: cashier@{$d} / password");
         $this->command->newLine();
 
         // Revert the default connection back to central (no-op in single-DB).
@@ -265,9 +365,10 @@ class ParapharmacySeeder extends Seeder
     protected function createParapharmacyTenant(): Tenant
     {
         // Check if tenant already exists
-        $existingTenant = Tenant::where('slug', 'pharmabio-france')->first();
+        $slug = $this->localeTenantSlug();
+        $existingTenant = Tenant::where('slug', $slug)->first();
         if ($existingTenant) {
-            $this->command->warn('⚠ Tenant pharmabio-france already exists. Deleting and recreating...');
+            $this->command->warn('⚠ Tenant '.$slug.' already exists. Deleting and recreating...');
 
             // In db-per-tenant mode the central row delete does NOT drop the
             // physical tenant database (no TenantDeleted -> DeleteDatabase event
@@ -293,14 +394,14 @@ class ParapharmacySeeder extends Seeder
         }
 
         $tenant = Tenant::create([
-            'name' => 'PharmaBio France',
-            'slug' => 'pharmabio-france',
+            'name' => $this->localeTenantName(),
+            'slug' => $slug,
             'status' => TenantStatus::Active,
             'plan' => 'professional',
             'vertical' => Vertical::Parapharmacy,
-            'tax_id' => 'FR12345678901',
-            'country_code' => 'FR',
-            'currency_code' => 'EUR',
+            'tax_id' => $this->localeTenantTaxId(),
+            'country_code' => $this->localeCountryCode(),
+            'currency_code' => $this->localeCurrency(),
             // Top-level column — this is what CompanyConfigService reads.
             // (It previously sat inside `settings`, which nothing reads, so
             // the demo tenant silently ran with zero extras.)
@@ -308,7 +409,7 @@ class ParapharmacySeeder extends Seeder
             // gated surfaces (owner decision 2026-06-12).
             'enabled_extras' => ['BatchExpiry', 'Loyalty', 'Ecommerce'],
             'settings' => [
-                'timezone' => 'Europe/Paris',
+                'timezone' => $this->localeTenantTimezone(),
                 'locale' => 'fr',
                 'date_format' => 'd/m/Y',
                 'fiscal_year_start' => '01-01',
@@ -384,10 +485,10 @@ class ParapharmacySeeder extends Seeder
             'tenant_id' => $tenant->id,
             'name' => 'PharmaBio France SAS',
             'legal_name' => 'PharmaBio France SAS',
-            'country_code' => 'FR',
+            'country_code' => $this->localeCountryCode(),
             'tax_id' => 'FR12345678901',
             'vat_number' => 'FR12345678901',
-            'currency' => 'EUR',
+            'currency' => $this->localeCurrency(),
             'locale' => 'fr',
             'timezone' => 'Europe/Paris',
             'date_format' => 'd/m/Y',
@@ -427,10 +528,12 @@ class ParapharmacySeeder extends Seeder
      */
     protected function setupFinancialFoundation(Company $company): void
     {
-        // French chart of accounts
-        $franceSeeder = new FranceChartOfAccountsSeeder;
-        $franceSeeder->setCommand($this->command);
-        $franceSeeder->run($company->id, $company->tenant_id);
+        // Chart of accounts (locale-specific seeder, France default)
+        $coaSeederClass = $this->localeChartOfAccountsSeeder();
+        /** @var ChartOfAccountsSeederContract $coaSeeder */
+        $coaSeeder = new $coaSeederClass;
+        $coaSeeder->setCommand($this->command);
+        $coaSeeder->run($company->id, $company->tenant_id);
         $this->command->info('✓ Chart of Accounts (120 accounts)');
 
         // Payment methods
@@ -540,7 +643,9 @@ class ParapharmacySeeder extends Seeder
         // ordinal so cross-category collisions (supplement #1 vs
         // cosmetic #1) and SCALE > 1 multiplications don't generate
         // duplicate EANs.
-        $barcode = $this->generateBarcode($globalOrdinal);
+        // Routed through productBarcode() hook so locale subclasses can
+        // produce a null subset (e.g. Tunisia demo: 30% no-barcode).
+        $barcode = $this->productBarcode($globalOrdinal);
 
         // Pricing
         [$retailPrice, $cost, $vatRate] = $this->calculatePricing($category);
@@ -782,11 +887,13 @@ class ParapharmacySeeder extends Seeder
      */
     protected function seedPartners(Tenant $tenant, Company $company): void
     {
+        $localeState = $this->localePartnerFactoryState();
+
         // 150 individual customers (B2C)
         Partner::factory()
             ->count(150)
             ->customer()
-            ->france()
+            ->{$localeState}()
             ->create([
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
@@ -798,7 +905,7 @@ class ParapharmacySeeder extends Seeder
         Partner::factory()
             ->count(20)
             ->customer()
-            ->france()
+            ->{$localeState}()
             ->state([
                 'vat_number' => fn () => 'FR'.str_pad((string) rand(10000000000, 99999999999), 11, '0', STR_PAD_LEFT),
                 'notes' => 'Corporate customer (nursing home/clinic)',
@@ -813,7 +920,7 @@ class ParapharmacySeeder extends Seeder
         Partner::factory()
             ->count(10)
             ->supplier()
-            ->france()
+            ->{$localeState}()
             ->create([
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
@@ -872,11 +979,12 @@ class ParapharmacySeeder extends Seeder
         setPermissionsTeamId($tenant->id);
 
         // 1. Owner Account
+        $emailDomain = $this->localeUserEmailDomain();
         $owner = User::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $tenant->id,
             'name' => 'Jean-Baptiste Mercier',
-            'email' => 'owner@pharmabio.fr',
+            'email' => 'owner@'.$emailDomain,
             'password' => Hash::make('password'),
             'status' => 'active',
             'email_verified_at' => now(),
@@ -903,14 +1011,14 @@ class ParapharmacySeeder extends Seeder
 
         $owner->update(['pos_pin' => Hash::make('1234')]);
 
-        $this->command->info('✓ Owner: owner@pharmabio.fr (PIN: 1234)');
+        $this->command->info("✓ Owner: owner@{$emailDomain} (PIN: 1234)");
 
         // 2. Manager Account
         $manager = User::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $tenant->id,
             'name' => 'Sophie Laurent',
-            'email' => 'manager@pharmabio.fr',
+            'email' => 'manager@'.$emailDomain,
             'password' => Hash::make('password'),
             'status' => 'active',
             'email_verified_at' => now(),
@@ -935,14 +1043,14 @@ class ParapharmacySeeder extends Seeder
 
         $manager->update(['pos_pin' => Hash::make('5678')]);
 
-        $this->command->info('✓ Manager: manager@pharmabio.fr (PIN: 5678)');
+        $this->command->info("✓ Manager: manager@{$emailDomain} (PIN: 5678)");
 
         // 3. Cashier Account (POS-only permissions)
         $cashier = User::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $tenant->id,
             'name' => 'Marie Dubois',
-            'email' => 'cashier@pharmabio.fr',
+            'email' => 'cashier@'.$emailDomain,
             'password' => Hash::make('password'),
             'status' => 'active',
             'email_verified_at' => now(),
@@ -967,7 +1075,7 @@ class ParapharmacySeeder extends Seeder
 
         $cashier->update(['pos_pin' => Hash::make('0000')]);
 
-        $this->command->info('✓ Cashier: cashier@pharmabio.fr (PIN: 0000)');
+        $this->command->info("✓ Cashier: cashier@{$emailDomain} (PIN: 0000)");
     }
 
     // ==================== Helper Methods ====================
@@ -1160,12 +1268,28 @@ class ParapharmacySeeder extends Seeder
     }
 
     /**
+     * Return the barcode to assign to a catalog product by its global ordinal,
+     * or null to leave the product without a barcode.
+     *
+     * Default (France) behaviour: always assign a barcode via
+     * {@see generateBarcode()}. Override in a locale subclass to produce a
+     * mixed barcode/null catalog (e.g. Tunisia demo: 30% null).
+     *
+     * The ordinal passed here is the same $globalOrdinal threaded through
+     * {@see seedProducts()} — unique per product, 1-based, deterministic.
+     */
+    protected function productBarcode(int $ordinal): ?string
+    {
+        return $this->generateBarcode($ordinal);
+    }
+
+    /**
      * Generate valid EAN-13 barcode.
      */
-    private function generateBarcode(int $counter): string
+    protected function generateBarcode(int $counter): string
     {
-        // France country code 300 + random 9 digits
-        $base = '300'.str_pad((string) ($counter % 1000000000), 9, '0', STR_PAD_LEFT);
+        // GS1 barcode prefix (3 digits, locale-specific) + 9-digit ordinal
+        $base = $this->localeBarcodePrefix().str_pad((string) ($counter % 1000000000), 9, '0', STR_PAD_LEFT);
 
         // Calculate check digit
         $sum = 0;
@@ -1200,13 +1324,12 @@ class ParapharmacySeeder extends Seeder
         $margin = rand(30, 60) / 100;
         $cost = $retailPrice * (1 - $margin);
 
-        // VAT rate — demo default: 20% standard FR TVA for all parapharmacy
-        // categories. Supplements, baby care, and medical devices are NOT
-        // reimbursed medicines, so the standard rate applies in the demo
-        // context (task T15). Real pharmacies may negotiate reduced rates,
-        // but the demo must show non-zero tax matching the provisioned
-        // default TaxConfiguration (TVA 20%).
-        $vatRate = 20.00;
+        // VAT rate — locale default for all parapharmacy categories. Supplements,
+        // baby care, and medical devices are NOT reimbursed medicines, so the
+        // standard rate applies in the demo context (task T15). Real pharmacies
+        // may negotiate reduced rates, but the demo must show non-zero tax
+        // matching the provisioned default TaxConfiguration.
+        $vatRate = $this->localeDefaultVatRate();
 
         return [$retailPrice, $cost, $vatRate];
     }

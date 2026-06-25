@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Document;
 
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
@@ -14,10 +19,13 @@ use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
+use App\Modules\Identity\Domain\Enums\UserStatus;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Vehicle\Domain\Vehicle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -90,9 +98,132 @@ class DocumentConversionScenarioTest extends TestCase
         // Should allow direct conversion to invoice
         $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
-        $this->assertNotNull($invoice);
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
         $this->assertEquals($order->document_number, $invoice->reference);
+    }
+
+    #[Test]
+    public function it_posts_prepayment_application_when_order_invoice_conversion_has_actor(): void
+    {
+        $service = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => ProductType::Service,
+            'is_physical' => false,
+        ]);
+        $user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Conversion User',
+            'email' => 'conversion@example.com',
+            'password' => bcrypt('password'),
+            'status' => UserStatus::Active,
+        ]);
+        $cashAccount = $this->seedPrepaymentApplicationAccounts();
+        $order = $this->createConfirmedOrder([
+            ['product_id' => $service->id, 'description' => 'Oil Change Service'],
+        ]);
+
+        app(GeneralLedgerService::class)->createCustomerAdvanceJournalEntry(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            advanceId: (string) Str::uuid(),
+            amount: '40.000',
+            paymentMethodAccountId: $cashAccount->id,
+            date: now(),
+            user: $user,
+            description: 'Customer advance payment',
+            currencyCode: $this->company->currency,
+        );
+        PaymentAllocation::create([
+            'payment_id' => null,
+            'document_id' => $order->id,
+            'amount' => '40.000',
+        ]);
+
+        $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice, [
+            'actor_user_id' => $user->id,
+        ]);
+
+        $entry = JournalEntry::query()
+            ->where('source_type', 'prepayment_application')
+            ->where('source_id', $invoice->id)
+            ->firstOrFail();
+
+        $this->assertSame(JournalEntryStatus::Posted, $entry->status);
+        $this->assertSame($user->id, $entry->posted_by);
+        $this->assertNotNull($entry->posted_at);
+        $this->assertNotNull($entry->fiscal_hash);
+    }
+
+    #[Test]
+    public function it_converts_order_when_transferred_prepayment_is_already_cleared(): void
+    {
+        $service = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => ProductType::Service,
+            'is_physical' => false,
+        ]);
+        $user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Stale Advance Conversion User',
+            'email' => 'stale-advance-conversion@example.com',
+            'password' => bcrypt('password'),
+            'status' => UserStatus::Active,
+        ]);
+        $cashAccount = $this->seedPrepaymentApplicationAccounts();
+        $order = $this->createConfirmedOrder([
+            ['product_id' => $service->id, 'description' => 'Oil Change Service'],
+        ]);
+
+        $glService = app(GeneralLedgerService::class);
+        $glService->createCustomerAdvanceJournalEntry(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            advanceId: (string) Str::uuid(),
+            amount: '40.000',
+            paymentMethodAccountId: $cashAccount->id,
+            date: now(),
+            user: $user,
+            description: 'Customer advance payment',
+            currencyCode: $this->company->currency,
+        );
+        $glService->clearCustomerAdvanceToReceivable(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            invoiceId: (string) Str::uuid(),
+            amount: '40.000',
+            date: now(),
+            description: 'Advance already cleared',
+            postedByUserId: $user->id,
+            currencyCode: $this->company->currency,
+        );
+        PaymentAllocation::create([
+            'payment_id' => null,
+            'document_id' => $order->id,
+            'amount' => '40.000',
+        ]);
+
+        $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice, [
+            'actor_user_id' => $user->id,
+        ]);
+
+        $invoice->refresh();
+        $allocation = PaymentAllocation::query()->firstOrFail();
+
+        $this->assertSame($invoice->id, $allocation->document_id);
+        $this->assertSame('79.000', $invoice->balance_due);
+        $this->assertTrue($invoice->payload['prepayments_transferred']['gl_entry_skipped'] ?? false);
+        $this->assertStringContainsString(
+            'Cannot clear customer advance beyond available balance',
+            $invoice->payload['prepayments_transferred']['gl_skip_reason'] ?? ''
+        );
+        $this->assertFalse(
+            JournalEntry::query()
+                ->where('source_type', 'prepayment_application')
+                ->where('source_id', $invoice->id)
+                ->exists()
+        );
     }
 
     #[Test]
@@ -114,7 +245,6 @@ class DocumentConversionScenarioTest extends TestCase
         // Should auto-create a delivery note and proceed with invoicing
         $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
-        $this->assertNotNull($invoice);
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
     }
 
@@ -145,7 +275,6 @@ class DocumentConversionScenarioTest extends TestCase
         // Should auto-create a delivery note for physical items and proceed
         $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
-        $this->assertNotNull($invoice);
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
     }
 
@@ -167,7 +296,6 @@ class DocumentConversionScenarioTest extends TestCase
 
         // Create delivery note first
         $delivery = $this->converterRegistry->convert($order, DocumentType::DeliveryNote);
-        $this->assertNotNull($delivery);
 
         // Refresh order to get updated payload
         $order->refresh();
@@ -175,7 +303,6 @@ class DocumentConversionScenarioTest extends TestCase
         // Now invoicing should be allowed
         $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
-        $this->assertNotNull($invoice);
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
     }
 
@@ -196,8 +323,7 @@ class DocumentConversionScenarioTest extends TestCase
         ]);
 
         // First conversion should succeed
-        $invoice1 = $this->converterRegistry->convert($order, DocumentType::Invoice);
-        $this->assertNotNull($invoice1);
+        $this->converterRegistry->convert($order, DocumentType::Invoice);
 
         // Refresh order to get updated payload
         $order->refresh();
@@ -220,7 +346,6 @@ class DocumentConversionScenarioTest extends TestCase
         // Manual lines without product_id should be treated as services
         $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
-        $this->assertNotNull($invoice);
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
     }
 
@@ -242,7 +367,6 @@ class DocumentConversionScenarioTest extends TestCase
 
         // Create delivery note first (required for physical products)
         $delivery = $this->converterRegistry->convert($order, DocumentType::DeliveryNote);
-        $this->assertNotNull($delivery);
 
         // Verify DN is not yet marked as invoiced
         $delivery->refresh();
@@ -251,7 +375,6 @@ class DocumentConversionScenarioTest extends TestCase
         // Refresh order and convert to invoice
         $order->refresh();
         $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
-        $this->assertNotNull($invoice);
 
         // Verify DN is now marked as invoiced
         $delivery->refresh();
@@ -443,6 +566,40 @@ class DocumentConversionScenarioTest extends TestCase
         $this->assertEquals($vehicle->id, $order->vehicle_id);
         $this->assertNotNull($invoice->vehicle_id);
         $this->assertEquals($vehicle->id, $invoice->vehicle_id);
+    }
+
+    private function seedPrepaymentApplicationAccounts(): Account
+    {
+        $cashAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '512',
+            'name' => 'Bank',
+            'type' => 'asset',
+            'is_active' => true,
+        ]);
+
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '411',
+            'name' => 'Customer Receivable',
+            'type' => 'asset',
+            'system_purpose' => SystemAccountPurpose::CustomerReceivable,
+            'is_active' => true,
+        ]);
+
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '4191',
+            'name' => 'Customer Advances',
+            'type' => 'liability',
+            'system_purpose' => SystemAccountPurpose::CustomerAdvance,
+            'is_active' => true,
+        ]);
+
+        return $cashAccount;
     }
 
     /**

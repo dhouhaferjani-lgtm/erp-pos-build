@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Treasury;
 
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -122,6 +126,31 @@ class VendorPrepaymentRefundTest extends TestCase
         $this->refundService = app(VendorRefundService::class);
     }
 
+    private function seedSupplierAdvanceRefundAccounts(): void
+    {
+        $cashAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '512',
+            'name' => 'Bank',
+            'type' => 'asset',
+            'is_active' => true,
+        ]);
+
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '4091',
+            'name' => 'Supplier Advances',
+            'type' => 'asset',
+            'system_purpose' => SystemAccountPurpose::SupplierAdvance,
+            'is_active' => true,
+        ]);
+
+        $this->cashRegister->account_id = $cashAccount->id;
+        $this->cashRegister->save();
+    }
+
     public function test_full_refund_restores_balance_due(): void
     {
         $po = $this->createPurchaseOrder('1000.00');
@@ -163,6 +192,33 @@ class VendorPrepaymentRefundTest extends TestCase
         $po->refresh();
         $this->assertEquals('400.000', $po->balance_due);
         $this->assertEquals(DocumentStatus::Confirmed, $po->status);
+    }
+
+    public function test_refund_prepayment_posts_supplier_advance_reversal_entry(): void
+    {
+        $this->seedSupplierAdvanceRefundAccounts();
+        $po = $this->createPurchaseOrder('1000.00');
+        $this->allocatePaymentToPO($po, '1000.00');
+
+        $refund = $this->refundService->refundPrepayment(
+            po: $po,
+            amount: '400.00',
+            paymentMethodId: $this->cashMethod->id,
+            repositoryId: $this->cashRegister->id,
+            reason: 'Partial cancellation',
+            userId: $this->user->id,
+        );
+
+        $entry = JournalEntry::query()
+            ->where('source_type', 'supplier_advance_refund')
+            ->where('source_id', $refund->id)
+            ->firstOrFail();
+
+        $this->assertSame($entry->id, $refund->journal_entry_id);
+        $this->assertSame(JournalEntryStatus::Posted, $entry->status);
+        $this->assertSame($this->user->id, $entry->posted_by);
+        $this->assertNotNull($entry->posted_at);
+        $this->assertNotNull($entry->fiscal_hash);
     }
 
     public function test_over_refund_is_rejected(): void
@@ -229,7 +285,7 @@ class VendorPrepaymentRefundTest extends TestCase
 
         $allocation = PaymentAllocation::where('payment_id', $refund->id)->first();
         $this->assertNotNull($allocation);
-        $this->assertEquals('-1000.0000', $allocation->amount);
+        $this->assertEquals('-1000.000', $allocation->amount);
         $this->assertEquals($po->id, $allocation->document_id);
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Domain\Services;
 
+use App\Modules\Accounting\Application\Services\GeneralLedgerHashService;
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\DTOs\CreatePOSChargeJournalEntryCommand;
@@ -41,11 +42,74 @@ final class GeneralLedgerService
     public function __construct(
         private readonly PartnerBalanceService $partnerBalanceService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly GeneralLedgerHashService $hashService,
     ) {}
 
     private function scale(): int
     {
         return $this->scaleResolver->getScale();
+    }
+
+    private function currencyCodeForCompany(string $companyId): string
+    {
+        $currency = Company::query()->whereKey($companyId)->value('currency');
+        if (! is_string($currency) || $currency === '') {
+            throw new \RuntimeException("Cannot resolve currency for company {$companyId}.");
+        }
+
+        return $currency;
+    }
+
+    private function postEntryAndDispatchPostedEvent(
+        JournalEntry $entry,
+        User $user,
+        string $companyId,
+        ?string $currencyCode,
+    ): void {
+        $this->postEntry($entry, $user, $currencyCode ?? $this->currencyCodeForCompany($companyId));
+        $entry->refresh()->load('lines');
+    }
+
+    private function postSystemGeneratedEntryAndDispatchPostedEvent(
+        JournalEntry $entry,
+        string $companyId,
+        ?string $currencyCode,
+    ): void {
+        $this->postEntryWithOptionalActor($entry, null, $currencyCode ?? $this->currencyCodeForCompany($companyId));
+        $entry->refresh()->load('lines');
+    }
+
+    private function postEntryAndDispatchPostedEventAfterCommit(
+        JournalEntry $entry,
+        User $user,
+        string $companyId,
+        ?string $currencyCode,
+    ): void {
+        if (DB::transactionLevel() > 0) {
+            DB::afterCommit(function () use ($entry, $user, $companyId, $currencyCode): void {
+                $this->postEntryAndDispatchPostedEvent($entry, $user, $companyId, $currencyCode);
+            });
+
+            return;
+        }
+
+        $this->postEntryAndDispatchPostedEvent($entry, $user, $companyId, $currencyCode);
+    }
+
+    private function postSystemGeneratedEntryAndDispatchPostedEventAfterCommit(
+        JournalEntry $entry,
+        string $companyId,
+        ?string $currencyCode,
+    ): void {
+        if (DB::transactionLevel() > 0) {
+            DB::afterCommit(function () use ($entry, $companyId, $currencyCode): void {
+                $this->postSystemGeneratedEntryAndDispatchPostedEvent($entry, $companyId, $currencyCode);
+            });
+
+            return;
+        }
+
+        $this->postSystemGeneratedEntryAndDispatchPostedEvent($entry, $companyId, $currencyCode);
     }
 
     /**
@@ -115,9 +179,6 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
-
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($invoice->company_id, $invoice->partner_id);
 
         return $entry;
     }
@@ -191,9 +252,6 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($creditNote->company_id, $creditNote->partner_id);
-
         return $entry;
     }
 
@@ -249,11 +307,6 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        // Refresh partner cached balance after GL write
-        if ($partnerId !== null) {
-            $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
-        }
-
         return $entry;
     }
 
@@ -272,7 +325,8 @@ final class GeneralLedgerService
         string $paymentMethodAccountId,
         \DateTimeInterface $date,
         User $user,
-        ?string $description = null
+        ?string $description = null,
+        ?string $currencyCode = null
     ): JournalEntry {
         $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerAdvance);
 
@@ -318,8 +372,7 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
+        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
 
         return $entry;
     }
@@ -338,9 +391,16 @@ final class GeneralLedgerService
         string $amount,
         string $paymentMethodAccountId,
         \DateTimeInterface $date,
-        ?string $description = null
+        ?string $description = null,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
     ): JournalEntry {
         $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierAdvance);
+        $user = null;
+        if ($postedByUserId !== null) {
+            /** @var User $user */
+            $user = User::query()->findOrFail($postedByUserId);
+        }
 
         $entry = DB::transaction(function () use (
             $companyId, $partnerId, $refundId, $amount, $paymentMethodAccountId,
@@ -386,8 +446,9 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
+        if ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
 
         return $entry;
     }
@@ -409,7 +470,8 @@ final class GeneralLedgerService
         string $expenseAccountId,
         \DateTimeInterface $date,
         User $user,
-        ?string $description = null
+        ?string $description = null,
+        ?string $currencyCode = null
     ): JournalEntry {
         $payableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierPayable);
         $vatAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::VatDeductible);
@@ -472,8 +534,7 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
+        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
 
         return $entry;
     }
@@ -492,7 +553,8 @@ final class GeneralLedgerService
         string $paymentMethodAccountId,
         \DateTimeInterface $date,
         User $user,
-        ?string $description = null
+        ?string $description = null,
+        ?string $currencyCode = null
     ): JournalEntry {
         $payableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierPayable);
 
@@ -538,8 +600,7 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
+        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
 
         return $entry;
     }
@@ -558,7 +619,9 @@ final class GeneralLedgerService
         string $amount,
         string $paymentMethodAccountId,
         \DateTimeInterface $date,
-        ?string $description = null
+        ?string $description = null,
+        ?User $user = null,
+        ?string $currencyCode = null
     ): JournalEntry {
         $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
 
@@ -607,8 +670,9 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
+        if ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
 
         return $entry;
     }
@@ -631,9 +695,16 @@ final class GeneralLedgerService
         string $amount,
         string $type, // 'underpayment' or 'overpayment'
         \DateTimeInterface $date,
-        ?string $description = null
+        ?string $description = null,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
     ): JournalEntry {
         $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
+        $user = null;
+        if ($postedByUserId !== null) {
+            /** @var User $user */
+            $user = User::query()->findOrFail($postedByUserId);
+        }
 
         $writeoffPurpose = $type === 'underpayment'
             ? SystemAccountPurpose::PaymentToleranceExpense
@@ -709,8 +780,9 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
+        if ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
 
         return $entry;
     }
@@ -723,6 +795,8 @@ final class GeneralLedgerService
      *
      * Debit: Customer Advances (4191) - clear the liability
      * Credit: Accounts Receivable (411) - reduce the receivable (with partner for subledger)
+     *
+     * @param  numeric-string  $amount
      */
     public function clearCustomerAdvanceToReceivable(
         string $companyId,
@@ -730,15 +804,40 @@ final class GeneralLedgerService
         string $invoiceId,
         string $amount,
         \DateTimeInterface $date,
-        ?string $description = null
+        ?string $description = null,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
     ): JournalEntry {
         $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerAdvance);
         $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
+        $user = null;
+        if ($postedByUserId !== null) {
+            /** @var User $user */
+            $user = User::query()->findOrFail($postedByUserId);
+        }
 
         $entry = DB::transaction(function () use (
             $companyId, $partnerId, $invoiceId, $amount,
             $date, $description, $advanceAccount, $receivableAccount
         ): JournalEntry {
+            Partner::query()
+                ->whereKey($partnerId)
+                ->where('company_id', $companyId)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (bccomp($amount, '0', $this->scale()) <= 0) {
+                throw new \InvalidArgumentException('Customer advance clearing amount must be positive.');
+            }
+
+            $availableAdvance = $this->availableCustomerAdvanceMagnitude($companyId, $partnerId, $advanceAccount->id);
+
+            if (bccomp($amount, $availableAdvance, $this->scale()) > 0) {
+                throw new \InvalidArgumentException(
+                    "Cannot clear customer advance beyond available balance ({$availableAdvance})."
+                );
+            }
+
             $entryNumber = $this->generateEntryNumber($companyId);
 
             // Get tenant_id from company
@@ -780,10 +879,45 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        // Refresh partner cached balance after GL write
-        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
+        if ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
 
         return $entry;
+    }
+
+    /**
+     * @return numeric-string
+     */
+    private function availableCustomerAdvanceMagnitude(string $companyId, string $partnerId, string $advanceAccountId): string
+    {
+        $advanceBalance = $this->partnerBalanceService->getCustomerAdvanceBalance($companyId, $partnerId);
+
+        if (bccomp($advanceBalance, '0', $this->scale()) >= 0) {
+            return '0';
+        }
+
+        $postedAdvanceMagnitude = bcsub('0', $advanceBalance, $this->scale());
+
+        /** @var object{debit_total: numeric-string|null}|null $pendingDraftResult */
+        $pendingDraftResult = JournalLine::query()
+            ->join('journal_entries', 'journal_lines.journal_entry_id', '=', 'journal_entries.id')
+            ->where('journal_entries.company_id', $companyId)
+            ->where('journal_entries.status', JournalEntryStatus::Draft)
+            ->where('journal_entries.source_type', 'prepayment_application')
+            ->where('journal_lines.account_id', $advanceAccountId)
+            ->where('journal_lines.partner_id', $partnerId)
+            ->selectRaw('CAST(COALESCE(SUM(journal_lines.debit), 0) AS TEXT) as debit_total')
+            ->first();
+
+        $pendingDraftClearing = $pendingDraftResult->debit_total ?? '0';
+        $availableAfterDrafts = bcsub($postedAdvanceMagnitude, $pendingDraftClearing, $this->scale());
+
+        if (bccomp($availableAfterDrafts, '0', $this->scale()) <= 0) {
+            return '0';
+        }
+
+        return $availableAfterDrafts;
     }
 
     /**
@@ -802,7 +936,8 @@ final class GeneralLedgerService
         string $documentNumber,
         array $lineItems,
         \DateTimeInterface $date,
-        ?string $description = null
+        ?string $description = null,
+        ?string $currencyCode = null,
     ): ?JournalEntry {
         // Calculate total COGS.
         //
@@ -813,7 +948,9 @@ final class GeneralLedgerService
         // TOTAL exactly once, HALF-UP, to the currency scale at this GL posting
         // boundary. The single rounded $totalCOGS is used for BOTH the debit and
         // the credit leg, so the entry balances by construction.
-        $scale = $this->scale();
+        $scale = $currencyCode !== null
+            ? $this->scaleResolver->getScale($currencyCode)
+            : $this->scale();
         $working = $scale + 6; // headroom beyond the 6-dp at-rest cost precision
         $totalCOGSPrecise = '0';
         foreach ($lineItems as $item) {
@@ -836,7 +973,7 @@ final class GeneralLedgerService
         $cogsAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold);
         $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
 
-        return DB::transaction(function () use (
+        $entry = DB::transaction(function () use (
             $companyId, $invoiceId, $documentNumber, $totalCOGS,
             $date, $description, $cogsAccount, $inventoryAccount
         ): JournalEntry {
@@ -880,6 +1017,10 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
+
+        $this->postSystemGeneratedEntryAndDispatchPostedEventAfterCommit($entry, $companyId, $currencyCode);
+
+        return $entry;
     }
 
     /**
@@ -944,7 +1085,9 @@ final class GeneralLedgerService
             ));
         }
 
-        return DB::transaction(function () use ($ledgerRow, $voucher): JournalEntry {
+        $user = User::query()->find($ledgerRow->user_id);
+
+        $entry = DB::transaction(function () use ($ledgerRow, $voucher): JournalEntry {
             $companyId = $voucher->company_id;
             $entryNumber = $this->generateEntryNumber($companyId);
             /** @var numeric-string $rawAmount */
@@ -993,6 +1136,14 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
+
+        if ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $voucher->company_id, (string) $ledgerRow->currency);
+        } else {
+            $this->postSystemGeneratedEntryAndDispatchPostedEventAfterCommit($entry, $voucher->company_id, (string) $ledgerRow->currency);
+        }
+
+        return $entry;
     }
 
     /**
@@ -1099,44 +1250,64 @@ final class GeneralLedgerService
      */
     public function postEntry(JournalEntry $entry, User $user, ?string $currencyCode = null): void
     {
+        $this->postEntryWithOptionalActor($entry, $user, $currencyCode);
+    }
+
+    private function postEntryWithOptionalActor(JournalEntry $entry, ?User $user, ?string $currencyCode = null): void
+    {
         if ($entry->status !== JournalEntryStatus::Draft) {
             throw new \InvalidArgumentException('Only draft entries can be posted');
         }
 
-        $previousHash = $this->getPreviousHash($entry->company_id);
-        $hash = $this->calculateHash($entry, $previousHash);
+        $entry->load('lines');
+        /** @var numeric-string $totalDebit */
+        $totalDebit = '0';
+        /** @var numeric-string $totalCredit */
+        $totalCredit = '0';
+        /** @var numeric-string $eventTotalDebit */
+        $eventTotalDebit = '0';
+        /** @var numeric-string $eventTotalCredit */
+        $eventTotalCredit = '0';
+        $companyCurrencyCode = $this->currencyCodeForCompany($entry->company_id);
+
+        $currencyScale = $this->scaleResolver->getScale($currencyCode ?? $companyCurrencyCode);
+        $balanceScale = max(3, $currencyScale);
+
+        foreach ($entry->lines as $line) {
+            $totalDebit = bcadd($totalDebit, $line->debit, $balanceScale);
+            $totalCredit = bcadd($totalCredit, $line->credit, $balanceScale);
+            $eventTotalDebit = bcadd($eventTotalDebit, $line->debit, $currencyScale);
+            $eventTotalCredit = bcadd($eventTotalCredit, $line->credit, $currencyScale);
+        }
+
+        if (bccomp($totalDebit, $totalCredit, $balanceScale) !== 0) {
+            throw new \InvalidArgumentException(
+                "Cannot post unbalanced journal entry: total debit {$totalDebit} does not equal total credit {$totalCredit}."
+            );
+        }
+
+        $previousHash = JournalEntry::getLastChainHash($entry->company_id);
+        $chainSequence = JournalEntry::getNextChainSequence($entry->company_id);
+        $hash = $this->hashService->calculateHash($entry, $previousHash, $companyCurrencyCode);
 
         $postedAt = now();
 
         $entry->update([
             'status' => JournalEntryStatus::Posted,
+            'chain_sequence' => $chainSequence,
             'fiscal_hash' => $hash,
             'previous_hash' => $previousHash,
             'posted_at' => $postedAt,
-            'posted_by' => $user->id,
+            'posted_by' => $user?->id,
         ]);
-
-        // Calculate total debits and credits from lines for the event
-        $entry->load('lines');
-        $totalDebit = '0';
-        $totalCredit = '0';
-
-        $scale = $currencyCode !== null
-            ? $this->scaleResolver->getScale($currencyCode)
-            : $this->scale();
-
-        foreach ($entry->lines as $line) {
-            $totalDebit = bcadd($totalDebit, $line->debit, $scale);
-            $totalCredit = bcadd($totalCredit, $line->credit, $scale);
-        }
 
         event(new JournalEntryPosted(
             entryId: $entry->id,
             tenantId: $entry->tenant_id,
             companyId: $entry->company_id,
             entryNumber: $entry->entry_number,
-            totalDebit: $totalDebit,
-            totalCredit: $totalCredit,
+            totalDebit: $eventTotalDebit,
+            totalCredit: $eventTotalCredit,
             postedAt: $postedAt->toIso8601String(),
         ));
     }
@@ -1457,6 +1628,8 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
+        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+
         return $entry;
     }
 
@@ -1473,6 +1646,8 @@ final class GeneralLedgerService
         string $amount,
         MovementReason $reason,
         string $movementId,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
     ): ?JournalEntry {
         /** @var numeric-string $amount */
         if (bccomp($amount, '0', $this->scale()) <= 0) {
@@ -1482,7 +1657,12 @@ final class GeneralLedgerService
         $cogsAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold);
         $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
 
-        return DB::transaction(function () use (
+        $user = null;
+        if ($postedByUserId !== null) {
+            $user = User::query()->findOrFail($postedByUserId);
+        }
+
+        $entry = DB::transaction(function () use (
             $companyId, $batchNumber, $amount, $reason, $movementId,
             $cogsAccount, $inventoryAccount
         ): JournalEntry {
@@ -1524,6 +1704,12 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
+
+        if ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
+
+        return $entry;
     }
 
     /**
@@ -1562,33 +1748,5 @@ final class GeneralLedgerService
     private function isPositive(string $amount, int $scale): bool
     {
         return bccomp($amount, '0', $scale) > 0;
-    }
-
-    private function calculateHash(JournalEntry $entry, string $previousHash): string
-    {
-        $data = json_encode([
-            'entry_number' => $entry->entry_number,
-            'entry_date' => $entry->entry_date->toDateString(),
-            'description' => $entry->description,
-            'lines' => $entry->lines->map(fn ($line) => [
-                'account_id' => $line->account_id,
-                'debit' => $line->debit,
-                'credit' => $line->credit,
-            ])->toArray(),
-        ]);
-
-        return hash('sha256', $previousHash.'|'.$data);
-    }
-
-    private function getPreviousHash(string $companyId): string
-    {
-        $lastPosted = JournalEntry::query()
-            ->where('company_id', $companyId)
-            ->where('status', JournalEntryStatus::Posted)
-            ->whereNotNull('fiscal_hash')
-            ->orderByDesc('posted_at')
-            ->first();
-
-        return $lastPosted !== null ? $lastPosted->fiscal_hash ?? '' : '';
     }
 }

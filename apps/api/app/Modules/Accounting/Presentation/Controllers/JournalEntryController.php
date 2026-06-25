@@ -6,12 +6,15 @@ namespace App\Modules\Accounting\Presentation\Controllers;
 
 use App\Modules\Accounting\Application\DTOs\JournalEntryData;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Events\JournalEntryCreated;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\DoubleEntryValidator;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Accounting\Presentation\Requests\CreateJournalEntryRequest;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -21,6 +24,8 @@ class JournalEntryController extends Controller
 {
     public function __construct(
         private readonly DoubleEntryValidator $validator,
+        private readonly GeneralLedgerService $generalLedgerService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly CompanyContext $companyContext,
     ) {}
 
@@ -92,7 +97,9 @@ class JournalEntryController extends Controller
                 'entry_date' => $request->validated()['entry_date'],
                 'description' => $request->validated()['description'] ?? null,
                 'status' => JournalEntryStatus::Draft,
+                'source_type' => 'manual',
             ]);
+            $entry->update(['source_id' => $entry->id]);
 
             foreach ($lines as $index => $lineData) {
                 JournalLine::create([
@@ -107,6 +114,8 @@ class JournalEntryController extends Controller
 
             return $entry->load('lines');
         });
+
+        $this->dispatchJournalEntryCreatedEvent($entry);
 
         return response()->json([
             'data' => JournalEntryData::fromModel($entry)->toArray(),
@@ -151,13 +160,7 @@ class JournalEntryController extends Controller
             ], 422);
         }
 
-        $entry->update([
-            'status' => JournalEntryStatus::Posted,
-            'posted_at' => now(),
-            'posted_by' => $user->id,
-            'fiscal_hash' => $this->calculateHash($entry),
-            'previous_hash' => $this->getPreviousHash($tenantId),
-        ]);
+        $this->generalLedgerService->postEntry($entry, $user, $company->currency);
 
         /** @var JournalEntry $freshEntry */
         $freshEntry = $entry->fresh(['lines']);
@@ -186,33 +189,43 @@ class JournalEntryController extends Controller
         return sprintf('JE-%s-%06d', $year, $nextNumber);
     }
 
-    private function calculateHash(JournalEntry $entry): string
+    private function dispatchJournalEntryCreatedEvent(JournalEntry $entry): void
     {
-        $data = json_encode([
-            'entry_number' => $entry->entry_number,
-            'entry_date' => $entry->entry_date->toDateString(),
-            'description' => $entry->description,
-            'lines' => $entry->lines->map(fn ($line) => [
-                'account_id' => $line->account_id,
-                'debit' => $line->debit,
-                'credit' => $line->credit,
-            ])->toArray(),
-        ]);
+        [$totalDebit, $totalCredit] = $this->journalTotals($entry);
 
-        $previousHash = $this->getPreviousHash($entry->tenant_id);
-
-        return hash('sha256', $previousHash.'|'.$data);
+        event(new JournalEntryCreated(
+            journalEntryId: $entry->id,
+            tenantId: $entry->tenant_id,
+            companyId: $entry->company_id,
+            entryNumber: $entry->entry_number,
+            entryDate: $entry->entry_date->toDateString(),
+            entryType: 'manual',
+            sourceType: $entry->source_type ?? 'manual',
+            sourceId: $entry->source_id ?? $entry->id,
+            totalDebit: $totalDebit,
+            totalCredit: $totalCredit,
+            fiscalHash: $entry->fiscal_hash ?? '',
+            chainSequence: $entry->chain_sequence ?? 0,
+            createdAt: ($entry->created_at ?? now())->toIso8601String(),
+        ));
     }
 
-    private function getPreviousHash(string $tenantId): string
+    /**
+     * @return array{numeric-string, numeric-string}
+     */
+    private function journalTotals(JournalEntry $entry): array
     {
-        $lastPosted = JournalEntry::query()
-            ->where('tenant_id', $tenantId)
-            ->where('status', JournalEntryStatus::Posted)
-            ->whereNotNull('fiscal_hash')
-            ->orderByDesc('posted_at')
-            ->first();
+        /** @var numeric-string $totalDebit */
+        $totalDebit = '0';
+        /** @var numeric-string $totalCredit */
+        $totalCredit = '0';
+        $scale = $this->scaleResolver->getScale();
 
-        return $lastPosted !== null ? $lastPosted->fiscal_hash ?? '' : '';
+        foreach ($entry->lines as $line) {
+            $totalDebit = bcadd($totalDebit, $line->debit, $scale);
+            $totalCredit = bcadd($totalCredit, $line->credit, $scale);
+        }
+
+        return [$totalDebit, $totalCredit];
     }
 }

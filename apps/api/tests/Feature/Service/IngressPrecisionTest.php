@@ -137,19 +137,19 @@ final class IngressPrecisionTest extends TestCase
 
     // ── Partner: CreatePartnerRequest / UpdatePartnerRequest ──────────────────
 
-    public function test_create_partner_rejects_5_decimal_credit_limit(): void
+    public function test_create_partner_rejects_4_decimal_credit_limit(): void
     {
         $rules = $this->partnerRules();
-        $v = Validator::make(['credit_limit' => '10000.12345'], $rules);
+        $v = Validator::make(['credit_limit' => '10000.1234'], $rules);
 
         $this->assertTrue($v->fails());
         $this->assertArrayHasKey('credit_limit', $v->errors()->toArray());
     }
 
-    public function test_create_partner_accepts_4_decimal_credit_limit(): void
+    public function test_create_partner_accepts_3_decimal_credit_limit(): void
     {
         $rules = $this->partnerRules();
-        $v = Validator::make(['credit_limit' => '10000.1234'], $rules);
+        $v = Validator::make(['credit_limit' => '10000.123'], $rules);
 
         $errors = $v->errors()->get('credit_limit');
         $this->assertEmpty($errors);
@@ -173,10 +173,10 @@ final class IngressPrecisionTest extends TestCase
         $this->assertEmpty($errors);
     }
 
-    public function test_update_partner_rejects_5_decimal_credit_limit(): void
+    public function test_update_partner_rejects_4_decimal_credit_limit(): void
     {
         $rules = $this->partnerUpdateRules();
-        $v = Validator::make(['credit_limit' => '5000.12345'], $rules);
+        $v = Validator::make(['credit_limit' => '5000.1234'], $rules);
 
         $this->assertTrue($v->fails());
         $this->assertArrayHasKey('credit_limit', $v->errors()->toArray());

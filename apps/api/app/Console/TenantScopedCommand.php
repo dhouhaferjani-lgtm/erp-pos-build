@@ -121,10 +121,25 @@ abstract class TenantScopedCommand extends Command
     protected function forEachTenant(callable $fn): int
     {
         $aggregate = self::SUCCESS;
+        $dbPerTenant = (bool) config('tenancy_resolver.db_per_tenant', false);
 
         foreach (Tenant::all() as $tenant) {
             /** @var Tenant $tenant */
-            $exit = $fn($tenant);
+            $initialized = false;
+
+            try {
+                if ($dbPerTenant) {
+                    tenancy()->initialize($tenant);
+                    $initialized = true;
+                }
+
+                $exit = $fn($tenant);
+            } finally {
+                if ($initialized && tenancy()->initialized) {
+                    tenancy()->end();
+                }
+            }
+
             if ($exit !== self::SUCCESS && $aggregate === self::SUCCESS) {
                 $aggregate = $exit;
             }

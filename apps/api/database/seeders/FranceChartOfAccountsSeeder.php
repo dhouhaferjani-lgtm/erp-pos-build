@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use Database\Seeders\Contracts\ChartOfAccountsSeederContract;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -17,7 +18,7 @@ use Illuminate\Support\Str;
  *
  * Based on PCG 2014 (Plan Comptable Général) as regulated by ANC (Autorité des Normes Comptables).
  */
-class FranceChartOfAccountsSeeder extends Seeder
+class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeederContract
 {
     /**
      * Run the database seeds.

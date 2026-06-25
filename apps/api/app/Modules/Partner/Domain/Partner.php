@@ -147,15 +147,15 @@ class Partner extends Model
             'payment_terms' => PaymentTerms::class,
             'consolidation_frequency' => ConsolidationFrequency::class,
             'invoice_consolidation' => 'boolean',
-            'credit_limit' => 'decimal:4',
+            'credit_limit' => 'decimal:3',
             'discount_percentage' => 'decimal:2',
             'payment_terms_days' => 'integer',
             'tax_status' => PartnerTaxStatus::class,
             'tax_exemption_valid_until' => 'date',
             'withholding_exempt' => 'boolean',
-            'receivable_balance' => 'decimal:4',
-            'credit_balance' => 'decimal:4',
-            'payable_balance' => 'decimal:4',
+            'receivable_balance' => 'decimal:3',
+            'credit_balance' => 'decimal:3',
+            'payable_balance' => 'decimal:3',
             'balance_updated_at' => 'datetime',
             'is_active' => 'boolean',
             'account_status' => CustomerAccountStatus::class,
@@ -170,6 +170,25 @@ class Partner extends Model
     protected static function newFactory(): PartnerFactory
     {
         return PartnerFactory::new();
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(static function (Partner $partner): void {
+            self::assertNonNegativeCachedLiabilityMagnitude('credit_balance', $partner->credit_balance);
+            self::assertNonNegativeCachedLiabilityMagnitude('payable_balance', $partner->payable_balance);
+        });
+    }
+
+    private static function assertNonNegativeCachedLiabilityMagnitude(string $attribute, ?string $value): void
+    {
+        if ($value === null || $value === '') {
+            return;
+        }
+
+        if (str_starts_with(ltrim($value), '-')) {
+            throw new \InvalidArgumentException("{$attribute} must be a non-negative magnitude.");
+        }
     }
 
     /**
@@ -215,7 +234,7 @@ class Partner extends Model
             return false;
         }
 
-        return bccomp($this->credit_limit, '0', 4) > 0;
+        return bccomp($this->credit_limit, '0', 3) > 0;
     }
 
     public function getDisplayName(): string
@@ -273,13 +292,50 @@ class Partner extends Model
      */
     public function getNetBalanceAttribute(): string
     {
-        if ($this->isCustomer()) {
-            // Customer: receivable minus any credit they have
-            return bcsub($this->receivable_balance ?? '0', $this->credit_balance ?? '0', 4);
+        return self::netBalance(
+            $this->type,
+            $this->receivable_balance,
+            $this->credit_balance,
+            $this->payable_balance
+        );
+    }
+
+    /**
+     * @param  numeric-string|null  $receivableBalance
+     * @param  numeric-string|null  $creditBalance
+     * @param  numeric-string|null  $payableBalance
+     * @return numeric-string
+     */
+    public static function netBalance(
+        PartnerType $type,
+        ?string $receivableBalance,
+        ?string $creditBalance,
+        ?string $payableBalance
+    ): string {
+        $customerPosition = bcsub($receivableBalance ?? '0', $creditBalance ?? '0', 3);
+
+        if ($type === PartnerType::Both) {
+            return bcsub($customerPosition, $payableBalance ?? '0', 3);
         }
 
-        // Supplier: what we owe them
-        return $this->payable_balance ?? '0';
+        if ($type === PartnerType::Customer) {
+            return $customerPosition;
+        }
+
+        return $payableBalance ?? '0';
+    }
+
+    public static function netBalanceSqlExpression(): string
+    {
+        return sprintf(
+            "CASE
+                WHEN type = '%s' THEN payable_balance
+                WHEN type = '%s' THEN receivable_balance - credit_balance - payable_balance
+                ELSE receivable_balance - credit_balance
+            END",
+            PartnerType::Supplier->value,
+            PartnerType::Both->value
+        );
     }
 
     /**

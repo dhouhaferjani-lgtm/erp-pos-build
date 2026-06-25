@@ -317,8 +317,9 @@
 
     <div class="footer">
         <span class="footer-company">{{ $company->legal_name ?? $company->name }}</span>
-        @if($company->tax_id)
-            | {{ __('Tax ID') }}: {{ $company->tax_id }}
+        @php($sellerTaxIdDisplay = ($sellerTaxId ?? null) ?? $company->tax_id)
+        @if($sellerTaxIdDisplay)
+            | {{ ($sellerTaxLabel ?? null) ?? __('Tax ID') }}: {{ $sellerTaxIdDisplay }}
         @endif
         @if($company->registration_number)
             | {{ __('Reg.') }}: {{ $company->registration_number }}

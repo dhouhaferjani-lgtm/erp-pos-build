@@ -66,6 +66,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'catalog.variants.create',
             'catalog.variants.update',
             'catalog.variants.delete',
+            'catalog.labels.print',
 
             // Workshop Service Bundles (automotive menu pricing)
             'workshop-bundles.view',
@@ -446,6 +447,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'modifier-groups.view', 'modifier-groups.manage',
             'catalog.attributes.view', 'catalog.attributes.create', 'catalog.attributes.update', 'catalog.attributes.delete',
             'catalog.variants.view', 'catalog.variants.create', 'catalog.variants.update', 'catalog.variants.delete',
+            'catalog.labels.print',
             'workshop-bundles.view', 'workshop-bundles.manage',
             'menus.view', 'menus.manage',
             'promotions.view', 'promotions.manage',

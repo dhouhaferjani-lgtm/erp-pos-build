@@ -81,9 +81,9 @@ class PartnerBalanceListTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Customer With Balance',
             'type' => PartnerType::Customer,
-            'receivable_balance' => '1500.0000',
-            'credit_balance' => '200.0000',
-            'payable_balance' => '0.0000',
+            'receivable_balance' => '1500.000',
+            'credit_balance' => '200.000',
+            'payable_balance' => '0.000',
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -99,14 +99,16 @@ class PartnerBalanceListTest extends TestCase
                         'receivable_balance',
                         'credit_balance',
                         'payable_balance',
+                        'net_balance',
                     ],
                 ],
                 'meta' => ['current_page', 'last_page', 'per_page', 'total', 'from', 'to'],
                 'aggregates' => ['total_partners', 'total_active', 'total_receivable', 'total_payable'],
             ])
-            ->assertJsonPath('data.0.receivable_balance', '1500.0000')
-            ->assertJsonPath('data.0.credit_balance', '200.0000')
-            ->assertJsonPath('data.0.payable_balance', '0.0000');
+            ->assertJsonPath('data.0.receivable_balance', '1500.000')
+            ->assertJsonPath('data.0.credit_balance', '200.000')
+            ->assertJsonPath('data.0.payable_balance', '0.000')
+            ->assertJsonPath('data.0.net_balance', '1300.000');
     }
 
     public function test_sort_by_receivable_balance(): void
@@ -116,7 +118,7 @@ class PartnerBalanceListTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Low Balance',
             'type' => PartnerType::Customer,
-            'receivable_balance' => '100.0000',
+            'receivable_balance' => '100.000',
         ]);
 
         Partner::create([
@@ -124,7 +126,7 @@ class PartnerBalanceListTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'High Balance',
             'type' => PartnerType::Customer,
-            'receivable_balance' => '5000.0000',
+            'receivable_balance' => '5000.000',
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -143,8 +145,8 @@ class PartnerBalanceListTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Low Net',
             'type' => PartnerType::Customer,
-            'receivable_balance' => '1000.0000',
-            'credit_balance' => '800.0000',
+            'receivable_balance' => '1000.000',
+            'credit_balance' => '800.000',
         ]);
 
         Partner::create([
@@ -152,8 +154,8 @@ class PartnerBalanceListTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'High Net',
             'type' => PartnerType::Customer,
-            'receivable_balance' => '1000.0000',
-            'credit_balance' => '100.0000',
+            'receivable_balance' => '1000.000',
+            'credit_balance' => '100.000',
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -165,6 +167,37 @@ class PartnerBalanceListTest extends TestCase
         $this->assertEquals('Low Net', $data[1]['name']);
     }
 
+    public function test_sort_by_net_balance_offsets_both_partner_payable_balance(): void
+    {
+        Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Both Partner',
+            'type' => PartnerType::Both,
+            'receivable_balance' => '1000.000',
+            'credit_balance' => '100.000',
+            'payable_balance' => '250.000',
+        ]);
+
+        Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Customer Net Partner',
+            'type' => PartnerType::Customer,
+            'receivable_balance' => '800.000',
+            'credit_balance' => '0.000',
+            'payable_balance' => '0.000',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/partners?sort_by=net_balance&sort_dir=desc');
+
+        $response->assertOk();
+        $data = $response->json('data');
+        $this->assertEquals('Customer Net Partner', $data[0]['name']);
+        $this->assertEquals('Both Partner', $data[1]['name']);
+    }
+
     public function test_has_balance_filter_excludes_zero_balance_partners(): void
     {
         Partner::create([
@@ -172,9 +205,9 @@ class PartnerBalanceListTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'With Balance',
             'type' => PartnerType::Customer,
-            'receivable_balance' => '500.0000',
-            'credit_balance' => '0.0000',
-            'payable_balance' => '0.0000',
+            'receivable_balance' => '500.000',
+            'credit_balance' => '0.000',
+            'payable_balance' => '0.000',
         ]);
 
         Partner::create([
@@ -182,9 +215,9 @@ class PartnerBalanceListTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Zero Balance',
             'type' => PartnerType::Customer,
-            'receivable_balance' => '0.0000',
-            'credit_balance' => '0.0000',
-            'payable_balance' => '0.0000',
+            'receivable_balance' => '0.000',
+            'credit_balance' => '0.000',
+            'payable_balance' => '0.000',
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -202,9 +235,9 @@ class PartnerBalanceListTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Supplier With Payable',
             'type' => PartnerType::Supplier,
-            'receivable_balance' => '0.0000',
-            'credit_balance' => '0.0000',
-            'payable_balance' => '300.0000',
+            'receivable_balance' => '0.000',
+            'credit_balance' => '0.000',
+            'payable_balance' => '300.000',
         ]);
 
         Partner::create([
@@ -212,9 +245,9 @@ class PartnerBalanceListTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Zero Supplier',
             'type' => PartnerType::Supplier,
-            'receivable_balance' => '0.0000',
-            'credit_balance' => '0.0000',
-            'payable_balance' => '0.0000',
+            'receivable_balance' => '0.000',
+            'credit_balance' => '0.000',
+            'payable_balance' => '0.000',
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -232,7 +265,7 @@ class PartnerBalanceListTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Small',
             'type' => PartnerType::Customer,
-            'receivable_balance' => '50.0000',
+            'receivable_balance' => '50.000',
         ]);
 
         Partner::create([
@@ -240,7 +273,7 @@ class PartnerBalanceListTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Medium',
             'type' => PartnerType::Customer,
-            'receivable_balance' => '500.0000',
+            'receivable_balance' => '500.000',
         ]);
 
         Partner::create([
@@ -248,7 +281,7 @@ class PartnerBalanceListTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Large',
             'type' => PartnerType::Customer,
-            'receivable_balance' => '5000.0000',
+            'receivable_balance' => '5000.000',
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -266,8 +299,8 @@ class PartnerBalanceListTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Active Customer',
             'type' => PartnerType::Customer,
-            'receivable_balance' => '1000.0000',
-            'payable_balance' => '0.0000',
+            'receivable_balance' => '1000.000',
+            'payable_balance' => '0.000',
         ]);
 
         $inactiveSupplier = Partner::create([
@@ -275,8 +308,8 @@ class PartnerBalanceListTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Inactive Supplier',
             'type' => PartnerType::Supplier,
-            'receivable_balance' => '0.0000',
-            'payable_balance' => '750.0000',
+            'receivable_balance' => '0.000',
+            'payable_balance' => '750.000',
         ]);
         $inactiveSupplier->is_active = false;
         $inactiveSupplier->save();
@@ -286,8 +319,8 @@ class PartnerBalanceListTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Inactive Customer',
             'type' => PartnerType::Customer,
-            'receivable_balance' => '200.0000',
-            'payable_balance' => '0.0000',
+            'receivable_balance' => '200.000',
+            'payable_balance' => '0.000',
         ]);
         $inactiveCustomer->is_active = false;
         $inactiveCustomer->save();
@@ -300,8 +333,8 @@ class PartnerBalanceListTest extends TestCase
 
         $this->assertEquals(3, $aggregates['total_partners']);
         $this->assertEquals(1, $aggregates['total_active']);
-        $this->assertEquals('1200.0000', $aggregates['total_receivable']);
-        $this->assertEquals('750.0000', $aggregates['total_payable']);
+        $this->assertEquals('1200.000', $aggregates['total_receivable']);
+        $this->assertEquals('750.000', $aggregates['total_payable']);
     }
 
     public function test_offset_pagination_meta_shape(): void

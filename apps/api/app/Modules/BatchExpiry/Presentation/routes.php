@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'module:BatchExpiry'])->group(function () {
     // Batch operations (literal routes BEFORE parameterized)
     Route::get('/batches/expiring', [BatchController::class, 'expiring']);
+    Route::get('/batches/expired', [BatchController::class, 'expired']);
 
     // Batch CRUD
     Route::get('/batches', [BatchController::class, 'index']);

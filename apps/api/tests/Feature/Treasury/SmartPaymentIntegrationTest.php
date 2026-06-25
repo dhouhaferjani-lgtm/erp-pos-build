@@ -169,7 +169,7 @@ class SmartPaymentIntegrationTest extends TestCase
         $response = $this->actingAs($this->user)
             ->postJson('/api/v1/smart-payment/preview-allocation', [
                 'partner_id' => $this->customer->id,
-                'payment_amount' => '1200.0000',
+                'payment_amount' => '1200.000',
                 'allocation_method' => 'fifo',
             ]);
 
@@ -180,13 +180,13 @@ class SmartPaymentIntegrationTest extends TestCase
 
         // FIFO: oldest first
         $this->assertEquals($invoice1->id, $allocations[0]['document_id']);
-        $this->assertEquals('1000.0000', $allocations[0]['amount']);
+        $this->assertEquals('1000.000', $allocations[0]['amount']);
 
         $this->assertEquals($invoice2->id, $allocations[1]['document_id']);
-        $this->assertEquals('200.0000', $allocations[1]['amount']);
+        $this->assertEquals('200.000', $allocations[1]['amount']);
 
-        $this->assertEquals('1200.0000', $response->json('data.total_to_invoices'));
-        $this->assertEquals('0.0000', $response->json('data.excess_amount'));
+        $this->assertEquals('1200.000', $response->json('data.total_to_invoices'));
+        $this->assertEquals('0.000', $response->json('data.excess_amount'));
     }
 
     /** @test */
@@ -200,7 +200,7 @@ class SmartPaymentIntegrationTest extends TestCase
         $response = $this->actingAs($this->user)
             ->postJson('/api/v1/smart-payment/preview-allocation', [
                 'partner_id' => $this->customer->id,
-                'payment_amount' => '600.0000',
+                'payment_amount' => '600.000',
                 'allocation_method' => 'due_date',
             ]);
 
@@ -211,10 +211,10 @@ class SmartPaymentIntegrationTest extends TestCase
 
         // Should prioritize invoice3 (most overdue), then invoice1
         $this->assertEquals($invoice3->id, $allocations[0]['document_id']);
-        $this->assertEquals('400.0000', $allocations[0]['amount']);
+        $this->assertEquals('400.000', $allocations[0]['amount']);
 
         $this->assertEquals($invoice1->id, $allocations[1]['document_id']);
-        $this->assertEquals('200.0000', $allocations[1]['amount']);
+        $this->assertEquals('200.000', $allocations[1]['amount']);
     }
 
     /** @test */
@@ -226,11 +226,11 @@ class SmartPaymentIntegrationTest extends TestCase
         $response = $this->actingAs($this->user)
             ->postJson('/api/v1/smart-payment/preview-allocation', [
                 'partner_id' => $this->customer->id,
-                'payment_amount' => '1200.0000',
+                'payment_amount' => '1200.000',
                 'allocation_method' => 'manual',
                 'manual_allocations' => [
-                    ['document_id' => $invoice2->id, 'amount' => '500.0000'],
-                    ['document_id' => $invoice1->id, 'amount' => '700.0000'],
+                    ['document_id' => $invoice2->id, 'amount' => '500.000'],
+                    ['document_id' => $invoice1->id, 'amount' => '700.000'],
                 ],
             ]);
 
@@ -240,10 +240,31 @@ class SmartPaymentIntegrationTest extends TestCase
         $this->assertCount(2, $allocations);
 
         $this->assertEquals($invoice2->id, $allocations[0]['document_id']);
-        $this->assertEquals('500.0000', $allocations[0]['amount']);
+        $this->assertEquals('500.000', $allocations[0]['amount']);
 
         $this->assertEquals($invoice1->id, $allocations[1]['document_id']);
-        $this->assertEquals('700.0000', $allocations[1]['amount']);
+        $this->assertEquals('700.000', $allocations[1]['amount']);
+    }
+
+    /** @test */
+    public function it_rejects_manual_allocation_amount_above_currency_scale(): void
+    {
+        $invoice = $this->createInvoice('INV-001', '100.000', now()->subDays(5));
+
+        $response = $this->actingAs($this->user)
+            ->postJson('/api/v1/smart-payment/preview-allocation', [
+                'partner_id' => $this->customer->id,
+                'payment_amount' => '100.000',
+                'allocation_method' => 'manual',
+                'manual_allocations' => [
+                    ['document_id' => $invoice->id, 'amount' => '99.9999'],
+                ],
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR');
+
+        $this->assertArrayHasKey('manual_allocations.0.amount', $response->json('error.errors') ?? []);
     }
 
     /** @test */
@@ -254,7 +275,7 @@ class SmartPaymentIntegrationTest extends TestCase
         $response = $this->actingAs($this->user)
             ->postJson('/api/v1/smart-payment/preview-allocation', [
                 'partner_id' => $this->customer->id,
-                'payment_amount' => '100.0500', // 0.05 TND overpayment (0.05%)
+                'payment_amount' => '100.050', // 0.05 TND overpayment (0.05%)
                 'allocation_method' => 'fifo',
             ]);
 
@@ -262,7 +283,7 @@ class SmartPaymentIntegrationTest extends TestCase
 
         $allocations = $response->json('data.allocations');
         $this->assertCount(1, $allocations);
-        $this->assertEquals('100.0000', $allocations[0]['amount']);
+        $this->assertEquals('100.000', $allocations[0]['amount']);
         $this->assertEquals('0.0500', $allocations[0]['tolerance_writeoff']);
         $this->assertEquals('tolerance_writeoff', $response->json('data.excess_handling'));
     }
@@ -275,7 +296,7 @@ class SmartPaymentIntegrationTest extends TestCase
         $response = $this->actingAs($this->user)
             ->postJson('/api/v1/smart-payment/preview-allocation', [
                 'partner_id' => $this->customer->id,
-                'payment_amount' => '99.9500', // 0.05 TND underpayment (0.05%)
+                'payment_amount' => '99.950', // 0.05 TND underpayment (0.05%)
                 'allocation_method' => 'fifo',
             ]);
 
@@ -283,7 +304,7 @@ class SmartPaymentIntegrationTest extends TestCase
 
         $allocations = $response->json('data.allocations');
         $this->assertCount(1, $allocations);
-        $this->assertEquals('99.9500', $allocations[0]['amount']);
+        $this->assertEquals('99.950', $allocations[0]['amount']);
         $this->assertEquals('0.0500', $allocations[0]['tolerance_writeoff']);
         $this->assertEquals('tolerance_writeoff', $response->json('data.excess_handling'));
     }
@@ -343,17 +364,17 @@ class SmartPaymentIntegrationTest extends TestCase
         $response = $this->actingAs($this->user)
             ->postJson('/api/v1/smart-payment/preview-allocation', [
                 'partner_id' => $this->customer->id,
-                'payment_amount' => '1200.0000',
+                'payment_amount' => '1200.000',
                 'allocation_method' => 'manual',
                 'manual_allocations' => [
-                    ['document_id' => $invoice->id, 'amount' => '800.0000'], // Partial allocation
+                    ['document_id' => $invoice->id, 'amount' => '800.000'], // Partial allocation
                 ],
             ]);
 
         // Should succeed and show excess amount
         $response->assertOk();
-        $this->assertEquals('800.0000', $response->json('data.total_to_invoices'));
-        $this->assertEquals('400.0000', $response->json('data.excess_amount'));
+        $this->assertEquals('800.000', $response->json('data.total_to_invoices'));
+        $this->assertEquals('400.000', $response->json('data.excess_amount'));
     }
 
     /** @test */
@@ -394,7 +415,7 @@ class SmartPaymentIntegrationTest extends TestCase
         // We verify the allocation was created correctly above.
 
         // Verify excess amount was returned
-        $this->assertEquals('500.0000', $response->json('data.excess_amount'));
+        $this->assertEquals('500.000', $response->json('data.excess_amount'));
 
         // Verify customer advance GL entry was created
         $advanceEntry = JournalEntry::where('source_type', 'advance')

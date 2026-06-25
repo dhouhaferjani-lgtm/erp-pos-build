@@ -6,7 +6,9 @@ namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
@@ -17,6 +19,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -65,6 +68,8 @@ class StockMovementGLIntegrationTest extends TestCase
     private Account $receivableAccount;
 
     private Account $revenueAccount;
+
+    private Account $serviceRevenueAccount;
 
     private Account $vatAccount;
 
@@ -177,6 +182,16 @@ class StockMovementGLIntegrationTest extends TestCase
             'name' => 'Product Revenue',
             'type' => AccountType::Revenue,
             'system_purpose' => SystemAccountPurpose::ProductRevenue,
+            'is_active' => true,
+        ]);
+
+        $this->serviceRevenueAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '706',
+            'name' => 'Service Revenue',
+            'type' => AccountType::Revenue,
+            'system_purpose' => SystemAccountPurpose::ServiceRevenue,
             'is_active' => true,
         ]);
 
@@ -303,6 +318,38 @@ class StockMovementGLIntegrationTest extends TestCase
         $this->assertCount(2, $entry->lines);
         $this->assertEquals('cogs', $entry->source_type);
         $this->assertEquals($invoice->id, $entry->source_id);
+    }
+
+    public function test_invoice_posted_listener_creates_posted_cogs_journal_entry(): void
+    {
+        $product = $this->createPhysicalProduct('50.00');
+        $invoice = $this->createPostedInvoiceWithProducts([
+            ['product' => $product, 'quantity' => '2', 'unit_price' => '100.00'],
+        ]);
+
+        event(new InvoicePosted(
+            invoiceId: $invoice->id,
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            documentNumber: $invoice->document_number,
+            documentType: DocumentType::Invoice->value,
+            partnerId: $this->customer->id,
+            total: (string) $invoice->total,
+            currency: $invoice->currency,
+            fiscalHash: 'invoice-hash-for-cogs',
+            chainSequence: 1,
+            postedAt: now()->toIso8601String(),
+        ));
+
+        $entry = JournalEntry::query()
+            ->where('source_type', 'cogs')
+            ->where('source_id', $invoice->id)
+            ->firstOrFail();
+
+        $this->assertSame(JournalEntryStatus::Posted, $entry->status);
+        $this->assertNull($entry->posted_by);
+        $this->assertNotNull($entry->posted_at);
+        $this->assertNotNull($entry->fiscal_hash);
     }
 
     public function test_cogs_entry_has_correct_debit_and_credit_amounts(): void

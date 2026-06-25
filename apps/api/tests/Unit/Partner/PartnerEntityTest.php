@@ -127,6 +127,21 @@ class PartnerEntityTest extends TestCase
         $this->assertTrue($partner->isSupplier());
     }
 
+    public function test_both_partner_net_balance_offsets_payable_against_customer_position(): void
+    {
+        $partner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Both Net Partner',
+            'type' => PartnerType::Both,
+            'receivable_balance' => '1000.000',
+            'credit_balance' => '100.000',
+            'payable_balance' => '250.000',
+        ]);
+
+        $this->assertSame('650.000', $partner->net_balance);
+    }
+
     public function test_partner_has_fillable_fields(): void
     {
         $partner = Partner::create([

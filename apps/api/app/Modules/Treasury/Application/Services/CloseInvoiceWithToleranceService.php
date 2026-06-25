@@ -99,6 +99,8 @@ final class CloseInvoiceWithToleranceService
                 type: 'underpayment',
                 date: new DateTimeImmutable('now'),
                 description: 'Close with write-off (tolerance)',
+                postedByUserId: $closedBy,
+                currencyCode: (string) $invoice->currency,
             );
 
             // Tolerance-only allocation row (payment_id = NULL).
