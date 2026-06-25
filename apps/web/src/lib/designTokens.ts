@@ -318,6 +318,37 @@ export const tokens = {
   },
 
   /**
+   * Toggle (switch) styles
+   *
+   * Track: 44×25px, fully rounded. Uses CSS variables bridged from the active
+   * theme so that IziPOS (copper) and Otospex (pink) each render correctly.
+   * Falls back to green-600/gray-300 when no theme variable is present.
+   *
+   * Usage:
+   * ```tsx
+   * import { tokens } from '@/lib/designTokens'
+   * // track
+   * <span className={cn(tokens.toggle.track, checked && tokens.toggle.trackOn, !checked && tokens.toggle.trackOff)} />
+   * // knob
+   * <span className={tokens.toggle.knob} />
+   * ```
+   */
+  toggle: {
+    /** Outer track — always applied */
+    track: 'relative inline-flex h-[25px] w-[44px] shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 ease-in-out focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-[var(--color-primary,theme(colors.green.600))]',
+    /** Applied when checked=true */
+    trackOn: 'bg-[var(--color-success,theme(colors.green.600))]',
+    /** Applied when checked=false */
+    trackOff: 'bg-[var(--color-neutral-300,theme(colors.gray.300))]',
+    /** Applied when disabled */
+    trackDisabled: 'opacity-50 cursor-not-allowed',
+    /** Knob (white circle) */
+    knob: 'pointer-events-none inline-block h-[19px] w-[19px] translate-x-[3px] rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ease-in-out',
+    /** Knob shifted right when checked */
+    knobOn: 'translate-x-[22px]',
+  },
+
+  /**
    * Label styles
    */
   label: {
