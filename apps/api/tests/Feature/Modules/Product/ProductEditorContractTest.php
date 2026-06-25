@@ -281,6 +281,19 @@ final class ProductEditorContractTest extends TestCase
         $this->assertApiValidationErrors($response, ['is_physical']);
     }
 
+    public function test_store_type_consumable_with_is_physical_false_returns_422(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'Consumable Non-Physical Contradiction',
+                'sku' => 'EDITOR-CONS-CONTR-001',
+                'type' => 'consumable',
+                'is_physical' => false,
+            ]);
+
+        $this->assertApiValidationErrors($response, ['is_physical']);
+    }
+
     // =========================================================================
     // Case 5: POST requires_batch_tracking + default_shelf_life_days persisted
     // =========================================================================

@@ -90,8 +90,10 @@ class CreateProductRequest extends FormRequest
     }
 
     /**
-     * Validate that type and is_physical are not contradicting each other.
-     * Only fires when both fields were explicitly sent by the caller (not derived).
+     * Validate that type and is_physical do not contradict each other.
+     * Runs after prepareForValidation() may have derived is_physical; a derived
+     * value is always coherent, so in practice this only rejects a caller-supplied
+     * contradiction (service+physical, or part/consumable+non-physical).
      */
     private function validateTypePhysicalCoherence(Validator $validator): void
     {
@@ -182,7 +184,7 @@ class CreateProductRequest extends FormRequest
             'is_active' => ['sometimes', 'boolean'],
             'is_active_for_ecommerce' => ['sometimes', 'boolean'],
             'requires_batch_tracking' => ['sometimes', 'boolean'],
-            'default_shelf_life_days' => ['nullable', 'integer', 'min:0'],
+            'default_shelf_life_days' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'oem_numbers' => ['nullable', 'array'],
             'oem_numbers.*' => ['string', 'max:100'],
             'cross_references' => ['nullable', 'array'],
