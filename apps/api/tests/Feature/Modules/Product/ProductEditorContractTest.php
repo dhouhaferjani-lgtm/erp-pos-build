@@ -405,4 +405,102 @@ final class ProductEditorContractTest extends TestCase
         $product->refresh();
         $this->assertFalse($product->is_physical, 'PATCH: type=service without is_physical must derive false');
     }
+
+    // =========================================================================
+    // Inventory fields: units_per_pack, shelf_location, reorder_point, reorder_quantity
+    // =========================================================================
+
+    public function test_store_inventory_fields_persisted_and_returned(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'Inventory Fields Product',
+                'sku' => 'EDITOR-INV-001',
+                'units_per_pack' => 24,
+                'shelf_location' => 'A-12',
+                'reorder_point' => '10',
+                'reorder_quantity' => '50.5',
+            ])
+            ->assertCreated();
+
+        $data = $response->json('data');
+
+        $this->assertSame(24, $data['units_per_pack'], 'units_per_pack must be persisted as integer');
+        $this->assertSame('A-12', $data['shelf_location'], 'shelf_location must be persisted');
+        $this->assertSame('10.0000', $data['reorder_point'], 'reorder_point must be returned as string with 4dp');
+        $this->assertSame('50.5000', $data['reorder_quantity'], 'reorder_quantity must be returned as string with 4dp');
+
+        $product = Product::query()->where('sku', 'EDITOR-INV-001')->firstOrFail();
+        $this->assertSame(24, $product->units_per_pack);
+        $this->assertSame('A-12', $product->shelf_location);
+        $this->assertSame('10.0000', (string) $product->reorder_point);
+        $this->assertSame('50.5000', (string) $product->reorder_quantity);
+    }
+
+    public function test_store_omitting_inventory_fields_returns_null(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'No Inventory Fields Product',
+                'sku' => 'EDITOR-INV-002',
+            ])
+            ->assertCreated();
+
+        $data = $response->json('data');
+
+        $this->assertNull($data['units_per_pack'], 'units_per_pack must be null when omitted');
+        $this->assertNull($data['shelf_location'], 'shelf_location must be null when omitted');
+        $this->assertNull($data['reorder_point'], 'reorder_point must be null when omitted');
+        $this->assertNull($data['reorder_quantity'], 'reorder_quantity must be null when omitted');
+    }
+
+    public function test_store_units_per_pack_zero_returns_422(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'Bad Pack Count',
+                'sku' => 'EDITOR-INV-003',
+                'units_per_pack' => 0,
+            ]);
+
+        $this->assertApiValidationErrors($response, ['units_per_pack']);
+    }
+
+    public function test_store_reorder_point_too_many_decimals_returns_422(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'Bad Reorder Point',
+                'sku' => 'EDITOR-INV-004',
+                'reorder_point' => '1.23456',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['reorder_point']);
+    }
+
+    public function test_update_inventory_fields_persisted(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Update Inventory Test',
+            'sku' => 'EDITOR-INV-UPD-001',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/products/{$product->id}", [
+                'units_per_pack' => 12,
+                'reorder_point' => '5.0000',
+            ])
+            ->assertOk();
+
+        $data = $response->json('data');
+
+        $this->assertSame(12, $data['units_per_pack'], 'PATCH: units_per_pack must be persisted');
+        $this->assertSame('5.0000', $data['reorder_point'], 'PATCH: reorder_point must be returned as string with 4dp');
+
+        $product->refresh();
+        $this->assertSame(12, $product->units_per_pack);
+        $this->assertSame('5.0000', (string) $product->reorder_point);
+    }
 }

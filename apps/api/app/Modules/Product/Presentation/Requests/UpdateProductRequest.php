@@ -181,6 +181,10 @@ class UpdateProductRequest extends FormRequest
             // Unit of measure FK — drives quantity precision (decimals/step).
             'unit_id' => ['sometimes', 'nullable', 'exists:units,id'],
             'barcode' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'units_per_pack' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'shelf_location' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'reorder_point' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'reorder_quantity' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
             'is_active' => ['sometimes', 'boolean'],
             'is_active_for_ecommerce' => ['sometimes', 'boolean'],
             'requires_batch_tracking' => ['sometimes', 'boolean'],
@@ -267,6 +271,8 @@ class UpdateProductRequest extends FormRequest
             'sale_price.regex' => 'Sale price must have at most 3 decimal places.',
             'purchase_price.regex' => 'Purchase price must have at most 3 decimal places.',
             'tax_rate.regex' => 'Tax rate must have at most 2 decimal places.',
+            'reorder_point.regex' => 'Reorder point must have at most 4 decimal places.',
+            'reorder_quantity.regex' => 'Reorder quantity must have at most 4 decimal places.',
         ];
     }
 }
