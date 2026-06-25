@@ -48,24 +48,24 @@ return new class extends Migration
 
         if (DB::connection()->getDriverName() === 'pgsql') {
             DB::statement(
-                "ALTER TABLE procurement_policies ADD CONSTRAINT chk_pp_bill_control_mode ".
+                'ALTER TABLE procurement_policies ADD CONSTRAINT chk_pp_bill_control_mode '.
                 "CHECK (bill_control_mode IN ('received','ordered'))"
             );
             DB::statement(
-                "ALTER TABLE procurement_policies ADD CONSTRAINT chk_pp_match_mode ".
+                'ALTER TABLE procurement_policies ADD CONSTRAINT chk_pp_match_mode '.
                 "CHECK (match_mode IN ('two_way','three_way'))"
             );
             DB::statement(
-                "ALTER TABLE procurement_policies ADD CONSTRAINT chk_pp_match_enforcement ".
+                'ALTER TABLE procurement_policies ADD CONSTRAINT chk_pp_match_enforcement '.
                 "CHECK (match_enforcement IN ('warn','block'))"
             );
             DB::statement(
-                "ALTER TABLE procurement_policies ADD CONSTRAINT chk_pp_tolerance_percent_nonneg ".
-                "CHECK (variance_tolerance_percent >= 0)"
+                'ALTER TABLE procurement_policies ADD CONSTRAINT chk_pp_tolerance_percent_nonneg '.
+                'CHECK (variance_tolerance_percent >= 0)'
             );
             DB::statement(
-                "ALTER TABLE procurement_policies ADD CONSTRAINT chk_pp_tolerance_max_amount_nonneg ".
-                "CHECK (variance_tolerance_max_amount >= 0)"
+                'ALTER TABLE procurement_policies ADD CONSTRAINT chk_pp_tolerance_max_amount_nonneg '.
+                'CHECK (variance_tolerance_max_amount >= 0)'
             );
         }
     }

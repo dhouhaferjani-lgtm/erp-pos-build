@@ -26,20 +26,20 @@ final class ProcurementPolicyCheckConstraintTest extends TestCase
     /** @return array<string, mixed> */
     private function baseRow(): array
     {
-        $tenant  = Tenant::factory()->create();
+        $tenant = Tenant::factory()->create();
         $company = Company::factory()->create(['tenant_id' => $tenant->id]);
 
         return [
-            'id'                            => (string) Str::uuid(),
-            'tenant_id'                     => $tenant->id,
-            'company_id'                    => $company->id,
-            'bill_control_mode'             => 'received',
-            'match_mode'                    => 'three_way',
-            'match_enforcement'             => 'warn',
-            'variance_tolerance_percent'    => '0.00',
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'bill_control_mode' => 'received',
+            'match_mode' => 'three_way',
+            'match_enforcement' => 'warn',
+            'variance_tolerance_percent' => '0.00',
             'variance_tolerance_max_amount' => '0.000',
-            'created_at'                    => now()->toDateTimeString(),
-            'updated_at'                    => now()->toDateTimeString(),
+            'created_at' => now()->toDateTimeString(),
+            'updated_at' => now()->toDateTimeString(),
         ];
     }
 

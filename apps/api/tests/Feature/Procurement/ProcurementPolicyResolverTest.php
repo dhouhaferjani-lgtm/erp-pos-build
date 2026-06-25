@@ -49,20 +49,20 @@ final class ProcurementPolicyResolverTest extends TestCase
     private function seedPharmacyCompany(): string
     {
         $tenant = Tenant::create([
-            'name'     => 'Procurement Test Tenant',
-            'slug'     => 'procurement-test-' . uniqid(),
-            'status'   => TenantStatus::Active,
-            'plan'     => SubscriptionPlan::Professional,
+            'name' => 'Procurement Test Tenant',
+            'slug' => 'procurement-test-'.uniqid(),
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
             'vertical' => Vertical::Pharmacy,
         ]);
 
         $company = Company::create([
-            'tenant_id'    => $tenant->id,
-            'name'         => 'Procurement Test Company',
+            'tenant_id' => $tenant->id,
+            'name' => 'Procurement Test Company',
             'country_code' => 'TN',
-            'currency'     => 'TND',
-            'locale'       => 'fr_TN',
-            'timezone'     => 'Africa/Tunis',
+            'currency' => 'TND',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
         ]);
 
         return $company->id;
@@ -115,13 +115,13 @@ final class ProcurementPolicyResolverTest extends TestCase
         $companyId = $this->seedPharmacyCompany();
 
         ProcurementPolicy::create([
-            'id'                           => (string) Str::uuid(),
-            'tenant_id'                    => Company::find($companyId)?->tenant_id,
-            'company_id'                   => $companyId,
-            'bill_control_mode'            => BillControlMode::Received->value,
-            'match_mode'                   => MatchMode::ThreeWay->value,
-            'match_enforcement'            => MatchEnforcement::Block->value,
-            'variance_tolerance_percent'   => '5.00',
+            'id' => (string) Str::uuid(),
+            'tenant_id' => Company::find($companyId)?->tenant_id,
+            'company_id' => $companyId,
+            'bill_control_mode' => BillControlMode::Received->value,
+            'match_mode' => MatchMode::ThreeWay->value,
+            'match_enforcement' => MatchEnforcement::Block->value,
+            'variance_tolerance_percent' => '5.00',
             'variance_tolerance_max_amount' => '50.000',
         ]);
 
@@ -139,13 +139,13 @@ final class ProcurementPolicyResolverTest extends TestCase
         $companyId = $this->seedPharmacyCompany();
 
         ProcurementPolicy::create([
-            'id'                           => (string) Str::uuid(),
-            'tenant_id'                    => Company::find($companyId)?->tenant_id,
-            'company_id'                   => $companyId,
-            'bill_control_mode'            => BillControlMode::Ordered->value,
-            'match_mode'                   => MatchMode::ThreeWay->value,
-            'match_enforcement'            => MatchEnforcement::Warn->value,
-            'variance_tolerance_percent'   => '0.00',
+            'id' => (string) Str::uuid(),
+            'tenant_id' => Company::find($companyId)?->tenant_id,
+            'company_id' => $companyId,
+            'bill_control_mode' => BillControlMode::Ordered->value,
+            'match_mode' => MatchMode::ThreeWay->value,
+            'match_enforcement' => MatchEnforcement::Warn->value,
+            'variance_tolerance_percent' => '0.00',
             'variance_tolerance_max_amount' => '0.000',
         ]);
 
