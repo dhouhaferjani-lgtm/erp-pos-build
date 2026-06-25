@@ -18,6 +18,10 @@ enum MovementReason: string
     case Delivery = 'delivery';
     case SupplierReturn = 'supplier_return';
     case AdjustmentNegative = 'adjustment_negative';
+    // Bidirectional: a count correction can be positive or negative. Its actual
+    // direction is on the movement row (quantity_before -> quantity_after), so use
+    // StockMovement::directionForRow() rather than getMovementType() for it.
+    case CountCorrection = 'count_correction';
     case TransferOut = 'transfer_out';
     case Damage = 'damage';
     case Expiry = 'expiry';
@@ -66,6 +70,7 @@ enum MovementReason: string
             self::WriteOff => true,
             self::AdjustmentPositive => true,
             self::AdjustmentNegative => true,
+            self::CountCorrection => true,
             self::POSSale => true,
             self::POSReturn => true,
             default => false,
@@ -84,6 +89,7 @@ enum MovementReason: string
             self::Delivery => 'Delivery to Customer',
             self::SupplierReturn => 'Return to Supplier',
             self::AdjustmentNegative => 'Stock Adjustment (Out)',
+            self::CountCorrection => 'Count Correction',
             self::TransferOut => 'Transfer Out',
             self::Damage => 'Damaged Stock',
             self::Expiry => 'Expired Stock',
@@ -92,5 +98,31 @@ enum MovementReason: string
             self::POSSale => 'POS Sale',
             self::POSReturn => 'POS Return',
         };
+    }
+
+    /**
+     * Reasons selectable in the manual stock-adjustment screen. Excludes
+     * document/POS-driven reasons (set by their own flows) and CountCorrection
+     * (reserved for the counting flow).
+     *
+     * @return list<self>
+     */
+    public static function manualAdjustmentCases(): array
+    {
+        return [
+            self::AdjustmentPositive,
+            self::AdjustmentNegative,
+            self::Damage,
+            self::WriteOff,
+            self::OpeningBalance,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function manualAdjustmentValues(): array
+    {
+        return array_map(static fn (self $reason): string => $reason->value, self::manualAdjustmentCases());
     }
 }

@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Modules\Catalog\Media;
 
-use App\Modules\Catalog\Domain\Enums\MediaAssetType;
-use App\Modules\Catalog\Domain\Enums\MediaOwnerType;
-use App\Modules\Catalog\Domain\Enums\MediaRole;
-use App\Modules\Catalog\Domain\Enums\MediaSource;
-use App\Modules\Catalog\Domain\Enums\MediaStatus;
-use App\Modules\Catalog\Domain\Enums\RenditionFormat;
-use App\Modules\Catalog\Domain\Enums\RenditionName;
+use App\Modules\Media\Domain\Enums\MediaAssetType;
+use App\Modules\Media\Domain\Enums\MediaOwnerType;
+use App\Modules\Media\Domain\Enums\MediaRole;
+use App\Modules\Media\Domain\Enums\MediaSource;
+use App\Modules\Media\Domain\Enums\MediaStatus;
+use App\Modules\Media\Domain\Enums\RenditionFormat;
+use App\Modules\Media\Domain\Enums\RenditionName;
 use PHPUnit\Framework\TestCase;
 
 final class MediaEnumsTest extends TestCase

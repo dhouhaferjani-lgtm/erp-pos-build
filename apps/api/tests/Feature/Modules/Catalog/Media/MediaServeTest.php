@@ -4,17 +4,17 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Modules\Catalog\Media;
 
-use App\Modules\Catalog\Domain\Contracts\MediaStorageInterface;
-use App\Modules\Catalog\Domain\Enums\MediaAssetType;
-use App\Modules\Catalog\Domain\Enums\MediaOwnerType;
-use App\Modules\Catalog\Domain\Enums\MediaRole;
-use App\Modules\Catalog\Domain\Enums\MediaSource;
-use App\Modules\Catalog\Domain\Enums\MediaStatus;
-use App\Modules\Catalog\Domain\Enums\RenditionFormat;
-use App\Modules\Catalog\Domain\Enums\RenditionName;
-use App\Modules\Catalog\Domain\Media\MediaAsset;
-use App\Modules\Catalog\Domain\Media\MediaAttachment;
-use App\Modules\Catalog\Domain\Media\MediaRendition;
+use App\Modules\Media\Domain\Contracts\MediaStorageInterface;
+use App\Modules\Media\Domain\Enums\MediaAssetType;
+use App\Modules\Media\Domain\Enums\MediaOwnerType;
+use App\Modules\Media\Domain\Enums\MediaRole;
+use App\Modules\Media\Domain\Enums\MediaSource;
+use App\Modules\Media\Domain\Enums\MediaStatus;
+use App\Modules\Media\Domain\Enums\RenditionFormat;
+use App\Modules\Media\Domain\Enums\RenditionName;
+use App\Modules\Media\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Media\MediaAttachment;
+use App\Modules\Media\Domain\Media\MediaRendition;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Storage;

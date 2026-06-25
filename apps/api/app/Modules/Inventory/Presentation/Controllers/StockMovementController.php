@@ -7,9 +7,11 @@ namespace App\Modules\Inventory\Presentation\Controllers;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Exceptions\InsufficientStockException;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\Inventory\Presentation\Requests\AdjustStockRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -211,19 +213,12 @@ class StockMovementController extends Controller
         }
     }
 
-    public function adjust(Request $request): JsonResponse
+    public function adjust(AdjustStockRequest $request): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
 
-        $validated = $request->validate([
-            'product_id' => ['required', 'string', 'uuid'],
-            'location_id' => ['required', 'string', 'uuid'],
-            'new_quantity' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
-            'reason' => ['required', 'string', 'max:500'],
-        ], [
-            'new_quantity.regex' => 'The new quantity must have at most 4 decimal places.',
-        ]);
+        $validated = $request->validated();
 
         // Validate user has access to this location
         $companyId = $this->companyContext->requireCompanyId();
@@ -233,6 +228,8 @@ class StockMovementController extends Controller
             $user
         );
 
+        $reasonCode = MovementReason::from($validated['reason_code']);
+
         /** @var numeric-string $newQuantity */
         $newQuantity = (string) $validated['new_quantity'];
 
@@ -240,8 +237,10 @@ class StockMovementController extends Controller
             productId: $validated['product_id'],
             locationId: $validated['location_id'],
             newQuantity: $newQuantity,
-            reason: $validated['reason'],
+            // Free-text note → reference; fall back to the reason label when omitted.
+            reason: $validated['reason'] ?? $reasonCode->label(),
             userId: $user->id,
+            reasonCode: $reasonCode,
         );
 
         $movement->load(['product', 'location', 'user']);

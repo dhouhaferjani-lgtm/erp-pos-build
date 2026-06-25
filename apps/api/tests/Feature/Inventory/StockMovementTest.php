@@ -233,6 +233,7 @@ class StockMovementTest extends TestCase
             'product_id' => $this->product->id,
             'location_id' => $this->warehouse->id,
             'new_quantity' => '45.00',
+            'reason_code' => 'damage',
             'reason' => 'Physical inventory count - 5 units damaged',
         ]);
 
@@ -243,6 +244,57 @@ class StockMovementTest extends TestCase
             'product_id' => $this->product->id,
             'location_id' => $this->warehouse->id,
             'quantity' => '45.00',
+        ]);
+    }
+
+    public function test_adjust_requires_a_reason_code(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/api/v1/stock-movements/adjust', [
+            'product_id' => $this->product->id,
+            'location_id' => $this->warehouse->id,
+            'new_quantity' => '45.00',
+            'reason' => 'free text only, no typed reason',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('reason_code', 'error.errors');
+    }
+
+    public function test_adjust_rejects_a_non_manual_reason_code(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/api/v1/stock-movements/adjust', [
+            'product_id' => $this->product->id,
+            'location_id' => $this->warehouse->id,
+            'new_quantity' => '45.00',
+            'reason_code' => 'pos_sale', // document/POS reason — not selectable in the manual screen
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('reason_code', 'error.errors');
+    }
+
+    public function test_adjust_persists_the_typed_reason_code(): void
+    {
+        app(StockAdjustmentService::class)->receive(
+            productId: $this->product->id,
+            locationId: $this->warehouse->id,
+            quantity: '50.0000',
+            reference: 'PO-002',
+            userId: $this->user->id,
+        );
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/stock-movements/adjust', [
+            'product_id' => $this->product->id,
+            'location_id' => $this->warehouse->id,
+            'new_quantity' => '45.0000',
+            'reason_code' => 'damage', // no free-text note — reason_code alone is sufficient
+        ]);
+
+        $response->assertStatus(201);
+        $this->assertDatabaseHas('stock_movements', [
+            'product_id' => $this->product->id,
+            'location_id' => $this->warehouse->id,
+            'reason' => 'damage',
         ]);
     }
 
