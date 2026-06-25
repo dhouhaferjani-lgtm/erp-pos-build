@@ -22,6 +22,7 @@ use App\Modules\Marketplace\Providers\MarketplaceServiceProvider;
 use App\Modules\Media\MediaServiceProvider;
 use App\Modules\Menu\Providers\MenuServiceProvider;
 use App\Modules\Partner\PartnerServiceProvider;
+use App\Modules\Procurement\Providers\ProcurementServiceProvider;
 use App\Modules\PlatformIntegration\Providers\PlatformIntegrationServiceProvider;
 use App\Modules\POS\Providers\HeldOrderServiceProvider;
 use App\Modules\POS\Providers\KitchenServiceProvider;
@@ -100,4 +101,5 @@ return [
     BundleServiceProvider::class,
     WorkshopWorkOrderServiceProvider::class,
     SchedulingServiceProvider::class,
+    ProcurementServiceProvider::class,
 ];

@@ -13,6 +13,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Device;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Procurement\Domain\ProcurementPolicy;
 use App\Modules\Tenant\Domain\Domain;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -154,6 +155,19 @@ class TenantProvisioningService
                 'email' => $validated['email'],
                 'pos_stock_policy' => PosStockPolicy::defaultForVertical($tenant->vertical),
             ]);
+
+            $defaultPolicy = ProcurementPolicy::defaultForVertical($tenant->vertical);
+            ProcurementPolicy::firstOrCreate(
+                ['company_id' => $company->id],
+                [
+                    'tenant_id' => $tenant->id,
+                    'bill_control_mode' => $defaultPolicy->bill_control_mode->value,
+                    'match_mode' => $defaultPolicy->match_mode->value,
+                    'match_enforcement' => $defaultPolicy->match_enforcement->value,
+                    'variance_tolerance_percent' => $defaultPolicy->variance_tolerance_percent,
+                    'variance_tolerance_max_amount' => $defaultPolicy->variance_tolerance_max_amount,
+                ]
+            );
 
             Location::create([
                 'id' => Str::uuid()->toString(),
