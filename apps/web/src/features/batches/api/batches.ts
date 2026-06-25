@@ -12,6 +12,15 @@ import type {
 } from '../types'
 
 /**
+ * Result returned by the reverse write-off endpoint.
+ * POST /api/v1/stock-movements/{movementId}/reverse-write-off
+ */
+export interface ReverseWriteOffResult {
+  reversal_movement_id: string
+  original_movement_id: string
+}
+
+/**
  * Get paginated list of batches
  */
 export async function getBatches(params?: GetBatchesParams): Promise<PaginatedBatchesResponse> {
@@ -118,6 +127,17 @@ export async function getFEFOSuggestions(
     location_id: String(locationId),
     quantity: String(quantity),
   })
+}
+
+/**
+ * Reverse a previously posted batch write-off.
+ * POST /api/v1/stock-movements/{movementId}/reverse-write-off
+ *
+ * Restores aggregate + batch stock and posts a reversing journal entry.
+ * Returns 409 if the write-off has already been reversed.
+ */
+export async function reverseWriteOff(movementId: string): Promise<ReverseWriteOffResult> {
+  return apiPost<ReverseWriteOffResult>(`/stock-movements/${movementId}/reverse-write-off`)
 }
 
 /**

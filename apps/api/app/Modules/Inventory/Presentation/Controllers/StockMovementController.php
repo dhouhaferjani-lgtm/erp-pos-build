@@ -35,7 +35,7 @@ class StockMovementController extends Controller
         $query = StockMovement::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
-            ->with(['product', 'location', 'user']);
+            ->with(['product', 'location', 'user', 'reversalOf']);
 
         if ($request->has('product_id')) {
             $query->where('product_id', $request->input('product_id'));
@@ -262,6 +262,9 @@ class StockMovementController extends Controller
             'location_id' => $movement->location_id,
             'location_name' => $movement->location->name,
             'movement_type' => $movement->movement_type->value,
+            // Expose the MovementReason value so the frontend can identify
+            // write-offs (reason = 'write_off') vs other issues.
+            'reason' => $movement->reason?->value,
             'quantity' => $movement->quantity,
             'quantity_before' => $movement->quantity_before,
             'quantity_after' => $movement->quantity_after,
@@ -269,6 +272,13 @@ class StockMovementController extends Controller
             'notes' => $movement->notes,
             'user_id' => $movement->user_id,
             'user_name' => $movement->user?->name,
+            // The UUID of the original movement that this row corrects, or null.
+            'reverses_movement_id' => $movement->reverses_movement_id,
+            // True when another movement has reversed THIS row (reversalOf loaded
+            // in index(); uses relationLoaded() guard for single-item endpoints).
+            'is_reversed' => $movement->relationLoaded('reversalOf')
+                ? $movement->reversalOf !== null
+                : false,
             'created_at' => $movement->created_at?->toIso8601String(),
         ];
     }

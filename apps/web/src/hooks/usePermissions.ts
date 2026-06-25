@@ -173,6 +173,9 @@ export const PERMISSIONS = {
   'work-orders.complete': ['admin', 'manager', 'operator', 'technician'],
   'work-orders.view_financials': ['admin', 'manager', 'accountant'],
 
+  // Batch Expiry — write-off and reversal
+  'batches.write-off': ['admin', 'manager'],
+
   // Scheduling (Spec D)
   'scheduling.bays.view': ['admin', 'manager', 'operator'],
   'scheduling.bays.manage': ['admin', 'manager'],
