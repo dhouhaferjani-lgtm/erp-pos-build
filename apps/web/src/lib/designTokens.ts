@@ -94,6 +94,7 @@ export const textColors = {
   warning: 'text-yellow-700',
   warningDark: 'text-yellow-600',
   brand: 'text-blue-600',
+  hoverBrand: 'hover:text-blue-800',
   hoverSecondary: 'hover:text-gray-600',
   hoverPrimary: 'hover:text-gray-900',
   hoverError: 'hover:text-red-700',

@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { useFieldArray, type Control, type UseFormRegister, type FieldErrors } from 'react-hook-form'
 import { Plus, X } from 'lucide-react'
 import { Input, Select, Textarea } from '../../../components/atoms'
-import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 
 
 interface ParapharmacyMetadataFieldsProps {
@@ -122,7 +122,7 @@ export function ParapharmacyMetadataFields({
                 <button
                   type="button"
                   onClick={() => { removeIngredient(index) }}
-                  className={`inline-flex items-center rounded-[var(--radius-button)] border ${borderColors.default} bg-white p-2 ${textColors.disabled} hover:bg-gray-50 ${textColors.hoverSecondary}`}
+                  className={`inline-flex items-center rounded-[var(--radius-button)] border ${borderColors.default} ${colors.white} p-2 ${textColors.disabled} ${colors.hover.gray50} ${textColors.hoverSecondary}`}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -132,7 +132,7 @@ export function ParapharmacyMetadataFields({
           <button
             type="button"
             onClick={() => { appendIngredient({ name: '', concentration: '' }) }}
-            className={`mt-2 inline-flex items-center gap-1 text-sm ${textColors.brand} hover:text-blue-800`}
+            className={`mt-2 inline-flex items-center gap-1 text-sm ${textColors.brand} ${textColors.hoverBrand}`}
           >
             <Plus className="h-4 w-4" />
             {t('products:parapharmacy.addIngredient')}
