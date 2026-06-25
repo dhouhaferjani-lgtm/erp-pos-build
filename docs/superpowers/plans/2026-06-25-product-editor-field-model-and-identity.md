@@ -145,10 +145,35 @@ Each is a TDD task; no-regression guard = the existing ProductForm test suites m
 
 ---
 
-## 7. Open decisions for the owner (don't block; recommendations given)
-1. **Barcode uniqueness** — keep non-unique-but-always-populated (recommended) vs add a per-tenant unique index after a duplicate audit.
-2. **"Sold as" dual-unit selling** — include now or defer (recommend `units_per_pack` now, `sold_as` later).
-3. **Shelf/aisle + reorder point/qty** — these are per-location Inventory concerns; want product-level *defaults* surfaced here as NEW nullable fields, or leave to the Inventory module (linked)?
-4. **Loyalty points / Eligible-for-discounts** — confirm module ownership (Loyalty/Promotions) before wiring vs placeholder.
-5. **Pharmacy expansion** (`key_components`/`health_claims`/`certifications`) — add now (not in mock) or later?
-6. **Automotive section** — confirm it's a follow-on wave after IziPOS parity (recommended).
+## 7. Decisions (resolved 2026-06-25) + remaining
+- **Barcode uniqueness** — RESOLVED: **no DB uniqueness constraint** (variants share a parent product's barcode; variants live underneath the product). Internal barcodes are minted unique-per-product (see §8). Full barcode model is its own decision below.
+- **Packaging "Sold as"** — RESOLVED: **units_per_pack only** for v1; defer `sold_as_unit_id`.
+- **Shelf/aisle + reorder point/qty** — RESOLVED: **product-level nullable defaults** surfaced in the Inventory section (per-location Inventory module can override).
+- **Loyalty points / Eligible-for-discounts** — RESOLVED: **integrate visually now, but gate on the Loyalty add-on module** — the field renders ONLY when the Loyalty module is active; all logic is owned by the Loyalty module. A separate session will design that ownership (see `docs/handoff/HANDOFF-loyalty-product-fields.md`).
+- **Pharmacy expansion** (`key_components`/`health_claims`/`certifications`) — defer (not in mock); revisit.
+- **Automotive section** — follow-on wave after IziPOS parity.
+- **OPEN (needs owner pick): the barcode data model** — see §8.
+
+---
+
+## 8. Barcode identity — deep-research findings & options
+
+**Owner intent:** (a) when a known barcode is entered → fetch/populate the product (enrichment), variants may share it; (b) when none is entered → mint a **unique internal barcode** so the product is recognizable later; minting ideally on the **Synerivia platform** so the same code populates the product next time anyone scans it; and when a real EAN-13 later exists, the product should carry it — possibly **alongside** the internal/old barcode (so we must decide one-field-replace vs two-codes).
+
+**Research (cited):**
+- **GS1 RCN** — prefixes **02 and 20–29** are *Restricted Circulation Numbers*, the standard range for **in-store/internal items without a manufacturer GTIN**. Minting an internal barcode in an RCN range (EAN-13 with valid check digit) is scannable AND guaranteed not to collide with real GTINs. ([GS1 General Specs](https://www.gs1.org/docs/barcodes/GS1_General_Specifications.pdf), [GS1 prefixes 20–29](https://www.gs1.org/docs/barcodes/SummaryOfGS1MOPrefixes20-29.pdf))
+- **GTIN/UPC/EAN** are the *external, standardized* scannable keys (UPC-12 NA, EAN-13 intl); **SKU is not a barcode** (internal id). Retailers with global supply often hold **both UPC and EAN**, and a product commonly has **multiple barcodes** (packaging levels, variants, supplier dup). ([inFlow GTIN vs UPC](https://www.inflowinventory.com/blog/gtin-vs-upc/), [Shopify barcode FAQ](https://www.shopify.com/blog/barcode-faq), [GS1 GTIN/EAN/UPC](https://support.gs1.org/support/solutions/articles/43000734124-))
+
+**Options for the data model:**
+
+- **Option A — single `barcode`, replace internal with EAN when known.** Mint RCN if blank; overwrite with the EAN later. Simplest. ✗ Loses the internal code once an EAN arrives → already-printed internal labels stop resolving; no history.
+
+- **Option B — two fields: `barcode` (primary, shown/scanned) + `internal_barcode` (permanent minted RCN).** Hero shows the primary (EAN if present, else internal). Internal is always minted + kept forever. When an EAN is added it becomes primary; internal still resolves old labels. Low complexity; covers the "internal/old vs EAN-13" case the owner raised. ✗ Caps at two codes (no multi-supplier/packaging codes).
+
+- **Option C — `product_barcodes` table (1-to-many), the future-proof target.** Each product has N barcodes: `{ id, product_id, value, type (ean13|upc|internal_rcn|other), is_primary, source (manual|synerivia|scanner) }`. Scanner/lookup matches ANY row → resolves to the product (variants/packaging/supplier dups all coexist; no uniqueness constraint on the product). Hero shows/edits the primary; an "additional barcodes" affordance manages the rest. The minted internal RCN is just a row (`type=internal_rcn`, permanent). Cleanly supports EAN-added-later (new primary row, internal row stays). ✗ More schema + UI.
+
+**Synerivia-platform minting (owner's preference):** the internal RCN should be allocated **centrally by the platform** (a `POST /barcodes/allocate` returning the next RCN in Synerivia's reserved range), tied to `platform_product_id`, so (1) internal codes are unique across the whole Synerivia universe, and (2) scanning that internal code elsewhere hits the enrichment catalog and populates the product. This extends the existing platform-integration/enrichment path. Tenants stay offline-safe by pre-allocating a small RCN block per device/tenant (POS is offline-first), reconciled on sync.
+
+**Recommendation:** target **Option C** (it's the only one that holds up for variants + packaging + EAN-added-later + multi-supplier and matches how POS/ERP systems model this), but **phase it**: Phase 1 ships the primary `barcode` + a permanent `internal_barcode` mint (≈ Option B behaviour) behind a `product_barcodes`-shaped service so the UI/contract don't change when the table lands; Phase 2 promotes to the full 1-to-many table + "additional barcodes" UI. The hero always edits the *primary* barcode; the internal RCN is minted on blank and shown as a read-only "internal code" chip.
+
+**This is the owner decision to make:** A (replace), B (two fields), or C (1-to-many, phased) — and confirm platform-side minting. Until chosen, the editor uses the existing single `barcode` field (no regression) and the mint is stubbed.
