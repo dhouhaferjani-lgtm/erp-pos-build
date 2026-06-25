@@ -84,5 +84,9 @@
   },
   "fields": {
     "skuLabel": "Réf. :"
+  },
+  "media": {
+    "saveFirst": "Enregistrez le produit pour ajouter des images.",
+    "addImage": "Ajouter une image"
   }
 }

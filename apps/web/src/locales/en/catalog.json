@@ -18,7 +18,8 @@
       "pricing": "Pricing & Tax",
       "inventory": "Inventory & Units",
       "pharmacy": "Pharmacy",
-      "suppliers": "Suppliers"
+      "suppliers": "Suppliers",
+      "media": "Media & Files"
     },
     "related": {
       "title": "Related operations",
