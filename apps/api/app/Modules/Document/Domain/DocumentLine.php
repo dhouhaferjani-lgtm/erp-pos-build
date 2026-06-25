@@ -27,6 +27,7 @@ use Illuminate\Support\Carbon;
  * @property numeric-string $quantity
  * @property numeric-string $quantity_delivered
  * @property numeric-string $quantity_received
+ * @property numeric-string $quantity_invoiced
  * @property numeric-string $unit_price
  * @property numeric-string|null $discount_percent
  * @property numeric-string|null $discount_amount
@@ -76,6 +77,7 @@ class DocumentLine extends Model
         'quantity',
         'quantity_delivered',
         'quantity_received',
+        'quantity_invoiced',
         'unit_price',
         'discount_percent',
         'discount_amount',
@@ -109,6 +111,7 @@ class DocumentLine extends Model
             'quantity' => 'decimal:4',
             'quantity_delivered' => 'decimal:4',
             'quantity_received' => 'decimal:4',
+            'quantity_invoiced' => 'decimal:4',
             'unit_price' => 'decimal:3',
             'discount_percent' => 'decimal:2',
             'discount_amount' => 'decimal:3',

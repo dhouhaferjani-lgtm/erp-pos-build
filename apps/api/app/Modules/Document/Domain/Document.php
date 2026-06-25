@@ -14,6 +14,7 @@ use App\Modules\Document\Domain\Enums\FacturXProfile;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\PaymentStatus;
+use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
 use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
@@ -66,6 +67,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $external_document_number
  * @property Carbon|null $external_document_date
  * @property string|null $source_document_id
+ * @property SupplierInvoiceMatchStatus|null $match_status
  * @property Carbon|null $confirmed_at
  * @property string|null $confirmed_by
  * @property Carbon|null $cancelled_at
@@ -149,6 +151,7 @@ class Document extends Model
         'cancelled_by',
         'cancellation_reason',
         'payload',
+        'match_status',
     ];
 
     /**
@@ -177,6 +180,7 @@ class Document extends Model
             'balance_due' => 'decimal:3',
             'is_historical' => 'boolean',
             'payload' => 'array',
+            'match_status' => SupplierInvoiceMatchStatus::class,
         ];
     }
 
