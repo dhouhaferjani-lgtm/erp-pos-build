@@ -299,6 +299,66 @@ describe('ProductForm (Pricing & Tax parity)', () => {
   })
 })
 
+describe('ProductForm (Inventory & Units parity)', () => {
+  it('batch tracking renders a Toggle (role="switch") instead of a Checkbox', () => {
+    render(<ProductForm />)
+    // Toggle renders role="switch" on the visually-hidden native input
+    const toggle = screen.getByRole('switch', { name: /inventory:products\.requiresBatchTracking/i })
+    expect(toggle).toBeInTheDocument()
+  })
+
+  it('toggling batch tracking (ON) reveals the default_shelf_life_days input', () => {
+    render(<ProductForm />)
+    const toggle = screen.getByRole('switch', { name: /inventory:products\.requiresBatchTracking/i })
+    // Shelf-life input is hidden until the toggle is ON
+    expect(screen.queryByLabelText(/inventory:products\.defaultShelfLifeDays/i)).not.toBeInTheDocument()
+    fireEvent.click(toggle)
+    expect(screen.getByLabelText(/inventory:products\.defaultShelfLifeDays/i)).toBeInTheDocument()
+  })
+
+  it('renders the units_per_pack input', () => {
+    render(<ProductForm />)
+    const input = screen.getByLabelText(/inventory:products\.unitsPerPack/i, { exact: false })
+    expect(input).toBeInTheDocument()
+    expect(input).toHaveAttribute('type', 'number')
+  })
+
+  it('renders the shelf_location input', () => {
+    render(<ProductForm />)
+    const input = screen.getByLabelText(/inventory:products\.shelfLocation/i, { exact: false })
+    expect(input).toBeInTheDocument()
+    expect(input).toHaveAttribute('type', 'text')
+  })
+
+  it('renders the reorder_point as a quantity input (type=number, inputMode=decimal)', () => {
+    render(<ProductForm />)
+    const input = screen.getByLabelText(/inventory:products\.reorderPoint/i, { exact: false })
+    expect(input).toBeInTheDocument()
+    expect(input).toHaveAttribute('type', 'number')
+    expect(input).toHaveAttribute('inputmode', 'decimal')
+  })
+
+  it('renders the reorder_quantity as a quantity input (type=number, inputMode=decimal)', () => {
+    render(<ProductForm />)
+    const input = screen.getByLabelText(/inventory:products\.reorderQuantity/i, { exact: false })
+    expect(input).toBeInTheDocument()
+    expect(input).toHaveAttribute('type', 'number')
+    expect(input).toHaveAttribute('inputmode', 'decimal')
+  })
+
+  it('legacy free-text unit Input is NOT present in the Inventory section', () => {
+    const { container } = render(<ProductForm />)
+    const inventorySection = container.querySelector('#section-inventory')
+    expect(inventorySection).not.toBeNull()
+    // The legacy unit input had id="unit"
+    expect(inventorySection!.querySelector('#unit')).toBeNull()
+  })
+})
+
+// WAC edit-mode test lives in __tests__/ProductFormWacEditMode.test.tsx —
+// it seeds the query cache with a product that has cost_price and verifies
+// the WAC field renders formatCurrency output (not the raw decimal).
+
 describe('Indicative margin computation — decimal precision (no parseFloat/Number)', () => {
   it('sale 100 / purchase 60 → 40.0% (exact result)', () => {
     // Reproduce the exact calculation used in ProductForm:

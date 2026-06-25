@@ -130,6 +130,12 @@
     "unitPlaceholder": "pcs, kg, heures…",
     "costWac": "Coût (CMP)",
     "costWacHelper": "Calculé automatiquement à partir des opérations d'achat",
+    "unitsPerPack": "Unités par colis",
+    "unitsPerPackPlaceholder": "ex. 12",
+    "shelfLocation": "Emplacement rayon",
+    "shelfLocationPlaceholder": "ex. A3-B12",
+    "reorderPoint": "Point de réapprovisionnement",
+    "reorderQuantity": "Quantité de réapprovisionnement",
     "oemPlaceholder": "Saisir le numéro OEM",
     "addCrossReference": "Ajouter une référence croisée",
     "fields": {

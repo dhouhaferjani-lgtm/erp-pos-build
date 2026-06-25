@@ -12,7 +12,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { colors, tokens, textColors } from '../../lib/designTokens'
 import { CategorySelect } from '../../components/catalog/CategorySelect'
-import { Button, Checkbox, FormField, Input, Select, Textarea, MoneyInput } from '../../components/atoms'
+import { Button, Checkbox, FormField, Input, Select, Textarea, MoneyInput, Toggle, QuantityInput } from '../../components/atoms'
 import { CatalogBanner } from './components/CatalogBanner'
 import { useProductSubmission } from './api/platformQueries'
 import type { LookupState, SuggestedProduct } from './types/platform'
@@ -62,6 +62,10 @@ interface Product {
   parapharmacy_metadata: ParapharmacyMetadata | null
   requires_batch_tracking: boolean
   default_shelf_life_days: number | null
+  units_per_pack: number | null
+  shelf_location: string | null
+  reorder_point: string | null
+  reorder_quantity: string | null
   created_at: string
   updated_at: string | null
 }
@@ -105,6 +109,10 @@ export interface ProductFormData {
   parapharmacy_metadata: ParapharmacyMetadata
   requires_batch_tracking: boolean
   default_shelf_life_days: number | null
+  units_per_pack: number | null
+  shelf_location: string
+  reorder_point: string
+  reorder_quantity: string
 }
 
 export function ProductForm() {
@@ -172,6 +180,10 @@ export function ProductForm() {
       },
       requires_batch_tracking: false,
       default_shelf_life_days: null,
+      units_per_pack: null,
+      shelf_location: '',
+      reorder_point: '',
+      reorder_quantity: '',
     },
   })
 
@@ -271,6 +283,10 @@ export function ProductForm() {
         },
         requires_batch_tracking: product.requires_batch_tracking ?? false,
         default_shelf_life_days: product.default_shelf_life_days ?? null,
+        units_per_pack: product.units_per_pack ?? null,
+        shelf_location: product.shelf_location ?? '',
+        reorder_point: product.reorder_point ?? '',
+        reorder_quantity: product.reorder_quantity ?? '',
       })
     }
   }, [product, reset])
@@ -780,25 +796,80 @@ export function ProductForm() {
               id="section-inventory"
               title={t('catalog:editor.sectionLabels.inventory')}
             >
-              <FormField label={t('inventory:products.unit')} htmlFor="unit">
+              {/* units_per_pack — plain integer count, Number() coercion is fine (not money/qty) */}
+              <FormField label={t('inventory:products.unitsPerPack')} htmlFor="units_per_pack">
+                <Input
+                  type="number"
+                  id="units_per_pack"
+                  min={1}
+                  placeholder={t('inventory:products.unitsPerPackPlaceholder')}
+                  {...register('units_per_pack', {
+                    setValueAs: (value: string): number | null =>
+                      value === '' || value === null ? null : Number(value),
+                  })}
+                />
+              </FormField>
+
+              {/* shelf_location — free-text string */}
+              <FormField label={t('inventory:products.shelfLocation')} htmlFor="shelf_location">
                 <Input
                   type="text"
-                  id="unit"
-                  placeholder={t('inventory:products.unitPlaceholder')}
-                  {...register('unit')}
+                  id="shelf_location"
+                  placeholder={t('inventory:products.shelfLocationPlaceholder')}
+                  {...register('shelf_location')}
+                />
+              </FormField>
+
+              {/* reorder_point — decimal quantity string, precision rule 19 */}
+              <FormField label={t('inventory:products.reorderPoint')} htmlFor="reorder_point">
+                <Controller
+                  name="reorder_point"
+                  control={control}
+                  render={({ field }) => (
+                    <QuantityInput
+                      id="reorder_point"
+                      decimalPlaces={4}
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                    />
+                  )}
+                />
+              </FormField>
+
+              {/* reorder_quantity — decimal quantity string, precision rule 19 */}
+              <FormField label={t('inventory:products.reorderQuantity')} htmlFor="reorder_quantity">
+                <Controller
+                  name="reorder_quantity"
+                  control={control}
+                  render={({ field }) => (
+                    <QuantityInput
+                      id="reorder_quantity"
+                      decimalPlaces={4}
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                    />
+                  )}
                 />
               </FormField>
 
               {showBatchTracking && (
                 <div data-testid="batch-tracking-section">
                   <div className="flex items-center gap-2 mt-6">
-                    <Checkbox
-                      id="requires_batch_tracking"
-                      {...register('requires_batch_tracking')}
+                    <Controller
+                      name="requires_batch_tracking"
+                      control={control}
+                      render={({ field }) => (
+                        <Toggle
+                          aria-label={t('inventory:products.requiresBatchTracking')}
+                          label={t('inventory:products.requiresBatchTracking')}
+                          checked={!!field.value}
+                          onChange={(e) => { field.onChange(e.target.checked) }}
+                          ref={field.ref}
+                        />
+                      )}
                     />
-                    <label htmlFor="requires_batch_tracking" className={tokens.label.base}>
-                      {t('inventory:products.requiresBatchTracking')}
-                    </label>
                   </div>
                   <p className={tokens.helperText.base}>
                     {t('inventory:products.requiresBatchTrackingHelper')}

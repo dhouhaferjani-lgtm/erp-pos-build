@@ -130,6 +130,12 @@
     "unitPlaceholder": "pcs, kg, hours…",
     "costWac": "Cost (WAC)",
     "costWacHelper": "Automatically calculated from purchase operations",
+    "unitsPerPack": "Units per Pack",
+    "unitsPerPackPlaceholder": "e.g., 12",
+    "shelfLocation": "Shelf Location",
+    "shelfLocationPlaceholder": "e.g., A3-B12",
+    "reorderPoint": "Reorder Point",
+    "reorderQuantity": "Reorder Quantity",
     "oemPlaceholder": "Enter OEM number",
     "addCrossReference": "Add Cross Reference",
     "fields": {

@@ -11,6 +11,12 @@
     "purchasePrice": "سعر الشراء",
     "purchasePriceHelper": "بدون ضريبة، من المورد",
     "margin": "الهامش",
-    "marginIndicative": "هامش إجمالي استرشادي (سعر البيع يشمل الضريبة؛ الهامش الصافي الدقيق يُضاف لاحقًا)"
+    "marginIndicative": "هامش إجمالي استرشادي (سعر البيع يشمل الضريبة؛ الهامش الصافي الدقيق يُضاف لاحقًا)",
+    "unitsPerPack": "وحدات في العبوة",
+    "unitsPerPackPlaceholder": "مثال: 12",
+    "shelfLocation": "موقع الرف",
+    "shelfLocationPlaceholder": "مثال: أ3-ب12",
+    "reorderPoint": "نقطة إعادة الطلب",
+    "reorderQuantity": "كمية إعادة الطلب"
   }
 }
