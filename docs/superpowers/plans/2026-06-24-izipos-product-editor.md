@@ -200,7 +200,7 @@ Mirror Task 2.1 exactly (`synerivia_manufacturer_id`). Test `ManufacturerModelTe
 
 ## Stage 3 — Opening balance inline  *(BUILD LAST — gated on in-flight StockMovement reason-linking; expand once that lands)*
 
-> **Blocked-by:** the parallel `StockMovement` rework that links every movement to its **reason**. Do not start until it merges into `dev`; the Opening movement created here must populate that reason field. Re-base this stage on the merged shape before expanding tasks.
+> **UNBLOCKED 2026-06-25:** the `StockMovement` "reason" rework has **landed on `origin/dev`** and is merged into this branch (`MovementReason::OpeningBalance`, `StockMovementReasonTest`, `InventoryOpeningMovementReasonTest`). The Opening movement created here must populate the `reason` field per that contract. Stage 3 is still sensibly sequenced late, but it is no longer blocked — verify against the merged enum/tests when expanding tasks.
 
 **Objective:** In the Inventory & Units section (create mode only), add `opening_qty` (`<QuantityInput>`), `opening_unit_cost` (`<MoneyInput>`), `opening_as_of_date` (`<Input type=date>`). On create, if `opening_qty > 0`, post ONE `MovementType::Opening` `StockMovement` (qty/unit_cost/as-of, `is_historical` per date, **+ its reason** per the new contract). An opening balance is **once-only**: guard against a second Opening movement (idempotent), and lock these inputs (read-only) when the product has ≥1 movement (edit mode). Bulk wizard untouched.
 
