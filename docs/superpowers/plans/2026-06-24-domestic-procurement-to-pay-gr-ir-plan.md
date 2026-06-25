@@ -22,7 +22,7 @@
 
 ## Stage 0 — Prerequisite gate (no code)
 
-**STATUS 2026-06-25 — prerequisites DONE on `fix/opus-remediation` (Codex), not yet on `origin/dev`:** R-1 (`4224ed05f`, revert supplier-AP pair) and R-2 (`d3dc07f7a`, unify GL hash chain → `postEntry` sets `chain_sequence`) are committed and **Opus-APPROVED** (`docs/superpowers/reviews/2026-06-23-r-{1,2}-opus-review.md`, no blockers). R-3…R-9 also done. The branch is **ahead 11 / behind 5** vs `origin/dev` — it must be **rebased over current dev and FF-pushed** before this gate is truly open. (Note: R-1 kept the pre-existing `createSupplierInvoiceJournalEntry` method — only the PO-confirm *wiring* was reverted; we still do NOT reuse it, see C3.)
+**✅ STATUS 2026-06-25 — GATE OPEN. R-1…R-9 integrated to `origin/dev` (`5fd7f02e5`).** R-1 (revert supplier-AP pair) and R-2 (unify GL hash chain → `postEntry` sets `chain_sequence`) are on dev and **Opus-APPROVED** (`docs/superpowers/reviews/2026-06-23-r-{1,2}-opus-review.md`, no blockers); verified on dev: `EventServiceProvider` no longer wires `PurchaseOrderConfirmed`; `postEntry` sets `chain_sequence`; `GLIntegrationTest` 77 green post-rebase. **Phase 1 Stages A/B/C/D/F may begin.** (Note: R-1 kept the pre-existing `createSupplierInvoiceJournalEntry` method — only the PO-confirm *wiring* was reverted; we still do NOT reuse it, see C3.)
 
 - [ ] **0.1** Once the remediation batch is on `origin/dev`: confirm `git grep -n "PurchaseOrderConfirmed" apps/api/app/Providers/EventServiceProvider.php` is empty (R-1 landed) and `GeneralLedgerService::postEntry` sets `chain_sequence` with a `verifyChain()` test green (R-2 landed). **If either is missing on dev, STOP** — do not start Stage A.
 
@@ -183,12 +183,15 @@ public function test_grir_and_timbre_accounts_are_purpose_mapped(): void
 
 ---
 
-## Stage E — Attachment via unified MediaAsset (thin port) — ✅ ALREADY DONE by Codex (`9a2a83c62`)
+## Stage E — Attachment via unified MediaAsset (thin port) — ⚠️ RE-HOME REQUIRED (media module moved)
 
-**Status 2026-06-25:** implemented + tested in the remediation batch (lands with the FF-push). `MediaOwnerType::SupplierInvoice` + `MediaRole::SourceDocument` added; a `SupplierInvoiceSourceDocumentUploader` port (Procurement) + `MediaAssetSupplierInvoiceSourceDocumentUploader` adapter (thin port over Catalog), DTO, `ProcurementServiceProvider`, and `SupplierInvoiceAttachmentTest` (2 passed, 21 assertions). Legacy `DocumentAttachment`/`AttachmentService` untouched. Matches this spec exactly.
+**Status 2026-06-25:** Codex DID build this (commit **`9a2a83c62`**, port + adapter + DTO + `ProcurementServiceProvider` + `SupplierInvoiceAttachmentTest`, 2 passed) — but it was **dropped during the remediation integration** because the **media-unification session moved the media module out of `Catalog` into `App\Modules\Media`** mid-flight: on dev, `Catalog\Domain\Enums\MediaOwnerType` is **deleted**; the canonical is now `App\Modules\Media\Domain\Enums\MediaOwnerType` (cases `Product/ProductVariant/Category/`**`Document`**), `App\Modules\Media\Domain\Media\{MediaAsset,MediaAttachment}`, `App\Modules\Media\Domain\Enums\MediaRole` (now carries `SourceDocument`). Codex's adapter imported the old `Catalog\…` namespace throughout → modify/delete conflict → skipped. **This is exactly the "repoint the thin port when MediaAsset moves" case the spec anticipated.**
 
-### Task E1 — VERIFY (not build)
-- [ ] After the batch lands on dev: run `php artisan test --filter=SupplierInvoiceAttachmentTest` (green); confirm the adapter stores `MediaAssetType::Document` on the `s3` disk and creates a `MediaAttachment(owner_type=SupplierInvoice, role=SourceDocument)`; confirm Procurement code imports only its own port interface (not `Catalog\…` models). If all hold, mark Stage E complete — no rebuild.
+### Task E1 — Re-home the supplier-invoice attachment onto `App\Modules\Media`
+
+- **DECISION needed (coordinate with the media-unification session):** the media-unification chose a **generic `MediaOwnerType::Document`** owner-type, NOT the granular `SupplierInvoice` the spec proposed. A supplier invoice IS a `Document` (unified `documents` table), so **prefer `owner_type = Document` + `owner_id = <supplier_invoice document id>` + `role = SourceDocument`** (aligns with the unification's model; avoids a divergent owner-type). Confirm with that session before building.
+- **Recover Codex's work as the starting point:** `git show 9a2a83c62` has the full port/adapter/DTO/test — re-create them under `App\Modules\Procurement\...` but import from `App\Modules\Media\...` (NOT `Catalog\...`), store `MediaAssetType::Document` on the `s3` disk, and create a `MediaAttachment(owner_type=Document, owner_id=<doc id>, role=SourceDocument)`. Keep the Procurement port interface so nothing imports `Media\…` models directly (only the adapter does).
+- [ ] TDD: uploading a PDF to a supplier invoice creates a `MediaAsset` (type `Document`, disk `s3`) + a `MediaAttachment` (owner_type `Document`, role `SourceDocument`); Procurement depends only on its port. Red→implement→green→commit. **Do NOT touch legacy `DocumentAttachment`/`AttachmentService`.**
 
 ---
 
