@@ -160,6 +160,30 @@ const normalIssueMovement = makeMovement({
   is_reversed: false,
 })
 
+const expiryWriteOffMovement = makeMovement({
+  id: 'wo-expiry-1',
+  product_name: 'ExpiryWidget',
+  movement_type: 'issue',
+  reason: 'expiry',
+  is_reversed: false,
+})
+
+const damageWriteOffMovement = makeMovement({
+  id: 'wo-damage-1',
+  product_name: 'DamageWidget',
+  movement_type: 'issue',
+  reason: 'damage',
+  is_reversed: false,
+})
+
+const alreadyReversedExpiryMovement = makeMovement({
+  id: 'wo-expiry-rev',
+  product_name: 'ReversedExpiryWidget',
+  movement_type: 'issue',
+  reason: 'expiry',
+  is_reversed: true,
+})
+
 const mockQueryReturn = {
   data: {
     data: [writeOffMovement, alreadyReversedMovement, normalIssueMovement],
@@ -263,13 +287,13 @@ describe('StockMovementsPage — reverse write-off action (C3)', () => {
     expect(mockMutate).toHaveBeenCalledWith('wo-1')
   })
 
-  it('invalidates stock-movements and stock-levels queries on successful reversal', async () => {
+  it('invalidates stock-movements, stock-levels, and batches queries on successful reversal', async () => {
     setup()
     await act(async () => {
       await capturedCallbacks.onSuccess?.()
     })
-    // onSuccess calls invalidateQueries twice: stock-movements then stock-levels
-    expect(mockInvalidateQueries).toHaveBeenCalledTimes(2)
+    // onSuccess calls invalidateQueries three times: stock-movements, stock-levels, batches
+    expect(mockInvalidateQueries).toHaveBeenCalledTimes(3)
   })
 
   it('shows an error toast when the onError callback is invoked with a 409', () => {
@@ -312,5 +336,64 @@ describe('StockMovementsPage — reverse write-off action (C3)', () => {
     })
     // The accessible name is the t() key, not a hardcoded string
     expect(reverseBtn.textContent).toBe('movements.actions.reverse')
+  })
+})
+
+describe('StockMovementsPage — reverse write-off action for expiry/damage reasons (C3 extended)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockHasPermission.mockImplementation((p: string) => p === 'batches.write-off')
+  })
+
+  it('shows a Reverse button for an unreversed expiry write-off', () => {
+    mockQueryReturn.data.data = [expiryWriteOffMovement, normalIssueMovement]
+    setup()
+    const reverseButtons = screen.getAllByRole('button', {
+      name: 'movements.actions.reverse',
+    })
+    expect(reverseButtons).toHaveLength(1)
+  })
+
+  it('shows a Reverse button for an unreversed damage write-off', () => {
+    mockQueryReturn.data.data = [damageWriteOffMovement, normalIssueMovement]
+    setup()
+    const reverseButtons = screen.getAllByRole('button', {
+      name: 'movements.actions.reverse',
+    })
+    expect(reverseButtons).toHaveLength(1)
+  })
+
+  it('does NOT show a Reverse button for an already-reversed expiry write-off', () => {
+    mockQueryReturn.data.data = [alreadyReversedExpiryMovement, normalIssueMovement]
+    setup()
+    expect(
+      screen.queryByRole('button', { name: 'movements.actions.reverse' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows Reverse for expiry but not for already-reversed expiry in same list', () => {
+    mockQueryReturn.data.data = [expiryWriteOffMovement, alreadyReversedExpiryMovement, normalIssueMovement]
+    setup()
+    const reverseButtons = screen.getAllByRole('button', {
+      name: 'movements.actions.reverse',
+    })
+    // Only the unreversed expiry row gets a button
+    expect(reverseButtons).toHaveLength(1)
+  })
+
+  it('calls mutate with the correct id when reversing an expiry write-off', async () => {
+    mockQueryReturn.data.data = [expiryWriteOffMovement]
+    const { user } = setup()
+    await user.click(
+      screen.getByRole('button', { name: 'movements.actions.reverse' }),
+    )
+    const confirmBtn = screen.getByTestId('confirm-dialog-confirm')
+    await user.click(confirmBtn)
+    expect(mockMutate).toHaveBeenCalledWith('wo-expiry-1')
+  })
+
+  afterEach(() => {
+    // Restore the default fixture so other describe blocks are unaffected
+    mockQueryReturn.data.data = [writeOffMovement, alreadyReversedMovement, normalIssueMovement]
   })
 })

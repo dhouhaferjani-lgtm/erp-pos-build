@@ -27,6 +27,7 @@ import {
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { reverseWriteOff } from '../batches/api/batches'
 import {
+  batchesInvalidationPredicate,
   stockLevelsInvalidationPredicate,
   stockMovementsInvalidationPredicate,
 } from './_invalidation'
@@ -59,6 +60,17 @@ interface StockMovementsResponse {
 }
 
 type MovementFilter = 'all' | 'receipt' | 'issue' | 'adjustment' | 'transfer' | 'write_off'
+
+/**
+ * Reasons that the backend ReverseWriteOffService considers reversible.
+ * Mirrors MovementReason::{Expiry,Damage,WriteOff} enum values exactly.
+ */
+const REVERSIBLE_WRITE_OFF_REASONS = ['write_off', 'expiry', 'damage'] as const
+type ReversibleWriteOffReason = typeof REVERSIBLE_WRITE_OFF_REASONS[number]
+
+function isReversibleWriteOff(reason: string | null): reason is ReversibleWriteOffReason {
+  return reason !== null && (REVERSIBLE_WRITE_OFF_REASONS as readonly string[]).includes(reason)
+}
 
 /**
  * Per-movement-type presentation: semantic tone for the {@link StatusBadge} pill
@@ -119,6 +131,9 @@ export function StockMovementsPage() {
       await queryClient.invalidateQueries({
         predicate: stockLevelsInvalidationPredicate(tenantId, companyId),
       })
+      await queryClient.invalidateQueries({
+        predicate: batchesInvalidationPredicate(tenantId, companyId),
+      })
       toast.success(t('movements.actions.reverseSuccess'))
       setReverseTargetId(null)
     },
@@ -137,7 +152,7 @@ export function StockMovementsPage() {
     if (movementFilter === 'transfer') {
       items = items.filter(m => m.movement_type === 'transfer_in' || m.movement_type === 'transfer_out')
     } else if (movementFilter === 'write_off') {
-      items = items.filter(m => m.reason === 'write_off')
+      items = items.filter(m => isReversibleWriteOff(m.reason))
     }
     return items
   }, [data?.data, movementFilter])
@@ -150,7 +165,7 @@ export function StockMovementsPage() {
       { value: 'issue' as MovementFilter, label: t('movements.filters.issues'), count: allMovements.filter(m => m.movement_type === 'issue').length },
       { value: 'adjustment' as MovementFilter, label: t('movements.filters.adjustments'), count: allMovements.filter(m => m.movement_type === 'adjustment').length },
       { value: 'transfer' as MovementFilter, label: t('movements.filters.transfers'), count: allMovements.filter(m => m.movement_type.startsWith('transfer')).length },
-      { value: 'write_off' as MovementFilter, label: t('movements.filters.writeOffs'), count: allMovements.filter(m => m.reason === 'write_off').length },
+      { value: 'write_off' as MovementFilter, label: t('movements.filters.writeOffs'), count: allMovements.filter(m => isReversibleWriteOff(m.reason)).length },
     ]
   }, [t, data?.data])
 
@@ -174,9 +189,9 @@ export function StockMovementsPage() {
   }
 
   const getMovementConfig = (movement: StockMovement) => {
-    // Write-off movements are issues with reason='write_off' — show them with
-    // a dedicated label instead of the generic "Issue" label.
-    const configKey = movement.reason === 'write_off' ? 'write_off' : movement.movement_type
+    // Write-off movements (reason in {write_off, expiry, damage}) are issues
+    // displayed with a dedicated label instead of the generic "Issue" label.
+    const configKey = isReversibleWriteOff(movement.reason) ? 'write_off' : movement.movement_type
     const base = movementTypeConfig[configKey] ?? { tone: 'neutral' as StatusTone, icon: Package }
     return { ...base, label: movementTypeLabels[configKey] ?? movement.movement_type }
   }
@@ -267,7 +282,7 @@ export function StockMovementsPage() {
       key: 'actions',
       header: '',
       render: (movement) => {
-        if (movement.reason !== 'write_off') return null
+        if (!isReversibleWriteOff(movement.reason)) return null
         if (!canReverseWriteOff) return null
         if (movement.is_reversed) {
           return (

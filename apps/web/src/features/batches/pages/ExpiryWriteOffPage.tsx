@@ -6,7 +6,7 @@ import { isApiError } from '../../../lib/api'
 import { cn } from '../../../lib/utils'
 import { tokens, textColors, borderColors, colors } from '../../../lib/designTokens'
 import { formatQuantity } from '../../../lib/format'
-import { bccomp, bcadd } from '../../../lib/decimal'
+import { bccomp, bcadd, formatQuantity as toQuantityString } from '../../../lib/decimal'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -18,6 +18,7 @@ import { QuantityInput } from '../../../components/atoms'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { LocationSelector } from '../../location/LocationSelector'
 import {
+  batchesInvalidationPredicate,
   stockLevelsInvalidationPredicate,
   stockMovementsInvalidationPredicate,
 } from '../../inventory/_invalidation'
@@ -26,26 +27,6 @@ import type { ExpiredBatch, GroupedWriteOffPayload } from '../types'
 
 /** Quantity precision for write-off lines (precision contract: scale 4). */
 const QUANTITY_SCALE = 4
-
-/**
- * Tenant-scoped invalidation predicate for the `batches` namespace (covers the
- * expired-lots list and any batch collections/details).
- */
-function batchesInvalidationPredicate(
-  tenantId: string | null,
-  companyId: string | null,
-): (q: { queryKey: readonly unknown[] }) => boolean {
-  return (q) => {
-    const k = q.queryKey
-    return (
-      Array.isArray(k) &&
-      k.length >= 3 &&
-      k[0] === 'batches' &&
-      k[k.length - 2] === tenantId &&
-      k[k.length - 1] === companyId
-    )
-  }
-}
 
 /** Sum of per-location reserved quantities for a lot (string, scale 4). */
 function reservedQuantity(batch: ExpiredBatch): string {
@@ -132,7 +113,7 @@ export function ExpiryWriteOffPage() {
         return next
       }
       const batch = batches.find((b) => b.uuid === uuid)
-      return { ...prev, [uuid]: batch ? String(batch.available_quantity) : '0' }
+      return { ...prev, [uuid]: batch ? toQuantityString(batch.available_quantity, QUANTITY_SCALE) : '0' }
     })
   }
 
@@ -143,7 +124,7 @@ export function ExpiryWriteOffPage() {
       if (allSelected) return {}
       const next: Record<string, string> = {}
       for (const b of batches) {
-        next[b.uuid] = b.uuid in prev ? prev[b.uuid] : String(b.available_quantity)
+        next[b.uuid] = b.uuid in prev ? prev[b.uuid] : toQuantityString(b.available_quantity, QUANTITY_SCALE)
       }
       return next
     })
@@ -158,7 +139,7 @@ export function ExpiryWriteOffPage() {
     const qty = quantities[batch.uuid]
     if (qty === undefined) return false
     if (qty.trim() === '' || bccomp(qty, '0') <= 0) return true
-    return bccomp(qty, String(batch.available_quantity)) > 0
+    return bccomp(qty, toQuantityString(batch.available_quantity, QUANTITY_SCALE)) > 0
   }
 
   const selectedBatches = batches.filter((b) => b.uuid in quantities)
@@ -247,7 +228,7 @@ export function ExpiryWriteOffPage() {
             onChange={(value) => { setQuantity(batch.uuid, value) }}
             decimalPlaces={QUANTITY_SCALE}
             min="0"
-            max={String(batch.available_quantity)}
+            max={toQuantityString(batch.available_quantity, QUANTITY_SCALE)}
             error={lineHasError(batch)}
             aria-label={t('expiryWriteOff.columns.writeOffQuantity')}
           />

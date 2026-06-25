@@ -52,3 +52,19 @@ export function stockMovementsInvalidationPredicate(
     )
   }
 }
+
+export function batchesInvalidationPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k.length >= 3 &&
+      k[0] === 'batches' &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}

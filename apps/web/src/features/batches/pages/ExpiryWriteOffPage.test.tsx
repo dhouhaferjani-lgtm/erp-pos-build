@@ -175,7 +175,7 @@ describe('ExpiryWriteOffPage (B4b)', () => {
     expect(mockMutate).toHaveBeenCalledTimes(1)
     expect(mockMutate).toHaveBeenCalledWith({
       location_id: 'loc-1',
-      lines: [{ batch_id: 'batch-uuid-1', quantity: '5' }],
+      lines: [{ batch_id: 'batch-uuid-1', quantity: '5.0000' }],
       reason: 'expiry',
       idempotency_key: expect.stringMatching(/.+/) as unknown as string,
     })
