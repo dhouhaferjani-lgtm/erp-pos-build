@@ -13,6 +13,8 @@ interface UnitDropdownProps {
   categoryId?: string | undefined
   disabled?: boolean | undefined
   name?: string | undefined
+  /** Forwarded to the underlying <select> so a wrapping <FormField htmlFor> can associate its label. */
+  id?: string | undefined
 }
 
 /**

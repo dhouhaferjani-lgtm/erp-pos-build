@@ -581,6 +581,7 @@ export function ProductForm() {
                   unit_id→unit server-side). */}
               <FormField label={t('inventory:products.unitOfMeasure')} htmlFor="unit_id">
                 <UnitDropdown
+                  id="unit_id"
                   value={watch('unit_id') ?? undefined}
                   onChange={(id) => { setValue('unit_id', id || null) }}
                 />
