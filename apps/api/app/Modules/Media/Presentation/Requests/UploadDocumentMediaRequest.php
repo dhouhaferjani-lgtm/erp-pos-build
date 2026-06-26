@@ -49,6 +49,11 @@ class UploadDocumentMediaRequest extends FormRequest
                 'string',
                 'max:500',
             ],
+            'role' => [
+                'nullable',
+                'string',
+                'in:SOURCE_DOCUMENT,DATASHEET,MANUAL',
+            ],
         ];
     }
 

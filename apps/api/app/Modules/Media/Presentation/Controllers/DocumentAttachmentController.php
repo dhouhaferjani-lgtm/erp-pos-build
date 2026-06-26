@@ -78,13 +78,17 @@ class DocumentAttachmentController extends Controller
             /** @var array<int, string> $allowedMime */
             $allowedMime = config('media.documents.allowed_mime_types');
 
+            /** @var string|null $rawRole */
+            $rawRole = $request->input('role');
+            $role = $rawRole !== null ? MediaRole::from($rawRole) : MediaRole::Datasheet;
+
             $view = $this->mediaService->attachUpload(
                 MediaOwnerType::Document,
                 $documentModel->id,
                 $documentModel->tenant_id,
                 $file,
                 $userId,
-                MediaRole::Datasheet,
+                $role,
                 $request->input('description'),
                 $allowedMime,
                 MediaAssetType::Document,
