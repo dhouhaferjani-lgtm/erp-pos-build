@@ -236,7 +236,7 @@ export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
 export type OpeningBatchStatus = 'DRAFT' | 'VALIDATED' | 'LOCKED';
 export type OpeningBatchType = 'ACCOUNTING' | 'INVENTORY' | 'AR_OPEN_ITEMS' | 'AP_OPEN_ITEMS';
 export type OpeningImportRowStatus = 'PENDING' | 'VALID' | 'INVALID' | 'SKIPPED' | 'POSTED';
-export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'sales_return' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount' | 'sales_returns_clearing' | 'voucher_liability' | 'marketing_goodwill_expense' | 'voucher_breakage_income' | 'rounding_loss_expense' | 'pos_tender_clearing';
+export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'sales_return' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount' | 'sales_returns_clearing' | 'voucher_liability' | 'marketing_goodwill_expense' | 'voucher_breakage_income' | 'rounding_loss_expense' | 'pos_tender_clearing' | 'goods_received_not_invoiced' | 'purchase_stamp_duty';
 }
 declare namespace App.Modules.BatchExpiry.Domain.Enums {
 export type ExpiryStatus = 'ok' | 'approaching' | 'warning' | 'critical' | 'expired';
@@ -646,6 +646,7 @@ tax_rate: string | null;
 line_total: string;
 notes: string | null;
 designation_default_snapshot: string | null;
+quantity_decimals: number;
 };
 export type VehicleContextData = {
 vehicle_id: string;
@@ -1270,6 +1271,11 @@ message: string | null;
 }
 declare namespace App.Modules.PlatformIntegration.Domain.Enums {
 export type PlatformLookupStatus = 'found' | 'not_found' | 'error' | 'cached';
+}
+declare namespace App.Modules.Procurement.Domain.Enums {
+export type BillControlMode = 'received' | 'ordered';
+export type MatchEnforcement = 'warn' | 'block';
+export type MatchMode = 'two_way' | 'three_way';
 }
 declare namespace App.Modules.Product.Application.DTOs {
 export type AutomotiveCriterionData = {

@@ -26,6 +26,7 @@ final class DocumentLineData extends Data
         public string $line_total,
         public ?string $notes,
         public ?string $designation_default_snapshot,
+        public int $quantity_decimals,
     ) {}
 
     public static function fromModel(DocumentLine $line, int $scale = 3): self
@@ -44,6 +45,25 @@ final class DocumentLineData extends Data
             line_total: CurrencyScale::bcformat($line->line_total, $scale),
             notes: $line->notes,
             designation_default_snapshot: $line->designation_default_snapshot,
+            quantity_decimals: self::resolveQuantityDecimals($line),
         );
+    }
+
+    /**
+     * Derive the line's quantity precision from its product's unit of measure.
+     * Falls back to the canonical storage scale (4) when the relation chain is
+     * not eager-loaded — callers building a response MUST eager-load
+     * `lines.product.unitOfMeasure` to surface the real per-unit precision.
+     */
+    private static function resolveQuantityDecimals(DocumentLine $line): int
+    {
+        if ($line->relationLoaded('product')
+            && $line->product !== null
+            && $line->product->relationLoaded('unitOfMeasure')
+            && $line->product->unitOfMeasure !== null) {
+            return $line->product->unitOfMeasure->decimal_places;
+        }
+
+        return 4;
     }
 }
