@@ -38,6 +38,8 @@ import { useScrollSpy } from '../products/editor/hooks/useScrollSpy'
 import { formatCurrency } from '../../lib/formatCurrency'
 import { bcsub, bcdiv, bcmul } from '../../lib/decimal'
 import { UnitDropdown } from '../uom/components/UnitDropdown'
+import { useUnits } from '../uom/hooks/useUnits'
+import { getQuantityDecimals } from '../../lib/quantityScale'
 import type { ProductType } from '../products/types'
 
 interface Product {
@@ -218,6 +220,16 @@ export function ProductForm() {
   const oemNumbers = watch('oem_numbers')
   const categoryId = watch('category_id')
   const requiresBatchTracking = watch('requires_batch_tracking')
+
+  // Reorder quantities step by the product's unit precision (pieces → 1).
+  // UnitDropdown is opaque, so resolve the selected unit's decimals here from
+  // the units list. The /uom/units payload uses camelCase `decimalPlaces`.
+  const watchedUnitId = watch('unit_id')
+  const { data: unitOptions } = useUnits()
+  const selectedUnit = unitOptions?.find((u) => u.id === watchedUnitId)
+  const reorderDecimals = getQuantityDecimals({
+    quantity_decimals: selectedUnit?.decimalPlaces ?? selectedUnit?.decimal_places ?? null,
+  })
 
   const { fields: crossRefFields, append: appendCrossRef, remove: removeCrossRef } = useFieldArray({
     control,
@@ -862,7 +874,7 @@ export function ProductForm() {
                   render={({ field }) => (
                     <QuantityInput
                       id="reorder_point"
-                      decimalPlaces={4}
+                      decimalPlaces={reorderDecimals}
                       value={field.value ?? ''}
                       onChange={field.onChange}
                       onBlur={field.onBlur}
@@ -879,7 +891,7 @@ export function ProductForm() {
                   render={({ field }) => (
                     <QuantityInput
                       id="reorder_quantity"
-                      decimalPlaces={4}
+                      decimalPlaces={reorderDecimals}
                       value={field.value ?? ''}
                       onChange={field.onChange}
                       onBlur={field.onBlur}
