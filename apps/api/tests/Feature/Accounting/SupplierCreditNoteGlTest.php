@@ -1009,4 +1009,126 @@ final class SupplierCreditNoteGlTest extends TestCase
         $this->assertSame(0, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $cn3->id)->count());
         $this->assertSame(DocumentStatus::Draft, $this->freshDoc($cn3)->status);
     }
+
+    // =========================================================================
+    // 19. HIGH (concurrency): stale Draft model with DB-Posted status — locked
+    //     re-read detects the inconsistency and throws rather than double-posting.
+    //
+    //     Simulates the race: caller holds a stale Draft copy (fetched before the
+    //     concurrent post completed), but the DB row is now Posted with no JE
+    //     (we delete the JE to expose the window). Without lockForUpdate + re-read
+    //     the service would pass the Draft guard and write a second JE. With the
+    //     lock it re-reads the current state (Posted + no JE = inconsistent) and
+    //     throws DomainException instead.
+    // =========================================================================
+
+    public function test_stale_draft_model_with_db_posted_and_no_je_throws_on_locked_reread(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
+        $creditNote = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::GoodsReturn,
+            ['qty' => '2.0000', 'unit_price' => '10.000', 'recoverable_vat' => '3.800'],
+            subtotal: '20.000',
+            total: '23.800',
+        );
+
+        // Capture the stale Draft reference BEFORE touching the DB status.
+        $staleDraft = $this->freshDoc($creditNote); // status = Draft
+
+        // Simulate the race-window state: a concurrent post already flipped the DB row to
+        // Posted but has NOT yet written its JE (it's mid-transaction). We reach this state
+        // by directly updating the row without going through the service, so NO JE is created.
+        // JEs are immutable once posted, so we cannot delete one created by the service —
+        // instead we force the inconsistent state directly in the raw column.
+        \Illuminate\Support\Facades\DB::table('documents')
+            ->where('id', $creditNote->id)
+            ->update(['status' => 'posted']);
+
+        // Sanity: DB says Posted but no JE exists for this credit note.
+        $this->assertSame(DocumentStatus::Posted, $this->freshDoc($creditNote)->status);
+        $this->assertSame(
+            0,
+            JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $creditNote->id)->count(),
+        );
+
+        // $staleDraft still shows Draft (captured before the raw update).
+        $this->assertSame(DocumentStatus::Draft, $staleDraft->status);
+
+        // Without lockForUpdate + re-read: the service trusts the caller-provided Draft
+        // status, passes the 0b guard, finds no JE → proceeds to write a JE — wrong.
+        // With the fix: lockForUpdate reloads the DB row (Posted + no JE = inconsistent
+        // state), enters the Posted-without-JE branch, and throws DomainException.
+        $threw = false;
+        $message = '';
+        try {
+            $this->service()->post($staleDraft);
+        } catch (\DomainException $e) {
+            $threw = true;
+            $message = $e->getMessage();
+        }
+
+        $this->assertTrue($threw, 'Locked re-read must detect Posted-without-JE as inconsistent state and throw');
+        $this->assertStringContainsString('inconsistent', $message, 'Exception message must mention inconsistency');
+
+        // Still no JE: the second post must NOT have written one (it threw instead).
+        $this->assertSame(
+            0,
+            JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $creditNote->id)->count(),
+            'No JE must have been written — the post must have thrown before reaching the GL write',
+        );
+    }
+
+    // =========================================================================
+    // 20. Defense-in-depth: partial DB UNIQUE constraint prevents a second
+    //     journal_entries row for the same (source_type='supplier_credit_note',
+    //     source_id). Verified against real Postgres (RefreshDatabase runs the
+    //     migration that adds the partial unique index).
+    // =========================================================================
+
+    public function test_db_unique_constraint_prevents_duplicate_supplier_credit_note_je(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
+        $creditNote = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::PriceAdjustment,
+            ['qty' => '5.0000', 'unit_price' => '1.000', 'recoverable_vat' => '0.950'],
+            subtotal: '5.000',
+            total: '5.950',
+        );
+
+        // Post normally to produce the first JE.
+        $this->service()->post($creditNote);
+
+        $firstEntry = JournalEntry::where('source_type', 'supplier_credit_note')
+            ->where('source_id', $creditNote->id)
+            ->firstOrFail();
+
+        // Attempt a direct duplicate insert — the partial unique index must reject it.
+        $threw = false;
+        try {
+            JournalEntry::create([
+                'tenant_id'    => $this->tenant->id,
+                'company_id'   => $this->company->id,
+                'entry_number' => 'JE-DUPE-TEST',
+                'entry_date'   => now()->toDateString(),
+                'description'  => 'Duplicate JE — must be rejected by unique constraint',
+                'status'       => JournalEntryStatus::Draft,
+                'source_type'  => 'supplier_credit_note',
+                'source_id'    => $creditNote->id,   // same as the first JE
+            ]);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException|\Illuminate\Database\QueryException $e) {
+            $threw = true;
+        }
+
+        $this->assertTrue($threw, 'Partial unique index on (source_type, source_id) must reject a duplicate supplier_credit_note entry');
+
+        // Still only the one JE from the initial post.
+        $this->assertSame(
+            1,
+            JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $creditNote->id)->count(),
+        );
+    }
 }

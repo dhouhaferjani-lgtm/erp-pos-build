@@ -67,6 +67,17 @@ final class SupplierCreditNotePostingService
     public function post(Document $creditNote): void
     {
         DB::transaction(function () use ($creditNote): void {
+            // HIGH (concurrency fix): reload the credit-note row under FOR UPDATE so every
+            // guard in this transaction (type, status, reason) runs against the current,
+            // locked DB state rather than the caller-provided (potentially stale) snapshot.
+            // Two concurrent posts of the same Draft credit note serialise here: the second
+            // blocks until the first commits, then re-reads Posted + JE-exists and takes the
+            // idempotent no-op path below. The caller-provided model is discarded; $creditNote
+            // is reassigned to the locked, freshly-loaded instance for the rest of the method.
+            $creditNote = Document::query()
+                ->whereKey($creditNote->id)
+                ->lockForUpdate()
+                ->firstOrFail();
             $creditNote->load('lines');
 
             // 0a. Input document guard: this service only posts supplier credit notes.
