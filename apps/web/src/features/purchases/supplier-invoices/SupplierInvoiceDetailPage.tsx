@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -55,7 +55,15 @@ export function SupplierInvoiceDetailPage() {
   const deleteMutation = useDeleteAttachment(id)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [showPaymentForm, setShowPaymentForm] = useState(false)
+  const paymentDialogRef = useRef<HTMLDialogElement>(null)
+
+  function openPaymentDialog() {
+    paymentDialogRef.current?.showModal()
+  }
+
+  function closePaymentDialog() {
+    paymentDialogRef.current?.close()
+  }
 
   if (isLoading || !invoice) {
     return (
@@ -169,7 +177,7 @@ export function SupplierInvoiceDetailPage() {
               <button
                 type="button"
                 data-testid="btn-record-payment"
-                onClick={() => { setShowPaymentForm(true) }}
+                onClick={() => { openPaymentDialog() }}
                 className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
               >
                 {t('purchases:supplierInvoices.actions.recordPayment')}
@@ -376,6 +384,7 @@ export function SupplierInvoiceDetailPage() {
             type="file"
             className="sr-only"
             accept="application/pdf,image/*"
+            aria-label={t('purchases:supplierInvoices.actions.uploadAttachment')}
             onChange={handleFileChange}
           />
         </div>
@@ -429,37 +438,40 @@ export function SupplierInvoiceDetailPage() {
       </div>
 
       {/* Record Payment Modal (minimal inline form — gated on C4 ship) */}
-      {showPaymentForm && (
-        <div className={tokens.modal.backdrop} role="dialog" aria-modal="true">
-          <div className={tokens.modal.container}>
-            <div className={tokens.modal.header}>
-              <h2 className={tokens.modal.title}>
-                {t('purchases:supplierInvoices.detail.payment')}
-              </h2>
-              <button
-                type="button"
-                onClick={() => { setShowPaymentForm(false) }}
-                className={tokens.modal.closeButton}
-              >
-                ×
-              </button>
-            </div>
-            <p className={`text-sm ${textColors.tertiary}`}>
-              {/* Minimal placeholder — full payment form TBD when C4 ships */}
-              {t('purchases:supplierInvoices.actions.recordPayment')}
-            </p>
-            <div className={tokens.modal.footer}>
-              <button
-                type="button"
-                onClick={() => { setShowPaymentForm(false) }}
-                className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
-              >
-                {t('common:actions.cancel')}
-              </button>
-            </div>
-          </div>
+      {/* Native <dialog> for built-in focus trapping + Escape-to-close */}
+      <dialog
+        ref={paymentDialogRef}
+        aria-labelledby="payment-modal-title"
+        className={tokens.modal.container}
+        onClose={() => { closePaymentDialog() }}
+      >
+        <div className={tokens.modal.header}>
+          <h2 id="payment-modal-title" className={tokens.modal.title}>
+            {t('purchases:supplierInvoices.detail.payment')}
+          </h2>
+          <button
+            type="button"
+            onClick={() => { closePaymentDialog() }}
+            className={tokens.modal.closeButton}
+            aria-label={t('common:actions.close')}
+          >
+            ×
+          </button>
         </div>
-      )}
+        <p className={`text-sm ${textColors.tertiary}`}>
+          {/* Minimal placeholder — full payment form TBD when C4 ships */}
+          {t('purchases:supplierInvoices.actions.recordPayment')}
+        </p>
+        <div className={tokens.modal.footer}>
+          <button
+            type="button"
+            onClick={() => { closePaymentDialog() }}
+            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
+          >
+            {t('common:actions.cancel')}
+          </button>
+        </div>
+      </dialog>
     </div>
   )
 }
