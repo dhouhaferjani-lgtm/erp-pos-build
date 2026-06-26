@@ -121,6 +121,31 @@ class GetExpiredBatchesWithStockTest extends TestCase
     }
 
     /**
+     * The product.unitOfMeasure chain must be eager-loaded so BatchResource can
+     * emit per-product quantity_decimals (drives the write-off qty step) without
+     * an N+1 and without silently falling back to scale 4.
+     */
+    public function test_expired_batches_eager_load_product_unit_for_quantity_precision(): void
+    {
+        $this->createExpiredBatchWithStock(
+            batchNumber: 'UOM-EAGER-EXPIRED-01',
+            quantity: '4.0000',
+            reservedQuantity: '0.0000',
+        );
+
+        $result = $this->service->getExpiredBatchesWithStock(
+            companyId: $this->company->id,
+        );
+
+        $product = $result->first()?->product;
+        $this->assertNotNull($product, 'product relation must be loaded');
+        $this->assertTrue(
+            $product->relationLoaded('unitOfMeasure'),
+            'product.unitOfMeasure must be eager-loaded for BatchResource quantity_decimals',
+        );
+    }
+
+    /**
      * When a location_id filter is passed, only lots at that location are returned.
      */
     public function test_location_filter_scopes_results(): void

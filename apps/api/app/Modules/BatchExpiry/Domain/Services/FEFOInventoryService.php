@@ -270,7 +270,7 @@ class FEFOInventoryService
                     $q->whereRaw('location_id = ?', [$locationId]);
                 }
             })
-            ->with(['product', 'batchStock'])
+            ->with(['product.unitOfMeasure', 'batchStock'])
             ->orderBy('expiry_date', 'asc');
 
         return $query->get();
@@ -300,7 +300,7 @@ class FEFOInventoryService
                     $q->whereRaw('location_id = ?', [$locationId]);
                 }
             })
-            ->with(['product', 'batchStock'])
+            ->with(['product.unitOfMeasure', 'batchStock'])
             ->orderBy('expiry_date', 'asc');
 
         return $query->get();
