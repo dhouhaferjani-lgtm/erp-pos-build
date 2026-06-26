@@ -359,6 +359,14 @@ final class SupplierInvoiceMatcher
      * Scale convention: qty scale 4, money scale 3. Intermediate percent fraction
      * computed at scale 6 to avoid precision loss before the final multiply.
      */
+    public function priceStatus(
+        DocumentLine $invoiceLine,
+        DocumentLine $poLine,
+        ProcurementPolicy $policy,
+    ): SupplierInvoiceMatchStatus {
+        return $this->computePriceStatus($invoiceLine, $poLine, $policy);
+    }
+
     private function computePriceStatus(
         DocumentLine $invoiceLine,
         DocumentLine $poLine,

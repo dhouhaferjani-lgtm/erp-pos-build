@@ -131,6 +131,15 @@ final class CreateSupplierInvoiceRequest extends FormRequest
                 );
             }
 
+            // Validate currency matches PO currency (Phase 1 domestic-only).
+            $currency = $data['currency'] ?? null;
+            if (is_string($currency) && $currency !== $po->currency) {
+                $v->errors()->add(
+                    'currency',
+                    'The invoice currency must match the purchase order currency.'
+                );
+            }
+
             // Validate every source_line_id belongs to the referenced PO.
             /** @var array<int, array<string, mixed>> $lines */
             $lines = $data['lines'] ?? [];

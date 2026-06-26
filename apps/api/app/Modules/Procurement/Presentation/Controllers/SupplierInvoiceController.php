@@ -11,20 +11,17 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Document\Domain\Enums\FiscalCategory;
-use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
-use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
+use App\Modules\Procurement\Application\CreateSupplierInvoiceService;
 use App\Modules\Procurement\Application\ProcurementPolicyResolver;
 use App\Modules\Procurement\Application\SupplierInvoiceMatcher;
 use App\Modules\Procurement\Application\SupplierInvoicePostingService;
 use App\Modules\Procurement\Presentation\Requests\CreateSupplierInvoiceRequest;
-use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Carbon;
 
 /**
  * B3 — Supplier Invoice Presentation controller.
@@ -46,11 +43,10 @@ final class SupplierInvoiceController extends Controller
 
     public function __construct(
         private readonly CompanyContext $companyContext,
-        private readonly DocumentNumberingService $numberingService,
+        private readonly CreateSupplierInvoiceService $createService,
         private readonly SupplierInvoiceMatcher $matcher,
         private readonly SupplierInvoicePostingService $postingService,
         private readonly ProcurementPolicyResolver $policyResolver,
-        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     protected function getCompanyContext(): CompanyContext
@@ -129,123 +125,16 @@ final class SupplierInvoiceController extends Controller
 
     public function store(CreateSupplierInvoiceRequest $request): JsonResponse
     {
-        /** @var array<string, mixed> $validated */
-        $validated = $request->validated();
-
-        $companyId = $this->companyContext->requireCompanyId();
         $company = $this->companyContext->requireCompany();
+        $companyId = $company->id;
         $tenantId = $company->tenant_id;
 
-        /** @var string $currency */
-        $currency = $validated['currency'];
-        $scale = $this->scaleResolver->getScaleSafe($currency, 3);
+        $document = $this->createService->create($request->validated(), $tenantId, $companyId);
 
-        /** @var array<int, array<string, mixed>> $lines */
-        $lines = $validated['lines'];
-
-        return DB::transaction(function () use ($tenantId, $companyId, $validated, $lines, $currency, $scale): JsonResponse {
-            $documentNumber = $this->numberingService->generateNumber(
-                $tenantId,
-                $companyId,
-                DocumentType::SupplierInvoice,
-            );
-
-            // Compute document-level totals from lines.
-            $subtotal = '0';
-            $taxAmount = '0';
-
-            foreach ($lines as $line) {
-                /** @var numeric-string $qty */
-                $qty = (string) $line['quantity'];
-                /** @var numeric-string $unitPrice */
-                $unitPrice = (string) $line['unit_price'];
-                /** @var numeric-string $vatRate */
-                $vatRate = (string) $line['vat_rate'];
-
-                $lineSubtotal = bcmul($qty, $unitPrice, $scale);
-                $lineTax = bcmul($lineSubtotal, bcdiv($vatRate, '100', $scale + 4), $scale);
-
-                $subtotal = bcadd($subtotal, $lineSubtotal, $scale);
-                $taxAmount = bcadd($taxAmount, $lineTax, $scale);
-            }
-
-            $total = bcadd($subtotal, $taxAmount, $scale);
-
-            $document = Document::create([
-                'tenant_id' => $tenantId,
-                'company_id' => $companyId,
-                'partner_id' => $validated['partner_id'],
-                'source_document_id' => $validated['source_document_id'],
-                'type' => DocumentType::SupplierInvoice,
-                'fiscal_category' => FiscalCategory::NonFiscal,
-                'fiscal_status' => FiscalStatus::Draft,
-                'status' => DocumentStatus::Draft,
-                'document_number' => $documentNumber,
-                'document_date' => $validated['issue_date'],
-                'due_date' => $validated['due_date'] ?? null,
-                'currency' => $currency,
-                'subtotal' => $subtotal,
-                'line_tax_amount' => $taxAmount,
-                'tax_amount' => $taxAmount,
-                'total' => $total,
-                'external_document_number' => $validated['supplier_reference'] ?? null,
-                'notes' => $validated['notes'] ?? null,
-                'match_status' => SupplierInvoiceMatchStatus::Unmatched,
-            ]);
-
-            // Create lines with source_line_id and computed VAT fields.
-            foreach ($lines as $idx => $lineData) {
-                /** @var numeric-string $qty */
-                $qty = (string) $lineData['quantity'];
-                /** @var numeric-string $unitPrice */
-                $unitPrice = (string) $lineData['unit_price'];
-                /** @var numeric-string $vatRate */
-                $vatRate = (string) $lineData['vat_rate'];
-
-                $lineSubtotal = bcmul($qty, $unitPrice, $scale);
-                $lineTax = bcmul($lineSubtotal, bcdiv($vatRate, '100', $scale + 4), $scale);
-
-                // Fetch the PO line description for snapshot.
-                /** @var DocumentLine|null $poLine */
-                $poLine = DocumentLine::find($lineData['source_line_id']);
-                $description = $poLine?->description ?? '';
-
-                DocumentLine::create([
-                    'document_id' => $document->id,
-                    'line_number' => $idx + 1,
-                    'description' => $description,
-                    'quantity' => $qty,
-                    'quantity_delivered' => '0.0000',
-                    'quantity_received' => '0.0000',
-                    'quantity_invoiced' => '0.0000',
-                    'unit_price' => $unitPrice,
-                    'tax_rate' => $vatRate,
-                    'tax_amount' => $lineTax,
-                    'tax_recoverable' => true,
-                    'recoverable_tax_amount' => $lineTax,
-                    'non_recoverable_tax_amount' => '0.000',
-                    'line_total' => $lineSubtotal,
-                    'allocated_costs' => '0.0000',
-                    'source_line_id' => (string) $lineData['source_line_id'],
-                ]);
-            }
-
-            // Eager-load lines for matcher.
-            $document->load('lines');
-
-            // Auto-match and persist the result.
-            $matchStatus = $this->matcher->match($document);
-            $document->match_status = $matchStatus;
-            $document->save();
-
-            // Reload for the response.
-            $document->load(['lines', 'partner', 'sourceDocument']);
-
-            return response()->json([
-                'data' => $this->formatDetail($document),
-                'meta' => ['timestamp' => now()->toIso8601String()],
-            ], 201);
-        });
+        return response()->json([
+            'data' => $this->formatDetail($document),
+            'meta' => ['timestamp' => now()->toIso8601String()],
+        ], 201);
     }
 
     // -------------------------------------------------------------------------
@@ -298,22 +187,20 @@ final class SupplierInvoiceController extends Controller
             return $this->validationErrorResponse('POSTING_BLOCKED', $e->getMessage());
         }
 
-        $hasPriceVariance = $doc->match_status === SupplierInvoiceMatchStatus::PriceVariance;
-
         try {
             $this->postingService->post($doc);
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('POSTING_BLOCKED', $e->getMessage());
         }
 
-        // Reload after posting.
+        // Reload after posting to get the authoritative post-time match_status.
         $doc->refresh();
         $doc->load(['lines', 'partner', 'sourceDocument']);
 
         $responseData = $this->formatDetail($doc);
 
-        // Surface price-variance warning under Warn enforcement.
-        if ($hasPriceVariance) {
+        // Surface price-variance warning based on the authoritative post-time status.
+        if ($doc->match_status === SupplierInvoiceMatchStatus::PriceVariance) {
             $responseData['warning'] = 'Price variance detected; posted under warn enforcement.';
         }
 
@@ -377,13 +264,14 @@ final class SupplierInvoiceController extends Controller
             'line_subtotal' => $line->line_total,
         ])->values()->all();
 
-        // posted_at from GL journal entry.
+        // posted_at from GL journal entry — company-scoped to prevent cross-tenant leakage.
         $postedAt = null;
         if ($doc->status === DocumentStatus::Posted) {
-            /** @var \Illuminate\Support\Carbon|null $jeDate */
+            /** @var Carbon|null $jeDate */
             $jeDate = JournalEntry::query()
                 ->where('source_type', 'supplier_invoice')
                 ->where('source_id', $doc->id)
+                ->where('company_id', $doc->company_id)
                 ->value('created_at');
             $postedAt = $jeDate?->toIso8601String();
         }
@@ -410,6 +298,7 @@ final class SupplierInvoiceController extends Controller
             'source_purchase_order' => $sourcePo,
             'match' => $this->buildMatchBlock($doc),
             'posted_at' => $postedAt,
+            'attachments' => [],
         ];
     }
 
@@ -422,7 +311,7 @@ final class SupplierInvoiceController extends Controller
     {
         $perLine = [];
 
-        // Index PO lines by id to avoid N+1 queries.
+        // Index PO lines by id; scope to the same company to prevent leakage.
         $poLineIds = $doc->lines
             ->pluck('source_line_id')
             ->filter()
@@ -433,9 +322,12 @@ final class SupplierInvoiceController extends Controller
         /** @var array<string, DocumentLine> $poLines */
         $poLines = DocumentLine::query()
             ->whereIn('id', $poLineIds)
+            ->whereHas('document', fn ($q) => $q->whereRaw('company_id = ?', [$doc->company_id]))
             ->get()
             ->keyBy('id')
             ->all();
+
+        $policy = $this->policyResolver->forCompany($doc->company_id);
 
         foreach ($doc->lines as $invoiceLine) {
             if ($invoiceLine->source_line_id === null) {
@@ -449,11 +341,9 @@ final class SupplierInvoiceController extends Controller
 
             $matchable = $this->matcher->matchableQty($poLine);
 
-            // Price variance: any non-zero absolute difference.
-            /** @phpstan-ignore argument.type */
-            $priceDiff = bcsub($invoiceLine->unit_price, $poLine->unit_price, 3);
-            /** @phpstan-ignore argument.type */
-            $priceVariance = bccomp($priceDiff, '0', 3) !== 0;
+            // Tolerance-aware price variance (consistent with matcher policy).
+            $priceStatus = $this->matcher->priceStatus($invoiceLine, $poLine, $policy);
+            $priceVariance = $priceStatus === SupplierInvoiceMatchStatus::PriceVariance;
 
             $perLine[] = [
                 'po_line_id' => $invoiceLine->source_line_id,

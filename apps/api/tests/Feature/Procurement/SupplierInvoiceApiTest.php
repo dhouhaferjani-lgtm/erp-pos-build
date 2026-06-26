@@ -5,11 +5,17 @@ declare(strict_types=1);
 namespace Tests\Feature\Procurement;
 
 use App\Enums\Vertical;
+use App\Models\Country;
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Application\Services\GeneralLedgerHashService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
@@ -21,12 +27,18 @@ use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\GoodsReceiptService;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Procurement\Domain\Enums\BillControlMode;
 use App\Modules\Procurement\Domain\Enums\MatchEnforcement;
 use App\Modules\Procurement\Domain\Enums\MatchMode;
 use App\Modules\Procurement\Domain\ProcurementPolicy;
+use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
+use App\Modules\Taxation\Domain\Enums\TaxApplicationLevel;
+use App\Modules\Taxation\Domain\Enums\TaxType;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -615,5 +627,433 @@ final class SupplierInvoiceApiTest extends TestCase
             ->postJson('/api/v1/supplier-invoices', $payload);
 
         $response->assertUnprocessable();
+    }
+
+    // -------------------------------------------------------------------------
+    // BLOCKER 2 — currency must match PO currency
+    // -------------------------------------------------------------------------
+
+    public function test_store_rejects_currency_mismatch_with_po(): void
+    {
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '50.000');
+
+        $payload = $this->siPayload($po, $poLine, '5.0000', '50.000');
+        $payload['currency'] = 'EUR'; // PO is TND
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $payload);
+
+        $response->assertUnprocessable();
+        $this->assertJsonValidationErrors($response, ['currency']);
+    }
+
+    // -------------------------------------------------------------------------
+    // HIGH 2 — warn-mode price-variance: warning present in POST response
+    // -------------------------------------------------------------------------
+
+    public function test_post_warning_included_in_response_for_price_variance_under_warn(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        // PO @ 100.000, receive 10 units.
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '100.000');
+
+        app(GeneralLedgerService::class)->createGoodsReceiptGrIrEntry(
+            $this->company->id,
+            Str::uuid()->toString(),
+            '10.0000',
+            '100.000',
+            'TND',
+        );
+
+        // Invoice @ 110.000 — 10% delta, well outside 2% / 1.000 TND tolerance.
+        $storeResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '10.0000', '110.000', '19.00'));
+        $storeResponse->assertCreated();
+        $siId = $storeResponse->json('data.id');
+
+        // Policy is Warn (set up in setUp). Post should succeed with warning.
+        $postResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post");
+
+        $postResponse->assertOk();
+        $data = $postResponse->json('data');
+        $this->assertSame(DocumentStatus::Posted->value, $data['status']);
+        // Warning must be present at the authoritative post-time status (HIGH 2 fix).
+        $this->assertArrayHasKey('warning', $data, 'price-variance warning must be in response under Warn enforcement');
+        $this->assertNotEmpty($data['warning']);
+    }
+
+    // -------------------------------------------------------------------------
+    // HIGH 3 — block-mode price-variance: 422
+    // -------------------------------------------------------------------------
+
+    public function test_post_blocked_under_block_enforcement_with_price_variance(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '100.000');
+
+        app(GeneralLedgerService::class)->createGoodsReceiptGrIrEntry(
+            $this->company->id,
+            Str::uuid()->toString(),
+            '10.0000',
+            '100.000',
+            'TND',
+        );
+
+        $storeResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '10.0000', '110.000', '19.00'));
+        $storeResponse->assertCreated();
+        $siId = $storeResponse->json('data.id');
+
+        // Switch to Block enforcement.
+        ProcurementPolicy::where('company_id', $this->company->id)
+            ->update(['match_enforcement' => MatchEnforcement::Block->value]);
+
+        $postResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post");
+
+        $postResponse->assertUnprocessable();
+
+        // No JE, still Draft.
+        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_invoice')->where('source_id', $siId)->count());
+        /** @var Document $si */
+        $si = Document::find($siId);
+        $this->assertSame(DocumentStatus::Draft, $si->status);
+    }
+
+    // -------------------------------------------------------------------------
+    // HIGH 4 — full real lifecycle: PO → GoodsReceipt → SI create → post
+    //          Balanced §3 GL with 408, 4456 VAT, PurchaseStampDuty timbre, 401
+    // -------------------------------------------------------------------------
+
+    public function test_full_lifecycle_po_receive_invoice_post_balanced_je(): void
+    {
+        // Seed chart of accounts.
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        // Ensure Tunisia country row exists (required by tax_configurations FK).
+        Country::firstOrCreate(['code' => 'TN'], [
+            'name' => 'Tunisia',
+            'currency_code' => 'TND',
+            'is_active' => true,
+        ]);
+
+        // Seed TaxConfiguration for NON_FISCAL documents (supplier invoices).
+        TaxConfiguration::create([
+            'country_code' => 'TN',
+            'tax_type' => TaxType::Percentage,
+            'name' => 'TVA 19% (achats)',
+            'code' => 'TVA_19_PURCHASE',
+            'percentage_rate' => '19.0000',
+            'fixed_amount' => null,
+            'applies_to' => TaxApplicationLevel::LineItems,
+            'is_default' => false,
+            'is_active' => true,
+            'sequence_order' => 1,
+            'stacks_on' => 'SUBTOTAL',
+            'applicable_document_types' => ['NON_FISCAL'],
+            'is_stamp_duty' => false,
+            'is_recoverable' => true,
+        ]);
+
+        TaxConfiguration::create([
+            'country_code' => 'TN',
+            'tax_type' => TaxType::FixedAmount,
+            'name' => 'Timbre Fiscal - Achat',
+            'code' => 'STAMP_PURCHASE',
+            'percentage_rate' => null,
+            'fixed_amount' => '0.600',
+            'applies_to' => TaxApplicationLevel::DocumentTotal,
+            'is_default' => false,
+            'is_active' => true,
+            'sequence_order' => 99,
+            'stacks_on' => 'SUBTOTAL',
+            'applicable_document_types' => ['NON_FISCAL'],
+            'is_stamp_duty' => true,
+            'is_recoverable' => false,
+        ]);
+
+        // Goods receipt infrastructure: location + physical product.
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'code' => 'WH-B3-01',
+            'name' => 'B3 Test Warehouse',
+            'type' => 'warehouse',
+            'is_active' => true,
+            'is_default' => true,
+        ]);
+
+        $product = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'PROD-B3-001',
+            'name' => 'B3 Test Product',
+            'type' => ProductType::Part,
+            'is_active' => true,
+            'is_physical' => true,
+            'requires_batch_tracking' => false,
+            'cost_price' => '0.000',
+        ]);
+
+        // PO: qty=5 @ 10.000 TND.
+        $po = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'location_id' => $location->id,
+            'type' => DocumentType::PurchaseOrder,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'PO-B3-'.Str::upper(Str::random(6)),
+            'document_date' => now()->toDateString(),
+            'currency' => 'TND',
+            'subtotal' => '50.000',
+            'tax_amount' => '0.000',
+            'total' => '50.000',
+        ]);
+
+        $poLine = DocumentLine::create([
+            'document_id' => $po->id,
+            'product_id' => $product->id,
+            'product_code' => $product->sku,
+            'line_number' => 1,
+            'description' => $product->name,
+            'quantity' => '5.0000',
+            'quantity_delivered' => '0.0000',
+            'quantity_received' => '0.0000',
+            'quantity_invoiced' => '0.0000',
+            'unit_price' => '10.000',
+            'line_total' => '50.000',
+            'allocated_costs' => '0.0000',
+        ]);
+
+        // Receive goods via GoodsReceiptService (fires GoodsReceived → 408 accrues).
+        $po->load('lines');
+        /** @var GoodsReceiptService $receiptService */
+        $receiptService = app(GoodsReceiptService::class);
+        $receiptService->receiveGoods($po, [$poLine->id => '5.0000']);
+
+        // Refresh PO line so quantity_received is current.
+        $poLine->refresh();
+
+        // Assert 408 was accrued by the listener.
+        $this->assertSame(1, JournalEntry::where('source_type', 'goods_receipt')
+            ->where('company_id', $this->company->id)
+            ->count(), 'GR-IR 408 entry must exist after receipt');
+
+        // POST supplier invoice via HTTP (qty=5 @ 10.000, 19% VAT).
+        // Expected: subtotal=50.000, VAT=9.500, stamp=0.600, total=60.100
+        $storeResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '5.0000', '10.000', '19.00'));
+
+        $storeResponse->assertCreated();
+        $siId = $storeResponse->json('data.id');
+        $this->assertNotNull($siId);
+
+        // Verify stamp_duty_amount was set by the service (BLOCKER 1 fix).
+        /** @var Document $si */
+        $si = Document::find($siId);
+        $this->assertNotNull($si);
+        $this->assertSame('0.600', $si->stamp_duty_amount, 'stamp_duty_amount must be set by CreateSupplierInvoiceService');
+        $this->assertSame('60.100', $si->total);
+
+        // POST to post via HTTP.
+        $postResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post");
+
+        $postResponse->assertOk();
+        $this->assertSame(DocumentStatus::Posted->value, $postResponse->json('data.status'));
+        // No price variance, so no warning.
+        $this->assertArrayNotHasKey('warning', $postResponse->json('data'));
+
+        // Resolve GL accounts by purpose.
+        $grirAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::GoodsReceivedNotInvoiced);
+        $vatAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::VatDeductible);
+        $stampAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::PurchaseStampDuty);
+        $payableAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::SupplierPayable);
+
+        // Load the clearing JE.
+        $je = JournalEntry::where('source_type', 'supplier_invoice')
+            ->where('source_id', $siId)
+            ->firstOrFail();
+        $je->load('lines');
+
+        // ── Assert debits == credits (balanced) ──────────────────────────────
+        /** @var string $debitSum */
+        $debitSum = '0.000';
+        /** @var string $creditSum */
+        $creditSum = '0.000';
+        foreach ($je->lines as $jl) {
+            $debitSum = bcadd($debitSum, $jl->debit, 3);
+            $creditSum = bcadd($creditSum, $jl->credit, 3);
+        }
+        $this->assertSame('0.000', bcsub($debitSum, $creditSum, 3), 'Journal entry must balance: debits == credits');
+
+        // ── Assert each §3 leg by SystemAccountPurpose ───────────────────────
+        $legByAccount = fn (Account $a): ?JournalLine => $je->lines->firstWhere('account_id', $a->id);
+
+        // Dr 408 cleared.
+        $dr408 = $legByAccount($grirAccount);
+        $this->assertNotNull($dr408, '408 (GR-IR) debit leg must exist');
+        $this->assertSame('50.000', $dr408->debit);
+        $this->assertNull($dr408->partner_id);
+
+        // Dr 4456 VAT deductible.
+        $drVat = $legByAccount($vatAccount);
+        $this->assertNotNull($drVat, 'VatDeductible debit leg must exist');
+        $this->assertSame('9.500', $drVat->debit);
+
+        // Dr PurchaseStampDuty timbre.
+        $drTimbre = $legByAccount($stampAccount);
+        $this->assertNotNull($drTimbre, 'PurchaseStampDuty timbre leg must exist');
+        $this->assertSame('0.600', $drTimbre->debit);
+
+        // Cr 401 supplier payable, partner-tagged.
+        $cr401 = $legByAccount($payableAccount);
+        $this->assertNotNull($cr401, 'SupplierPayable credit leg must exist');
+        $this->assertSame('60.100', $cr401->credit);
+        $this->assertSame($this->supplier->id, $cr401->partner_id, '401 leg must be partner-tagged');
+
+        // Hash chain integrity.
+        /** @var GeneralLedgerHashService $hashService */
+        $hashService = app(GeneralLedgerHashService::class);
+        $this->assertTrue($hashService->verifyChain($this->company->id), 'Hash chain must verify after posting');
+    }
+
+    // -------------------------------------------------------------------------
+    // HIGH 4 (supplemental) — over-invoice → 422, no JE created
+    // -------------------------------------------------------------------------
+
+    public function test_over_invoice_is_blocked_and_no_je_is_created(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        // PO has qty=5 received, but SI invoices qty=10 (over-clear).
+        [$po, $poLine] = $this->createPoWithReceipt('5.0000', '100.000');
+
+        app(GeneralLedgerService::class)->createGoodsReceiptGrIrEntry(
+            $this->company->id,
+            Str::uuid()->toString(),
+            '5.0000',
+            '100.000',
+            'TND',
+        );
+
+        $storeResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '10.0000', '100.000', '19.00'));
+        $storeResponse->assertCreated();
+        $siId = $storeResponse->json('data.id');
+
+        $postResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post");
+
+        $postResponse->assertUnprocessable();
+        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_invoice')->where('source_id', $siId)->count());
+        /** @var Document $si */
+        $si = Document::find($siId);
+        $this->assertSame(DocumentStatus::Draft, $si->status);
+    }
+
+    // -------------------------------------------------------------------------
+    // MEDIUM 3 — vat_rate precision ceiling
+    // -------------------------------------------------------------------------
+
+    public function test_store_rejects_vat_rate_with_too_many_decimal_places(): void
+    {
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '50.000');
+
+        $payload = $this->siPayload($po, $poLine, '5.0000', '50.000');
+        $payload['lines'][0]['vat_rate'] = '19.001'; // 3 decimals — exceeds scale 2
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $payload);
+
+        $response->assertUnprocessable();
+        $this->assertJsonValidationErrors($response, ['lines.0.vat_rate']);
+    }
+
+    public function test_store_accepts_vat_rate_at_boundary(): void
+    {
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '50.000');
+
+        $payload = $this->siPayload($po, $poLine, '5.0000', '50.000');
+        $payload['lines'][0]['vat_rate'] = '19.00'; // exactly 2 decimals — valid
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $payload);
+
+        $response->assertCreated();
+    }
+
+    // -------------------------------------------------------------------------
+    // LOW — index filter coverage: match_status, date_from, date_to
+    // -------------------------------------------------------------------------
+
+    public function test_index_filters_by_match_status(): void
+    {
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '50.000');
+
+        // Create one SI (will be auto-matched as Matched or Unmatched based on receipt).
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '5.0000', '50.000'));
+
+        // Filter by a status that should have no results.
+        $none = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/supplier-invoices?match_status=exception');
+        $none->assertOk();
+        $this->assertCount(0, $none->json('data'));
+
+        // Filter by the actual match_status of the created SI.
+        $si = Document::where('type', DocumentType::SupplierInvoice)
+            ->where('company_id', $this->company->id)
+            ->firstOrFail();
+
+        $match = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/supplier-invoices?match_status='.$si->match_status?->value);
+        $match->assertOk();
+        $this->assertCount(1, $match->json('data'));
+    }
+
+    public function test_index_filters_by_date_from(): void
+    {
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '50.000');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '3.0000', '50.000'));
+
+        $tomorrow = now()->addDay()->toDateString();
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/supplier-invoices?date_from='.$tomorrow);
+        $response->assertOk();
+        $this->assertCount(0, $response->json('data'), 'date_from in future should return no results');
+
+        $yesterday = now()->subDay()->toDateString();
+        $response2 = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/supplier-invoices?date_from='.$yesterday);
+        $response2->assertOk();
+        $this->assertCount(1, $response2->json('data'), 'date_from in past should include todays invoice');
+    }
+
+    public function test_index_filters_by_date_to(): void
+    {
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '50.000');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '3.0000', '50.000'));
+
+        $yesterday = now()->subDay()->toDateString();
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/supplier-invoices?date_to='.$yesterday);
+        $response->assertOk();
+        $this->assertCount(0, $response->json('data'), 'date_to in past should return no results');
+
+        $tomorrow = now()->addDay()->toDateString();
+        $response2 = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/supplier-invoices?date_to='.$tomorrow);
+        $response2->assertOk();
+        $this->assertCount(1, $response2->json('data'), 'date_to in future should include today\'s invoice');
     }
 }
