@@ -1,212 +1,288 @@
-# Design — Inline Product Opening Balance (Stage 3, IZI POS editor)
+# Design — Inline Product Opening Balance (Stage 3, IZI POS editor) — v2
 
-> Status: **DESIGN — awaiting Codex adversarial review + user approval**
+> Status: **DESIGN v2 — post Codex adversarial review; awaiting final user sign-off**
 > Date: 2026-06-26
 > Branch/worktree: `feat/izipos-theme-product-editor` (`/Users/houssamr/Projects/syneriva/apps/erp/.claude/worktrees/izipos-product-editor`)
-> Supersedes the open questions in `docs/handoff/HANDOVER-opening-balance.md`.
+> Adversarial review: `docs/superpowers/specs/2026-06-26-product-opening-balance-adversarial-review.md` (20 findings; this v2 resolves all accepted ones — see §13 disposition).
+> Handover origin: `docs/handoff/HANDOVER-opening-balance.md` (uncommitted, main-repo only — **not** present in this worktree; its open questions are resolved inline here, so this spec is self-contained).
 
 ## 1. Goal
 
-On the product **create** form, let the user enter an inline opening stock balance:
-`opening_qty` (quantity) + `opening_unit_cost` (money). On create, this posts **exactly one**
-`MovementType::Opening` / `MovementReason::OpeningBalance` stock movement, upserts the stock
-level, seeds the product cost basis, **and posts the corresponding general-ledger entry**
-(`Dr Inventory / Cr Opening Balance Equity`) — making an inline opening balance
-accounting-equivalent to one created via the existing import flow.
+On the product **create** form, let an authorized user enter an inline opening stock balance:
+`opening_qty` (quantity) + `opening_unit_cost` (inventory valuation cost). On create this posts
+**exactly one** `MovementType::Opening` / `MovementReason::OpeningBalance` stock movement, upserts
+the stock level, seeds the product cost basis, **and posts a balanced general-ledger entry**
+(`Dr Inventory / Cr Opening Balance Equity`) — making an inline opening accounting-equivalent to
+one created via the existing import flow.
 
-Opening balance is **enter-once**: once a product has any movement, the inline fields are
-locked (UI) and the server refuses a second opening (invariant). All subsequent inventory
-changes go through the **existing stock-adjustment flow** (`StockAdjustmentService`,
-`POST /stock-movements/adjust`, `can:inventory.adjust`) — not re-editing the opening balance.
+Opening balance is **enter-once**. After it is posted the fields lock. A wrong opening can be
+**reset** (reverse + re-enter) *only while the opening movement is the product's sole movement*;
+once any downstream movement exists, the opening is permanently locked and changes go through the
+existing stock-adjustment flow (`StockAdjustmentService`, `POST /stock-movements/adjust`,
+`can:inventory.adjust`).
 
 ## 2. Decisions (locked with owner, 2026-06-26)
 
-1. **Full GL via a single extracted use case (option 1A).** Opening inventory must hit the
-   ledger (ERP/accounting standard; trial balance must tie). The canonical posting logic is
-   extracted out of `InventoryOpeningService::postBatch` into a reusable Application use case
-   that both the import flow and the inline product-create flow call. One source of truth for
-   the fiscal/WAC-seeding logic. **No duplicated "thin mirror" service. No TODO seams.**
-2. **Location: auto-resolve the company default** via `Company\Services\LocationContext`
-   (`resolveLocationId(null, companyId)`). No picker this delivery; the use case already takes
-   `location_id`, so a picker is a purely additive future adapter.
-3. **Post-opening changes: lock + route to the existing adjustment flow.** No new product-page
-   adjustment UI this delivery (additive follow-up; same `StockAdjustmentService` use case).
-4. **Date: always today; no date field.** There is no UI to choose a date, so the inline
-   opening is always dated **today** → `is_historical = false`. Future dating is moot (not
-   user-supplied). The extracted use case still carries an `entryDate` (the import flow needs
-   it for cutover dating), so a future "as-of date" picker is additive with zero rework.
-   **No `opening_as_of_date` field in the form or FormRequest this delivery.**
+1. **Full GL via one extracted use case (1A).** Canonical posting logic is extracted out of
+   `InventoryOpeningService::postBatch` into a reusable Application service that both the import
+   flow and inline product-create call. One source of truth. No duplicated service. No TODO seams.
+2. **`is_historical = true`, dated today.** Opening balances are pre-system seed data, **excluded
+   from the GL fiscal hash chain** by the established convention (`AccountingOpeningService` posts
+   openings `is_historical=true // Skip fiscal hash chain`; `GeneralLedgerService::postEntry` only
+   seals `Draft` entries). Inline opening is dated **today** but flagged `is_historical=true` so it
+   is a sealed-exempt historical entry, not an unsealed live one. (Corrects v1, which used
+   `is_historical=false` — that would have produced a Posted, unsealed, chain-bypassing entry.)
+   No date field; future dating is moot (not user-supplied). The service keeps an `entryDate`
+   param (import uses `cutover_date`), so an as-of-date picker is an additive future adapter.
+3. **Authorization:** inline opening posting requires **`can:inventory.adjust`** in addition to
+   `can:products.create`, enforced **server-side** (not just UI). Opening is an inventory-valuation
+   action in the same family as stock adjustment. (Resolves review C1 — escalation under bare
+   `products.create`.)
+4. **Location: strict company default**, resolved via `LocationContext::getDefaultLocation(companyId)`
+   (NOT `resolveLocationId`, which returns the current-active location first). 422 if none exists.
+   Then `LocationContext::validateLocationAccess(locationId, companyId, user)` before posting.
+   (Resolves H1 + C5.) No picker this delivery; the use case already takes `location_id`.
+5. **Enter-once enforced at three layers:** UI lock, a service-level check **inside** the advisory
+   lock, and a DB partial-unique backstop. (Resolves C3 — v1's controller-only guard was racy and
+   bypassable by other callers.)
+6. **Correction = reset-opening while sole movement.** A bounded `POST /products/{id}/opening/reset`
+   (gated `can:inventory.adjust`) that, *iff the opening movement is the product's only movement*,
+   hard-removes the opening (movement + GL entry/lines + stock level + cost basis) and unlocks the
+   fields. Defensible because it erases pre-trading seed data that never entered any transaction or
+   the hash chain. Once any other movement exists → not allowed (use adjustment/revaluation).
+   (Resolves C4.)
+7. **Shared-service hardening (also fixes the import flow):** dispatch `StockMovementRecorded` +
+   `StockMovementRecordedV2` after commit for every opening movement; move product/opening
+   side-effect events to `DB::afterCommit()`; make `INV-OB` entry-number generation
+   concurrency-safe. (Resolves H4/H5/H6.)
+8. **No vertical gate.** Opening balance is a generic Inventory feature gated by `module:Inventory`
+   + the `inventory.adjust` permission; it is available to any Inventory-enabled vertical (incl.
+   Otospex). (Review H2 declined with reasoning — it is not vertical-exclusive.)
 
 ## 3. WAC coherence (the sensitive part)
 
-The three inventory cost paths stay correctly separated — confirmed against existing code:
-
 | Path | Cost effect | Service |
 |------|-------------|---------|
-| **Opening** | Sets initial cost basis by **direct replacement** (no blend) | extracted use case |
+| **Opening** | Sets initial cost basis by **direct replacement** (no blend) | `OpeningBalancePostingService` |
 | **Receipt** | **Blends** WAC across all locations | `WeightedAverageCostService::recordPurchase()` |
-| **Adjustment** | Quantity only — **WAC unchanged** (recount, not revalue) | `StockAdjustmentService::adjust()` |
+| **Adjustment** | Quantity only — **WAC unchanged** | `StockAdjustmentService::adjust()` |
 
-Opening seeds the basis; receipts blend from it; adjustments never touch cost. No double-count.
-Cost replacement mirrors the existing import behavior (`InventoryOpeningService` lines ~310-317,
-guarded by `bccomp($unitCost, '0', scale) > 0`).
+Opening seeds the basis; receipts blend from it; adjustments never touch cost. The enter-once
+invariant guarantees no opening is ever posted onto a product that already has receipts/sales, so
+opening cost can never be re-blended into a running WAC (protects review's WAC concern).
 
 ## 4. Architecture — the extraction
 
-New, in the Inventory module (Application layer), taking **clean DTOs** with no batch coupling:
-
 ```
 app/Modules/Inventory/Application/
-  Services/OpeningBalancePostingService.php   # the single source of truth
+  Services/OpeningBalancePostingService.php   # single source of truth (1..N lines)
   DTOs/OpeningBalancePosting.php              # company, userId, entryDate, isHistorical,
                                               #   sourceType, sourceId, reference, notes, lines[]
-  DTOs/OpeningBalanceLine.php                 # productId, locationId, quantity, unitCost (strings)
+  DTOs/OpeningBalanceLine.php                 # productId, variantId?, locationId, quantity, unitCost
   DTOs/OpeningBalancePostingResult.php        # JournalEntry + per-line movement ids (input order)
 ```
 
 ### 4.1 `OpeningBalancePostingService::post(OpeningBalancePosting): OpeningBalancePostingResult`
 
-Does exactly what `postBatch`'s inner closure does today, parameterized over **1..N lines**:
-
-1. Collect distinct `productId`s from the lines.
-2. `DB::transaction(..., attempts: 3)` → `costLock->acquire(tenantId, companyId, productIds, fn …)`
-   (advisory locks, sorted internally — preserves the multi-product deadlock defense).
-3. `entryNumber = generateEntryNumber(companyId)` (moved verbatim from `InventoryOpeningService`;
-   `INV-OB-{year}-{6-digit seq}`).
-4. For each line: read/lock `StockLevel` (`lockForUpdate`), compute `quantity_after`, create the
-   `StockMovement` (`movement_type=Opening`, `reason=OpeningBalance`, `is_historical` from the
-   posting, `reference`/`notes` from the posting), upsert the `StockLevel`, replace `cost_price`
-   when `unit_cost > 0`, accumulate `totalInventoryValue`, record `lineId → movementId`.
-5. One `JournalEntry` (`status=Posted`, `entry_date=posting.entryDate`,
+1. **Canonicalize at the boundary** (resolves Med1): `OpeningBalanceLine` constructor validates +
+   canonicalizes `quantity` via `QuantityScale` (scale 4) and `unitCost` via `CurrencyScale`
+   (currency scale, strict) — rejects non-numeric-string / over-scale input, so every caller
+   (import, inline, future) reaches storage with identical precision.
+2. Collect distinct `productId`s; `DB::transaction(..., attempts: 3)` →
+   `costLock->acquire(tenantId, companyId, productIds, fn …)` (sorted advisory locks — deadlock
+   defense preserved).
+3. **Enter-once check INSIDE the lock** (resolves C3): for each line, after acquiring the lock,
+   assert no existing `Opening` movement for `(company_id, product_id, location_id, variant_id)`;
+   throw `OpeningAlreadyExistsException` if present. The check is re-read under the lock to close
+   the TOCTOU window.
+4. `entryNumber = generateOpeningEntryNumber(companyId)` — **concurrency-safe** (resolves H6):
+   replace the read-max-and-increment with an advisory-locked sequence on
+   `("inv-ob-seq:{tenantId}:{companyId}:{year}")` (or a dedicated sequence table) so concurrent
+   openings on *different* products cannot collide on `(tenant_id, entry_number)`.
+5. Per line: read/lock `StockLevel` (`lockForUpdate`), compute `quantity_after`, create the
+   `StockMovement` (`movement_type=Opening`, `reason=OpeningBalance`, `is_historical=posting.isHistorical`,
+   `reference`/`notes` from posting), upsert `StockLevel`, replace `cost_price` when `unitCost > 0`,
+   accumulate `totalInventoryValue`, record `lineId → movementId`.
+6. One `JournalEntry` (`status=Posted`, `entry_date=posting.entryDate`,
    `source_type=posting.sourceType`, `source_id=posting.sourceId`,
    `is_historical=posting.isHistorical`) + two balanced `JournalLine`s
-   (Dr Inventory = Cr Opening Balance Equity = `totalInventoryValue`), accounts resolved via
+   (Dr Inventory = Cr OBE = `totalInventoryValue`), accounts via
    `Account::findByPurposeOrFail(companyId, Inventory|OpeningBalanceEquity)`.
-6. Return `OpeningBalancePostingResult{ entry->load('lines'), movementIdsInInputOrder }`.
+7. **After commit** (resolves H4): dispatch `StockMovementRecorded` + `StockMovementRecordedV2` for
+   each created movement via `DB::afterCommit()`.
+8. Return `OpeningBalancePostingResult{ entry->load('lines'), movementIdsInInputOrder }`.
 
-Dependencies (constructor-injected): `CurrencyScaleResolverInterface`, `ProductCostLock`.
-**Note:** the GL entry is aggregated **once per posting**, not per line — this is exactly the
-current batch behavior, and for the inline path (1 line) it is one entry with one line's value.
+GL is aggregated **once per posting** (matches current batch behavior; for inline = 1 line).
 
 ### 4.2 `InventoryOpeningService::postBatch` becomes a thin import adapter
 
-Unchanged responsibilities it keeps (import-specific): validate batch state (draft, valid rows),
-map `OpeningBalanceImportRow.mapped_data` → `OpeningBalanceLine[]`, build an `OpeningBalancePosting`
-(`entryDate = batch.cutover_date`, `isHistorical = true`, `sourceType='opening_balance'`,
-`sourceId=batch.id`, `reference="Opening Balance Batch: {name}"`), call
-`postingService->post(...)`, then **zip** `result.movementIdsInInputOrder` with the rows (same
-order) to build `rowEntityMap` for `markBatchValidated` + `markRowsPosted`.
+Keeps import-only concerns (validate batch state, map `mapped_data` → `OpeningBalanceLine[]`,
+`markBatchValidated`/`markRowsPosted`), builds an `OpeningBalancePosting`
+(`entryDate=cutover_date`, `isHistorical=true`, source=batch), calls `post(...)`, zips
+`movementIdsInInputOrder` back to rows. **Behavior parity except the deliberate hardening in §2.7**
+(import now also dispatches movement events + uses safe numbering). The existing `InventoryOpening*`
+tests must stay green; **add** an assertion that import now dispatches `StockMovementRecorded`.
 
-**Behavior is byte-identical.** The existing `InventoryOpening*` tests are the regression proof
-and must stay green with no edits. `postBatch`'s constructor gains the posting service; the GL/
-movement/level/cost code and the now-shared `generateEntryNumber` move into the new service.
+### 4.3 DB backstop migration (resolves C3)
 
-## 5. Product create flow
+Partial unique index on `stock_movements (company_id, product_id, location_id)` (+ `variant_id`
+where applicable) `WHERE movement_type = 'opening'`. Allows the import flow's legitimate one-opening
+**per location** while preventing a duplicate opening for the same product+location. The migration
+**pre-checks for existing duplicates** and aborts with a clear message rather than failing opaquely
+(new-tenant launch has none; defensive for existing tenants). Reset (§6) hard-removes the row, so a
+post-reset re-entry does not collide.
 
-`ProductController::store` — constructor gains: `OpeningBalancePostingService`, `LocationContext`,
-`InventoryServiceInterface` (for the movements check). Today `store()` is **not** transactional;
-wrap it.
+## 5. Product create flow (`ProductController::store`)
+
+Constructor gains: `OpeningBalancePostingService`, `LocationContext`, `InventoryServiceInterface`.
+`store()` is not transactional today — wrap it; move `ProductCreated` + metadata side-effects to
+`DB::afterCommit()` (resolves H5).
 
 ```
+authorize: can:products.create AND (opening fields present ⇒ can:inventory.adjust)   # §2.3
 DB::transaction:
-  $product = Product::create(...)                # existing
-  fire ProductCreated, build metadata/media      # existing
-  if opening_qty !== null && bccomp(opening_qty,'0',4) > 0:
-      $locationId = LocationContext->resolveLocationId(null, $companyId)   # auto default
-      if $locationId === null: 422 (no default location configured)
-      assert InventoryService->hasMovements($product->id) === false        # enter-once invariant
+  $product = Product::create(...)
+  build metadata/media
+  if opening_qty present && bccomp(opening_qty,'0',4) > 0:
+      require $product->is_physical === true            # §H3 — no opening on Service/non-physical
+      $locationId = LocationContext->getDefaultLocation($companyId)?->id
+      if $locationId === null: 422 "no default location"
+      LocationContext->validateLocationAccess($locationId, $companyId, $user)   # §C5
+      # opening_unit_cost is REQUIRED here (§H7) — enforced in CreateProductRequest
       $postingService->post(OpeningBalancePosting{
-          company, userId, entryDate: today, isHistorical: false,
-          sourceType: 'opening_balance', sourceId: $product->id,
-          reference: "Opening balance: {$product->sku}",
-          lines: [ OpeningBalanceLine{ product->id, locationId, opening_qty, opening_unit_cost } ],
+          company, userId, entryDate: today, isHistorical: true,              # §2.2
+          sourceType:'opening_balance', sourceId:$product->id,
+          reference:"Opening balance: {$product->sku}",
+          lines:[ OpeningBalanceLine{ product->id, null, locationId, opening_qty, opening_unit_cost } ],
       })
-  return 201 with ProductData (has_movements now true)
+DB::afterCommit: fire ProductCreated + opening movement events
+return 201 with ProductData (has_movements true)
 ```
 
-- `opening_qty` empty/0 → **nothing** posted (no movement, no GL).
-- `opening_unit_cost` 0 → movement posts, `cost_price` left untouched (same guard as import).
-- The new product can't already have movements; the `hasMovements` assertion is defense-in-depth
-  against retries / a future edit-path wiring.
+Empty/0 `opening_qty` → nothing posted (and `opening_unit_cost` ignored — see §6).
 
-## 6. Validation (`CreateProductRequest`) — precision rule 19
+## 6. Validation (`CreateProductRequest`) — precision rule 19 + conditional
 
 ```php
 'opening_qty'       => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
-'opening_unit_cost' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
-// no opening_as_of_date this delivery
+// REQUIRED when a positive opening qty is present (§H7 — no silent zero-cost inventory):
+'opening_unit_cost' => ['required_with_positive:opening_qty', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
 ```
 
-Strings end-to-end; no `parseFloat`/float casts. `min:0` + regex ceiling per column scale.
+- Conditional: when `opening_qty > 0`, `opening_unit_cost` is required (custom rule / `withValidator`
+  closure — `required_with` alone can't express "> 0"). When `opening_qty` is empty/0, providing
+  `opening_unit_cost` is rejected with a 422 explaining it will be ignored (resolves Med3).
+- **Negatives prohibited** (`min:0` + unsigned regex). Documented (resolves Med4): a negative
+  initial count is a data-migration edge handled via the import flow / stock adjustment, not the
+  inline form.
+- Strings end-to-end; no `parseFloat`/float casts.
 
-## 7. `has_movements` exposure — respecting module boundaries (rule 6)
+## 7. `has_movements` exposure — module boundary (rule 6)
 
-Product must not query Inventory's `StockMovement` model directly. Add to the existing
-`Shared/Contracts/InventoryServiceInterface` (implemented by
-`Inventory\Application\Services\InventoryService`, bound in `AppServiceProvider`):
+Add to `Shared/Contracts/InventoryServiceInterface` (impl `InventoryService`, bound in
+`AppServiceProvider`), **company-scoped** (resolves Med2; tenant isolation is the per-tenant DB):
 
 ```php
-public function hasMovements(string $productId): bool;
+public function hasMovements(string $companyId, string $productId): bool;
+public function hasOnlyOpeningMovement(string $companyId, string $productId): bool;  // for reset guard §6
 ```
 
-`ProductController` injects `InventoryServiceInterface`, computes the flag, and threads it into
-the DTO. `ProductData::fromModel(Product $product, ?ProductMediaData $media = null, bool $hasMovements = false)`
-gains `has_movements: bool`. Run `CACHE_STORE=array php artisan typescript:transform` after
-(per worktree env note) to regenerate the FE type.
+`ProductController` injects the contract, computes `has_movements`, threads it into
+`ProductData::fromModel(Product $product, ?ProductMediaData $media = null, bool $hasMovements = false)`
+→ new `has_movements: bool`. Run `CACHE_STORE=array php artisan typescript:transform` after.
+(`Product` already imports `Inventory\Domain\StockLevel` for `stockLevels()`, but the movements
+check deliberately routes through the contract rather than widening that coupling.)
 
-> Precedent note: `Product` already imports `Inventory\Domain\StockLevel` for its `stockLevels()`
-> relationship, but we deliberately route the new movements check through the contract rather than
-> widening that coupling.
+## 8. Correction — reset-opening (resolves C4)
 
-## 8. Frontend (`apps/web/src/features/inventory/ProductForm.tsx`)
+New `POST /products/{id}/opening/reset` on the Product routes
+(`['api','auth:sanctum',SetPermissionsTeam::class,…,'module:Inventory']` + `can:inventory.adjust`),
+handled by a `ResetOpeningBalanceService` (Inventory Application), under the product advisory lock:
 
-- New **create-only** "Opening stock" section: `<QuantityInput>` (`opening_qty`) +
-  `<MoneyInput>` (`opening_unit_cost`) — both already imported. Payload sends strings.
-- All labels/help via `t()`; colors via design tokens.
-- In **edit** mode (or whenever `has_movements === true`): the two inputs are disabled with a
-  helper line — e.g. "Opening balance is locked after the first stock movement. Use **Inventory ›
-  Stock** to adjust." — pointing to the existing adjustment flow. No new adjustment UI here.
+1. Guard: `hasOnlyOpeningMovement(companyId, productId)` must be true (exactly one movement, of type
+   Opening). Otherwise 409 "Opening locked — downstream movements exist; use stock adjustment."
+2. In one transaction: delete the opening `StockMovement`, delete its `JournalEntry` + `JournalLine`s,
+   reset the `StockLevel` (to 0 / delete the row), clear `cost_price` + `cost_updated_at`.
+3. `afterCommit`: dispatch `StockMovementRecorded(V2)` reflecting the removal so channels resync.
 
-## 9. Edge cases
+Rationale for hard-delete (not contra): the opening is `is_historical` seed data, excluded from the
+hash chain, with zero downstream references — there is no fiscal history to preserve, and deletion
+keeps the §4.3 unique index free for a corrected re-entry. Pre-launch setup operation only.
 
-- Future date: not applicable (no date input; always today).
-- `opening_qty` 0/empty → no posting.
-- `opening_unit_cost` 0 → movement posts, cost untouched.
-- Double submit / retry → guarded by the wrapping transaction + the `hasMovements` invariant.
-- No default location configured → 422 (explicit), opening not silently dropped.
-- Opening movements / their GL entry are **not** part of the POS fiscal hash chain (that chain is
-  for `SALE_RECEIPT`). `is_historical=false` for inline (today-dated); the import flow's
-  historical handling is unchanged.
+## 9. Frontend (`apps/web/src/features/inventory/ProductForm.tsx`)
 
-## 10. Testing (TDD, run **by path**, never the full suite)
+- New **create-only** "Opening stock" section, **rendered only when `hasModule('Inventory')` &&
+  `hasPermission('inventory.adjust')` && the product is physical** (mirrors the server gate §2.3/§H3):
+  `<QuantityInput>` (`opening_qty`) + `<MoneyInput>` (`opening_unit_cost`). Strings in the payload.
+- **Label/help clarifies valuation** (resolves Low2): e.g. "Coût unitaire de valorisation du stock
+  (sert de base au coût moyen pondéré)" — not sale/purchase price. All copy via `t()`; design tokens.
+- `opening_unit_cost` is shown required once `opening_qty > 0`; disabled/cleared when qty is empty
+  (resolves Med3).
+- When `has_movements === true`: section is locked with helper text. If the product has **only** the
+  opening movement, show a **Reset opening** action (calls §8) → re-enter. Otherwise the helper links
+  to the exact adjustment surface — **Inventory › Stock** (`/inventory/stock`, `StockLevelsPage`,
+  `POST /stock-movements/adjust`) (resolves Low1).
 
-Backend (`tests/Feature/...` / `tests/Unit/...`):
-- **Regression (port proof):** existing `InventoryOpening*` tests pass unchanged after the refactor.
-- **`OpeningBalancePostingService`:** a single-line post creates exactly one `Opening`/`OpeningBalance`
-  movement, upserts the stock level, sets `cost_price`, and posts a **balanced** GL entry
-  (`Dr Inventory == Cr OBE == qty × cost`). `unit_cost=0` → movement but no cost write.
-- **Product create:** `opening_qty="10"`, `opening_unit_cost="5.000"` → one Opening movement,
-  stock level 10, cost set, `has_movements` true. `opening_qty` empty → no movement.
-  Invalid precision (e.g. `"5.00000"`) → 422 (`{error:{errors}}` envelope; `AssertsApiValidation`).
-- **Enter-once:** posting an opening when movements already exist is rejected.
+## 10. Edge cases
 
-Frontend (Vitest): opening inputs disabled when `has_movements === true`; enabled on create.
+Future date N/A (no input). `opening_qty` 0/empty → nothing posted, `opening_unit_cost` rejected if
+supplied. `opening_unit_cost` required when qty>0 (no zero-cost inventory). Service/non-physical →
+opening rejected (server + UI). No default location → 422. User lacks default-location access → 403.
+Concurrent openings (same product) → second blocked by the in-lock enter-once check + DB index.
+Concurrent openings (different products) → distinct safe entry numbers (no `(tenant,entry_number)`
+collision). Opening GL entries are `is_historical` and excluded from the POS + GL hash chains.
 
-Pre-flight (`./scripts/preflight.sh` — PHPStan L8, Pint, scoped PHPUnit, tsc, ESLint) before commit.
+## 11. Testing (TDD, run **by path**, never the full suite; `{error:{errors}}` envelope via `AssertsApiValidation`)
 
-## 11. Blast radius
+Backend:
+- **Regression:** existing `InventoryOpening*` tests green after refactor; **add** "import dispatches
+  `StockMovementRecorded`" + "import entry numbering is safe."
+- **`OpeningBalancePostingService`:** single-line → one Opening/OpeningBalance movement, stock level,
+  cost set, **balanced** GL entry (`Dr Inv == Cr OBE == qty×cost`), `is_historical=true`, movement
+  events dispatched. `unitCost=0` path covered. Over-scale input rejected at the DTO boundary.
+- **Enter-once / idempotency:** second opening for same product+location rejected (service throws);
+  **two concurrent** same-product posts → exactly one succeeds (in-lock check + DB index);
+  **two concurrent different-product** posts → both succeed with distinct entry numbers.
+- **Authz (C1):** `products.create` **without** `inventory.adjust` + opening fields → 403;
+  with both → 201.
+- **Location (C5/H1):** opening lands in `getDefaultLocation`; user without access to it → 403;
+  no default → 422.
+- **Physical guard (H3):** Service product + opening fields → 422.
+- **Required cost (H7):** `opening_qty>0` without `opening_unit_cost` → 422.
+- **afterCommit (H5):** opening posting failure rolls back the product AND fires no `ProductCreated`.
+- **Reset (C4):** reset while sole movement removes movement+GL+level+cost and unlocks; reset after a
+  second movement → 409.
 
-- **New:** `OpeningBalancePostingService` + 3 DTOs; `hasMovements` on `InventoryServiceInterface` +
-  `InventoryService`.
-- **Modified:** `InventoryOpeningService::postBatch` (delegates; behavior identical),
-  `ProductController::store` (transaction + opening post), `CreateProductRequest` (2 rules),
-  `ProductData` (`has_movements`), `ProductForm.tsx` (fields + lock), generated FE types.
-- **No** changes to `StockAdjustmentService`, `WeightedAverageCostService`, or the
-  stock-adjustment-writeoff code already merged — zero overlap, conflict-free.
-- **No TODO seams.**
+Frontend (Vitest): section hidden without `inventory.adjust` / for non-physical; inputs disabled
+when `has_movements`; Reset action shown only when opening is the sole movement.
 
-## 12. Out of scope (clean future adapters, no rework needed)
+Pre-flight (`./scripts/preflight.sh`) before commit.
 
-- Location picker on the form (use case already takes `location_id`).
-- `as-of date` picker / back-dated inline opening (use case already takes `entryDate`).
-- Product-page stock-adjustment action (same `StockAdjustmentService` use case).
+## 12. Blast radius
+
+- **New:** `OpeningBalancePostingService`, `ResetOpeningBalanceService`, 3 posting DTOs,
+  `OpeningAlreadyExistsException`; `hasMovements`/`hasOnlyOpeningMovement` on
+  `InventoryServiceInterface` + impl; DB migration (partial unique index + concurrency-safe
+  numbering support); `POST /products/{id}/opening/reset` route.
+- **Modified:** `InventoryOpeningService::postBatch` (delegates + hardening),
+  `ProductController::store` (authz + transaction + afterCommit + opening post),
+  `CreateProductRequest` (rules), `ProductData` (`has_movements`), `ProductForm.tsx`, generated FE
+  types. Import flow gains movement-event dispatch + safe numbering (intended; regression-checked).
+- **Untouched:** `StockAdjustmentService`, `WeightedAverageCostService`, the merged
+  stock-adjustment-writeoff code. No TODO seams.
+
+## 13. Review disposition (`…-adversarial-review.md`)
+
+- **Accepted & resolved:** C1 (§2.3 authz), C2 (§2.2 `is_historical`), C3 (§4.1/§4.3 in-lock check +
+  DB index), C4 (§8 reset), C5 (§5 location access), H1 (§2.4 strict default), H3 (§5 physical),
+  H4/H5/H6 (§2.7 shared hardening), H7 (§6 required cost), Med1 (§4.1 canonicalization),
+  Med2 (§7 scope), Med3 (§6 qty/cost UX), Med4 (§6 negatives documented), Med5 (§11 concurrency
+  tests), Med6 (handover note in header), Low1 (§9 route), Low2 (§9 label).
+- **Declined with reasoning:** H2 (vertical gate) — opening balance is generic to any
+  Inventory-enabled vertical; gated by `module:Inventory` + `inventory.adjust`, not a vertical gate.
+
+## 14. Out of scope (clean future adapters, no rework)
+
+Location picker (use case takes `location_id`); as-of-date picker / back-dated inline opening (use
+case takes `entryDate`); full anytime cost-revaluation flow (beyond the sole-movement reset);
+product-page stock-adjustment action (same `StockAdjustmentService`).
