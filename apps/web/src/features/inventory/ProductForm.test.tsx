@@ -214,7 +214,6 @@ describe('ProductForm (General section parity)', () => {
   })
 
   it('no raw checkbox remains for is_active or is_active_for_ecommerce (old checkboxes are gone)', () => {
-    render(<ProductForm />)
     // The old checkboxes were registered via register('is_active') / register('is_active_for_ecommerce')
     // and had id="is_active" / id="is_active_for_ecommerce". Those must not exist.
     const { container } = render(<ProductForm />)
