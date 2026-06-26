@@ -79,6 +79,20 @@ vi.mock('./components/CatalogBanner', () => ({
 vi.mock('../products/components', () => ({
   ProductImageSection: () => <div data-testid="product-image" />,
   ParapharmacyMetadataFields: () => null,
+  CreateModeImageBuffer: ({
+    onFilesChange,
+  }: {
+    bufferedFiles: File[]
+    onFilesChange: (files: File[]) => void
+  }) => (
+    <div data-testid="create-mode-image-buffer">
+      <input
+        data-testid="buffer-file-input"
+        type="file"
+        onChange={() => { onFilesChange([]) }}
+      />
+    </div>
+  ),
 }))
 vi.mock('../catalog/components/ProductVariantMatrixEditor', () => ({
   ProductVariantMatrixEditor: () => null,

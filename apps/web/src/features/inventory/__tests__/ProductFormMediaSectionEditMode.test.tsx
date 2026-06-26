@@ -92,10 +92,11 @@ vi.mock('../../catalog/components/ProductVariantMatrixEditor', () => ({
   ProductVariantMatrixEditor: () => null,
 }))
 
-// ── ProductImageSection mock ──────────────────────────────────────────────────
+// ── ProductImageSection + CreateModeImageBuffer mocks ────────────────────────
 vi.mock('../../products/components', () => ({
   ProductImageSection: () => <div data-testid="product-image-section" />,
   ParapharmacyMetadataFields: () => null,
+  CreateModeImageBuffer: () => <div data-testid="create-mode-image-buffer" />,
 }))
 
 // ── Platform submission ───────────────────────────────────────────────────────

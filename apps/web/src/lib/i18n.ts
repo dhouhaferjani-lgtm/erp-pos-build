@@ -116,6 +116,7 @@ import arVouchers from '../locales/ar/vouchers.json'
 import arChannels from '../locales/ar/channels.json'
 import arReports from '../locales/ar/reports.json'
 import arAdmin from '../locales/ar/admin.json'
+import arProducts from '../locales/ar/products.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -237,7 +238,7 @@ const resources = {
     import: enImport,
     settings: enSettings,
     uom: enUom,
-    products: enProducts,
+    products: { ...enProducts, ...arProducts },
     parapharmacy: enParapharmacy,
     batches: enBatches,
     pos: enPos,

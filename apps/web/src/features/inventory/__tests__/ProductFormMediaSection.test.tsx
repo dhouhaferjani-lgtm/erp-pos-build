@@ -3,8 +3,8 @@
  *
  * Covers:
  * 1. Media section renders with a nav entry + #section-media anchor (create mode)
- * 2. Create mode: shows empty state + disabled add-tile + "save first" helper
- *    and does NOT call the upload endpoint
+ * 2. Create mode: shows CreateModeImageBuffer (enabled add tile) — NOT disabled tile
+ *    and does NOT call the upload endpoint on render
  * 3. Edit mode: #section-media anchor present; ProductImageSection mounts
  *    (no-regression); section nav shows media label
  *
@@ -90,10 +90,28 @@ vi.mock('../../catalog/components/ProductVariantMatrixEditor', () => ({
   ProductVariantMatrixEditor: () => null,
 }))
 
-// ── ProductImageSection mock — tracks whether it's rendered ───────────────────
+// ── ProductImageSection + CreateModeImageBuffer mocks ────────────────────────
 vi.mock('../../products/components', () => ({
   ProductImageSection: () => <div data-testid="product-image-section" />,
   ParapharmacyMetadataFields: () => null,
+  CreateModeImageBuffer: ({
+    bufferedFiles,
+    onFilesChange,
+  }: {
+    bufferedFiles: File[]
+    onFilesChange: (files: File[]) => void
+  }) => (
+    <div data-testid="create-mode-image-buffer">
+      <input
+        data-testid="buffer-file-input"
+        type="file"
+        onChange={() => { onFilesChange([...bufferedFiles]) }}
+      />
+      <button type="button" aria-label="products:media.addImage">
+        Add
+      </button>
+    </div>
+  ),
 }))
 
 // ── Platform submission ───────────────────────────────────────────────────────
@@ -101,7 +119,7 @@ vi.mock('../api/platformQueries', () => ({
   useProductSubmission: () => ({ mutate: vi.fn() }),
 }))
 
-// ── productImages facade — must NOT be called in create mode ──────────────────
+// ── productImages facade — must NOT be called in create mode on render ────────
 const mockGetProductImages = vi.fn()
 const mockUploadProductImage = vi.fn()
 vi.mock('../../products/api/productImages', () => ({
@@ -146,20 +164,14 @@ describe('ProductForm — Media section (create mode)', () => {
     ).toBeGreaterThanOrEqual(1)
   })
 
-  it('shows the "save first" helper text in create mode', () => {
+  it('renders CreateModeImageBuffer in create mode (not the disabled tile)', () => {
     render(<ProductForm />)
-    // echo-key: key resolves to 'products:media.saveFirst'
-    expect(screen.getByText('products:media.saveFirst')).toBeInTheDocument()
+    expect(screen.getByTestId('create-mode-image-buffer')).toBeInTheDocument()
+    // Old "save first" text must NOT appear (buffer replaces it)
+    expect(screen.queryByText('products:media.saveFirst')).not.toBeInTheDocument()
   })
 
-  it('shows a disabled add-tile button in create mode', () => {
-    render(<ProductForm />)
-    // The add-tile button must exist and be disabled
-    const addBtn = screen.getByRole('button', { name: 'products:media.addImage' })
-    expect(addBtn).toBeDisabled()
-  })
-
-  it('does NOT call getProductImages or uploadProductImage in create mode', () => {
+  it('does NOT call getProductImages or uploadProductImage on render in create mode', () => {
     render(<ProductForm />)
     expect(mockGetProductImages).not.toHaveBeenCalled()
     expect(mockUploadProductImage).not.toHaveBeenCalled()

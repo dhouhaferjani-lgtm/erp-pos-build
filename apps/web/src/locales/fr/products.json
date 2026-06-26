@@ -87,6 +87,12 @@
   },
   "media": {
     "saveFirst": "Enregistrez le produit pour ajouter des images.",
-    "addImage": "Ajouter une image"
+    "addImage": "Ajouter une image",
+    "removeImage": "Supprimer l'image",
+    "bufferedCount": "{{count}} image prête à l'envoi",
+    "bufferedCount_plural": "{{count}} images prêtes à l'envoi",
+    "uploadPending": "Les images seront envoyées lors de l'enregistrement du produit.",
+    "uploadFailedPartial": "Produit enregistré, mais {{count}} image n'a pas pu être envoyée. Vous pouvez réessayer depuis la vue d'édition.",
+    "uploadFailedPartial_plural": "Produit enregistré, mais {{count}} images n'ont pas pu être envoyées. Vous pouvez réessayer depuis la vue d'édition."
   }
 }

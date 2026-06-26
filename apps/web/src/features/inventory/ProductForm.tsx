@@ -3,20 +3,21 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
-import { Plus, X, Layers, ImagePlus } from 'lucide-react'
+import { Plus, X, Layers } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost, apiPatch } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { cn } from '../../lib/utils'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
-import { colors, tokens, textColors, borderColors } from '../../lib/designTokens'
+import { colors, tokens, textColors } from '../../lib/designTokens'
 import { CategorySelect } from '../../components/catalog/CategorySelect'
 import { Button, Checkbox, FormField, Input, Select, Textarea, MoneyInput, Toggle, QuantityInput } from '../../components/atoms'
 import { CatalogBanner } from './components/CatalogBanner'
 import { useProductSubmission } from './api/platformQueries'
 import type { LookupState, SuggestedProduct } from './types/platform'
-import { ProductImageSection, ParapharmacyMetadataFields } from '../products/components'
+import { ProductImageSection, ParapharmacyMetadataFields, CreateModeImageBuffer } from '../products/components'
+import { uploadProductImage } from '../products/api/productImages'
 import { ProductVariantMatrixEditor } from '../catalog/components/ProductVariantMatrixEditor'
 import { useVariantsForProduct } from '../catalog/hooks/useVariants'
 import { useCompanyConfig } from '../../contexts/CompanyConfigContext'
@@ -135,6 +136,8 @@ export function ProductForm() {
   const [enrichmentOptIn, setEnrichmentOptIn] = useState(true)
   const suggestedProductRef = useRef<SuggestedProduct | null>(null)
   const [prefilledFields, setPrefilledFields] = useState<Set<string>>(new Set())
+  // create-mode image buffer: files held client-side until product id is known
+  const [bufferedImages, setBufferedImages] = useState<File[]>([])
 
   const submissionMutation = useProductSubmission()
 
@@ -294,10 +297,29 @@ export function ProductForm() {
   const createMutation = useMutation({
     mutationFn: (data: ProductFormData) =>
       apiPost<Product>('/products', buildProductPayload(data, { isParapharmacy })),
-    onSuccess: async () => {
+    onSuccess: async (newProduct: Product) => {
       await queryClient.invalidateQueries({
         predicate: inventoryProductsInvalidationPredicate(tenantId, companyId),
       })
+
+      // Upload buffered images sequentially; preserve sort order.
+      // The first upload becomes PRIMARY automatically on the backend.
+      // Do NOT block navigation on failure — product already exists.
+      if (bufferedImages.length > 0) {
+        const failed: number[] = []
+        for (let i = 0; i < bufferedImages.length; i++) {
+          try {
+            await uploadProductImage(newProduct.id, bufferedImages[i], i)
+          } catch {
+            failed.push(i + 1)
+          }
+        }
+        if (failed.length > 0) {
+          toast.error(
+            t('products:media.uploadFailedPartial', { count: failed.length }),
+          )
+        }
+      }
     },
   })
 
@@ -1039,9 +1061,9 @@ export function ProductForm() {
 
             {/* Media & Files — always rendered so the nav entry + scroll-spy
                 anchor exists in both create and edit mode. In create mode,
-                uploads are impossible (no product id yet) so we render an
-                empty-state shell with a disabled add-tile and a "save first"
-                hint. In edit mode, ProductImageSection takes over. */}
+                files are buffered client-side (CreateModeImageBuffer) and
+                uploaded after the product is created. In edit mode,
+                ProductImageSection takes over. */}
             <EditorSectionCard
               id="section-media"
               title={t('catalog:editor.sectionLabels.media')}
@@ -1050,24 +1072,10 @@ export function ProductForm() {
               {isEditing && id ? (
                 <ProductImageSection productId={id} />
               ) : (
-                <div className="flex flex-col items-center gap-3 py-6">
-                  <button
-                    type="button"
-                    disabled
-                    aria-label={t('products:media.addImage')}
-                    className={cn(
-                      'flex h-20 w-20 cursor-not-allowed items-center justify-center rounded-lg border-2 border-dashed',
-                      borderColors.light,
-                      colors.neutral[50],
-                      textColors.disabled,
-                    )}
-                  >
-                    <ImagePlus className="h-8 w-8" />
-                  </button>
-                  <p className={cn('text-sm', textColors.tertiary)}>
-                    {t('products:media.saveFirst')}
-                  </p>
-                </div>
+                <CreateModeImageBuffer
+                  bufferedFiles={bufferedImages}
+                  onFilesChange={setBufferedImages}
+                />
               )}
             </EditorSectionCard>
 
