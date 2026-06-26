@@ -42,6 +42,12 @@ use Tests\TestCase;
  * Timbre is NOT reversed in Phase 1. The matrix is driven by an explicit
  * SupplierCreditNoteReason (PriceAdjustment | GoodsReturn): GoodsReturn decrements
  * quantity_invoiced on the linked PO line(s); PriceAdjustment does not.
+ *
+ * Every credit note links to a posted supplier invoice via source_document_id, and
+ * each credit-note line resolves to a PO line referenced by that invoice
+ * (FIX 1). The over-credit guard is cumulative against the invoice's actual posted
+ * HT (FIX 2 — fallback mechanism; balance_due is pgsql-trigger-only and scoped to
+ * customer invoices, so it is unreliable for supplier invoices).
  */
 final class SupplierCreditNoteGlTest extends TestCase
 {
@@ -106,14 +112,15 @@ final class SupplierCreditNoteGlTest extends TestCase
     // -------------------------------------------------------------------------
 
     /**
-     * Create a confirmed PO with one already-invoiced line (so a credit note can
-     * reverse against it). quantity_invoiced is pre-set to simulate prior invoicing.
+     * Create a confirmed PO with one line and a POSTED supplier invoice that
+     * references it (mirrors the C3 post: quantity_invoiced is set, invoice carries
+     * the actual invoiced HT as its subtotal). A credit note then reverses against it.
      *
      * @param  numeric-string  $qty
      * @param  numeric-string  $unitPrice
-     * @param  numeric-string  $quantityInvoiced
+     * @return array{poLine: DocumentLine, invoice: Document}
      */
-    private function invoicedPoLine(string $qty, string $unitPrice, string $quantityInvoiced): DocumentLine
+    private function postedInvoiceWithPoLine(string $qty, string $unitPrice): array
     {
         $extended = bcmul($qty, $unitPrice, 3);
 
@@ -133,25 +140,57 @@ final class SupplierCreditNoteGlTest extends TestCase
             'total' => $extended,
         ]);
 
-        /** @var DocumentLine $line */
-        $line = DocumentLine::create([
+        /** @var DocumentLine $poLine */
+        $poLine = DocumentLine::create([
             'document_id' => $po->id,
             'line_number' => 1,
             'description' => 'D1 PO line',
             'quantity' => $qty,
             'quantity_delivered' => '0.0000',
             'quantity_received' => $qty,
-            'quantity_invoiced' => $quantityInvoiced,
+            'quantity_invoiced' => $qty,
             'unit_price' => $unitPrice,
             'line_total' => $extended,
             'allocated_costs' => '0.0000',
         ]);
 
-        return $line;
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::SupplierInvoice,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'SI-D1-'.Str::upper(Str::random(6)),
+            'document_date' => now(),
+            'currency' => 'TND',
+            'source_document_id' => $po->id,
+            'subtotal' => $extended,
+            'tax_amount' => '0.000',
+            'total' => $extended,
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 1,
+            'description' => 'D1 SI line',
+            'quantity' => $qty,
+            'quantity_delivered' => '0.0000',
+            'quantity_received' => '0.0000',
+            'quantity_invoiced' => '0.0000',
+            'unit_price' => $unitPrice,
+            'line_total' => $extended,
+            'allocated_costs' => '0.0000',
+            'source_line_id' => $poLine->id,
+        ]);
+
+        return ['poLine' => $poLine, 'invoice' => $invoice];
     }
 
     /**
-     * Create a Draft supplier credit note with a single line linked to $poLine.
+     * Create a Draft supplier credit note (linked to $invoice via source_document_id)
+     * with a single line linked to $poLine via source_line_id.
      *
      * @param  array{qty: numeric-string, unit_price: numeric-string, recoverable_vat: numeric-string}  $line
      * @param  numeric-string  $subtotal
@@ -159,6 +198,7 @@ final class SupplierCreditNoteGlTest extends TestCase
      * @param  numeric-string  $stampDuty
      */
     private function supplierCreditNote(
+        Document $invoice,
         DocumentLine $poLine,
         SupplierCreditNoteReason $reason,
         array $line,
@@ -179,6 +219,7 @@ final class SupplierCreditNoteGlTest extends TestCase
             'document_number' => 'SCN-D1-'.Str::upper(Str::random(6)),
             'document_date' => now(),
             'currency' => 'TND',
+            'source_document_id' => $invoice->id,
             'subtotal' => $subtotal,
             'line_tax_amount' => $lineTax,
             'stamp_duty_amount' => $stampDuty,
@@ -255,9 +296,10 @@ final class SupplierCreditNoteGlTest extends TestCase
 
     public function test_price_adjustment_reverses_vat_and_inventory_without_touching_quantity_invoiced(): void
     {
-        // PO: 5 @ 10.000, fully invoiced. Price reduction of 1.000/unit → HT 5.000.
-        $poLine = $this->invoicedPoLine('5.0000', '10.000', '5.0000');
+        // Invoice: 5 @ 10.000 (subtotal 50.000). Price reduction of 1.000/unit → HT 5.000.
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
         $creditNote = $this->supplierCreditNote(
+            $invoice,
             $poLine,
             SupplierCreditNoteReason::PriceAdjustment,
             ['qty' => '5.0000', 'unit_price' => '1.000', 'recoverable_vat' => '0.950'],
@@ -309,9 +351,10 @@ final class SupplierCreditNoteGlTest extends TestCase
 
     public function test_goods_return_reverses_gl_and_decrements_quantity_invoiced(): void
     {
-        // PO: 5 @ 10.000, fully invoiced. Return 2 units → HT 20.000.
-        $poLine = $this->invoicedPoLine('5.0000', '10.000', '5.0000');
+        // Invoice: 5 @ 10.000 (subtotal 50.000). Return 2 units → HT 20.000.
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
         $creditNote = $this->supplierCreditNote(
+            $invoice,
             $poLine,
             SupplierCreditNoteReason::GoodsReturn,
             ['qty' => '2.0000', 'unit_price' => '10.000', 'recoverable_vat' => '3.800'],
@@ -345,19 +388,22 @@ final class SupplierCreditNoteGlTest extends TestCase
     }
 
     // =========================================================================
-    // 3. Over-credit blocked: returning more than invoiced THROWS + rolls back.
+    // 3. Over-credit blocked (qty guard): returning more than invoiced THROWS.
+    //    Isolated from the cumulative-HT guard via a reduced credit price.
     // =========================================================================
 
-    public function test_over_credit_beyond_invoiced_throws_and_rolls_back(): void
+    public function test_goods_return_over_credit_quantity_throws_and_rolls_back(): void
     {
-        // Only 5 invoiced; credit note tries to return 6 → would drive < 0.
-        $poLine = $this->invoicedPoLine('5.0000', '10.000', '5.0000');
+        // 5 invoiced; return 6 units (qty over-credit) at a reduced price 5.000 so the
+        // credit HT (30.000) stays within the invoice HT (50.000) — isolating the qty guard.
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
         $creditNote = $this->supplierCreditNote(
+            $invoice,
             $poLine,
             SupplierCreditNoteReason::GoodsReturn,
-            ['qty' => '6.0000', 'unit_price' => '10.000', 'recoverable_vat' => '11.400'],
-            subtotal: '60.000',
-            total: '71.400',
+            ['qty' => '6.0000', 'unit_price' => '5.000', 'recoverable_vat' => '5.700'],
+            subtotal: '30.000',
+            total: '35.700',
         );
 
         $threw = false;
@@ -367,7 +413,7 @@ final class SupplierCreditNoteGlTest extends TestCase
             $threw = true;
         }
 
-        $this->assertTrue($threw, 'Over-credit beyond invoiced quantity must throw');
+        $this->assertTrue($threw, 'Returning more units than invoiced must throw');
 
         // Rolled back: no JE, quantity_invoiced unchanged, still Draft.
         $this->assertSame(0, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $creditNote->id)->count());
@@ -381,8 +427,9 @@ final class SupplierCreditNoteGlTest extends TestCase
 
     public function test_idempotent_second_post_is_noop(): void
     {
-        $poLine = $this->invoicedPoLine('5.0000', '10.000', '5.0000');
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
         $creditNote = $this->supplierCreditNote(
+            $invoice,
             $poLine,
             SupplierCreditNoteReason::GoodsReturn,
             ['qty' => '2.0000', 'unit_price' => '10.000', 'recoverable_vat' => '3.800'],
@@ -409,8 +456,9 @@ final class SupplierCreditNoteGlTest extends TestCase
     public function test_timbre_is_not_reversed(): void
     {
         // Credit note carries a stamp_duty_amount, but no PurchaseStampDuty leg is posted.
-        $poLine = $this->invoicedPoLine('5.0000', '10.000', '5.0000');
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
         $creditNote = $this->supplierCreditNote(
+            $invoice,
             $poLine,
             SupplierCreditNoteReason::GoodsReturn,
             ['qty' => '2.0000', 'unit_price' => '10.000', 'recoverable_vat' => '3.800'],
@@ -424,6 +472,278 @@ final class SupplierCreditNoteGlTest extends TestCase
 
         // No PurchaseStampDuty leg — timbre is not reversed.
         $this->assertNull($this->legOn($entry, $this->stampDutyAccount), 'Timbre must NOT be reversed in Phase 1');
+
+        $this->assertBalanced($entry);
+        $this->assertTrue($this->hashService->verifyChain($this->company->id));
+    }
+
+    // =========================================================================
+    // 6. FIX 1: an unlinked credit-note line (source_line_id null) THROWS, posts nothing.
+    // =========================================================================
+
+    public function test_unlinked_credit_note_line_throws_and_posts_nothing(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
+
+        // Document totals INCLUDE the unlinked line so the poster's balance invariant
+        // (total == HT + VAT) holds — the ONLY defect is the unlinked line, so a green
+        // here would prove the linkage guard (FIX 1), not the balance invariant.
+        $creditNote = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::GoodsReturn,
+            ['qty' => '2.0000', 'unit_price' => '10.000', 'recoverable_vat' => '3.800'],
+            subtotal: '30.000',
+            total: '35.700',
+        );
+
+        // Add a SECOND line with NO source_line_id (unlinked) — must abort the whole post.
+        DocumentLine::create([
+            'document_id' => $creditNote->id,
+            'line_number' => 2,
+            'description' => 'D1 SCN unlinked line',
+            'quantity' => '1.0000',
+            'quantity_delivered' => '0.0000',
+            'quantity_received' => '0.0000',
+            'quantity_invoiced' => '0.0000',
+            'unit_price' => '10.000',
+            'line_total' => '10.000',
+            'allocated_costs' => '0.0000',
+            'tax_amount' => '1.900',
+            'tax_recoverable' => true,
+            'recoverable_tax_amount' => '1.900',
+            'non_recoverable_tax_amount' => '0.000',
+            'source_line_id' => null,
+        ]);
+        $creditNote->load('lines');
+
+        $threw = false;
+        try {
+            $this->service()->post($creditNote);
+        } catch (\DomainException $e) {
+            $threw = true;
+        }
+
+        $this->assertTrue($threw, 'An unlinked credit-note line must abort the entire post');
+
+        // Nothing posted, no decrement, still Draft.
+        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $creditNote->id)->count());
+        $this->assertSame('5.0000', $this->freshLine($poLine)->quantity_invoiced);
+        $this->assertSame(DocumentStatus::Draft, $this->freshDoc($creditNote)->status);
+    }
+
+    // =========================================================================
+    // 7. FIX 1: a line linked to a PO line NOT on the linked invoice THROWS.
+    // =========================================================================
+
+    public function test_line_linked_to_foreign_po_line_throws_and_posts_nothing(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
+
+        // A DIFFERENT PO/invoice — its PO line is not referenced by $invoice.
+        ['poLine' => $foreignPoLine] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
+
+        $creditNote = $this->supplierCreditNote(
+            $invoice,
+            $foreignPoLine, // line points at a PO line that the linked invoice does NOT reference
+            SupplierCreditNoteReason::GoodsReturn,
+            ['qty' => '2.0000', 'unit_price' => '10.000', 'recoverable_vat' => '3.800'],
+            subtotal: '20.000',
+            total: '23.800',
+        );
+
+        $threw = false;
+        try {
+            $this->service()->post($creditNote);
+        } catch (\DomainException $e) {
+            $threw = true;
+        }
+
+        $this->assertTrue($threw, 'A credit-note line not belonging to the linked invoice must abort the post');
+
+        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $creditNote->id)->count());
+        $this->assertSame('5.0000', $this->freshLine($poLine)->quantity_invoiced);
+        $this->assertSame('5.0000', $this->freshLine($foreignPoLine)->quantity_invoiced);
+        $this->assertSame(DocumentStatus::Draft, $this->freshDoc($creditNote)->status);
+    }
+
+    // =========================================================================
+    // 8. FIX 2: a SINGLE credit exceeding the invoice's actual HT THROWS.
+    // =========================================================================
+
+    public function test_single_credit_exceeding_invoice_ht_throws_and_rolls_back(): void
+    {
+        // Invoice HT = 50.000. A PriceAdjustment crediting HT 60.000 > 50.000 must throw.
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
+        $creditNote = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::PriceAdjustment,
+            ['qty' => '5.0000', 'unit_price' => '12.000', 'recoverable_vat' => '11.400'],
+            subtotal: '60.000',
+            total: '71.400',
+        );
+
+        $threw = false;
+        try {
+            $this->service()->post($creditNote);
+        } catch (\DomainException $e) {
+            $threw = true;
+        }
+
+        $this->assertTrue($threw, 'Crediting more HT than the invoice carried must throw');
+
+        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $creditNote->id)->count());
+        $this->assertSame('5.0000', $this->freshLine($poLine)->quantity_invoiced);
+        $this->assertSame(DocumentStatus::Draft, $this->freshDoc($creditNote)->status);
+    }
+
+    // =========================================================================
+    // 9. FIX 2: a SECOND credit that, cumulatively, exceeds the invoice HT THROWS.
+    // =========================================================================
+
+    public function test_cumulative_second_credit_exceeding_invoice_ht_throws_and_rolls_back(): void
+    {
+        // Invoice HT = 50.000. First PriceAdjustment credits HT 40.000 (ok).
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
+
+        $first = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::PriceAdjustment,
+            ['qty' => '5.0000', 'unit_price' => '8.000', 'recoverable_vat' => '7.600'],
+            subtotal: '40.000',
+            total: '47.600',
+        );
+        $this->service()->post($first);
+        $this->assertSame(DocumentStatus::Posted, $this->freshDoc($first)->status);
+
+        // Second PriceAdjustment credits HT 20.000 → cumulative 60.000 > 50.000 → throws.
+        $second = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::PriceAdjustment,
+            ['qty' => '5.0000', 'unit_price' => '4.000', 'recoverable_vat' => '3.800'],
+            subtotal: '20.000',
+            total: '23.800',
+        );
+
+        $threw = false;
+        try {
+            $this->service()->post($second);
+        } catch (\DomainException $e) {
+            $threw = true;
+        }
+
+        $this->assertTrue($threw, 'A second credit pushing cumulative HT past the invoice HT must throw');
+
+        // Only the first credit posted; the second rolled back.
+        $this->assertSame(1, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $first->id)->count());
+        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $second->id)->count());
+        $this->assertSame(DocumentStatus::Draft, $this->freshDoc($second)->status);
+    }
+
+    // =========================================================================
+    // 10. FIX 3: multi-line credit note aggregates returned qty + HT correctly.
+    // =========================================================================
+
+    public function test_multi_line_credit_note_aggregates_quantity_and_ht(): void
+    {
+        // Invoice: 5 @ 10.000 (subtotal 50.000). Two credit lines (1 + 2 = 3 returned) on one PO line.
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
+
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::SupplierCreditNote,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'SCN-D1-'.Str::upper(Str::random(6)),
+            'document_date' => now(),
+            'currency' => 'TND',
+            'source_document_id' => $invoice->id,
+            'subtotal' => '30.000',
+            'line_tax_amount' => '5.700',
+            'stamp_duty_amount' => '0.000',
+            'tax_amount' => '5.700',
+            'total' => '35.700',
+            'supplier_credit_note_reason' => SupplierCreditNoteReason::GoodsReturn,
+        ]);
+        foreach ([['n' => 1, 'q' => '1.0000', 'v' => '1.900'], ['n' => 2, 'q' => '2.0000', 'v' => '3.800']] as $l) {
+            DocumentLine::create([
+                'document_id' => $creditNote->id,
+                'line_number' => $l['n'],
+                'description' => 'D1 SCN multi line',
+                'quantity' => $l['q'],
+                'quantity_delivered' => '0.0000',
+                'quantity_received' => '0.0000',
+                'quantity_invoiced' => '0.0000',
+                'unit_price' => '10.000',
+                'line_total' => bcmul($l['q'], '10.000', 3),
+                'allocated_costs' => '0.0000',
+                'tax_amount' => $l['v'],
+                'tax_recoverable' => true,
+                'recoverable_tax_amount' => $l['v'],
+                'non_recoverable_tax_amount' => '0.000',
+                'source_line_id' => $poLine->id,
+            ]);
+        }
+        $creditNote->load('lines');
+
+        $this->service()->post($creditNote);
+        $entry = $this->creditEntry($creditNote);
+
+        // quantity_invoiced decremented by the SUM (1 + 2 = 3): 5 → 2.
+        $this->assertSame('2.0000', $this->freshLine($poLine)->quantity_invoiced);
+
+        // Cr Inventory = aggregate HT (30.000); Cr VAT = aggregate recoverable (5.700).
+        $crInv = $this->legOn($entry, $this->inventoryAccount);
+        $this->assertNotNull($crInv);
+        $this->assertSame('30.000', $crInv->credit);
+        $crVat = $this->legOn($entry, $this->vatDeductibleAccount);
+        $this->assertNotNull($crVat);
+        $this->assertSame('5.700', $crVat->credit);
+
+        $this->assertBalanced($entry);
+        $this->assertTrue($this->hashService->verifyChain($this->company->id));
+    }
+
+    // =========================================================================
+    // 11. FIX 3: recoverable VAT comes from document_lines.recoverable_tax_amount,
+    //     NOT documents.tax_amount (which includes timbre).
+    // =========================================================================
+
+    public function test_vat_leg_sourced_from_line_recoverable_not_document_tax_amount(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
+
+        // documents.tax_amount = recoverable 3.800 + timbre 0.600 = 4.400 (≠ line recoverable).
+        $creditNote = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::GoodsReturn,
+            ['qty' => '2.0000', 'unit_price' => '10.000', 'recoverable_vat' => '3.800'],
+            subtotal: '20.000',
+            total: '23.800',
+            stampDuty: '0.600',
+        );
+
+        // Precondition: the document's tax_amount deliberately differs from line recoverable.
+        $this->assertSame('4.400', $this->freshDoc($creditNote)->tax_amount);
+
+        $this->service()->post($creditNote);
+        $entry = $this->creditEntry($creditNote);
+
+        // Cr VatDeductible == sum of line recoverable (3.800), NOT documents.tax_amount (4.400).
+        $crVat = $this->legOn($entry, $this->vatDeductibleAccount);
+        $this->assertNotNull($crVat);
+        $this->assertSame('3.800', $crVat->credit);
+        $this->assertNotSame('4.400', $crVat->credit);
+
+        // Timbre is not reversed: no PurchaseStampDuty leg.
+        $this->assertNull($this->legOn($entry, $this->stampDutyAccount));
 
         $this->assertBalanced($entry);
         $this->assertTrue($this->hashService->verifyChain($this->company->id));

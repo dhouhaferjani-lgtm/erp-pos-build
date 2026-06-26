@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Procurement\Domain\Enums\SupplierCreditNoteReason;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Database\Eloquent\Collection;
@@ -17,23 +18,34 @@ use Illuminate\Support\Facades\DB;
 /**
  * D1 — Supplier Credit Note posting orchestrator (mirrors C3 in reverse).
  *
- * Posts a Draft supplier credit note in ONE serialized DB transaction:
- *   1. Lock the linked PO lines (FOR UPDATE) — serializes concurrent posts.
+ * Posts a Draft supplier credit note in ONE serialized DB transaction. The credit
+ * note links to a posted supplier invoice via source_document_id, and each
+ * credit-note line links to a PO line (source_line_id) that the invoice references.
+ *
+ *   1. Resolve the reason; resolve + LOCK the linked supplier invoice
+ *      (source_document_id) — the anchor for the cumulative read — and LOCK the
+ *      linked PO lines (FOR UPDATE).
  *   2. Idempotency no-op: a reversing entry already exists for this credit note.
- *   3. HARD over-credit guard on the LOCKED state:
- *        - GoodsReturn: returned qty per PO line must be > 0 and ≤ quantity_invoiced
- *          (never drives quantity_invoiced < 0, never credits beyond invoiced).
- *        - PriceAdjustment: the credit HT per PO line must be ≤ the invoiced value
- *          (quantity_invoiced × PO unit_price).
- *   4. Decrement quantity_invoiced per PO line by the returned qty — GoodsReturn ONLY
- *      (reopens the PO line for re-invoicing). PriceAdjustment leaves it untouched.
- *   5. Post the GL reversing entry via the in-transaction system path (atomic with
- *      the lock + decrement).
- *   6. Draft → Posted.
+ *   3. Linkage guard (FIX 1, HARD): EVERY credit-note line must resolve to a PO line
+ *      (parent = PurchaseOrder, same company) that the linked invoice references.
+ *      Any unlinked/unresolvable/foreign line REJECTS the whole post (no partial GL).
+ *   4. Cumulative over-credit guard (FIX 2, HARD): Σ HT of all prior POSTED credit
+ *      notes for this invoice + this credit's HT must be ≤ the invoice's actual
+ *      posted HT (its subtotal). Cumulative-correct across repeated credit notes and
+ *      bounded against the real invoice (handles price variance). The invoice row is
+ *      locked, so concurrent credit-note posts serialize on it.
+ *   5. GoodsReturn per-line quantity guard (HARD) + decrement quantity_invoiced
+ *      (reopens the PO line). PriceAdjustment leaves quantity_invoiced untouched.
+ *   6. Post the GL reversing entry via the in-transaction system path (atomic).
+ *   7. Draft → Posted.
+ *
+ * balance_due is NOT used for the over-credit bound: it is maintained by a
+ * pgsql-only trigger scoped to customer invoices (type='invoice'), and C3 supplier
+ * invoice posting never sets it — so it is unreliable for supplier invoices. The
+ * cumulative prior-credit-HT-vs-invoice-subtotal mechanism is used instead.
  *
  * The accounting model (legs / plug) lives in
- * GeneralLedgerService::createSupplierCreditNoteEntry. This service owns
- * concurrency, idempotency, and the quantity ledger.
+ * GeneralLedgerService::createSupplierCreditNoteEntry.
  *
  * DEFERRED (Phase 2): the "returned goods no longer in stock → expense /
  * purchase price-variance" variant. Phase 1 always credits Inventory.
@@ -48,7 +60,8 @@ final class SupplierCreditNotePostingService
     /**
      * Post a Draft supplier credit note's reversing entry under lock + idempotency.
      *
-     * @throws \DomainException on a missing reason, hard over-credit violations, or
+     * @throws \DomainException on a missing reason, broken invoice linkage, unlinked
+     *                          lines, over-credit (per-line or cumulative), or
      *                          internal inconsistency (fails loudly, rolls back).
      */
     public function post(Document $creditNote): void
@@ -65,7 +78,10 @@ final class SupplierCreditNotePostingService
                 ));
             }
 
-            // 1. Lock the linked PO lines (serializes concurrent posts sharing a PO line).
+            // 1a. Resolve + lock the linked supplier invoice (the cumulative anchor).
+            $supplierInvoice = $this->resolveAndLockLinkedInvoice($creditNote);
+
+            // 1b. Lock the linked PO lines (serializes concurrent posts sharing a PO line).
             $poLineIds = $creditNote->lines
                 ->pluck('source_line_id')
                 ->reject(static fn ($id): bool => $id === null)
@@ -89,13 +105,17 @@ final class SupplierCreditNotePostingService
                 return;
             }
 
+            // 3. Linkage guard (FIX 1): every line resolves to a PO line of this invoice.
+            $this->assertAllLinesLinkedToInvoicePoLines($creditNote, $supplierInvoice, $lockedPoLines);
+
             $scale = $this->scaleResolver->getScale($creditNote->currency);
 
-            // 3. + 4. Over-credit guard (HARD) and quantity_invoiced reversal.
+            // 4. Cumulative over-credit guard (FIX 2): bound against the invoice's actual HT.
+            $this->assertCumulativeHtWithinInvoice($creditNote, $supplierInvoice, $scale);
+
+            // 5. GoodsReturn per-line quantity guard + decrement (PriceAdjustment: no-op).
             if ($reason->decrementsQuantityInvoiced()) {
                 $this->guardAndDecrementGoodsReturn($creditNote, $lockedPoLines);
-            } else {
-                $this->guardPriceAdjustment($creditNote, $lockedPoLines, $scale);
             }
 
             // Tax components from the credit-note lines.
@@ -115,7 +135,7 @@ final class SupplierCreditNotePostingService
             /** @var numeric-string $ht */
             $ht = $creditNote->subtotal ?? '0';
 
-            // 5. Post the GL reversing entry (in-transaction system path).
+            // 6. Post the GL reversing entry (in-transaction system path).
             $this->generalLedgerService->createSupplierCreditNoteEntry(
                 $creditNote,
                 $ht,
@@ -123,10 +143,159 @@ final class SupplierCreditNotePostingService
                 $nonRecoverableVat,
             );
 
-            // 6. Draft → Posted.
+            // 7. Draft → Posted.
             $creditNote->status = DocumentStatus::Posted;
             $creditNote->save();
         });
+    }
+
+    /**
+     * Resolve + lock (FOR UPDATE) the supplier invoice the credit note reverses.
+     * The credit note MUST link to a supplier invoice of the same company via
+     * source_document_id; otherwise the post is rejected.
+     */
+    private function resolveAndLockLinkedInvoice(Document $creditNote): Document
+    {
+        $invoiceId = $creditNote->source_document_id;
+        if ($invoiceId === null) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s] cannot be posted: it must link to a supplier invoice '
+                .'via source_document_id.',
+                $creditNote->id,
+            ));
+        }
+
+        /** @var Document|null $supplierInvoice */
+        $supplierInvoice = Document::query()
+            ->whereKey($invoiceId)
+            ->lockForUpdate()
+            ->first();
+
+        if (
+            $supplierInvoice === null
+            || $supplierInvoice->type !== DocumentType::SupplierInvoice
+            || $supplierInvoice->company_id !== $creditNote->company_id
+        ) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s] cannot be posted: source_document_id [%s] does not '
+                .'reference a supplier invoice of this company.',
+                $creditNote->id,
+                $invoiceId,
+            ));
+        }
+
+        $supplierInvoice->load('lines');
+
+        return $supplierInvoice;
+    }
+
+    /**
+     * FIX 1 — every credit-note line must resolve to a lockable PO line that the
+     * linked supplier invoice references (validated like the C2 matcher: the PO
+     * line's parent is a PurchaseOrder of the same company). Any unlinked,
+     * unresolvable, or foreign line rejects the WHOLE post (no partial GL).
+     *
+     * @param  Collection<int, DocumentLine>  $lockedPoLines
+     */
+    private function assertAllLinesLinkedToInvoicePoLines(
+        Document $creditNote,
+        Document $supplierInvoice,
+        Collection $lockedPoLines,
+    ): void {
+        // The set of PO lines the linked invoice actually references.
+        $invoicePoLineIds = $supplierInvoice->lines
+            ->pluck('source_line_id')
+            ->reject(static fn ($id): bool => $id === null)
+            ->unique()
+            ->all();
+        /** @var array<string, true> $invoicePoLineSet */
+        $invoicePoLineSet = array_fill_keys($invoicePoLineIds, true);
+
+        foreach ($creditNote->lines as $line) {
+            $sourceLineId = $line->source_line_id;
+
+            if ($sourceLineId === null) {
+                throw new \DomainException(sprintf(
+                    'Supplier credit note [%s] cannot be posted: line [%s] is unlinked '
+                    .'(no source_line_id). Every line must reference a PO line of the linked invoice.',
+                    $creditNote->id,
+                    $line->id,
+                ));
+            }
+
+            if (! isset($invoicePoLineSet[$sourceLineId])) {
+                throw new \DomainException(sprintf(
+                    'Supplier credit note [%s] cannot be posted: line [%s] references PO line [%s], '
+                    .'which is not part of the linked supplier invoice [%s].',
+                    $creditNote->id,
+                    $line->id,
+                    $sourceLineId,
+                    $supplierInvoice->id,
+                ));
+            }
+
+            // Resolve the locked PO line and validate its parent (C2-style).
+            $poLine = $this->resolveLockedPoLine($creditNote, $lockedPoLines, $sourceLineId);
+            $parent = $poLine->document;
+            if (
+                $parent->type !== DocumentType::PurchaseOrder
+                || $parent->company_id !== $creditNote->company_id
+            ) {
+                throw new \DomainException(sprintf(
+                    'Supplier credit note [%s] cannot be posted: PO line [%s] does not belong to a '
+                    .'purchase order of this company.',
+                    $creditNote->id,
+                    $sourceLineId,
+                ));
+            }
+        }
+    }
+
+    /**
+     * FIX 2 — cumulative over-credit guard. The sum of HT across all PRIOR posted
+     * supplier credit notes linked to the same invoice, plus this credit's HT, must
+     * not exceed the invoice's actual posted HT (its subtotal). Reads run under the
+     * invoice-row lock taken in resolveAndLockLinkedInvoice(), so concurrent posts
+     * serialize.
+     */
+    private function assertCumulativeHtWithinInvoice(Document $creditNote, Document $supplierInvoice, int $scale): void
+    {
+        /** @var numeric-string $currentHt */
+        $currentHt = $creditNote->subtotal ?? '0';
+
+        /** @var \Illuminate\Support\Collection<int, numeric-string|null> $priorSubtotals */
+        $priorSubtotals = Document::query()
+            ->where('type', DocumentType::SupplierCreditNote)
+            ->where('source_document_id', $supplierInvoice->id)
+            ->where('status', DocumentStatus::Posted)
+            ->whereKeyNot($creditNote->id)
+            ->pluck('subtotal');
+
+        /** @var numeric-string $priorHt */
+        $priorHt = '0';
+        foreach ($priorSubtotals as $subtotal) {
+            /** @var numeric-string $s */
+            $s = $subtotal ?? '0';
+            $priorHt = bcadd($priorHt, $s, $scale);
+        }
+
+        $cumulativeHt = bcadd($priorHt, $currentHt, $scale);
+
+        /** @var numeric-string $invoiceHt */
+        $invoiceHt = $supplierInvoice->subtotal ?? '0';
+
+        if (bccomp($cumulativeHt, $invoiceHt, $scale) > 0) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s] cannot be posted: cumulative credited HT %s '
+                .'(prior %s + current %s) would exceed the invoice [%s] HT %s.',
+                $creditNote->id,
+                $cumulativeHt,
+                $priorHt,
+                $currentHt,
+                $supplierInvoice->id,
+                $invoiceHt,
+            ));
+        }
     }
 
     /**
@@ -166,52 +335,6 @@ final class SupplierCreditNotePostingService
 
             $poLine->quantity_invoiced = $newInvoiced;
             $poLine->save();
-        }
-    }
-
-    /**
-     * PriceAdjustment: the credit HT attributable to each PO line must not exceed the
-     * value already invoiced for that line (quantity_invoiced × PO unit_price).
-     * No quantity_invoiced effect.
-     *
-     * @param  Collection<int, DocumentLine>  $lockedPoLines
-     */
-    private function guardPriceAdjustment(Document $creditNote, Collection $lockedPoLines, int $scale): void
-    {
-        $working = $scale + 1;
-
-        /** @var array<string, numeric-string> $creditHtPerPoLine */
-        $creditHtPerPoLine = [];
-        foreach ($creditNote->lines as $line) {
-            if ($line->source_line_id === null) {
-                continue;
-            }
-            $key = $line->source_line_id;
-            /** @var numeric-string $current */
-            $current = $creditHtPerPoLine[$key] ?? '0';
-            /** @var numeric-string $lineTotal */
-            $lineTotal = $line->line_total ?? '0';
-            $creditHtPerPoLine[$key] = bcadd($current, $lineTotal, $working);
-        }
-
-        foreach ($creditHtPerPoLine as $sourceLineId => $creditHt) {
-            $poLine = $this->resolveLockedPoLine($creditNote, $lockedPoLines, $sourceLineId);
-
-            /** @var numeric-string $unitPrice */
-            $unitPrice = $poLine->unit_price ?? '0';
-            /** @var numeric-string $invoicedValue */
-            $invoicedValue = bcmul($poLine->quantity_invoiced, $unitPrice, $working);
-
-            if (bccomp($creditHt, $invoicedValue, $scale) > 0) {
-                throw new \DomainException(sprintf(
-                    'Supplier credit note [%s] cannot be posted: PO line [%s] over-credit — '
-                    .'credit HT %s would exceed the invoiced value %s.',
-                    $creditNote->id,
-                    $poLine->id,
-                    $creditHt,
-                    $invoicedValue,
-                ));
-            }
         }
     }
 
