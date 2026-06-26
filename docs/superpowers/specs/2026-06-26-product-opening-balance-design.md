@@ -1,9 +1,9 @@
-# Design — Inline Product Opening Balance (Stage 3, IZI POS editor) — v2
+# Design — Inline Product Opening Balance (Stage 3, IZI POS editor) — v2.1
 
-> Status: **DESIGN v2 — post Codex adversarial review; awaiting final user sign-off**
+> Status: **DESIGN v2.1 — two Codex adversarial passes folded in; awaiting final user sign-off**
 > Date: 2026-06-26
 > Branch/worktree: `feat/izipos-theme-product-editor` (`/Users/houssamr/Projects/syneriva/apps/erp/.claude/worktrees/izipos-product-editor`)
-> Adversarial review: `docs/superpowers/specs/2026-06-26-product-opening-balance-adversarial-review.md` (20 findings; this v2 resolves all accepted ones — see §13 disposition).
+> Adversarial reviews: `…-adversarial-review.md` (20 findings) + `…-adversarial-review-v2.md` (new-surface pass). Dispositions in §13.
 > Handover origin: `docs/handoff/HANDOVER-opening-balance.md` (uncommitted, main-repo only — **not** present in this worktree; its open questions are resolved inline here, so this spec is self-contained).
 
 ## 1. Goal
@@ -42,15 +42,23 @@ existing stock-adjustment flow (`StockAdjustmentService`, `POST /stock-movements
    (NOT `resolveLocationId`, which returns the current-active location first). 422 if none exists.
    Then `LocationContext::validateLocationAccess(locationId, companyId, user)` before posting.
    (Resolves H1 + C5.) No picker this delivery; the use case already takes `location_id`.
-5. **Enter-once enforced at three layers:** UI lock, a service-level check **inside** the advisory
-   lock, and a DB partial-unique backstop. (Resolves C3 — v1's controller-only guard was racy and
-   bypassable by other callers.)
-6. **Correction = reset-opening while sole movement.** A bounded `POST /products/{id}/opening/reset`
-   (gated `can:inventory.adjust`) that, *iff the opening movement is the product's only movement*,
-   hard-removes the opening (movement + GL entry/lines + stock level + cost basis) and unlocks the
-   fields. Defensible because it erases pre-trading seed data that never entered any transaction or
-   the hash chain. Once any other movement exists → not allowed (use adjustment/revaluation).
-   (Resolves C4.)
+5. **Enter-once enforced in the service, under the advisory lock** (resolves C3 — v1's
+   controller-only guard was racy and bypassable by other callers): the authoritative guard is an
+   in-lock check for "no **active** (non-reversed) opening" for the product+location, run inside
+   `OpeningBalancePostingService` so **every** caller is covered, not just the controller. Plus the
+   UI lock. No DB partial-unique index — reset-by-reversal (§6) makes "active opening" a *stateful*
+   predicate (an Opening movement not referenced by any reversing movement) that a partial index
+   cannot express; the advisory-locked service check is the correct single guard.
+6. **Correction = reset-opening while sole movement, via contra-reversal (audit-preserving).** A
+   bounded `POST /products/{id}/opening/reset` (gated `can:inventory.adjust`) that, *iff the opening
+   movement is the product's only active movement*, **reverses** the opening — reusing the existing
+   `reverses_movement_id` reversal infrastructure (from the merged stock-adjustment-writeoff work) to
+   post a reversing stock movement + a reversing/contra GL entry, zeroing stock + clearing the cost
+   basis, and unlocks the fields for re-entry. **Both the original and the reversal rows remain** —
+   full audit trail (StockMovement has no soft-delete/audit columns, so deletion would leave no
+   record; reversal is the compliant correction). Once any other (non-reversal) movement exists →
+   not allowed (use adjustment/revaluation). (Resolves C4 + v2-review reset-audit finding; matches
+   the reversal semantics chosen for C4.)
 7. **Shared-service hardening (also fixes the import flow):** dispatch `StockMovementRecorded` +
    `StockMovementRecordedV2` after commit for every opening movement; move product/opening
    side-effect events to `DB::afterCommit()`; make `INV-OB` entry-number generation
@@ -92,9 +100,11 @@ app/Modules/Inventory/Application/
    `costLock->acquire(tenantId, companyId, productIds, fn …)` (sorted advisory locks — deadlock
    defense preserved).
 3. **Enter-once check INSIDE the lock** (resolves C3): for each line, after acquiring the lock,
-   assert no existing `Opening` movement for `(company_id, product_id, location_id, variant_id)`;
-   throw `OpeningAlreadyExistsException` if present. The check is re-read under the lock to close
-   the TOCTOU window.
+   assert no **active** (non-reversed) `Opening` movement exists for
+   `(company_id, product_id, location_id, variant_id)` — i.e. no Opening movement whose id is not
+   referenced by a reversing movement's `reverses_movement_id`; throw `OpeningAlreadyExistsException`
+   if present. Re-read under the lock to close the TOCTOU window. This is the authoritative guard
+   for all callers (no DB partial-unique index — see §2.5).
 4. `entryNumber = generateOpeningEntryNumber(companyId)` — **concurrency-safe** (resolves H6):
    replace the read-max-and-increment with an advisory-locked sequence on
    `("inv-ob-seq:{tenantId}:{companyId}:{year}")` (or a dedicated sequence table) so concurrent
@@ -123,14 +133,16 @@ Keeps import-only concerns (validate batch state, map `mapped_data` → `Opening
 (import now also dispatches movement events + uses safe numbering). The existing `InventoryOpening*`
 tests must stay green; **add** an assertion that import now dispatches `StockMovementRecorded`.
 
-### 4.3 DB backstop migration (resolves C3)
+### 4.3 No DB partial-unique index (resolves C3 via the in-lock check instead)
 
-Partial unique index on `stock_movements (company_id, product_id, location_id)` (+ `variant_id`
-where applicable) `WHERE movement_type = 'opening'`. Allows the import flow's legitimate one-opening
-**per location** while preventing a duplicate opening for the same product+location. The migration
-**pre-checks for existing duplicates** and aborts with a clear message rather than failing opaquely
-(new-tenant launch has none; defensive for existing tenants). Reset (§6) hard-removes the row, so a
-post-reset re-entry does not collide.
+v1/early-v2 proposed a partial-unique index on `stock_movements … WHERE movement_type='opening'`.
+**Dropped.** Reset-by-reversal (§8) keeps the original opening row and adds a reversal row, so the
+real invariant is "at most one **active** (non-reversed) opening per product+location" — a stateful
+predicate (an Opening row not referenced by any reversal's `reverses_movement_id`) that a partial
+index cannot express; a naive index would also block legitimate post-reset re-entry. The
+**advisory-locked in-service check** (§4.1 step 3) is the authoritative guard and covers every
+caller — which is exactly what C3 asked for (guard in the reusable service, not the controller).
+No new index migration; no destructive change to any existing unique.
 
 ## 5. Product create flow (`ProductController::store`)
 
@@ -193,21 +205,28 @@ public function hasOnlyOpeningMovement(string $companyId, string $productId): bo
 (`Product` already imports `Inventory\Domain\StockLevel` for `stockLevels()`, but the movements
 check deliberately routes through the contract rather than widening that coupling.)
 
-## 8. Correction — reset-opening (resolves C4)
+## 8. Correction — reset-opening via contra-reversal (resolves C4 + v2 reset-audit finding)
 
 New `POST /products/{id}/opening/reset` on the Product routes
 (`['api','auth:sanctum',SetPermissionsTeam::class,…,'module:Inventory']` + `can:inventory.adjust`),
 handled by a `ResetOpeningBalanceService` (Inventory Application), under the product advisory lock:
 
-1. Guard: `hasOnlyOpeningMovement(companyId, productId)` must be true (exactly one movement, of type
-   Opening). Otherwise 409 "Opening locked — downstream movements exist; use stock adjustment."
-2. In one transaction: delete the opening `StockMovement`, delete its `JournalEntry` + `JournalLine`s,
-   reset the `StockLevel` (to 0 / delete the row), clear `cost_price` + `cost_updated_at`.
-3. `afterCommit`: dispatch `StockMovementRecorded(V2)` reflecting the removal so channels resync.
+1. Guard: `hasOnlyOpeningMovement(companyId, productId)` must be true — exactly one **active**
+   movement, of type Opening (no downstream, no prior reversal). Otherwise 409 "Opening locked —
+   downstream movements exist; use stock adjustment."
+2. In one transaction, **reverse** (do not delete) — reusing the existing `reverses_movement_id`
+   reversal infrastructure (stock-adjustment-writeoff merge): post a reversing `StockMovement`
+   (`reverses_movement_id` = the opening movement, quantity negated) bringing the stock level to 0,
+   post a reversing/contra `JournalEntry` (`is_historical=true`; Dr OBE / Cr Inventory for the
+   opening value) linked to the original, and clear `cost_price` + `cost_updated_at`.
+3. `afterCommit`: dispatch `StockMovementRecorded` + `StockMovementRecordedV2` for the reversal so
+   channels resync.
 
-Rationale for hard-delete (not contra): the opening is `is_historical` seed data, excluded from the
-hash chain, with zero downstream references — there is no fiscal history to preserve, and deletion
-keeps the §4.3 unique index free for a corrected re-entry. Pre-launch setup operation only.
+After reset, the §4.1-step-3 check sees the original opening as **reversed** (inactive), so a
+corrected opening can be re-entered. **Both rows persist → full audit trail.** Rationale for
+reversal over hard-delete: `StockMovement` has no soft-delete/audit columns, so deletion would
+leave no record; reversal is the compliant correction and reuses tested infrastructure. Pre-launch
+setup operation, but auditable regardless.
 
 ## 9. Frontend (`apps/web/src/features/inventory/ProductForm.tsx`)
 
@@ -241,7 +260,7 @@ Backend:
   cost set, **balanced** GL entry (`Dr Inv == Cr OBE == qty×cost`), `is_historical=true`, movement
   events dispatched. `unitCost=0` path covered. Over-scale input rejected at the DTO boundary.
 - **Enter-once / idempotency:** second opening for same product+location rejected (service throws);
-  **two concurrent** same-product posts → exactly one succeeds (in-lock check + DB index);
+  **two concurrent** same-product posts → exactly one succeeds (in-lock active-opening check);
   **two concurrent different-product** posts → both succeed with distinct entry numbers.
 - **Authz (C1):** `products.create` **without** `inventory.adjust` + opening fields → 403;
   with both → 201.
@@ -250,8 +269,10 @@ Backend:
 - **Physical guard (H3):** Service product + opening fields → 422.
 - **Required cost (H7):** `opening_qty>0` without `opening_unit_cost` → 422.
 - **afterCommit (H5):** opening posting failure rolls back the product AND fires no `ProductCreated`.
-- **Reset (C4):** reset while sole movement removes movement+GL+level+cost and unlocks; reset after a
-  second movement → 409.
+- **Reset (C4):** reset while sole active movement posts a reversal movement (`reverses_movement_id`
+  set) + contra GL, zeroes the stock level, clears cost, and unlocks — **original + reversal rows
+  both persist** (audit); a corrected opening can then be re-entered. Reset after a second movement →
+  409. Reset when an opening was already reversed → 409.
 
 Frontend (Vitest): section hidden without `inventory.adjust` / for non-physical; inputs disabled
 when `has_movements`; Reset action shown only when opening is the sole movement.
@@ -260,10 +281,11 @@ Pre-flight (`./scripts/preflight.sh`) before commit.
 
 ## 12. Blast radius
 
-- **New:** `OpeningBalancePostingService`, `ResetOpeningBalanceService`, 3 posting DTOs,
-  `OpeningAlreadyExistsException`; `hasMovements`/`hasOnlyOpeningMovement` on
-  `InventoryServiceInterface` + impl; DB migration (partial unique index + concurrency-safe
-  numbering support); `POST /products/{id}/opening/reset` route.
+- **New:** `OpeningBalancePostingService`, `ResetOpeningBalanceService` (reuses the existing
+  `reverses_movement_id` reversal infra), 3 posting DTOs, `OpeningAlreadyExistsException`;
+  `hasMovements`/`hasOnlyOpeningMovement` on `InventoryServiceInterface` + impl; concurrency-safe
+  `INV-OB` numbering support (sequence/advisory lock — no new uniqueness index);
+  `POST /products/{id}/opening/reset` route.
 - **Modified:** `InventoryOpeningService::postBatch` (delegates + hardening),
   `ProductController::store` (authz + transaction + afterCommit + opening post),
   `CreateProductRequest` (rules), `ProductData` (`has_movements`), `ProductForm.tsx`, generated FE
@@ -281,8 +303,29 @@ Pre-flight (`./scripts/preflight.sh`) before commit.
 - **Declined with reasoning:** H2 (vertical gate) — opening balance is generic to any
   Inventory-enabled vertical; gated by `module:Inventory` + `inventory.adjust`, not a vertical gate.
 
-## 14. Out of scope (clean future adapters, no rework)
+### v2 re-review disposition (`…-adversarial-review-v2.md`)
 
-Location picker (use case takes `location_id`); as-of-date picker / back-dated inline opening (use
-case takes `entryDate`); full anytime cost-revaluation flow (beyond the sole-movement reset);
-product-page stock-adjustment action (same `StockAdjustmentService`).
+- **Declined — BLOCKER "classes don't exist / REJECT":** category error. This is a *design spec*;
+  implementation is the next phase (writing-plans → TDD). Non-existence of the described classes is
+  expected, not a spec defect.
+- **Accepted — reset has no audit trail:** §6/§8 switched from hard-delete to **contra-reversal**
+  (reuses `reverses_movement_id`); both rows persist. Also aligns with the reversal semantics chosen
+  for C4.
+- **Reaffirmed — entry-number race:** already designed as a concurrency-safe sequence (§4.1 step 4).
+- **Clarified — "destructive partial-unique migration":** misread (it targeted `stock_movements`,
+  not `opening_balance_entries`); moot — the index is **dropped** (§4.3) in favor of the in-lock guard.
+- **Out of scope — `is_historical` immutability:** pre-existing, GL-wide (the `JournalEntryObserver`
+  `updating` guard only protects entries that already hold a `fiscal_hash`; all historical opening
+  entries lack one today). Not introduced by this feature → §14 follow-up, not scope creep here.
+
+## 14. Out of scope (clean future adapters / separate follow-ups, no rework)
+
+- Location picker (use case takes `location_id`); as-of-date picker / back-dated inline opening (use
+  case takes `entryDate`); full anytime cost-revaluation flow (beyond the sole-movement reset);
+  product-page stock-adjustment action (same `StockAdjustmentService`).
+- **`is_historical` column immutability (GL-wide follow-up):** the `JournalEntryObserver` `updating`
+  guard only protects entries that already hold a `fiscal_hash`, so a historical (chain-excluded)
+  entry's `is_historical` could in principle be toggled post-creation without detection. This
+  affects **all** historical opening entries (import included), predates this feature, and should be
+  hardened separately (e.g. a model/DB guard making `is_historical` immutable after insert). Flagged
+  here so it is not lost; not addressed in this delivery to avoid scope creep into the GL core.
