@@ -94,6 +94,7 @@ const BatchListPage = lazy(() => import('../features/batches/pages').then((m) =>
 const BatchDetailPage = lazy(() => import('../features/batches/pages').then((m) => ({ default: m.BatchDetailPage })))
 const CreateBatchPage = lazy(() => import('../features/batches/pages').then((m) => ({ default: m.CreateBatchPage })))
 const EditBatchPage = lazy(() => import('../features/batches/pages').then((m) => ({ default: m.EditBatchPage })))
+const ExpiryWriteOffPage = lazy(() => import('../features/batches/pages').then((m) => ({ default: m.ExpiryWriteOffPage })))
 
 // Inventory Counting
 const CountingDashboardPage = lazy(() => import('../features/inventory-counting/pages/CountingDashboardPage').then((m) => ({ default: m.CountingDashboardPage })))
@@ -956,6 +957,20 @@ export function AppRoutes() {
                 <RequirePermission moduleKey="inventory">
                   <SuspenseWrapper>
                     <BatchDetailPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
+            }
+          />
+
+          {/* Expiry Write-off — gated on BatchExpiry module + write-off permission */}
+          <Route
+            path="expiry-write-off"
+            element={
+              <ModuleGuard module="BatchExpiry">
+                <RequirePermission permission="batches.write-off">
+                  <SuspenseWrapper>
+                    <ExpiryWriteOffPage />
                   </SuspenseWrapper>
                 </RequirePermission>
               </ModuleGuard>

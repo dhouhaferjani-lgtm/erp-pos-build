@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ArrowDownCircle, ArrowUpCircle, RefreshCw, ArrowRightLeft, Package } from 'lucide-react'
-import { api } from '../../lib/api'
+import { toast } from 'sonner'
+import { api, isApiError } from '../../lib/api'
 import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { formatQuantity } from '../../lib/format'
@@ -11,6 +12,7 @@ import { bccomp } from '../../lib/decimal'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { usePermissions } from '../../hooks/usePermissions'
 import { SearchInput } from '../../components/molecules/SearchInput'
 import { FilterTabs } from '../../components/molecules/FilterTabs'
 import { LocationSelector } from '../location/LocationSelector'
@@ -22,6 +24,13 @@ import {
   type DataTableColumn,
   EmptyState,
 } from '../../components/molecules'
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { reverseWriteOff } from '../batches/api/batches'
+import {
+  batchesInvalidationPredicate,
+  stockLevelsInvalidationPredicate,
+  stockMovementsInvalidationPredicate,
+} from './_invalidation'
 
 interface StockMovement {
   id: string
@@ -30,6 +39,8 @@ interface StockMovement {
   location_id: string
   location_name: string
   movement_type: string
+  /** MovementReason value e.g. 'write_off', 'expiry', 'damage', or null */
+  reason: string | null
   quantity: string
   quantity_before: string
   quantity_after: string
@@ -37,6 +48,10 @@ interface StockMovement {
   notes: string | null
   user_id: string
   user_name: string | null
+  /** UUID of the original movement this row corrects; null if this is not a reversal. */
+  reverses_movement_id: string | null
+  /** True when another movement has already reversed this row. */
+  is_reversed: boolean
   created_at: string
 }
 
@@ -44,7 +59,18 @@ interface StockMovementsResponse {
   data: StockMovement[]
 }
 
-type MovementFilter = 'all' | 'receipt' | 'issue' | 'adjustment' | 'transfer'
+type MovementFilter = 'all' | 'receipt' | 'issue' | 'adjustment' | 'transfer' | 'write_off'
+
+/**
+ * Reasons that the backend ReverseWriteOffService considers reversible.
+ * Mirrors MovementReason::{Expiry,Damage,WriteOff} enum values exactly.
+ */
+const REVERSIBLE_WRITE_OFF_REASONS = ['write_off', 'expiry', 'damage'] as const
+type ReversibleWriteOffReason = typeof REVERSIBLE_WRITE_OFF_REASONS[number]
+
+function isReversibleWriteOff(reason: string | null): reason is ReversibleWriteOffReason {
+  return reason !== null && (REVERSIBLE_WRITE_OFF_REASONS as readonly string[]).includes(reason)
+}
 
 /**
  * Per-movement-type presentation: semantic tone for the {@link StatusBadge} pill
@@ -57,6 +83,7 @@ const movementTypeConfig: Record<string, { tone: StatusTone; icon: typeof ArrowD
   adjustment: { tone: 'info', icon: RefreshCw },
   transfer_in: { tone: 'success', icon: ArrowRightLeft },
   transfer_out: { tone: 'warning', icon: ArrowRightLeft },
+  write_off: { tone: 'danger', icon: ArrowUpCircle },
 }
 
 export function StockMovementsPage() {
@@ -66,6 +93,14 @@ export function StockMovementsPage() {
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [searchQuery, setSearchQuery] = useState('')
   const [movementFilter, setMovementFilter] = useState<MovementFilter>('all')
+  // The id of the write-off movement currently pending reversal confirmation,
+  // or null when the dialog is closed.
+  const [reverseTargetId, setReverseTargetId] = useState<string | null>(null)
+
+  const { hasPermission } = usePermissions()
+  const canReverseWriteOff = hasPermission('batches.write-off')
+
+  const queryClient = useQueryClient()
 
   const { data, isLoading, error } = useQuery({
     queryKey: tenantScopedKey(['stock-movements', searchQuery, movementFilter, currentLocationId]),
@@ -73,12 +108,12 @@ export function StockMovementsPage() {
       const params = new URLSearchParams()
       if (searchQuery) params.append('search', searchQuery)
       if (currentLocationId) params.append('location_id', currentLocationId)
-      if (movementFilter !== 'all') {
-        if (movementFilter === 'transfer') {
-          // Backend doesn't have a combined transfer filter, we'll filter client-side
-        } else {
-          params.append('movement_type', movementFilter)
-        }
+      if (movementFilter !== 'all' && movementFilter !== 'transfer' && movementFilter !== 'write_off') {
+        params.append('movement_type', movementFilter)
+      } else if (movementFilter === 'write_off') {
+        // Write-offs are always movement_type=issue; narrow the backend scan
+        // to issue movements and let the client-side reason filter do the rest.
+        params.append('movement_type', 'issue')
       }
       const queryString = params.toString()
       const response = await api.get<StockMovementsResponse>(`/stock-movements${queryString ? `?${queryString}` : ''}`)
@@ -87,10 +122,37 @@ export function StockMovementsPage() {
     enabled: !!tenantId && !!companyId,
   })
 
+  const reverseWriteOffMutation = useMutation({
+    mutationFn: (movementId: string) => reverseWriteOff(movementId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: stockMovementsInvalidationPredicate(tenantId, companyId),
+      })
+      await queryClient.invalidateQueries({
+        predicate: stockLevelsInvalidationPredicate(tenantId, companyId),
+      })
+      await queryClient.invalidateQueries({
+        predicate: batchesInvalidationPredicate(tenantId, companyId),
+      })
+      toast.success(t('movements.actions.reverseSuccess'))
+      setReverseTargetId(null)
+    },
+    onError: (err: unknown) => {
+      if (isApiError(err) && err.response?.status === 409) {
+        toast.error(t('movements.actions.reverseAlreadyReversed'))
+      } else {
+        toast.error(t('movements.actions.reverseFailed'))
+      }
+      setReverseTargetId(null)
+    },
+  })
+
   const movements = useMemo(() => {
     let items = data?.data ?? []
     if (movementFilter === 'transfer') {
       items = items.filter(m => m.movement_type === 'transfer_in' || m.movement_type === 'transfer_out')
+    } else if (movementFilter === 'write_off') {
+      items = items.filter(m => isReversibleWriteOff(m.reason))
     }
     return items
   }, [data?.data, movementFilter])
@@ -103,6 +165,7 @@ export function StockMovementsPage() {
       { value: 'issue' as MovementFilter, label: t('movements.filters.issues'), count: allMovements.filter(m => m.movement_type === 'issue').length },
       { value: 'adjustment' as MovementFilter, label: t('movements.filters.adjustments'), count: allMovements.filter(m => m.movement_type === 'adjustment').length },
       { value: 'transfer' as MovementFilter, label: t('movements.filters.transfers'), count: allMovements.filter(m => m.movement_type.startsWith('transfer')).length },
+      { value: 'write_off' as MovementFilter, label: t('movements.filters.writeOffs'), count: allMovements.filter(m => isReversibleWriteOff(m.reason)).length },
     ]
   }, [t, data?.data])
 
@@ -122,11 +185,15 @@ export function StockMovementsPage() {
     adjustment: t('movements.typeLabels.adjustment'),
     transfer_in: t('movements.typeLabels.transfer_in'),
     transfer_out: t('movements.typeLabels.transfer_out'),
+    write_off: t('movements.typeLabels.write_off'),
   }
 
-  const getMovementConfig = (type: string) => {
-    const base = movementTypeConfig[type] ?? { tone: 'neutral' as StatusTone, icon: Package }
-    return { ...base, label: movementTypeLabels[type] ?? type }
+  const getMovementConfig = (movement: StockMovement) => {
+    // Write-off movements (reason in {write_off, expiry, damage}) are issues
+    // displayed with a dedicated label instead of the generic "Issue" label.
+    const configKey = isReversibleWriteOff(movement.reason) ? 'write_off' : movement.movement_type
+    const base = movementTypeConfig[configKey] ?? { tone: 'neutral' as StatusTone, icon: Package }
+    return { ...base, label: movementTypeLabels[configKey] ?? movement.movement_type }
   }
 
   const columns: DataTableColumn<StockMovement>[] = [
@@ -140,7 +207,7 @@ export function StockMovementsPage() {
       key: 'type',
       header: t('products.movementsTab.columns.type'),
       render: (movement) => {
-        const config = getMovementConfig(movement.movement_type)
+        const config = getMovementConfig(movement)
         const Icon = config.icon
         const isPositive = bccomp(movement.quantity, '0') >= 0
         return (
@@ -210,6 +277,35 @@ export function StockMovementsPage() {
       cellClassName: cn('whitespace-nowrap text-sm', textColors.tertiary),
       render: (movement) => movement.user_name ?? t('movements.system'),
     },
+    // ── Reverse action (write-offs only, permission-gated) ───────────────────
+    {
+      key: 'actions',
+      header: '',
+      render: (movement) => {
+        if (!isReversibleWriteOff(movement.reason)) return null
+        if (!canReverseWriteOff) return null
+        if (movement.is_reversed) {
+          return (
+            <span className={cn('text-xs', textColors.disabled)}>
+              {t('movements.actions.reversed')}
+            </span>
+          )
+        }
+        return (
+          <button
+            type="button"
+            onClick={() => { setReverseTargetId(movement.id) }}
+            aria-label={t('movements.actions.reverse')}
+            className={cn(
+              'text-sm font-medium transition-opacity hover:opacity-80',
+              textColors.error,
+            )}
+          >
+            {t('movements.actions.reverse')}
+          </button>
+        )
+      },
+    },
   ]
 
   return (
@@ -274,6 +370,22 @@ export function StockMovementsPage() {
           }
         />
       )}
+
+      {/* Reverse write-off confirmation dialog */}
+      <ConfirmDialog
+        isOpen={reverseTargetId !== null}
+        onClose={() => { setReverseTargetId(null) }}
+        onConfirm={() => {
+          if (reverseTargetId !== null) {
+            reverseWriteOffMutation.mutate(reverseTargetId)
+          }
+        }}
+        title={t('movements.actions.reverseConfirmTitle')}
+        message={t('movements.actions.reverseConfirmMessage')}
+        confirmText={t('movements.actions.reverse')}
+        variant="danger"
+        isLoading={reverseWriteOffMutation.isPending}
+      />
     </div>
   )
 }

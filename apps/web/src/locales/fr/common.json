@@ -160,6 +160,7 @@
     "products": "Produits",
     "categories": "Catégories",
     "batches": "Lots",
+    "expiryWriteOff": "Radiation de lots périmés",
     "stockLevels": "Niveaux de stock",
     "stockMovements": "Mouvements de stock",
     "counting": "Inventaire physique",

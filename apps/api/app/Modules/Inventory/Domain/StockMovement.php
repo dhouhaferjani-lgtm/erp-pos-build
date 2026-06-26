@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -39,6 +40,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $notes
  * @property string|null $user_id
  * @property bool $is_historical
+ * @property string|null $reverses_movement_id
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Tenant $tenant
@@ -46,6 +48,8 @@ use Illuminate\Support\Carbon;
  * @property-read Product $product
  * @property-read Location $location
  * @property-read User|null $user
+ * @property-read StockMovement|null $reversesMovement
+ * @property-read StockMovement|null $reversalOf
  */
 class StockMovement extends Model
 {
@@ -74,6 +78,7 @@ class StockMovement extends Model
         'notes',
         'user_id',
         'is_historical',
+        'reverses_movement_id',
     ];
 
     /**
@@ -136,6 +141,28 @@ class StockMovement extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * The original movement that this row reverses/corrects.
+     * NULL when this movement is not itself a reversal.
+     *
+     * @return BelongsTo<StockMovement, $this>
+     */
+    public function reversesMovement(): BelongsTo
+    {
+        return $this->belongsTo(StockMovement::class, 'reverses_movement_id');
+    }
+
+    /**
+     * The reversal movement that undoes this row, if one exists.
+     * NULL when this movement has not yet been reversed.
+     *
+     * @return HasOne<StockMovement, $this>
+     */
+    public function reversalOf(): HasOne
+    {
+        return $this->hasOne(StockMovement::class, 'reverses_movement_id');
     }
 
     /**
