@@ -122,12 +122,33 @@ final class SupplierInvoicePostingService
                     ));
                 }
 
+                // Clear 408 at the SAME basis B1 accrued on receipt:
+                // landed_unit_cost ?? unit_price (GoodsReceiptService.php:157 →
+                // GeneralLedgerService::createGoodsReceiptGrIrEntry). Using raw
+                // unit_price here would leave a landed-vs-unit_price residue on 408.
+                /** @var numeric-string $accrualUnitCost */
+                $accrualUnitCost = $poLine->landed_unit_cost ?? $poLine->unit_price;
                 /** @var numeric-string $lineAccrual */
-                $lineAccrual = bcmul($qty, $poLine->unit_price, $working);
+                $lineAccrual = bcmul($qty, $accrualUnitCost, $working);
                 $accruedHt = bcadd($accruedHt, $lineAccrual, $working);
 
                 /** @var numeric-string $newInvoiced */
                 $newInvoiced = bcadd($poLine->quantity_invoiced, $qty, 4);
+
+                // Authoritative over-clear guard at the WRITE boundary: the locked
+                // PO row is the source of truth. Holds regardless of match_enforcement
+                // and independent of the matcher's separate read.
+                if (bccomp($newInvoiced, $poLine->quantity_received, 4) > 0) {
+                    throw new \DomainException(sprintf(
+                        'Supplier invoice [%s] cannot be posted: PO line [%s] over-clear — '
+                        .'invoiced %s would exceed received %s.',
+                        $supplierInvoice->id,
+                        $poLine->id,
+                        $newInvoiced,
+                        $poLine->quantity_received,
+                    ));
+                }
+
                 $poLine->quantity_invoiced = $newInvoiced;
                 $poLine->save();
             }
