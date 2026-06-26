@@ -136,4 +136,12 @@ class SystemAccountPurposeTest extends TestCase
         $purpose = SystemAccountPurpose::from('vat_collected');
         $this->assertSame(SystemAccountPurpose::VatCollected, $purpose);
     }
+
+    public function test_grir_and_timbre_purposes_have_correct_account_types(): void
+    {
+        $this->assertSame(AccountType::Liability, SystemAccountPurpose::GoodsReceivedNotInvoiced->expectedAccountType());
+        $this->assertSame(AccountType::Expense, SystemAccountPurpose::PurchaseStampDuty->expectedAccountType());
+        $this->assertNotEmpty(SystemAccountPurpose::GoodsReceivedNotInvoiced->label());
+        $this->assertNotEmpty(SystemAccountPurpose::PurchaseStampDuty->label());
+    }
 }

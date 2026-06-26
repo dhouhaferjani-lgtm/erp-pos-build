@@ -66,6 +66,10 @@ enum SystemAccountPurpose: string
     case RoundingLossExpense = 'rounding_loss_expense';           // Sub-minor residual write-off on voucher rounding adjustments
     case PosTenderClearing = 'pos_tender_clearing';               // Transient suspense: credit leg when voucher redeems against a POS sale (Task 14)
 
+    // Procurement (GR-IR / Domestic P2P)
+    case GoodsReceivedNotInvoiced = 'goods_received_not_invoiced'; // 408 — accrued liability until supplier invoice matched
+    case PurchaseStampDuty = 'purchase_stamp_duty';                // Timbre fiscal on domestic purchase documents
+
     /**
      * Get human-readable label for display.
      */
@@ -105,6 +109,8 @@ enum SystemAccountPurpose: string
             self::VoucherBreakageIncome => 'Voucher Breakage Income',
             self::RoundingLossExpense => 'Rounding Loss Expense',
             self::PosTenderClearing => 'POS Tender Clearing',
+            self::GoodsReceivedNotInvoiced => 'Goods Received Not Invoiced (GR-IR)',
+            self::PurchaseStampDuty => 'Purchase Stamp Duty (Timbre)',
         };
     }
 
@@ -141,7 +147,8 @@ enum SystemAccountPurpose: string
             self::UninvoicedRevenue, self::PosTenderClearing => AccountType::Asset,
 
             self::SupplierPayable, self::CustomerAdvance,
-            self::VatCollected, self::VoucherLiability => AccountType::Liability,
+            self::VatCollected, self::VoucherLiability,
+            self::GoodsReceivedNotInvoiced => AccountType::Liability,
 
             self::ProductRevenue, self::ServiceRevenue,
             self::PaymentToleranceIncome, self::RealizedFxGain,
@@ -151,7 +158,8 @@ enum SystemAccountPurpose: string
             self::TravelExpense, self::MealsExpense, self::UtilitiesExpense, self::GeneralExpense,
             self::PaymentToleranceExpense, self::SalesReturn, self::RealizedFxLoss,
             self::SalesDiscount, self::SalesReturnsClearing,
-            self::MarketingGoodwillExpense, self::RoundingLossExpense => AccountType::Expense,
+            self::MarketingGoodwillExpense, self::RoundingLossExpense,
+            self::PurchaseStampDuty => AccountType::Expense,
 
             self::RetainedEarnings, self::OpeningBalanceEquity => AccountType::Equity,
         };
