@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Tests\Feature\Treasury;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Application\Services\GeneralLedgerHashService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -30,6 +32,7 @@ use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -261,7 +264,70 @@ class PaymentTest extends TestCase
         $this->assertEquals('690.000', $this->invoice->balance_due);
     }
 
-    public function test_purchase_order_payment_uses_document_payment_flow_without_supplier_payable_gl(): void
+    // ─────────────────────────────────────────────────────────────────────────
+    // Supplier-invoice payment (C4 — supersedes the R-1 backwards baseline).
+    //
+    // Paying a posted supplier_invoice must:
+    //   - post a `supplier_payment` JE: Dr SupplierPayable (401, partner-tagged)
+    //     / Cr Bank (partner_id null), via the canonical hash-chained path;
+    //   - DECREASE the repository balance (cash leaves to pay the supplier);
+    //   - REDUCE payable_balance toward 0 (never < 0 — M-5 CHECK);
+    //   - NOT post a `customer_payment` entry (supplier is AP, not AR);
+    //   - transition the supplier_invoice to Paid when fully paid.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Seed a Posted supplier_invoice with an outstanding Cr 401 opening so the
+     * supplier's payable_balance > 0. The opening 401 credit is posted via the
+     * canonical hash-chained GL path so verifyChain holds and refreshPartnerBalance
+     * (posted-only) sees it. Wrapped in a committing DB::transaction so its
+     * afterCommit posting fires under RefreshDatabase (same nested-commit pattern
+     * the controller relies on).
+     */
+    private function postedSupplierInvoice(Partner $supplier, string $total): Document
+    {
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::SupplierInvoice,
+            'document_number' => 'SI-2026-'.substr(md5($total.$supplier->id), 0, 6),
+            'partner_id' => $supplier->id,
+            'document_date' => now(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => $total,
+            'tax_amount' => '0.000',
+            'total' => $total,
+            'balance_due' => $total,
+            'currency' => 'EUR',
+        ]);
+
+        $expenseAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::PurchaseExpenses);
+        $user = $this->user;
+        $companyId = $this->company->id;
+
+        DB::transaction(function () use ($companyId, $supplier, $invoice, $total, $expenseAccount, $user): void {
+            app(GeneralLedgerService::class)->createSupplierInvoiceJournalEntry(
+                companyId: $companyId,
+                partnerId: $supplier->id,
+                invoiceId: $invoice->id,
+                totalAmount: $total,
+                netAmount: $total,
+                vatAmount: '0.000',
+                expenseAccountId: $expenseAccount->id,
+                date: new \DateTimeImmutable('now'),
+                user: $user,
+                description: 'Opening supplier payable',
+                currencyCode: 'EUR',
+            );
+        });
+
+        return $invoice;
+    }
+
+    /**
+     * @return array{0: Account, 1: PaymentRepository, 2: Partner}
+     */
+    private function supplierWithBankRepository(string $balance): array
     {
         app(ChartOfAccountsService::class)->seedForCompany($this->company);
 
@@ -273,7 +339,7 @@ class PaymentTest extends TestCase
             'code' => 'BANK-AP',
             'name' => 'AP Bank',
             'type' => RepositoryType::BankAccount,
-            'balance' => '1000.00',
+            'balance' => $balance,
             'account_id' => $bankAccount->id,
             'is_active' => true,
         ]);
@@ -286,20 +352,15 @@ class PaymentTest extends TestCase
             'is_active' => true,
         ]);
 
-        $purchaseOrder = Document::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'type' => DocumentType::PurchaseOrder,
-            'document_number' => 'PO-2026-0001',
-            'partner_id' => $supplier->id,
-            'document_date' => now(),
-            'status' => DocumentStatus::Confirmed,
-            'subtotal' => '500.00',
-            'tax_amount' => '100.00',
-            'total' => '600.00',
-            'balance_due' => '600.00',
-            'currency' => 'EUR',
-        ]);
+        return [$bankAccount, $repository, $supplier];
+    }
+
+    public function test_supplier_invoice_payment_clears_401_and_reduces_payable_balance(): void
+    {
+        [$bankAccount, $repository, $supplier] = $this->supplierWithBankRepository('1000.00');
+        $payableAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::SupplierPayable);
+
+        $supplierInvoice = $this->postedSupplierInvoice($supplier, '600.000');
 
         $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
             'partner_id' => $supplier->id,
@@ -310,7 +371,7 @@ class PaymentTest extends TestCase
             'payment_date' => now()->toDateString(),
             'allocations' => [
                 [
-                    'document_id' => $purchaseOrder->id,
+                    'document_id' => $supplierInvoice->id,
                     'amount' => '600.00',
                 ],
             ],
@@ -325,30 +386,128 @@ class PaymentTest extends TestCase
 
         $this->assertEquals(PaymentType::DocumentPayment, $payment->payment_type);
 
-        $repository->refresh();
-        $this->assertEquals('1600.000', $repository->balance);
-
-        $supplier->refresh();
-        $this->assertEquals('0.000', $supplier->payable_balance);
-
-        $this->assertDatabaseMissing('journal_entries', [
-            'source_type' => 'supplier_payment',
-            'source_id' => $payment->id,
-        ]);
-
+        // A supplier_payment JE exists (source_id = payment.id), Posted, chained.
         $journalEntry = JournalEntry::query()
-            ->where('source_type', 'customer_payment')
+            ->where('source_type', 'supplier_payment')
             ->where('source_id', $payment->id)
             ->with('lines')
             ->firstOrFail();
-
         $this->assertEquals(JournalEntryStatus::Posted, $journalEntry->status);
 
+        // Dr 401 = amount, partner-tagged to the supplier.
+        $payableLine = $journalEntry->lines->firstWhere('account_id', $payableAccount->id);
+        $this->assertNotNull($payableLine);
+        $this->assertEquals('600.000', $payableLine->debit);
+        $this->assertEquals('0.000', $payableLine->credit);
+        $this->assertEquals($supplier->id, $payableLine->partner_id);
+
+        // Cr Bank = amount, no partner.
         $bankLine = $journalEntry->lines->firstWhere('account_id', $bankAccount->id);
         $this->assertNotNull($bankLine);
         $this->assertNull($bankLine->partner_id);
-        $this->assertEquals('600.000', $bankLine->debit);
-        $this->assertEquals('0.000', $bankLine->credit);
+        $this->assertEquals('0.000', $bankLine->debit);
+        $this->assertEquals('600.000', $bankLine->credit);
+
+        // NO customer_payment entry for this payment.
+        $this->assertDatabaseMissing('journal_entries', [
+            'source_type' => 'customer_payment',
+            'source_id' => $payment->id,
+        ]);
+
+        // Cash OUT: repository decreased 1000 → 400.
+        $repository->refresh();
+        $this->assertEquals('400.000', $repository->balance);
+
+        // payable_balance cleared to 0 and never negative.
+        $supplier->refresh();
+        $this->assertEquals('0.000', $supplier->payable_balance);
+        $this->assertStringStartsNotWith('-', (string) ($supplier->payable_balance ?? '0'));
+
+        // Full payment transitions the supplier_invoice to Paid.
+        $supplierInvoice->refresh();
+        $this->assertEquals('0.000', $supplierInvoice->balance_due);
+        $this->assertEquals(DocumentStatus::Paid, $supplierInvoice->status);
+
+        // Hash chain intact.
+        $this->assertTrue(app(GeneralLedgerHashService::class)->verifyChain($this->company->id));
+    }
+
+    public function test_partial_supplier_invoice_payment_reduces_payable_and_keeps_posted(): void
+    {
+        [, $repository, $supplier] = $this->supplierWithBankRepository('1000.00');
+
+        $supplierInvoice = $this->postedSupplierInvoice($supplier, '600.000');
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $supplier->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'repository_id' => $repository->id,
+            'amount' => '300.00',
+            'currency' => 'EUR',
+            'payment_date' => now()->toDateString(),
+            'allocations' => [
+                [
+                    'document_id' => $supplierInvoice->id,
+                    'amount' => '300.00',
+                ],
+            ],
+        ]);
+
+        $response->assertCreated();
+
+        // Cash out: 1000 → 700.
+        $repository->refresh();
+        $this->assertEquals('700.000', $repository->balance);
+
+        // payable reflects the remaining half.
+        $supplier->refresh();
+        $this->assertEquals('300.000', $supplier->payable_balance);
+
+        // Invoice stays Posted (not Paid) with the remaining balance.
+        $supplierInvoice->refresh();
+        $this->assertEquals('300.000', $supplierInvoice->balance_due);
+        $this->assertEquals(DocumentStatus::Posted, $supplierInvoice->status);
+    }
+
+    public function test_supplier_invoice_overpayment_is_rejected(): void
+    {
+        [, $repository, $supplier] = $this->supplierWithBankRepository('1000.00');
+
+        $supplierInvoice = $this->postedSupplierInvoice($supplier, '600.000');
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $supplier->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'repository_id' => $repository->id,
+            'amount' => '601.00',
+            'currency' => 'EUR',
+            'payment_date' => now()->toDateString(),
+            'allocations' => [
+                [
+                    'document_id' => $supplierInvoice->id,
+                    'amount' => '601.00', // exceeds the invoice's 600 outstanding balance
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'SUPPLIER_PAYMENT_EXCEEDS_PAYABLE');
+
+        // Nothing moved: no cash out, no negative payable, invoice untouched.
+        $repository->refresh();
+        $this->assertEquals('1000.000', $repository->balance);
+
+        $supplier->refresh();
+        $this->assertStringStartsNotWith('-', (string) ($supplier->payable_balance ?? '0'));
+
+        $supplierInvoice->refresh();
+        $this->assertEquals('600.000', $supplierInvoice->balance_due);
+        $this->assertEquals(DocumentStatus::Posted, $supplierInvoice->status);
+
+        $this->assertDatabaseMissing('journal_entries', [
+            'source_type' => 'supplier_payment',
+            'source_id' => $supplierInvoice->id,
+        ]);
     }
 
     public function test_full_payment_marks_invoice_as_paid(): void

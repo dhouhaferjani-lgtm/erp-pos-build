@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Presentation\Controllers;
 
+use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DocumentFullyPaid;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
@@ -36,6 +38,7 @@ class PaymentController extends Controller
         private readonly PaymentAllocationService $allocationService,
         private readonly WithholdingCertificateService $withholdingService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly PartnerBalanceService $partnerBalanceService,
     ) {}
 
     private function scale(): int
@@ -170,7 +173,13 @@ class PaymentController extends Controller
         }
 
         // Validate each allocation - cap it at document balance (no overpayment per invoice)
-        // Excess will be handled as customer advance
+        // Excess will be handled as customer advance.
+        //
+        // Branch key (C4): when the allocated document is an AP document
+        // (DocumentType::SupplierInvoice) the payment is supplier-side — it clears
+        // SupplierPayable (401) and moves cash OUT. Customer/AR allocations keep the
+        // existing cap-and-advance behavior untouched.
+        $isSupplierPayment = false;
         $adjustedAllocations = [];
         foreach ($allocations as $allocation) {
             /** @var Document $document */
@@ -184,6 +193,28 @@ class PaymentController extends Controller
 
             /** @var numeric-string $balanceDue */
             $balanceDue = $document->balance_due ?? $document->total;
+
+            if ($document->type === DocumentType::SupplierInvoice) {
+                $isSupplierPayment = true;
+
+                // Over-allocation guard (M-5): paying a supplier beyond the invoice's
+                // outstanding balance would over-debit 401 and drive payable_balance
+                // below the non-negative CHECK. There is no supplier-advance path here,
+                // so reject rather than silently cap/route an excess.
+                if (bccomp($requestedAmount, $balanceDue, $this->scale()) > 0) {
+                    return response()->json([
+                        'error' => [
+                            'code' => 'SUPPLIER_PAYMENT_EXCEEDS_PAYABLE',
+                            'message' => 'Payment amount exceeds the supplier invoice outstanding balance',
+                            'details' => [
+                                'document_id' => $document->id,
+                                'requested_amount' => $requestedAmount,
+                                'outstanding_balance' => $balanceDue,
+                            ],
+                        ],
+                    ], 422);
+                }
+            }
 
             // Cap allocation at document balance (can't overpay a single invoice)
             /** @var numeric-string $allocationAmount */
@@ -199,8 +230,24 @@ class PaymentController extends Controller
             }
         }
 
+        // Supplier payments never create an advance: the cash leaving the
+        // repository must equal the payable it clears. Reject any excess beyond
+        // the allocated supplier-invoice balance (keeps cash ↔ GL ↔ 401 balanced).
+        if ($isSupplierPayment && bccomp($paymentAmount, $totalAllocated, $this->scale()) > 0) {
+            return response()->json([
+                'error' => [
+                    'code' => 'SUPPLIER_PAYMENT_EXCEEDS_PAYABLE',
+                    'message' => 'Supplier payment amount exceeds the allocated outstanding balance',
+                    'details' => [
+                        'payment_amount' => $paymentAmount,
+                        'allocated_amount' => $totalAllocated,
+                    ],
+                ],
+            ], 422);
+        }
+
         // Create payment and allocations in a transaction
-        $payment = DB::transaction(function () use ($validated, $user, $paymentAmount, $adjustedAllocations, $tenantId, $companyId) {
+        $payment = DB::transaction(function () use ($validated, $user, $paymentAmount, $adjustedAllocations, $tenantId, $companyId, $isSupplierPayment) {
             // Determine payment type: advance if no allocations, otherwise document payment
             $paymentType = empty($adjustedAllocations)
                 ? PaymentType::Advance
@@ -349,11 +396,15 @@ class PaymentController extends Controller
                 $repository = $repoResult;
 
                 if ($repository instanceof PaymentRepository) {
-                    // Increment repository balance by payment amount
+                    // Cash direction: customer payments come IN (increment); supplier
+                    // payments go OUT (decrement) — money leaves the repository to pay
+                    // the supplier. bcmath at scale 3, never float.
                     /** @var numeric-string $currentBalance */
                     $currentBalance = $repository->balance ?? '0.00';
                     $previousBalance = $currentBalance;
-                    $repository->balance = bcadd($currentBalance, $paymentAmount, $this->scale());
+                    $repository->balance = $isSupplierPayment
+                        ? bcsub($currentBalance, $paymentAmount, $this->scale())
+                        : bcadd($currentBalance, $paymentAmount, $this->scale());
                     $repository->save();
 
                     $newBalance = $repository->balance;
@@ -384,17 +435,42 @@ class PaymentController extends Controller
                 }
 
                 if ($repository instanceof PaymentRepository && $repository->account_id) {
-                    $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
-                        companyId: $companyId,
-                        partnerId: $validated['partner_id'],
-                        paymentId: $payment->id,
-                        amount: $totalAllocatedForGL,
-                        paymentMethodAccountId: $repository->account_id,
-                        date: new \DateTimeImmutable($validated['payment_date']),
-                        description: "Customer payment - {$payment->reference}",
-                        user: $user,
-                        currencyCode: $payment->currency
-                    );
+                    if ($isSupplierPayment) {
+                        // Supplier-side: Dr SupplierPayable (401, partner-tagged) / Cr Bank.
+                        // Reuse the existing canonical, hash-chained GL method.
+                        $journalEntry = $this->glService->createSupplierPaymentJournalEntry(
+                            companyId: $companyId,
+                            partnerId: $validated['partner_id'],
+                            paymentId: $payment->id,
+                            amount: $totalAllocatedForGL,
+                            paymentMethodAccountId: $repository->account_id,
+                            date: new \DateTimeImmutable($validated['payment_date']),
+                            user: $user,
+                            description: "Supplier payment - {$payment->reference}",
+                            currencyCode: $payment->currency
+                        );
+
+                        // payable_balance is DERIVED from the 401 subledger; recompute it
+                        // after the supplier_payment entry is POSTED. The GL method posts
+                        // via afterCommit, so defer the refresh to afterCommit too (and
+                        // register it AFTER the post so it runs once the Dr 401 is posted).
+                        $supplierPartnerId = $validated['partner_id'];
+                        DB::afterCommit(function () use ($companyId, $supplierPartnerId): void {
+                            $this->partnerBalanceService->refreshPartnerBalance($companyId, $supplierPartnerId);
+                        });
+                    } else {
+                        $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
+                            companyId: $companyId,
+                            partnerId: $validated['partner_id'],
+                            paymentId: $payment->id,
+                            amount: $totalAllocatedForGL,
+                            paymentMethodAccountId: $repository->account_id,
+                            date: new \DateTimeImmutable($validated['payment_date']),
+                            description: "Customer payment - {$payment->reference}",
+                            user: $user,
+                            currencyCode: $payment->currency
+                        );
+                    }
 
                     // Link journal entry to payment
                     $payment->journal_entry_id = $journalEntry->id;
@@ -402,11 +478,13 @@ class PaymentController extends Controller
                 }
             }
 
-            // Handle excess amount as customer advance
+            // Handle excess amount as customer advance.
+            // Supplier payments are excluded — there is no supplier-advance path here
+            // and over-allocation was already rejected before the transaction.
             /** @var numeric-string $excessAmount */
             $excessAmount = bcsub($paymentAmount, $totalAllocatedForGL, $this->scale());
 
-            if (bccomp($excessAmount, '0', $this->scale()) > 0 && $repositoryId) {
+            if (! $isSupplierPayment && bccomp($excessAmount, '0', $this->scale()) > 0 && $repositoryId) {
                 if (! $repository instanceof PaymentRepository) {
                     /** @var PaymentRepository|null $foundRepository */
                     $foundRepository = PaymentRepository::query()
