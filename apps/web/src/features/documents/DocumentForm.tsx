@@ -252,6 +252,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       unit_price: parseFloat(l.unit_price),
       tax_rate: parseFloat(l.tax_rate ?? '0'),
       line_total: parseFloat(l.line_total),
+      quantity_decimals: l.quantity_decimals ?? null,
     })))
     setHasInitializedLines(true)
   }

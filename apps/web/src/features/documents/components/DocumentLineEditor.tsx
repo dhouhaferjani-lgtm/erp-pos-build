@@ -15,6 +15,7 @@ import { useCompanyConfig } from '../../../contexts/CompanyConfigContext'
 import { DesignationCell } from './DesignationCell'
 import { NotesCell } from './NotesCell'
 import { useLineDesignationFeature } from '../hooks/useLineDesignationFeature'
+import { getQuantityDecimals } from '../../../lib/quantityScale'
 import { borderColors, colors, textColors, tokens } from '../../../lib/designTokens'
 
 // Map frontend document type strings to backend applicable_document_types format
@@ -35,6 +36,7 @@ interface Product {
   sale_price: number
   tax_rate: number
   default_tax_configuration_id?: string | null
+  quantity_decimals?: number | null
 }
 
 interface Service {
@@ -68,6 +70,8 @@ export interface DocumentLine {
   tax_configuration_id?: string | null
   line_total: number
   is_service?: boolean
+  /** Unit precision (unit decimal_places) → drives the qty input step. */
+  quantity_decimals?: number | null
 }
 
 type SearchTab = 'product' | 'service'
@@ -195,6 +199,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         tax_rate: product.tax_rate,
         tax_configuration_id: product.default_tax_configuration_id ?? null,
         line_total: calculateLineTotal(1, product.sale_price, product.tax_rate),
+        quantity_decimals: product.quantity_decimals ?? null,
       }
       onChange([...lines, newLine])
       setShowProductSearch(false)
@@ -351,7 +356,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
       cellClassName: 'text-end',
       Cell: ({ line }) => (
         <QuantityCell
-          decimalPlaces={4}
+          decimalPlaces={getQuantityDecimals(line)}
           min="0"
           readonly={readonly}
           value={line.quantity}
@@ -679,6 +684,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
             sku: product.sku ?? '',
             sale_price: product.sale_price,
             tax_rate: product.tax_rate,
+            quantity_decimals: product.quantity_decimals ?? null,
           }
           // Add the new product to the lines
           handleAddProduct(lineProduct)

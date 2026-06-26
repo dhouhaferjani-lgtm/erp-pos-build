@@ -19,6 +19,7 @@ interface Product {
   sale_price: number
   cost_price: number
   tax_rate: number
+  quantity_decimals?: number | null
 }
 
 interface QuickProductFormData {
