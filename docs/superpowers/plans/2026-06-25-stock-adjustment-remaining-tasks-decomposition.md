@@ -95,6 +95,13 @@ C1 → C2 → C3 → B3a → B3b → B4a → B4b → B4c → (optional) C0 → (
 - **G1:** Inventory-owned port interface in `Inventory/Domain/Contracts` for batch-stock mutation, implemented by BatchExpiry. **G2:** route `StockAdjustmentService::recordBatchMovement` + the `issue/receive(batchId)` callers (only `BatchWriteOffService` + `StockTransferService` — Codex HIGH 4) through the port; audit `BatchController::transfer`→`BatchStockService::transferBatchStock` (moves batch stock with NO aggregate movement). **G3:** remove the direct `BatchExpiry\Domain\Entities` imports from Inventory.
 - **Risk:** HIGH (broad refactor, regression-prone). **Model:** most-capable. Heavy regression coverage; own branch. Lowest priority (cleanup, not feature).
 
+## Deferred follow-up status (owner decision, 2026-06-26)
+Core subsystem (B0, A1–A4, B1–B4, C1–C3, E1) is **shipped and merged to `dev`** (`7a42ad46a`, merge of `feat/stock-adjustment-writeoff`, clean ff promotion, fiscal reversal/grouped tests green pre-merge). The two remaining items below are **explicitly deferred** — they are hardening/cleanup, not feature gaps, and do **not** block the customer demo.
+- **C0 (posted-movement immutability)** and **G (Inventory↔BatchExpiry boundary cleanup)** are to be done **later, each in its own feature branch**, **C0 before G** (G would otherwise re-churn the same transfer/batch files).
+- Each must land with **regression coverage / documented use-cases** that prove no behavior change (C0: full transfer + WAC suite; G: byte-identical stock/ledger results pre/post on every batch-aware path) **plus a Codex adversarial pass** before merge. Merge only when green.
+- Cheap win extractable independently of the full G refactor: the **`BatchController::transfer()` → `transferBatchStock()` audit** (moves batch stock with no aggregate `stock_movements` row — may hide a real ledger gap).
+- See risk/complexity write-up in the session handoff; both are HIGH-surface-area, most-capable-model work.
+
 ## Deferred (not in this decomposition)
 - Approval gating (Phase D) — context-agnostic, when F&B-POS/high-value need is concrete.
 - Justification documents (Phase F) — via the media-unification session (`docs/superpowers/coordination/2026-06-24-media-unification-handover.md`).
