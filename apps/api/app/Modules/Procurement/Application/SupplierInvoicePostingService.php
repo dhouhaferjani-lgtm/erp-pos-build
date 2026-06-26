@@ -69,6 +69,7 @@ final class SupplierInvoicePostingService
             /** @var Collection<int, DocumentLine> $lockedPoLines */
             $lockedPoLines = DocumentLine::query()
                 ->whereIn('id', $poLineIds)
+                ->whereHas('document', fn ($q) => $q->whereRaw('company_id = ?', [$supplierInvoice->company_id]))
                 ->lockForUpdate()
                 ->get()
                 ->keyBy('id');
@@ -77,6 +78,7 @@ final class SupplierInvoicePostingService
             $alreadyPosted = JournalEntry::query()
                 ->where('source_type', 'supplier_invoice')
                 ->where('source_id', $supplierInvoice->id)
+                ->where('company_id', $supplierInvoice->company_id)
                 ->exists();
             if ($alreadyPosted) {
                 return;

@@ -26,8 +26,10 @@ use Illuminate\Support\Facades\DB;
  * stamp_duty_amount (timbre fiscal) so the §3 GL legs are fully populated.
  *
  * Precision contract (docs/architecture/precision-contract.md):
- *   - Per-line subtotal  : bcmul(qty, unitPrice, scale+1) then bcformat to scale
- *   - Per-line VAT       : bcmul(lineSubtotal, rateFraction, scale+1) then bcformat to scale
+ *   - Per-line subtotal  : bcmul(qty, unitPrice, scale+4) as high-precision string;
+ *                          bcround ONCE at the invoice-leg boundary (half-up, never bcformat)
+ *   - Per-line VAT       : bcmul(subtotalHp, rateFraction, scale+4) from the UN-truncated
+ *                          subtotal; bcround ONCE at the invoice-leg boundary
  *   - Stamp duty         : resolved by TaxCalculationService (fixed per TaxConfiguration)
  *   - Invariant          : total = subtotal + Σrecoverable_vat + stamp_duty
  */
@@ -70,13 +72,21 @@ final class CreateSupplierInvoiceService
                 /** @var numeric-string $vatRate */
                 $vatRate = (string) $lineInput['vat_rate'];
 
-                // Intermediate at scale+1; truncate once at currency boundary.
+                // High-precision intermediate (scale+4) so no precision is lost before
+                // rounding. VAT is computed from the UN-truncated subtotal so that
+                // sub-millime precision is preserved through to the boundary.
+                $working = $scale + 4;
+                /** @var numeric-string $lineSubtotalHp */
+                $lineSubtotalHp = bcmul($qty, $unitPrice, $working);
                 /** @var numeric-string $lineSubtotal */
-                $lineSubtotal = CurrencyScale::bcformat(bcmul($qty, $unitPrice, $scale + 1), $scale);
+                $lineSubtotal = CurrencyScale::bcround($lineSubtotalHp, $scale);
                 /** @var numeric-string $rateFraction */
                 $rateFraction = bcdiv($vatRate, '100', 6);
+                // VAT from the high-precision (un-rounded) subtotal; round ONCE at boundary.
+                /** @var numeric-string $lineTaxHp */
+                $lineTaxHp = bcmul($lineSubtotalHp, $rateFraction, $working);
                 /** @var numeric-string $lineTax */
-                $lineTax = CurrencyScale::bcformat(bcmul($lineSubtotal, $rateFraction, $scale + 1), $scale);
+                $lineTax = CurrencyScale::bcround($lineTaxHp, $scale);
 
                 $subtotal = bcadd($subtotal, $lineSubtotal, $scale);
                 $lineTaxTotal = bcadd($lineTaxTotal, $lineTax, $scale);

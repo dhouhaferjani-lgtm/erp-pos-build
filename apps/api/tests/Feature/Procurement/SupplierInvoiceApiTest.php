@@ -1056,4 +1056,148 @@ final class SupplierInvoiceApiTest extends TestCase
         $response2->assertOk();
         $this->assertCount(1, $response2->json('data'), 'date_to in future should include today\'s invoice');
     }
+
+    // -------------------------------------------------------------------------
+    // HIGH 1 — precision regression: bcround not bcformat/truncation for invoice legs
+    //
+    // Values: qty=1.0000, unit_price=10.003, vat_rate=19%
+    //   subtotal (exact) = 10.003
+    //   VAT (7dp)        = 10.003 × 0.19 = 1.9005700
+    //   bcformat/truncate → 1.900   (drops the .5 at the 4th decimal place)
+    //   bcround half-up  → 1.901   (4th decimal = 5 → rounds up)
+    //
+    // This test MUST FAIL (RED) against the bcformat code and PASS (GREEN) after
+    // the bcround fix lands.
+    // -------------------------------------------------------------------------
+
+    public function test_precision_regression_bcround_not_truncation_for_vat_leg(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        Country::firstOrCreate(['code' => 'TN'], [
+            'name' => 'Tunisia',
+            'currency_code' => 'TND',
+            'is_active' => true,
+        ]);
+
+        // Stamp-duty TaxConfiguration so stamp_duty_amount is resolved.
+        TaxConfiguration::create([
+            'country_code' => 'TN',
+            'tax_type' => TaxType::FixedAmount,
+            'name' => 'Timbre Fiscal - Achat (precision test)',
+            'code' => 'STAMP_PURCHASE_PREC',
+            'percentage_rate' => null,
+            'fixed_amount' => '0.600',
+            'applies_to' => TaxApplicationLevel::DocumentTotal,
+            'is_default' => false,
+            'is_active' => true,
+            'sequence_order' => 99,
+            'stacks_on' => 'SUBTOTAL',
+            'applicable_document_types' => ['NON_FISCAL'],
+            'is_stamp_duty' => true,
+            'is_recoverable' => false,
+        ]);
+
+        // PO: qty=1 @ 10.003 TND (matches invoice price → no price variance).
+        [$po, $poLine] = $this->createPoWithReceipt('1.0000', '10.003');
+
+        // Accrue the GR-IR 408 entry (GoodsReceiptService path replaced by direct GL call
+        // so this test stays focused on the precision boundary).
+        app(GeneralLedgerService::class)->createGoodsReceiptGrIrEntry(
+            $this->company->id,
+            Str::uuid()->toString(),
+            '1.0000',
+            '10.003',
+            'TND',
+        );
+
+        // Create supplier invoice via HTTP.
+        $storeResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '1.0000', '10.003', '19.00'));
+
+        $storeResponse->assertCreated();
+        $siId = $storeResponse->json('data.id');
+
+        /** @var Document $si */
+        $si = Document::find($siId);
+        $this->assertNotNull($si);
+        $si->load('lines');
+        $siLine = $si->lines->first();
+        $this->assertNotNull($siLine);
+
+        // ── PRECISION ASSERTION: bcround gives 1.901, bcformat/truncation gives 1.900 ──
+        // 10.003 × 0.19 = 1.9005700 at 7dp; the 4th decimal is 5 → half-up rounds UP.
+        $this->assertSame('1.901', $siLine->recoverable_tax_amount, 'VAT must be half-up rounded (bcround), not truncated (bcformat): 1.9005700 → 1.901');
+        $this->assertSame('1.901', $siLine->tax_amount, 'line tax_amount must match bcround result');
+
+        // Total = subtotal(10.003) + VAT(1.901) + stamp(0.600) = 12.504
+        $this->assertSame('12.504', $si->total, 'Document total must reflect bcround VAT');
+
+        // Post and assert the 4456 GL leg carries the rounded amount.
+        $postResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post");
+
+        $postResponse->assertOk();
+
+        $vatAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::VatDeductible);
+        $je = JournalEntry::where('source_type', 'supplier_invoice')
+            ->where('source_id', $siId)
+            ->firstOrFail();
+        $je->load('lines');
+
+        $drVat = $je->lines->firstWhere('account_id', $vatAccount->id);
+        $this->assertNotNull($drVat, '4456 VatDeductible leg must exist');
+        $this->assertSame('1.901', $drVat->debit, '4456 GL leg must carry bcround VAT (1.901), not truncated (1.900)');
+    }
+
+    // -------------------------------------------------------------------------
+    // HIGH 2 — idempotent POST .../post on retry: both 200, one JE, qty_invoiced++ once
+    // -------------------------------------------------------------------------
+
+    public function test_post_endpoint_is_idempotent_on_retry(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        [$po, $poLine] = $this->createPoWithReceipt('5.0000', '100.000');
+
+        app(GeneralLedgerService::class)->createGoodsReceiptGrIrEntry(
+            $this->company->id,
+            Str::uuid()->toString(),
+            '5.0000',
+            '100.000',
+            'TND',
+        );
+
+        // Create SI.
+        $storeResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '5.0000', '100.000', '19.00'));
+
+        $storeResponse->assertCreated();
+        $siId = $storeResponse->json('data.id');
+
+        // First POST → 200, SI Posted.
+        $first = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post");
+
+        $first->assertOk();
+        $this->assertSame(DocumentStatus::Posted->value, $first->json('data.status'));
+
+        // Second POST (retry/double-click) → MUST also return 200 (not 422).
+        $second = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post");
+
+        $second->assertOk('Second POST to /post must be idempotent and return 200, not 422');
+        $this->assertSame(DocumentStatus::Posted->value, $second->json('data.status'));
+
+        // Exactly ONE supplier_invoice JE — no duplicate GL entry.
+        $jeCount = JournalEntry::query()
+            ->where('source_type', 'supplier_invoice')
+            ->where('source_id', $siId)
+            ->count();
+        $this->assertSame(1, $jeCount, 'Exactly one JE must exist after two POST calls');
+
+        // PO line quantity_invoiced incremented exactly once.
+        $poLine->refresh();
+        $this->assertSame('5.0000', $poLine->quantity_invoiced, 'quantity_invoiced must be incremented exactly once');
+    }
 }

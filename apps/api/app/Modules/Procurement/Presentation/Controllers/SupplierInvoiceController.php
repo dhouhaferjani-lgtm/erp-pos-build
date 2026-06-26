@@ -177,16 +177,11 @@ final class SupplierInvoiceController extends Controller
             return $this->notFoundResponse('Supplier invoice');
         }
 
-        $policy = $this->policyResolver->forCompany($doc->company_id);
-        $enforcement = $policy->match_enforcement;
-
-        // Let matcher pre-check (fast path; C3 will recheck under lock).
-        try {
-            $this->matcher->assertPostable($doc, $enforcement);
-        } catch (\DomainException $e) {
-            return $this->validationErrorResponse('POSTING_BLOCKED', $e->getMessage());
-        }
-
+        // Delegate entirely to the posting service which owns the authoritative locked
+        // + idempotent boundary. A pre-check here would prevent idempotent retries:
+        // on a second POST the invoice is already posted (quantity_invoiced already
+        // incremented), so assertPostable() sees over-clear and would return 422
+        // instead of the no-op the service already handles under lock.
         try {
             $this->postingService->post($doc);
         } catch (\DomainException $e) {
@@ -226,9 +221,9 @@ final class SupplierInvoiceController extends Controller
             'number' => $doc->document_number,
             'partner' => [
                 'id' => $doc->partner_id,
-                'name' => $doc->partner?->name,
+                'name' => $doc->partner->name,
             ],
-            'issue_date' => $doc->document_date?->toDateString(),
+            'issue_date' => $doc->document_date->toDateString(),
             'currency' => $doc->currency,
             'total' => $doc->total,
             'status' => $doc->status->value,
@@ -282,10 +277,10 @@ final class SupplierInvoiceController extends Controller
             'number' => $doc->document_number,
             'partner' => [
                 'id' => $doc->partner_id,
-                'name' => $doc->partner?->name,
+                'name' => $doc->partner->name,
             ],
             'source_document_id' => $doc->source_document_id,
-            'issue_date' => $doc->document_date?->toDateString(),
+            'issue_date' => $doc->document_date->toDateString(),
             'due_date' => $doc->due_date?->toDateString(),
             'currency' => $doc->currency,
             'subtotal' => $doc->subtotal,
