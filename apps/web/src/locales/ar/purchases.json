@@ -1,0 +1,95 @@
+{
+  "supplierInvoices": {
+    "title": "فواتير الموردين",
+    "description": "إدارة فواتير الموردين المرتبطة بأوامر الشراء",
+    "new": "فاتورة مورد جديدة",
+    "empty": "لا توجد فواتير موردين",
+    "emptyHint": "أنشئ فاتورة مورد من أمر شراء للبدء.",
+    "filters": {
+      "partner": "المورد",
+      "partnerPlaceholder": "تصفية حسب المورد",
+      "status": "الحالة",
+      "statusPlaceholder": "جميع الحالات",
+      "matchStatus": "حالة المطابقة",
+      "matchStatusPlaceholder": "جميع الحالات",
+      "dateFrom": "من",
+      "dateTo": "إلى"
+    },
+    "columns": {
+      "number": "رقم الفاتورة",
+      "partner": "المورد",
+      "issueDate": "تاريخ الإصدار",
+      "currency": "العملة",
+      "total": "الإجمالي",
+      "status": "الحالة",
+      "matchStatus": "حالة المطابقة"
+    },
+    "status": {
+      "draft": "مسودة",
+      "posted": "مُرحَّلة",
+      "paid": "مدفوعة"
+    },
+    "matchStatus": {
+      "matched": "مطابقة",
+      "price_variance": "فارق سعري",
+      "qty_blocked": "كمية محظورة",
+      "unmatched": "غير مطابقة"
+    },
+    "detail": {
+      "header": "تفاصيل الفاتورة",
+      "linkedPO": "أمر الشراء المرتبط",
+      "poNumber": "أمر شراء #{{number}}",
+      "lines": "البنود",
+      "matchTable": "مطابقة ثلاثية الاتجاهات",
+      "attachments": "المرفقات",
+      "postedAt": "تاريخ الترحيل",
+      "payment": "تسجيل الدفع"
+    },
+    "lines": {
+      "ordered": "مطلوب",
+      "received": "مُستلم",
+      "invoiced": "مُفوتر",
+      "matchable": "قابل للمطابقة",
+      "priceVariance": "فارق السعر",
+      "quantity": "الكمية",
+      "unitPrice": "سعر الوحدة (ص.ض)",
+      "vatRate": "نسبة ض.ق.م",
+      "subtotal": "المجموع الفرعي"
+    },
+    "actions": {
+      "post": "ترحيل الفاتورة",
+      "postDisabled": "لا يمكن الترحيل: {{reason}}",
+      "postBlocked": "الترحيل محظور: فوترة زائدة عن الكميات المستلمة",
+      "postPriceBlock": "الترحيل محظور: فارق السعر يتجاوز حد السياسة",
+      "rematch": "إعادة المطابقة",
+      "recordPayment": "تسجيل الدفع",
+      "uploadAttachment": "رفع مستند",
+      "downloadAttachment": "تنزيل",
+      "deleteAttachment": "حذف"
+    },
+    "attachments": {
+      "empty": "لا توجد مرفقات",
+      "uploadHint": "ارفع المستندات الداعمة (PDF، صور)",
+      "uploading": "جارٍ الرفع…"
+    },
+    "confirm": {
+      "post": {
+        "title": "ترحيل فاتورة المورد",
+        "message": "هل أنت متأكد من ترحيل هذه الفاتورة؟ لا يمكن التراجع عن هذا الإجراء.",
+        "button": "ترحيل"
+      },
+      "deleteAttachment": {
+        "title": "حذف المرفق",
+        "message": "هل أنت متأكد من حذف هذا المرفق؟",
+        "button": "حذف"
+      }
+    },
+    "toast": {
+      "posted": "تم ترحيل الفاتورة بنجاح",
+      "rematched": "تم تحديث حالة المطابقة",
+      "paymentRecorded": "تم تسجيل الدفع بنجاح",
+      "attachmentUploaded": "تم رفع المرفق",
+      "attachmentDeleted": "تم حذف المرفق"
+    }
+  }
+}
