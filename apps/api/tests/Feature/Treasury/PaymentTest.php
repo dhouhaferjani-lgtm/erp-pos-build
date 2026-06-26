@@ -691,6 +691,80 @@ class PaymentTest extends TestCase
         $this->assertSame(0, JournalEntry::query()->where('source_type', 'supplier_payment')->count());
     }
 
+    public function test_multiline_payment_rejects_supplier_invoice(): void
+    {
+        [, $repository, $supplier] = $this->supplierWithBankRepository('1000.00');
+
+        $supplierInvoice = $this->postedSupplierInvoice($supplier, '600.000');
+
+        // Multi-line shape (the `payments` key routes store() → storeMultiple), which
+        // is NOT supplier-aware. Must reject before any payment/cash/GL.
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $supplier->id,
+            'document_id' => $supplierInvoice->id,
+            'currency' => 'EUR',
+            'payment_date' => now()->toDateString(),
+            'payments' => [
+                ['payment_method_id' => $this->cashMethod->id, 'repository_id' => $repository->id, 'amount' => '300.00'],
+                ['payment_method_id' => $this->cashMethod->id, 'repository_id' => $repository->id, 'amount' => '300.00'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'SUPPLIER_INVOICE_NOT_PAYABLE_VIA_MULTILINE');
+
+        // No payment, no cash movement, no GL of either direction.
+        $repository->refresh();
+        $this->assertEquals('1000.000', $repository->balance);
+        $this->assertDatabaseMissing('payments', ['partner_id' => $supplier->id]);
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'supplier_payment')->count());
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'customer_payment')->count());
+    }
+
+    public function test_multiline_customer_payment_still_works(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        $bankAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::Bank);
+        $repository = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'BANK-AR',
+            'name' => 'AR Bank',
+            'type' => RepositoryType::BankAccount,
+            'balance' => '0.00',
+            'account_id' => $bankAccount->id,
+            'is_active' => true,
+        ]);
+
+        // Two payment lines fully paying the AR invoice (1190) via the multi-line path.
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->customer->id,
+            'document_id' => $this->invoice->id,
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'payments' => [
+                ['payment_method_id' => $this->cashMethod->id, 'repository_id' => $repository->id, 'amount' => '600.00'],
+                ['payment_method_id' => $this->cashMethod->id, 'repository_id' => $repository->id, 'amount' => '590.00'],
+            ],
+        ]);
+
+        $response->assertStatus(201);
+
+        // Cash IN: 0 → 1190.
+        $repository->refresh();
+        $this->assertEquals('1190.000', $repository->balance);
+
+        // Invoice fully paid.
+        $this->invoice->refresh();
+        $this->assertEquals('0.000', $this->invoice->balance_due);
+        $this->assertEquals(DocumentStatus::Paid, $this->invoice->status);
+
+        // Customer GL posted, never the supplier direction.
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'supplier_payment')->count());
+        $this->assertGreaterThan(0, JournalEntry::query()->where('source_type', 'customer_payment')->count());
+    }
+
     public function test_full_payment_marks_invoice_as_paid(): void
     {
         $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [

@@ -611,6 +611,27 @@ class PaymentController extends Controller
     }
 
     /**
+     * Reject paying a supplier_invoice through the multi-line payment path, which
+     * is not supplier-aware (it posts the customer GL direction and moves cash IN).
+     * Supplier invoices must use the single-payment supplier-aware store() flow.
+     * Throws a 422 HttpResponseException (rolls back if inside the transaction).
+     */
+    private function rejectSupplierInvoiceInMultiline(Document $document): void
+    {
+        if ($document->type === DocumentType::SupplierInvoice) {
+            throw new HttpResponseException(response()->json([
+                'error' => [
+                    'code' => 'SUPPLIER_INVOICE_NOT_PAYABLE_VIA_MULTILINE',
+                    'message' => 'Supplier invoices must be paid through the single-payment supplier flow, not multi-line payments',
+                    'details' => [
+                        'document_id' => $document->id,
+                    ],
+                ],
+            ], 422));
+        }
+    }
+
+    /**
      * Store multiple payments for a document with excess allocation options.
      */
     private function storeMultiple(Request $request, User $user, string $tenantId, string $companyId): JsonResponse
@@ -664,6 +685,13 @@ class PaymentController extends Controller
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->findOrFail($validated['document_id']);
+
+        // The multi-line path is NOT supplier-aware: it builds AR-style allocations,
+        // INCREMENTS the repository, and posts createPaymentReceivedJournalEntry
+        // (customer GL / cash IN). Reject supplier invoices up front — they must be
+        // paid via the single-payment supplier-aware store() path. (Phase 1 does not
+        // support multi-line supplier-invoice payments.)
+        $this->rejectSupplierInvoiceInMultiline($primaryDocument);
 
         /** @var numeric-string $documentBalance */
         $documentBalance = $primaryDocument->balance_due ?? $primaryDocument->total;
@@ -909,6 +937,11 @@ class PaymentController extends Controller
                             ->where('company_id', $companyId)
                             ->lockForUpdate()
                             ->findOrFail($allocation['document_id']);
+
+                        // Same gap as the primary document: manual excess allocations
+                        // also post the customer GL direction — reject supplier invoices.
+                        $this->rejectSupplierInvoiceInMultiline($targetDoc);
+
                         /** @var numeric-string $allocAmount */
                         $allocAmount = (string) $allocation['amount'];
 
