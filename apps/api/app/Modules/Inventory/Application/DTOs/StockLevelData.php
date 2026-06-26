@@ -61,7 +61,6 @@ class StockLevelData extends Data
     private static function resolveQuantityDecimals(StockLevel $stockLevel): int
     {
         if ($stockLevel->relationLoaded('product')
-            && $stockLevel->product !== null
             && $stockLevel->product->relationLoaded('unitOfMeasure')
             && $stockLevel->product->unitOfMeasure !== null) {
             return $stockLevel->product->unitOfMeasure->decimal_places;
