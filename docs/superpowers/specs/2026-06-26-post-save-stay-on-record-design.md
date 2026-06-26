@@ -1,42 +1,52 @@
-# Post-save "stay on the record" — canonical save-action & navigation standard
+# Post-save "stay on the record" — canonical save-action & navigation standard (v2)
 
 **Date:** 2026-06-26
-**Status:** Design approved (sections A–C), pending spec review → plan
+**Status:** v2 — revised after Codex adversarial review (see
+`docs/superpowers/reviews/2026-06-26-post-save-stay-on-record-codex-review.md`). Pending final
+owner approval → plan.
 **Branch:** `feat/post-save-stay-on-record` (off `origin/dev`)
 **Origin:** Follow-up §1 of `docs/superpowers/coordination/2026-06-26-product-editor-followups-handoff.md`
+
+> **v2 changes (owner decisions on the 3 Blockers):**
+> 1. **Post-save destination = the record's DETAIL route `/:id`** (read-only), not an edit route.
+>    "Stay on the record" = land on its detail page (matches documents today). Editing is
+>    re-entered via the detail page's Edit affordance.
+> 2. **Payments dropped from Phase 1** (multi-outcome flow; its own scoped decision later).
+> 3. **Minimal Product `status` (draft/published) added now** so Publish is a real transition —
+>    it activates the already-present Save-draft / Publish / BeforePublishChecklist UI.
 
 ---
 
 ## 1. Problem
 
-After **creating** a record, many editors bounce the user back to the **list** instead of
-keeping them on the record they just made. This is frustrating: you lose your place, can't
-see what you just created (e.g. a product's just-uploaded images), and the behavior is
-inconsistent — update flows usually already stay on the record, create flows often don't.
+After **creating** a record, several editors bounce the user back to the **list** instead of
+the record they just made — you lose your place and can't see what you created. There is **no
+shared post-save navigation pattern**; every form hardcodes `navigate()` in a mutation
+`onSuccess`, so the bug recurs with each new editor.
 
-There is **no shared post-save navigation pattern** today; every form hardcodes its own
-`navigate()` in a mutation `onSuccess`, so the bug recurs with each new editor.
+### Audit (verified against code)
 
-### Audit (current behavior)
+**Already correct — create lands on the record's detail route:** Documents
+(`DocumentForm.tsx` — invoice, quote, sales order, credit note, delivery note, purchase
+order), Contact, Expense, Batch, Stock Transfer, Work Order, Composite Item, Modifier Group.
 
-**Already correct — create stays on the record:** Documents (`DocumentForm.tsx` — invoice,
-quote, sales order, credit note, delivery note, purchase order), Contact, Expense, Batch,
-Stock Transfer, Work Order, Composite Item, Modifier Group.
+**Offenders (create → list):** Product (`ProductForm.tsx:302`), Loyalty Program, Loyalty
+Member (update already → record). Both create *and* update → list: Menu, Promotion, Coupon,
+4 Parapharmacy reference catalogs.
 
-**Offenders (create → list):**
-- Inconsistent (update stays, create bounces): **Product** (`ProductForm.tsx:302`),
-  **Loyalty Program**, **Loyalty Member**.
-- Both create *and* update → list: **Menu**, **Promotion**, **Coupon**, and 4 **Parapharmacy**
-  reference catalogs (Ingredient, Certification, Health Claim, Key Component).
+**Route reality (load-bearing):** entity routes split into a **detail page at `/:id`** and a
+**form at `/:id/edit`** (and `…/new`). E.g. `routes/index.tsx`: `/inventory/products/:id` →
+`ProductDetailPage`, `…/new` + `…/:id/edit` → `ProductForm`; same split for loyalty
+programs/members. **The canonical post-save destination is the detail route `/:id`.**
 
 ---
 
-## 2. Canonical save-action model (the system-wide standard)
+## 2. Canonical save-action model (system-wide standard)
 
-Grounded in industry conventions (Salesforce, Shopify Polaris, Stripe, WordPress/Gutenberg,
-Atlassian, Carbon, Cloudscape — see References). One model, every editable entity.
+Grounded in Salesforce, Shopify Polaris, Stripe, WordPress/Gutenberg, Atlassian, Carbon,
+Cloudscape (see References). One model, every editable entity.
 
-### 2.1 Button set
+### 2.1 Button set (lives on the create/edit FORM)
 
 ```
 [ Save ▾ ]   [ Publish / Issue / Finalize ]            Cancel
@@ -45,154 +55,234 @@ Atlassian, Carbon, Cloudscape — see References). One model, every editable ent
    └─ Save & Close    (→ back to list)
 ```
 
-- **`Save`** — primary **split button**. Persists and **stays on the record in edit mode**.
-  The caret holds *only variants of save*: **Save & New**, **Save & Close**.
+- **`Save`** — primary **split button**. Persists, then **navigates to the record's detail
+  route `/:id`** with a success toast. The caret holds *only variants of save*: **Save & New**
+  (→ fresh create form), **Save & Close** (→ list).
 - **Lifecycle transition** (`Publish` / `Issue` / `Finalize` / `Activate`) — a **separate**
-  button, never inside the Save menu. Different consequence, usually needs confirmation
-  (and, for documents, is fiscally significant).
+  button, never inside the Save menu. Performs the status transition, then lands on `/:id`
+  (which reflects the new state). For documents this is fiscally significant and confirmed.
 - **`Cancel` / Back** — tertiary; triggers the unsaved-changes guard when dirty.
 
-**Why a split button** (not three peers): design-system guidance groups one clear default
-with minor variants under a single primary, and keeps different-consequence actions
-(Publish / Delete) as separate buttons. Matches the owner's "one Save button with an arrow"
-intent.
+**Why a split button** (not three peers): design-system guidance groups a clear default with
+minor variants under one primary, and keeps different-consequence actions (Publish/Delete) as
+separate buttons.
 
-### 2.2 Editability is a function of lifecycle STATE, not a separate view
+### 2.2 Editability & read-only are a function of lifecycle STATE
 
-After a lifecycle transition (Publish/Finalize/Issue), the user **stays on the same record
-route**; the screen becomes **read-only because the record's status changed** — not because
-we redirected to a different "view page." (Stripe locks a finalized invoice; WordPress flips
-"Publish" → "Update" in place.) A read-only "view mode" is therefore a *consequence of state*,
-implemented as a status-driven lock on the same component/URL.
-
-> **Entity nuance:** "Publish" requires a lifecycle state to exist. **Documents already have
-> `draft → issued`** (and a `useDraftAutoSave` hook). **Products have no draft/published status
-> yet** — that is the separate §3 draft/autosave session. So lifecycle locking lights up
-> per-entity as the state exists; **Save / Save & Close / stay-on-record applies to all
-> Phase-1 editors immediately**.
+The **detail route `/:id` is inherently read-only**; the **`/:id/edit` form is editable**.
+After a transition (Publish/Finalize/Issue), the record's `status` changes and the editor
+route enforces the lock (e.g. an issued document cannot be edited). We do **not** introduce a
+separate "view mode" screen — read-only is the detail page; locked-editing is enforced by
+status in the form. (Stripe/WordPress pattern.)
 
 ---
 
 ## 3. Post-save navigation contract
 
-| Action | Destination | Mode | Dirty guard |
-|---|---|---|---|
-| **Save** (create) | the new record's route `…/{id}` | **edit** | n/a (saved) |
-| **Save** (update) | stay in place | edit | n/a (saved) |
-| **Save & New** | fresh blank create form | edit | bypassed (saved) |
-| **Save & Close** | parent list | — | bypassed (saved) |
-| **Publish / Issue / Finalize** | stay on `…/{id}` | **read-only (state-locked)** | n/a |
-| **Cancel / Back** | parent list | — | **triggers guard if dirty** |
-| **Browser close / nav-away while dirty** | — | — | **triggers guard** |
+| Action | Destination | Dirty guard |
+|---|---|---|
+| **Save** (create) | record detail `/:id` (toast) | n/a (saved) |
+| **Save** (update) | record detail `/:id` (toast) | n/a (saved) |
+| **Save & New** | fresh blank create form | bypassed (saved) |
+| **Save & Close** | parent list | bypassed (saved) |
+| **Publish / Issue / Finalize** | record detail `/:id` (now reflecting new status) | n/a |
+| **Cancel / Back** | parent list | **triggers guard if dirty** |
+| **Browser close / nav-away while dirty** | — | **triggers guard** |
 
 ### Invariants
-1. **Create and update converge** on the same destination (the record). Create never bounces
-   to the list — this is the core fix.
-2. **Read-only is derived from `status`**, not from a separate route. Same URL, same component,
-   editable vs locked by state.
-3. **"Return to list" is opt-in** via `Save & Close` — never the default for a primary `Save`.
-4. **List-return exceptions are declared explicitly** per editor (visible, not accidental).
-5. **One toast on stay-in-place save** so success is unambiguous.
-
-The per-editor decision reduces to one declaration: *stay-on-record (default)* or
-*declared list-return exception*, plus which lifecycle transition(s) it exposes.
+1. **Create and update converge** on the record detail `/:id`. Create never bounces to the
+   list — the core fix.
+2. **Navigation happens after editor-specific post-create side effects resolve** (e.g.
+   Product buffered-image upload + enrichment) so the detail page shows the finished record.
+3. **"Return to list" is opt-in** via `Save & Close`.
+4. **List-return exceptions are declared in a registry** (§6), not ad-hoc flags.
+5. **One success toast** per save so success is unambiguous.
 
 ---
 
-## 4. Shared primitives (built once, `apps/web/src`)
+## 4. Per-Phase-1-entity matrix (resolves review F3/F4)
 
-### 4.1 `useAfterSaveNavigation`
-Encodes the contract so future editors inherit it and cannot accidentally bounce to the list.
+| Entity | Status field | Phase-1 behavior | Lifecycle button | Read-only lock |
+|---|---|---|---|---|
+| **Product** | **NEW** `status` enum `draft`/`published` (this session) | Save draft → `draft`; Publish → `published` (gated by `BeforePublishChecklist`). Create/update → detail `/:id` | **Publish** = real transition | Not enforced in Phase 1 (form stays editable for both states); enforcement deferred to §3 |
+| **Loyalty Program** | exists (`status`) but form does not lock on it | Nav-only: create/update → detail `/:id`. SaveSplitButton, **no** lifecycle button | none added | none (unchanged) |
+| **Loyalty Member** | exists but not used to lock | Nav-only: create/update → detail `/:id` | none added | none (unchanged) |
+| **Documents** | existing `draft`→`issued` lifecycle + `useDraftAutoSave` | Already lands on detail ✓; adopt `<SaveSplitButton>` for a real **Save & Close**; keep existing Issue/Finalize buttons + status lock | existing (unchanged) | existing (unchanged) |
+
+**Rule for entities without a status lock:** `<SaveSplitButton>` is **navigation-only** in
+Phase 1 — no lifecycle button, no field locking.
+
+### 4.1 Minimal Product status — scope & explicit caveat
+- **Backend:** `ProductStatus` PHP enum (`draft`,`published`) (rule 9); migration adding
+  `status` to `products` **defaulting existing rows + non-editor creates to `published`**
+  (no behavior change for current data); `ProductData` DTO + Create/UpdateProductRequest
+  validation (`in:draft,published`); persist on store/update; `php artisan typescript:transform`.
+- **Frontend:** wire existing `catalog:editor.actions.saveDraft` → `status:'draft'` and
+  `…publish` → `status:'published'` (Publish gated by `BeforePublishChecklist` completeness).
+- **⚠ Deferred-gating caveat (must be surfaced):** minimal status does **NOT** hide `draft`
+  products from lists, search (Scout/Meilisearch), POS catalog sync, reports, pickers, or
+  e-commerce — that "hide drafts everywhere" plumbing is the **§3 session**. Until §3, a
+  product explicitly saved as `draft` remains visible/sellable. Mitigation: only the explicit
+  "Save draft" action produces a draft; everything else is `published`. Owner accepts this gap
+  for Phase 1.
+
+---
+
+## 5. Shared primitives (built once, `apps/web/src`)
+
+### 5.1 `useAfterSaveNavigation` — intent/destination helpers (resolves F6)
+Returns **destination helpers the editor calls AFTER its own post-success side effects**
+(invalidation, image upload, toasts). It does not itself sit inside the mutation or sequence
+side effects.
 
 ```ts
 interface AfterSaveNavConfig {
-  recordPath: (id: string) => string;   // e.g. (id) => `/inventory/products/${id}`
-  listPath: string;                      // e.g. `/inventory/products`
+  recordPath: (id: string) => string;   // detail route, e.g. (id) => `/inventory/products/${id}`
+  listPath: string;
   createPath?: string;                   // for Save & New (defaults to current create route)
-  isListReturnException?: boolean;       // declared exceptions default Save → list
 }
-interface AfterSaveNavHandlers {
-  goAfterCreate: (id: string) => void;   // → recordPath(id) (or list if exception)
-  goAfterUpdate: (id: string) => void;   // stay in place: no navigation; caller clears dirty + toasts
-  goSaveAndNew: () => void;              // → fresh create form
-  goSaveAndClose: () => void;            // → list (bypasses guard)
+interface AfterSaveNav {
+  goToRecord: (id: string) => void;      // → recordPath(id)  (create & update)
+  goToNew: () => void;                   // → fresh create form (Save & New)
+  goToList: () => void;                  // → list (Save & Close)
 }
 ```
-Wires into each editor's mutation `onSuccess`. Pure routing; no data fetching.
+**Cache strategy:** the detail route already fetches `/:id`; default is **fetch-on-destination**
+(the detail page's own query). Optionally seed the detail query key from the create/update
+response when the response shape matches the detail DTO — note this per editor and test the
+loading path either way. (Product's detail key differs from the invalidated list key — F6.)
 
-### 4.2 `<SaveSplitButton>`
-The `[ Save ▾ ]` UI. Primary `Save` + caret menu (`Save & New`, `Save & Close`). i18n keys via
-`t()`; styled with design tokens (rule 18); accessible (Atlassian split-button a11y: caret has
-its own label, primary action not duplicated in menu). Lifecycle buttons remain separate,
-rendered by the host editor.
+### 5.2 `<SaveSplitButton>` — presentational + intent callbacks (resolves F7)
+Pure presentational; the host form owns submission and records which intent fired.
 
-### 4.3 `useUnsavedChangesGuard`
-`beforeunload` (browser) + react-router `useBlocker` (in-app). Dirty state comes from the
-form. `Save & Close` / `Save & New` bypass it (already saved); `Cancel`/Back trigger a
-confirmation modal. **Plan must first audit for any existing partial guard** before building.
+```ts
+interface SaveSplitButtonProps {
+  onPrimarySave: () => void;
+  onSaveAndNew?: () => void;             // omit → menu item hidden
+  onSaveAndClose?: () => void;
+  isPending?: boolean;
+  disabled?: boolean;
+  primaryLabel?: string;                 // e.g. Product passes "Save draft"
+  form?: string;                         // supports header-rendered submit (Product uses form="product-editor-form")
+  primaryType?: 'submit' | 'button';
+}
+```
+The form persists the chosen intent (`useRef<'save'|'new'|'close'>`) across async validation +
+mutation success so `onSuccess` can branch to the right `AfterSaveNav` helper. Lifecycle
+(Publish/Issue) buttons are rendered by the host, not this component.
+
+**Accessibility (resolves F8) — required, with tests:** distinct accessible names for the
+primary and the caret trigger; caret `aria-haspopup="menu"` + `aria-expanded`; opening moves
+focus into the menu; ArrowUp/ArrowDown/Home/End navigate items; Escape closes and returns
+focus to the trigger; defined Tab behaviour; **all colors from `lib/designTokens`** (rule 18).
+The existing `ActionMenu` lacks arrow-key nav/focus-return — either extend it to meet these or
+build a dedicated control; do not ship the current menu styles as-is.
+
+### 5.3 `useUnsavedChangesGuard` — with a `dirtyState` adapter (resolves F5)
+`beforeunload` (browser) + react-router `useBlocker` (in-app). **First audit for any existing
+guard** before building.
+
+```ts
+interface DirtyState {
+  isDirty: boolean;                      // form fields AND any side state (e.g. document lines)
+  autosavePending?: boolean;             // a debounced save is queued/in-flight
+  autosaveFailed?: boolean;              // last autosave errored
+}
+useUnsavedChangesGuard(dirty: DirtyState, opts?: { bypassRefs?: ... })
+```
+- Explicit `Save & Close` / `Save & New` / Publish **bypass** the guard (already persisting).
+- **Documents:** `isDirty` must include the independent `lines` state (RHF `isDirty` alone
+  misses line edits). A clean, **autosaved** draft (`!autosavePending && !autosaveFailed`)
+  **suppresses** the guard; `autosavePending` or `autosaveFailed` **still warns** (debounced
+  saves cannot complete on hard nav/tab close). Do not duplicate `useDraftAutoSave`; consume
+  its state.
 
 ---
 
-## 5. Scope
+## 6. Post-save policy registry (resolves F11)
+A single declarative source of truth instead of scattered optional flags:
 
-### Phase 1 — this session (build all 3 primitives + wire these editors)
-One editor per subagent task, **TDD asserting the post-create route** (and guard/button tests):
+```ts
+// apps/web/src/lib/postSavePolicy.ts
+export const LIST_RETURN_EXCEPTIONS = [
+  'menu', 'promotion', 'coupon',
+  'parapharmacy.ingredient', 'parapharmacy.certification',
+  'parapharmacy.healthClaim', 'parapharmacy.keyComponent',
+] as const;
+```
+A test asserts: every listed exception keeps create → list, and **every other editor wired to
+the primitives defaults to stay-on-record** (regression lock). New editors must either inherit
+the default or be added here explicitly.
+
+---
+
+## 7. Scope
+
+### Phase 1 — this session
+**Primitives:** `useAfterSaveNavigation`, `<SaveSplitButton>` (a11y), `useUnsavedChangesGuard`
+(+ `dirtyState` adapter), `postSavePolicy` registry.
+**Minimal Product status** (backend slice in §4.1).
+**Editors** (one per subagent task, TDD asserting exact destination):
 
 | Editor | Change |
 |---|---|
-| **Product** (`ProductForm.tsx`) | create → `/inventory/products/{id}` (edit); adopt split button + guard |
-| **Loyalty Program** | create → record; adopt primitives |
-| **Loyalty Member** | create → record; adopt primitives |
-| **Payments** | locate the payment record/create flow; bring onto the standard |
-| **Documents** (`DocumentForm.tsx`) | already stays on record ✓ — adopt `<SaveSplitButton>` for a real Save & Close + verify; coexist with `useDraftAutoSave` |
+| **Product** | create/update → detail `/inventory/products/{id}`; SaveSplitButton (primary "Save draft") + real **Publish** (status transition, checklist-gated); navigate after image-buffer/enrichment side effects |
+| **Loyalty Program** | create → detail `/:id` (consume created record id — F12); adopt primitives (nav-only) |
+| **Loyalty Member** | create → detail `/:id` (consume created id); adopt primitives (nav-only) |
+| **Documents** | already lands on detail ✓; adopt `<SaveSplitButton>` for Save & Close; wire guard via `dirtyState` adapter (lines + autosave); keep existing Issue/Finalize + status lock |
 
-### Declared list-return exceptions (no behavior change; documented as intentional)
-Menu, Promotion, Coupon, Parapharmacy ×4 (Ingredient, Certification, Health Claim, Key
-Component) — batch / reference-data entry. They keep list-return and (later) gain `Save & New`.
+### Declared list-return exceptions (no change; in the registry)
+Menu, Promotion, Coupon, Parapharmacy ×4.
 
 ### Deferred (NOT this session)
-- Per-entity **Publish + state-lock** rollout (documents already have it; **product Publish =
-  §3 draft/status session**).
-- **Save & New** rollout to the reference-data catalogs.
-- Migrating the remaining already-correct editors (Contact/Expense/Batch/…) onto
-  `<SaveSplitButton>` for consistency — low-risk fast-follow, not required for the fix.
+- **Payments** — multi-outcome (invoice/PO/delivery-note origin, allocation interstitial);
+  needs its own destination matrix.
+- **§3 draft "hide drafts everywhere"** gating (lists/search/POS/reports/pickers/e-commerce)
+  and product read-only lock enforcement.
+- **Save & New** rollout to reference-data catalogs; migrating already-correct editors
+  (Contact/Expense/…) onto `<SaveSplitButton>` for consistency.
 
 ---
 
-## 6. Testing
-
-FE-only. Per editor:
-- **Routing test:** after create, asserts navigation to `…/{id}` (not the list); update stays.
-- **Exception test:** declared list-return editors assert create → list (regression lock).
-- **Guard tests:** dirty nav-away triggers confirm; `Save & Close`/`Save & New` bypass.
-- **Component test:** `<SaveSplitButton>` renders primary + menu items, fires correct handlers,
-  is keyboard-accessible.
-
-No backend changes in Phase 1 → no PHPUnit. (If Payments needs a backend touch, scope it
-narrowly and run tests by path — never the full suite.)
+## 8. i18n keys (resolves F9 — EN/FR/AR bundles)
+New keys to add to all three locales before wiring:
+`actions.saveAndNew`, `actions.saveAndClose`, `actions.openSaveMenu`,
+`confirmation.unsavedChangesTitle`, `confirmation.unsavedChangesBody`,
+`confirmation.leaveWithoutSaving`, `confirmation.stayOnPage`,
+and a document autosave-pending warning key (e.g. `documents.unsavedAutosavePending`).
+Reuse existing `actions.save`, `actions.cancel`, `catalog:editor.actions.saveDraft/publish`.
 
 ---
 
-## 7. Coordination notes
+## 9. Testing (resolves F10) — FE-only except the Product backend slice
 
-- The product editor (`feat/izipos-theme-product-editor`) **merged to `origin/dev`**
-  (`a6c1fee7f`, 2026-06-26), so the Product fix is done directly here — no merge-timing
-  dependency.
-- Owner has additional product-form work planned; this sweep touches `ProductForm.tsx` only
-  for post-save navigation + the save-button/guard wiring — keep the diff surgical to ease
-  rebases.
-- `useDraftAutoSave` already exists for documents; do not duplicate it — the guard and the
-  autosave are complementary (autosave persists drafts; the guard protects un-autosaved edits
-  on non-document editors).
+Per editor, **integration tests driving a successful mutation and asserting the EXACT
+destination** (not layout): Save → `/:id`, Save & New → create form, Save & Close → list,
+Cancel-while-dirty → guard fires. Existing form tests assert layout only and would pass while
+the bug persists — these must assert routes/`navigate` mocks.
+
+- **Product:** create → `/inventory/products/{id}`; Publish sets `status:'published'` and is
+  **not** a duplicate save (distinct from Save draft); navigation waits for buffered-image
+  upload; backend `ProductEditorContractTest`-style cases for `status` validation/persistence
+  (run **by path**, never the full suite).
+- **Loyalty ×2:** test fails if the created record id is ignored (F12).
+- **Documents:** guard fires on line-only dirty; suppressed when autosaved-clean; still warns
+  on `autosavePending`/`autosaveFailed`; `Save & Close` bypasses.
+- **Registry:** every exception → list; every wired non-exception → stay-on-record.
+- **`<SaveSplitButton>`:** renders primary + menu items, fires the correct intent, full
+  keyboard a11y (§5.2).
 
 ---
 
-## 8. References (industry standards)
+## 10. Coordination notes
+- Product editor merged to `origin/dev` (`a6c1fee7f`); Product fix is direct here.
+- The product form is a hot area (parallel sessions: opening-balance, margin-hierarchy). Keep
+  the Product diff surgical (nav + save buttons + the small status slice) to ease rebases.
+- Do not duplicate `useDraftAutoSave`; the guard consumes its state.
 
-- Atlassian — Button & Split button (one primary + minor variants; a11y).
-- Carbon — Menu buttons (no-primary vs split).
-- Shopify Polaris — Contextual Save Bar (single Save + Discard; collapse = success signal).
-- Salesforce — create stays on the new record (inline-editable); Save & New for serial entry.
-- Stripe Invoicing — draft is the only editable state; Finalize locks; no redirect.
-- WordPress / Gutenberg — Save Draft vs Publish vs Update; Switch-to-Draft reverse transition.
-- Cloudscape / Oracle ADF — unsaved-changes guard (`beforeunload` + in-app modal).
+---
+
+## 11. References (industry standards)
+Atlassian Button & Split button · Carbon Menu buttons · Shopify Polaris Contextual Save Bar ·
+Salesforce (stay on new record) · Stripe Invoicing (status-gated editability) ·
+WordPress/Gutenberg (Save Draft vs Publish vs Update) · Cloudscape / Oracle ADF (unsaved-changes guard).
