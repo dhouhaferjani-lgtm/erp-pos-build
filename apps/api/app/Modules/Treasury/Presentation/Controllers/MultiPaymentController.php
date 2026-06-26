@@ -7,6 +7,7 @@ namespace App\Modules\Treasury\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Treasury\Domain\Payment;
@@ -56,6 +57,13 @@ class MultiPaymentController extends Controller
             ->where('company_id', $companyId)
             ->findOrFail($documentId);
 
+        // Supplier invoices (AP) are payable only through the supplier-aware
+        // PaymentController::store() path, which posts the 401-clearing entry and
+        // reduces payable_balance. This flow is not supplier-aware.
+        if ($document->type === DocumentType::SupplierInvoice) {
+            return $this->rejectSupplierInvoice();
+        }
+
         try {
             /** @var string|null $userId */
             $userId = $request->user()?->id;
@@ -77,6 +85,16 @@ class MultiPaymentController extends Controller
                 'error' => $e->getMessage(),
             ], 422);
         }
+    }
+
+    private function rejectSupplierInvoice(): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => 'SUPPLIER_INVOICE_NOT_PAYABLE_HERE',
+                'message' => 'Supplier invoices must be paid through the supplier payment flow, not this allocation path',
+            ],
+        ], 422);
     }
 
     /**
@@ -168,6 +186,12 @@ class MultiPaymentController extends Controller
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->findOrFail($request->input('document_id'));
+
+        // Supplier invoices (AP) are payable only through the supplier-aware
+        // PaymentController::store() path. This deposit flow is not supplier-aware.
+        if ($document->type === DocumentType::SupplierInvoice) {
+            return $this->rejectSupplierInvoice();
+        }
 
         try {
             $allocation = $this->multiPaymentService->applyDepositToDocument(

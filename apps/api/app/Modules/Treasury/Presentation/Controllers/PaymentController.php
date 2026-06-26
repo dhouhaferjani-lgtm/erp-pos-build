@@ -25,6 +25,7 @@ use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Presentation\Validation\ScopedExists;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -180,6 +181,8 @@ class PaymentController extends Controller
         // SupplierPayable (401) and moves cash OUT. Customer/AR allocations keep the
         // existing cap-and-advance behavior untouched.
         $isSupplierPayment = false;
+        $supplierDocCount = 0;
+        $nonSupplierDocCount = 0;
         $adjustedAllocations = [];
         foreach ($allocations as $allocation) {
             /** @var Document $document */
@@ -187,6 +190,23 @@ class PaymentController extends Controller
                 ->where('tenant_id', $tenantId)
                 ->where('company_id', $companyId)
                 ->findOrFail($allocation['document_id']);
+
+            // Cross-partner guard: every allocated document must belong to the
+            // payment's partner. Otherwise a single supplier_payment JE could
+            // debit 401 for another partner's (or a customer's) balance.
+            if ($document->partner_id !== $validated['partner_id']) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'ALLOCATION_PARTNER_MISMATCH',
+                        'message' => 'Allocated document belongs to a different partner than the payment',
+                        'details' => [
+                            'document_id' => $document->id,
+                            'document_partner_id' => $document->partner_id,
+                            'payment_partner_id' => $validated['partner_id'],
+                        ],
+                    ],
+                ], 422);
+            }
 
             /** @var numeric-string $requestedAmount */
             $requestedAmount = (string) $allocation['amount'];
@@ -196,6 +216,7 @@ class PaymentController extends Controller
 
             if ($document->type === DocumentType::SupplierInvoice) {
                 $isSupplierPayment = true;
+                $supplierDocCount++;
 
                 // Over-allocation guard (M-5): paying a supplier beyond the invoice's
                 // outstanding balance would over-debit 401 and drive payable_balance
@@ -214,6 +235,8 @@ class PaymentController extends Controller
                         ],
                     ], 422);
                 }
+            } else {
+                $nonSupplierDocCount++;
             }
 
             // Cap allocation at document balance (can't overpay a single invoice)
@@ -227,6 +250,41 @@ class PaymentController extends Controller
                     'document_id' => $document->id,
                     'amount' => $allocationAmount,
                 ];
+            }
+        }
+
+        // Mixed-type guard: a single payment cannot allocate to both a
+        // supplier_invoice (AP) and a non-supplier (AR/other) document — the two
+        // post opposite GL directions and cannot share one journal entry.
+        if ($supplierDocCount > 0 && $nonSupplierDocCount > 0) {
+            return response()->json([
+                'error' => [
+                    'code' => 'MIXED_ALLOCATION_TYPES',
+                    'message' => 'A payment cannot mix supplier-invoice and non-supplier allocations',
+                ],
+            ], 422);
+        }
+
+        // Supplier payments require a ledgered repository (an account_id to post the
+        // Cr Bank leg). Without it the cash would leave the repository with no 401
+        // entry. Reject up front rather than moving cash with no ledger record.
+        if ($isSupplierPayment) {
+            $supplierRepositoryId = $validated['repository_id'] ?? null;
+            /** @var PaymentRepository|null $supplierRepository */
+            $supplierRepository = $supplierRepositoryId !== null
+                ? PaymentRepository::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->find($supplierRepositoryId)
+                : null;
+
+            if (! $supplierRepository instanceof PaymentRepository || $supplierRepository->account_id === null) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'SUPPLIER_PAYMENT_REQUIRES_LEDGERED_REPOSITORY',
+                        'message' => 'Supplier payments require a repository linked to a ledger account',
+                    ],
+                ], 422);
             }
         }
 
@@ -338,6 +396,32 @@ class PaymentController extends Controller
                 /** @var numeric-string $allocationAmount */
                 $allocationAmount = (string) $allocationData['amount'];
 
+                // Update document balance
+                /** @var numeric-string $currentBalance */
+                $currentBalance = $document->balance_due ?? $document->total;
+
+                // Authoritative over-allocation guard on the LOCKED row (FIX A —
+                // concurrency). The pre-transaction check read balance_due without a
+                // lock, so two concurrent supplier payments could both pass it. Here the
+                // row is locked FOR UPDATE; re-check the outstanding balance and reject
+                // if this allocation would over-debit 401 / drive payable_balance < 0.
+                if (
+                    $document->type === DocumentType::SupplierInvoice
+                    && bccomp($allocationAmount, $currentBalance, $this->scale()) > 0
+                ) {
+                    throw new HttpResponseException(response()->json([
+                        'error' => [
+                            'code' => 'SUPPLIER_PAYMENT_EXCEEDS_PAYABLE',
+                            'message' => 'Payment amount exceeds the supplier invoice outstanding balance',
+                            'details' => [
+                                'document_id' => $document->id,
+                                'requested_amount' => $allocationAmount,
+                                'outstanding_balance' => $currentBalance,
+                            ],
+                        ],
+                    ], 422));
+                }
+
                 PaymentAllocation::create([
                     'payment_id' => $payment->id,
                     'document_id' => $document->id,
@@ -345,10 +429,6 @@ class PaymentController extends Controller
                 ]);
 
                 $totalAllocatedForGL = bcadd($totalAllocatedForGL, $allocationAmount, $this->scale());
-
-                // Update document balance
-                /** @var numeric-string $currentBalance */
-                $currentBalance = $document->balance_due ?? $document->total;
                 $newBalance = bcsub($currentBalance, $allocationAmount, $this->scale());
                 $document->balance_due = $newBalance;
 

@@ -504,10 +504,191 @@ class PaymentTest extends TestCase
         $this->assertEquals('600.000', $supplierInvoice->balance_due);
         $this->assertEquals(DocumentStatus::Posted, $supplierInvoice->status);
 
-        $this->assertDatabaseMissing('journal_entries', [
-            'source_type' => 'supplier_payment',
-            'source_id' => $supplierInvoice->id,
+        // No payment was created and no supplier_payment JE exists for this supplier
+        // (FIX E — the previous assertion keyed on supplierInvoice->id was vacuous,
+        // since supplier_payment.source_id is always the payment id).
+        $this->assertDatabaseMissing('payments', ['partner_id' => $supplier->id]);
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'supplier_payment')->count());
+    }
+
+    public function test_payment_mixing_supplier_and_customer_allocations_is_rejected(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        $bankAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::Bank);
+        $repository = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'BANK-MIX',
+            'name' => 'Mix Bank',
+            'type' => RepositoryType::BankAccount,
+            'balance' => '1000.00',
+            'account_id' => $bankAccount->id,
+            'is_active' => true,
         ]);
+
+        // One partner that holds BOTH an AR invoice and an AP supplier invoice, so
+        // the cross-partner guard passes and the mixed-type guard is what fires.
+        $partner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Dual Partner',
+            'type' => PartnerType::Supplier,
+            'is_active' => true,
+        ]);
+
+        $supplierInvoice = $this->postedSupplierInvoice($partner, '600.000');
+
+        $customerInvoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::Invoice,
+            'document_number' => 'INV-MIX-0001',
+            'partner_id' => $partner->id,
+            'document_date' => now(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => '100.00',
+            'tax_amount' => '0.00',
+            'total' => '100.00',
+            'balance_due' => '100.00',
+            'currency' => 'EUR',
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $partner->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'repository_id' => $repository->id,
+            'amount' => '200.00',
+            'currency' => 'EUR',
+            'payment_date' => now()->toDateString(),
+            'allocations' => [
+                ['document_id' => $supplierInvoice->id, 'amount' => '100.00'],
+                ['document_id' => $customerInvoice->id, 'amount' => '100.00'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'MIXED_ALLOCATION_TYPES');
+
+        // Nothing posted.
+        $this->assertDatabaseMissing('payments', ['partner_id' => $partner->id]);
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'supplier_payment')->count());
+    }
+
+    public function test_supplier_payment_requires_ledgered_repository(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        $supplier = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Supplier Corp',
+            'type' => PartnerType::Supplier,
+            'is_active' => true,
+        ]);
+
+        // Repository WITHOUT a ledger account — cash would move with no 401 entry.
+        $repository = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH-NOLEDGER',
+            'name' => 'Unledgered Cash',
+            'type' => RepositoryType::CashRegister,
+            'balance' => '1000.00',
+            'account_id' => null,
+            'is_active' => true,
+        ]);
+
+        $supplierInvoice = $this->postedSupplierInvoice($supplier, '600.000');
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $supplier->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'repository_id' => $repository->id,
+            'amount' => '600.00',
+            'currency' => 'EUR',
+            'payment_date' => now()->toDateString(),
+            'allocations' => [
+                ['document_id' => $supplierInvoice->id, 'amount' => '600.00'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'SUPPLIER_PAYMENT_REQUIRES_LEDGERED_REPOSITORY');
+
+        // No cash moved, no payment, no supplier_payment JE.
+        $repository->refresh();
+        $this->assertEquals('1000.000', $repository->balance);
+        $this->assertDatabaseMissing('payments', ['partner_id' => $supplier->id]);
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'supplier_payment')->count());
+    }
+
+    public function test_split_payment_rejects_supplier_invoice(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        $supplier = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Supplier Corp',
+            'type' => PartnerType::Supplier,
+            'is_active' => true,
+        ]);
+
+        $supplierInvoice = $this->postedSupplierInvoice($supplier, '600.000');
+
+        // MultiPaymentController::createSplitPayment is NOT supplier-aware → must reject.
+        $response = $this->actingAs($this->user)->postJson("/api/v1/documents/{$supplierInvoice->id}/split-payment", [
+            'splits' => [
+                ['payment_method_id' => $this->cashMethod->id, 'amount' => '300.00'],
+                ['payment_method_id' => $this->cashMethod->id, 'amount' => '300.00'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'SUPPLIER_INVOICE_NOT_PAYABLE_HERE');
+    }
+
+    public function test_smart_apply_allocation_rejects_supplier_invoice(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        $supplier = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Supplier Corp',
+            'type' => PartnerType::Supplier,
+            'is_active' => true,
+        ]);
+
+        $supplierInvoice = $this->postedSupplierInvoice($supplier, '600.000');
+
+        $payment = Payment::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $supplier->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'amount' => '600.00',
+            'currency' => 'EUR',
+            'payment_date' => now(),
+            'status' => 'completed',
+            'created_by' => $this->user->id,
+        ]);
+
+        // SmartPaymentController::applyAllocation (manual) routes through
+        // PaymentAllocationService, which is NOT supplier-aware → must reject.
+        $response = $this->actingAs($this->user)->postJson('/api/v1/smart-payment/apply-allocation', [
+            'payment_id' => $payment->id,
+            'allocation_method' => 'manual',
+            'manual_allocations' => [
+                ['document_id' => $supplierInvoice->id, 'amount' => '600.000'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'SUPPLIER_INVOICE_NOT_PAYABLE_HERE');
+
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'supplier_payment')->count());
     }
 
     public function test_full_payment_marks_invoice_as_paid(): void
