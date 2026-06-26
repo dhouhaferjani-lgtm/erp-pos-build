@@ -20,6 +20,7 @@ import type {
   CreateSupplierInvoicePayload,
   DocumentAttachment,
   RecordPaymentPayload,
+  InvoiceMatch,
 } from './types'
 
 // ── Query key factories ────────────────────────────────────────────────────
@@ -47,14 +48,15 @@ export function useSupplierInvoiceList(params: SupplierInvoiceListParams) {
   return useQuery({
     queryKey: supplierInvoiceKeys.list(params),
     queryFn: async () => {
-      // Strip undefined values so axios doesn't send empty query params
+      // Strip undefined values so axios doesn't send empty query params.
+      // Backend uses cursor-based pagination — pass cursor token, not page number.
       const cleanParams: Record<string, string | number> = {}
       if (params.partner_id) cleanParams['partner_id'] = params.partner_id
       if (params.status) cleanParams['status'] = params.status
       if (params.match_status) cleanParams['match_status'] = params.match_status
       if (params.date_from) cleanParams['date_from'] = params.date_from
       if (params.date_to) cleanParams['date_to'] = params.date_to
-      if (params.page !== undefined) cleanParams['page'] = params.page
+      if (params.cursor) cleanParams['cursor'] = params.cursor
 
       const response = await api.get<SupplierInvoiceListResponse>('/supplier-invoices', {
         params: cleanParams,
@@ -107,10 +109,14 @@ export function useRematchSupplierInvoice(id: string) {
   const queryClient = useQueryClient()
 
   return useMutation({
+    // The /match endpoint returns only the match block (InvoiceMatch), NOT the full detail.
+    // Invalidate the detail query so the full invoice is re-fetched with the updated match_status.
     mutationFn: () =>
-      apiPost<SupplierInvoiceDetail>(`/supplier-invoices/${id}/match`, {}),
-    onSuccess: (updated) => {
-      queryClient.setQueryData(supplierInvoiceKeys.detail(id), updated)
+      apiPost<InvoiceMatch>(`/supplier-invoices/${id}/match`, {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: supplierInvoiceKeys.detail(id),
+      })
     },
   })
 }

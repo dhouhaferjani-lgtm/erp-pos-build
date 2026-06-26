@@ -102,9 +102,12 @@ function makeInvoice(overrides: Partial<SupplierInvoiceListItem> = {}): Supplier
 
 function makeListResponse(items: SupplierInvoiceListItem[] = [makeInvoice()]) {
   return {
+    // api.get returns axios response; response.data is the raw backend body.
+    // Backend uses cursor pagination: { data, meta: { per_page, has_more }, links: { next, prev } }.
     data: {
       data: items,
-      meta: { current_page: 1, last_page: 1, per_page: 20, total: items.length },
+      meta: { per_page: 20, has_more: false },
+      links: { next: null, prev: null },
     },
   }
 }

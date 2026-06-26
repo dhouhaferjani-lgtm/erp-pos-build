@@ -348,12 +348,13 @@ export function SupplierInvoiceDetailPage() {
                   </td>
                   <td
                     className={`px-4 py-3 text-end text-sm ${
-                      row.price_variance !== '0.000' && row.price_variance !== '0'
-                        ? `font-medium ${textColors.warning}`
-                        : textColors.primary
+                      row.price_variance ? `font-medium ${textColors.warning}` : textColors.primary
                     }`}
                   >
-                    {formatCurrency(row.price_variance, true, invoice.currency)}
+                    {row.price_variance
+                      ? <AlertTriangle className={`inline h-4 w-4 ${textColors.warningDark}`} />
+                      : <CheckCircle2 className={`inline h-4 w-4 ${textColors.success}`} />
+                    }
                   </td>
                 </tr>
               ))}

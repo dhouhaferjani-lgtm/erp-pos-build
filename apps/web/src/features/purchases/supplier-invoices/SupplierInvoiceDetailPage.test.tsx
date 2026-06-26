@@ -104,7 +104,8 @@ function makeDetail(overrides: Partial<SupplierInvoiceDetail> = {}): SupplierInv
     total: '1500.000',
     status: 'draft',
     match_status: 'matched',
-    has_source_document: true,
+    // Backend detail emits source_document_id (not has_source_document).
+    source_document_id: 'po-1',
     lines: [
       {
         id: 'line-1',
@@ -126,7 +127,8 @@ function makeDetail(overrides: Partial<SupplierInvoiceDetail> = {}): SupplierInv
           received: '10.0000',
           invoiced: '10.0000',
           matchable: '10.0000',
-          price_variance: '0.000',
+          // Boolean flag: false = no variance, true = price exceeds tolerance policy.
+          price_variance: false,
         },
       ],
     },

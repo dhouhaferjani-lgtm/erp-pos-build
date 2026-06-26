@@ -42,16 +42,19 @@ export interface SupplierInvoiceListItem {
   has_source_document: boolean
 }
 
+/** Cursor-based pagination meta (matches backend cursorPaginate). */
 export interface SupplierInvoiceListMeta {
-  current_page: number
-  last_page: number
   per_page: number
-  total: number
+  has_more: boolean
 }
 
 export interface SupplierInvoiceListResponse {
   data: SupplierInvoiceListItem[]
   meta: SupplierInvoiceListMeta
+  links: {
+    next: string | null
+    prev: string | null
+  }
 }
 
 // ── Detail ─────────────────────────────────────────────────────────────────
@@ -77,7 +80,8 @@ export interface PerLineMatch {
   received: string
   invoiced: string
   matchable: string
-  price_variance: string
+  /** Boolean flag — true when invoiced unit_price vs PO unit_price exceeds tolerance policy. */
+  price_variance: boolean
 }
 
 export interface InvoiceMatch {
@@ -101,17 +105,21 @@ export interface SupplierInvoiceDetail {
   partner: SupplierInvoicePartnerRef
   issue_date: string
   due_date: string | null
+  /** Maps to external_document_number column via supplier_reference key. */
   supplier_reference: string | null
   currency: string
   total: string
   status: SupplierInvoiceStatus
   match_status: SupplierInvoiceMatchStatus
-  has_source_document: boolean
+  /** Present in detail response (not has_source_document — use source_purchase_order instead). */
+  source_document_id: string | null
   lines: SupplierInvoiceLine[]
   source_purchase_order: SourcePurchaseOrder | null
   match: InvoiceMatch
   attachments: DocumentAttachment[]
   posted_at: string | null
+  /** Conditionally present on POST /post when price_variance under warn enforcement. */
+  warning?: string
 }
 
 // ── Create payload ─────────────────────────────────────────────────────────
@@ -162,5 +170,6 @@ export interface SupplierInvoiceListParams {
   match_status?: SupplierInvoiceMatchStatus
   date_from?: string
   date_to?: string
-  page?: number
+  /** Cursor token for the next/previous page (cursor-based pagination). */
+  cursor?: string
 }

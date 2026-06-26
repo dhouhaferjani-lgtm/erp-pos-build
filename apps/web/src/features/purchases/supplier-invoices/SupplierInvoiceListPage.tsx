@@ -86,9 +86,7 @@ function InvoiceStatusBadge({ status }: { status: SupplierInvoiceStatus }) {
 export function SupplierInvoiceListPage() {
   const { t } = useTranslation(['common', 'purchases'])
 
-  const [params, setParams] = useState<SupplierInvoiceListParams>({
-    page: 1,
-  })
+  const [params, setParams] = useState<SupplierInvoiceListParams>({})
 
   const { data, isLoading } = useSupplierInvoiceList(params)
 
@@ -96,10 +94,12 @@ export function SupplierInvoiceListPage() {
 
   function handleFilterChange(
     key: keyof SupplierInvoiceListParams,
-    value: string | number | undefined
+    value: string | undefined
   ) {
     setParams((prev) => {
-      const next: SupplierInvoiceListParams = { ...prev, page: 1 }
+      // Reset cursor on filter change so we go back to the first page.
+      const next: SupplierInvoiceListParams = { ...prev }
+      delete next['cursor']
       if (value === '' || value === undefined) {
         delete next[key]
       } else {
@@ -314,34 +314,25 @@ export function SupplierInvoiceListPage() {
             </tbody>
           </table>
 
-          {/* Pagination */}
-          {data?.meta && data.meta.last_page > 1 && (
-            <div className={`flex items-center justify-between border-t ${borderColors.light} bg-white px-6 py-3`}>
-              <div className={`text-sm ${textColors.tertiary}`}>
-                {t('common:pagination.showing', {
-                  from: (data.meta.current_page - 1) * data.meta.per_page + 1,
-                  to: Math.min(data.meta.current_page * data.meta.per_page, data.meta.total),
-                  total: data.meta.total,
-                })}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={data.meta.current_page <= 1}
-                  onClick={() => { handleFilterChange('page', data.meta.current_page - 1); }}
-                  className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
-                >
-                  {t('common:actions.previous')}
-                </button>
-                <button
-                  type="button"
-                  disabled={data.meta.current_page >= data.meta.last_page}
-                  onClick={() => { handleFilterChange('page', data.meta.current_page + 1); }}
-                  className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
-                >
-                  {t('common:actions.next')}
-                </button>
-              </div>
+          {/* Cursor-based pagination — backend returns links.next/prev cursor tokens */}
+          {(data?.links?.prev ?? data?.links?.next) && (
+            <div className={`flex items-center justify-end gap-2 border-t ${borderColors.light} bg-white px-6 py-3`}>
+              <button
+                type="button"
+                disabled={!data?.links?.prev}
+                onClick={() => { handleFilterChange('cursor', data?.links?.prev ?? undefined); }}
+                className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
+              >
+                {t('common:actions.previous')}
+              </button>
+              <button
+                type="button"
+                disabled={!data?.meta?.has_more}
+                onClick={() => { handleFilterChange('cursor', data?.links?.next ?? undefined); }}
+                className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
+              >
+                {t('common:actions.next')}
+              </button>
             </div>
           )}
         </div>
