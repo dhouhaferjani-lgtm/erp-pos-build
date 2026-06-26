@@ -120,14 +120,19 @@ final class SupplierCreditNoteGlTest extends TestCase
      * @param  numeric-string  $unitPrice
      * @return array{poLine: DocumentLine, invoice: Document}
      */
-    private function postedInvoiceWithPoLine(string $qty, string $unitPrice): array
-    {
+    private function postedInvoiceWithPoLine(
+        string $qty,
+        string $unitPrice,
+        ?Partner $partner = null,
+        DocumentStatus $invoiceStatus = DocumentStatus::Posted,
+    ): array {
+        $partner ??= $this->supplier;
         $extended = bcmul($qty, $unitPrice, 3);
 
         $po = Document::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'partner_id' => $this->supplier->id,
+            'partner_id' => $partner->id,
             'type' => DocumentType::PurchaseOrder,
             'fiscal_category' => FiscalCategory::NonFiscal,
             'fiscal_status' => FiscalStatus::Draft,
@@ -157,11 +162,11 @@ final class SupplierCreditNoteGlTest extends TestCase
         $invoice = Document::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'partner_id' => $this->supplier->id,
+            'partner_id' => $partner->id,
             'type' => DocumentType::SupplierInvoice,
             'fiscal_category' => FiscalCategory::NonFiscal,
             'fiscal_status' => FiscalStatus::Draft,
-            'status' => DocumentStatus::Posted,
+            'status' => $invoiceStatus,
             'document_number' => 'SI-D1-'.Str::upper(Str::random(6)),
             'document_date' => now(),
             'currency' => 'TND',
@@ -747,5 +752,261 @@ final class SupplierCreditNoteGlTest extends TestCase
 
         $this->assertBalanced($entry);
         $this->assertTrue($this->hashService->verifyChain($this->company->id));
+    }
+
+    // =========================================================================
+    // 12. FIX 1 (re-review): cross-supplier — credit note linking ANOTHER
+    //     supplier's invoice THROWS (partner_id must match), posts nothing.
+    // =========================================================================
+
+    public function test_credit_note_linking_another_suppliers_invoice_throws(): void
+    {
+        $supplierB = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'D1 Test Supplier B',
+            'type' => PartnerType::Supplier,
+            'tax_status' => PartnerTaxStatus::REGISTERED,
+        ]);
+
+        // Supplier B's posted invoice + PO line.
+        ['poLine' => $bPoLine, 'invoice' => $bInvoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000', $supplierB);
+
+        // Credit note for Supplier A (this->supplier) linking Supplier B's invoice.
+        $creditNote = $this->supplierCreditNote(
+            $bInvoice,
+            $bPoLine,
+            SupplierCreditNoteReason::GoodsReturn,
+            ['qty' => '2.0000', 'unit_price' => '10.000', 'recoverable_vat' => '3.800'],
+            subtotal: '20.000',
+            total: '23.800',
+        );
+        // supplierCreditNote() tags partner_id = this->supplier (A) ≠ $bInvoice->partner_id (B).
+
+        $threw = false;
+        try {
+            $this->service()->post($creditNote);
+        } catch (\DomainException $e) {
+            $threw = true;
+        }
+
+        $this->assertTrue($threw, 'A credit note must not link an invoice belonging to a different supplier');
+
+        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $creditNote->id)->count());
+        $this->assertSame('5.0000', $this->freshLine($bPoLine)->quantity_invoiced);
+        $this->assertSame(DocumentStatus::Draft, $this->freshDoc($creditNote)->status);
+    }
+
+    // =========================================================================
+    // 13. FIX 2 (re-review): linking a NON-POSTED (Draft) supplier invoice THROWS.
+    // =========================================================================
+
+    public function test_credit_note_linking_non_posted_invoice_throws(): void
+    {
+        // Linked supplier invoice is Draft (not Posted) — a credit reverses a posted liability.
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000', null, DocumentStatus::Draft);
+
+        $creditNote = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::GoodsReturn,
+            ['qty' => '2.0000', 'unit_price' => '10.000', 'recoverable_vat' => '3.800'],
+            subtotal: '20.000',
+            total: '23.800',
+        );
+
+        $threw = false;
+        try {
+            $this->service()->post($creditNote);
+        } catch (\DomainException $e) {
+            $threw = true;
+        }
+
+        $this->assertTrue($threw, 'A credit note must not reverse a non-posted supplier invoice');
+
+        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $creditNote->id)->count());
+        $this->assertSame('5.0000', $this->freshLine($poLine)->quantity_invoiced);
+        $this->assertSame(DocumentStatus::Draft, $this->freshDoc($creditNote)->status);
+    }
+
+    // =========================================================================
+    // 14. FIX 3 (re-review): the input document must be a SupplierCreditNote.
+    // =========================================================================
+
+    public function test_non_supplier_credit_note_document_is_rejected(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
+
+        // Otherwise-valid SCN data, but the document type is wrong.
+        $document = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::GoodsReturn,
+            ['qty' => '2.0000', 'unit_price' => '10.000', 'recoverable_vat' => '3.800'],
+            subtotal: '20.000',
+            total: '23.800',
+        );
+        $document->type = DocumentType::CreditNote; // customer credit note — NOT supplier
+        $document->save();
+
+        $threw = false;
+        try {
+            $this->service()->post($this->freshDoc($document));
+        } catch (\DomainException $e) {
+            $threw = true;
+        }
+
+        $this->assertTrue($threw, 'Only a SupplierCreditNote document may be posted by this service');
+
+        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $document->id)->count());
+        $this->assertSame('5.0000', $this->freshLine($poLine)->quantity_invoiced);
+    }
+
+    // =========================================================================
+    // 15. FIX 3 (re-review): a Cancelled credit note is rejected (not Draft/Posted).
+    // =========================================================================
+
+    public function test_cancelled_credit_note_is_rejected(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
+
+        $creditNote = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::GoodsReturn,
+            ['qty' => '2.0000', 'unit_price' => '10.000', 'recoverable_vat' => '3.800'],
+            subtotal: '20.000',
+            total: '23.800',
+        );
+        $creditNote->status = DocumentStatus::Cancelled;
+        $creditNote->save();
+
+        $threw = false;
+        try {
+            $this->service()->post($this->freshDoc($creditNote));
+        } catch (\DomainException $e) {
+            $threw = true;
+        }
+
+        $this->assertTrue($threw, 'A cancelled credit note must not be posted');
+
+        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $creditNote->id)->count());
+        $this->assertSame('5.0000', $this->freshLine($poLine)->quantity_invoiced);
+        $this->assertSame(DocumentStatus::Cancelled, $this->freshDoc($creditNote)->status);
+    }
+
+    // =========================================================================
+    // 16. FIX 3 (re-review): already-Posted retry still no-ops (idempotency preserved).
+    // =========================================================================
+
+    public function test_already_posted_retry_is_noop(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
+
+        $creditNote = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::GoodsReturn,
+            ['qty' => '2.0000', 'unit_price' => '10.000', 'recoverable_vat' => '3.800'],
+            subtotal: '20.000',
+            total: '23.800',
+        );
+
+        $this->service()->post($creditNote);
+        $this->assertSame(DocumentStatus::Posted, $this->freshDoc($creditNote)->status);
+
+        // Re-post the now-Posted credit note (entry already exists) → no-op, no throw.
+        $this->service()->post($this->freshDoc($creditNote));
+
+        $this->assertSame(1, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $creditNote->id)->count());
+        $this->assertSame('3.0000', $this->freshLine($poLine)->quantity_invoiced);
+    }
+
+    // =========================================================================
+    // 17. Boundary: cumulative HT EXACTLY equal to invoice HT POSTS (full reversal).
+    // =========================================================================
+
+    public function test_full_reversal_equal_to_invoice_ht_posts(): void
+    {
+        // Invoice HT = 50.000. A PriceAdjustment crediting HT 50.000 (equal) must POST.
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
+        $creditNote = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::PriceAdjustment,
+            ['qty' => '5.0000', 'unit_price' => '10.000', 'recoverable_vat' => '9.500'],
+            subtotal: '50.000',
+            total: '59.500',
+        );
+
+        $this->service()->post($creditNote);
+
+        $entry = $this->creditEntry($creditNote);
+        $this->assertSame(JournalEntryStatus::Posted, $entry->status);
+        $crInv = $this->legOn($entry, $this->inventoryAccount);
+        $this->assertNotNull($crInv);
+        $this->assertSame('50.000', $crInv->credit);
+        $this->assertBalanced($entry);
+        $this->assertTrue($this->hashService->verifyChain($this->company->id));
+    }
+
+    // =========================================================================
+    // 18. Mixed reasons: cumulative HT summed across GoodsReturn + PriceAdjustment.
+    //     Two within-bound credits POST; a third exceeding the bound is REJECTED.
+    // =========================================================================
+
+    public function test_mixed_reasons_cumulative_across_reasons(): void
+    {
+        // Invoice HT = 50.000.
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
+
+        // CN1 GoodsReturn HT 20.000 (return 2 @ 10): cumulative 20 ≤ 50 → posts; invoiced 5 → 3.
+        $cn1 = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::GoodsReturn,
+            ['qty' => '2.0000', 'unit_price' => '10.000', 'recoverable_vat' => '3.800'],
+            subtotal: '20.000',
+            total: '23.800',
+        );
+        $this->service()->post($cn1);
+        $this->assertSame('3.0000', $this->freshLine($poLine)->quantity_invoiced);
+
+        // CN2 PriceAdjustment HT 20.000 (5 @ 4 reduction): cumulative 20 + 20 = 40 ≤ 50 → posts.
+        $cn2 = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::PriceAdjustment,
+            ['qty' => '5.0000', 'unit_price' => '4.000', 'recoverable_vat' => '3.800'],
+            subtotal: '20.000',
+            total: '23.800',
+        );
+        $this->service()->post($cn2);
+        // PriceAdjustment did not touch quantity_invoiced.
+        $this->assertSame('3.0000', $this->freshLine($poLine)->quantity_invoiced);
+
+        // Both posted.
+        $this->assertSame(1, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $cn1->id)->count());
+        $this->assertSame(1, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $cn2->id)->count());
+
+        // CN3 PriceAdjustment HT 15.000: cumulative 40 + 15 = 55 > 50 → REJECTED.
+        $cn3 = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::PriceAdjustment,
+            ['qty' => '5.0000', 'unit_price' => '3.000', 'recoverable_vat' => '2.850'],
+            subtotal: '15.000',
+            total: '17.850',
+        );
+
+        $threw = false;
+        try {
+            $this->service()->post($cn3);
+        } catch (\DomainException $e) {
+            $threw = true;
+        }
+        $this->assertTrue($threw, 'A third credit pushing cumulative HT (across reasons) past the invoice HT must throw');
+        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $cn3->id)->count());
+        $this->assertSame(DocumentStatus::Draft, $this->freshDoc($cn3)->status);
     }
 }

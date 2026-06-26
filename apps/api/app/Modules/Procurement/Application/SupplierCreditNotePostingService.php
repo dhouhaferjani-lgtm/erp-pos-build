@@ -69,12 +69,46 @@ final class SupplierCreditNotePostingService
         DB::transaction(function () use ($creditNote): void {
             $creditNote->load('lines');
 
+            // 0a. Input document guard: this service only posts supplier credit notes.
+            if ($creditNote->type !== DocumentType::SupplierCreditNote) {
+                throw new \DomainException(sprintf(
+                    'Document [%s] cannot be posted as a supplier credit note: its type is [%s].',
+                    $creditNote->id,
+                    $creditNote->type->value,
+                ));
+            }
+
             $reason = $creditNote->supplier_credit_note_reason;
             if (! $reason instanceof SupplierCreditNoteReason) {
                 throw new \DomainException(sprintf(
                     'Supplier credit note [%s] cannot be posted without an explicit reason '
                     .'(SupplierCreditNoteReason::PriceAdjustment | GoodsReturn).',
                     $creditNote->id,
+                ));
+            }
+
+            // 0b. Status guard — preserve the idempotent retry. A Posted credit note is a
+            //     no-op IFF its reversing entry already exists; a Posted-without-entry or any
+            //     non-Draft/non-Posted state (e.g. Cancelled) is rejected. Only Draft proceeds.
+            if ($creditNote->status === DocumentStatus::Posted) {
+                $entryExists = JournalEntry::query()
+                    ->where('source_type', 'supplier_credit_note')
+                    ->where('source_id', $creditNote->id)
+                    ->exists();
+                if ($entryExists) {
+                    return;
+                }
+                throw new \DomainException(sprintf(
+                    'Supplier credit note [%s] is marked Posted but has no reversing entry '
+                    .'(inconsistent state); refusing to post.',
+                    $creditNote->id,
+                ));
+            }
+            if ($creditNote->status !== DocumentStatus::Draft) {
+                throw new \DomainException(sprintf(
+                    'Supplier credit note [%s] cannot be posted: status is [%s], expected Draft.',
+                    $creditNote->id,
+                    $creditNote->status->value,
                 ));
             }
 
@@ -151,8 +185,12 @@ final class SupplierCreditNotePostingService
 
     /**
      * Resolve + lock (FOR UPDATE) the supplier invoice the credit note reverses.
-     * The credit note MUST link to a supplier invoice of the same company via
-     * source_document_id; otherwise the post is rejected.
+     *
+     * The credit note MUST link, via source_document_id, to a supplier invoice that
+     * is (a) of the same company, (b) the SAME supplier/partner — so a credit for
+     * supplier A cannot reduce A's payable against B's invoice ceiling (FIX 1), and
+     * (c) POSTED — a credit reverses a posted liability, not a Draft/Cancelled one
+     * (FIX 2). Any mismatch rejects the post.
      */
     private function resolveAndLockLinkedInvoice(Document $creditNote): Document
     {
@@ -181,6 +219,29 @@ final class SupplierCreditNotePostingService
                 .'reference a supplier invoice of this company.',
                 $creditNote->id,
                 $invoiceId,
+            ));
+        }
+
+        // FIX 1 (cross-supplier) — the linked invoice must belong to the SAME supplier.
+        if ($supplierInvoice->partner_id !== $creditNote->partner_id) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s] (supplier [%s]) cannot be posted against invoice [%s] '
+                .'belonging to a different supplier [%s].',
+                $creditNote->id,
+                $creditNote->partner_id ?? 'null',
+                $invoiceId,
+                $supplierInvoice->partner_id ?? 'null',
+            ));
+        }
+
+        // FIX 2 (non-posted invoice) — a credit reverses a POSTED liability only.
+        if ($supplierInvoice->status !== DocumentStatus::Posted) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s] cannot be posted: linked supplier invoice [%s] is not '
+                .'Posted (status [%s]).',
+                $creditNote->id,
+                $invoiceId,
+                $supplierInvoice->status->value,
             ));
         }
 
