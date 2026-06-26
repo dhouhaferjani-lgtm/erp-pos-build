@@ -32,6 +32,10 @@ use Illuminate\Support\Carbon;
  * @property numeric-string|null $discount_percent
  * @property numeric-string|null $discount_amount
  * @property numeric-string|null $tax_rate
+ * @property numeric-string|null $tax_amount Calculated line tax (recoverable + non-recoverable), scale 3
+ * @property bool $tax_recoverable Whether this line's input VAT is recoverable
+ * @property numeric-string|null $recoverable_tax_amount Recoverable input VAT portion, scale 3
+ * @property numeric-string|null $non_recoverable_tax_amount Non-recoverable VAT capitalized into inventory cost, scale 3
  * @property numeric-string $line_total
  * @property numeric-string $allocated_costs
  * @property numeric-string|null $landed_unit_cost
@@ -82,6 +86,10 @@ class DocumentLine extends Model
         'discount_percent',
         'discount_amount',
         'tax_rate',
+        'tax_amount',
+        'tax_recoverable',
+        'recoverable_tax_amount',
+        'non_recoverable_tax_amount',
         'line_total',
         'allocated_costs',
         'landed_unit_cost',
@@ -116,6 +124,11 @@ class DocumentLine extends Model
             'discount_percent' => 'decimal:2',
             'discount_amount' => 'decimal:3',
             'tax_rate' => 'decimal:2',
+            // Tax recoverability columns widened to scale 3 by 2026_03_23_100000.
+            'tax_amount' => 'decimal:3',
+            'tax_recoverable' => 'boolean',
+            'recoverable_tax_amount' => 'decimal:3',
+            'non_recoverable_tax_amount' => 'decimal:3',
             'line_total' => 'decimal:3',
             // WAC-feeding cost columns carried at higher internal precision (6 dp)
             // at rest so the landed unit cost flowing into recordPurchase() is not

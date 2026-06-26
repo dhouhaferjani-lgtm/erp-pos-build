@@ -1143,6 +1143,209 @@ final class GeneralLedgerService
     }
 
     /**
+     * Post the supplier-invoice GR-IR clearing entry (C3, option 1 — accrued basis).
+     *
+     * Clears the 408 accrual B1 raised on goods receipt, at the SAME accrued PO-cost
+     * basis (so 408 always zeroes), and routes the price delta + capitalized
+     * non-recoverable VAT to Inventory as a BALANCING PLUG. Posts a balanced,
+     * hash-chained entry through the IN-TRANSACTION system path so the GL post is
+     * atomic with the orchestration's PO-line lock + quantity_invoiced increment
+     * (NOT the afterCommit variant).
+     *
+     *   Dr GoodsReceivedNotInvoiced (408) = accruedHt   (Σ invoiced_qty × PO unit_price)
+     *   Dr VatDeductible                  = recoverableVat
+     *   Dr PurchaseStampDuty              = timbre  (never to VatDeductible)
+     *   Dr/Cr Inventory                   = plug = Cr401 − (Dr408 + DrVAT + DrTimbre)
+     *   Cr SupplierPayable (401)          = invoice.total  (partner-tagged)
+     *
+     * The Inventory leg is the balancing figure: it absorbs the price variance, the
+     * capitalized non-recoverable VAT, and any per-leg rounding residue so that
+     * debits == credits EXACTLY. Zero legs (VAT, timbre, plug) are omitted.
+     *
+     * Balance invariant (fail loudly): invoice.total must equal
+     *   billedHt + recoverableVat + nonRecoverableVat + timbre.
+     *
+     * @param  string  $accruedHt  Σ invoiced_qty × PO unit_price (numeric string; high precision ok, rounded here)
+     * @param  string  $billedHt  invoice.subtotal (numeric string; Σ line qty × invoice unit_price)
+     * @param  string  $recoverableVat  Σ document_lines.recoverable_tax_amount (numeric string)
+     * @param  string  $nonRecoverableVat  Σ document_lines.non_recoverable_tax_amount (numeric string)
+     * @param  string  $timbre  documents.stamp_duty_amount (numeric string)
+     */
+    public function createSupplierInvoiceGrIrClearingEntry(
+        Document $supplierInvoice,
+        string $accruedHt,
+        string $billedHt,
+        string $recoverableVat,
+        string $nonRecoverableVat,
+        string $timbre,
+    ): JournalEntry {
+        if (DB::transactionLevel() === 0) {
+            throw new \LogicException(
+                'createSupplierInvoiceGrIrClearingEntry must run inside the orchestration transaction '
+                .'so the GL post is atomic with the PO-line lock and quantity_invoiced increment.'
+            );
+        }
+
+        foreach (['accruedHt' => $accruedHt, 'billedHt' => $billedHt, 'recoverableVat' => $recoverableVat, 'nonRecoverableVat' => $nonRecoverableVat, 'timbre' => $timbre] as $name => $value) {
+            if (! is_numeric($value)) {
+                throw new \InvalidArgumentException("SupplierInvoice GR-IR clearing: {$name} must be a numeric string, got: {$value}");
+            }
+        }
+
+        $companyId = $supplierInvoice->company_id;
+        $currency = $supplierInvoice->currency;
+        $scale = $this->scaleResolver->getScale($currency);
+
+        /** @var numeric-string $total */
+        $total = $supplierInvoice->total ?? '0';
+
+        // Round each leg once, HALF-UP, at the currency scale.
+        /** @var numeric-string $accruedHtR */
+        $accruedHtR = CurrencyScale::bcround($accruedHt, $scale);
+        /** @var numeric-string $billedHtR */
+        $billedHtR = CurrencyScale::bcround($billedHt, $scale);
+        /** @var numeric-string $recoverableVatR */
+        $recoverableVatR = CurrencyScale::bcround($recoverableVat, $scale);
+        /** @var numeric-string $nonRecoverableVatR */
+        $nonRecoverableVatR = CurrencyScale::bcround($nonRecoverableVat, $scale);
+        /** @var numeric-string $timbreR */
+        $timbreR = CurrencyScale::bcround($timbre, $scale);
+        /** @var numeric-string $totalR */
+        $totalR = CurrencyScale::bcround($total, $scale);
+
+        // Balance invariant: total must reconcile to the sum of its economic parts.
+        $expectedTotal = bcadd(bcadd(bcadd($billedHtR, $recoverableVatR, $scale), $nonRecoverableVatR, $scale), $timbreR, $scale);
+        if (bccomp($expectedTotal, $totalR, $scale) !== 0) {
+            throw new \DomainException(sprintf(
+                'Supplier invoice [%s] is internally inconsistent: total %s != billedHT %s + recoverableVAT %s + nonRecoverableVAT %s + timbre %s (= %s). Refusing to post an unbalanced GR-IR clearing entry.',
+                $supplierInvoice->id, $totalR, $billedHtR, $recoverableVatR, $nonRecoverableVatR, $timbreR, $expectedTotal,
+            ));
+        }
+
+        // Inventory plug = Cr401 − (Dr408 + DrVAT + DrTimbre). Absorbs price delta,
+        // non-recoverable VAT, and any rounding residue → debits == credits exactly.
+        $drKnown = bcadd(bcadd($accruedHtR, $recoverableVatR, $scale), $timbreR, $scale);
+        /** @var numeric-string $plug */
+        $plug = bcsub($totalR, $drKnown, $scale);
+
+        $grirAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::GoodsReceivedNotInvoiced);
+        $vatAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::VatDeductible);
+        $stampAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::PurchaseStampDuty);
+        $inventoryAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::Inventory);
+        $payableAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::SupplierPayable);
+
+        $company = Company::findOrFail($companyId);
+
+        $entry = JournalEntry::create([
+            'tenant_id' => $company->tenant_id,
+            'company_id' => $companyId,
+            'entry_number' => $this->generateEntryNumber($companyId),
+            'entry_date' => $supplierInvoice->document_date,
+            'description' => "Supplier invoice {$supplierInvoice->document_number} — GR-IR clearing",
+            'status' => JournalEntryStatus::Draft,
+            'source_type' => 'supplier_invoice',
+            'source_id' => $supplierInvoice->id,
+        ]);
+
+        $lineOrder = 0;
+
+        // Dr 408 — clear the accrual at the PO-cost basis.
+        if (bccomp($accruedHtR, '0', $scale) > 0) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $grirAccount->id,
+                'partner_id' => null,
+                'debit' => $accruedHtR,
+                'credit' => '0',
+                'description' => 'Clear GR-IR (408) at accrued PO cost',
+                'line_order' => $lineOrder++,
+            ]);
+        }
+
+        // Dr VatDeductible — recoverable input VAT only.
+        if (bccomp($recoverableVatR, '0', $scale) > 0) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $vatAccount->id,
+                'partner_id' => null,
+                'debit' => $recoverableVatR,
+                'credit' => '0',
+                'description' => 'VAT deductible (input)',
+                'line_order' => $lineOrder++,
+            ]);
+        }
+
+        // Dr PurchaseStampDuty — timbre, never to VatDeductible.
+        if (bccomp($timbreR, '0', $scale) > 0) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $stampAccount->id,
+                'partner_id' => null,
+                'debit' => $timbreR,
+                'credit' => '0',
+                'description' => 'Purchase stamp duty (timbre)',
+                'line_order' => $lineOrder++,
+            ]);
+        }
+
+        // Dr/Cr Inventory — balancing plug (price delta + non-recoverable VAT + rounding).
+        $plugCmp = bccomp($plug, '0', $scale);
+        if ($plugCmp > 0) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $inventoryAccount->id,
+                'partner_id' => null,
+                'debit' => $plug,
+                'credit' => '0',
+                'description' => 'Inventory price variance / non-recoverable VAT (plug)',
+                'line_order' => $lineOrder++,
+            ]);
+        } elseif ($plugCmp < 0) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $inventoryAccount->id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => bcmul($plug, '-1', $scale),
+                'description' => 'Inventory price variance / non-recoverable VAT (plug)',
+                'line_order' => $lineOrder++,
+            ]);
+        }
+
+        // Cr 401 — billed gross TTC, partner-tagged to the supplier.
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $payableAccount->id,
+            'partner_id' => $supplierInvoice->partner_id,
+            'debit' => '0',
+            'credit' => $totalR,
+            'description' => 'Supplier payable (401)',
+            'line_order' => $lineOrder,
+        ]);
+
+        $entry->load('lines');
+
+        // Defensive: assert debits == credits before posting (the plug guarantees this).
+        /** @var numeric-string $debitSum */
+        $debitSum = '0';
+        /** @var numeric-string $creditSum */
+        $creditSum = '0';
+        foreach ($entry->lines as $line) {
+            $debitSum = bcadd($debitSum, $line->debit, $scale);
+            $creditSum = bcadd($creditSum, $line->credit, $scale);
+        }
+        if (bccomp($debitSum, $creditSum, $scale) !== 0) {
+            throw new \DomainException(
+                "Supplier invoice GR-IR clearing entry does not balance: debit {$debitSum} != credit {$creditSum}."
+            );
+        }
+
+        $this->postSystemGeneratedEntryAndDispatchPostedEvent($entry, $companyId, $currency);
+
+        return $entry;
+    }
+
+    /**
      * Create a GL journal entry for a voucher ledger event.
      *
      * IMPORTANT: Voucher redemption MUST NOT route through createPOSPaymentEntry()

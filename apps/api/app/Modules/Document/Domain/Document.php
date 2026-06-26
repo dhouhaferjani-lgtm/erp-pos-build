@@ -52,6 +52,8 @@ use Illuminate\Support\Carbon;
  * @property numeric-string|null $subtotal
  * @property numeric-string|null $discount_amount
  * @property numeric-string|null $tax_amount
+ * @property numeric-string|null $line_tax_amount Line VAT total (excludes timbre), scale 3
+ * @property numeric-string|null $stamp_duty_amount Timbre fiscal (non-recoverable), scale 3
  * @property numeric-string|null $total
  * @property numeric-string|null $balance_due
  * @property string|null $fiscal_hash
@@ -129,6 +131,8 @@ class Document extends Model
         'subtotal',
         'discount_amount',
         'tax_amount',
+        'line_tax_amount',
+        'stamp_duty_amount',
         'total',
         'balance_due',
         'fiscal_hash',
@@ -176,6 +180,8 @@ class Document extends Model
             'subtotal' => 'decimal:3',
             'discount_amount' => 'decimal:3',
             'tax_amount' => 'decimal:3',
+            'line_tax_amount' => 'decimal:3',
+            'stamp_duty_amount' => 'decimal:3',
             'total' => 'decimal:3',
             'balance_due' => 'decimal:3',
             'is_historical' => 'boolean',
