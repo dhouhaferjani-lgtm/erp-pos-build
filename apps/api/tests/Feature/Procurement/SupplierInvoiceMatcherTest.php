@@ -25,6 +25,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -40,6 +41,12 @@ use Tests\TestCase;
  *   4. Price within dual-threshold tolerance → matched; assertPostable ok under warn and block
  *   5. Price beyond tolerance → price_variance; assertPostable(warn) ok; assertPostable(block) throws
  *   6. Missing source_line_id → exception; assertPostable throws under any enforcement
+ *   7. (FIX 1) Multi-line invoice referencing same PO line — aggregate qty checked, over-clear blocked
+ *   8. (FIX 2) source_line_id pointing to non-PO document type → exception
+ *   9. (FIX 2) source_line_id pointing to PO in different company → exception
+ *  10. (FIX 2) source_line_id pointing to non-existent UUID → exception
+ *  11. (FIX 3) Invoice with zero lines → exception; assertPostable throws
+ *  12. (FIX 4) Price tolerance AND vs OR distinguishing test
  */
 final class SupplierInvoiceMatcherTest extends TestCase
 {
@@ -361,9 +368,11 @@ final class SupplierInvoiceMatcherTest extends TestCase
             'source_line_id' => $poLine->id,
         ]);
 
+        // Confirm we actually have a price variance before testing the leniency
+        $this->assertSame(SupplierInvoiceMatchStatus::PriceVariance, $this->matcher->match($invoice));
+
         // Must NOT throw — warn allows price variance through
         $this->matcher->assertPostable($invoice, MatchEnforcement::Warn);
-        $this->assertTrue(true); // explicit assertion that no exception was thrown
     }
 
     public function test_price_variance_blocks_posting_under_block(): void
@@ -410,5 +419,294 @@ final class SupplierInvoiceMatcherTest extends TestCase
 
         $this->expectException(\DomainException::class);
         $this->matcher->assertPostable($invoice, MatchEnforcement::Block);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 7 (FIX 1) — multi-line invoice: aggregate qty per PO line
+    // -------------------------------------------------------------------------
+
+    /**
+     * BLOCKER-1: two invoice lines on the same invoice referencing the SAME PO line
+     * must have their quantities SUMMED against matchable. Each line individually
+     * is within bounds (3 ≤ 4), but their aggregate (6 > 4) is an over-clear.
+     * match() must return QuantityVariance and assertPostable(Warn) must throw —
+     * the warn enforcement does NOT bypass the hard quantity invariant.
+     */
+    public function test_multi_line_invoice_same_po_line_aggregates_qty_and_rejects_over_clear_under_warn(): void
+    {
+        // PO line: received=10, already invoiced=6 → matchable=4
+        ['poLine' => $poLine] = $this->seedPo([
+            'quantity_received' => '10.0000',
+            'quantity_invoiced' => '6.0000',
+            'unit_price' => '5.000',
+        ]);
+
+        // Supplier invoice with TWO lines, both source_line_id = same PO line.
+        // Each qty = 3.0000 — individually each would pass (3 ≤ 4).
+        // Aggregate: 3 + 3 = 6 > 4 → must be QuantityVariance.
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::SupplierInvoice,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'SI-MULTI-'.uniqid(),
+            'document_date' => '2026-06-15',
+            'currency' => 'TND',
+            'match_status' => SupplierInvoiceMatchStatus::Unmatched,
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 1,
+            'description' => 'Paracetamol line A',
+            'quantity' => '3.0000',
+            'unit_price' => '5.000',
+            'line_total' => '15.000',
+            'source_line_id' => $poLine->id,
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 2,
+            'description' => 'Paracetamol line B',
+            'quantity' => '3.0000',
+            'unit_price' => '5.000',
+            'line_total' => '15.000',
+            'source_line_id' => $poLine->id,
+        ]);
+
+        $invoice = $invoice->fresh(['lines']);
+
+        $this->assertSame(
+            SupplierInvoiceMatchStatus::QuantityVariance,
+            $this->matcher->match($invoice),
+        );
+
+        // CRITICAL: warn MUST NOT bypass the hard quantity invariant even in the multi-line case
+        $this->expectException(\DomainException::class);
+        $this->matcher->assertPostable($invoice, MatchEnforcement::Warn);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 8 (FIX 2a) — source_line_id pointing to non-PO document type → exception
+    // -------------------------------------------------------------------------
+
+    public function test_source_line_id_pointing_to_non_purchase_order_line_is_exception(): void
+    {
+        // Create a SalesOrder with a line — using that line as source_line_id is invalid.
+        $salesOrder = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::SalesOrder,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'SO-TEST-'.uniqid(),
+            'document_date' => '2026-06-01',
+            'currency' => 'TND',
+        ]);
+
+        $salesLine = DocumentLine::create([
+            'document_id' => $salesOrder->id,
+            'line_number' => 1,
+            'description' => 'Item on a sales order',
+            'quantity' => '10.0000',
+            'quantity_received' => '10.0000',
+            'quantity_invoiced' => '0.0000',
+            'unit_price' => '5.000',
+            'line_total' => '50.000',
+        ]);
+
+        $invoice = $this->seedInvoice([
+            'quantity' => '5.0000',
+            'unit_price' => '5.000',
+            'source_line_id' => $salesLine->id,
+        ]);
+
+        $this->assertSame(SupplierInvoiceMatchStatus::Exception, $this->matcher->match($invoice));
+
+        $this->expectException(\DomainException::class);
+        $this->matcher->assertPostable($invoice, MatchEnforcement::Warn);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 9 (FIX 2b) — source_line_id pointing to PO line of different company → exception
+    // -------------------------------------------------------------------------
+
+    public function test_source_line_id_pointing_to_po_line_from_different_company_is_exception(): void
+    {
+        // Create a second company in the same tenant
+        $otherCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Other Company',
+            'country_code' => 'TN',
+            'currency' => 'TND',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        // Create a PO in the OTHER company
+        $otherPartner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'name' => 'Other Supplier',
+            'type' => PartnerType::Supplier,
+        ]);
+
+        $otherPo = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'partner_id' => $otherPartner->id,
+            'type' => DocumentType::PurchaseOrder,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'PO-OTHER-'.uniqid(),
+            'document_date' => '2026-06-01',
+            'currency' => 'TND',
+        ]);
+
+        $otherPoLine = DocumentLine::create([
+            'document_id' => $otherPo->id,
+            'line_number' => 1,
+            'description' => 'Item in other company PO',
+            'quantity' => '10.0000',
+            'quantity_received' => '10.0000',
+            'quantity_invoiced' => '0.0000',
+            'unit_price' => '5.000',
+            'line_total' => '50.000',
+        ]);
+
+        // Invoice for $this->company referencing a PO line from $otherCompany
+        $invoice = $this->seedInvoice([
+            'quantity' => '5.0000',
+            'unit_price' => '5.000',
+            'source_line_id' => $otherPoLine->id,
+        ]);
+
+        $this->assertSame(SupplierInvoiceMatchStatus::Exception, $this->matcher->match($invoice));
+
+        $this->expectException(\DomainException::class);
+        $this->matcher->assertPostable($invoice, MatchEnforcement::Warn);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 10 (FIX 2c) — source_line_id pointing to non-existent UUID → exception
+    // -------------------------------------------------------------------------
+
+    public function test_source_line_id_pointing_to_nonexistent_uuid_is_exception(): void
+    {
+        // Create a valid PO line, point the invoice line at it, then delete the PO line
+        // to simulate a dangling source_line_id (e.g. PO line deleted after invoice was drafted).
+        // SQLite FK constraints prevent inserting a non-existent UUID directly, so we
+        // temporarily disable FKs for the delete of the referenced row.
+        ['poLine' => $poLine] = $this->seedPo([
+            'quantity_received' => '10.0000',
+            'quantity_invoiced' => '0.0000',
+            'unit_price' => '5.000',
+        ]);
+
+        $invoice = $this->seedInvoice([
+            'quantity' => '5.0000',
+            'unit_price' => '5.000',
+            'source_line_id' => $poLine->id,
+        ]);
+
+        // Disable FK enforcement to allow deleting the referenced line
+        DB::statement('PRAGMA foreign_keys = OFF');
+        $poLine->delete();
+        DB::statement('PRAGMA foreign_keys = ON');
+
+        // $invoice already has lines loaded in memory (source_line_id still references the now-gone ID).
+        // DocumentLine::find($poLine->id) will return null → Exception.
+        $this->assertSame(SupplierInvoiceMatchStatus::Exception, $this->matcher->match($invoice));
+
+        $this->expectException(\DomainException::class);
+        $this->matcher->assertPostable($invoice, MatchEnforcement::Warn);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 11 (FIX 3) — invoice with zero lines → exception
+    // -------------------------------------------------------------------------
+
+    public function test_invoice_with_no_lines_is_exception_and_always_throws(): void
+    {
+        // Create a supplier invoice but add no lines.
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::SupplierInvoice,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'SI-EMPTY-'.uniqid(),
+            'document_date' => '2026-06-15',
+            'currency' => 'TND',
+            'match_status' => SupplierInvoiceMatchStatus::Unmatched,
+        ]);
+
+        // Eager-load lines — will be empty collection
+        $invoice = $invoice->fresh(['lines']);
+
+        $this->assertSame(SupplierInvoiceMatchStatus::Exception, $this->matcher->match($invoice));
+
+        $this->expectException(\DomainException::class);
+        $this->matcher->assertPostable($invoice, MatchEnforcement::Warn);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 12 (FIX 4) — AND vs OR price tolerance distinguishing test
+    // -------------------------------------------------------------------------
+
+    /**
+     * The dual-threshold uses AND logic: Matched iff variance ≤ percentage_threshold
+     * AND variance ≤ max_amount.  This test picks a variance that falls BETWEEN the
+     * two thresholds, proving AND (not OR / max) is in effect.
+     *
+     * Policy: percent=2.00 (2%), max_amount=1.000 TND
+     * PO price: 10.000, qty: 6.0000
+     * Invoice price: 10.183
+     *
+     * Arithmetic (bcmath at declared scales):
+     *   unit_diff        = |10.183 − 10.000| = 0.183
+     *   extended_variance = 0.183 × 6.0000  = 1.098   (scale 3)
+     *   po_extended       = 10.000 × 6.0000  = 60.000
+     *   percent_threshold = 60.000 × 0.020000 = 1.200
+     *
+     *   withinPercentage: 1.098 ≤ 1.200 → true   ← passes the percentage gate
+     *   withinMaxAmount:  1.098 ≤ 1.000 → false  ← fails the max-amount gate
+     *
+     *   AND → price_variance   (both must pass; one failing is enough to reject)
+     *   OR  → matched          (one passing would have been enough)
+     *
+     * If the implementation used OR/max instead of AND, this test would wrongly
+     * return Matched because withinPercentage is true.
+     */
+    public function test_price_variance_and_semantics_both_thresholds_must_pass(): void
+    {
+        ['poLine' => $poLine] = $this->seedPo([
+            'quantity_received' => '10.0000',
+            'quantity_invoiced' => '0.0000',
+            'unit_price' => '10.000',
+        ]);
+
+        $invoice = $this->seedInvoice([
+            'quantity' => '6.0000',
+            'unit_price' => '10.183',
+            'source_line_id' => $poLine->id,
+        ]);
+
+        // Extended variance 1.098 is ≤ percentage threshold 1.200 (passes OR)
+        // but > max_amount 1.000 (fails AND) → price_variance under AND, matched under OR.
+        $this->assertSame(
+            SupplierInvoiceMatchStatus::PriceVariance,
+            $this->matcher->match($invoice),
+        );
     }
 }

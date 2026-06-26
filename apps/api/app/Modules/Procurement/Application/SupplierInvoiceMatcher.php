@@ -6,6 +6,7 @@ namespace App\Modules\Procurement\Application;
 
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
 use App\Modules\Procurement\Domain\Enums\MatchEnforcement;
 use App\Modules\Procurement\Domain\ProcurementPolicy;
@@ -19,7 +20,8 @@ use App\Modules\Procurement\Domain\ProcurementPolicy;
  * Two-tier rule:
  *   HARD (quantity invariant, R3-1 BLOCKER):
  *     - quantity_variance (over-clear: invoiced_qty > matchable_qty)
- *     - exception (no source_line_id / PO line not found / nothing received)
+ *     - exception (no source_line_id / PO line not found / wrong document type /
+ *                  wrong company / nothing received / zero invoice lines)
  *     These block posting regardless of match_enforcement. Warn CANNOT bypass them.
  *
  *   ADVISORY (price variance):
@@ -31,6 +33,15 @@ use App\Modules\Procurement\Domain\ProcurementPolicy;
  *   withinTolerance     = (variance ≤ percentageThreshold) AND (variance ≤ max_amount)
  *
  * Arithmetic: bcmath on numeric strings only. Qty scale 4, money scale 3. Never float.
+ *
+ * Quantity check is performed at PO-line AGGREGATE level: all invoice lines sharing
+ * the same source_line_id have their quantities summed before comparison against
+ * matchable. This prevents multi-line over-clear where each individual line appears
+ * within bounds but their combined total exceeds matchable (BLOCKER-1 fix).
+ *
+ * source_line_id validation: the referenced DocumentLine's parent document must be
+ * of type PurchaseOrder and belong to the same company_id as the supplier invoice.
+ * Any other type or company yields Exception (BLOCKER-2 fix).
  */
 final class SupplierInvoiceMatcher
 {
@@ -61,15 +72,56 @@ final class SupplierInvoiceMatcher
      *
      * Overall = worst line status, severity order:
      *   exception > quantity_variance > price_variance > matched
+     *
+     * Quantity check is aggregate per PO line (all invoice lines referencing the
+     * same source_line_id have their quantities summed before comparison).
      */
     public function match(Document $supplierInvoice): SupplierInvoiceMatchStatus
     {
+        if ($supplierInvoice->lines->isEmpty()) {
+            return SupplierInvoiceMatchStatus::Exception;
+        }
+
         $policy = $this->resolver->forCompany($supplierInvoice->company_id);
         $worst = SupplierInvoiceMatchStatus::Matched;
 
+        [
+            'groupStatuses' => $groupStatuses,
+            'poLines' => $poLines,
+            'hasNullLines' => $hasNullLines,
+        ] = $this->buildQtyGroupStatuses($supplierInvoice);
+
+        if ($hasNullLines) {
+            $worst = $this->worstStatus($worst, SupplierInvoiceMatchStatus::Exception);
+        }
+
+        foreach ($groupStatuses as $groupStatus) {
+            $worst = $this->worstStatus($worst, $groupStatus);
+        }
+
+        // Short-circuit: Exception is the worst possible status.
+        if ($worst === SupplierInvoiceMatchStatus::Exception) {
+            return $worst;
+        }
+
+        // Per-line price check (only for groups that passed qty validation).
         foreach ($supplierInvoice->lines as $invoiceLine) {
-            $lineStatus = $this->computeLineStatus($invoiceLine, $policy);
-            $worst = $this->worstStatus($worst, $lineStatus);
+            if ($invoiceLine->source_line_id === null) {
+                continue;
+            }
+
+            $poLine = $poLines[$invoiceLine->source_line_id] ?? null;
+            if ($poLine === null) {
+                continue;
+            }
+
+            // Only run price check for qty-ok groups (hard violations already accumulated above).
+            if (($groupStatuses[$invoiceLine->source_line_id] ?? null) !== SupplierInvoiceMatchStatus::Matched) {
+                continue;
+            }
+
+            $priceStatus = $this->computePriceStatus($invoiceLine, $poLine, $policy);
+            $worst = $this->worstStatus($worst, $priceStatus);
         }
 
         return $worst;
@@ -102,35 +154,71 @@ final class SupplierInvoiceMatcher
      * HARD violations (exception, quantity_variance) throw regardless of $enforcement.
      * ADVISORY violations (price_variance) throw only under Block; pass under Warn.
      *
+     * Quantity check is aggregate per PO line — multiple invoice lines referencing
+     * the same source_line_id have their quantities summed before comparison.
+     *
      * C3 calls this inside its locked transaction; C2 owns the decision.
      *
      * @throws \DomainException when posting is not permitted
      */
     public function assertPostable(Document $supplierInvoice, MatchEnforcement $enforcement): void
     {
+        if ($supplierInvoice->lines->isEmpty()) {
+            throw new \DomainException(sprintf(
+                'Supplier invoice [%s] cannot be posted: no invoice lines are present.',
+                $supplierInvoice->id,
+            ));
+        }
+
         $policy = $this->resolver->forCompany($supplierInvoice->company_id);
         $hasPriceVariance = false;
 
-        foreach ($supplierInvoice->lines as $invoiceLine) {
-            $lineStatus = $this->computeLineStatus($invoiceLine, $policy);
+        [
+            'groupStatuses' => $groupStatuses,
+            'poLines' => $poLines,
+            'hasNullLines' => $hasNullLines,
+        ] = $this->buildQtyGroupStatuses($supplierInvoice);
 
-            // HARD invariant — NEVER bypassable regardless of match_enforcement.
-            // Warn governs ONLY price variance; exception and quantity_variance always block.
+        // HARD — null source_line_id (unlinked lines)
+        if ($hasNullLines) {
+            throw new \DomainException(sprintf(
+                'Supplier invoice [%s] cannot be posted: one or more lines have no source_line_id'
+                .' (unlinked). The match_enforcement setting does not apply to'
+                .' quantity/exception violations.',
+                $supplierInvoice->id,
+            ));
+        }
+
+        // HARD — per-PO-line aggregate violations (Exception or QuantityVariance)
+        foreach ($groupStatuses as $sourceLineId => $groupStatus) {
             if (
-                $lineStatus === SupplierInvoiceMatchStatus::Exception
-                || $lineStatus === SupplierInvoiceMatchStatus::QuantityVariance
+                $groupStatus === SupplierInvoiceMatchStatus::Exception
+                || $groupStatus === SupplierInvoiceMatchStatus::QuantityVariance
             ) {
                 throw new \DomainException(sprintf(
-                    'Supplier invoice [%s] cannot be posted: line [%s] has a hard match violation'
-                    .' (%s). The match_enforcement setting does not apply to'
+                    'Supplier invoice [%s] cannot be posted: PO line [%s] has a hard match'
+                    .' violation (%s). The match_enforcement setting does not apply to'
                     .' quantity/exception violations.',
                     $supplierInvoice->id,
-                    $invoiceLine->id,
-                    $lineStatus->value,
+                    $sourceLineId,
+                    $groupStatus->value,
                 ));
             }
+        }
 
-            if ($lineStatus === SupplierInvoiceMatchStatus::PriceVariance) {
+        // ADVISORY — per-line price check (only for qty-ok groups)
+        foreach ($supplierInvoice->lines as $invoiceLine) {
+            if ($invoiceLine->source_line_id === null) {
+                continue;
+            }
+
+            $poLine = $poLines[$invoiceLine->source_line_id] ?? null;
+            if ($poLine === null) {
+                continue;
+            }
+
+            $priceStatus = $this->computePriceStatus($invoiceLine, $poLine, $policy);
+            if ($priceStatus === SupplierInvoiceMatchStatus::PriceVariance) {
                 $hasPriceVariance = true;
             }
         }
@@ -150,46 +238,110 @@ final class SupplierInvoiceMatcher
     // -------------------------------------------------------------------------
 
     /**
-     * Compute the match status for a single supplier invoice line.
+     * Build aggregate quantity statuses per PO line, validating each referenced line.
      *
-     * Steps (per spec C2 §Per-line matching logic):
-     *   1. source_line_id null / PO line missing → exception
-     *   2. matchable ≤ 0 and invoiced qty > 0 → exception (nothing received)
-     *   3. invoiced qty > matchable → quantity_variance (HARD)
-     *   4. price variance check via dual-threshold tolerance → matched | price_variance
+     * Groups invoice lines by source_line_id, sums their quantities per group (bcadd,
+     * scale 4), validates each referenced DocumentLine (must be a PurchaseOrder line
+     * for the same company_id), then compares the aggregate quantity against matchable.
+     *
+     * Returns:
+     *   groupStatuses — map of source_line_id → SupplierInvoiceMatchStatus
+     *                   (Exception | QuantityVariance | Matched).
+     *   poLines       — map of source_line_id → validated DocumentLine (PO lines only).
+     *                   An entry is present only when groupStatus is Matched.
+     *   hasNullLines  — true when any invoice line has source_line_id === null.
+     *
+     * Price check is NOT performed here; callers handle per-line price evaluation
+     * against the loaded poLines after calling this method.
+     *
+     * @return array{
+     *   groupStatuses: array<string, SupplierInvoiceMatchStatus>,
+     *   poLines: array<string, DocumentLine>,
+     *   hasNullLines: bool
+     * }
      */
-    private function computeLineStatus(
-        DocumentLine $invoiceLine,
-        ProcurementPolicy $policy,
-    ): SupplierInvoiceMatchStatus {
-        // Step 1 — source line linkage
-        if ($invoiceLine->source_line_id === null) {
-            return SupplierInvoiceMatchStatus::Exception;
+    private function buildQtyGroupStatuses(Document $supplierInvoice): array
+    {
+        /** @var array<string, numeric-string> $groupQtys total invoiced qty per PO line (scale 4) */
+        $groupQtys = [];
+        $hasNullLines = false;
+
+        foreach ($supplierInvoice->lines as $invoiceLine) {
+            if ($invoiceLine->source_line_id === null) {
+                $hasNullLines = true;
+
+                continue;
+            }
+
+            $key = $invoiceLine->source_line_id;
+
+            if (! isset($groupQtys[$key])) {
+                $groupQtys[$key] = '0.0000';
+            }
+
+            // bcadd returns string; @phpstan-ignore narrows it to the numeric-string we declared.
+            /** @phpstan-ignore argument.type */
+            $groupQtys[$key] = bcadd($groupQtys[$key], $invoiceLine->quantity, 4);
         }
 
-        $poLine = DocumentLine::find($invoiceLine->source_line_id);
-        if ($poLine === null) {
-            return SupplierInvoiceMatchStatus::Exception;
+        /** @var array<string, SupplierInvoiceMatchStatus> $groupStatuses */
+        $groupStatuses = [];
+        /** @var array<string, DocumentLine> $poLines */
+        $poLines = [];
+
+        foreach ($groupQtys as $sourceLineId => $totalQty) {
+            // Step 1 — PO line existence check
+            $poLine = DocumentLine::find($sourceLineId);
+
+            if ($poLine === null) {
+                $groupStatuses[$sourceLineId] = SupplierInvoiceMatchStatus::Exception;
+
+                continue;
+            }
+
+            // Step 2 — Validate: parent document must be a PurchaseOrder for the same company.
+            // Tenant isolation is handled by database-per-tenant; only type + company checks needed.
+            $parentDoc = $poLine->document;
+
+            if (
+                $parentDoc->type !== DocumentType::PurchaseOrder
+                || $parentDoc->company_id !== $supplierInvoice->company_id
+            ) {
+                $groupStatuses[$sourceLineId] = SupplierInvoiceMatchStatus::Exception;
+
+                continue;
+            }
+
+            $matchable = $this->matchableQty($poLine);
+
+            // Step 3 — Unreceived check (matchable ≤ 0 but trying to invoice qty > 0)
+            if (
+                bccomp($matchable, '0', 4) <= 0
+                && bccomp($totalQty, '0', 4) > 0
+            ) {
+                $groupStatuses[$sourceLineId] = SupplierInvoiceMatchStatus::Exception;
+
+                continue;
+            }
+
+            // Step 4 — Aggregate over-clear check (sum of all invoice lines for this PO line)
+            /** @phpstan-ignore argument.type */
+            if (bccomp($totalQty, $matchable, 4) > 0) {
+                $groupStatuses[$sourceLineId] = SupplierInvoiceMatchStatus::QuantityVariance;
+
+                continue;
+            }
+
+            // Qty ok — price will be checked per line by the caller
+            $groupStatuses[$sourceLineId] = SupplierInvoiceMatchStatus::Matched;
+            $poLines[$sourceLineId] = $poLine;
         }
 
-        // Step 2 — unreceived check
-        $matchable = $this->matchableQty($poLine);
-        $invoicedQty = $invoiceLine->quantity;
-
-        if (
-            bccomp($matchable, '0', 4) <= 0
-            && bccomp($invoicedQty, '0', 4) > 0
-        ) {
-            return SupplierInvoiceMatchStatus::Exception;
-        }
-
-        // Step 3 — over-clear check (HARD quantity invariant)
-        if (bccomp($invoicedQty, $matchable, 4) > 0) {
-            return SupplierInvoiceMatchStatus::QuantityVariance;
-        }
-
-        // Step 4 — price variance (dual-threshold, mirrors PaymentToleranceService::check())
-        return $this->computePriceStatus($invoiceLine, $poLine, $policy);
+        return [
+            'groupStatuses' => $groupStatuses,
+            'poLines' => $poLines,
+            'hasNullLines' => $hasNullLines,
+        ];
     }
 
     /**
