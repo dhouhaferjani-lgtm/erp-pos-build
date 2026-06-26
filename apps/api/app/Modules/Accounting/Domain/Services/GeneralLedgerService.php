@@ -1346,6 +1346,172 @@ final class GeneralLedgerService
     }
 
     /**
+     * Post a supplier-credit-note reversing entry (D1 — mirrors C3 in reverse).
+     *
+     * A supplier credit note reduces what we owe the supplier. It posts a balanced,
+     * hash-chained NEW entry (never mutating the original invoice — event
+     * immutability) that reverses a portion of the supplier invoice:
+     *
+     *   Dr SupplierPayable (401)  = gross  (HT + recoverable VAT), partner-tagged → REDUCES the payable
+     *   Cr VatDeductible          = recoverableVat   (reverses the input VAT we claimed)
+     *   Cr/Dr Inventory           = plug = Dr401 − CrVAT   (reverses the inventory cost / price reduction)
+     *
+     * Timbre is NOT reversed in Phase 1 (it is omitted from the credit-note gross).
+     * The Inventory leg is the BALANCING PLUG: it absorbs the HT, any capitalized
+     * non-recoverable VAT, and per-leg rounding residue so that debits == credits
+     * EXACTLY at the currency scale. Zero legs (VAT, plug) are omitted.
+     *
+     * Runs through the IN-TRANSACTION system path so the GL post is atomic with the
+     * orchestration's PO-line lock + quantity_invoiced decrement (NOT afterCommit).
+     *
+     * Balance invariant (fail loudly): creditNote.total must equal
+     *   ht + recoverableVat + nonRecoverableVat.
+     *
+     * @param  string  $ht  credit-note subtotal (Σ line qty × price) — numeric string
+     * @param  string  $recoverableVat  Σ document_lines.recoverable_tax_amount — numeric string
+     * @param  string  $nonRecoverableVat  Σ document_lines.non_recoverable_tax_amount — numeric string (capitalized into the Inventory plug)
+     */
+    public function createSupplierCreditNoteEntry(
+        Document $creditNote,
+        string $ht,
+        string $recoverableVat,
+        string $nonRecoverableVat,
+    ): JournalEntry {
+        if (DB::transactionLevel() === 0) {
+            throw new \LogicException(
+                'createSupplierCreditNoteEntry must run inside the orchestration transaction '
+                .'so the GL post is atomic with the PO-line lock and quantity_invoiced decrement.'
+            );
+        }
+
+        foreach (['ht' => $ht, 'recoverableVat' => $recoverableVat, 'nonRecoverableVat' => $nonRecoverableVat] as $name => $value) {
+            if (! is_numeric($value)) {
+                throw new \InvalidArgumentException("Supplier credit note: {$name} must be a numeric string, got: {$value}");
+            }
+        }
+
+        $companyId = $creditNote->company_id;
+        $currency = $creditNote->currency;
+        $scale = $this->scaleResolver->getScale($currency);
+
+        /** @var numeric-string $total */
+        $total = $creditNote->total ?? '0';
+
+        // Round each leg once, HALF-UP, at the currency scale.
+        /** @var numeric-string $htR */
+        $htR = CurrencyScale::bcround($ht, $scale);
+        /** @var numeric-string $recoverableVatR */
+        $recoverableVatR = CurrencyScale::bcround($recoverableVat, $scale);
+        /** @var numeric-string $nonRecoverableVatR */
+        $nonRecoverableVatR = CurrencyScale::bcround($nonRecoverableVat, $scale);
+        /** @var numeric-string $totalR */
+        $totalR = CurrencyScale::bcround($total, $scale);
+
+        // Balance invariant: the credit-note gross must reconcile to its economic parts
+        // (timbre is intentionally excluded — it is not reversed in Phase 1).
+        $expectedTotal = bcadd(bcadd($htR, $recoverableVatR, $scale), $nonRecoverableVatR, $scale);
+        if (bccomp($expectedTotal, $totalR, $scale) !== 0) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s] is internally inconsistent: total %s != HT %s + recoverableVAT %s + nonRecoverableVAT %s (= %s). Refusing to post an unbalanced reversing entry.',
+                $creditNote->id, $totalR, $htR, $recoverableVatR, $nonRecoverableVatR, $expectedTotal,
+            ));
+        }
+
+        // Inventory plug = Dr401 − CrVAT. Absorbs the HT, the capitalized
+        // non-recoverable VAT, and any rounding residue → debits == credits exactly.
+        /** @var numeric-string $plug */
+        $plug = bcsub($totalR, $recoverableVatR, $scale);
+
+        $vatAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::VatDeductible);
+        $inventoryAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::Inventory);
+        $payableAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::SupplierPayable);
+
+        $company = Company::findOrFail($companyId);
+
+        $entry = JournalEntry::create([
+            'tenant_id' => $company->tenant_id,
+            'company_id' => $companyId,
+            'entry_number' => $this->generateEntryNumber($companyId),
+            'entry_date' => $creditNote->document_date,
+            'description' => "Supplier credit note {$creditNote->document_number} — reversal",
+            'status' => JournalEntryStatus::Draft,
+            'source_type' => 'supplier_credit_note',
+            'source_id' => $creditNote->id,
+        ]);
+
+        $lineOrder = 0;
+
+        // Dr 401 — reduce the supplier payable, partner-tagged.
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $payableAccount->id,
+            'partner_id' => $creditNote->partner_id,
+            'debit' => $totalR,
+            'credit' => '0',
+            'description' => 'Supplier payable reduction (401)',
+            'line_order' => $lineOrder++,
+        ]);
+
+        // Cr VatDeductible — reverse the recoverable input VAT only.
+        if (bccomp($recoverableVatR, '0', $scale) > 0) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $vatAccount->id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $recoverableVatR,
+                'description' => 'VAT deductible reversal (input)',
+                'line_order' => $lineOrder++,
+            ]);
+        }
+
+        // Cr/Dr Inventory — balancing plug (HT + non-recoverable VAT + rounding).
+        $plugCmp = bccomp($plug, '0', $scale);
+        if ($plugCmp > 0) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $inventoryAccount->id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $plug,
+                'description' => 'Inventory reversal (HT / non-recoverable VAT)',
+                'line_order' => $lineOrder++,
+            ]);
+        } elseif ($plugCmp < 0) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $inventoryAccount->id,
+                'partner_id' => null,
+                'debit' => bcmul($plug, '-1', $scale),
+                'credit' => '0',
+                'description' => 'Inventory reversal (HT / non-recoverable VAT)',
+                'line_order' => $lineOrder,
+            ]);
+        }
+
+        $entry->load('lines');
+
+        // Defensive: assert debits == credits before posting (the plug guarantees this).
+        /** @var numeric-string $debitSum */
+        $debitSum = '0';
+        /** @var numeric-string $creditSum */
+        $creditSum = '0';
+        foreach ($entry->lines as $line) {
+            $debitSum = bcadd($debitSum, $line->debit, $scale);
+            $creditSum = bcadd($creditSum, $line->credit, $scale);
+        }
+        if (bccomp($debitSum, $creditSum, $scale) !== 0) {
+            throw new \DomainException(
+                "Supplier credit note reversing entry does not balance: debit {$debitSum} != credit {$creditSum}."
+            );
+        }
+
+        $this->postSystemGeneratedEntryAndDispatchPostedEvent($entry, $companyId, $currency);
+
+        return $entry;
+    }
+
+    /**
      * Create a GL journal entry for a voucher ledger event.
      *
      * IMPORTANT: Voucher redemption MUST NOT route through createPOSPaymentEntry()

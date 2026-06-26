@@ -17,6 +17,7 @@ use App\Modules\Document\Domain\Enums\PaymentStatus;
 use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
 use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Procurement\Domain\Enums\SupplierCreditNoteReason;
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentAllocation;
@@ -70,6 +71,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $external_document_date
  * @property string|null $source_document_id
  * @property SupplierInvoiceMatchStatus|null $match_status
+ * @property SupplierCreditNoteReason|null $supplier_credit_note_reason
  * @property Carbon|null $confirmed_at
  * @property string|null $confirmed_by
  * @property Carbon|null $cancelled_at
@@ -156,6 +158,7 @@ class Document extends Model
         'cancellation_reason',
         'payload',
         'match_status',
+        'supplier_credit_note_reason',
     ];
 
     /**
@@ -187,6 +190,7 @@ class Document extends Model
             'is_historical' => 'boolean',
             'payload' => 'array',
             'match_status' => SupplierInvoiceMatchStatus::class,
+            'supplier_credit_note_reason' => SupplierCreditNoteReason::class,
         ];
     }
 
