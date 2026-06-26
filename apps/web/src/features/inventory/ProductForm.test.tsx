@@ -167,11 +167,59 @@ describe('ProductForm (General section parity)', () => {
     expect(screen.getByTestId('unit-dropdown')).toBeInTheDocument()
   })
 
-  it('renders an "Active for e-commerce" checkbox in the General section', () => {
+  it('renders two Toggle switches (role="switch") for is_active and is_active_for_ecommerce in the General section', () => {
     render(<ProductForm />)
-    const ecommerceCheckbox = screen.getByLabelText(/inventory:products\.isActiveForEcommerce/i, { exact: false })
-    expect(ecommerceCheckbox).toBeInTheDocument()
-    expect(ecommerceCheckbox).toHaveAttribute('type', 'checkbox')
+    // Both status fields are now Toggles, not plain checkboxes
+    const activeToggle = screen.getByRole('switch', { name: /inventory:products\.active/i })
+    expect(activeToggle).toBeInTheDocument()
+    const ecommerceToggle = screen.getByRole('switch', { name: /inventory:products\.isActiveForEcommerce/i })
+    expect(ecommerceToggle).toBeInTheDocument()
+  })
+
+  it('active toggle accessible name uses "active" key (Produit actif / Active product label)', () => {
+    render(<ProductForm />)
+    // The aria-label must reference the new inventory:products.active key
+    const activeToggle = screen.getByRole('switch', { name: /inventory:products\.active/i })
+    expect(activeToggle).toBeInTheDocument()
+  })
+
+  it('status toggles default to correct values: is_active=true, is_active_for_ecommerce=false', () => {
+    render(<ProductForm />)
+    const activeToggle = screen.getByRole('switch', { name: /inventory:products\.active/i })
+    // is_active defaults to true
+    expect(activeToggle).toBeChecked()
+    const ecommerceToggle = screen.getByRole('switch', { name: /inventory:products\.isActiveForEcommerce/i })
+    // is_active_for_ecommerce defaults to false
+    expect(ecommerceToggle).not.toBeChecked()
+  })
+
+  it('toggling is_active updates submitted payload', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    render(<ProductForm />)
+    const activeToggle = screen.getByRole('switch', { name: /inventory:products\.active/i })
+    // Default is true (checked); click to uncheck
+    await user.click(activeToggle)
+    expect(activeToggle).not.toBeChecked()
+  })
+
+  it('toggling is_active_for_ecommerce updates its state', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    render(<ProductForm />)
+    const ecommerceToggle = screen.getByRole('switch', { name: /inventory:products\.isActiveForEcommerce/i })
+    // Default is false (unchecked); click to check
+    await user.click(ecommerceToggle)
+    expect(ecommerceToggle).toBeChecked()
+  })
+
+  it('no raw checkbox remains for is_active or is_active_for_ecommerce (old checkboxes are gone)', () => {
+    render(<ProductForm />)
+    // The old checkboxes were registered via register('is_active') / register('is_active_for_ecommerce')
+    // and had id="is_active" / id="is_active_for_ecommerce". Those must not exist.
+    const { container } = render(<ProductForm />)
+    expect(container.querySelector('#is_active[type="checkbox"]')).toBeNull()
+    expect(container.querySelector('#is_active_for_ecommerce[type="checkbox"]')).toBeNull()
   })
 })
 

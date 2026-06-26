@@ -661,26 +661,6 @@ export function ProductForm() {
                 />
               </FormField>
 
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="is_active"
-                  {...register('is_active')}
-                />
-                <label htmlFor="is_active" className={tokens.label.base}>
-                  {t('active')}
-                </label>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="is_active_for_ecommerce"
-                  {...register('is_active_for_ecommerce')}
-                />
-                <label htmlFor="is_active_for_ecommerce" className={tokens.label.base}>
-                  {t('inventory:products.isActiveForEcommerce')}
-                </label>
-              </div>
-
               <FormField
                 className="sm:col-span-2"
                 label={t('inventory:products.description')}
@@ -702,6 +682,37 @@ export function ProductForm() {
                   })}
                 />
               </FormField>
+
+              {/* Status toggles — grouped at the bottom of General so the section
+                  reads: identity fields → type/unit/category → description → status. */}
+              <div className="sm:col-span-2 flex flex-wrap items-center gap-6 pt-1">
+                <Controller
+                  name="is_active"
+                  control={control}
+                  render={({ field }) => (
+                    <Toggle
+                      aria-label={t('inventory:products.active')}
+                      label={t('inventory:products.active')}
+                      checked={!!field.value}
+                      onChange={(e) => { field.onChange(e.target.checked) }}
+                      ref={field.ref}
+                    />
+                  )}
+                />
+                <Controller
+                  name="is_active_for_ecommerce"
+                  control={control}
+                  render={({ field }) => (
+                    <Toggle
+                      aria-label={t('inventory:products.isActiveForEcommerce')}
+                      label={t('inventory:products.isActiveForEcommerce')}
+                      checked={!!field.value}
+                      onChange={(e) => { field.onChange(e.target.checked) }}
+                      ref={field.ref}
+                    />
+                  )}
+                />
+              </div>
             </EditorSectionCard>
 
             {/* Pricing & Tax */}

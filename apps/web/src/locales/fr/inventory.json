@@ -117,6 +117,7 @@
       "consumable": "Consommable"
     },
     "unitOfMeasure": "Unité de mesure",
+    "active": "Produit actif",
     "isActiveForEcommerce": "Actif pour le e-commerce",
     "isPhysical": "Produit physique",
     "isPhysicalHelper": "Décochez pour les articles non physiques (ex. biens numériques). Les services doivent être créés dans le module Services.",
