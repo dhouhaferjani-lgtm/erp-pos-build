@@ -132,7 +132,8 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
                 'system_purpose' => SystemAccountPurpose::SupplierPayable->value, 'is_system' => true],
             ['code' => '4011', 'name' => 'Fournisseurs - Achats de biens et prestations de services', 'type' => 'liability', 'parent_code' => '401'],
             ['code' => '403', 'name' => 'Fournisseurs - Effets à payer', 'type' => 'liability', 'parent_code' => '40'],
-            ['code' => '408', 'name' => 'Fournisseurs - Factures non parvenues', 'type' => 'liability', 'parent_code' => '40'],
+            ['code' => '408', 'name' => 'Fournisseurs - Factures non parvenues', 'type' => 'liability', 'parent_code' => '40',
+                'system_purpose' => SystemAccountPurpose::GoodsReceivedNotInvoiced->value, 'is_system' => true],
             ['code' => '409', 'name' => 'Fournisseurs débiteurs', 'type' => 'asset', 'parent_code' => '40'],
 
             // Customers (Clients)
@@ -211,6 +212,8 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '626', 'name' => 'Frais postaux et de télécommunications', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '627', 'name' => 'Services bancaires et assimilés', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '63', 'name' => 'Impôts, taxes et versements assimilés', 'type' => 'expense', 'parent_code' => '6'],
+            ['code' => '6354', 'name' => 'Droits d\'enregistrement et de timbre', 'type' => 'expense', 'parent_code' => '63',
+                'system_purpose' => SystemAccountPurpose::PurchaseStampDuty->value, 'is_system' => true],
             ['code' => '64', 'name' => 'Charges de personnel', 'type' => 'expense', 'parent_code' => '6'],
             ['code' => '641', 'name' => 'Rémunérations du personnel', 'type' => 'expense', 'parent_code' => '64'],
             ['code' => '645', 'name' => 'Charges de sécurité sociale et de prévoyance', 'type' => 'expense', 'parent_code' => '64'],

@@ -17,6 +17,7 @@ use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Application service for accounting operations.
@@ -104,7 +105,7 @@ final class AccountingService implements AccountingServiceInterface
      */
     public function createInvoiceGLEntries(Document $invoice): string
     {
-        return DB::transaction(function () use ($invoice): string {
+        $entryId = DB::transaction(function () use ($invoice): string {
             $entryNumber = $this->sourceEntryNumber('INV', $invoice);
 
             // Get hash chain data BEFORE creating entry
@@ -201,14 +202,16 @@ final class AccountingService implements AccountingServiceInterface
 
             $this->dispatchJournalEntryCreatedEvent($entry, 'invoice');
 
-            // Refresh cached partner balance after GL entry creation
-            $this->partnerBalanceService->refreshPartnerBalance(
-                $invoice->company_id,
-                $invoice->partner_id
-            );
-
             return $entry->id;
         });
+
+        $this->refreshPartnerBalanceAfterGlPersistence(
+            $invoice->company_id,
+            $invoice->partner_id,
+            $entryId
+        );
+
+        return $entryId;
     }
 
     /**
@@ -223,7 +226,7 @@ final class AccountingService implements AccountingServiceInterface
      */
     public function createCreditNoteGLEntries(Document $creditNote): string
     {
-        return DB::transaction(function () use ($creditNote): string {
+        $entryId = DB::transaction(function () use ($creditNote): string {
             $entryNumber = $this->sourceEntryNumber('CN', $creditNote);
 
             // Get hash chain data BEFORE creating entry
@@ -320,14 +323,36 @@ final class AccountingService implements AccountingServiceInterface
 
             $this->dispatchJournalEntryCreatedEvent($entry, 'credit_note');
 
-            // Refresh cached partner balance after GL entry creation
-            $this->partnerBalanceService->refreshPartnerBalance(
-                $creditNote->company_id,
-                $creditNote->partner_id
-            );
-
             return $entry->id;
         });
+
+        $this->refreshPartnerBalanceAfterGlPersistence(
+            $creditNote->company_id,
+            $creditNote->partner_id,
+            $entryId
+        );
+
+        return $entryId;
+    }
+
+    private function refreshPartnerBalanceAfterGlPersistence(
+        string $companyId,
+        string $partnerId,
+        string $journalEntryId,
+    ): void {
+        try {
+            $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
+        } catch (\Throwable $e) {
+            Log::warning(
+                'Could not refresh partner balance after GL entry creation: '.$e->getMessage(),
+                [
+                    'company_id' => $companyId,
+                    'partner_id' => $partnerId,
+                    'journal_entry_id' => $journalEntryId,
+                    'exception' => $e::class,
+                ]
+            );
+        }
     }
 
     /**

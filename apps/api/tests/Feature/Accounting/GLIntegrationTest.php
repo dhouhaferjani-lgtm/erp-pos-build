@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Accounting;
 
+use App\Modules\Accounting\Application\Services\AccountingService;
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Application\Services\GeneralLedgerHashService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
@@ -331,6 +333,103 @@ class GLIntegrationTest extends TestCase
         $this->assertNotNull($journalEntry->fiscal_hash);
         $this->assertNotNull($journalEntry->posted_at);
         $this->assertEquals($this->user->id, $journalEntry->posted_by);
+    }
+
+    public function test_posting_first_draft_entry_assigns_genesis_chain_sequence_and_verifies_chain(): void
+    {
+        $service = app(GeneralLedgerService::class);
+        $journalEntry = $this->createBalancedDraftJournalEntry('JE-R2-GENESIS-001');
+
+        $service->postEntry($journalEntry, $this->user, $this->company->currency);
+
+        $journalEntry->refresh();
+
+        $this->assertSame(1, $journalEntry->chain_sequence);
+        $this->assertNull($journalEntry->previous_hash);
+        $this->assertNotNull($journalEntry->fiscal_hash);
+        $this->assertTrue(app(GeneralLedgerHashService::class)->verifyChain($this->company->id));
+    }
+
+    public function test_post_entry_extends_existing_invoice_gl_hash_chain(): void
+    {
+        $invoice = $this->createInvoice([
+            'status' => DocumentStatus::Confirmed,
+            'subtotal' => '100.00',
+            'tax_amount' => '0.00',
+            'total' => '100.00',
+        ]);
+
+        app(AccountingService::class)->createInvoiceGLEntries($invoice);
+
+        $invoiceEntry = JournalEntry::query()
+            ->where('company_id', $this->company->id)
+            ->where('source_type', 'Document')
+            ->where('source_id', $invoice->id)
+            ->firstOrFail();
+
+        $manualEntry = $this->createBalancedDraftJournalEntry('JE-R2-MIXED-001');
+        app(GeneralLedgerService::class)->postEntry($manualEntry, $this->user, $this->company->currency);
+        $manualEntry->refresh();
+
+        $this->assertSame(1, $invoiceEntry->chain_sequence);
+        $this->assertSame(2, $manualEntry->chain_sequence);
+        $this->assertSame($invoiceEntry->fiscal_hash, $manualEntry->previous_hash);
+        $this->assertTrue(app(GeneralLedgerHashService::class)->verifyChain($this->company->id));
+    }
+
+    public function test_cogs_posting_without_company_context_assigns_verifiable_chain_sequence(): void
+    {
+        app(CompanyContext::class)->clear();
+
+        $entry = app(GeneralLedgerService::class)->createCOGSEntry(
+            companyId: $this->company->id,
+            invoiceId: (string) Str::uuid(),
+            documentNumber: 'INV-R2-COGS-001',
+            lineItems: [
+                [
+                    'product_id' => (string) Str::uuid(),
+                    'quantity' => '2.0000',
+                    'unit_cost' => '10.000000',
+                ],
+            ],
+            date: now(),
+            currencyCode: $this->company->currency,
+        );
+
+        $this->assertNotNull($entry);
+        $entry->refresh();
+
+        $this->assertSame(JournalEntryStatus::Posted, $entry->status);
+        $this->assertSame(1, $entry->chain_sequence);
+
+        $this->assertTrue(app(GeneralLedgerHashService::class)->verifyChain($this->company->id));
+    }
+
+    public function test_posting_without_currency_or_company_context_uses_company_currency_for_verifiable_chain(): void
+    {
+        app(CompanyContext::class)->clear();
+        $journalEntry = $this->createBalancedDraftJournalEntry('JE-R2-NO-CONTEXT-001');
+
+        app(GeneralLedgerService::class)->postEntry($journalEntry, $this->user);
+
+        $journalEntry->refresh();
+
+        $this->assertSame(JournalEntryStatus::Posted, $journalEntry->status);
+        $this->assertSame(1, $journalEntry->chain_sequence);
+        $this->assertTrue(app(GeneralLedgerHashService::class)->verifyChain($this->company->id));
+    }
+
+    public function test_posting_with_non_company_currency_code_hashes_company_ledger_chain_verifiably(): void
+    {
+        $journalEntry = $this->createBalancedDraftJournalEntry('JE-R2-CURRENCY-MISMATCH-001');
+
+        app(GeneralLedgerService::class)->postEntry($journalEntry, $this->user, 'EUR');
+
+        $journalEntry->refresh();
+
+        $this->assertSame(JournalEntryStatus::Posted, $journalEntry->status);
+        $this->assertSame(1, $journalEntry->chain_sequence);
+        $this->assertTrue(app(GeneralLedgerHashService::class)->verifyChain($this->company->id));
     }
 
     public function test_posting_unbalanced_journal_entry_is_rejected_without_mutation(): void
@@ -682,6 +781,8 @@ class GLIntegrationTest extends TestCase
         );
 
         $this->assertNotNull($journalEntry);
+        $this->assertEquals(JournalEntryStatus::Posted, $journalEntry->status);
+        $this->assertNotNull($journalEntry->fiscal_hash);
         $this->assertCount(3, $journalEntry->lines);
 
         // Expense should be debited
@@ -725,6 +826,8 @@ class GLIntegrationTest extends TestCase
         );
 
         $this->assertNotNull($journalEntry);
+        $this->assertEquals(JournalEntryStatus::Posted, $journalEntry->status);
+        $this->assertNotNull($journalEntry->fiscal_hash);
         $this->assertCount(2, $journalEntry->lines);
 
         // Accounts Payable should be debited (reduces liability, with partner for subledger)
@@ -871,6 +974,38 @@ class GLIntegrationTest extends TestCase
         ]);
 
         return $document;
+    }
+
+    private function createBalancedDraftJournalEntry(string $entryNumber): JournalEntry
+    {
+        $entry = JournalEntry::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'entry_number' => $entryNumber,
+            'entry_date' => now(),
+            'description' => 'R-2 hash chain regression',
+            'status' => JournalEntryStatus::Draft,
+        ]);
+
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $this->cashAccount->id,
+            'debit' => '50.00',
+            'credit' => '0',
+            'description' => 'Debit side',
+            'line_order' => 0,
+        ]);
+
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $this->revenueAccount->id,
+            'debit' => '0',
+            'credit' => '50.00',
+            'description' => 'Credit side',
+            'line_order' => 1,
+        ]);
+
+        return $entry;
     }
 
     private function createCreditNote(array $attributes): Document

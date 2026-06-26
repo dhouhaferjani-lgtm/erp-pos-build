@@ -173,6 +173,9 @@ export const PERMISSIONS = {
   'work-orders.complete': ['admin', 'manager', 'operator', 'technician'],
   'work-orders.view_financials': ['admin', 'manager', 'accountant'],
 
+  // Batch Expiry — write-off and reversal
+  'batches.write-off': ['admin', 'manager'],
+
   // Scheduling (Spec D)
   'scheduling.bays.view': ['admin', 'manager', 'operator'],
   'scheduling.bays.manage': ['admin', 'manager'],
@@ -215,6 +218,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   'workshop-payroll': ['workshop.payroll.view'],
   'workshop-work-orders': ['work-orders.view'],
   scheduling: ['scheduling.appointments.view'],
+  'batches.write-off': ['batches.write-off'],
 }
 
 /**

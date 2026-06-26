@@ -261,12 +261,11 @@ class PaymentTest extends TestCase
         $this->assertEquals('690.000', $this->invoice->balance_due);
     }
 
-    public function test_purchase_order_payment_posts_supplier_payment_gl(): void
+    public function test_purchase_order_payment_uses_document_payment_flow_without_supplier_payable_gl(): void
     {
         app(ChartOfAccountsService::class)->seedForCompany($this->company);
 
         $bankAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::Bank);
-        $payableAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::SupplierPayable);
 
         $repository = PaymentRepository::create([
             'tenant_id' => $this->tenant->id,
@@ -324,78 +323,32 @@ class PaymentTest extends TestCase
             ->where('amount', '600.000')
             ->firstOrFail();
 
-        $this->assertEquals(PaymentType::SupplierPayment, $payment->payment_type);
+        $this->assertEquals(PaymentType::DocumentPayment, $payment->payment_type);
 
         $repository->refresh();
-        $this->assertEquals('400.000', $repository->balance);
+        $this->assertEquals('1600.000', $repository->balance);
+
+        $supplier->refresh();
+        $this->assertEquals('0.000', $supplier->payable_balance);
+
+        $this->assertDatabaseMissing('journal_entries', [
+            'source_type' => 'supplier_payment',
+            'source_id' => $payment->id,
+        ]);
 
         $journalEntry = JournalEntry::query()
-            ->where('source_type', 'supplier_payment')
+            ->where('source_type', 'customer_payment')
             ->where('source_id', $payment->id)
             ->with('lines')
             ->firstOrFail();
 
         $this->assertEquals(JournalEntryStatus::Posted, $journalEntry->status);
 
-        $payableLine = $journalEntry->lines->firstWhere('account_id', $payableAccount->id);
-        $this->assertNotNull($payableLine);
-        $this->assertEquals($supplier->id, $payableLine->partner_id);
-        $this->assertEquals('600.000', $payableLine->debit);
-        $this->assertEquals('0.000', $payableLine->credit);
-
         $bankLine = $journalEntry->lines->firstWhere('account_id', $bankAccount->id);
         $this->assertNotNull($bankLine);
         $this->assertNull($bankLine->partner_id);
-        $this->assertEquals('0.000', $bankLine->debit);
-        $this->assertEquals('600.000', $bankLine->credit);
-    }
-
-    public function test_purchase_order_payment_rejects_unallocated_excess(): void
-    {
-        $supplier = Partner::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'name' => 'Supplier Corp',
-            'type' => PartnerType::Supplier,
-            'is_active' => true,
-        ]);
-
-        $purchaseOrder = Document::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'type' => DocumentType::PurchaseOrder,
-            'document_number' => 'PO-2026-0002',
-            'partner_id' => $supplier->id,
-            'document_date' => now(),
-            'status' => DocumentStatus::Confirmed,
-            'subtotal' => '500.00',
-            'tax_amount' => '100.00',
-            'total' => '600.00',
-            'balance_due' => '600.00',
-            'currency' => 'EUR',
-        ]);
-
-        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
-            'partner_id' => $supplier->id,
-            'payment_method_id' => $this->cashMethod->id,
-            'amount' => '700.00',
-            'currency' => 'EUR',
-            'payment_date' => now()->toDateString(),
-            'allocations' => [
-                [
-                    'document_id' => $purchaseOrder->id,
-                    'amount' => '700.00',
-                ],
-            ],
-        ]);
-
-        $response->assertUnprocessable();
-        $response->assertJsonPath('error.code', 'SUPPLIER_PAYMENT_REQUIRES_FULL_ALLOCATION');
-
-        $this->assertDatabaseMissing('payments', [
-            'partner_id' => $supplier->id,
-            'amount' => '700.000',
-        ]);
+        $this->assertEquals('600.000', $bankLine->debit);
+        $this->assertEquals('0.000', $bankLine->credit);
     }
 
     public function test_full_payment_marks_invoice_as_paid(): void

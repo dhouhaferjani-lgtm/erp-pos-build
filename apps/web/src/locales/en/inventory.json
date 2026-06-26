@@ -283,7 +283,8 @@
       "receipts": "Receipts",
       "issues": "Issues",
       "adjustments": "Adjustments",
-      "transfers": "Transfers"
+      "transfers": "Transfers",
+      "writeOffs": "Write-Offs"
     },
     "columns": {
       "product": "Product",
@@ -294,13 +295,23 @@
       "issue": "Issue",
       "adjustment": "Adjustment",
       "transfer_in": "Transfer In",
-      "transfer_out": "Transfer Out"
+      "transfer_out": "Transfer Out",
+      "write_off": "Write-Off"
     },
     "types": {
       "in": "Stock In",
       "out": "Stock Out",
       "transfer": "Transfer",
       "adjustment": "Adjustment"
+    },
+    "actions": {
+      "reverse": "Reverse",
+      "reversed": "Reversed",
+      "reverseConfirmTitle": "Reverse Write-Off",
+      "reverseConfirmMessage": "This will restore the written-off stock. The original write-off entry will remain for audit purposes. This corrective action cannot itself be reversed.",
+      "reverseSuccess": "Write-off reversed successfully.",
+      "reverseAlreadyReversed": "This write-off has already been reversed.",
+      "reverseFailed": "Failed to reverse the write-off."
     }
   },
   "margin": {

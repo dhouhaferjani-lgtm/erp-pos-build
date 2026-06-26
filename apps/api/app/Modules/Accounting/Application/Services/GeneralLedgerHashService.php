@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Accounting\Application\Services;
 
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Company\Domain\Company;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 
 /**
@@ -32,6 +33,16 @@ final class GeneralLedgerHashService
         return $this->scaleResolver->getScale();
     }
 
+    private function currencyCodeForCompany(string $companyId): string
+    {
+        $currency = Company::query()->whereKey($companyId)->value('currency');
+        if (! is_string($currency) || $currency === '') {
+            throw new \RuntimeException("Cannot resolve currency for company {$companyId}.");
+        }
+
+        return $currency;
+    }
+
     /**
      * Calculate hash for a journal entry
      *
@@ -39,9 +50,9 @@ final class GeneralLedgerHashService
      * @param  string|null  $previousHash  Hash of previous entry (null for genesis)
      * @return string SHA-256 hash (64 characters)
      */
-    public function calculateHash(JournalEntry $entry, ?string $previousHash): string
+    public function calculateHash(JournalEntry $entry, ?string $previousHash, ?string $currencyCode = null): string
     {
-        $serialized = $this->serializeForHashing($entry);
+        $serialized = $this->serializeForHashing($entry, $currencyCode);
         $chainPrefix = $previousHash ?? '';
         $payload = $chainPrefix.self::SEPARATOR.$serialized;
 
@@ -56,15 +67,18 @@ final class GeneralLedgerHashService
      * @param  JournalEntry  $entry  Entry to serialize
      * @return string Serialized data
      */
-    public function serializeForHashing(JournalEntry $entry): string
+    public function serializeForHashing(JournalEntry $entry, ?string $currencyCode = null): string
     {
         // Calculate totals from lines using bcmath for precision
         $totalDebit = '0';
         $totalCredit = '0';
+        $scale = $currencyCode !== null
+            ? $this->scaleResolver->getScale($currencyCode)
+            : $this->scale();
 
         foreach ($entry->lines as $line) {
-            $totalDebit = bcadd($totalDebit, $line->debit, $this->scale());
-            $totalCredit = bcadd($totalCredit, $line->credit, $this->scale());
+            $totalDebit = bcadd($totalDebit, $line->debit, $scale);
+            $totalCredit = bcadd($totalCredit, $line->credit, $scale);
         }
 
         return implode(self::SEPARATOR, [
@@ -84,6 +98,8 @@ final class GeneralLedgerHashService
      */
     public function verifyChain(string $companyId): bool
     {
+        $currencyCode = $this->currencyCodeForCompany($companyId);
+
         $entries = JournalEntry::where('company_id', $companyId)
             ->whereNotNull('fiscal_hash')
             ->with('lines')
@@ -109,7 +125,7 @@ final class GeneralLedgerHashService
             }
 
             // Recalculate and verify hash
-            $calculatedHash = $this->calculateHash($entry, $entry->previous_hash);
+            $calculatedHash = $this->calculateHash($entry, $entry->previous_hash, $currencyCode);
             if ($calculatedHash !== $entry->fiscal_hash) {
                 return false; // Hash tampered
             }

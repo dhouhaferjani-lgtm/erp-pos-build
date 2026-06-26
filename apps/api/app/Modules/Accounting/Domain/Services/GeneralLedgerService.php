@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Domain\Services;
 
+use App\Modules\Accounting\Application\Services\GeneralLedgerHashService;
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\DTOs\CreatePOSChargeJournalEntryCommand;
@@ -41,6 +42,7 @@ final class GeneralLedgerService
     public function __construct(
         private readonly PartnerBalanceService $partnerBalanceService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly GeneralLedgerHashService $hashService,
     ) {}
 
     private function scale(): int
@@ -50,8 +52,10 @@ final class GeneralLedgerService
 
     private function currencyCodeForCompany(string $companyId): string
     {
-        /** @var string $currency */
         $currency = Company::query()->whereKey($companyId)->value('currency');
+        if (! is_string($currency) || $currency === '') {
+            throw new \RuntimeException("Cannot resolve currency for company {$companyId}.");
+        }
 
         return $currency;
     }
@@ -944,7 +948,9 @@ final class GeneralLedgerService
         // TOTAL exactly once, HALF-UP, to the currency scale at this GL posting
         // boundary. The single rounded $totalCOGS is used for BOTH the debit and
         // the credit leg, so the entry balances by construction.
-        $scale = $this->scale();
+        $scale = $currencyCode !== null
+            ? $this->scaleResolver->getScale($currencyCode)
+            : $this->scale();
         $working = $scale + 6; // headroom beyond the 6-dp at-rest cost precision
         $totalCOGSPrecise = '0';
         foreach ($lineItems as $item) {
@@ -1079,7 +1085,7 @@ final class GeneralLedgerService
             ));
         }
 
-        $user = User::query()->findOrFail($ledgerRow->user_id);
+        $user = User::query()->find($ledgerRow->user_id);
 
         $entry = DB::transaction(function () use ($ledgerRow, $voucher): JournalEntry {
             $companyId = $voucher->company_id;
@@ -1131,7 +1137,11 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $voucher->company_id, (string) $ledgerRow->currency);
+        if ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $voucher->company_id, (string) $ledgerRow->currency);
+        } else {
+            $this->postSystemGeneratedEntryAndDispatchPostedEventAfterCommit($entry, $voucher->company_id, (string) $ledgerRow->currency);
+        }
 
         return $entry;
     }
@@ -1254,29 +1264,37 @@ final class GeneralLedgerService
         $totalDebit = '0';
         /** @var numeric-string $totalCredit */
         $totalCredit = '0';
+        /** @var numeric-string $eventTotalDebit */
+        $eventTotalDebit = '0';
+        /** @var numeric-string $eventTotalCredit */
+        $eventTotalCredit = '0';
+        $companyCurrencyCode = $this->currencyCodeForCompany($entry->company_id);
 
-        $scale = $currencyCode !== null
-            ? $this->scaleResolver->getScale($currencyCode)
-            : $this->scale();
+        $currencyScale = $this->scaleResolver->getScale($currencyCode ?? $companyCurrencyCode);
+        $balanceScale = max(3, $currencyScale);
 
         foreach ($entry->lines as $line) {
-            $totalDebit = bcadd($totalDebit, $line->debit, $scale);
-            $totalCredit = bcadd($totalCredit, $line->credit, $scale);
+            $totalDebit = bcadd($totalDebit, $line->debit, $balanceScale);
+            $totalCredit = bcadd($totalCredit, $line->credit, $balanceScale);
+            $eventTotalDebit = bcadd($eventTotalDebit, $line->debit, $currencyScale);
+            $eventTotalCredit = bcadd($eventTotalCredit, $line->credit, $currencyScale);
         }
 
-        if (bccomp($totalDebit, $totalCredit, $scale) !== 0) {
+        if (bccomp($totalDebit, $totalCredit, $balanceScale) !== 0) {
             throw new \InvalidArgumentException(
                 "Cannot post unbalanced journal entry: total debit {$totalDebit} does not equal total credit {$totalCredit}."
             );
         }
 
-        $previousHash = $this->getPreviousHash($entry->company_id);
-        $hash = $this->calculateHash($entry, $previousHash);
+        $previousHash = JournalEntry::getLastChainHash($entry->company_id);
+        $chainSequence = JournalEntry::getNextChainSequence($entry->company_id);
+        $hash = $this->hashService->calculateHash($entry, $previousHash, $companyCurrencyCode);
 
         $postedAt = now();
 
         $entry->update([
             'status' => JournalEntryStatus::Posted,
+            'chain_sequence' => $chainSequence,
             'fiscal_hash' => $hash,
             'previous_hash' => $previousHash,
             'posted_at' => $postedAt,
@@ -1288,8 +1306,8 @@ final class GeneralLedgerService
             tenantId: $entry->tenant_id,
             companyId: $entry->company_id,
             entryNumber: $entry->entry_number,
-            totalDebit: $totalDebit,
-            totalCredit: $totalCredit,
+            totalDebit: $eventTotalDebit,
+            totalCredit: $eventTotalCredit,
             postedAt: $postedAt->toIso8601String(),
         ));
     }
@@ -1695,6 +1713,96 @@ final class GeneralLedgerService
     }
 
     /**
+     * Reverse a posted/draft inventory write-off journal entry (Phase C / C2).
+     *
+     * Looks up the ORIGINAL write-off entry by its canonical
+     * (source_type='batch_write_off', source_id=$originalMovementId) coordinates,
+     * then mirror-reverses it: every line is copied with debit/credit FLIPPED, so
+     * the reversing entry balances by construction and its amount EQUALS the
+     * original exactly (the lines are copied verbatim — no recomputation, no
+     * float). The new entry is tagged source_type='batch_write_off_reversal',
+     * source_id=$reversalMovementId so it points at the inverse stock movement.
+     *
+     * Status is MIRRORED:
+     *  - If the original is Posted, the reversal is posted synchronously (so the
+     *    reversal's fiscal status is deterministic within the caller's
+     *    transaction; afterCommit posting would not fire under test transactions).
+     *  - If the original is Draft, the reversal is left Draft.
+     *
+     * ABSENT case: if no original write-off entry exists (e.g. the original
+     * write-off amount was non-positive, or the original GL posting was swallowed
+     * because GL accounts were unconfigured), this returns NULL and creates
+     * nothing — the caller still restores stock.
+     */
+    public function reverseInventoryWriteOffEntry(
+        string $companyId,
+        string $originalMovementId,
+        string $reversalMovementId,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
+    ): ?JournalEntry {
+        $original = JournalEntry::query()
+            ->where('company_id', $companyId)
+            ->where('source_type', 'batch_write_off')
+            ->where('source_id', $originalMovementId)
+            ->with('lines')
+            ->first();
+
+        if ($original === null) {
+            // ABSENT: no journal entry to mirror — caller restores stock only.
+            return null;
+        }
+
+        $wasPosted = $original->status === JournalEntryStatus::Posted;
+
+        $user = null;
+        if ($wasPosted && $postedByUserId !== null) {
+            $user = User::query()->findOrFail($postedByUserId);
+        }
+
+        $entry = DB::transaction(function () use ($companyId, $original, $reversalMovementId): JournalEntry {
+            $company = Company::findOrFail($companyId);
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => now()->toDateString(),
+                'description' => "Reversal of batch write-off (orig {$original->entry_number})",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'batch_write_off_reversal',
+                'source_id' => $reversalMovementId,
+            ]);
+
+            $lineOrder = 0;
+            foreach ($original->lines as $line) {
+                // Mirror-reverse: swap debit <-> credit, keep account + partner.
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $line->account_id,
+                    'partner_id' => $line->partner_id,
+                    'debit' => $line->credit,
+                    'credit' => $line->debit,
+                    'description' => 'Reversal: '.($line->description ?? ''),
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+
+            return $entry->load('lines');
+        });
+
+        // Mirror the original's posted status. Post synchronously (not afterCommit)
+        // so the reversal status is deterministic in the caller's transaction.
+        if ($user !== null) {
+            $this->postEntry($entry, $user, $currencyCode ?? $this->currencyCodeForCompany($companyId));
+            $entry->refresh()->load('lines');
+        }
+
+        return $entry;
+    }
+
+    /**
      * Get account by system purpose - the ONLY way to lookup system accounts.
      *
      * NEVER use hardcoded account codes like '411' or '1200'.
@@ -1730,33 +1838,5 @@ final class GeneralLedgerService
     private function isPositive(string $amount, int $scale): bool
     {
         return bccomp($amount, '0', $scale) > 0;
-    }
-
-    private function calculateHash(JournalEntry $entry, string $previousHash): string
-    {
-        $data = json_encode([
-            'entry_number' => $entry->entry_number,
-            'entry_date' => $entry->entry_date->toDateString(),
-            'description' => $entry->description,
-            'lines' => $entry->lines->map(fn ($line) => [
-                'account_id' => $line->account_id,
-                'debit' => $line->debit,
-                'credit' => $line->credit,
-            ])->toArray(),
-        ]);
-
-        return hash('sha256', $previousHash.'|'.$data);
-    }
-
-    private function getPreviousHash(string $companyId): string
-    {
-        $lastPosted = JournalEntry::query()
-            ->where('company_id', $companyId)
-            ->where('status', JournalEntryStatus::Posted)
-            ->whereNotNull('fiscal_hash')
-            ->orderByDesc('posted_at')
-            ->first();
-
-        return $lastPosted !== null ? $lastPosted->fiscal_hash ?? '' : '';
     }
 }

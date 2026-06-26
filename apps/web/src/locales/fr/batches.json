@@ -114,5 +114,35 @@
     "expiringDescription": "Produits avec des lots expirant bientôt",
     "daysThreshold": "Dans {{days}} jours",
     "noBatchesExpiring": "Aucun lot expirant dans la période sélectionnée"
+  },
+
+  "expiryWriteOff": {
+    "title": "Mise au Rebut des Lots Expirés",
+    "subtitle": "Sélectionnez les lots expirés, indiquez la quantité à retirer, puis confirmez une seule mise au rebut.",
+    "loadError": "Échec du chargement des lots expirés",
+    "selectedCount": "{{count}} lot sélectionné",
+    "selectedCount_other": "{{count}} lots sélectionnés",
+    "columns": {
+      "onHand": "En Stock",
+      "writeOffQuantity": "Qté à Rebuter"
+    },
+    "actions": {
+      "writeOffSelected": "Rebuter la Sélection",
+      "selectAll": "Sélectionner tous les lots"
+    },
+    "empty": {
+      "title": "Aucun lot expiré",
+      "description": "Aucun lot expiré avec du stock disponible à cet emplacement."
+    },
+    "confirm": {
+      "title": "Rebuter les lots expirés",
+      "message": "Rebuter {{count}} lot ? Cette action retire définitivement le stock et est irréversible ici.",
+      "message_other": "Rebuter {{count}} lots ? Cette action retire définitivement le stock et est irréversible ici."
+    },
+    "toast": {
+      "success": "Lots expirés rebutés",
+      "shortStock": "Un lot sélectionné n'a plus assez de stock. Actualisez puis réessayez.",
+      "error": "Échec de la mise au rebut des lots expirés"
+    }
   }
 }

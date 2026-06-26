@@ -283,7 +283,8 @@
       "receipts": "Réceptions",
       "issues": "Sorties",
       "adjustments": "Ajustements",
-      "transfers": "Transferts"
+      "transfers": "Transferts",
+      "writeOffs": "Mises au rebut"
     },
     "columns": {
       "product": "Produit",
@@ -294,13 +295,23 @@
       "issue": "Sortie",
       "adjustment": "Ajustement",
       "transfer_in": "Transfert entrant",
-      "transfer_out": "Transfert sortant"
+      "transfer_out": "Transfert sortant",
+      "write_off": "Mise au rebut"
     },
     "types": {
       "in": "Entrée",
       "out": "Sortie",
       "transfer": "Transfert",
       "adjustment": "Ajustement"
+    },
+    "actions": {
+      "reverse": "Annuler",
+      "reversed": "Annulé",
+      "reverseConfirmTitle": "Annuler la mise au rebut",
+      "reverseConfirmMessage": "Cette action restaurera le stock mis au rebut. L'entrée de mise au rebut originale sera conservée à des fins d'audit. Cette action corrective ne peut pas elle-même être annulée.",
+      "reverseSuccess": "Mise au rebut annulée avec succès.",
+      "reverseAlreadyReversed": "Cette mise au rebut a déjà été annulée.",
+      "reverseFailed": "Échec de l'annulation de la mise au rebut."
     }
   },
   "margin": {

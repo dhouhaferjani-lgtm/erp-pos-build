@@ -408,8 +408,8 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                     $actorUserId,
                     (string) $invoice->currency,
                 );
-            } catch (\RuntimeException $e) {
-                // If accounts are not configured, log warning but don't fail the conversion
+            } catch (\InvalidArgumentException|\RuntimeException $e) {
+                // If GL clearing cannot be created, log warning but don't fail the conversion.
                 Log::warning(
                     'Could not create GL entry for prepayment transfer: '.$e->getMessage(),
                     [

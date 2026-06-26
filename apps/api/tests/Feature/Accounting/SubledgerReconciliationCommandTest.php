@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Accounting;
 
+use App\Console\TenantScopedCommand;
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
@@ -13,6 +14,7 @@ use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -24,14 +26,73 @@ final class SubledgerReconciliationCommandTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function tearDown(): void
+    {
+        if (tenancy()->initialized) {
+            tenancy()->end();
+        }
+
+        parent::tearDown();
+    }
+
+    public function test_for_each_tenant_enters_and_ends_tenant_context_in_db_per_tenant_mode(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $tenantA = $this->createTenant('reconciliation-tenant-a');
+        $tenantB = $this->createTenant('reconciliation-tenant-b');
+        $command = $this->tenantScopedProbeCommand();
+
+        $seen = [];
+
+        $exitCode = $command->runForEachTenant(function (Tenant $tenant) use (&$seen): int {
+            $seen[] = [
+                'argument' => $tenant->id,
+                'helper' => tenant('id'),
+                'initialized' => tenancy()->initialized,
+            ];
+
+            return 0;
+        });
+
+        $this->assertSame(0, $exitCode);
+        $this->assertSame([$tenantA->id, $tenantB->id], array_column($seen, 'argument'));
+        $this->assertSame([$tenantA->id, $tenantB->id], array_column($seen, 'helper'));
+        $this->assertSame([true, true], array_column($seen, 'initialized'));
+        $this->assertFalse(tenancy()->initialized);
+        $this->assertNull(tenancy()->tenant);
+    }
+
+    public function test_for_each_tenant_stays_in_shared_context_when_db_per_tenant_is_disabled(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => false]);
+
+        $tenantA = $this->createTenant('shared-reconciliation-tenant-a');
+        $tenantB = $this->createTenant('shared-reconciliation-tenant-b');
+        $command = $this->tenantScopedProbeCommand();
+
+        $seen = [];
+
+        $exitCode = $command->runForEachTenant(function (Tenant $tenant) use (&$seen): int {
+            $seen[] = [
+                'argument' => $tenant->id,
+                'helper' => tenant('id'),
+                'initialized' => tenancy()->initialized,
+            ];
+
+            return 0;
+        });
+
+        $this->assertSame(0, $exitCode);
+        $this->assertSame([$tenantA->id, $tenantB->id], array_column($seen, 'argument'));
+        $this->assertSame([null, null], array_column($seen, 'helper'));
+        $this->assertSame([false, false], array_column($seen, 'initialized'));
+        $this->assertFalse(tenancy()->initialized);
+    }
+
     public function test_command_reports_partnerless_subledger_discrepancies(): void
     {
-        $tenant = Tenant::create([
-            'name' => 'Reconciliation Tenant',
-            'slug' => 'reconciliation-tenant',
-            'status' => TenantStatus::Active,
-            'plan' => SubscriptionPlan::Professional,
-        ]);
+        $tenant = $this->createTenant('reconciliation-tenant');
 
         $company = Company::create([
             'tenant_id' => $tenant->id,
@@ -101,5 +162,36 @@ final class SubledgerReconciliationCommandTest extends TestCase
 
         $this->assertSame(0, $exitCode);
         $this->assertStringContainsString('accounting:check-subledger-reconciliation', $output);
+    }
+
+    private function createTenant(string $slug): Tenant
+    {
+        return Tenant::create([
+            'name' => str_replace('-', ' ', ucfirst($slug)),
+            'slug' => $slug,
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+        ]);
+    }
+
+    private function tenantScopedProbeCommand(): SubledgerTenantScopedProbeCommand
+    {
+        return new SubledgerTenantScopedProbeCommand(app(CompanyContext::class));
+    }
+}
+
+final class SubledgerTenantScopedProbeCommand extends TenantScopedCommand
+{
+    protected function executeCommand(): int
+    {
+        return self::SUCCESS;
+    }
+
+    /**
+     * @param  callable(Tenant): int  $fn
+     */
+    public function runForEachTenant(callable $fn): int
+    {
+        return $this->forEachTenant($fn);
     }
 }

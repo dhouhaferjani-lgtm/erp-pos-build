@@ -110,25 +110,29 @@ class AgedReceivablesScalingTest extends TestCase
     /** @test */
     public function customer_statement_running_balance_preserves_third_decimal_for_tnd(): void
     {
-        Document::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'partner_id' => $this->partner->id,
-            'type' => DocumentType::Invoice,
-            'status' => DocumentStatus::Posted,
-            'document_number' => 'INV-STMT-SCALE',
-            'document_date' => '2026-06-01',
-            'due_date' => '2026-06-30',
-            'currency' => 'TND',
-            'subtotal' => '1234.567',
-            'discount_amount' => '0.000',
-            'tax_amount' => '0.000',
-            'total' => '1234.567',
-            'balance_due' => '1234.567',
-            'is_historical' => false,
-            'fiscal_hash' => hash('sha256', 'INV-STMT-SCALE'),
-            'chain_sequence' => 1,
-        ]);
+        for ($index = 0; $index < 1000; $index++) {
+            $amount = $index === 0 ? '10000000000.001' : '0.001';
+
+            Document::create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'partner_id' => $this->partner->id,
+                'type' => DocumentType::Invoice,
+                'status' => DocumentStatus::Posted,
+                'document_number' => sprintf('INV-STMT-SCALE-%04d', $index + 1),
+                'document_date' => '2026-06-01',
+                'due_date' => '2026-06-30',
+                'currency' => 'TND',
+                'subtotal' => $amount,
+                'discount_amount' => '0.000',
+                'tax_amount' => '0.000',
+                'total' => $amount,
+                'balance_due' => $amount,
+                'is_historical' => false,
+                'fiscal_hash' => hash('sha256', "INV-STMT-SCALE-{$index}"),
+                'chain_sequence' => $index + 1,
+            ]);
+        }
 
         $statement = $this->service->generateCustomerStatement(
             $this->company->id,
@@ -137,7 +141,8 @@ class AgedReceivablesScalingTest extends TestCase
             '2026-06-30'
         );
 
-        $this->assertSame('1234.567', $statement['transactions'][0]['balance']);
-        $this->assertSame('1234.567', $statement['closing_balance']);
+        $this->assertSame('10000000000.001', $statement['transactions'][0]['balance']);
+        $this->assertSame('10000000001.000', $statement['transactions'][999]['balance']);
+        $this->assertSame('10000000001.000', $statement['closing_balance']);
     }
 }
