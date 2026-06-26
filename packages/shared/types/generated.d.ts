@@ -741,6 +741,7 @@ projected_available: string;
 min_quantity: string | null;
 max_quantity: string | null;
 is_below_minimum: boolean;
+quantity_decimals: number;
 };
 }
 declare namespace App.Modules.Inventory.Domain.Enums {
