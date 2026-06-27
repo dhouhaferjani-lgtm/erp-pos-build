@@ -56,6 +56,15 @@ phases:
         desc: add theme/accent/corner/density to settingsStore (persist izipos-settings); cartPosition already exists
         real_path: apps/pos/src/stores/settingsStore.ts
         status: todo
+      - key: displaymode-reconcile
+        desc: "PREREQUISITE (review): ProductGrid keeps own useState from localStorage 'pos-display-mode', ignoring settingsStore.displayMode (dual source of truth). Make grid read displayMode+density from settingsStore; migrate legacy key. Then density via getColumns(displayMode,density,width)+card-height consts (JS, not CSS var)."
+        real_path: apps/pos/src/components/organisms/ProductGrid/ProductGrid.tsx
+        blocks: [P3 product-grid density]
+        status: todo
+      - key: focus-ring-theme
+        desc: "global *:focus-visible outline is hardcoded --theme-primary-500 (stays blue in dark/accent). Make accent/theme-aware in index.css."
+        real_path: apps/pos/src/index.css
+        status: todo
       - key: settings-appearance
         desc: Appearance section (SegmentedControls) in SettingsPage
         real_path: apps/pos/src/pages/SettingsPage.tsx
@@ -88,10 +97,10 @@ phases:
         new_molecules: [CartLine, QuickActions]
         parity: [add, increment, decrement, remove, clear, line-discount, cart-discount, totals+TVA, customer-attach, checkout-cash, checkout-mixte]
         status: todo
-      - key: cart-line-expand
-        desc: tap row body EXPANDS (not increment) to reveal stepper/line-discount/fiche; collapsed default
+      - key: cart-line-restyle
+        desc: "DEVIATE FROM MOCK (review): keep steppers/discount/delete VISIBLE by default (today they are; collapsing adds a tap to the most frequent action). Restyle visually only; preserve onQuantityTap numpad; chevron/expand only for SECONDARY detail (fiche/skin advice). Add behavior test (no current test)."
         real_path: apps/pos/src/components/molecules/CartLineItem/CartLineItem.tsx
-        new_surface: true
+        ergonomics: minimize-taps
         status: todo
       - key: payment-summary
         desc: Sous-total, Remises produits, Remise panier, dont TVA 19%, Total big mono
@@ -130,6 +139,8 @@ phases:
       - key: advanced-payments
         desc: 3-col method+repo / amount+numpad(prefill remaining) / total+lines+Finaliser; real getCompatibleRepositoryTypes
         real_path: apps/pos/src/components/organisms/AdvancedPaymentsModal/AdvancedPaymentsModal.tsx
+        effort: high  # 916 lines, ~40 hardcoded colors, NOT in ESLint guard -> full detox + dark pass
+        action: tokenize all hardcoded colors + add to eslint tokenMigratedGlobs
         parity: [multi-line, repository-rules, ref+last4, pay-remaining, finalize-when-covered]
         status: todo
       - key: card-modal
