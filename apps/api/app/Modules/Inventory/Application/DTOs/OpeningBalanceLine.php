@@ -9,6 +9,10 @@ use InvalidArgumentException;
 
 final readonly class OpeningBalanceLine
 {
+    /**
+     * @param  numeric-string  $quantity  Quantity at scale 4 — validated + formatted by make().
+     * @param  numeric-string  $unitCost  Unit cost at currencyScale — validated + formatted by make().
+     */
     public function __construct(
         public string $productId,
         public ?string $variantId,
