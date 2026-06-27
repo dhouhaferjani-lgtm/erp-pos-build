@@ -5,25 +5,17 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Application\Services;
 
 use App\Modules\Accounting\Application\Services\OpeningBalanceBatchService;
-use App\Modules\Accounting\Domain\Account;
-use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
 use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
-use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
-use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Accounting\Domain\OpeningBalanceImportRow;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
-use App\Modules\Inventory\Domain\Enums\MovementReason;
-use App\Modules\Inventory\Domain\Enums\MovementType;
-use App\Modules\Inventory\Domain\Services\ProductCostLock;
-use App\Modules\Inventory\Domain\StockLevel;
-use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\Inventory\Application\DTOs\OpeningBalanceLine;
+use App\Modules\Inventory\Application\DTOs\OpeningBalancePosting;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -46,7 +38,7 @@ class InventoryOpeningService
     public function __construct(
         private readonly OpeningBalanceBatchService $batchService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
-        private readonly ProductCostLock $costLock,
+        private readonly OpeningBalancePostingService $postingService,
     ) {}
 
     private function monetaryScale(): int
@@ -190,11 +182,8 @@ class InventoryOpeningService
     /**
      * Post a validated inventory opening batch.
      *
-     * Creates:
-     * 1. Stock movements with movement_type = 'opening', is_historical = true
-     * 2. Updates/creates stock levels
-     * 3. Updates product cost_price
-     * 4. GL entry: Dr. Inventory, Cr. Opening Balance Equity
+     * Delegates the movement/stock-level/cost/GL work to OpeningBalancePostingService,
+     * then handles the import-specific bookkeeping (markBatchValidated + markRowsPosted).
      *
      * @throws RuntimeException If batch is not validated or has errors
      */
@@ -210,7 +199,7 @@ class InventoryOpeningService
             );
         }
 
-        // Get valid rows only
+        // Get valid rows only, ordered for deterministic movement-ID zipping.
         $validRows = $batch->rows()
             ->where('status', OpeningImportRowStatus::Valid)
             ->orderBy('row_number')
@@ -221,157 +210,68 @@ class InventoryOpeningService
         }
 
         $company = Company::findOrFail($batch->company_id);
+        $monetaryScale = $this->scaleResolver->getScale($company->currency);
 
-        // Multi-product deadlock defense: acquire ALL the batch's product
-        // advisory locks UP-FRONT in ONE sorted call (ProductCostLock sorts
-        // internally) before the per-row create/recompute loop. A per-iteration
-        // acquire([$singleId]) accumulates per-product advisory locks in row
-        // order (unsorted) within the one transaction, so two concurrent posts
-        // over overlapping products in different row orders AB-BA deadlock;
-        // attempts:3 just retries the same losing order. Mirrors
-        // StockTransferService::complete/cancel and GoodsReceiptService::receiveGoods.
-        $seenProductIds = [];
+        // Build one OpeningBalanceLine per valid row, tracking contributing rows
+        // in the same order so the returned movement IDs can be zipped back.
+        /** @var list<OpeningBalanceLine> $lines */
+        $lines = [];
+        /** @var list<OpeningBalanceImportRow> $lineRows */
+        $lineRows = [];
+
         foreach ($validRows as $row) {
             $mappedData = $row->mapped_data;
 
-            if (! is_array($mappedData) || ! isset($mappedData['product_id'])) {
+            if (! is_array($mappedData) || ! isset($mappedData['product_id'], $mappedData['location_id'])) {
                 continue;
             }
 
-            $seenProductIds[(string) $mappedData['product_id']] = true;
+            $lines[] = OpeningBalanceLine::make(
+                productId: (string) $mappedData['product_id'],
+                variantId: null,
+                locationId: (string) $mappedData['location_id'],
+                quantity: (string) ($mappedData['quantity'] ?? '0.0000'),
+                unitCost: (string) ($mappedData['unit_cost'] ?? '0.000'),
+                currencyScale: $monetaryScale,
+            );
+
+            $lineRows[] = $row;
         }
-        /** @var list<string> $productIds */
-        $productIds = array_keys($seenProductIds);
 
-        return DB::transaction(function () use ($batch, $validRows, $company, $userId, $productIds): JournalEntry {
-            return $this->costLock->acquire($company->tenant_id, $company->id, $productIds, function () use ($batch, $validRows, $company, $userId): JournalEntry {
-                $entryNumber = $this->generateEntryNumber($company->id);
+        $posting = new OpeningBalancePosting(
+            tenantId: $company->tenant_id,
+            companyId: $company->id,
+            userId: $userId,
+            entryDate: $batch->cutover_date,
+            isHistorical: true,
+            sourceType: 'opening_balance',
+            sourceId: $batch->id,
+            reference: "Opening Balance Batch: {$batch->name}",
+            notes: 'Initial inventory from opening balance import',
+            lines: $lines,
+        );
 
-                $totalInventoryValue = '0.00';
-                $rowEntityMap = [];
+        $result = $this->postingService->post($posting);
 
-                // Process each row: create stock movements and update stock levels.
-                // All product advisory locks are already held up-front (sorted), so
-                // per-row work runs directly — no nested per-row re-acquire needed.
-                foreach ($validRows as $row) {
-                    $mappedData = $row->mapped_data;
+        // Zip the contributing rows (same order as $lines) with the returned movement IDs.
+        $rowEntityMap = [];
 
-                    if (! is_array($mappedData) || ! isset($mappedData['product_id'], $mappedData['location_id'])) {
-                        continue;
-                    }
+        foreach ($lineRows as $i => $row) {
+            if (isset($result->movementIdsInInputOrder[$i])) {
+                $rowEntityMap[$row->id] = $result->movementIdsInInputOrder[$i];
+            }
+        }
 
-                    $quantity = $mappedData['quantity'] ?? '0.00';
-                    $unitCost = $mappedData['unit_cost'] ?? '0.00';
-                    $lineValue = bcmul($quantity, $unitCost, $this->monetaryScale());
+        // Mark batch validated BEFORE marking rows posted.
+        // markBatchValidated checks valid row count, which would be 0
+        // after markRowsPosted flips all rows to Posted. Matches the
+        // ordering used in AccountingOpeningService::postBatch.
+        $this->batchService->markBatchValidated($batch, $userId);
 
-                    $productId = (string) $mappedData['product_id'];
-                    $locationId = $mappedData['location_id'];
+        // Mark rows as posted with their mapped movement IDs.
+        $this->batchService->markRowsPosted($rowEntityMap);
 
-                    // Get or create stock level (with lock for update)
-                    $stockLevel = StockLevel::where('product_id', $productId)
-                        ->where('location_id', $locationId)
-                        ->lockForUpdate()
-                        ->first();
-
-                    $quantityBefore = $stockLevel !== null ? $stockLevel->quantity : '0.00';
-                    $quantityAfter = bcadd($quantityBefore, $quantity, $this->quantityScale());
-
-                    // Create stock movement
-                    $movement = StockMovement::create([
-                        'tenant_id' => $company->tenant_id,
-                        'company_id' => $company->id,
-                        'product_id' => $productId,
-                        'location_id' => $locationId,
-                        'movement_type' => MovementType::Opening,
-                        'reason' => MovementReason::OpeningBalance,
-                        'quantity' => $quantity,
-                        'quantity_before' => $quantityBefore,
-                        'quantity_after' => $quantityAfter,
-                        'reference' => "Opening Balance Batch: {$batch->name}",
-                        'notes' => 'Initial inventory from opening balance import',
-                        'user_id' => $userId,
-                        'is_historical' => true,
-                    ]);
-
-                    // Update or create stock level
-                    if ($stockLevel !== null) {
-                        $stockLevel->update(['quantity' => $quantityAfter]);
-                    } else {
-                        StockLevel::create([
-                            'tenant_id' => $company->tenant_id,
-                            'company_id' => $company->id,
-                            'product_id' => $productId,
-                            'location_id' => $locationId,
-                            'quantity' => $quantityAfter,
-                            'reserved' => '0.00',
-                        ]);
-                    }
-
-                    // Update product cost_price (simple replacement for opening - no weighted average calculation needed)
-                    if (bccomp($unitCost, '0.00', $this->monetaryScale()) > 0) {
-                        Product::where('id', $productId)
-                            ->update([
-                                'cost_price' => $unitCost,
-                                'cost_updated_at' => now(),
-                            ]);
-                    }
-
-                    $totalInventoryValue = bcadd($totalInventoryValue, $lineValue, $this->monetaryScale());
-                    $rowEntityMap[$row->id] = $movement->id;
-                }
-
-                // Create GL entry: Dr. Inventory, Cr. Opening Balance Equity
-                $inventoryAccount = Account::findByPurposeOrFail($company->id, SystemAccountPurpose::Inventory);
-                $obeAccount = Account::findByPurposeOrFail($company->id, SystemAccountPurpose::OpeningBalanceEquity);
-
-                $entry = JournalEntry::create([
-                    'tenant_id' => $company->tenant_id,
-                    'company_id' => $company->id,
-                    'entry_number' => $entryNumber,
-                    'entry_date' => $batch->cutover_date,
-                    'description' => "Inventory Opening Balance - {$batch->name}",
-                    'status' => JournalEntryStatus::Posted,
-                    'source_type' => 'opening_balance',
-                    'source_id' => $batch->id,
-                    'is_historical' => true,
-                    'posted_at' => now(),
-                    'posted_by' => $userId,
-                ]);
-
-                // Debit: Inventory
-                JournalLine::create([
-                    'journal_entry_id' => $entry->id,
-                    'account_id' => $inventoryAccount->id,
-                    'partner_id' => null,
-                    'debit' => $totalInventoryValue,
-                    'credit' => '0.00',
-                    'description' => 'Opening inventory value',
-                    'line_order' => 0,
-                ]);
-
-                // Credit: Opening Balance Equity
-                JournalLine::create([
-                    'journal_entry_id' => $entry->id,
-                    'account_id' => $obeAccount->id,
-                    'partner_id' => null,
-                    'debit' => '0.00',
-                    'credit' => $totalInventoryValue,
-                    'description' => 'Opening Balance Equity offset',
-                    'line_order' => 1,
-                ]);
-
-                // Mark batch as validated BEFORE marking rows posted.
-                // markBatchValidated checks valid row count, which would be 0
-                // after markRowsPosted flips all rows to Posted. Matches the
-                // ordering used in AccountingOpeningService::postBatch.
-                $this->batchService->markBatchValidated($batch, $userId);
-
-                // Mark rows as posted
-                $this->batchService->markRowsPosted($rowEntityMap);
-
-                return $entry->load('lines');
-            });
-        }, attempts: 3);
+        return $result->entry;
     }
 
     /**
@@ -441,27 +341,5 @@ class InventoryOpeningService
                 'amount' => $totalValue,
             ],
         ];
-    }
-
-    /**
-     * Generate entry number for inventory opening journal entry.
-     */
-    private function generateEntryNumber(string $companyId): string
-    {
-        $year = date('Y');
-        $lastEntry = JournalEntry::query()
-            ->where('company_id', $companyId)
-            ->where('entry_number', 'like', "INV-OB-{$year}-%")
-            ->orderByDesc('entry_number')
-            ->first();
-
-        if ($lastEntry !== null) {
-            $lastNumber = (int) substr($lastEntry->entry_number, -6);
-            $nextNumber = $lastNumber + 1;
-        } else {
-            $nextNumber = 1;
-        }
-
-        return sprintf('INV-OB-%s-%06d', $year, $nextNumber);
     }
 }
