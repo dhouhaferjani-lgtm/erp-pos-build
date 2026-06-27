@@ -6,7 +6,10 @@ namespace Tests\Feature\Treasury;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
@@ -287,6 +290,171 @@ final class SupplierPaymentGuardTest extends TestCase
     }
 
     // =========================================================================
+    // B1c (regression): paying a POSTED invoice whose supplier_invoice JE exists
+    // but is DRAFT (not yet posted) must be rejected with 422.
+    // Before fix: the weak exists() predicate passed — payment was created.
+    // After fix: the status=Posted + Cr-401 line predicate rejects it.
+    // =========================================================================
+
+    public function test_paying_posted_invoice_with_draft_supplier_invoice_je_is_rejected_422(): void
+    {
+        $supplierPayableAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::SupplierPayable);
+        $expenseAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::PurchaseExpenses);
+
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::SupplierInvoice,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'SI-B1C-DRAFT-'.Str::upper(Str::random(4)),
+            'document_date' => now(),
+            'currency' => 'TND',
+            'subtotal' => '500.000',
+            'tax_amount' => '0.000',
+            'total' => '500.000',
+            'balance_due' => '500.000',
+        ]);
+
+        // Create a DRAFT supplier_invoice JE (mimics an aborted or incomplete posting).
+        // The JE has a proper Cr-401 partner line but its status is still Draft.
+        $je = JournalEntry::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'entry_number' => 'TST-DRAFT-'.Str::upper(Str::random(6)),
+            'entry_date' => now(),
+            'description' => 'Draft JE — B1c test',
+            'status' => JournalEntryStatus::Draft,
+            'source_type' => 'supplier_invoice',
+            'source_id' => $invoice->id,
+        ]);
+
+        JournalLine::create([
+            'journal_entry_id' => $je->id,
+            'account_id' => $expenseAccount->id,
+            'debit' => '500.000',
+            'credit' => '0.000',
+            'line_order' => 0,
+        ]);
+
+        JournalLine::create([
+            'journal_entry_id' => $je->id,
+            'account_id' => $supplierPayableAccount->id,
+            'partner_id' => $this->supplier->id,
+            'debit' => '0.000',
+            'credit' => '500.000',
+            'line_order' => 1,
+        ]);
+
+        // Guard must reject — the JE is Draft, not Posted.
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->supplier->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'repository_id' => $this->repository->id,
+            'amount' => '500.00',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'allocations' => [
+                ['document_id' => $invoice->id, 'amount' => '500.00'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'SUPPLIER_INVOICE_NOT_POSTED');
+
+        // No side effects: no payment, no allocation, no payment JE.
+        $this->assertDatabaseMissing('payments', ['partner_id' => $this->supplier->id]);
+        $this->assertDatabaseMissing('journal_entries', ['source_type' => 'supplier_payment']);
+        $this->assertDatabaseMissing('payment_allocations', ['document_id' => $invoice->id]);
+    }
+
+    // =========================================================================
+    // B1d (regression): paying a POSTED invoice whose supplier_invoice JE is
+    // Posted but has NO supplier-payable Cr-401 line for this partner must be
+    // rejected with 422 (orphan/malformed JE).
+    // Before fix: the weak exists() predicate passed — payment was created.
+    // After fix: the whereHas('lines') Cr-401 predicate rejects it.
+    // =========================================================================
+
+    public function test_paying_posted_invoice_with_posted_je_missing_cr401_partner_line_is_rejected_422(): void
+    {
+        $expenseAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::PurchaseExpenses);
+        $bankAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::Bank);
+
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::SupplierInvoice,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'SI-B1D-NOCR401-'.Str::upper(Str::random(4)),
+            'document_date' => now(),
+            'currency' => 'TND',
+            'subtotal' => '750.000',
+            'tax_amount' => '0.000',
+            'total' => '750.000',
+            'balance_due' => '750.000',
+        ]);
+
+        // Create a Posted supplier_invoice JE but with WRONG lines:
+        // - only a debit on expenses (no Cr-401 partner line).
+        // This simulates a malformed / orphan JE that passed header-level checks.
+        $je = JournalEntry::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'entry_number' => 'TST-NOCR401-'.Str::upper(Str::random(6)),
+            'entry_date' => now(),
+            'description' => 'Orphan Posted JE without Cr-401 — B1d test',
+            'status' => JournalEntryStatus::Posted,
+            'source_type' => 'supplier_invoice',
+            'source_id' => $invoice->id,
+        ]);
+
+        // Debit expense; credit bank (NOT the supplier-payable account, no partner tag).
+        JournalLine::create([
+            'journal_entry_id' => $je->id,
+            'account_id' => $expenseAccount->id,
+            'debit' => '750.000',
+            'credit' => '0.000',
+            'line_order' => 0,
+        ]);
+
+        JournalLine::create([
+            'journal_entry_id' => $je->id,
+            'account_id' => $bankAccount->id,
+            'partner_id' => null,
+            'debit' => '0.000',
+            'credit' => '750.000',
+            'line_order' => 1,
+        ]);
+
+        // Guard must reject — no Cr-401 partner line exists in the JE.
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->supplier->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'repository_id' => $this->repository->id,
+            'amount' => '750.00',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'allocations' => [
+                ['document_id' => $invoice->id, 'amount' => '750.00'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'SUPPLIER_INVOICE_NOT_POSTED');
+
+        // No side effects.
+        $this->assertDatabaseMissing('payments', ['partner_id' => $this->supplier->id]);
+        $this->assertDatabaseMissing('journal_entries', ['source_type' => 'supplier_payment']);
+        $this->assertDatabaseMissing('payment_allocations', ['document_id' => $invoice->id]);
+    }
+
+    // =========================================================================
     // B1b: after SupplierInvoicePostingService::post(), balance_due == total.
     //      Deferred B2 (credit-note decrement) will rely on this as the ceiling.
     // =========================================================================
@@ -390,7 +558,7 @@ final class SupplierPaymentGuardTest extends TestCase
         $fresh = Document::findOrFail($invoice->id);
         // B1b: balance_due must be set to total at post time.
         $this->assertNotNull($fresh->balance_due, 'balance_due must be set on posting');
-        $this->assertSame(0, bccomp((string) $fresh->balance_due, (string) $fresh->total, 3),
+        $this->assertSame(0, bccomp((string) ($fresh->balance_due ?? '0'), (string) ($fresh->total ?? '0'), 3),
             "balance_due ({$fresh->balance_due}) must equal total ({$fresh->total}) after posting");
     }
 }

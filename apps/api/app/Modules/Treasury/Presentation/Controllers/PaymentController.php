@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Presentation\Controllers;
 
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
@@ -26,6 +30,7 @@ use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Presentation\Validation\ScopedExists;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -235,16 +240,39 @@ class PaymentController extends Controller
                     ], 422);
                 }
 
-                $supplierJeExists = JournalEntry::query()
+                // Resolve the company's supplier-payable (401) account for the
+                // Cr-401 line check. Without it there is no valid payable credit
+                // to verify and the guard must reject.
+                $payableAccount = Account::findByPurpose(
+                    $document->company_id,
+                    SystemAccountPurpose::SupplierPayable,
+                );
+
+                // The invoice must have a POSTED supplier_invoice JE that carries
+                // at least one credit line on the supplier-payable account tagged
+                // to this partner. A Draft JE header, an orphan JE without a
+                // payable credit, or a JE for a different partner all fail this
+                // predicate and are indistinguishable from "not posted" for the
+                // purpose of AP accounting — paying such an invoice would create
+                // a Dr-401 payment leg with no matching Cr-401 to cancel.
+                $hasPostedCr401Je = $payableAccount !== null && JournalEntry::query()
                     ->where('source_type', 'supplier_invoice')
                     ->where('source_id', $document->id)
                     ->where('company_id', $document->company_id)
+                    ->where('status', JournalEntryStatus::Posted)
+                    ->whereHas('lines', static function (Builder $q) use ($payableAccount, $document): void {
+                        /** @var Builder<JournalLine> $q */
+                        $q->where('account_id', $payableAccount->id)
+                            ->where('partner_id', $document->partner_id)
+                            ->where('credit', '>', '0');
+                    })
                     ->exists();
-                if (! $supplierJeExists) {
+
+                if (! $hasPostedCr401Je) {
                     return response()->json([
                         'error' => [
                             'code' => 'SUPPLIER_INVOICE_NOT_POSTED',
-                            'message' => 'Supplier invoice has no posted journal entry (Cr 401). Post the invoice first.',
+                            'message' => 'Supplier invoice has no posted journal entry with a supplier-payable credit (Cr 401). Post the invoice first.',
                             'details' => [
                                 'document_id' => $document->id,
                             ],
