@@ -543,6 +543,10 @@ class ParapharmacySeeder extends Seeder
         // Payment repositories
         $this->call(PaymentRepositorySeeder::class, false, ['company' => $company]);
         $this->command->info('✓ Payment Repositories (6 repositories)');
+
+        // Expense categories linked to class-6 GL accounts (idempotent).
+        app(ExpenseCategorySeeder::class)->seedForCompany($company);
+        $this->command->info('✓ Expense Categories');
     }
 
     /**
