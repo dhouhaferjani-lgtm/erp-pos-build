@@ -95,6 +95,17 @@ interface DocumentFormProps {
   documentType?: DocumentType
 }
 
+/**
+ * Pure helper: determines whether lines have changed relative to the last saved snapshot.
+ * Exported for unit testing.
+ *
+ * @param lastSavedLines  JSON snapshot at last save; null = never saved
+ * @param lines           current lines array
+ */
+export function computeLinesDirty(lastSavedLines: string | null, lines: unknown[]): boolean {
+  return lastSavedLines === null ? lines.length > 0 : JSON.stringify(lines) !== lastSavedLines
+}
+
 function scopedNamespacePredicate(
   namespace: string,
   tenantId: string | null,
@@ -130,6 +141,9 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   const [lines, setLines] = useState<DocumentLine[]>([])
   // Partner modal state
   const [showPartnerModal, setShowPartnerModal] = useState(false)
+  // Snapshot of lines as of the last successful save (autosave or manual).
+  // null = never saved; used to detect any change including clearing all lines.
+  const lastSavedLinesRef = useRef<string | null>(null)
 
   // Parse URL query parameters for pre-population
   const searchParams = new URLSearchParams(location.search)
@@ -148,6 +162,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
     handleSubmit,
     reset,
     setValue,
+    getValues,
     control,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<DocumentFormData>({
@@ -198,7 +213,11 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       enabled: true,
       existingDraftId: id || undefined,
       onSuccess: (_savedDraftId) => {
-        // draft ID is tracked internally by the hook
+        // Bug 2: reset RHF dirty baseline so isDirty becomes false after autosave.
+        // Passing current values as the new defaults without touching the rendered values.
+        reset(getValues(), { keepDirty: false, keepDefaultValues: false })
+        // Bug 3: snapshot current lines so clearing them later is detected.
+        lastSavedLinesRef.current = JSON.stringify(lines)
       },
       onError: () => {
         // Auto-save failed silently
@@ -213,11 +232,19 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   })
 
   // Autosave-aware unsaved-changes guard
+  // Bug 3: use snapshot comparison instead of `lines.length > 0 && !lastSavedAt`
+  // so that clearing all lines after an autosave still triggers the guard.
+  const linesDirty = computeLinesDirty(lastSavedLinesRef.current, lines)
   const docDirty = {
-    isDirty: isDirty || (lines.length > 0 && !lastSavedAt),
+    // Bug 2: `isDirty` is now reset to false after each autosave, so we no
+    // longer get false positives from RHF's stale dirty state.
+    isDirty: isDirty || linesDirty,
     autosavePending,
     autosaveFailed,
   }
+  // Bug 1: single source of truth for all warn conditions (used by Cancel,
+  // breadcrumb, and the beforeunload guard via useUnsavedChangesGuard).
+  const shouldWarn = docDirty.isDirty || docDirty.autosavePending || docDirty.autosaveFailed
   useUnsavedChangesGuard(docDirty)
 
   // Track Save & Close intent across async mutation callbacks
@@ -262,7 +289,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
 
   // Initialize lines from document (only once when document first loads)
   if (document?.lines && !hasInitializedLines) {
-    setLines(document.lines.map((l) => ({
+    const initialLines = document.lines.map((l) => ({
       id: l.id,
       product_id: l.product_id ?? '',
       product_code: '',
@@ -272,7 +299,11 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       unit_price: parseFloat(l.unit_price),
       tax_rate: parseFloat(l.tax_rate ?? '0'),
       line_total: parseFloat(l.line_total),
-    })))
+    }))
+    setLines(initialLines)
+    // Bug 3: treat the server-loaded lines as the saved baseline so that
+    // any subsequent edit (including clearing all lines) is detected.
+    lastSavedLinesRef.current = JSON.stringify(initialLines)
     setHasInitializedLines(true)
   }
 
@@ -281,6 +312,8 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
     onSuccess: async (response) => {
       const shouldClose = closeIntentRef.current
       closeIntentRef.current = false
+      // Bug 3: update saved-lines baseline so guard is cleared after manual save.
+      lastSavedLinesRef.current = JSON.stringify(lines)
       toast.success(t('status.success'))
       await Promise.all([
         queryClient.invalidateQueries({
@@ -314,6 +347,8 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
     onSuccess: async () => {
       const shouldClose = closeIntentRef.current
       closeIntentRef.current = false
+      // Bug 3: update saved-lines baseline so guard is cleared after manual save.
+      lastSavedLinesRef.current = JSON.stringify(lines)
       toast.success(t('status.success'))
       await Promise.all([
         queryClient.invalidateQueries({
@@ -392,6 +427,12 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
               textColors.tertiary,
               textColors.hoverPrimary,
             )}
+            onClick={(e) => {
+              // Bug 1: guard the breadcrumb back-link the same way as Cancel.
+              if (shouldWarn && !confirmDiscard(t('confirmation.unsavedChangesBody'))) {
+                e.preventDefault()
+              }
+            }}
           >
             <ArrowLeft className="h-4 w-4" />
             {t('actions.back')}
@@ -552,7 +593,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
           <Button
             type="button"
             variant="secondary"
-            onClick={() => { if (!docDirty.isDirty || confirmDiscard(t('confirmation.unsavedChangesBody'))) void navigate(basePath) }}
+            onClick={() => { if (!shouldWarn || confirmDiscard(t('confirmation.unsavedChangesBody'))) void navigate(basePath) }}
           >
             {t('actions.cancel')}
           </Button>

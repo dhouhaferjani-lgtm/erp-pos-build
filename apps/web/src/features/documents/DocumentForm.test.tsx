@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { DocumentForm } from './DocumentForm'
+import { DocumentForm, computeLinesDirty } from './DocumentForm'
 
 // i18n → return the key so assertions are deterministic
 vi.mock('react-i18next', () => ({
@@ -47,6 +47,35 @@ vi.mock('../../components/ui/PartnerSearchSelect', () => ({
 vi.mock('../../components/organisms', () => ({
   AddPartnerModal: () => null,
 }))
+
+// ---------------------------------------------------------------------------
+// Bug 3 — unit tests for the pure linesDirty helper
+// ---------------------------------------------------------------------------
+describe('computeLinesDirty', () => {
+  const line = { id: 'a', product_id: 'p', quantity: 1, unit_price: 10, tax_rate: 0, line_total: 10 }
+
+  it('returns false when no lines and never saved (blank new doc)', () => {
+    expect(computeLinesDirty(null, [])).toBe(false)
+  })
+
+  it('returns true when lines exist and never autosaved', () => {
+    expect(computeLinesDirty(null, [line])).toBe(true)
+  })
+
+  it('returns true when all lines cleared after a successful autosave', () => {
+    // autosave had one line, user removed it → snapshot mismatch → guard fires
+    expect(computeLinesDirty(JSON.stringify([line]), [])).toBe(true)
+  })
+
+  it('returns false when lines match the saved snapshot', () => {
+    expect(computeLinesDirty(JSON.stringify([line]), [line])).toBe(false)
+  })
+
+  it('returns true when lines differ from saved snapshot', () => {
+    const line2 = { ...line, id: 'b' }
+    expect(computeLinesDirty(JSON.stringify([line]), [line, line2])).toBe(true)
+  })
+})
 
 describe('DocumentForm (canonical layout)', () => {
   it('renders a single page-level heading with the entity name', () => {
