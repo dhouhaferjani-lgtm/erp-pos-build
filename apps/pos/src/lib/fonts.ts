@@ -4,7 +4,7 @@
  * accents. Weights kept minimal to bound the bundle:
  *   Montserrat   — display/headings/brand (700, 800)
  *   Public Sans  — UI/body (400, 500, 600, 700)
- *   IBM Plex Mono — numbers/prices/IDs (400, 500, 600)
+ *   IBM Plex Mono — numbers/prices/IDs (400, 500, 600, 700 for grand total)
  * Wired to --font-display / --font-sans / --font-mono in index.css.
  */
 import '@fontsource/montserrat/latin-700.css';
@@ -18,3 +18,4 @@ import '@fontsource/public-sans/latin-700.css';
 import '@fontsource/ibm-plex-mono/latin-400.css';
 import '@fontsource/ibm-plex-mono/latin-500.css';
 import '@fontsource/ibm-plex-mono/latin-600.css';
+import '@fontsource/ibm-plex-mono/latin-700.css'; // grand total = mono bold

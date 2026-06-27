@@ -67,22 +67,28 @@
   --success: #1f8a5b;
   --success-strong: #176b42;
   --success-surface: #e6f4ee;
+  --success-subtle: #b8dec8;
   --warning: #c77e00;
   --warning-strong: #8a5a00;
   --warning-surface: #fcf3dc;
+  --warning-subtle: #f0d49a;
   --danger: #d64545;
   --danger-strong: #9b2c2c;
   --danger-surface: #fbe9e9;
+  --danger-subtle: #efc2c2;
 
   /* ---- Stock badges — DELIBERATELY DISTINCT from success/warning/danger ---- *
    * The colour grammar reserves success/warning/danger for money/sync/errors.  *
    * Stock state gets its own tokens (visually green/amber/red). See            *
    * docs/design-language.md "Stock badge exception".                           */
   --stock-ok: #1f8a5b;
+  --stock-ok-strong: #176b42;
   --stock-ok-surface: #e6f4ee;
   --stock-low: #c77e00;
+  --stock-low-strong: #8a5a00;
   --stock-low-surface: #fcf3dc;
   --stock-out: #d64545;
+  --stock-out-strong: #9b2c2c;
   --stock-out-surface: #fbe9e9;
 
   /* ---- Category thumb tints (bg / fg) — parapharmacy (README §6) ----------- */
@@ -167,6 +173,20 @@
   --stock-ok-surface: color-mix(in srgb, var(--stock-ok) 22%, var(--surface));
   --stock-low-surface: color-mix(in srgb, var(--stock-low) 22%, var(--surface));
   --stock-out-surface: color-mix(in srgb, var(--stock-out) 22%, var(--surface));
+
+  /* `-strong` is the text colour on the tinted surface. On dark backgrounds the
+   * light-theme dark-strong values fail contrast, so lighten them toward white. */
+  --success-strong: color-mix(in srgb, var(--success) 55%, white);
+  --warning-strong: color-mix(in srgb, var(--warning) 62%, white);
+  --danger-strong: color-mix(in srgb, var(--danger) 60%, white);
+  --stock-ok-strong: color-mix(in srgb, var(--stock-ok) 55%, white);
+  --stock-low-strong: color-mix(in srgb, var(--stock-low) 62%, white);
+  --stock-out-strong: color-mix(in srgb, var(--stock-out) 60%, white);
+
+  /* `-subtle` borders on dark = the hue blended toward the dark border colour. */
+  --success-subtle: color-mix(in srgb, var(--success) 40%, var(--border));
+  --warning-subtle: color-mix(in srgb, var(--warning) 40%, var(--border));
+  --danger-subtle: color-mix(in srgb, var(--danger) 40%, var(--border));
 }
 
 /* ============================  ACCENT SWATCHES  =========================== *
@@ -246,11 +266,16 @@
   --color-border-subtle: var(--border-soft);
   --color-border-strong: var(--border);
 
-  /* Action — primary interactive + selected → re-pointed to ACCENT */
+  /* Action — primary interactive + selected → re-pointed to ACCENT.
+   * `action-fg` is the on-action text colour (white). NOTE: white on the
+   * accent fill is ~3.2:1 (orange) — passes WCAG AA for LARGE/BOLD text (3:1)
+   * but not small text. Primary CTAs (Encaisser/Valider) are lg + bold, so they
+   * qualify; do not put small/normal-weight text on a bare `bg-action`. */
   --color-action: var(--accent);
   --color-action-hover: var(--accent-strong);
   --color-action-subtle: var(--accent-tint);
   --color-action-strong: var(--accent-strong);
+  --color-action-fg: var(--accent-text);
 
   /* Accent (explicit, for new surfaces) */
   --color-accent: var(--accent);
@@ -271,19 +296,25 @@
   --color-success-hover: var(--success-strong);
   --color-success-surface: var(--success-surface);
   --color-success-strong: var(--success-strong);
+  --color-success-subtle: var(--success-subtle);
   --color-warning: var(--warning);
   --color-warning-surface: var(--warning-surface);
   --color-warning-strong: var(--warning-strong);
+  --color-warning-subtle: var(--warning-subtle);
   --color-danger: var(--danger);
   --color-danger-surface: var(--danger-surface);
   --color-danger-strong: var(--danger-strong);
+  --color-danger-subtle: var(--danger-subtle);
 
   /* Stock (distinct from status) */
   --color-stock-ok: var(--stock-ok);
+  --color-stock-ok-strong: var(--stock-ok-strong);
   --color-stock-ok-surface: var(--stock-ok-surface);
   --color-stock-low: var(--stock-low);
+  --color-stock-low-strong: var(--stock-low-strong);
   --color-stock-low-surface: var(--stock-low-surface);
   --color-stock-out: var(--stock-out);
+  --color-stock-out-strong: var(--stock-out-strong);
   --color-stock-out-surface: var(--stock-out-surface);
 
   /* Fonts */

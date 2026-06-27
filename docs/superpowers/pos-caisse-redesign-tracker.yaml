@@ -18,7 +18,7 @@ phases:
 
   - id: P1
     name: Theme foundation
-    status: todo
+    status: done  # commit 85abcecac; tokens/fonts/provider/settings/stock-doc done + verified in-browser. EXCEPTION: displaymode-reconcile deferred to P3 (it is a P3 prerequisite, not needed until the grid restyle).
     consumed_by: all
     items:
       - key: tokens-semantic-layer

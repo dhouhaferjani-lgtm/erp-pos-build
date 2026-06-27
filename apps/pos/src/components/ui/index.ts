@@ -22,3 +22,7 @@ export type { StatusPillProps, StatusTone } from './StatusPill';
 
 export { SegmentedControl } from './SegmentedControl';
 export type { SegmentedControlProps, SegmentedOption } from './SegmentedControl';
+export { StockBadge } from './StockBadge';
+export type { StockBadgeProps, StockStatus } from './StockBadge';
+export { ProductThumb, initialsFromName, tintForCategory } from './ProductThumb';
+export type { ProductThumbProps, CategoryTint } from './ProductThumb';
