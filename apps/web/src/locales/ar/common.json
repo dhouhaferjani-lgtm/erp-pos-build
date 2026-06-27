@@ -46,7 +46,7 @@
     "import": "استيراد",
     "export": "تصدير",
     "actions": "إجراءات",
-    "saveAndNew": "حفظ وجديد",
+    "saveAndNew": "حفظ وإنشاء جديد",
     "saveAndClose": "حفظ وإغلاق",
     "openSaveMenu": "خيارات حفظ إضافية"
   },

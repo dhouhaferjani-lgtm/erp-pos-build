@@ -48,8 +48,8 @@
     "actions": "Actions",
     "newPurchaseOrder": "Nouvelle commande fournisseur",
     "processing": "Traitement…",
-    "saveAndNew": "Enregistrer & Nouveau",
-    "saveAndClose": "Enregistrer & Fermer",
+    "saveAndNew": "Enregistrer et créer",
+    "saveAndClose": "Enregistrer et fermer",
     "openSaveMenu": "Plus d'options d'enregistrement"
   },
   "common": {
