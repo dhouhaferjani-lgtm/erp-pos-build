@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Poppins:wght@500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body { background: #EEF0F2; }
+    ::selection { background: rgba(234,102,26,.22); }
+    @keyframes ezToastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</helmet>
+<div style="display:flex; min-height:100vh; font-family:'Public Sans',system-ui,sans-serif; color:#1C1E21; background:#F6F7F8;">
+
+  <aside style="position:sticky; top:0; align-self:flex-start; height:100vh; width:248px; flex:none; background:#14283F; color:#C2D0E0; padding:28px 20px; overflow-y:auto;">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px;">
+      <img src="assets/pos-mark-dark.svg" alt="Pos mark" style="width:38px; height:38px; flex:none; display:block;">
+
+      <div style="line-height:1.1;">
+        <div style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:800; font-size:17px; color:#FFFFFF; letter-spacing:-.01em;">IZI POS</div>
+        <div style="font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#5B7AA3;">Design System</div>
+      </div>
+    </div>
+    <div style="height:1px; background:#2C3C5C; margin:22px 0;"></div>
+    <nav style="display:flex; flex-direction:column; gap:2px; font-size:14px; font-weight:500;">
+      <a href="#brand" style="color:#C2D0E0; text-decoration:none; padding:9px 12px; border-radius:8px;" style-hover="background:#1E3A5F; color:#FFFFFF;">Brand &amp; Logo</a>
+      <a href="#color" style="color:#C2D0E0; text-decoration:none; padding:9px 12px; border-radius:8px;" style-hover="background:#1E3A5F; color:#FFFFFF;">Color</a>
+      <a href="#type" style="color:#C2D0E0; text-decoration:none; padding:9px 12px; border-radius:8px;" style-hover="background:#1E3A5F; color:#FFFFFF;">Typography</a>
+      <a href="#foundations" style="color:#C2D0E0; text-decoration:none; padding:9px 12px; border-radius:8px;" style-hover="background:#1E3A5F; color:#FFFFFF;">Structure &amp; Density</a>
+      <a href="#buttons" style="color:#C2D0E0; text-decoration:none; padding:9px 12px; border-radius:8px;" style-hover="background:#1E3A5F; color:#FFFFFF;">Buttons</a>
+      <a href="#forms" style="color:#C2D0E0; text-decoration:none; padding:9px 12px; border-radius:8px;" style-hover="background:#1E3A5F; color:#FFFFFF;">Forms &amp; Inputs</a>
+      <a href="#data" style="color:#C2D0E0; text-decoration:none; padding:9px 12px; border-radius:8px;" style-hover="background:#1E3A5F; color:#FFFFFF;">Tables &amp; Data</a>
+      <a href="#feedback" style="color:#C2D0E0; text-decoration:none; padding:9px 12px; border-radius:8px;" style-hover="background:#1E3A5F; color:#FFFFFF;">Badges &amp; Feedback</a>
+      <a href="#dark" style="color:#C2D0E0; text-decoration:none; padding:9px 12px; border-radius:8px;" style-hover="background:#1E3A5F; color:#FFFFFF;">Dark Mode</a>
+      <a href="#principles" style="color:#C2D0E0; text-decoration:none; padding:9px 12px; border-radius:8px;" style-hover="background:#1E3A5F; color:#FFFFFF;">UX Principles</a>
+    </nav>
+    <div style="height:1px; background:#2C3C5C; margin:22px 0 16px;"></div>
+    <div style="font-size:12px; color:#5B7AA3; line-height:1.6;">v1.0 &middot; IZI POS &mdash; CRM / ERP / POS<br>Crisp / operational direction. Borders first, calm color.</div>
+  </aside>
+
+  <main style="flex:1; min-width:0;">
+    <header style="padding:64px 56px 40px; background:linear-gradient(180deg,#FFFFFF 0%,#F6F7F8 100%); border-bottom:1px solid #E4E7EB;">
+      <div style="max-width:980px;">
+        <div style="display:inline-flex; align-items:center; gap:8px; background:var(--ez-tint,#FEF3EC); color:var(--ez-tint-strong,#B84E12); font-size:12px; font-weight:600; letter-spacing:.04em; padding:6px 12px; border-radius:999px; margin-bottom:20px;">
+          <span style="width:7px; height:7px; border-radius:999px; background:var(--ez-accent,#EA661A); display:block;"></span>
+          UNIVERSAL CRM &middot; ERP &middot; POS
+        </div>
+        <h1 style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:800; font-size:44px; line-height:1.08; letter-spacing:-.02em; margin:0 0 16px; color:#14283F;">The IZI POS design system</h1>
+        <p style="font-size:18px; line-height:1.6; color:#5A5F66; margin:0; max-width:680px;">One source of truth for the web dashboard, desktop app and mobile apps &mdash; anchored in the IZI POS brand mark. A universal CRM / ERP / POS, so it stays calm and legible as screens get data-dense: structure comes from hairline borders, numbers from a monospaced face, and color is spent only where it carries meaning.</p>
+      </div>
+    </header>
+
+    <div style="padding:56px; max-width:1092px;">
+      <section id="brand" style="margin-bottom:80px; scroll-margin-top:24px;">
+        <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:8px;">
+          <span style="font-size:13px; font-weight:500; color:var(--ez-accent,#EA661A); font-family:'IBM Plex Mono',monospace;">01</span>
+          <h2 style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:28px; letter-spacing:-.01em; margin:0; color:#14283F;">Brand &amp; Logo</h2>
+        </div>
+        <p style="color:#5A5F66; font-size:16px; line-height:1.6; margin:0 0 28px; max-width:660px;">The Pos mark is the anchor of everything. It has a positive version for light surfaces and a reversed version for dark surfaces &mdash; always pick the one with the most contrast.</p>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px;">
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); overflow:hidden; background:#FFFFFF; box-shadow:none;">
+            <div style="display:flex; align-items:center; justify-content:center; padding:48px; background:#FFFFFF; min-height:170px;">
+              <img src="assets/logo-lockup-light.png" alt="IZI POS Pos logo on light" style="max-width:74%; height:auto; display:block;">
+            </div>
+            <div style="padding:14px 18px; border-top:1px solid #E4E7EB; font-size:13px; color:#5A5F66; display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-weight:600; color:#1C1E21;">Primary lockup &middot; light</span>
+              <span style="font-family:'IBM Plex Mono',monospace;">on #FFF &ndash; #F6F7F8</span>
+            </div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); overflow:hidden; background:#FFFFFF; box-shadow:none;">
+            <div style="display:flex; align-items:center; justify-content:center; padding:48px; background:#0F1726; min-height:170px;">
+              <img src="assets/logo-lockup-dark.png" alt="IZI POS Pos logo on dark" style="max-width:74%; height:auto; display:block;">
+            </div>
+            <div style="padding:14px 18px; border-top:1px solid #E4E7EB; font-size:13px; color:#5A5F66; display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-weight:600; color:#1C1E21;">Reversed lockup &middot; dark</span>
+              <span style="font-family:'IBM Plex Mono',monospace;">on #0F1726 +</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr 1.2fr; gap:20px;">
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#FFFFFF; padding:24px; box-shadow:none;">
+            <div style="display:flex; align-items:center; justify-content:center; height:108px; margin-bottom:16px;">
+              <img src="assets/pos-mark.svg" alt="Pos mark" style="width:84px; height:84px; display:block;">
+            </div>
+            <div style="font-weight:600; font-size:14px; margin-bottom:4px;">App icon &middot; positive</div>
+            <div style="font-size:13px; color:#5A5F66; line-height:1.5;">Favicon, launcher, avatar. Min 24px.</div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#0F1726; padding:24px;">
+            <div style="display:flex; align-items:center; justify-content:center; height:108px; margin-bottom:16px;">
+              <img src="assets/pos-mark-dark.svg" alt="Pos mark reversed" style="width:84px; height:84px; display:block;">
+            </div>
+            <div style="font-weight:600; font-size:14px; margin-bottom:4px; color:#FFFFFF;">App icon &middot; reversed</div>
+            <div style="font-size:13px; color:#93A1B8; line-height:1.5;">For dark sidebars and splash screens.</div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#FFFFFF; padding:24px; box-shadow:none;">
+            <div style="font-weight:600; font-size:14px; margin-bottom:14px;">What the squares mean</div>
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+              <span style="width:22px; height:22px; border-radius:5px; background:#1E3A5F; flex:none; display:block;"></span>
+              <span style="font-size:13px; color:#5A5F66;"><b style="color:#1C1E21;">Navy</b> &mdash; the screen / structure. Trust.</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+              <span style="width:22px; height:22px; border-radius:5px; background:var(--ez-accent,#EA661A); flex:none; display:block;"></span>
+              <span style="font-size:13px; color:#5A5F66;"><b style="color:#1C1E21;">Orange</b> &mdash; the action / the sale. Energy.</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span style="width:22px; height:22px; border-radius:5px; background:#C7C6C5; flex:none; display:block;"></span>
+              <span style="font-size:13px; color:#5A5F66;"><b style="color:#1C1E21;">Grey</b> &mdash; the neutral / supporting data.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="color" style="margin-bottom:80px; scroll-margin-top:24px;">
+        <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:8px;">
+          <span style="font-size:13px; font-weight:500; color:var(--ez-accent,#EA661A); font-family:'IBM Plex Mono',monospace;">02</span>
+          <h2 style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:28px; letter-spacing:-.01em; margin:0; color:#14283F;">Color</h2>
+        </div>
+        <p style="color:#5A5F66; font-size:16px; line-height:1.6; margin:0 0 28px; max-width:660px;">Navy carries structure and trust; orange is reserved for the one primary action on a screen; neutrals do the heavy lifting. Use semantic colors only for status &mdash; never decoration.</p>
+
+        <div style="font-size:13px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#777C84; margin:0 0 12px;">Navy &middot; primary</div>
+        <div style="display:flex; gap:6px; margin-bottom:28px;">
+          <div style="flex:1;"><div style="height:64px; border-radius:8px 8px 0 0; background:#14283F;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">900</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#14283F</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#18324F;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">800</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#18324F</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#1E3A5F; position:relative;"><span style="position:absolute; top:6px; left:6px; font-size:9px; font-weight:700; color:#fff; background:rgba(255,255,255,.18); padding:2px 5px; border-radius:4px;">BASE</span></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">700</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#1E3A5F</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#2B4A72;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">600</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#2B4A72</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#3A5C88;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">500</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#3A5C88</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#5B7AA3;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">400</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#5B7AA3</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#8FA6C2;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">300</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#8FA6C2</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#C2D0E0;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">200</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#C2D0E0</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#E5ECF4;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">100</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#E5ECF4</div></div></div>
+          <div style="flex:1;"><div style="height:64px; border-radius:0 8px 0 0; background:#F2F6FB; border:1px solid #E4E7EB; border-left:none;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">50</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#F2F6FB</div></div></div>
+        </div>
+
+        <div style="font-size:13px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#777C84; margin:0 0 12px;">Orange &middot; action</div>
+        <div style="display:flex; gap:6px; margin-bottom:28px;">
+          <div style="flex:1;"><div style="height:64px; border-radius:8px 0 0 0; background:#8A3A0D;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">800</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#8A3A0D</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#B84E12;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">700</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#B84E12</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#D45915;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">600</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#D45915</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#EA661A; position:relative;"><span style="position:absolute; top:6px; left:6px; font-size:9px; font-weight:700; color:#fff; background:rgba(255,255,255,.20); padding:2px 5px; border-radius:4px;">BASE</span></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">500</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#EA661A</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#F07C3C;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">400</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#F07C3C</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#F59E6E;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">300</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#F59E6E</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#FBC9AC;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">200</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#FBC9AC</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#FDE6D8;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">100</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#FDE6D8</div></div></div>
+          <div style="flex:1;"><div style="height:64px; border-radius:0 8px 0 0; background:#FEF3EC; border:1px solid #F2E2D6; border-left:none;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">50</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#FEF3EC</div></div></div>
+        </div>
+
+        <div style="font-size:13px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#777C84; margin:0 0 12px;">Neutral &middot; 300 is the brand grey</div>
+        <div style="display:flex; gap:6px; margin-bottom:28px;">
+          <div style="flex:1;"><div style="height:64px; border-radius:8px 0 0 0; background:#1C1E21;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">900</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#1C1E21</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#2A2D31;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">800</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#2A2D31</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#41454B;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">700</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#41454B</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#5A5F66;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">600</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#5A5F66</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#777C84;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">500</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#777C84</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#9AA0A8;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">400</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#9AA0A8</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#C7C6C5; position:relative;"><span style="position:absolute; top:6px; left:6px; font-size:9px; font-weight:700; color:#41454B; background:rgba(255,255,255,.5); padding:2px 5px; border-radius:4px;">BRAND</span></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">300</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#C7C6C5</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#DDDEDF;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">200</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#DDDEDF</div></div></div>
+          <div style="flex:1;"><div style="height:64px; background:#ECEDEE;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">100</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#ECEDEE</div></div></div>
+          <div style="flex:1;"><div style="height:64px; border-radius:0 8px 0 0; background:#F6F7F8; border:1px solid #E4E7EB; border-left:none;"></div><div style="font-size:11px; padding:6px 4px 0;"><div style="font-weight:600;">50</div><div style="font-family:'IBM Plex Mono',monospace; color:#777C84;">#F6F7F8</div></div></div>
+        </div>
+
+        <div style="font-size:13px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#777C84; margin:0 0 12px;">Semantic &middot; status only</div>
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px;">
+          <div style="border:1px solid #E4E7EB; border-radius:12px; overflow:hidden; background:#fff;"><div style="height:56px; background:#1F8A5B;"></div><div style="padding:12px 14px;"><div style="font-weight:600; font-size:14px;">Success</div><div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84;">#1F8A5B</div><div style="margin-top:8px; height:18px; border-radius:5px; background:#E6F4EE; display:flex; align-items:center; padding:0 8px; font-size:11px; color:#1F8A5B; font-weight:600;">tint #E6F4EE</div></div></div>
+          <div style="border:1px solid #E4E7EB; border-radius:12px; overflow:hidden; background:#fff;"><div style="height:56px; background:#C77E00;"></div><div style="padding:12px 14px;"><div style="font-weight:600; font-size:14px;">Warning</div><div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84;">#C77E00</div><div style="margin-top:8px; height:18px; border-radius:5px; background:#FCF3DC; display:flex; align-items:center; padding:0 8px; font-size:11px; color:#8A5A00; font-weight:600;">tint #FCF3DC</div></div></div>
+          <div style="border:1px solid #E4E7EB; border-radius:12px; overflow:hidden; background:#fff;"><div style="height:56px; background:#D64545;"></div><div style="padding:12px 14px;"><div style="font-weight:600; font-size:14px;">Danger</div><div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84;">#D64545</div><div style="margin-top:8px; height:18px; border-radius:5px; background:#FBE9E9; display:flex; align-items:center; padding:0 8px; font-size:11px; color:#D64545; font-weight:600;">tint #FBE9E9</div></div></div>
+          <div style="border:1px solid #E4E7EB; border-radius:12px; overflow:hidden; background:#fff;"><div style="height:56px; background:#2B6CC4;"></div><div style="padding:12px 14px;"><div style="font-weight:600; font-size:14px;">Info</div><div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84;">#2B6CC4</div><div style="margin-top:8px; height:18px; border-radius:5px; background:#E7F0FD; display:flex; align-items:center; padding:0 8px; font-size:11px; color:#2B6CC4; font-weight:600;">tint #E7F0FD</div></div></div>
+        </div>
+      </section>
+
+      <section id="type" style="margin-bottom:80px; scroll-margin-top:24px;">
+        <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:8px;">
+          <span style="font-size:13px; font-weight:500; color:var(--ez-accent,#EA661A); font-family:'IBM Plex Mono',monospace;">03</span>
+          <h2 style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:28px; letter-spacing:-.01em; margin:0; color:#14283F;">Typography</h2>
+        </div>
+        <p style="color:#5A5F66; font-size:16px; line-height:1.6; margin:0 0 28px; max-width:660px;">Montserrat echoes the geometric wordmark for headings and brand moments. Public Sans is the calm, highly legible workhorse for every interface label and paragraph. IBM Plex Mono is reserved for numbers that must align &mdash; prices, SKUs, totals.</p>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:28px;">
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none;">
+            <div style="font-family:'Montserrat',sans-serif; font-weight:800; font-size:46px; line-height:1; color:#14283F;">Aa</div>
+            <div style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:17px; margin:14px 0 2px;">Montserrat</div>
+            <div style="font-size:13px; color:#777C84;">Display &amp; headings &middot; 600/700/800</div>
+            <div style="font-family:'Montserrat',sans-serif; font-size:14px; color:#5A5F66; margin-top:10px; letter-spacing:.01em;">ABCDEFG abcdefg 0123456789</div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none;">
+            <div style="font-family:'Public Sans',sans-serif; font-weight:700; font-size:46px; line-height:1; color:#14283F;">Aa</div>
+            <div style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:17px; margin:14px 0 2px;">Public Sans</div>
+            <div style="font-size:13px; color:#777C84;">UI &amp; body &middot; 400/500/600/700</div>
+            <div style="font-family:'Public Sans',sans-serif; font-size:14px; color:#5A5F66; margin-top:10px;">ABCDEFG abcdefg 0123456789</div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none;">
+            <div style="font-family:'IBM Plex Mono',monospace; font-weight:500; font-size:44px; line-height:1; color:#14283F;">Aa</div>
+            <div style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:17px; margin:14px 0 2px;">IBM Plex Mono</div>
+            <div style="font-size:13px; color:#777C84;">Numerals &amp; codes &middot; 400/500</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#5A5F66; margin-top:10px;">$1,240.00 &middot; SKU-0042</div>
+          </div>
+        </div>
+
+        <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; box-shadow:none; overflow:hidden;">
+          <div style="display:flex; align-items:baseline; justify-content:space-between; padding:18px 24px; border-bottom:1px solid #ECEDEE;"><span style="font-family:'Montserrat',sans-serif; font-weight:800; font-size:40px; line-height:1.08; letter-spacing:-.02em; color:#14283F;">Display</span><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84;">Montserrat 800 &middot; 40/44 &middot; -2%</span></div>
+          <div style="display:flex; align-items:baseline; justify-content:space-between; padding:18px 24px; border-bottom:1px solid #ECEDEE;"><span style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:32px; line-height:1.1; letter-spacing:-.01em; color:#14283F;">Heading 1</span><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84;">Montserrat 700 &middot; 32/40</span></div>
+          <div style="display:flex; align-items:baseline; justify-content:space-between; padding:18px 24px; border-bottom:1px solid #ECEDEE;"><span style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:24px; line-height:1.2; color:#14283F;">Heading 2</span><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84;">Montserrat 700 &middot; 24/32</span></div>
+          <div style="display:flex; align-items:baseline; justify-content:space-between; padding:18px 24px; border-bottom:1px solid #ECEDEE;"><span style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:19px; line-height:1.4; color:#1C1E21;">Heading 3 / Section</span><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84;">Public Sans 600 &middot; 19/28</span></div>
+          <div style="display:flex; align-items:baseline; justify-content:space-between; padding:18px 24px; border-bottom:1px solid #ECEDEE;"><span style="font-family:'Public Sans',sans-serif; font-weight:400; font-size:15px; line-height:1.6; color:#41454B;">Body &mdash; the default reading size for everything operators read.</span><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84;">Public Sans 400 &middot; 15/24</span></div>
+          <div style="display:flex; align-items:baseline; justify-content:space-between; padding:18px 24px; border-bottom:1px solid #ECEDEE;"><span style="font-family:'Public Sans',sans-serif; font-weight:400; font-size:13px; line-height:1.5; color:#5A5F66;">Small &mdash; helper text, captions and table meta.</span><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84;">Public Sans 400 &middot; 13/20</span></div>
+          <div style="display:flex; align-items:baseline; justify-content:space-between; padding:18px 24px;"><span style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:11px; line-height:1.4; letter-spacing:.12em; text-transform:uppercase; color:#777C84;">Overline / Label</span><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84;">Public Sans 600 &middot; 11 &middot; +12%</span></div>
+        </div>
+      </section>
+
+      <section id="foundations" style="margin-bottom:80px; scroll-margin-top:24px;">
+        <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:8px;">
+          <span style="font-size:13px; font-weight:500; color:var(--ez-accent,#EA661A); font-family:'IBM Plex Mono',monospace;">04</span>
+          <h2 style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:28px; letter-spacing:-.01em; margin:0; color:#14283F;">Structure &amp; Density</h2>
+        </div>
+        <p style="color:#5A5F66; font-size:16px; line-height:1.6; margin:0 0 28px; max-width:660px;">Everything sits on a 4px grid. Structure comes from hairline borders &mdash; cards are flat by default, so a dense screen stays quiet. Shadow is reserved for things that truly float (dropdowns, modals, toasts). Corners are tight (10px cards) and the focus ring is the one place navy gives way to orange.</p>
+
+        <div style="display:grid; grid-template-columns:1.1fr 1fr; gap:20px; margin-bottom:20px;">
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none;">
+            <div style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:15px; margin-bottom:16px;">Spacing scale &middot; 4px base</div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <div style="display:flex; align-items:center; gap:14px;"><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84; width:64px;">4 &middot; xs</span><span style="height:14px; width:4px; background:var(--ez-accent,#EA661A); display:block;"></span></div>
+              <div style="display:flex; align-items:center; gap:14px;"><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84; width:64px;">8 &middot; sm</span><span style="height:14px; width:8px; background:var(--ez-accent,#EA661A); display:block;"></span></div>
+              <div style="display:flex; align-items:center; gap:14px;"><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84; width:64px;">12 &middot; md</span><span style="height:14px; width:12px; background:var(--ez-accent,#EA661A); display:block;"></span></div>
+              <div style="display:flex; align-items:center; gap:14px;"><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84; width:64px;">16 &middot; lg</span><span style="height:14px; width:16px; background:var(--ez-accent,#EA661A); display:block;"></span></div>
+              <div style="display:flex; align-items:center; gap:14px;"><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84; width:64px;">24 &middot; xl</span><span style="height:14px; width:24px; background:var(--ez-accent,#EA661A); display:block;"></span></div>
+              <div style="display:flex; align-items:center; gap:14px;"><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84; width:64px;">32 &middot; 2xl</span><span style="height:14px; width:32px; background:var(--ez-accent-strong,#D45915); display:block;"></span></div>
+              <div style="display:flex; align-items:center; gap:14px;"><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84; width:64px;">48 &middot; 3xl</span><span style="height:14px; width:48px; background:var(--ez-accent-strong,#D45915); display:block;"></span></div>
+              <div style="display:flex; align-items:center; gap:14px;"><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84; width:64px;">64 &middot; 4xl</span><span style="height:14px; width:64px; background:var(--ez-accent-strong,#D45915); display:block;"></span></div>
+            </div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none;">
+            <div style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:15px; margin-bottom:16px;">Radius</div>
+            <div style="display:flex; flex-wrap:wrap; gap:14px;">
+              <div style="text-align:center;"><div style="width:72px; height:56px; background:#E5ECF4; border:1.5px solid #5B7AA3; border-radius:6px;"></div><div style="font-size:12px; color:#5A5F66; margin-top:6px;">6 &middot; inputs</div></div>
+              <div style="text-align:center;"><div style="width:72px; height:56px; background:#E5ECF4; border:1.5px solid #5B7AA3; border-radius:10px;"></div><div style="font-size:12px; color:#5A5F66; margin-top:6px;">10 &middot; buttons</div></div>
+              <div style="text-align:center;"><div style="width:72px; height:56px; background:#E5ECF4; border:1.5px solid #5B7AA3; border-radius:var(--ez-card-radius,10px);"></div><div style="font-size:12px; color:#5A5F66; margin-top:6px;">10 &middot; cards</div></div>
+              <div style="text-align:center;"><div style="width:72px; height:56px; background:#E5ECF4; border:1.5px solid #5B7AA3; border-radius:20px;"></div><div style="font-size:12px; color:#5A5F66; margin-top:6px;">20 &middot; sheets</div></div>
+              <div style="text-align:center;"><div style="width:72px; height:56px; background:#E5ECF4; border:1.5px solid #5B7AA3; border-radius:999px;"></div><div style="font-size:12px; color:#5A5F66; margin-top:6px;">full &middot; pills</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:32px 24px; box-shadow:none;">
+          <div style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:15px; margin-bottom:24px;">Elevation &middot; navy-tinted shadows</div>
+          <div style="display:flex; gap:32px; flex-wrap:wrap;">
+            <div style="text-align:center;"><div style="width:130px; height:84px; background:#fff; border-radius:12px; box-shadow:0 1px 2px rgba(20,40,63,.06),0 1px 3px rgba(20,40,63,.10);"></div><div style="font-size:12px; color:#5A5F66; margin-top:12px;">sm &middot; cards, rows</div></div>
+            <div style="text-align:center;"><div style="width:130px; height:84px; background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(20,40,63,.08),0 4px 16px rgba(20,40,63,.06);"></div><div style="font-size:12px; color:#5A5F66; margin-top:12px;">md &middot; dropdowns</div></div>
+            <div style="text-align:center;"><div style="width:130px; height:84px; background:#fff; border-radius:12px; box-shadow:0 8px 28px rgba(20,40,63,.14);"></div><div style="font-size:12px; color:#5A5F66; margin-top:12px;">lg &middot; modals</div></div>
+            <div style="text-align:center;"><div style="width:130px; height:84px; background:#fff; border-radius:12px; box-shadow:0 0 0 3px rgba(234,102,26,.30); border:1px solid #F07C3C;"></div><div style="font-size:12px; color:#5A5F66; margin-top:12px;">focus ring</div></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="buttons" style="margin-bottom:80px; scroll-margin-top:24px;">
+        <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:8px;">
+          <span style="font-size:13px; font-weight:500; color:var(--ez-accent,#EA661A); font-family:'IBM Plex Mono',monospace;">05</span>
+          <h2 style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:28px; letter-spacing:-.01em; margin:0; color:#14283F;">Buttons</h2>
+        </div>
+        <p style="color:#5A5F66; font-size:16px; line-height:1.6; margin:0 0 28px; max-width:660px;">Exactly one orange <b>primary</b> button per screen &mdash; it points to the single most important next step. Everything else is navy, outline or ghost. Hover to see states.</p>
+
+        <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:28px; box-shadow:none; margin-bottom:20px;">
+          <div style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#777C84; margin-bottom:16px;">Variants</div>
+          <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin-bottom:24px;">
+            <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:15px; color:#fff; background:var(--ez-accent,#EA661A); border:none; padding:12px 22px; border-radius:10px; cursor:pointer; box-shadow:0 1px 2px rgba(138,58,13,.30); transition:background .15s,transform .05s;" style-hover="background:var(--ez-accent-strong,#D45915);" style-active="transform:translateY(1px);">Complete sale</button>
+            <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:15px; color:#fff; background:#1E3A5F; border:none; padding:12px 22px; border-radius:10px; cursor:pointer; transition:background .15s;" style-hover="background:#18324F;">Secondary</button>
+            <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:15px; color:#1E3A5F; background:#fff; border:1.5px solid #C2D0E0; padding:11px 21px; border-radius:10px; cursor:pointer; transition:border-color .15s,background .15s;" style-hover="border-color:#1E3A5F; background:#F2F6FB;">Outline</button>
+            <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:15px; color:#1E3A5F; background:transparent; border:none; padding:12px 16px; border-radius:10px; cursor:pointer; transition:background .15s;" style-hover="background:#E5ECF4;">Ghost</button>
+            <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:15px; color:#fff; background:#D64545; border:none; padding:12px 22px; border-radius:10px; cursor:pointer; transition:background .15s;" style-hover="background:#B83838;">Delete</button>
+            <button disabled style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:15px; color:#9AA0A8; background:#ECEDEE; border:none; padding:12px 22px; border-radius:10px; cursor:not-allowed;">Disabled</button>
+          </div>
+          <div style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#777C84; margin-bottom:16px;">Sizes &amp; icon</div>
+          <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:center;">
+            <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:13px; color:#fff; background:var(--ez-accent,#EA661A); border:none; padding:8px 16px; border-radius:8px; cursor:pointer;" style-hover="background:var(--ez-accent-strong,#D45915);">Small</button>
+            <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:15px; color:#fff; background:var(--ez-accent,#EA661A); border:none; padding:12px 22px; border-radius:10px; cursor:pointer;" style-hover="background:var(--ez-accent-strong,#D45915);">Medium</button>
+            <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:17px; color:#fff; background:var(--ez-accent,#EA661A); border:none; padding:16px 30px; border-radius:12px; cursor:pointer;" style-hover="background:var(--ez-accent-strong,#D45915);">Large &middot; touch</button>
+            <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:15px; color:#fff; background:#1E3A5F; border:none; padding:12px 20px 12px 18px; border-radius:10px; cursor:pointer; display:inline-flex; align-items:center; gap:9px;" style-hover="background:#18324F;"><span style="font-size:18px; line-height:1;">+</span> Add product</button>
+            <button aria-label="settings" style="width:44px; height:44px; display:inline-flex; align-items:center; justify-content:center; color:#5A5F66; background:#fff; border:1.5px solid #DDDEDF; border-radius:10px; cursor:pointer;" style-hover="border-color:#1E3A5F; color:#1E3A5F;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section id="forms" style="margin-bottom:80px; scroll-margin-top:24px;">
+        <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:8px;">
+          <span style="font-size:13px; font-weight:500; color:var(--ez-accent,#EA661A); font-family:'IBM Plex Mono',monospace;">06</span>
+          <h2 style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:28px; letter-spacing:-.01em; margin:0; color:#14283F;">Forms &amp; Inputs</h2>
+        </div>
+        <p style="color:#5A5F66; font-size:16px; line-height:1.6; margin:0 0 28px; max-width:660px;">Big tap targets (44px+), labels always visible above the field, plain-language helper text, and errors that say exactly how to fix the problem. This is where the &ldquo;add a product&rdquo; flow gets friendly.</p>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:28px; box-shadow:none;">
+            <div style="margin-bottom:20px;">
+              <label style="display:block; font-family:'Public Sans',sans-serif; font-weight:600; font-size:13px; color:#41454B; margin-bottom:7px;">Product name</label>
+              <input type="text" value="Flat white" style="width:100%; font-family:'Public Sans',sans-serif; font-size:15px; color:#1C1E21; padding:11px 14px; border:1.5px solid #DDDEDF; border-radius:8px; outline:none; transition:border-color .15s,box-shadow .15s;" style-focus="border-color:var(--ez-accent,#EA661A); box-shadow:0 0 0 3px rgba(234,102,26,.18);">
+            </div>
+            <div style="margin-bottom:20px;">
+              <label style="display:block; font-family:'Public Sans',sans-serif; font-weight:600; font-size:13px; color:#41454B; margin-bottom:7px;">Selling price</label>
+              <div style="position:relative;">
+                <span style="position:absolute; left:14px; top:50%; transform:translateY(-50%); font-family:'IBM Plex Mono',monospace; font-size:15px; color:#777C84;">$</span>
+                <input type="text" value="4.50" style="width:100%; font-family:'IBM Plex Mono',monospace; font-size:15px; color:#1C1E21; padding:11px 14px 11px 30px; border:1.5px solid #DDDEDF; border-radius:8px; outline:none; transition:border-color .15s,box-shadow .15s;" style-focus="border-color:var(--ez-accent,#EA661A); box-shadow:0 0 0 3px rgba(234,102,26,.18);">
+              </div>
+              <div style="font-size:12px; color:#777C84; margin-top:6px;">What the customer pays, tax included.</div>
+            </div>
+            <div style="margin-bottom:4px;">
+              <label style="display:block; font-family:'Public Sans',sans-serif; font-weight:600; font-size:13px; color:#41454B; margin-bottom:7px;">Barcode</label>
+              <input type="text" value="12-A" style="width:100%; font-family:'Public Sans',sans-serif; font-size:15px; color:#1C1E21; padding:11px 14px; border:1.5px solid #D64545; border-radius:8px; outline:none; box-shadow:0 0 0 3px rgba(214,69,69,.14);">
+              <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:#D64545; margin-top:6px;"><span style="font-weight:700;">!</span> A barcode is 8&ndash;13 numbers. Scan the item or type the numbers under the bars.</div>
+            </div>
+          </div>
+
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:28px; box-shadow:none;">
+            <div style="margin-bottom:20px;">
+              <label style="display:block; font-family:'Public Sans',sans-serif; font-weight:600; font-size:13px; color:#41454B; margin-bottom:7px;">Category</label>
+              <div style="position:relative;">
+                <select style="width:100%; appearance:none; font-family:'Public Sans',sans-serif; font-size:15px; color:#1C1E21; padding:11px 14px; border:1.5px solid #DDDEDF; border-radius:8px; outline:none; background:#fff; cursor:pointer;" style-focus="border-color:var(--ez-accent,#EA661A); box-shadow:0 0 0 3px rgba(234,102,26,.18);">
+                  <option>Hot drinks</option><option>Cold drinks</option><option>Food</option>
+                </select>
+                <span style="position:absolute; right:14px; top:50%; transform:translateY(-50%); pointer-events:none; color:#777C84;">▾</span>
+              </div>
+            </div>
+            <div style="margin-bottom:20px;">
+              <label style="display:block; font-family:'Public Sans',sans-serif; font-weight:600; font-size:13px; color:#41454B; margin-bottom:7px;">In stock</label>
+              <div style="display:inline-flex; align-items:center; border:1.5px solid #DDDEDF; border-radius:10px; overflow:hidden;">
+                <button style="width:46px; height:46px; border:none; background:#F6F7F8; font-size:22px; color:#1E3A5F; cursor:pointer;" style-hover="background:#E5ECF4;">&minus;</button>
+                <span style="width:64px; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:17px; color:#1C1E21;">24</span>
+                <button style="width:46px; height:46px; border:none; background:#F6F7F8; font-size:22px; color:#1E3A5F; cursor:pointer;" style-hover="background:#E5ECF4;">+</button>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:14px;">
+              <label style="display:flex; align-items:center; gap:11px; cursor:pointer; font-family:'Public Sans',sans-serif; font-size:15px; color:#1C1E21;">
+                <span style="width:22px; height:22px; border-radius:6px; background:var(--ez-accent,#EA661A); display:inline-flex; align-items:center; justify-content:center; flex:none;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+                Track inventory for this item
+              </label>
+              <label style="display:flex; align-items:center; gap:11px; cursor:pointer; font-family:'Public Sans',sans-serif; font-size:15px; color:#1C1E21;">
+                <span style="width:22px; height:22px; border-radius:6px; background:#fff; border:1.5px solid #C7C6C5; display:inline-block; flex:none;"></span>
+                Available online
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; margin-top:20px;">
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none;">
+            <div style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#777C84; margin-bottom:16px;">Toggle</div>
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <span style="font-size:15px; color:#1C1E21;">Show on POS screen</span>
+              <button onClick="{{ setToggle }}" aria-label="toggle" style="border:none; padding:0; cursor:pointer; background:transparent;">
+                <sc-if value="{{ toggle }}" hint-placeholder-val="{{ true }}">
+                  <span style="width:46px; height:26px; border-radius:999px; background:#1F8A5B; display:flex; align-items:center; padding:3px; justify-content:flex-end; transition:all .15s;"><span style="width:20px; height:20px; border-radius:999px; background:#fff; display:block; box-shadow:0 1px 2px rgba(0,0,0,.25);"></span></span>
+                </sc-if>
+                <sc-if value="{{ notToggle }}" hint-placeholder-val="{{ false }}">
+                  <span style="width:46px; height:26px; border-radius:999px; background:#C7C6C5; display:flex; align-items:center; padding:3px; justify-content:flex-start; transition:all .15s;"><span style="width:20px; height:20px; border-radius:999px; background:#fff; display:block; box-shadow:0 1px 2px rgba(0,0,0,.25);"></span></span>
+                </sc-if>
+              </button>
+            </div>
+            <div style="font-size:12px; color:#777C84; margin-top:12px;">Tap to switch. Green = on.</div>
+          </div>
+
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none;">
+            <div style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#777C84; margin-bottom:16px;">Segmented</div>
+            <div style="display:flex; gap:4px; background:#ECEDEE; border-radius:10px; padding:4px;">
+              {{ segSale }}{{ segRefund }}{{ segHold }}
+            </div>
+            <div style="font-size:12px; color:#777C84; margin-top:12px;">For 2&ndash;3 short, mutually exclusive modes.</div>
+          </div>
+
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none;">
+            <div style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#777C84; margin-bottom:16px;">Search</div>
+            <div style="position:relative;">
+              <svg style="position:absolute; left:13px; top:50%; transform:translateY(-50%);" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9AA0A8" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" placeholder="Search products…" style="width:100%; font-family:'Public Sans',sans-serif; font-size:15px; color:#1C1E21; padding:11px 14px 11px 40px; border:1.5px solid #DDDEDF; border-radius:8px; outline:none; transition:border-color .15s,box-shadow .15s;" style-focus="border-color:var(--ez-accent,#EA661A); box-shadow:0 0 0 3px rgba(234,102,26,.18);">
+            </div>
+            <div style="font-size:12px; color:#777C84; margin-top:12px;">Search is always one tap away.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="data" style="margin-bottom:80px; scroll-margin-top:24px;">
+        <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:8px;">
+          <span style="font-size:13px; font-weight:500; color:var(--ez-accent,#EA661A); font-family:'IBM Plex Mono',monospace;">07</span>
+          <h2 style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:28px; letter-spacing:-.01em; margin:0; color:#14283F;">Tables &amp; Data</h2>
+        </div>
+        <p style="color:#5A5F66; font-size:16px; line-height:1.6; margin:0 0 28px; max-width:660px;">KPI tiles summarise the day in one glance; tables stay airy with clear row separation, right-aligned monospaced numbers, and a status chip operators can read at a distance.</p>
+
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px;">
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:20px; box-shadow:none;">
+            <div style="font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#777C84;">Today&rsquo;s sales</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-weight:500; font-size:28px; color:#14283F; margin:8px 0 6px;">$1,842</div>
+            <div style="display:inline-flex; align-items:center; gap:5px; font-size:13px; font-weight:600; color:#1F8A5B;">▲ 12% <span style="color:#9AA0A8; font-weight:400;">vs yesterday</span></div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:20px; box-shadow:none;">
+            <div style="font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#777C84;">Transactions</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-weight:500; font-size:28px; color:#14283F; margin:8px 0 6px;">213</div>
+            <div style="display:inline-flex; align-items:center; gap:5px; font-size:13px; font-weight:600; color:#1F8A5B;">▲ 5% <span style="color:#9AA0A8; font-weight:400;">vs yesterday</span></div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:20px; box-shadow:none;">
+            <div style="font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#777C84;">Avg. basket</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-weight:500; font-size:28px; color:#14283F; margin:8px 0 6px;">$8.65</div>
+            <div style="display:inline-flex; align-items:center; gap:5px; font-size:13px; font-weight:600; color:#D64545;">▼ 2% <span style="color:#9AA0A8; font-weight:400;">vs yesterday</span></div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#14283F; padding:20px; color:#fff;">
+            <div style="font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#8FA6C2;">Low stock</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-weight:500; font-size:28px; margin:8px 0 6px;">7 <span style="font-size:15px; color:#8FA6C2;">items</span></div>
+            <div style="display:inline-flex; align-items:center; gap:5px; font-size:13px; font-weight:600; color:#F59E6E;">Needs reorder soon</div>
+          </div>
+        </div>
+
+        <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; box-shadow:none; overflow:hidden;">
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid #ECEDEE;">
+            <span style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:16px; color:#14283F;">Products</span>
+            <span style="font-size:13px; color:#777C84;">4 of 128</span>
+          </div>
+          <table style="width:100%; border-collapse:collapse; font-family:'Public Sans',sans-serif;">
+            <thead>
+              <tr style="background:#FAFBFC;">
+                <th style="text-align:left; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#777C84; padding:12px 22px;">Product</th>
+                <th style="text-align:left; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#777C84; padding:12px 22px;">Category</th>
+                <th style="text-align:right; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#777C84; padding:12px 22px;">Price</th>
+                <th style="text-align:right; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#777C84; padding:12px 22px;">Stock</th>
+                <th style="text-align:left; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#777C84; padding:12px 22px;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-top:1px solid #F0F1F2; cursor:pointer;" style-hover="background:#FAFBFC;">
+                <td style="padding:14px 22px; font-size:15px; font-weight:500; color:#1C1E21;">Flat white</td>
+                <td style="padding:14px 22px; font-size:14px; color:#5A5F66;">Hot drinks</td>
+                <td style="padding:14px 22px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px; color:#1C1E21;">$4.50</td>
+                <td style="padding:14px 22px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px; color:#1C1E21;">24</td>
+                <td style="padding:14px 22px;"><span style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:#1F8A5B; background:#E6F4EE; padding:4px 10px; border-radius:999px;"><span style="width:6px; height:6px; border-radius:999px; background:#1F8A5B;"></span>In stock</span></td>
+              </tr>
+              <tr style="border-top:1px solid #F0F1F2; cursor:pointer;" style-hover="background:#FAFBFC;">
+                <td style="padding:14px 22px; font-size:15px; font-weight:500; color:#1C1E21;">Croissant</td>
+                <td style="padding:14px 22px; font-size:14px; color:#5A5F66;">Food</td>
+                <td style="padding:14px 22px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px; color:#1C1E21;">$3.20</td>
+                <td style="padding:14px 22px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px; color:#1C1E21;">5</td>
+                <td style="padding:14px 22px;"><span style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:#8A5A00; background:#FCF3DC; padding:4px 10px; border-radius:999px;"><span style="width:6px; height:6px; border-radius:999px; background:#C77E00;"></span>Low stock</span></td>
+              </tr>
+              <tr style="border-top:1px solid #F0F1F2; cursor:pointer;" style-hover="background:#FAFBFC;">
+                <td style="padding:14px 22px; font-size:15px; font-weight:500; color:#1C1E21;">Iced latte</td>
+                <td style="padding:14px 22px; font-size:14px; color:#5A5F66;">Cold drinks</td>
+                <td style="padding:14px 22px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px; color:#1C1E21;">$5.00</td>
+                <td style="padding:14px 22px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px; color:#1C1E21;">31</td>
+                <td style="padding:14px 22px;"><span style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:#1F8A5B; background:#E6F4EE; padding:4px 10px; border-radius:999px;"><span style="width:6px; height:6px; border-radius:999px; background:#1F8A5B;"></span>In stock</span></td>
+              </tr>
+              <tr style="border-top:1px solid #F0F1F2; cursor:pointer;" style-hover="background:#FAFBFC;">
+                <td style="padding:14px 22px; font-size:15px; font-weight:500; color:#1C1E21;">Muffin</td>
+                <td style="padding:14px 22px; font-size:14px; color:#5A5F66;">Food</td>
+                <td style="padding:14px 22px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px; color:#1C1E21;">$2.80</td>
+                <td style="padding:14px 22px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px; color:#1C1E21;">0</td>
+                <td style="padding:14px 22px;"><span style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:#D64545; background:#FBE9E9; padding:4px 10px; border-radius:999px;"><span style="width:6px; height:6px; border-radius:999px; background:#D64545;"></span>Out of stock</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="feedback" style="margin-bottom:80px; scroll-margin-top:24px;">
+        <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:8px;">
+          <span style="font-size:13px; font-weight:500; color:var(--ez-accent,#EA661A); font-family:'IBM Plex Mono',monospace;">08</span>
+          <h2 style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:28px; letter-spacing:-.01em; margin:0; color:#14283F;">Badges &amp; Feedback</h2>
+        </div>
+        <p style="color:#5A5F66; font-size:16px; line-height:1.6; margin:0 0 28px; max-width:660px;">Feedback is calm and explicit. Tell the operator what happened and what to do next &mdash; never just &ldquo;Error&rdquo;. Try the live modal and toast below.</p>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px;">
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none;">
+            <div style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#777C84; margin-bottom:16px;">Badges &amp; chips</div>
+            <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+              <span style="font-size:12px; font-weight:600; color:#1F8A5B; background:#E6F4EE; padding:5px 12px; border-radius:999px;">Paid</span>
+              <span style="font-size:12px; font-weight:600; color:#8A5A00; background:#FCF3DC; padding:5px 12px; border-radius:999px;">Pending</span>
+              <span style="font-size:12px; font-weight:600; color:#D64545; background:#FBE9E9; padding:5px 12px; border-radius:999px;">Refunded</span>
+              <span style="font-size:12px; font-weight:600; color:#2B6CC4; background:#E7F0FD; padding:5px 12px; border-radius:999px;">Online</span>
+              <span style="font-size:12px; font-weight:600; color:#1E3A5F; background:#E5ECF4; padding:5px 12px; border-radius:999px;">Draft</span>
+              <span style="font-size:12px; font-weight:700; color:#fff; background:var(--ez-accent,#EA661A); padding:5px 12px; border-radius:999px;">New</span>
+              <span style="display:inline-flex; align-items:center; gap:7px; font-size:13px; font-weight:500; color:#41454B; background:#F6F7F8; border:1px solid #DDDEDF; padding:6px 8px 6px 12px; border-radius:999px;">Hot drinks <span style="color:#9AA0A8; font-size:15px;">×</span></span>
+            </div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none; display:flex; flex-direction:column; gap:12px; justify-content:center;">
+            <div style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#777C84;">Live demo</div>
+            <div style="display:flex; gap:12px;">
+              <button onClick="{{ openModal }}" style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:15px; color:#fff; background:#1E3A5F; border:none; padding:12px 20px; border-radius:10px; cursor:pointer;" style-hover="background:#18324F;">Open modal</button>
+              <button onClick="{{ showToast }}" style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:15px; color:#1E3A5F; background:#fff; border:1.5px solid #C2D0E0; padding:11px 19px; border-radius:10px; cursor:pointer;" style-hover="border-color:#1E3A5F; background:#F2F6FB;">Show toast</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
+          <div style="display:flex; gap:12px; align-items:flex-start; background:#E7F0FD; border:1px solid #C7DCF7; border-radius:12px; padding:14px 16px;"><span style="width:22px; height:22px; border-radius:999px; background:#2B6CC4; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex:none;">i</span><div><div style="font-weight:600; font-size:14px; color:#14283F;">End-of-day report is ready</div><div style="font-size:13px; color:#41546E;">Open Reports to see today&rsquo;s totals and cash count.</div></div></div>
+          <div style="display:flex; gap:12px; align-items:flex-start; background:#E6F4EE; border:1px solid #C3E6D4; border-radius:12px; padding:14px 16px;"><span style="width:22px; height:22px; border-radius:999px; background:#1F8A5B; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; flex:none;">✓</span><div><div style="font-weight:600; font-size:14px; color:#14283F;">Product saved</div><div style="font-size:13px; color:#3C6B55;">&ldquo;Flat white&rdquo; is now on the POS screen.</div></div></div>
+          <div style="display:flex; gap:12px; align-items:flex-start; background:#FBE9E9; border:1px solid #F2C9C9; border-radius:12px; padding:14px 16px;"><span style="width:22px; height:22px; border-radius:999px; background:#D64545; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex:none;">!</span><div><div style="font-weight:600; font-size:14px; color:#14283F;">Couldn&rsquo;t print the receipt</div><div style="font-size:13px; color:#9E3B3B;">The printer is offline. Check the cable, then tap Retry.</div></div></div>
+        </div>
+
+        <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; box-shadow:none; padding:48px; text-align:center;">
+          <div style="width:72px; height:72px; border-radius:18px; background:#F2F6FB; display:inline-flex; align-items:center; justify-content:center; margin-bottom:18px;"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#5B7AA3" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg></div>
+          <div style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:20px; color:#14283F; margin-bottom:6px;">No products yet</div>
+          <div style="font-size:15px; color:#5A5F66; max-width:380px; margin:0 auto 20px; line-height:1.5;">Add your first product and it will show up on the POS screen, ready to sell.</div>
+          <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:15px; color:#fff; background:var(--ez-accent,#EA661A); border:none; padding:13px 24px; border-radius:10px; cursor:pointer; display:inline-flex; align-items:center; gap:8px;" style-hover="background:var(--ez-accent-strong,#D45915);"><span style="font-size:18px; line-height:1;">+</span> Add your first product</button>
+        </div>
+      </section>
+
+      <section id="dark" style="margin-bottom:80px; scroll-margin-top:24px;">
+        <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:8px;">
+          <span style="font-size:13px; font-weight:500; color:var(--ez-accent,#EA661A); font-family:'IBM Plex Mono',monospace;">09</span>
+          <h2 style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:28px; letter-spacing:-.01em; margin:0; color:#14283F;">Dark Mode</h2>
+        </div>
+        <p style="color:#5A5F66; font-size:16px; line-height:1.6; margin:0 0 28px; max-width:660px;">The desktop app and POS terminal often run in low light. Dark mode keeps navy as the brand anchor on a deep ink canvas; orange stays the single action color and only gets brighter for contrast.</p>
+
+        <div style="display:grid; grid-template-columns:1.4fr 1fr; gap:20px;">
+          <div style="border-radius:16px; overflow:hidden; background:#0F1726; border:1px solid #2C3C5C; box-shadow:0 8px 28px rgba(20,40,63,.20);">
+            <div style="display:flex;">
+              <div style="width:64px; background:#14283F; padding:18px 0; display:flex; flex-direction:column; align-items:center; gap:18px; border-right:1px solid #20304C;">
+                <img src="assets/pos-mark-dark.svg" alt="mark" style="width:32px; height:32px;">
+                <span style="width:34px; height:34px; border-radius:9px; background:var(--ez-accent,#EA661A); display:flex; align-items:center; justify-content:center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg></span>
+                <span style="width:34px; height:34px; border-radius:9px; background:transparent; display:flex; align-items:center; justify-content:center; color:#5B7AA3;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg></span>
+              </div>
+              <div style="flex:1; padding:22px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;">
+                  <span style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:17px; color:#E8EDF5;">Dashboard</span>
+                  <span style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:13px; color:#fff; background:var(--ez-accent,#EA661A); padding:8px 14px; border-radius:9px;">+ New sale</span>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+                  <div style="background:#16223A; border:1px solid #243551; border-radius:12px; padding:14px;"><div style="font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#93A1B8;">Sales</div><div style="font-family:'IBM Plex Mono',monospace; font-size:22px; color:#fff; margin-top:6px;">$1,842</div></div>
+                  <div style="background:#16223A; border:1px solid #243551; border-radius:12px; padding:14px;"><div style="font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#93A1B8;">Orders</div><div style="font-family:'IBM Plex Mono',monospace; font-size:22px; color:#fff; margin-top:6px;">213</div></div>
+                </div>
+                <div style="background:#16223A; border:1px solid #243551; border-radius:12px; padding:4px 0;">
+                  <div style="display:flex; justify-content:space-between; padding:11px 16px; border-bottom:1px solid #223149;"><span style="font-size:14px; color:#E8EDF5;">Flat white</span><span style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#93A1B8;">$4.50</span></div>
+                  <div style="display:flex; justify-content:space-between; padding:11px 16px;"><span style="font-size:14px; color:#E8EDF5;">Croissant</span><span style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#93A1B8;">$3.20</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none;">
+            <div style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#777C84; margin-bottom:16px;">Dark surface tokens</div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <div style="display:flex; align-items:center; gap:12px;"><span style="width:34px; height:34px; border-radius:8px; background:#0F1726; flex:none; border:1px solid #2C3C5C;"></span><div><div style="font-size:13px; font-weight:600;">canvas</div><div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84;">#0F1726</div></div></div>
+              <div style="display:flex; align-items:center; gap:12px;"><span style="width:34px; height:34px; border-radius:8px; background:#16223A; flex:none; border:1px solid #2C3C5C;"></span><div><div style="font-size:13px; font-weight:600;">surface</div><div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84;">#16223A</div></div></div>
+              <div style="display:flex; align-items:center; gap:12px;"><span style="width:34px; height:34px; border-radius:8px; background:#243551; flex:none;"></span><div><div style="font-size:13px; font-weight:600;">border</div><div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84;">#243551</div></div></div>
+              <div style="display:flex; align-items:center; gap:12px;"><span style="width:34px; height:34px; border-radius:8px; background:#E8EDF5; flex:none; border:1px solid #DDDEDF;"></span><div><div style="font-size:13px; font-weight:600;">text</div><div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84;">#E8EDF5</div></div></div>
+              <div style="display:flex; align-items:center; gap:12px;"><span style="width:34px; height:34px; border-radius:8px; background:#93A1B8; flex:none;"></span><div><div style="font-size:13px; font-weight:600;">text-muted</div><div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#777C84;">#93A1B8</div></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="principles" style="scroll-margin-top:24px;">
+        <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:8px;">
+          <span style="font-size:13px; font-weight:500; color:var(--ez-accent,#EA661A); font-family:'IBM Plex Mono',monospace;">10</span>
+          <h2 style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:28px; letter-spacing:-.01em; margin:0; color:#14283F;">UX Principles</h2>
+        </div>
+        <p style="color:#5A5F66; font-size:16px; line-height:1.6; margin:0 0 28px; max-width:660px;">The rules every screen audit is measured against. Our operator is busy, often non-technical, and frequently new. Design for their first day, not ours.</p>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px;">
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none;">
+            <div style="width:40px; height:40px; border-radius:10px; background:var(--ez-tint,#FEF3EC); color:var(--ez-accent-strong,#D45915); display:flex; align-items:center; justify-content:center; font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:800; margin-bottom:14px;">1</div>
+            <div style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:16px; color:#14283F; margin-bottom:6px;">One primary action</div>
+            <div style="font-size:14px; color:#5A5F66; line-height:1.55;">Every screen has a single obvious next step in orange. Don&rsquo;t make people choose between five equal buttons.</div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none;">
+            <div style="width:40px; height:40px; border-radius:10px; background:#E5ECF4; color:#1E3A5F; display:flex; align-items:center; justify-content:center; font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:800; margin-bottom:14px;">2</div>
+            <div style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:16px; color:#14283F; margin-bottom:6px;">Plain words, no jargon</div>
+            <div style="font-size:14px; color:#5A5F66; line-height:1.55;">&ldquo;Selling price&rdquo;, not &ldquo;Unit cost (gross)&rdquo;. Labels and errors read like a helpful colleague talking.</div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none;">
+            <div style="width:40px; height:40px; border-radius:10px; background:var(--ez-tint,#FEF3EC); color:var(--ez-accent-strong,#D45915); display:flex; align-items:center; justify-content:center; font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:800; margin-bottom:14px;">3</div>
+            <div style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:16px; color:#14283F; margin-bottom:6px;">Big, forgiving targets</div>
+            <div style="font-size:14px; color:#5A5F66; line-height:1.55;">44px minimum hit areas. Steppers and toggles beat tiny dropdowns on a busy counter.</div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none;">
+            <div style="width:40px; height:40px; border-radius:10px; background:#E5ECF4; color:#1E3A5F; display:flex; align-items:center; justify-content:center; font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:800; margin-bottom:14px;">4</div>
+            <div style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:16px; color:#14283F; margin-bottom:6px;">Progressive disclosure</div>
+            <div style="font-size:14px; color:#5A5F66; line-height:1.55;">Adding a product asks for name &amp; price first; tax, barcode and modifiers wait under &ldquo;More options&rdquo;.</div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none;">
+            <div style="width:40px; height:40px; border-radius:10px; background:var(--ez-tint,#FEF3EC); color:var(--ez-accent-strong,#D45915); display:flex; align-items:center; justify-content:center; font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:800; margin-bottom:14px;">5</div>
+            <div style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:16px; color:#14283F; margin-bottom:6px;">Always confirm &amp; undo</div>
+            <div style="font-size:14px; color:#5A5F66; line-height:1.55;">Saved? Say so with a toast. Destructive? Confirm. Mistakes should be one tap to reverse.</div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:var(--ez-card-radius,10px); background:#fff; padding:24px; box-shadow:none;">
+            <div style="width:40px; height:40px; border-radius:10px; background:#E5ECF4; color:#1E3A5F; display:flex; align-items:center; justify-content:center; font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:800; margin-bottom:14px;">6</div>
+            <div style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:16px; color:#14283F; margin-bottom:6px;">Consistent across platforms</div>
+            <div style="font-size:14px; color:#5A5F66; line-height:1.55;">Web, desktop and mobile share these tokens and patterns, so learning one teaches the others.</div>
+          </div>
+        </div>
+      </section>
+
+      <sc-if value="{{ modal }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeModal }}" style="position:fixed; inset:0; background:rgba(15,23,38,.55); display:flex; align-items:center; justify-content:center; padding:24px; z-index:50;">
+          <div style="background:#fff; border-radius:18px; box-shadow:0 24px 60px rgba(20,40,63,.30); width:440px; max-width:100%; overflow:hidden;">
+            <div style="padding:28px 28px 22px;">
+              <div style="width:48px; height:48px; border-radius:12px; background:#FBE9E9; display:flex; align-items:center; justify-content:center; margin-bottom:16px;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#D64545" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></div>
+              <div style="font-family:var(--ez-display,'Montserrat'),sans-serif; font-weight:700; font-size:20px; color:#14283F; margin-bottom:8px;">Delete &ldquo;Flat white&rdquo;?</div>
+              <div style="font-size:15px; color:#5A5F66; line-height:1.55;">It will be removed from the POS screen. Past sales keep their records. You can&rsquo;t undo this.</div>
+            </div>
+            <div style="display:flex; gap:12px; padding:0 28px 28px;">
+              <button onClick="{{ closeModal }}" style="flex:1; font-family:'Public Sans',sans-serif; font-weight:600; font-size:15px; color:#1E3A5F; background:#fff; border:1.5px solid #C2D0E0; padding:13px; border-radius:10px; cursor:pointer;" style-hover="background:#F2F6FB;">Keep it</button>
+              <button onClick="{{ closeModal }}" style="flex:1; font-family:'Public Sans',sans-serif; font-weight:600; font-size:15px; color:#fff; background:#D64545; border:none; padding:13px; border-radius:10px; cursor:pointer;" style-hover="background:#B83838;">Delete</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+        <div style="position:fixed; bottom:28px; left:50%; transform:translateX(-50%); z-index:60; animation:ezToastIn .22s ease;">
+          <div style="display:flex; align-items:center; gap:12px; background:#14283F; color:#fff; padding:14px 20px; border-radius:12px; box-shadow:0 12px 32px rgba(20,40,63,.35);">
+            <span style="width:22px; height:22px; border-radius:999px; background:#1F8A5B; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700;">✓</span>
+            <span style="font-family:'Public Sans',sans-serif; font-weight:500; font-size:15px;">Product saved &mdash; now on the POS screen.</span>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1240,&quot;height&quot;:900},&quot;accent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Orange&quot;,&quot;Navy&quot;,&quot;Teal&quot;,&quot;Plum&quot;],&quot;default&quot;:&quot;Orange&quot;,&quot;tsType&quot;:&quot;'Orange' | 'Navy' | 'Teal' | 'Plum'&quot;},&quot;displayFont&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Montserrat&quot;,&quot;Poppins&quot;,&quot;Space Grotesk&quot;],&quot;default&quot;:&quot;Montserrat&quot;,&quot;tsType&quot;:&quot;'Montserrat' | 'Poppins' | 'Space Grotesk'&quot;},&quot;cardShape&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Soft&quot;,&quot;Sharp&quot;,&quot;Pillowy&quot;],&quot;default&quot;:&quot;Soft&quot;,&quot;tsType&quot;:&quot;'Soft' | 'Sharp' | 'Pillowy'&quot;}}">
+class Component extends DCLogic {
+  state = { toggle: true, seg: 'sale', modal: false, toast: false, tab: 'overview' };
+  themeMaps() {
+    return {
+      accent: {
+        Orange: { a: '#EA661A', s: '#D45915', t: '#FEF3EC', ts: '#B84E12' },
+        Navy:   { a: '#1E3A5F', s: '#18324F', t: '#E5ECF4', ts: '#1E3A5F' },
+        Teal:   { a: '#0E8E80', s: '#0B7468', t: '#E0F2EF', ts: '#0B6B5F' },
+        Plum:   { a: '#9B3B8F', s: '#7E2E74', t: '#F6E6F3', ts: '#7E2E74' },
+      },
+      font: { Montserrat: "'Montserrat'", Poppins: "'Poppins'", 'Space Grotesk': "'Space Grotesk'" },
+      shape: { Soft: '10px', Sharp: '4px', Pillowy: '24px' },
+    };
+  }
+  applyVars() {
+    const m = this.themeMaps();
+    const ac = m.accent[this.props.accent] || m.accent.Orange;
+    const ff = m.font[this.props.displayFont] || m.font.Montserrat;
+    const r = m.shape[this.props.cardShape] || m.shape.Soft;
+    const root = document.documentElement.style;
+    root.setProperty('--ez-accent', ac.a);
+    root.setProperty('--ez-accent-strong', ac.s);
+    root.setProperty('--ez-tint', ac.t);
+    root.setProperty('--ez-tint-strong', ac.ts);
+    root.setProperty('--ez-display', ff);
+    root.setProperty('--ez-card-radius', r);
+  }
+  componentDidMount() { this.applyVars(); }
+  componentDidUpdate() { this.applyVars(); }
+  markLight() {
+    return React.createElement('img', { src: 'assets/pos-mark.svg', alt: 'Pos mark', style: { width: '100%', height: '100%', display: 'block' } });
+  }
+  markDark() {
+    return React.createElement('img', { src: 'assets/pos-mark-dark.svg', alt: 'Pos mark reversed', style: { width: '100%', height: '100%', display: 'block' } });
+  }
+  seg(value, label) {
+    const on = this.state.seg === value;
+    return {
+      onClick: () => this.setState({ seg: value }),
+      style: {
+        flex: 1, textAlign: 'center', cursor: 'pointer', userSelect: 'none',
+        fontFamily: "'Public Sans',sans-serif", fontWeight: 600, fontSize: '14px',
+        padding: '9px 10px', borderRadius: '8px', border: 'none',
+        background: on ? '#FFFFFF' : 'transparent',
+        color: on ? '#14283F' : '#5A5F66',
+        boxShadow: on ? '0 1px 3px rgba(20,40,63,.14)' : 'none',
+        transition: 'all .15s',
+      },
+      children: label,
+    };
+  }
+  renderVals() {
+    const t = this.state.toggle;
+    return {
+      markLight: this.markLight(),
+      markDark: this.markDark(),
+      toggle: t,
+      notToggle: !t,
+      modal: this.state.modal,
+      toast: this.state.toast,
+      setToggle: () => this.setState(s => ({ toggle: !s.toggle })),
+      segSale: React.createElement('button', this.seg('sale', 'Sale')),
+      segRefund: React.createElement('button', this.seg('refund', 'Refund')),
+      segHold: React.createElement('button', this.seg('hold', 'Hold')),
+      openModal: () => this.setState({ modal: true }),
+      closeModal: () => this.setState({ modal: false }),
+      showToast: () => { this.setState({ toast: true }); clearTimeout(this._t); this._t = setTimeout(() => this.setState({ toast: false }), 2600); },
+    };
+  }
+}
+</script>
+</body>
+</html>

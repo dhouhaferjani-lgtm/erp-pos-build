@@ -1,0 +1,283 @@
+# IziPOS "Caisse Parapharmacie" Redesign — Screen Tracker
+# Source of truth for redesign progress. One entry per surface from handoff README §5.
+# real_path = the actual implementation file behind the organisms facade (verified in code).
+# status: todo | in_progress | done | ticketed (backend dep)
+# Always import surfaces via `@/components/organisms`; edit the real_path file.
+
+meta:
+  branch: feat/pos-caisse-redesign
+  worktree: ../erp.pos-caisse
+  base: origin/dev
+  handoff: docs/design_handoff_pos_caisse/
+  spec: docs/superpowers/specs/2026-06-27-pos-caisse-redesign-design.md
+  app_root: apps/pos/src
+  live_sell_page: apps/pos/src/pages/HomePage.tsx
+  router: apps/pos/src/components/AppShell.tsx
+
+phases:
+
+  - id: P1
+    name: Theme foundation
+    status: todo
+    consumed_by: all
+    items:
+      - key: tokens-semantic-layer
+        desc: Split @theme into raw->semantic(--sem-*)->@theme; light + dark under [data-theme]
+        real_path: apps/pos/src/index.css
+        status: todo
+      - key: tokens-accent
+        desc: --accent/-strong/-tint/-ring/-text swapped by [data-accent]=orange|green|blue|teal; repoint --color-action* to accent
+        real_path: apps/pos/src/index.css
+        status: todo
+      - key: tokens-corner
+        desc: --r-panel/-card/-tile/-ctl/-sm/-pill swapped by [data-corner]=rounded|sharp
+        real_path: apps/pos/src/index.css
+        status: todo
+      - key: tokens-stock
+        desc: --stock-ok/-low/-out (+ surfaces) distinct from success/warning/danger; document exception
+        real_path: apps/pos/src/index.css
+        doc: apps/pos/docs/design-language.md
+        status: todo
+      - key: tokens-type-scale
+        desc: ergonomic --text-* scale (POS 50-70cm) per spec §6 research
+        real_path: apps/pos/src/index.css
+        status: todo
+      - key: fonts
+        desc: self-host Montserrat(display)/Public Sans(sans)/IBM Plex Mono(mono), bundled @font-face, French subset; --font-display/-sans/-mono
+        real_path: apps/pos/src/index.css
+        assets: apps/pos/src/assets/fonts/ (new)
+        status: todo
+      - key: theme-provider
+        desc: provider applies data-theme/-accent/-corner + density/cart vars to <html>; reads settingsStore
+        real_path: apps/pos/src/components/ThemeProvider.tsx (new)
+        mount: apps/pos/src/App.tsx
+        status: todo
+      - key: settings-store
+        desc: add theme/accent/corner/density to settingsStore (persist izipos-settings); cartPosition already exists
+        real_path: apps/pos/src/stores/settingsStore.ts
+        status: todo
+      - key: settings-appearance
+        desc: Appearance section (SegmentedControls) in SettingsPage
+        real_path: apps/pos/src/pages/SettingsPage.tsx
+        status: todo
+
+  - id: P2
+    name: App shell + nav rail
+    status: todo
+    handoff: README 5.0
+    items:
+      - key: nav-rail
+        desc: 88px rail opposite cart; Caisse/Clients/Rapports/Caisse-Shift icon+label; active=accent-tint; theme toggle bottom
+        real_path: apps/pos/src/components/AppShell.tsx
+        new_atoms: [NavRail, NavRailItem, ThemeToggle]
+        status: todo
+      - key: header
+        desc: 62px; brand+Caisse1+online dot | shop+date(mono) | shift chip, sync, operator avatar+switch, lock/reports/settings ghost icons; vertical dividers
+        real_path: apps/pos/src/components/Header.tsx
+        new_atoms: [Divider, Avatar]
+        status: todo
+
+  - id: P3
+    name: Sell screen (Caisse)
+    status: todo
+    handoff: README 5.1
+    items:
+      - key: transaction-cart
+        desc: title+count badge+Vider; customer/loyalty card; quick actions (Remise/En attente/Reprendre+count); compact expandable lines; summary+checkout
+        real_path: apps/pos/src/components/organisms/TransactionCart/TransactionCart.tsx
+        new_molecules: [CartLine, QuickActions]
+        parity: [add, increment, decrement, remove, clear, line-discount, cart-discount, totals+TVA, customer-attach, checkout-cash, checkout-mixte]
+        status: todo
+      - key: cart-line-expand
+        desc: tap row body EXPANDS (not increment) to reveal stepper/line-discount/fiche; collapsed default
+        real_path: apps/pos/src/components/molecules/CartLineItem/CartLineItem.tsx
+        new_surface: true
+        status: todo
+      - key: payment-summary
+        desc: Sous-total, Remises produits, Remise panier, dont TVA 19%, Total big mono
+        real_path: apps/pos/src/components/pos/PaymentSummary.tsx
+        status: todo
+      - key: product-grid
+        desc: 6/5 dense, 5/4 compact; density-driven; view toggle
+        real_path: apps/pos/src/components/organisms/ProductGrid/ProductGrid.tsx
+        status: todo
+      - key: product-card
+        desc: visual(tinted thumb 88px, info-eye, price mono, StockBadge, in-cart treatment+tap pulse) + compact
+        real_path: apps/pos/src/components/molecules/ProductCard/ProductCard.tsx
+        new_atoms: [ProductThumb, StockBadge]
+        status: todo
+      - key: toolbar
+        desc: search left, Filtres(badge count), Top ventes toggle, view toggle Vignettes/Liste
+        real_path: apps/pos/src/pages/HomePage.tsx
+        new_atoms: [SegmentedControl(reuse)]
+        status: todo
+      - key: category-pills
+        desc: horizontal multi-select pills; Tous clears
+        real_path: apps/pos/src/components/organisms/ProductGrid/ProductGrid.tsx
+        new_molecules: [CategoryPill]
+        status: todo
+
+  - id: P4
+    name: Payment flows
+    status: todo
+    handoff: README 5.2
+    items:
+      - key: cash-screen
+        desc: full-screen; navy summary (Total, Montant recu, Monnaie panel greens when covered); numpad+quick amounts+Valider
+        real_path: apps/pos/src/components/organisms/CashPaymentScreen/CashPaymentScreen.tsx
+        parity: [tendered, change-due, validate]
+        status: todo
+      - key: advanced-payments
+        desc: 3-col method+repo / amount+numpad(prefill remaining) / total+lines+Finaliser; real getCompatibleRepositoryTypes
+        real_path: apps/pos/src/components/organisms/AdvancedPaymentsModal/AdvancedPaymentsModal.tsx
+        parity: [multi-line, repository-rules, ref+last4, pay-remaining, finalize-when-covered]
+        status: todo
+      - key: card-modal
+        desc: terminal sub-flow idle->processing->approved then drop line back
+        real_path: apps/pos/src/components/pos/CardPaymentModal.tsx
+        status: todo
+      - key: checkout-success
+        desc: ticket#, total, reglement, change; print + new sale
+        real_path: apps/pos/src/components/pos/CheckoutSuccessModal.tsx
+        status: todo
+
+  - id: P5
+    name: Cart-adjacent modals
+    status: todo
+    handoff: README 5.3
+    items:
+      - key: line-discount
+        desc: product name + % grid (Aucune/5/10/15/20/25)
+        real_path: apps/pos/src/components/organisms/LineDiscountModal/LineDiscountModal.tsx
+        status: todo
+      - key: cart-discount
+        desc: cart-wide % toggle as summary line
+        real_path: apps/pos/src/components/organisms/DiscountModal/DiscountModal.tsx
+        status: todo
+      - key: hold-recall
+        desc: park current sale; list parked (customer/count/total/time-ago) restore/delete
+        real_path: apps/pos/src/components/pos/HeldTransactionsModal.tsx
+        parity: [hold, recall, delete]
+        status: todo
+      - key: customer-picker
+        desc: searchable name/phone, Client de passage, active highlight, + Nouveau client
+        real_path: apps/pos/src/components/customers/CustomerSearchModal.tsx
+        status: todo
+      - key: add-customer
+        desc: name/phone/email/skin-type/consent toggle; save+auto-select (skin_type = ticketed backend)
+        real_path: apps/pos/src/components/customers/CustomerAttachPanel.tsx
+        status: todo
+
+  - id: P6
+    name: Returns
+    status: todo
+    handoff: README 5.4
+    note: handoff says VoidReturnModal but live flow is RefundCheckoutFlow (VoidReturnModal NOT mounted)
+    items:
+      - key: refund-flow
+        desc: pick past ticket -> select return lines -> add replacements -> settle net via payment flow
+        real_path: apps/pos/src/components/pos/RefundCheckoutFlow.tsx
+        related: [ReceiptLocatorScreen.tsx, ReceiptScanConfirmationSheet.tsx, RefundDestinationPicker.tsx, RefundConfirmModal.tsx]
+        parity: [pick-ticket, select-lines, add-items, settle-net]
+        status: todo
+
+  - id: P7
+    name: Reports / Shift
+    status: todo
+    handoff: README 5.5
+    items:
+      - key: reports-menu
+        desc: KPI cards (Ventes/Transactions/Panier moyen) + payment-method breakdown bars + ticket list (period segmented, payment filter, search)
+        real_path: apps/pos/src/components/pos/ReportsMenu.tsx
+        new_atoms: [KpiCard, BreakdownBar]
+        status: todo
+      - key: sales-history
+        desc: filterable ticket list
+        real_path: apps/pos/src/components/pos/TodaySalesPanel.tsx
+        status: todo
+      - key: x-report
+        desc: service header, KPIs, breakdown, Imprimer rapport X
+        real_path: apps/pos/src/components/pos/XReportModal.tsx
+        status: todo
+      - key: z-report-close
+        desc: count cash, reconcile vs expected, live ecart color-coded, Cloturer
+        real_path: apps/pos/src/components/pos/ZReportModal.tsx
+        related: [CloseShiftModal.tsx, CashReconciliationSection.tsx]
+        parity: [open-float, close-Z, reconciliation-ecart]
+        status: todo
+      - key: cash-movements
+        desc: deposit/payout/drop-to-safe with amount+reason -> feeds Z
+        real_path: apps/pos/src/components/pos/CashDrawerModal.tsx
+        parity: [in, out, drop-to-safe]
+        status: todo
+
+  - id: P8
+    name: Customers page (NEW surface)
+    status: ticketed
+    handoff: README 5.6 / 8
+    items:
+      - key: customers-route
+        desc: new route under AppShell; browse/search list
+        real_path: apps/pos/src/pages/CustomersPage.tsx (new)
+        new_surface: true
+        status: todo
+      - key: customer-detail
+        desc: contact, loyalty tier+points, total spend+visits, store credit, skin type, advice note, purchase history
+        real_path: apps/pos/src/pages/CustomerDetailPage.tsx (new)
+        new_surface: true
+        backend_dep: [loyalty surfacing in POS, skin_type persistence, purchase history endpoint]
+        status: ticketed
+      - key: customer-edit
+        desc: edit profile
+        new_surface: true
+        status: todo
+
+  - id: P9
+    name: Parapharmacy merchandising (NEW surfaces)
+    status: ticketed
+    handoff: README 5.1 / 8
+    items:
+      - key: filters-drawer
+        desc: advanced Filtres (brand/category/routine/skin); active filter chips row w/ removable + Tout effacer + live count
+        real_path: apps/pos/src/pages/HomePage.tsx
+        new_molecules: [FilterChipRow]
+        backend_dep: [product brand surfacing in POSProduct, skin_type, routine]
+        status: ticketed
+      - key: skin-advice-bar
+        desc: Conseil/Type de peau + skin pills + result count
+        real_path: apps/pos/src/components/organisms/ProductGrid/ProductGrid.tsx
+        new_molecules: [SkinAdviceBar]
+        backend_dep: [product skin_type]
+        status: ticketed
+      - key: product-detail-tabs
+        desc: Description/Ingredients/Indications (exist) + Equivalents/Complements/Routine (new, optional data + empty states)
+        real_path: apps/pos/src/components/pos/ProductDetailDrawer.tsx
+        new_atoms: [Tab]
+        backend_dep: [equivalents/complementary relations, routine membership]
+        status: ticketed
+
+shared_atoms_to_build:
+  location: apps/pos/src/components/ui (canonical) or components/atoms
+  list:
+    - ThemeToggle
+    - Pill / Chip (removable)
+    - StockBadge
+    - Avatar
+    - ProductThumb
+    - Stepper
+    - Toggle
+    - Tab
+    - KpiCard
+    - BreakdownBar
+    - Divider
+    - ModalShell / FullScreenSheet / Drawer / Toast (shells)
+  reuse_existing: [Button, IconButton, Badge, SegmentedControl, StatusPill, MoneyInput]
+
+backend_tickets:
+  - surface POSProduct.brand (exists in EnrichedProductData)
+  - add product skin_type field/endpoint
+  - add product routine-membership model
+  - add equivalent/complementary product relations
+  - persist customer skin_type
+  - surface loyalty points/tier/enrollment in POS customer payloads
+  - customer purchase-history endpoint for POS detail page
