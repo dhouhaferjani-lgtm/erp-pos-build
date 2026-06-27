@@ -124,7 +124,7 @@ class ProductData extends Data
                 ]
                 : null,
             stock_quantity: self::stockQuantity($product),
-            pricing_mode: $product->pricing_mode ?? PricingMode::Manual,
+            pricing_mode: $product->pricing_mode,
             effective_margins: $effective,
         );
     }
