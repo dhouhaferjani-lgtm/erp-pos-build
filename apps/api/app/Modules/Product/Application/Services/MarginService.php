@@ -155,6 +155,33 @@ class MarginService
     }
 
     /**
+     * Compute the expected auto sell price for a product as a money-scale string.
+     *
+     * Uses bcmath only — no float. Returns null when cost_price <= 0 (can't compute).
+     * The result is at the product's company-currency money scale, consistent with
+     * what updateSalePrice() would produce for the same cost/margin pair.
+     *
+     * Used by the backfill command to detect products whose sale_price was already
+     * set by the margin formula and can therefore be safely promoted to `auto`.
+     *
+     * @return numeric-string|null
+     */
+    public function computeAutoPrice(Product $product): ?string
+    {
+        $product->loadMissing('company');
+
+        $cost = $this->toNumericString($product->cost_price ?? '0');
+
+        if (bccomp($cost, '0', $this->intermediateScale($product)) <= 0) {
+            return null;
+        }
+
+        $effectiveTarget = $this->resolver->resolve($product)->target_margin;
+
+        return $this->priceFromMargin($cost, $effectiveTarget, $product);
+    }
+
+    /**
      * Calculate suggested sell price based on cost and target margin.
      */
     public function getSuggestedPrice(Product $product): float
