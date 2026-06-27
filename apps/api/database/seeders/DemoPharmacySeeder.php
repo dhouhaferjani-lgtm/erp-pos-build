@@ -232,9 +232,8 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
     /**
      * Create the 4 Tunisia POS shop locations with per-establishment matricule.
      *
-     * Ported from {@see ParapharmacyMultiBranchSeeder::createCompanyWithBranches()}
-     * (lines 251-297), adapted to Tunisia identity and 4-shop topology.
-     * Uses `firstOrCreate` keyed on `(company_id, code)` so re-runs are safe.
+     * Adapted to the Tunisia identity and 4-shop topology. Uses `firstOrCreate`
+     * keyed on `(company_id, code)` so re-runs are safe.
      *
      * @return Location[]
      */
@@ -407,8 +406,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
     /**
      * Distribute front-of-house stock to the 4 Tunisia POS shops.
      *
-     * Strategy mirrors {@see ParapharmacyMultiBranchSeeder::seedMultiBranchStock}:
-     * each shop independently gets ~60% of the catalog in small quantities (2–15
+     * Each shop independently gets ~60% of the catalog in small quantities (2–15
      * units). The warehouse (WH-01) stock was already seeded by the parent's
      * {@see ParapharmacySeeder::seedStockLevels()} — this method ONLY touches
      * the shop locations so warehouse stock is not duplicated.
