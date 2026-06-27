@@ -23,6 +23,7 @@ import { startConnectivityAuditSubscriber } from '@/lib/audit/connectivityAuditS
 import { useC2MigrationBannerStore } from '@/stores/c2MigrationBannerStore';
 import { useBootstrapErrorTelemetry } from '@/hooks/useBootstrapErrorTelemetry';
 import { CustomerDisplayPage } from '@/pages/CustomerDisplayPage';
+import { ThemePreviewPage } from '@/pages/ThemePreviewPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { TerminalSetupPage } from '@/pages/TerminalSetupPage';
 import { PinEntryPage } from '@/pages/PinEntryPage';
@@ -39,6 +40,10 @@ const queryClient = new QueryClient({
 
 /** Detect if this window is the customer display (secondary window). */
 const isCustomerDisplayWindow = window.location.pathname === '/customer-display';
+
+/** DEV-only theme/atom gallery — bypasses auth. Stripped from prod builds. */
+const isThemePreview =
+  import.meta.env.DEV && window.location.pathname === '/theme-preview';
 
 export function AppRouter() {
   const { t } = useTranslation('common');
@@ -354,6 +359,15 @@ export function App() {
   // Customer display window — render directly without auth/providers
   if (isCustomerDisplayWindow) {
     return <CustomerDisplayPage />;
+  }
+
+  // DEV-only theme/atom gallery — render under ThemeProvider, no auth.
+  if (isThemePreview) {
+    return (
+      <ThemeProvider>
+        <ThemePreviewPage />
+      </ThemeProvider>
+    );
   }
 
   return <MainApp />;

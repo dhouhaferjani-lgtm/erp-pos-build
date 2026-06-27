@@ -269,20 +269,22 @@ phases:
 
 shared_atoms_to_build:
   location: apps/pos/src/components/ui (canonical) or components/atoms
-  list:
-    - ThemeToggle
-    - Pill / Chip (removable)
-    - StockBadge
-    - Avatar
-    - ProductThumb
-    - Stepper
-    - Toggle
-    - Tab
-    - KpiCard
-    - BreakdownBar
-    - Divider
-    - ModalShell / FullScreenSheet / Drawer / Toast (shells)
+  done:  # committed af536af56 + atoms commit; TDD + both themes verified in /theme-preview gallery
+    - StockBadge        # stock-* tokens, distinct from money/error grammar
+    - ProductThumb      # tinted-initials tile + category tints + image fallback
+    - Avatar            # initials disc (neutral/accent tone)
+    - Stepper           # touch -/+ qty, 48px keys, onValueClick=numpad
+    - Pill              # category toggle + removable filter chip
+  todo:
+    - ThemeToggle       # (settings sun/moon — partial: SegmentedControl in Appearance)
+    - Toggle            # consent switch
+    - Tab               # product-detail tabs
+    - KpiCard           # reports
+    - BreakdownBar      # reports payment-method bars
+    - Divider           # header vertical group divider
+    - ModalShell / FullScreenSheet / Drawer / Toast (shells; consolidate on pos/Modal.tsx)
   reuse_existing: [Button, IconButton, Badge, SegmentedControl, StatusPill, MoneyInput]
+  preview: apps/pos/src/pages/ThemePreviewPage.tsx  # DEV-only /theme-preview gallery (auth-bypass, import.meta.env.DEV)
 
 backend_tickets:
   - surface POSProduct.brand (exists in EnrichedProductData)
