@@ -24,6 +24,7 @@ use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Application\DTOs\OpeningStateData;
 use App\Modules\Product\Application\DTOs\ProductData;
 use App\Modules\Product\Application\Jobs\ApplyCatalogEnrichmentJob;
+use App\Modules\Product\Application\Services\MarginResolver;
 use App\Modules\Product\Application\Services\MarginService;
 use App\Modules\Product\Application\Services\ProductPricingIntentService;
 use App\Modules\Product\Application\Services\ProductTombstoneService;
@@ -70,6 +71,7 @@ class ProductController extends Controller
         private readonly BatchStockService $batchStockService,
         private readonly ProductPricingIntentService $pricingIntent,
         private readonly MarginService $marginService,
+        private readonly MarginResolver $marginResolver,
     ) {}
 
     /**
@@ -337,7 +339,7 @@ class ProductController extends Controller
         $media = $this->catalogMedia->forProduct($productModel->id, $company->tenant_id);
 
         return response()->json([
-            'data' => ProductData::fromModel($productModel, $media),
+            'data' => ProductData::fromModel($productModel, $media, $this->marginResolver->resolve($productModel)),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
@@ -581,7 +583,7 @@ class ProductController extends Controller
         );
 
         return response()->json([
-            'data' => ProductData::fromModel($product, $media, $opening),
+            'data' => ProductData::fromModel($product, $media, $opening, $this->marginResolver->resolve($product)),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
@@ -863,7 +865,7 @@ class ProductController extends Controller
         $media = $this->catalogMedia->forProduct($freshProduct->id, $company->tenant_id);
 
         return response()->json([
-            'data' => ProductData::fromModel($freshProduct, $media),
+            'data' => ProductData::fromModel($freshProduct, $media, $this->marginResolver->resolve($freshProduct)),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),

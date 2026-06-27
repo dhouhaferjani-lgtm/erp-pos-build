@@ -1608,6 +1608,8 @@ opening: App.Modules.Product.Application.DTOs.OpeningStateData | null;
 enrichment_status: string | null;
 latest_enrichment_result: Array<any> | null;
 stock_quantity: string | null;
+pricing_mode: App.Modules.Product.Domain.Enums.PricingMode;
+effective_margins: App.Modules.Product.Application.DTOs.EffectiveMargins | null;
 };
 export type ProductHealthClaimData = {
 health_claim: App.Modules.Product.Application.DTOs.HealthClaimData;
