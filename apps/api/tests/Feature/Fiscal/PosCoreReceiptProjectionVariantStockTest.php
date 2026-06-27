@@ -22,6 +22,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
@@ -176,34 +177,49 @@ final class PosCoreReceiptProjectionVariantStockTest extends TestCase
     }
 
     // =================================================================
-    // (c) NO double-decrement (single authoritative projection decrement)
+    // (c) no double-decrement across grains: a variant line never falls
+    //     back to the product-level pool, even when the variant row is absent
     // =================================================================
 
-    public function test_variant_sale_produces_no_double_decrement(): void
+    public function test_variant_sale_with_no_variant_stock_row_does_not_fall_back_to_product_grain(): void
     {
-        // The projection is the single authoritative decrement point under
-        // device-SoT; the draft-creation path is retired (410 Gone). A
-        // variant sale of qty 1 must move the variant row by exactly 1 (not 2)
-        // and must NOT also move the product-level row — i.e., no second
-        // decrement from any source.
+        // The decisive "no double-decrement across grains" guard. The
+        // single-authoritative-decrement claim (projection only; the draft
+        // createReceipt path is 410 Gone — pinned by
+        // NewSaleServerAuthoringDispositionTest) already prevents two SOURCES
+        // decrementing. This pins the other half: one source must never hit
+        // two GRAINS. When a variant line has NO variant-scoped stock_levels
+        // row, the projection must NOT decrement the product-level pool (the
+        // pre-fix bug decremented exactly that row). Nothing is decremented,
+        // and the absent variant grain is logged so an unseeded-variant leak
+        // is observable rather than silent.
         [$product, $variant] = $this->seedProductWithVariant();
-
+        // Only a product-level row exists; the variant grain is absent.
         $productLevel = $this->seedStockLevel($product->id, null, '5.0000');
-        $variantLevel = $this->seedStockLevel($product->id, $variant->id, '5.0000');
 
         $event = $this->saleReceiptEvent(productId: $product->id, variantId: $variant->id, quantity: '1');
 
+        Log::spy();
         app(CompanyContext::class)->clear();
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
-        $variantLevel->refresh();
-        $this->assertSame('4.0000', $variantLevel->quantity, 'variant row must drop by exactly one unit, not two');
-
+        // Product-level pool MUST be untouched — no fallback decrement.
         $productLevel->refresh();
-        $this->assertSame('5.0000', $productLevel->quantity, 'product-level row must not be decremented for a variant sale');
+        $this->assertSame('5.0000', $productLevel->quantity);
 
-        // Exactly one stock movement total for the sale.
-        $this->assertSame(1, DB::table('stock_movements')->where('reason', 'pos_sale')->count());
+        // No stock movement at all — there was no variant row to decrement.
+        $this->assertSame(0, DB::table('stock_movements')->where('reason', 'pos_sale')->count());
+
+        // The receipt still projects (stock is a best-effort downstream effect).
+        $this->assertSame(1, DB::table('pos_receipts')->count());
+
+        // The absent variant grain is surfaced, not silently swallowed.
+        Log::shouldHaveReceived('warning')->withArgs(
+            function (string $message, array $context = []) use ($variant): bool {
+                return str_contains($message, 'no variant-scoped stock')
+                    && ($context['variant_id'] ?? null) === $variant->id;
+            }
+        );
     }
 
     // =================================================================
@@ -240,11 +256,15 @@ final class PosCoreReceiptProjectionVariantStockTest extends TestCase
     // (e) quantities stay decimal(4) bcmath — no float drift
     // =================================================================
 
-    public function test_variant_decrement_preserves_decimal4_quantity_without_float_drift(): void
+    public function test_variant_decrement_keeps_full_scale4_precision(): void
     {
         [$product, $variant] = $this->seedProductWithVariant();
-        // A fractional quantity that a float subtraction would smear
-        // (e.g. 10.0001 - 0.3 in IEEE-754). bcsub at scale 4 must stay exact.
+        // Pins the bcsub SCALE argument (4). A regression that narrowed it to
+        // scale 2/3 would store '9.7000'/'9.700' and fail here; the trailing
+        // 4th decimal ('…0001') only survives at scale >= 4. The float-cast
+        // prohibition itself is enforced statically (PHPStan rule 19 —
+        // ForbidFloatCastOnDecimalProperty), since the decimal(4) column
+        // re-rounds on store and cannot distinguish float from bcmath alone.
         $variantLevel = $this->seedStockLevel($product->id, $variant->id, '10.0001');
 
         $event = $this->saleReceiptEvent(productId: $product->id, variantId: $variant->id, quantity: '0.3000');

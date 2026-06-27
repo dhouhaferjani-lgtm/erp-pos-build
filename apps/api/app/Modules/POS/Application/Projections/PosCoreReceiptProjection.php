@@ -937,6 +937,21 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         $stockLevel = $stockLevelQuery->lockForUpdate()->first();
 
         if ($stockLevel === null) {
+            // A variant line with no variant-scoped stock_levels row must NOT
+            // fall back to decrementing the product-level pool (the pre-T2
+            // bug). Nothing is decremented; surface the absent variant grain
+            // so an unseeded-variant leak is observable rather than silent.
+            // Product-level lines with no row are normal (non-inventory /
+            // service items) and stay silent to avoid log noise.
+            if ($variantId !== null) {
+                Log::warning('PosCoreReceiptProjection: variant sale found no variant-scoped stock_levels row; nothing decremented', [
+                    'product_id' => $productId,
+                    'variant_id' => $variantId,
+                    'location_id' => $locationId,
+                    'receipt_id' => $receiptId,
+                ]);
+            }
+
             return;
         }
 
