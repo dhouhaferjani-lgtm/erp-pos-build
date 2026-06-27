@@ -136,9 +136,13 @@ Bound in `LoyaltyServiceProvider::register()` →
 `App\Modules\Loyalty\Application\Services\SaleEarningService`.
 
 `SaleEarningService::earnForSale()` (relocates + replaces the retired listener's logic):
-0. **Module guard (Codex SF-2):** if the tenant does not have the Loyalty module enabled, return.
-   The projection-side contract call is *not* behind the `module:Loyalty` HTTP middleware, so the
-   service gates itself via the same tenant-config service `RequireModule` uses (`hasModule('Loyalty')`).
+0. **Module guard (Codex SF-2):** the projection-side contract call is *not* behind the
+   `module:Loyalty` HTTP middleware, so the service gates itself. Worker-safe form (no CompanyContext
+   / central Tenant resolution needed): return early unless the tenant has an **active loyalty
+   program** (`LoyaltyProgramRepositoryInterface::findByTenantAndStatus($tenantId,
+   ProgramStatus::Active)` non-empty). This is a sound proxy for "Loyalty enabled" because program
+   creation/activation is itself gated behind `module:Loyalty`; a disabled tenant has no active
+   program (and no enrolled members), so nothing earns.
 1. If `contactId` and `partnerId` both null ⇒ return (no member).
 2. Resolve `LoyaltyMember` by `loyaltyable_type='contact' & loyaltyable_id=contactId` (tenant-scoped),
    else by `partner` / legacy `customer_id = partnerId`. None ⇒ return.
