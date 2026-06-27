@@ -16,6 +16,7 @@ use App\Modules\Inventory\Application\DTOs\OpeningBalanceLine;
 use App\Modules\Inventory\Application\DTOs\OpeningBalancePosting;
 use App\Modules\Inventory\Application\DTOs\StockLevelData;
 use App\Modules\Inventory\Application\Services\OpeningBalancePostingService;
+use App\Modules\Inventory\Domain\Exceptions\OpeningAlreadyExistsException;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Application\DTOs\OpeningStateData;
 use App\Modules\Product\Application\DTOs\ProductData;
@@ -26,6 +27,7 @@ use App\Modules\Product\Domain\Events\ProductDeleted;
 use App\Modules\Product\Domain\Events\ProductUpdated;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Presentation\Requests\CreateProductRequest;
+use App\Modules\Product\Presentation\Requests\PostOpeningBalanceRequest;
 use App\Modules\Product\Presentation\Requests\UpdateProductRequest;
 use App\Modules\Taxation\Domain\Services\TaxResolutionService;
 use App\Modules\Uom\Domain\Entities\Unit;
@@ -524,6 +526,75 @@ class ProductController extends Controller
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],
         ], 201);
+    }
+
+    /**
+     * Post an opening balance on an existing eligible physical product.
+     *
+     * Re-entry path: used after a reset, or to add an opening to a product
+     * that was created without one. Reuses the same OpeningBalancePostingService
+     * as the inline create flow (store()).
+     *
+     * Guards (in order):
+     *   1. product must be physical (422)
+     *   2. no downstream non-opening movements (409 — inventory is live)
+     *   3. active default location must exist (422)
+     *   4. openingPosting->post() → OpeningAlreadyExistsException → 409
+     */
+    public function postOpening(PostOpeningBalanceRequest $request, string $product): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $model = Product::where('company_id', $companyId)->findOrFail($product);
+
+        abort_unless($model->is_physical, 422, __('inventory.opening_requires_physical'));
+        abort_if($this->inventory->hasDownstreamMovements($companyId, $model->id), 409, __('inventory.opening_locked_downstream'));
+
+        /** @var User $user */
+        $user = $request->user();
+
+        $location = $this->locationContext->getDefaultLocation($companyId);
+        abort_if($location === null, 422, __('inventory.no_active_location'));
+        $this->locationContext->validateLocationAccess($location->id, $companyId, $user);
+
+        /** @var array<string, mixed> $validated */
+        $validated = $request->validated();
+        $qty = (string) ($validated['opening_qty'] ?? '0');
+        $cost = (string) ($validated['opening_unit_cost'] ?? '0.000');
+
+        // Pass the company currency explicitly — no bare no-arg getScale() per rule 19.
+        $scale = $this->scaleResolver->getScale($company->currency);
+
+        try {
+            $this->openingPosting->post(new OpeningBalancePosting(
+                tenantId: $company->tenant_id,
+                companyId: $companyId,
+                userId: $user->id,
+                entryDate: now(),
+                isHistorical: true,
+                sourceType: 'opening_balance',
+                sourceId: $model->id,
+                reference: 'Opening balance: '.($model->sku ?? $model->id),
+                notes: null,
+                lines: [
+                    OpeningBalanceLine::make($model->id, null, $location->id, $qty, $cost, $scale),
+                ],
+            ));
+        } catch (OpeningAlreadyExistsException) {
+            abort(409, __('inventory.opening_already_exists'));
+        }
+
+        $media = $this->catalogMedia->forProduct($model->id, $company->tenant_id);
+
+        $opening = OpeningStateData::fromFlags(
+            $this->inventory->hasActiveOpening($companyId, $model->id),
+            $this->inventory->hasDownstreamMovements($companyId, $model->id),
+        );
+
+        /** @var Product $freshModel */
+        $freshModel = $model->fresh();
+
+        return response()->json(['data' => ProductData::fromModel($freshModel, $media, $opening)], 201);
     }
 
     /**
