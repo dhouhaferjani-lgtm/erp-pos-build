@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useForm, type Resolver } from 'react-hook-form'
@@ -7,6 +7,9 @@ import { z } from 'zod'
 import { ArrowLeft } from 'lucide-react'
 import { Button, Input, FormField } from '@/components/atoms'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
+import { SaveSplitButton } from '@/components/molecules/SaveSplitButton'
+import { useAfterSaveNavigation } from '@/hooks/useAfterSaveNavigation'
+import { useUnsavedChangesGuard, confirmDiscard } from '@/hooks/useUnsavedChangesGuard'
 
 import { useMember, useCreateMember, useUpdateMember } from '../hooks/useMembers'
 import type { CreateMemberData } from '../types/loyalty'
@@ -42,6 +45,21 @@ export function MemberFormPage() {
     },
   })
 
+  const nav = useAfterSaveNavigation({
+    recordPath: (rid) => `/pos/loyalty/members/${rid}`,
+    listPath: '/pos/loyalty/members',
+  })
+
+  const closeIntentRef = useRef(false)
+
+  useUnsavedChangesGuard({ isDirty: form.formState.isDirty })
+
+  const cancel = () => {
+    if (!form.formState.isDirty || confirmDiscard(t('common:confirmation.unsavedChangesBody'))) {
+      navigate('/pos/loyalty/members')
+    }
+  }
+
   useEffect(() => {
     if (existingMember) {
       form.reset({
@@ -55,6 +73,11 @@ export function MemberFormPage() {
   }, [existingMember, form])
 
   const onSubmit = (values: MemberFormValues) => {
+    // Snapshot + reset the close intent up front so a failed submit
+    // (validation abort or mutation error) can never leave it stuck true.
+    const shouldClose = closeIntentRef.current
+    closeIntentRef.current = false
+
     const payload: CreateMemberData = {
       phone: values.phone,
       email: values.email || null,
@@ -66,11 +89,19 @@ export function MemberFormPage() {
     if (isEditing && id) {
       updateMutation.mutate(
         { id, data: payload },
-        { onSuccess: () => navigate(`/pos/loyalty/members/${id}`) },
+        {
+          onSuccess: () => {
+            if (shouldClose) nav.goToList()
+            else nav.goToRecord(id)
+          },
+        },
       )
     } else {
       createMutation.mutate(payload, {
-        onSuccess: () => navigate('/pos/loyalty/members'),
+        onSuccess: (created) => {
+          if (shouldClose) nav.goToList()
+          else nav.goToRecord(created.id)
+        },
       })
     }
   }
@@ -86,7 +117,7 @@ export function MemberFormPage() {
       <div className="flex items-center gap-4">
         <button
           type="button"
-          onClick={() => navigate('/pos/loyalty/members')}
+          onClick={cancel}
           className="p-2 rounded-lg hover:bg-gray-100"
         >
           <ArrowLeft className="w-5 h-5" />
@@ -132,13 +163,18 @@ export function MemberFormPage() {
           <Button
             type="button"
             variant="secondary"
-            onClick={() => navigate('/pos/loyalty/members')}
+            onClick={cancel}
           >
             {t('common:cancel')}
           </Button>
-          <Button type="submit" disabled={isSaving}>
-            {isSaving ? t('common:saving') : isEditing ? t('common:save') : t('loyalty:members.create')}
-          </Button>
+          <SaveSplitButton
+            onPrimarySave={() => {}}
+            onSaveAndClose={() => {
+              closeIntentRef.current = true
+              void form.handleSubmit(onSubmit, () => { closeIntentRef.current = false })()
+            }}
+            isPending={isSaving}
+          />
         </StickyFormFooter>
       </form>
     </div>
