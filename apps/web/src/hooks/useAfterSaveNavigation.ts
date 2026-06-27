@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 export interface AfterSaveNavConfig {
@@ -17,12 +17,16 @@ export interface AfterSaveNav {
 }
 
 /** Canonical post-save navigation. Editors call these AFTER their own
- *  mutation success side effects (invalidation, uploads, toasts) complete. */
+ *  mutation success side effects (invalidation, uploads, toasts) complete.
+ *  Callbacks are stable across renders (config is read via a ref), so they
+ *  are safe to use in effect dependency arrays. */
 export function useAfterSaveNavigation(config: AfterSaveNavConfig): AfterSaveNav {
   const navigate = useNavigate()
+  const configRef = useRef(config)
+  configRef.current = config
   return useMemo<AfterSaveNav>(() => ({
-    goToRecord: (id) => { void navigate(config.recordPath(id)) },
-    goToNew: () => { void navigate(config.createPath ?? config.listPath) },
-    goToList: () => { void navigate(config.listPath) },
-  }), [navigate, config])
+    goToRecord: (id) => { void navigate(configRef.current.recordPath(id)) },
+    goToNew: () => { void navigate(configRef.current.createPath ?? configRef.current.listPath) },
+    goToList: () => { void navigate(configRef.current.listPath) },
+  }), [navigate])
 }
