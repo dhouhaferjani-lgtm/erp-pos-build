@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Application\DTOs;
 
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Product\Domain\Product;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -60,12 +61,21 @@ class StockLevelData extends Data
      */
     private static function resolveQuantityDecimals(StockLevel $stockLevel): int
     {
-        if ($stockLevel->relationLoaded('product')
-            && $stockLevel->product->relationLoaded('unitOfMeasure')
-            && $stockLevel->product->unitOfMeasure !== null) {
-            return $stockLevel->product->unitOfMeasure->decimal_places;
+        if (! $stockLevel->relationLoaded('product')) {
+            return 4;
         }
 
-        return 4;
+        // getRelation() (not the typed `->product` accessor) so the null case is
+        // visible to PHPStan: Product uses SoftDeletes, so the loaded relation is
+        // null when the product was archived — guarding here avoids a 500.
+        $product = $stockLevel->getRelation('product');
+
+        if (! $product instanceof Product
+            || ! $product->relationLoaded('unitOfMeasure')
+            || $product->unitOfMeasure === null) {
+            return 4;
+        }
+
+        return $product->unitOfMeasure->decimal_places;
     }
 }

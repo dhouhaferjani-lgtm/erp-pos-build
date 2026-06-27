@@ -142,4 +142,32 @@ final class StockLevelQuantityDecimalsTest extends TestCase
         $this->assertNotNull($row, 'stock level row for the product must be present');
         $this->assertSame(0, $row['quantity_decimals']);
     }
+
+    #[Test]
+    public function stock_levels_index_does_not_500_when_product_is_soft_deleted(): void
+    {
+        $product = $this->makePiecesProduct();
+
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'location_id' => $this->location->id,
+            'quantity' => '5.00',
+            'reserved' => '0.00',
+        ]);
+
+        // Archiving a product soft-deletes it; the eager-loaded `product` relation
+        // then resolves to null. The endpoint must degrade to fallback 4, not 500.
+        $product->delete();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/stock-levels')
+            ->assertOk();
+
+        $row = collect($response->json('data'))->firstWhere('product_id', $product->id);
+
+        $this->assertNotNull($row, 'stock level row must still serialize for an archived product');
+        $this->assertSame(4, $row['quantity_decimals']);
+    }
 }
