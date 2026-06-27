@@ -30,7 +30,18 @@ final class ExpenseService
      */
     public function create(array $data, User $user): Document
     {
-        return DB::transaction(function () use ($data, $user): Document {
+        $idempotencyKey = $data['idempotency_key'] ?? null;
+        if ($idempotencyKey !== null) {
+            $existing = ExpenseMetadata::query()->where('idempotency_key', $idempotencyKey)->first();
+            if ($existing !== null) {
+                /** @var Document $doc */
+                $doc = Document::query()->whereKey($existing->document_id)->firstOrFail();
+
+                return $doc->load('expenseMetadata');
+            }
+        }
+
+        return DB::transaction(function () use ($data, $user, $idempotencyKey): Document {
             // Create the expense document
             $expense = Document::create([
                 'tenant_id' => $user->tenant_id,
@@ -53,6 +64,7 @@ final class ExpenseService
                 'is_paid' => $data['is_paid'] ?? true,
                 'receipt_number' => $data['receipt_number'] ?? null,
                 'vendor_name' => $data['vendor_name'] ?? null,
+                'idempotency_key' => $idempotencyKey,
             ]);
 
             return $expense->load('expenseMetadata');
