@@ -40,4 +40,20 @@ describe('SaveSplitButton', () => {
     expect(primary).toHaveAttribute('type', 'submit')
     expect(primary).toHaveAttribute('form', 'product-editor-form')
   })
+
+  it('links the caret trigger to the menu via aria-controls', () => {
+    render(<SaveSplitButton onPrimarySave={vi.fn()} onSaveAndClose={vi.fn()} />)
+    const trigger = screen.getByRole('button', { name: 'actions.openSaveMenu' })
+    fireEvent.click(trigger)
+    const menu = screen.getByRole('menu')
+    expect(trigger).toHaveAttribute('aria-controls', menu.id)
+    expect(menu.id).toBeTruthy()
+  })
+
+  it('closes the menu on Tab', () => {
+    render(<SaveSplitButton onPrimarySave={vi.fn()} onSaveAndClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'actions.openSaveMenu' }))
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Tab' })
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
 })

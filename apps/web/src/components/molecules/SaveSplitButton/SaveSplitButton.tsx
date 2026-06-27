@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown } from 'lucide-react'
 import { Button } from '@/components/atoms'
@@ -20,6 +20,8 @@ export function SaveSplitButton({
 }: SaveSplitButtonProps) {
   const { t } = useTranslation('common')
   const [open, setOpen] = useState(false)
+  const menuId = useId()
+  const triggerId = useId()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLUListElement>(null)
 
@@ -50,12 +52,13 @@ export function SaveSplitButton({
 
   const onMenuKeyDown = (e: React.KeyboardEvent<HTMLUListElement>) => {
     const nodes = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])
-    const idx = nodes.indexOf(document.activeElement as HTMLElement)
+    const idx = nodes.findIndex((n) => n === document.activeElement)
     if (e.key === 'Escape') { e.preventDefault(); close() }
     else if (e.key === 'ArrowDown') { e.preventDefault(); nodes[Math.min(idx + 1, nodes.length - 1)]?.focus() }
     else if (e.key === 'ArrowUp') { e.preventDefault(); nodes[Math.max(idx - 1, 0)]?.focus() }
     else if (e.key === 'Home') { e.preventDefault(); nodes[0]?.focus() }
     else if (e.key === 'End') { e.preventDefault(); nodes[nodes.length - 1]?.focus() }
+    else if (e.key === 'Tab') { setOpen(false) }
   }
 
   return (
@@ -73,10 +76,12 @@ export function SaveSplitButton({
         <>
           <Button
             ref={triggerRef}
+            id={triggerId}
             type="button"
             variant="primary"
             aria-haspopup="menu"
             aria-expanded={open}
+            aria-controls={menuId}
             aria-label={t('actions.openSaveMenu')}
             disabled={disabled || isPending}
             onClick={() => { setOpen((v) => !v) }}
@@ -87,7 +92,9 @@ export function SaveSplitButton({
           {open && (
             <ul
               ref={menuRef}
+              id={menuId}
               role="menu"
+              aria-labelledby={triggerId}
               onKeyDown={onMenuKeyDown}
               className="absolute right-0 top-full z-20 mt-1 min-w-[12rem] rounded-md border border-neutral-200 bg-white py-1 shadow-lg"
             >
