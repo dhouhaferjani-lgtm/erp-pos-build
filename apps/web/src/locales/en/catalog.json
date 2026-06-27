@@ -48,6 +48,7 @@
       "namePlaceholder": "Product name"
     },
     "actions": {
+      "save": "Save",
       "saveDraft": "Save draft",
       "publish": "Publish product"
     }
