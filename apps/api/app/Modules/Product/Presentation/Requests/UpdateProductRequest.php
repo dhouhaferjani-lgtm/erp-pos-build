@@ -9,6 +9,8 @@ use App\Modules\Catalog\Presentation\Rules\TaxConfigurationCountryCoherent;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Domain\Enums\AgeRestriction;
+use App\Modules\Product\Domain\Enums\PricingMode;
+use App\Modules\Product\Presentation\Requests\Concerns\ValidatesMarginBand;
 use App\Modules\Product\Domain\Enums\AutomotiveArticleStatus;
 use App\Modules\Product\Domain\Enums\BrandQualityTier;
 use App\Modules\Product\Domain\Enums\CrossReferenceType;
@@ -25,6 +27,8 @@ use Illuminate\Validation\Validator;
 
 class UpdateProductRequest extends FormRequest
 {
+    use ValidatesMarginBand;
+
     public function __construct(
         private readonly CompanyContext $companyContext,
     ) {
@@ -87,6 +91,8 @@ class UpdateProductRequest extends FormRequest
 
             $this->validateTypePhysicalCoherence($validator);
         });
+
+        $this->attachMarginBandRule($validator, 'minimum_margin_override', 'target_margin_override');
     }
 
     /**
@@ -166,6 +172,9 @@ class UpdateProductRequest extends FormRequest
             'category_id' => ['sometimes', 'nullable', 'integer', ScopedExists::company('categories', $company->id)],
             'is_physical' => ['sometimes', 'boolean'],
             'description' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'pricing_mode' => ['sometimes', new Enum(PricingMode::class)],
+            'target_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'minimum_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
             'sale_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'purchase_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'tax_rate' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
@@ -279,6 +288,8 @@ class UpdateProductRequest extends FormRequest
             'tax_rate.regex' => 'Tax rate must have at most 2 decimal places.',
             'reorder_point.regex' => 'Reorder point must have at most 4 decimal places.',
             'reorder_quantity.regex' => 'Reorder quantity must have at most 4 decimal places.',
+            'target_margin_override.regex' => 'Target margin override must have at most 2 decimal places.',
+            'minimum_margin_override.regex' => 'Minimum margin override must have at most 2 decimal places.',
         ];
     }
 }

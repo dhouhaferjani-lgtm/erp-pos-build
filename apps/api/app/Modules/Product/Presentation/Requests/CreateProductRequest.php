@@ -9,6 +9,8 @@ use App\Modules\Catalog\Presentation\Rules\TaxConfigurationCountryCoherent;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Domain\Enums\AgeRestriction;
+use App\Modules\Product\Domain\Enums\PricingMode;
+use App\Modules\Product\Presentation\Requests\Concerns\ValidatesMarginBand;
 use App\Modules\Product\Domain\Enums\AutomotiveArticleStatus;
 use App\Modules\Product\Domain\Enums\BrandQualityTier;
 use App\Modules\Product\Domain\Enums\CrossReferenceType;
@@ -25,6 +27,8 @@ use Illuminate\Validation\Validator;
 
 class CreateProductRequest extends FormRequest
 {
+    use ValidatesMarginBand;
+
     public function __construct(
         private readonly CompanyContext $companyContext,
     ) {
@@ -103,6 +107,8 @@ class CreateProductRequest extends FormRequest
                 $validator->errors()->add('opening_unit_cost', __('validation.opening_cost_without_qty'));
             }
         });
+
+        $this->attachMarginBandRule($validator, 'minimum_margin_override', 'target_margin_override');
     }
 
     /**
@@ -179,6 +185,9 @@ class CreateProductRequest extends FormRequest
             'type' => ['nullable', new Enum(ProductType::class)],
             'is_physical' => ['sometimes', 'boolean'],
             'description' => ['nullable', 'string', 'max:5000'],
+            'pricing_mode' => ['sometimes', new Enum(PricingMode::class)],
+            'target_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'minimum_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
             'sale_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'purchase_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
@@ -299,6 +308,8 @@ class CreateProductRequest extends FormRequest
             'reorder_quantity.regex' => 'Reorder quantity must have at most 4 decimal places.',
             'opening_qty.regex' => 'Opening quantity must have at most 4 decimal places.',
             'opening_unit_cost.regex' => 'Opening unit cost must have at most 3 decimal places.',
+            'target_margin_override.regex' => 'Target margin override must have at most 2 decimal places.',
+            'minimum_margin_override.regex' => 'Minimum margin override must have at most 2 decimal places.',
         ];
     }
 }
