@@ -77,6 +77,11 @@ export function ProgramFormPage() {
   }, [existingProgram, form])
 
   const onSubmit = (values: ProgramFormValues) => {
+    // Snapshot + reset the close intent up front so a failed submit
+    // (validation abort or mutation error) can never leave it stuck true.
+    const shouldClose = closeIntentRef.current
+    closeIntentRef.current = false
+
     const payload: CreateProgramData = {
       name: values.name,
       program_type: values.program_type as ProgramType,
@@ -91,9 +96,7 @@ export function ProgramFormPage() {
         { id, data: payload },
         {
           onSuccess: () => {
-            const close = closeIntentRef.current
-            closeIntentRef.current = false
-            if (close) nav.goToList()
+            if (shouldClose) nav.goToList()
             else nav.goToRecord(id)
           },
         },
@@ -101,9 +104,7 @@ export function ProgramFormPage() {
     } else {
       createMutation.mutate(payload, {
         onSuccess: (created) => {
-          const close = closeIntentRef.current
-          closeIntentRef.current = false
-          if (close) nav.goToList()
+          if (shouldClose) nav.goToList()
           else nav.goToRecord(created.id)
         },
       })
@@ -195,7 +196,7 @@ export function ProgramFormPage() {
             onPrimarySave={() => {}}
             onSaveAndClose={() => {
               closeIntentRef.current = true
-              void form.handleSubmit(onSubmit)()
+              void form.handleSubmit(onSubmit, () => { closeIntentRef.current = false })()
             }}
             isPending={isSaving}
           />
