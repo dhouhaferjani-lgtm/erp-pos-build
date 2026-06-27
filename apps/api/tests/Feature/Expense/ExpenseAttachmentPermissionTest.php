@@ -67,7 +67,7 @@ final class ExpenseAttachmentPermissionTest extends TestCase
                 'file' => UploadedFile::fake()->create('receipt.pdf', 10, 'application/pdf'),
                 'role' => 'SOURCE_DOCUMENT',
             ])
-            ->assertSuccessful();
+            ->assertCreated();
     }
 
     /**
