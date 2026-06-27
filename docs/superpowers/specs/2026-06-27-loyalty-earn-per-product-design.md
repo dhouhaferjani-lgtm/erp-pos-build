@@ -138,23 +138,44 @@ interface LoyaltyEarningContract
 
 `SaleEarnContext` (immutable DTO of primitives — `app/Shared/Contracts/Loyalty/SaleEarnContext.php`):
 `tenantId`, `?contactId`, `?partnerId`, `currency` (string), `sourceType` (`'pos_receipt'`),
-`sourceId` (the `pos_receipts.id`), `?receiptNumber`, `totalAmount` (numeric-string),
-`lines: SaleEarnLine[]` where `SaleEarnLine = {productId, quantity (numeric-string),
-lineAmount (numeric-string)}`. **All money/qty are strings (rule 19).**
+`sourceId` (the `pos_receipts.id`), `?receiptNumber`, `postedAt` (the sealed device time, used as the
+earn timestamp), `totalAmount` (numeric-string), `lines: SaleEarnLine[]` where
+`SaleEarnLine = {productId, quantity (numeric-string), lineAmount (numeric-string)}`.
+**All money/qty are strings (rule 19); a DTO of primitives only, so POS imports no Loyalty model
+(rule 6).**
 
 Bound in `LoyaltyServiceProvider::register()` →
 `App\Modules\Loyalty\Application\Services\SaleEarningService`.
 
 `SaleEarningService::earnForSale()` (relocates + replaces the retired listener's logic):
+0. **Module guard (Codex SF-2):** if the tenant does not have the Loyalty module enabled, return.
+   The projection-side contract call is *not* behind the `module:Loyalty` HTTP middleware, so the
+   service must gate itself. Inject the tenant config service (the same one `RequireModule` uses) and
+   check `hasModule('Loyalty')`; functionally a tenant without Loyalty also has no active program /
+   enrollments, but the explicit guard makes the boundary honest and cheap.
 1. If `contactId` and `partnerId` both null ⇒ return (no member).
 2. Resolve `LoyaltyMember` by `loyaltyable_type='contact' & loyaltyable_id=contactId` (tenant-scoped),
    else by `partner` / legacy `customer_id = partnerId`. None ⇒ return.
 3. Batch-read overrides for all `lines[].productId` from the override repo.
 4. Build `transactionData = { amount: totalAmount, currency, items: [{ product_id, quantity,
-   line_amount, points_override (string|null) }], timestamp }`.
-5. For each **active** enrollment: `try { earningProcessingService->earnPoints(enrollmentId,
-   transactionData, 'pos_receipt', sourceId, "POS receipt #{receiptNumber}"); }
-   catch (\Throwable $e) { Log::error(...); }` — duplicate-source throw is swallowed (idempotent).
+   line_amount, points_override (string|null) }], timestamp: $context->postedAt }` — use the sealed
+   **device time** (`event_time_device`, see projection), **not** `now()` (Codex SF-3), so any
+   time-based rule evaluates at sale time.
+5. For each **active** enrollment, call `earningProcessingService->earnPoints(enrollmentId,
+   transactionData, 'pos_receipt', sourceId, "POS receipt #{receiptNumber}")` with
+   **discriminated failure handling (Codex BLOCKER-3):**
+   - Catch the **duplicate-source** `InvalidArgumentException` (already-earned) and swallow it
+     silently — this is the idempotent replay/double-fire case, balance unchanged.
+   - Any **other** `\Throwable` (transient DB error, etc.): `Log::error()` at high visibility with
+     `tenant_id`, `enrollment_id`, `source_id`, `receipt_number` so the credit is **recoverable by
+     hand**, then continue (never break the sale). Match by exception type/message, not a blanket
+     `catch (\Throwable)`, so real failures are not mistaken for duplicates.
+   - **Durability note (scoped):** because the projection's `fiscal_event_id` guard makes replay skip
+     the whole receipt, a swallowed *non-duplicate* failure means points are not auto-retried. For
+     this cutoff, earning is **best-effort with a loud, structured error log** (acceptable for a
+     controlled demo). A durable fix — enqueue an idempotent `EarnLoyaltyForReceipt` job (keyed by
+     `pos_receipt` id, naturally idempotent via `findBySourceDocument`) with a new Horizon queue
+     registered per rule 20 — is the documented **upgrade path**, deferred to the integration branch.
 
 > **Known limitation (documented, not fixed this cutoff):** `findBySourceDocument` keys on
 > `(sourceType, sourceId)` globally, so a member enrolled in *multiple* programs earns on only the
@@ -181,13 +202,23 @@ Bound in `LoyaltyServiceProvider::register()` →
 In `PosCoreReceiptProjection`:
 - Constructor-inject `private readonly LoyaltyEarningContract $loyaltyEarning`.
 - After the receipt + lines are persisted (after `redeemVouchers(...)`, before/after stock — order
-  independent), add `earnLoyaltyPoints($receiptId, $event, $view)`:
+  independent), add `earnLoyaltyPoints($receiptId, $event, $view, $receiptTypeEnum, $payload)`:
+  - **Earn-eligibility guard (Codex BLOCKER-2):** earn **only** when
+    `$receiptTypeEnum === ReceiptType::Sale` **AND** `$payload->trainingFlag === false`. This
+    projection fires on every `SALE_RECEIPT` fiscal event — including REFUND/VOID (which
+    `resolveReceiptType()` maps to `ReceiptType::Return`) and training-mode receipts. Without this
+    guard a refund would credit *positive* points. **Refund point-reversal (deducting points on a
+    return) is explicitly deferred** — for this cutoff a refund simply earns nothing.
   - Build `SaleEarnContext` from `$view->buyer`, `$view->lineItems` (productId, quantity,
-    `lineSubtotal` as `line_amount`), `$view->payload->currencyCode`, `sourceId=$receiptId`.
+    `lineSubtotal` as `line_amount`), `$view->payload->currencyCode`, `postedAt=$event->event_time_device`,
+    `sourceId=$receiptId`.
   - Wrap the call in `try/catch + Log::error` so a loyalty failure never breaks the sale projection
     (mirror `redeemVouchers`).
 - **Idempotency / replay:** the projection's `fiscal_event_id` guard already prevents re-running for
   the same event; `findBySourceDocument('pos_receipt', receiptId)` is the second line of defense.
+  Note this read-before-write check is projection-scoped, not a DB-level uniqueness guarantee (Codex
+  SF-1); concurrent same-receipt projection does not occur on the sequential per-device fiscal-event
+  path, so the soft check is sufficient for this cutoff (documented, not hardened).
 
 > **`line_amount` semantics:** use the canonical **net** line subtotal (`$view->lineItems[].lineSubtotal`)
 > for the fallback base, consistent with how the rest of the projection treats line economics. The
@@ -200,8 +231,21 @@ In `PosCoreReceiptProjection`:
   in `EventServiceProvider` under `ProgramActivated::class`.
 - On activation, if the program has no `ItemOverride` rule, persist one via the earning-rule repo:
   `rule_type=ItemOverride`, `reward_value='1'` (1 pt / net TND fallback), `reward_type='multiplier'`,
-  `priority=1`, `is_active=true`, `conditions={}`.
+  `priority=1`, `is_active=true`, `conditions={}` (empty conditions ⇒ `ruleApplies` matches every
+  transaction — confirmed against `PointEarningService::ruleApplies`).
 - Idempotent: skip if an `ItemOverride` rule already exists for the program (re-activation safe).
+- **Single-active-earn-rule invariant (Codex BLOCKER-1):** because `earnPoints()` evaluates and
+  **sums all active rules**, an `ItemOverride` rule combined with any other active earn rule
+  (`Spend`/`Item`/`Category`/…) **double-counts**. This cutoff supports exactly **one** active earn
+  rule per program — the `ItemOverride` rule. Enforcement: (a) the demo loyalty program is seeded
+  clean (only the `ItemOverride` rule); (b) the activation listener, before seeding, checks for any
+  *other* active earn rule on the program and, if found, **does not** silently add a second rule — it
+  logs a warning so the misconfiguration is visible rather than producing wrong balances. Auto-
+  deactivating admin-authored rules is **out of scope** (too aggressive); mixing rule types is an
+  unsupported configuration this cutoff and is documented as such.
+- **Category-rule note (Codex SF-4):** `LineItemDTO` carries no `category_id`, so `Category`-type
+  legacy rules cannot evaluate on the POS fiscal-event path regardless. This is harmless given the
+  single-`ItemOverride`-rule invariant above, but is called out explicitly.
 - Add `EarningRuleFactory` (does not exist) for tests/seeding.
 
 ### Frontend — gated product-editor field
@@ -221,12 +265,17 @@ In `PosCoreReceiptProjection`:
 
 ## Error handling
 
-- Loyalty earn failures in the projection: caught + logged, sale projection still succeeds.
-- Duplicate Earn (replay / double-fire): `earnPoints` throws → caught in `SaleEarningService` →
-  balance unchanged.
-- No member / no customer: silent no-op.
-- Override endpoints: `module:Loyalty` returns 403 when the add-on is off; invalid `product_id`
-  (non-UUID) validated before query (rule: `Str::isUuid` guard).
+- **Non-earning receipts** (REFUND/VOID → `ReceiptType::Return`, or `trainingFlag=true`): skipped at
+  the projection guard — no points, no error.
+- **Loyalty module disabled** for the tenant: `SaleEarningService` returns early (module guard).
+- **No member / no customer:** silent no-op.
+- **Duplicate Earn** (replay / double-fire): `earnPoints` throws the already-earned
+  `InvalidArgumentException` → caught specifically in `SaleEarningService` → balance unchanged.
+- **Transient earn failure** (non-duplicate `\Throwable`): caught, logged loudly with recovery
+  context, sale projection still succeeds; auto-retry deferred (best-effort this cutoff — see the
+  durability note under SaleEarningService).
+- **Override endpoints:** `module:Loyalty` returns 403 when the add-on is off; invalid `product_id`
+  (non-UUID) validated before query (`Str::isUuid` guard).
 
 ## Testing (TDD, scoped `--filter` only — never the full suite, never `--parallel`)
 
@@ -234,11 +283,17 @@ Backend (PHPUnit, `--filter` by class):
 1. `PointEarningService` ItemOverride arm: override line → `points×qty`; non-override line →
    `lineAmount×rate`; mixed cart → exclusive sum; fractional qty not truncated; absent fields safe.
 2. `SaleEarningService`: member resolution (contact, partner, none → no-op); override batch-read +
-   enrichment; per-enrollment earn; money/qty passed as strings.
+   enrichment; per-enrollment earn; money/qty passed as strings; **module-disabled tenant → no-op**;
+   `postedAt` (device time) used as the transaction timestamp; **duplicate `InvalidArgumentException`
+   swallowed but a non-duplicate `\Throwable` is logged and re-surfaced distinctly** (not mistaken
+   for a duplicate).
 3. **Replay test (rule 20):** apply the same fiscal event/`SaleEarnContext` twice → exactly one Earn
    transaction, enrollment balance unchanged. Clear CompanyContext before apply (worker reality).
 4. Projection: a sale with an enrolled buyer credits points once with correct per-product totals; a
-   sale with no buyer credits nothing; a loyalty failure does not abort the projection.
+   sale with no buyer credits nothing; a loyalty failure does not abort the projection;
+   **a REFUND/VOID receipt and a training-mode receipt credit nothing** (earn-eligibility guard).
+   - Single-active-rule sanity: with the seeded `ItemOverride` rule as the only active earn rule, the
+     credited total equals the per-line exclusive sum (no double-count).
 5. `SeedDefaultEarningRuleOnProgramActivated`: activation seeds exactly one `ItemOverride` rule;
    re-activation does not duplicate.
 6. Override endpoints: GET/PUT happy path; 403 when `module:Loyalty` off; points-regex validation;
@@ -272,4 +327,6 @@ E2E (parapharmacy campaign, manual):
 
 Do **not**, in this cutoff: build pay-with-points tender; wire "Eligible for discounts"; touch the
 retired `ReceiptCompleted`/`EarnPointsOnReceiptCompleted` path; fix the multi-enrollment idempotency
-limitation; rebuild redemption.
+limitation; rebuild redemption; **reverse points on refunds/returns** (refunds simply earn nothing);
+build the **durable earn-retry queue** (best-effort + loud log this cutoff); support **mixing the
+`ItemOverride` rule with other active earn rules** (unsupported — single active earn rule).
