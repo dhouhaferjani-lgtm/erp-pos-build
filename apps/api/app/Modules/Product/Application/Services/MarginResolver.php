@@ -9,6 +9,7 @@ use App\Modules\Product\Domain\Category;
 use App\Modules\Product\Domain\Enums\MarginSource;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Domain\CurrencyScale;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 
 /**
@@ -44,10 +45,10 @@ final class MarginResolver
      * Eager-loads company + category (2 queries max) then fetches all referenced
      * ancestor category rows in a single whereIn query.
      *
-     * @param  Collection<int, Product>  $products
-     * @return array<string, EffectiveMargins>  keyed by product id
+     * @param  EloquentCollection<int, Product>  $products
+     * @return array<string, EffectiveMargins> keyed by product id
      */
-    public function resolveMany(Collection $products): array
+    public function resolveMany(EloquentCollection $products): array
     {
         // Eager-load company + category so buildFrom() never lazy-loads per row.
         $products->loadMissing(['company', 'category']);
@@ -91,8 +92,8 @@ final class MarginResolver
 
         // Cast company defaults to string because Company has no decimal cast on these columns
         // and SQLite may return them as int/float depending on the stored value.
-        $targetDefault = $company !== null ? (string) $company->default_target_margin : null;
-        $minimumDefault = $company !== null ? (string) $company->default_minimum_margin : null;
+        $targetDefault = (string) $company->default_target_margin;
+        $minimumDefault = (string) $company->default_minimum_margin;
 
         [$target, $tSource, $tCatId] = $this->resolveField(
             $product->target_margin_override,
@@ -111,7 +112,7 @@ final class MarginResolver
         );
 
         $clamped = false;
-        if (bccomp($minimum, $target, self::MARGIN_SCALE) > 0) {
+        if (bccomp($this->num($minimum), $this->num($target), self::MARGIN_SCALE) > 0) {
             $minimum = $target;
             $clamped = true;
         }
@@ -140,13 +141,20 @@ final class MarginResolver
         if ($product->category !== null) {
             // path is "root_id/.../parent_id/self_id" — reverse for nearest-first
             foreach (array_reverse(explode('/', $product->category->path)) as $id) {
-                if ($id !== '' && $byId->has((int) $id)) {
-                    $chain[] = $byId->get((int) $id);
+                $cat = $byId->get((int) $id);
+                if ($id !== '' && $cat !== null) {
+                    $chain[] = $cat;
                 }
             }
         }
 
         return $this->buildFrom($product, $chain);
+    }
+
+    /** @return numeric-string */
+    private function num(string $v): string
+    {
+        return is_numeric($v) ? $v : '0';
     }
 
     /**

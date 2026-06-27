@@ -127,9 +127,9 @@ class MarginService
         $effective = $this->resolver->resolve($product);
 
         return [
-            'target_margin'   => $effective->target_margin,
-            'minimum_margin'  => $effective->minimum_margin,
-            'source'          => $effective->target_source->value,
+            'target_margin' => $effective->target_margin,
+            'minimum_margin' => $effective->minimum_margin,
+            'source' => $effective->target_source->value,
             'minimum_clamped' => $effective->minimum_clamped,
         ];
     }
@@ -178,7 +178,7 @@ class MarginService
 
         $effectiveTarget = $this->resolver->resolve($product)->target_margin;
 
-        return $this->priceFromMargin($cost, $effectiveTarget, $product);
+        return $this->priceFromMargin($cost, $this->toNumericString($effectiveTarget), $product);
     }
 
     /**
@@ -197,7 +197,7 @@ class MarginService
             );
         }
 
-        return (float) $this->priceFromMargin($cost, $margins['target_margin'], $product);
+        return (float) $this->priceFromMargin($cost, $this->toNumericString($margins['target_margin']), $product);
     }
 
     /**
@@ -232,7 +232,7 @@ class MarginService
         $margins = $this->getEffectiveMargins($product);
 
         // Calculate new sale price (rounded to money scale)
-        $newSalePrice = $this->priceFromMargin($cost, $margins['target_margin'], $product);
+        $newSalePrice = $this->priceFromMargin($cost, $this->toNumericString($margins['target_margin']), $product);
 
         // Only update if different at the money scale (avoid unnecessary writes)
         $currentSalePrice = CurrencyScale::bcformat(
@@ -313,7 +313,7 @@ class MarginService
         $actualMarginStr = CurrencyScale::bcformat((string) $actualMargin, self::MARGIN_SCALE);
 
         // Below minimum margin (actual < minimum)
-        if (bccomp($actualMarginStr, $margins['minimum_margin'], self::MARGIN_SCALE) < 0) {
+        if (bccomp($actualMarginStr, $this->toNumericString($margins['minimum_margin']), self::MARGIN_SCALE) < 0) {
             return [
                 'level' => self::LEVEL_ORANGE,
                 'message' => 'Below minimum margin',
@@ -323,7 +323,7 @@ class MarginService
         }
 
         // Below target margin (actual < target)
-        if (bccomp($actualMarginStr, $margins['target_margin'], self::MARGIN_SCALE) < 0) {
+        if (bccomp($actualMarginStr, $this->toNumericString($margins['target_margin']), self::MARGIN_SCALE) < 0) {
             return [
                 'level' => self::LEVEL_YELLOW,
                 'message' => 'Below target margin',

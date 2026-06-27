@@ -13,6 +13,7 @@ use Illuminate\Validation\Validator;
 class UpdateCompanyRequest extends FormRequest
 {
     use ValidatesMarginBand;
+
     public function authorize(): bool
     {
         return true;
@@ -47,7 +48,7 @@ class UpdateCompanyRequest extends FormRequest
             'tax_status' => ['nullable', Rule::enum(CompanyTaxStatus::class)],
 
             // Margin defaults
-            'default_target_margin'  => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'default_target_margin' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
             'default_minimum_margin' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
         ];
     }

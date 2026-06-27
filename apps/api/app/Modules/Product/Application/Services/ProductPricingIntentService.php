@@ -19,7 +19,7 @@ final class ProductPricingIntentService
     public function __construct(private readonly MarginResolver $resolver) {}
 
     /**
-     * @param array<string,mixed> $validated
+     * @param  array<string,mixed>  $validated
      */
     public function applyIntent(Product $product, array $validated): void
     {
@@ -50,7 +50,9 @@ final class ProductPricingIntentService
                 $product->target_margin_override = null;
                 $inherited = $this->resolver->resolve($product)->target_margin;
                 // Store null when equal to inherited (keep inheriting); else persist.
-                $product->target_margin_override = bccomp((string) $value, $inherited, 2) === 0 ? null : (string) $value;
+                $numValue = is_numeric((string) $value) ? (string) $value : '0';
+                $numInherited = is_numeric($inherited) ? $inherited : '0';
+                $product->target_margin_override = bccomp($numValue, $numInherited, 2) === 0 ? null : (string) $value; // precision-ok: percent margins compared at fixed 2dp, not currency-scaled
             }
         }
 

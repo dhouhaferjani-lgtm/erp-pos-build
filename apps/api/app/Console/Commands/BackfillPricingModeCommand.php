@@ -46,7 +46,7 @@ class BackfillPricingModeCommand extends Command
             ->with(['company', 'category'])
             ->chunkById(200, function ($chunk) use (&$flipped, &$skipped, &$flippedIds): void {
                 foreach ($chunk as $product) {
-                    $currency = $product->company?->currency;
+                    $currency = $product->company->currency;
                     $moneyScale = $this->scaleResolver->getScaleSafe($currency, 3);
 
                     $expectedPrice = $this->marginService->computeAutoPrice($product);
@@ -58,7 +58,8 @@ class BackfillPricingModeCommand extends Command
                         continue;
                     }
 
-                    $currentPrice = (string) $product->sale_price;
+                    $salePrice = (string) $product->sale_price;
+                    $currentPrice = is_numeric($salePrice) ? $salePrice : '0';
 
                     if (bccomp($expectedPrice, $currentPrice, $moneyScale) === 0) {
                         $product->pricing_mode = PricingMode::Auto;

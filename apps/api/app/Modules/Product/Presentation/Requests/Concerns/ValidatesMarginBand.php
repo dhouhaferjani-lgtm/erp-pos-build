@@ -1,6 +1,10 @@
 <?php
+
 declare(strict_types=1);
+
 namespace App\Modules\Product\Presentation\Requests\Concerns;
+
+use Illuminate\Validation\Validator;
 
 trait ValidatesMarginBand
 {
@@ -9,11 +13,15 @@ trait ValidatesMarginBand
         if ($min === null || $max === null || $min === '' || $max === '') {
             return false;
         }
+        if (! is_numeric($min) || ! is_numeric($max)) {
+            return false;
+        }
+
         return bccomp($min, $max, 2) > 0;
     }
 
     /** Call from a FormRequest withValidator() to attach the cross-field rule. */
-    protected function attachMarginBandRule(\Illuminate\Validation\Validator $validator, string $minField, string $maxField): void
+    protected function attachMarginBandRule(Validator $validator, string $minField, string $maxField): void
     {
         $validator->after(function ($v) use ($minField, $maxField) {
             $data = $v->getData();

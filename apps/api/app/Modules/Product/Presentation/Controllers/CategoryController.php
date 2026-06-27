@@ -134,7 +134,7 @@ class CategoryController extends Controller
                 'nullable', 'uuid', 'exists:tax_configurations,id',
                 new TaxConfigurationCountryCoherent($company->country_code),
             ],
-            'target_margin_override'  => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'target_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
             'minimum_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
         ]);
 
@@ -172,7 +172,7 @@ class CategoryController extends Controller
             'is_active' => $validated['is_active'] ?? true,
             'default_tax_rate' => $validated['default_tax_rate'] ?? null,
             'default_tax_configuration_id' => $validated['default_tax_configuration_id'] ?? null,
-            'target_margin_override'  => $validated['target_margin_override'] ?? null,
+            'target_margin_override' => $validated['target_margin_override'] ?? null,
             'minimum_margin_override' => $validated['minimum_margin_override'] ?? null,
         ]);
 
@@ -206,7 +206,7 @@ class CategoryController extends Controller
                 'nullable', 'uuid', 'exists:tax_configurations,id',
                 new TaxConfigurationCountryCoherent($company->country_code),
             ],
-            'target_margin_override'  => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'target_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
             'minimum_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
         ]);
 

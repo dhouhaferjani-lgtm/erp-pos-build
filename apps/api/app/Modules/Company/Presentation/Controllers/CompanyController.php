@@ -587,11 +587,11 @@ class CompanyController extends Controller
             'default_tax_configuration_id' => $company->default_tax_configuration_id,
             'tax_status' => $company->tax_status->value,
             'default_target_margin' => CurrencyScale::bcformatOrNull(
-                $company->default_target_margin !== null ? (string) $company->default_target_margin : null,
+                (string) $company->default_target_margin,
                 2
             ),
             'default_minimum_margin' => CurrencyScale::bcformatOrNull(
-                $company->default_minimum_margin !== null ? (string) $company->default_minimum_margin : null,
+                (string) $company->default_minimum_margin,
                 2
             ),
             'created_at' => $company->created_at->toIso8601String(),
