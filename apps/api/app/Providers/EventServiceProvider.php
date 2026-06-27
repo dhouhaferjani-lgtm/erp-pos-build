@@ -15,6 +15,8 @@ use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Import\Infrastructure\Listeners\BroadcastImportEventsListener;
 use App\Modules\Inventory\Domain\Events\GoodsReceived;
 use App\Modules\Loyalty\Application\Listeners\EarnPointsOnReceiptCompleted;
+use App\Modules\Loyalty\Application\Listeners\SeedDefaultEarningRuleOnProgramActivated;
+use App\Modules\Loyalty\Domain\Events\ProgramActivated;
 use App\Modules\Partner\Domain\Events\PartnerDeleted;
 use App\Modules\Partner\Infrastructure\Listeners\BroadcastPartnerEventsListener;
 use App\Modules\POS\Domain\Events\ReceiptCompleted;
@@ -64,6 +66,9 @@ class EventServiceProvider extends ServiceProvider
         InvoicePosted::class => [
             InvoicePostedListener::class,
             WriteDocumentVehicleContextForWorkOrderInvoice::class,
+        ],
+        ProgramActivated::class => [
+            SeedDefaultEarningRuleOnProgramActivated::class,
         ],
         ReceiptCompleted::class => [
             EarnPointsOnReceiptCompleted::class,
