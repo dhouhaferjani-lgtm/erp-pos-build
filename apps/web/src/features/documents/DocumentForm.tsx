@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller, useWatch } from 'react-hook-form'
@@ -206,22 +206,30 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
     }
   }, [effectiveType, watchedPartnerId, watchedNotes, watchedDocumentDate, watchedDueDate, lines])
 
+  // Stable auto-save callbacks. These MUST be referentially stable: useDraftAutoSave
+  // includes onSuccess/onError in performSave's deps, and the debounce effect depends on
+  // performSave. Inline callbacks made performSave change every render, so a successful
+  // autosave (which re-renders via reset()/lastSavedAt) re-armed the debounce — looping
+  // autosave every ~3s and pinning autosavePending=true, which would raise a spurious
+  // beforeunload prompt on an idle non-empty document.
+  const handleAutoSaveSuccess = useCallback(() => {
+    // Bug 2: reset RHF dirty baseline so isDirty becomes false after autosave.
+    reset(getValues(), { keepDirty: false, keepDefaultValues: false })
+    // Bug 3: snapshot current lines so clearing them later is detected.
+    lastSavedLinesRef.current = JSON.stringify(lines)
+  }, [reset, getValues, lines])
+  const handleAutoSaveError = useCallback(() => {
+    // Auto-save failed silently; autosaveFailed surfaces it to the guard.
+  }, [])
+
   // Auto-save hook (works for both new and existing documents)
   const { draftId: _draftId, isSaving, lastSavedAt, autosavePending, autosaveFailed } = useDraftAutoSave(
     draftData,
     {
       enabled: true,
       existingDraftId: id || undefined,
-      onSuccess: (_savedDraftId) => {
-        // Bug 2: reset RHF dirty baseline so isDirty becomes false after autosave.
-        // Passing current values as the new defaults without touching the rendered values.
-        reset(getValues(), { keepDirty: false, keepDefaultValues: false })
-        // Bug 3: snapshot current lines so clearing them later is detected.
-        lastSavedLinesRef.current = JSON.stringify(lines)
-      },
-      onError: () => {
-        // Auto-save failed silently
-      },
+      onSuccess: handleAutoSaveSuccess,
+      onError: handleAutoSaveError,
     }
   )
 
