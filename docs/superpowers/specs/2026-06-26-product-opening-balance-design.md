@@ -1,6 +1,6 @@
-# Design — Inline Product Opening Balance (Stage 3, IZI POS editor) — v2.1
+# Design — Inline Product Opening Balance (Stage 3, IZI POS editor) — v2.2
 
-> Status: **DESIGN v2.1 — two Codex adversarial passes folded in; awaiting final user sign-off**
+> Status: **DESIGN v2.2 — two Codex passes + industry best-practice research folded in; awaiting final adversarial review → user sign-off**
 > Date: 2026-06-26
 > Branch/worktree: `feat/izipos-theme-product-editor` (`/Users/houssamr/Projects/syneriva/apps/erp/.claude/worktrees/izipos-product-editor`)
 > Adversarial reviews: `…-adversarial-review.md` (20 findings) + `…-adversarial-review-v2.md` (new-surface pass). Dispositions in §13.
@@ -228,6 +228,15 @@ reversal over hard-delete: `StockMovement` has no soft-delete/audit columns, so 
 leave no record; reversal is the compliant correction and reuses tested infrastructure. Pre-launch
 setup operation, but auditable regardless.
 
+**On the "sole active movement" gate (acknowledged conservative choice):** industry norm gates
+opening corrections on *period-close*, allowing a dated correcting reversal even after later
+activity (research §15). Our gate is deliberately **tighter** — once any non-reversal movement
+exists, inline reset is refused. This is safe and simple (the system has no formal period-close
+concept yet); the post-activity correction path for a wrong **cost** is the future
+cost-revaluation flow (§14), and a wrong **quantity** is the existing stock-adjustment flow. If a
+period-close concept is later introduced, loosening this gate to "before period close" is the
+standard-aligned enhancement.
+
 ## 9. Frontend (`apps/web/src/features/inventory/ProductForm.tsx`)
 
 - New **create-only** "Opening stock" section, **rendered only when `hasModule('Inventory')` &&
@@ -295,8 +304,8 @@ Pre-flight (`./scripts/preflight.sh`) before commit.
 
 ## 13. Review disposition (`…-adversarial-review.md`)
 
-- **Accepted & resolved:** C1 (§2.3 authz), C2 (§2.2 `is_historical`), C3 (§4.1/§4.3 in-lock check +
-  DB index), C4 (§8 reset), C5 (§5 location access), H1 (§2.4 strict default), H3 (§5 physical),
+- **Accepted & resolved:** C1 (§2.3 authz), C2 (§2.2 `is_historical`), C3 (§4.1 in-lock
+  active-opening check), C4 (§8 reset), C5 (§5 location access), H1 (§2.4 strict default), H3 (§5 physical),
   H4/H5/H6 (§2.7 shared hardening), H7 (§6 required cost), Med1 (§4.1 canonicalization),
   Med2 (§7 scope), Med3 (§6 qty/cost UX), Med4 (§6 negatives documented), Med5 (§11 concurrency
   tests), Med6 (handover note in header), Low1 (§9 route), Low2 (§9 label).
@@ -329,3 +338,27 @@ Pre-flight (`./scripts/preflight.sh`) before commit.
   affects **all** historical opening entries (import included), predates this feature, and should be
   hardened separately (e.g. a model/DB guard making `is_historical` immutable after insert). Flagged
   here so it is not lost; not addressed in this delivery to avoid scope creep into the GL core.
+  NF525 conservation still applies to these rows (research §15) — this delivery satisfies it by
+  correcting only via **reversal** (§8), never edit/delete; this follow-up closes the remaining
+  raw-mutation gap.
+- **Opening Balance Equity (OBE) close-out (system-wide follow-up):** OBE is a *temporary* clearing
+  account; a lingering balance is a recognized setup smell (research §15), and best practice is to
+  zero it into retained/owner equity once setup completes. This applies identically to the existing
+  import opening flow (both credit OBE), so it is a pre-existing, system-wide concern — not
+  introduced here. A documented or assisted OBE close-out is a separate enhancement.
+
+## 15. Industry best-practice validation (researched 2026-06-27)
+
+Each design pillar was validated against ERP vendor + compliance sources; all match established
+convention (the design is **not** bespoke):
+
+| Pillar | Verdict | Representative sources |
+|--------|---------|------------------------|
+| Inline opening qty+cost on the product create form | **Standard for SMB retail/POS** (our market). Larger ERPs (Odoo, D365 BC) use a separate inventory-adjustment doc; we still materialize one Opening movement internally, getting both. | Loyverse, Shopify, Zoho Inventory/Books, QuickBooks |
+| GL double-entry `Dr Inventory / Cr Opening Balance Equity` | **Standard.** OBE is the conventional opening-balance offset. | QuickBooks, Xero, FitSmallBusiness |
+| Correction via **reversal** (keep original), locked after activity | **Standard.** Reversing/contra entry preserves the audit trail; deletion is discouraged. Our "sole-movement" gate is *tighter* than the typical period-close gate (see §8). | Dynamics 365 BC (Reverse Transaction), Sage |
+| WAC seeded directly from opening cost, blended on later receipts | **Standard.** Opening inventory is the seed term in moving-average; nothing prior to blend. | Corporate Finance Institute, Unleashed, Zoho |
+| Opening balances posted to GL but **excluded from the certified fiscal hash chain** | **Consistent with NF525/FEC.** The certified, hash-chained sequence covers fiscal *sales* events; setup/migration balances are separate. `is_historical` rows must remain immutable (conservation) — satisfied by reversal-only correction. | Microsoft Learn (NF525 cash register, France FEC) |
+
+Refinements adopted from the research: the OBE close-out and `is_historical` immutability
+follow-ups (§14), and the explicit rationale for the conservative correction gate (§8).
