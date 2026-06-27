@@ -173,6 +173,9 @@ return [
     |
     */
 
+    'opening_cost_required_with_qty' => 'Opening unit cost is required when opening quantity is positive.',
+    'opening_cost_without_qty' => 'Opening unit cost cannot be provided without a positive opening quantity.',
+
     'custom' => [
         'attribute-name' => [
             'rule-name' => 'custom-message',

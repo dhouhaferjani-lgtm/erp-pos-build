@@ -173,6 +173,9 @@ return [
     |
     */
 
+    'opening_cost_required_with_qty' => 'Le coût unitaire d\'ouverture est obligatoire lorsque la quantité d\'ouverture est positive.',
+    'opening_cost_without_qty' => 'Le coût unitaire d\'ouverture ne peut pas être fourni sans une quantité d\'ouverture positive.',
+
     'custom' => [
         'attribute-name' => [
             'rule-name' => 'custom-message',
