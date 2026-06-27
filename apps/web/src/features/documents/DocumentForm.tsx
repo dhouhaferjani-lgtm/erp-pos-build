@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller, useWatch } from 'react-hook-form'
@@ -13,11 +13,14 @@ import { DocumentLineEditor, type DocumentLine } from '../../components/document
 import { PurchaseOrderAdditionalCosts } from './components/PurchaseOrderAdditionalCosts'
 import { StickyFormFooter } from '../../components/molecules/StickyFormFooter/StickyFormFooter'
 import { PageHeader } from '../../components/molecules/PageHeader'
+import { SaveSplitButton } from '@/components/molecules/SaveSplitButton'
 import { Button, FormField, Input, Select, Textarea } from '../../components/atoms'
 import { AddPartnerModal } from '../../components/organisms'
 import { PartnerSearchSelect } from '../../components/ui/PartnerSearchSelect'
 import { useCompany } from '../../hooks/useCompany'
 import { useDraftAutoSave } from '../../hooks/useDraftAutoSave'
+import { useAfterSaveNavigation } from '@/hooks/useAfterSaveNavigation'
+import { useUnsavedChangesGuard, confirmDiscard } from '@/hooks/useUnsavedChangesGuard'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import type { DocumentType } from './DocumentListPage'
@@ -146,7 +149,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
     reset,
     setValue,
     control,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isDirty },
   } = useForm<DocumentFormData>({
     defaultValues: {
       type: effectiveType ?? '',
@@ -189,7 +192,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   }, [effectiveType, watchedPartnerId, watchedNotes, watchedDocumentDate, watchedDueDate, lines])
 
   // Auto-save hook (works for both new and existing documents)
-  const { draftId: _draftId, isSaving, lastSavedAt } = useDraftAutoSave(
+  const { draftId: _draftId, isSaving, lastSavedAt, autosavePending, autosaveFailed } = useDraftAutoSave(
     draftData,
     {
       enabled: true,
@@ -202,6 +205,23 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       },
     }
   )
+
+  // Post-save navigation (used by Save & Close)
+  const nav = useAfterSaveNavigation({
+    recordPath: (rid) => `${basePath}/${rid}`,
+    listPath: basePath,
+  })
+
+  // Autosave-aware unsaved-changes guard
+  const docDirty = {
+    isDirty: isDirty || (lines.length > 0 && !lastSavedAt),
+    autosavePending,
+    autosaveFailed,
+  }
+  useUnsavedChangesGuard(docDirty)
+
+  // Track Save & Close intent across async mutation callbacks
+  const closeIntentRef = useRef(false)
 
   // Fetch document data when editing
   const { data: document, isLoading } = useQuery({
@@ -259,6 +279,8 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   const createMutation = useMutation({
     mutationFn: (data: DocumentFormData) => apiPost<Document>(apiEndpoint, data),
     onSuccess: async (response) => {
+      const shouldClose = closeIntentRef.current
+      closeIntentRef.current = false
       toast.success(t('status.success'))
       await Promise.all([
         queryClient.invalidateQueries({
@@ -268,6 +290,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       ])
       const documentId = response?.id
       if (documentId) {
+        if (shouldClose) { nav.goToList(); return }
         // For purchase orders, redirect to edit mode so user can add additional costs
         if (effectiveType === 'purchase_order') {
           void navigate(`${basePath}/${documentId}/edit`)
@@ -277,6 +300,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       }
     },
     onError: (error: Error & { response?: { data?: { message?: string; error?: { message?: string } } } }) => {
+      closeIntentRef.current = false
       const message = error.response?.data?.error?.message
         ?? error.response?.data?.message
         ?? error.message
@@ -288,6 +312,8 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
     mutationFn: (data: DocumentFormData) =>
       apiPatch<Document>(`${apiEndpoint}/${id}`, data),
     onSuccess: async () => {
+      const shouldClose = closeIntentRef.current
+      closeIntentRef.current = false
       toast.success(t('status.success'))
       await Promise.all([
         queryClient.invalidateQueries({
@@ -296,9 +322,11 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
         queryClient.invalidateQueries({ queryKey: tenantScopedKey([effectiveType]) }),
         queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', effectiveType, id]) }),
       ])
+      if (shouldClose) { nav.goToList(); return }
       void navigate(`${basePath}/${id}`)
     },
     onError: (error: Error & { response?: { data?: { message?: string; error?: { message?: string } } } }) => {
+      closeIntentRef.current = false
       const message = error.response?.data?.error?.message
         ?? error.response?.data?.message
         ?? error.message
@@ -524,13 +552,18 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
           <Button
             type="button"
             variant="secondary"
-            onClick={() => { void navigate(basePath) }}
+            onClick={() => { if (!docDirty.isDirty || confirmDiscard(t('confirmation.unsavedChangesBody'))) void navigate(basePath) }}
           >
             {t('actions.cancel')}
           </Button>
-          <Button type="submit" variant="primary" disabled={isSubmitInProgress}>
-            {isSubmitInProgress ? t('status.saving') : t('actions.save')}
-          </Button>
+          <SaveSplitButton
+            isPending={isSubmitInProgress}
+            onPrimarySave={() => {}}
+            onSaveAndClose={() => {
+              closeIntentRef.current = true
+              void handleSubmit(onSubmit, () => { closeIntentRef.current = false })()
+            }}
+          />
         </StickyFormFooter>
       </form>
 

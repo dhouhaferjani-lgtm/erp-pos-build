@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { DocumentForm } from './DocumentForm'
 
 // i18n → return the key so assertions are deterministic
@@ -34,7 +34,7 @@ vi.mock('../../hooks/useCompany', () => ({
 }))
 
 vi.mock('../../hooks/useDraftAutoSave', () => ({
-  useDraftAutoSave: () => ({ draftId: undefined, isSaving: false, lastSavedAt: null }),
+  useDraftAutoSave: () => ({ draftId: undefined, isSaving: false, lastSavedAt: null, autosavePending: false, autosaveFailed: false }),
 }))
 
 // child components that fetch / render heavy trees — stub them out
@@ -77,5 +77,11 @@ describe('DocumentForm (canonical layout)', () => {
     render(<DocumentForm documentType="invoice" />)
     const save = screen.getByRole('button', { name: 'actions.save' })
     expect(save).toHaveAttribute('type', 'submit')
+  })
+
+  it('renders a Save split button with a Save & Close option', () => {
+    render(<DocumentForm documentType="invoice" />)
+    fireEvent.click(screen.getByRole('button', { name: 'actions.openSaveMenu' }))
+    expect(screen.getByRole('menuitem', { name: 'actions.saveAndClose' })).toBeInTheDocument()
   })
 })
