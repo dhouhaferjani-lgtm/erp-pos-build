@@ -28,6 +28,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Shared\Contracts\Loyalty\LoyaltyEarningContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -312,6 +313,37 @@ final class PosCoreReceiptProjectionLoyaltyEarnTest extends TestCase
                 ->where('transaction_type', TransactionType::Earn)
                 ->count(),
             'Replaying the same fiscal event must not credit points twice',
+        );
+    }
+
+    public function test_loyalty_earn_failure_does_not_break_the_sale(): void
+    {
+        // Bind a stub that always throws, BEFORE resolving the projection so the
+        // container injects it into PosCoreReceiptProjection's constructor.
+        $this->app->bind(
+            LoyaltyEarningContract::class,
+            fn () => new class implements LoyaltyEarningContract {
+                public function earnForSale(\App\Shared\Contracts\Loyalty\SaleEarnContext $c): void
+                {
+                    throw new \RuntimeException('boom');
+                }
+            },
+        );
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            buyer: $this->buyerBlock(),
+            total: '10.00',
+        );
+
+        // Resolve and apply AFTER the stub binding.
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        // The sale must have projected successfully despite the loyalty failure
+        // — the earnLoyaltyPoints() try/catch boundary must have swallowed the
+        // RuntimeException and left the outer DB::transaction intact.
+        $this->assertTrue(
+            DB::table('pos_receipts')->where('fiscal_event_id', $event->id)->exists(),
+            'pos_receipts row must exist even when loyalty earn throws',
         );
     }
 
