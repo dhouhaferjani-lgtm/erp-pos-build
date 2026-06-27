@@ -1,9 +1,10 @@
 # Post-save "stay on the record" — canonical save-action & navigation standard (v2)
 
 **Date:** 2026-06-26
-**Status:** v2 — revised after Codex adversarial review (see
-`docs/superpowers/reviews/2026-06-26-post-save-stay-on-record-codex-review.md`). Pending final
-owner approval → plan.
+**Status:** v3 — revised after two Codex adversarial reviews (round 1:
+`docs/superpowers/reviews/2026-06-26-post-save-stay-on-record-codex-review.md`; round 2:
+`docs/superpowers/reviews/2026-06-27-post-save-stay-on-record-codex-review-round2.md`).
+Blocker-free; ready for implementation plan.
 **Branch:** `feat/post-save-stay-on-record` (off `origin/dev`)
 **Origin:** Follow-up §1 of `docs/superpowers/coordination/2026-06-26-product-editor-followups-handoff.md`
 
@@ -14,6 +15,27 @@ owner approval → plan.
 > 2. **Payments dropped from Phase 1** (multi-outcome flow; its own scoped decision later).
 > 3. **Minimal Product `status` (draft/published) added now** so Publish is a real transition —
 >    it activates the already-present Save-draft / Publish / BeforePublishChecklist UI.
+>
+> **v3 changes (owner decisions after round-2 review — these SUPERSEDE conflicting text below):**
+> A. **Product is NAV-ONLY this session.** Reverses v2 decision 3: all Product `status`/Publish
+>    work (enum, migration, DTO, server publish-readiness guard, draft-sellability gating,
+>    status badge) is **deferred to §3**. This session: Product create/update → detail `/:id`
+>    + `<SaveSplitButton>`, and the existing **stubbed Publish button is hidden/disabled** (no
+>    misleading action). No backend changes for Product. (Resolves round-2 blockers 2/3/4 +
+>    majors 5/6.)
+> B. **The unsaved-changes guard is `BrowserRouter`-compatible** — NOT `useBlocker`. The app
+>    uses `<BrowserRouter>`/`<Routes>` (react-router-dom 7), where `useBlocker` is unavailable
+>    without a data-router migration (out of scope). Phase-1 guard = `window` `beforeunload`
+>    (tab close/refresh) **+ an explicit confirm modal on the editor's own Cancel/Back action**.
+>    Full in-app link/sidebar route-blocking is **deferred** to a future data-router migration.
+>    (Resolves round-2 blocker 1.) §5.3 below is amended accordingly.
+> C. **SaveSplitButton submit mechanism (resolves round-2 major 7):** menu items set the intent
+>    ref synchronously, then call `form.requestSubmit()` (or are rendered as `type="submit"`
+>    with the same `form=` id) so RHF validation runs and the chosen intent survives async
+>    validation → mutation success. Tested against Product's external `form="product-editor-form"`.
+> D. **`useDraftAutoSave` extension (resolves round-2 major 8):** expose `autosavePending` and
+>    `autosaveFailed` (+ `lastError`) so the Documents `DirtyState` is truthful for the
+>    `beforeunload`/Cancel guard. Still required even without `useBlocker`.
 
 ---
 
