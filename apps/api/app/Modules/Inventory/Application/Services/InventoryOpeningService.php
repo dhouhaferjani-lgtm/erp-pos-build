@@ -16,6 +16,7 @@ use App\Modules\Inventory\Application\DTOs\OpeningBalanceLine;
 use App\Modules\Inventory\Application\DTOs\OpeningBalancePosting;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -251,27 +252,29 @@ class InventoryOpeningService
             lines: $lines,
         );
 
-        $result = $this->postingService->post($posting);
+        return DB::transaction(function () use ($posting, $batch, $lineRows, $userId): JournalEntry {
+            $result = $this->postingService->post($posting);
 
-        // Zip the contributing rows (same order as $lines) with the returned movement IDs.
-        $rowEntityMap = [];
+            // Zip the contributing rows (same order as $lines) with the returned movement IDs.
+            $rowEntityMap = [];
 
-        foreach ($lineRows as $i => $row) {
-            if (isset($result->movementIdsInInputOrder[$i])) {
-                $rowEntityMap[$row->id] = $result->movementIdsInInputOrder[$i];
+            foreach ($lineRows as $i => $row) {
+                if (isset($result->movementIdsInInputOrder[$i])) {
+                    $rowEntityMap[$row->id] = $result->movementIdsInInputOrder[$i];
+                }
             }
-        }
 
-        // Mark batch validated BEFORE marking rows posted.
-        // markBatchValidated checks valid row count, which would be 0
-        // after markRowsPosted flips all rows to Posted. Matches the
-        // ordering used in AccountingOpeningService::postBatch.
-        $this->batchService->markBatchValidated($batch, $userId);
+            // Mark batch validated BEFORE marking rows posted.
+            // markBatchValidated checks valid row count, which would be 0
+            // after markRowsPosted flips all rows to Posted. Matches the
+            // ordering used in AccountingOpeningService::postBatch.
+            $this->batchService->markBatchValidated($batch, $userId);
 
-        // Mark rows as posted with their mapped movement IDs.
-        $this->batchService->markRowsPosted($rowEntityMap);
+            // Mark rows as posted with their mapped movement IDs.
+            $this->batchService->markRowsPosted($rowEntityMap);
 
-        return $result->entry;
+            return $result->entry;
+        });
     }
 
     /**
