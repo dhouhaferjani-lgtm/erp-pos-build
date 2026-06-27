@@ -100,14 +100,25 @@
     "barcode": "Barcode",
     "salePrice": "Sale Price",
     "purchasePrice": "Purchase Price",
+    "purchasePriceHelper": "Ex-tax, from supplier",
     "taxRate": "Tax Rate (%)",
     "priceMin": "Price must be positive",
     "margin": "Margin",
+    "marginIndicative": "Indicative gross margin (sale price is tax-inclusive; a tax-exact net margin is a later refinement)",
     "oemNumbers": "OEM Numbers",
     "crossReferences": "Cross References",
     "brand": "Brand",
     "reference": "Reference",
     "type": "Product Type",
+    "typePlaceholder": "Select type…",
+    "typeOptions": {
+      "part": "Part",
+      "service": "Service",
+      "consumable": "Consumable"
+    },
+    "unitOfMeasure": "Unit of Measure",
+    "active": "Active product",
+    "isActiveForEcommerce": "Active for E-commerce",
     "isPhysical": "Physical Product",
     "isPhysicalHelper": "Uncheck for non-physical items (e.g., digital goods). Services should be created in the Services module.",
     "requiresBatchTracking": "Track batches / expiry",
@@ -120,6 +131,12 @@
     "unitPlaceholder": "pcs, kg, hours…",
     "costWac": "Cost (WAC)",
     "costWacHelper": "Automatically calculated from purchase operations",
+    "unitsPerPack": "Units per Pack",
+    "unitsPerPackPlaceholder": "e.g., 12",
+    "shelfLocation": "Shelf Location",
+    "shelfLocationPlaceholder": "e.g., A3-B12",
+    "reorderPoint": "Reorder Point",
+    "reorderQuantity": "Reorder Quantity",
     "oemPlaceholder": "Enter OEM number",
     "addCrossReference": "Add Cross Reference",
     "fields": {
@@ -266,7 +283,8 @@
       "receipts": "Receipts",
       "issues": "Issues",
       "adjustments": "Adjustments",
-      "transfers": "Transfers"
+      "transfers": "Transfers",
+      "writeOffs": "Write-Offs"
     },
     "columns": {
       "product": "Product",
@@ -277,13 +295,23 @@
       "issue": "Issue",
       "adjustment": "Adjustment",
       "transfer_in": "Transfer In",
-      "transfer_out": "Transfer Out"
+      "transfer_out": "Transfer Out",
+      "write_off": "Write-Off"
     },
     "types": {
       "in": "Stock In",
       "out": "Stock Out",
       "transfer": "Transfer",
       "adjustment": "Adjustment"
+    },
+    "actions": {
+      "reverse": "Reverse",
+      "reversed": "Reversed",
+      "reverseConfirmTitle": "Reverse Write-Off",
+      "reverseConfirmMessage": "This will restore the written-off stock. The original write-off entry will remain for audit purposes. This corrective action cannot itself be reversed.",
+      "reverseSuccess": "Write-off reversed successfully.",
+      "reverseAlreadyReversed": "This write-off has already been reversed.",
+      "reverseFailed": "Failed to reverse the write-off."
     }
   },
   "margin": {

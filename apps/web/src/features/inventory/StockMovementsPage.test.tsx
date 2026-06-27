@@ -84,9 +84,22 @@ const mockReturn: {
   error: null,
 }
 
+vi.mock('../../hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: () => false }),
+}))
+
+vi.mock('../batches/api/batches', () => ({
+  reverseWriteOff: vi.fn(),
+}))
+
 vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>()
-  return { ...actual, useQuery: () => mockReturn }
+  return {
+    ...actual,
+    useQuery: () => mockReturn,
+    useMutation: () => ({ mutate: vi.fn(), isPending: false }),
+    useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  }
 })
 
 describe('StockMovementsPage (canonical list)', () => {

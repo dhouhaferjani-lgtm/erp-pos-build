@@ -100,14 +100,25 @@
     "barcode": "Code-barres",
     "salePrice": "Prix de vente",
     "purchasePrice": "Prix d'achat",
+    "purchasePriceHelper": "Hors taxe, fournisseur",
     "taxRate": "Taux de TVA (%)",
     "priceMin": "Le prix doit être positif",
     "margin": "Marge",
+    "marginIndicative": "Marge brute indicative (prix de vente TTC ; une marge nette exacte est prévue ultérieurement)",
     "oemNumbers": "Numéros OEM",
     "crossReferences": "Références croisées",
     "brand": "Marque",
     "reference": "Référence",
     "type": "Type de produit",
+    "typePlaceholder": "Sélectionner un type…",
+    "typeOptions": {
+      "part": "Pièce",
+      "service": "Service",
+      "consumable": "Consommable"
+    },
+    "unitOfMeasure": "Unité de mesure",
+    "active": "Produit actif",
+    "isActiveForEcommerce": "Actif pour le e-commerce",
     "isPhysical": "Produit physique",
     "isPhysicalHelper": "Décochez pour les articles non physiques (ex. biens numériques). Les services doivent être créés dans le module Services.",
     "requiresBatchTracking": "Suivre les lots / la péremption",
@@ -120,6 +131,12 @@
     "unitPlaceholder": "pcs, kg, heures…",
     "costWac": "Coût (CMP)",
     "costWacHelper": "Calculé automatiquement à partir des opérations d'achat",
+    "unitsPerPack": "Unités par colis",
+    "unitsPerPackPlaceholder": "ex. 12",
+    "shelfLocation": "Emplacement rayon",
+    "shelfLocationPlaceholder": "ex. A3-B12",
+    "reorderPoint": "Point de réapprovisionnement",
+    "reorderQuantity": "Quantité de réapprovisionnement",
     "oemPlaceholder": "Saisir le numéro OEM",
     "addCrossReference": "Ajouter une référence croisée",
     "fields": {
@@ -266,7 +283,8 @@
       "receipts": "Réceptions",
       "issues": "Sorties",
       "adjustments": "Ajustements",
-      "transfers": "Transferts"
+      "transfers": "Transferts",
+      "writeOffs": "Mises au rebut"
     },
     "columns": {
       "product": "Produit",
@@ -277,13 +295,23 @@
       "issue": "Sortie",
       "adjustment": "Ajustement",
       "transfer_in": "Transfert entrant",
-      "transfer_out": "Transfert sortant"
+      "transfer_out": "Transfert sortant",
+      "write_off": "Mise au rebut"
     },
     "types": {
       "in": "Entrée",
       "out": "Sortie",
       "transfer": "Transfert",
       "adjustment": "Ajustement"
+    },
+    "actions": {
+      "reverse": "Annuler",
+      "reversed": "Annulé",
+      "reverseConfirmTitle": "Annuler la mise au rebut",
+      "reverseConfirmMessage": "Cette action restaurera le stock mis au rebut. L'entrée de mise au rebut originale sera conservée à des fins d'audit. Cette action corrective ne peut pas elle-même être annulée.",
+      "reverseSuccess": "Mise au rebut annulée avec succès.",
+      "reverseAlreadyReversed": "Cette mise au rebut a déjà été annulée.",
+      "reverseFailed": "Échec de l'annulation de la mise au rebut."
     }
   },
   "margin": {

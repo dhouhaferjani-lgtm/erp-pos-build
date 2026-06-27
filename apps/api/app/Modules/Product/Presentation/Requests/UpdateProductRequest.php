@@ -37,12 +37,34 @@ class UpdateProductRequest extends FormRequest
     }
 
     /**
+     * Derive is_physical from type when is_physical is absent.
+     * service → false; part/consumable → true.
+     */
+    public function prepareForValidation(): void
+    {
+        if ($this->has('type') && ! $this->has('is_physical')) {
+            $typeValue = $this->input('type');
+            $type = is_string($typeValue) ? ProductType::tryFrom($typeValue) : null;
+
+            if ($type !== null) {
+                $this->merge([
+                    'is_physical' => $type !== ProductType::Service,
+                ]);
+            }
+        }
+    }
+
+    /**
      * Reject vertical-specific metadata the tenant's vertical does not permit —
      * including empty/null payloads that a bare `prohibited` rule would let
      * through (Laravel treats `prohibited` as "not required", so null and `[]`
      * pass). Parapharmacy metadata is allowed only for the Parapharmacy
      * vertical; automotive metadata only for automotive verticals (there is no
      * single "Automotive" module, so the vertical is the authority).
+     *
+     * Also rejects contradicting type ↔ is_physical combinations:
+     * service + is_physical=true → 422 on is_physical
+     * part/consumable + is_physical=false → 422 on is_physical
      */
     public function withValidator(Validator $validator): void
     {
@@ -62,7 +84,53 @@ class UpdateProductRequest extends FormRequest
                     'Automotive metadata is not allowed for this business type.'
                 );
             }
+
+            $this->validateTypePhysicalCoherence($validator);
         });
+    }
+
+    /**
+     * Validate that type and is_physical do not contradict each other.
+     * Runs after prepareForValidation() may have derived is_physical; a derived
+     * value is always coherent, so in practice this only rejects a caller-supplied
+     * contradiction (service+physical, or part/consumable+non-physical).
+     */
+    private function validateTypePhysicalCoherence(Validator $validator): void
+    {
+        $typeValue = $this->input('type');
+        $isPhysical = $this->input('is_physical');
+
+        if ($typeValue === null || $isPhysical === null) {
+            return;
+        }
+
+        $type = is_string($typeValue) ? ProductType::tryFrom($typeValue) : null;
+
+        if ($type === null) {
+            return;
+        }
+
+        $isPhysicalBool = filter_var($isPhysical, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+        if ($isPhysicalBool === null) {
+            return;
+        }
+
+        if ($type === ProductType::Service && $isPhysicalBool === true) {
+            $validator->errors()->add(
+                'is_physical',
+                'A service product cannot be physical. Set is_physical to false or omit it.'
+            );
+
+            return;
+        }
+
+        if (in_array($type, [ProductType::Part, ProductType::Consumable], true) && $isPhysicalBool === false) {
+            $validator->errors()->add(
+                'is_physical',
+                'A part or consumable product must be physical. Set is_physical to true or omit it.'
+            );
+        }
     }
 
     /**
@@ -113,7 +181,14 @@ class UpdateProductRequest extends FormRequest
             // Unit of measure FK — drives quantity precision (decimals/step).
             'unit_id' => ['sometimes', 'nullable', 'exists:units,id'],
             'barcode' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'units_per_pack' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'shelf_location' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'reorder_point' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'reorder_quantity' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
             'is_active' => ['sometimes', 'boolean'],
+            'is_active_for_ecommerce' => ['sometimes', 'boolean'],
+            'requires_batch_tracking' => ['sometimes', 'boolean'],
+            'default_shelf_life_days' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'oem_numbers' => ['sometimes', 'nullable', 'array'],
             'oem_numbers.*' => ['string', 'max:100'],
             'cross_references' => ['sometimes', 'nullable', 'array'],
@@ -196,6 +271,8 @@ class UpdateProductRequest extends FormRequest
             'sale_price.regex' => 'Sale price must have at most 3 decimal places.',
             'purchase_price.regex' => 'Purchase price must have at most 3 decimal places.',
             'tax_rate.regex' => 'Tax rate must have at most 2 decimal places.',
+            'reorder_point.regex' => 'Reorder point must have at most 4 decimal places.',
+            'reorder_quantity.regex' => 'Reorder quantity must have at most 4 decimal places.',
         ];
     }
 }

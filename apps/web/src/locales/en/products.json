@@ -84,5 +84,15 @@
   },
   "fields": {
     "skuLabel": "SKU:"
+  },
+  "media": {
+    "saveFirst": "Save the product to add images.",
+    "addImage": "Add image",
+    "removeImage": "Remove image",
+    "bufferedCount": "{{count}} image ready to upload",
+    "bufferedCount_plural": "{{count}} images ready to upload",
+    "uploadPending": "Images will be uploaded when you save the product.",
+    "uploadFailedPartial": "Product saved, but {{count}} image failed to upload. You can retry from the edit view.",
+    "uploadFailedPartial_plural": "Product saved, but {{count}} images failed to upload. You can retry from the edit view."
   }
 }

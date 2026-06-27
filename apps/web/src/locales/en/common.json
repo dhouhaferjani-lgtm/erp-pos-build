@@ -219,6 +219,7 @@
     "products": "Products",
     "categories": "Categories",
     "batches": "Batches",
+    "expiryWriteOff": "Expiry Write-off",
     "stockLevels": "Stock Levels",
     "stockMovements": "Stock Movements",
     "counting": "Inventory Counting",

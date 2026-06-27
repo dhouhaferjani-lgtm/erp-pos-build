@@ -1,4 +1,57 @@
 {
+  "editor": {
+    "sections": "SECTIONS",
+    "complete": "Complétude",
+    "hero": {
+      "barcodePlaceholder": "Scanner ou saisir le code-barres",
+      "namePlaceholder": "Nom du produit",
+      "refreshLabel": "Actualiser l'enrichissement",
+      "enrichmentLoading": "Synerivia…",
+      "enrichmentSuccess": "Synerivia · {{count}} champs",
+      "enrichmentFields": "{{count}} champs",
+      "enrichmentUnavailable": "Synerivia · indisponible",
+      "helper": "Récupération automatique peu après l'arrêt de la saisie du code-barres (repli sur le nom du produit s'il n'y a pas de code-barres). Le bouton actualiser la relance manuellement."
+    },
+    "subtitle": "Scannez un code-barres pour pré-remplir depuis Synerivia, ou saisissez manuellement.",
+    "sectionLabels": {
+      "general": "Général",
+      "pricing": "Prix & Taxes",
+      "inventory": "Stock & Unités",
+      "pharmacy": "Pharmacie",
+      "suppliers": "Fournisseurs",
+      "media": "Médias & Fichiers"
+    },
+    "related": {
+      "title": "Opérations liées",
+      "newCount": "Nouvel inventaire",
+      "startPurchase": "Démarrer un achat",
+      "startSale": "Démarrer une vente / un devis",
+      "viewMovements": "Voir les mouvements de stock",
+      "subtitle": "S'ouvre avec ce produit présélectionné.",
+      "subtitleNewCount": "Corriger le décompte, avec un motif",
+      "subtitleStartPurchase": "Réapprovisionner depuis un fournisseur",
+      "subtitleStartSale": "B2B / devis avec cet article"
+    },
+    "checklist": {
+      "title": "Avant publication",
+      "name": "Possède un nom de produit",
+      "sku": "Possède une référence (SKU)",
+      "salePrice": "Possède un prix de vente",
+      "tax": "Possède un taux de taxe"
+    },
+    "suppliers": {
+      "managedHint": "Les fournisseurs sont gérés dans Achats. Liez ce produit à un fournisseur depuis un bon de commande.",
+      "manageLink": "Aller aux fournisseurs"
+    },
+    "livePos": {
+      "title": "Aperçu en caisse",
+      "namePlaceholder": "Nom du produit"
+    },
+    "actions": {
+      "saveDraft": "Enregistrer le brouillon",
+      "publish": "Publier le produit"
+    }
+  },
   "compositeItem": "Article composé",
   "compositeItems": "Articles composés",
   "recipe": "Recette",

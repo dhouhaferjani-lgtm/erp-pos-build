@@ -95,6 +95,19 @@ C1 → C2 → C3 → B3a → B3b → B4a → B4b → B4c → (optional) C0 → (
 - **G1:** Inventory-owned port interface in `Inventory/Domain/Contracts` for batch-stock mutation, implemented by BatchExpiry. **G2:** route `StockAdjustmentService::recordBatchMovement` + the `issue/receive(batchId)` callers (only `BatchWriteOffService` + `StockTransferService` — Codex HIGH 4) through the port; audit `BatchController::transfer`→`BatchStockService::transferBatchStock` (moves batch stock with NO aggregate movement). **G3:** remove the direct `BatchExpiry\Domain\Entities` imports from Inventory.
 - **Risk:** HIGH (broad refactor, regression-prone). **Model:** most-capable. Heavy regression coverage; own branch. Lowest priority (cleanup, not feature).
 
+## Deferred follow-up status (owner decision, 2026-06-26)
+Core subsystem (B0, A1–A4, B1–B4, C1–C3, E1) is **shipped and merged to `dev`** (`7a42ad46a`, merge of `feat/stock-adjustment-writeoff`, clean ff promotion, fiscal reversal/grouped tests green pre-merge). The two remaining items below are **explicitly deferred** — they are hardening/cleanup, not feature gaps, and do **not** block the customer demo.
+- **C0 (posted-movement immutability)** and **G (Inventory↔BatchExpiry boundary cleanup)** are to be done **later, each in its own feature branch**, **C0 before G** (G would otherwise re-churn the same transfer/batch files).
+- Each must land with **regression coverage / documented use-cases** that prove no behavior change (C0: full transfer + WAC suite; G: byte-identical stock/ledger results pre/post on every batch-aware path) **plus a Codex adversarial pass** before merge. Merge only when green.
+- Cheap win extractable independently of the full G refactor: the **`BatchController::transfer()` → `transferBatchStock()` audit** (moves batch stock with no aggregate `stock_movements` row — may hide a real ledger gap).
+- See risk/complexity write-up in the session handoff; both are HIGH-surface-area, most-capable-model work.
+
+## Cross-session: shared `journal_entries(source_type, source_id)` uniqueness — RESOLVED (2026-06-26)
+The procurement-to-pay session added a uniqueness guard on the shared `journal_entries(source_type, source_id)` table (their Task B2, `134e7b382`, 20 tests). Decision (coordination note `docs/superpowers/coordination/2026-06-26-procurement-to-stock-adjustment-coordination.md`): **supplier-scoped partial index** `WHERE source_type IN ('supplier_invoice','supplier_credit_note')` — **NOT global.**
+- **Why not global:** a global unique index would break flows that legitimately write multiple JEs per `source_id` — independently confirmed for `prepayment_application` and `pos_receipt`. (See [[reference_journal_entries_no_global_source_uniqueness]].)
+- **Impact on us: none.** The index excludes `batch_write_off`/`batch_write_off_reversal`. Verified our flows are already strictly one-JE-per-`(source_type, source_id)`: write-off posts `batch_write_off`+movementId (single, and grouped multi-lot loops one JE per line/movement — never a shared id); the reversal posts a **distinct** `source_type='batch_write_off_reversal'` + the inverse movement id, so it never collides with the original.
+- **Our idempotency is unchanged:** app-level already-reversed guard + the `stock_movements.reverses_movement_id` partial unique index (the C1/MED-3 DB double-reverse guard). If we ever want DB-level structural idempotency on write-offs too, add our **own** `WHERE source_type IN ('batch_write_off','batch_write_off_reversal')` partial index in a coordinated migration — do NOT add an overlapping/global one on this shared table.
+
 ## Deferred (not in this decomposition)
 - Approval gating (Phase D) — context-agnostic, when F&B-POS/high-value need is concrete.
 - Justification documents (Phase F) — via the media-unification session (`docs/superpowers/coordination/2026-06-24-media-unification-handover.md`).

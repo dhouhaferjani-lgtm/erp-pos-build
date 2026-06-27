@@ -102,6 +102,7 @@ import frPurchases from '../locales/fr/purchases.json'
 // Arabic: fully translated AutoSpecs + shared foundations (🟠-4 Tunisia Go-Live).
 // Other namespaces still fall back to the EN bundle below.
 import arCommon from '../locales/ar/common.json'
+import arInventory from '../locales/ar/inventory.json'
 import arValidation from '../locales/ar/validation.json'
 import arWorkshopBundles from '../locales/ar/workshop-bundles.json'
 import arWorkshopTechnicians from '../locales/ar/workshop-technicians.json'
@@ -118,6 +119,7 @@ import arChannels from '../locales/ar/channels.json'
 import arReports from '../locales/ar/reports.json'
 import arAdmin from '../locales/ar/admin.json'
 import arPurchases from '../locales/ar/purchases.json'
+import arProducts from '../locales/ar/products.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -233,7 +235,7 @@ const resources = {
     common: arCommon,
     auth: enAuth,
     sales: enSales,
-    inventory: enInventory,
+    inventory: { ...enInventory, ...arInventory, products: { ...enInventory.products, ...arInventory.products } },
     treasury: enTreasury,
     validation: arValidation,
     pricing: enPricing,
@@ -241,7 +243,7 @@ const resources = {
     import: enImport,
     settings: enSettings,
     uom: enUom,
-    products: enProducts,
+    products: { ...enProducts, ...arProducts },
     parapharmacy: enParapharmacy,
     batches: enBatches,
     pos: enPos,

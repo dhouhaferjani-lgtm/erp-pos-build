@@ -1,0 +1,12 @@
+{
+  "media": {
+    "saveFirst": "احفظ المنتج لإضافة الصور.",
+    "addImage": "إضافة صورة",
+    "removeImage": "إزالة الصورة",
+    "bufferedCount": "{{count}} صورة جاهزة للرفع",
+    "bufferedCount_plural": "{{count}} صور جاهزة للرفع",
+    "uploadPending": "سيتم رفع الصور عند حفظ المنتج.",
+    "uploadFailedPartial": "تم حفظ المنتج، لكن فشل رفع {{count}} صورة. يمكنك إعادة المحاولة من طريقة التعديل.",
+    "uploadFailedPartial_plural": "تم حفظ المنتج، لكن فشل رفع {{count}} صور. يمكنك إعادة المحاولة من طريقة التعديل."
+  }
+}

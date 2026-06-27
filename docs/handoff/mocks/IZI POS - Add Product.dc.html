@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body { background: #0B1726; }
+    /* IZI POS form primitives — mirror tokens.input.base etc., themed navy */
+    .f-label { display:block; font-family:'Public Sans',sans-serif; font-size:13px; font-weight:600; color:#41454B; margin-bottom:5px; }
+    .f-input { margin-top:0; display:block; width:100%; font-family:'Public Sans',sans-serif; font-size:14px; color:#1C1E21; border-radius:8px; border:1px solid #D8DEE4; padding:9px 12px; box-shadow:0 1px 2px rgba(20,40,63,.04); outline:none; background:#fff; transition:border-color .15s, box-shadow .15s; }
+    .f-input:focus { border-color:#1E3A5F; box-shadow:0 0 0 3px rgba(30,58,95,.16); }
+    .f-input::placeholder { color:#9AA0A8; }
+    .f-help { margin-top:5px; font-size:12px; color:#777C84; }
+    .sec-card { border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:22px; box-shadow:0 1px 3px rgba(20,40,63,.06); scroll-margin-top:14px; }
+    .sec-h { font-family:'Montserrat',sans-serif; font-weight:700; font-size:16px; color:#14283F; margin-bottom:16px; }
+    .nav-scroll::-webkit-scrollbar { width:8px; } .nav-scroll::-webkit-scrollbar-thumb { background:#22344C; border-radius:8px; }
+    .ez-scroll::-webkit-scrollbar { width:10px; } .ez-scroll::-webkit-scrollbar-thumb { background:#D4D8DD; border-radius:8px; border:3px solid #F6F7F8; }
+  </style>
+</helmet>
+<div style="display:flex; height:100vh; overflow:hidden; font-family:'Public Sans',system-ui,sans-serif; color:#1C1E21; background:#F4F6F8;" data-product="izipos">
+
+  <aside class="nav-scroll" style="width:248px; flex:none; background:#0B1726; border-right:1px solid #1B2A3F; display:flex; flex-direction:column; overflow-y:auto;">
+    <div style="height:64px; flex:none; display:flex; align-items:center; gap:11px; padding:0 18px; border-bottom:1px solid #182740;">
+      <img src="assets/pos-mark-dark.svg" alt="IZI POS" style="width:30px; height:30px;">
+      <span style="font-family:'Montserrat',sans-serif; font-weight:800; font-size:18px; color:#fff; letter-spacing:-.01em;">IZI POS</span>
+    </div>
+    <nav style="flex:1; padding:14px 12px;">
+      <ul style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:3px;">
+        <li><a href="#" style="display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:10px; font-size:14px; font-weight:500; color:#8FA6C2; text-decoration:none;" style-hover="background:#14283F; color:#fff;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>Dashboard</a></li>
+        <li><div style="display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:10px; font-size:14px; font-weight:500; color:#8FA6C2; cursor:pointer;" style-hover="background:#14283F; color:#fff;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"></path></svg><span style="flex:1;">Sales</span><span style="font-size:12px;">▸</span></div></li>
+        <li><div style="display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:10px; font-size:14px; font-weight:500; color:#8FA6C2; cursor:pointer;" style-hover="background:#14283F; color:#fff;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1z"></path><path d="M16 8h4l3 3v5h-7V8z"></path><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg><span style="flex:1;">Purchases</span><span style="font-size:12px;">▸</span></div></li>
+
+        <li>
+          <div style="display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:10px; font-size:14px; font-weight:600; color:#fff; background:rgba(30,58,95,.42); cursor:pointer;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg><span style="flex:1;">Catalog</span><span style="font-size:12px;">▾</span></div>
+          <ul style="list-style:none; margin:5px 0 0; padding:0 0 0 14px; display:flex; flex-direction:column; gap:2px;">
+            <li><a href="#" style="display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:9px; font-size:13.5px; font-weight:600; color:#fff; background:rgba(30,58,95,.55); text-decoration:none; box-shadow:inset 2px 0 0 #EA661A;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>Products</a></li>
+            <li><a href="#" style="display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:9px; font-size:13.5px; color:#7E97B5; text-decoration:none;" style-hover="background:#14283F; color:#cfe;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3zM14 3h7v4h-7zM14 11h7v10h-7zM3 14h7v7H3z"></path></svg>Categories</a></li>
+            <li><a href="#" style="display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:9px; font-size:13.5px; color:#7E97B5; text-decoration:none;" style-hover="background:#14283F; color:#cfe;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H2v7l9 9 7-7zM7 9h.01"></path></svg>Product Attributes</a></li>
+            <li><a href="#" style="display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:9px; font-size:13.5px; color:#7E97B5; text-decoration:none;" style-hover="background:#14283F; color:#cfe;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10z"></path><line x1="7" y1="7" x2="7" y2="7"></line></svg>Price Lists</a></li>
+          </ul>
+        </li>
+
+        <li><div style="display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:10px; font-size:14px; font-weight:500; color:#8FA6C2; cursor:pointer;" style-hover="background:#14283F; color:#fff;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline></svg><span style="flex:1;">Inventory</span><span style="font-size:12px;">▸</span></div></li>
+        <li><div style="display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:10px; font-size:14px; font-weight:500; color:#8FA6C2; cursor:pointer;" style-hover="background:#14283F; color:#fff;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h20l-2 5H4z"></path><path d="M4 12v8h16v-8"></path><path d="M9 21v-5h6v5"></path></svg><span style="flex:1;">Point of Sale</span><span style="font-size:12px;">▸</span></div></li>
+        <li><div style="display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:10px; font-size:14px; font-weight:500; color:#8FA6C2; cursor:pointer;" style-hover="background:#14283F; color:#fff;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path></svg><span style="flex:1;">Customers &amp; Marketing</span><span style="font-size:12px;">▸</span></div></li>
+        <li><div style="display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:10px; font-size:14px; font-weight:500; color:#8FA6C2; cursor:pointer;" style-hover="background:#14283F; color:#fff;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg><span style="flex:1;">Banking &amp; Payments</span><span style="font-size:12px;">▸</span></div></li>
+        <li><div style="display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:10px; font-size:14px; font-weight:500; color:#8FA6C2; cursor:pointer;" style-hover="background:#14283F; color:#fff;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"></rect><line x1="8" y1="6" x2="16" y2="6"></line><line x1="8" y1="10" x2="16" y2="10"></line><line x1="8" y1="14" x2="12" y2="14"></line></svg><span style="flex:1;">Accounting &amp; Reports</span><span style="font-size:12px;">▸</span></div></li>
+        <li><div style="display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:10px; font-size:14px; font-weight:500; color:#8FA6C2; cursor:pointer;" style-hover="background:#14283F; color:#fff;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 20.5 3.5 13.5a5 5 0 0 1 7-7l0 0"></path><path d="M13.5 3.5l7 7a5 5 0 0 1-7 7"></path></svg><span style="flex:1;">Parapharmacy</span><span style="font-size:12px;">▸</span></div></li>
+
+        <li style="margin-top:6px; border-top:1px solid #182740; padding-top:8px;"><a href="#" style="display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:10px; font-size:14px; font-weight:500; color:#8FA6C2; text-decoration:none;" style-hover="background:#14283F; color:#fff;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>Settings</a></li>
+      </ul>
+    </nav>
+    <div style="flex:none; border-top:1px solid #182740; padding:10px 12px;">
+      <div style="display:flex; align-items:center; gap:11px; padding:8px 10px;">
+        <span style="width:34px; height:34px; border-radius:999px; background:#2B4A72; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; flex:none;">MK</span>
+        <div style="line-height:1.2; min-width:0;"><div style="font-size:13px; font-weight:600; color:#E8EDF5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Maya Khaled</div><div style="font-size:11px; color:#5B7AA3;">Riverside Pharmacy</div></div>
+      </div>
+    </div>
+  </aside>
+
+  <div style="flex:1; display:flex; flex-direction:column; min-width:0;">
+    <header style="height:64px; flex:none; background:#fff; border-bottom:1px solid #E4E7EB; display:flex; align-items:center; gap:16px; padding:0 22px;">
+      <div style="position:relative; width:300px;">
+        <svg style="position:absolute; left:12px; top:50%; transform:translateY(-50%);" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9AA0A8" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input placeholder="Search…" style="width:100%; font-family:'Public Sans',sans-serif; font-size:14px; padding:9px 12px 9px 38px; border:1px solid #E4E7EB; border-radius:9px; outline:none; background:#F7F8FA;">
+        <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-family:'IBM Plex Mono',monospace; font-size:11px; color:#9AA0A8; background:#fff; border:1px solid #E4E7EB; border-radius:5px; padding:2px 6px;">⌘K</span>
+      </div>
+      <div style="margin-left:auto; display:flex; align-items:center; gap:12px;">
+        <div style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; color:#41454B; background:#F4F6F8; border:1px solid #E4E7EB; border-radius:9px; padding:7px 12px; cursor:pointer;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+          Riverside · Main
+          <span style="color:#9AA0A8;">▾</span>
+        </div>
+        <span style="position:relative; width:38px; height:38px; border-radius:9px; background:#F4F6F8; display:flex; align-items:center; justify-content:center; color:#5A5F66; cursor:pointer;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg><span style="position:absolute; top:8px; right:9px; width:7px; height:7px; border-radius:999px; background:#EA661A; border:1.5px solid #F4F6F8;"></span></span>
+      </div>
+    </header>
+
+    <main class="ez-scroll" style="flex:1; overflow-y:auto; scroll-behavior:smooth; padding:20px 24px;">
+      <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#777C84; margin-bottom:16px;">
+        <span style="cursor:pointer;">Catalog</span><span style="color:#C7CDD4;">/</span>
+        <span style="cursor:pointer;">Products</span><span style="color:#C7CDD4;">/</span>
+        <span style="color:#1C1E21; font-weight:600;">Add product</span>
+      </div>
+      <div style="display:flex; align-items:flex-start; gap:16px; margin-bottom:18px;">
+        <div style="flex:1; min-width:0;">
+          <h1 style="font-family:'Montserrat',sans-serif; font-weight:800; font-size:26px; color:#14283F; margin:0; letter-spacing:-.02em;">Add product</h1>
+          <p style="font-size:14px; color:#5A5F66; margin:5px 0 0;">Scan a barcode to auto-fill from Synerivia, or enter details by hand. Only name &amp; price are required.</p>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; flex:none;">
+          <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:14px; color:#5A5F66; background:none; border:none; cursor:pointer; padding:9px 10px;" style-hover="color:#1C1E21;">Cancel</button>
+          <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:14px; color:#1E3A5F; background:#fff; border:1px solid #C2D0E0; padding:9px 16px; border-radius:9px; cursor:pointer; white-space:nowrap;" style-hover="background:#F2F6FB;">Save draft</button>
+          <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:14px; color:#fff; background:#EA661A; border:none; padding:10px 20px; border-radius:9px; cursor:pointer; white-space:nowrap; box-shadow:0 1px 2px rgba(138,58,13,.3);" style-hover="background:#D45915;">Publish product</button>
+        </div>
+      </div>
+
+      <div style="background:#14283F; border-radius:12px; padding:12px 14px; margin-bottom:18px;">
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div style="width:52px; height:52px; flex:none; border-radius:9px; background:repeating-linear-gradient(45deg,#22405F,#22405F 6px,#1E3A57 6px,#1E3A57 12px); border:1px solid #2C4A6E; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;"><span style="font-family:'IBM Plex Mono',monospace; font-size:8px; color:#7E97B5;">photo</span><span style="position:absolute; top:3px; left:3px; font-size:7px; font-weight:700; color:#14283F; background:#FBC9AC; padding:1px 4px; border-radius:4px;">AUTO</span></div>
+          <div style="flex:none; width:240px; position:relative;">
+            <svg style="position:absolute; left:11px; top:50%; transform:translateY(-50%);" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#5B7AA3" stroke-width="2" stroke-linecap="round"><path d="M3 5v14M7 5v14M11 5v14M15 5v14M19 5v14"></path></svg>
+            <input value="5012345 678900" placeholder="Scan or type barcode" style="width:100%; font-family:'IBM Plex Mono',monospace; font-size:15px; color:#EAF1FA; padding:9px 11px 9px 36px; border:1px solid #2C4A6E; border-radius:8px; outline:none; background:#0F2138;">
+          </div>
+          <div style="flex:1; min-width:200px;">
+            <input value="Paracetamol 500mg Tablets ×24" placeholder="Product name (used if no barcode)" style="width:100%; font-family:'Public Sans',sans-serif; font-size:15px; font-weight:600; color:#EAF1FA; padding:9px 12px; border:1px solid #2C4A6E; border-radius:8px; outline:none; background:#0F2138;">
+          </div>
+          <span style="flex:none; display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:600; color:#7BE0B0; background:rgba(31,138,91,.18); padding:7px 12px; border-radius:999px; white-space:nowrap;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#3FD18B" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7L12 16.8 5.7 21l2.3-7-6-4.6h7.6z"></path></svg>Synerivia · 14 fields</span>
+          <button title="Re-fetch from Synerivia" style="flex:none; width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; color:#9FB4CE; background:transparent; border:1px solid #2C4A6E; border-radius:8px; cursor:pointer;" style-hover="color:#fff; border-color:#5B7AA3;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg></button>
+          <span style="flex-basis:100%; font-size:11px; color:#6E86A5; padding-left:64px;">Auto-fetches ~300ms after you stop typing the barcode (falls back to the product name when there is no barcode). The refresh button re-runs it manually.</span>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:188px 1fr 300px; gap:18px; align-items:start;">
+        <nav style="position:sticky; top:0; align-self:start; display:flex; flex-direction:column; gap:3px; background:#fff; border:1px solid #E4E7EB; border-radius:14px; padding:12px; box-shadow:0 1px 3px rgba(20,40,63,.06);">
+          <div style="font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#9AA0A8; padding:6px 12px 8px;">Sections</div>
+          <a href="#secB-general" onClick="{{ goNav_general }}" style="{{ navStyle_general }}">General</a>
+          <a href="#secB-pricing" onClick="{{ goNav_pricing }}" style="{{ navStyle_pricing }}">Pricing &amp; Tax</a>
+          <a href="#secB-inventory" onClick="{{ goNav_inventory }}" style="{{ navStyle_inventory }}">Inventory &amp; Units</a>
+          <a href="#secB-media" onClick="{{ goNav_media }}" style="{{ navStyle_media }}">Media &amp; Files</a>
+          <a href="#secB-pharma" onClick="{{ goNav_pharma }}" style="{{ navStyle_pharma }}">Pharmacy</a>
+          <div style="height:1px; background:#ECEDEE; margin:8px 4px;"></div>
+          <div style="padding:4px 12px 6px;"><div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px;"><span style="color:#777C84;">Completeness</span><span style="font-weight:700; color:#1F8A5B;">86%</span></div><div style="height:6px; border-radius:999px; background:#ECEDEE; overflow:hidden;"><span style="display:block; height:100%; width:86%; background:#1F8A5B;"></span></div></div>
+        </nav>
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div id="secB-general" class="sec-card">
+            <div class="sec-h">General</div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px 18px;">
+                <div><label class="f-label">SKU</label><input class="f-input" value="PAR-500-24"><div class="f-help">Leave blank to auto-generate.</div></div>
+                <div><label class="f-label">Type</label><select class="f-input"><option>Storable</option><option>Consumable</option><option>Service</option><option>Part</option></select></div>
+                <div style="grid-column:1 / -1;"><label class="f-label">Description</label><textarea class="f-input" rows="2" style="resize:vertical;">Fast-acting pain &amp; fever relief. 24 film-coated tablets.</textarea></div>
+                <div><label class="f-label">Brand <span style="font-size:9px; font-weight:700; color:#B84E12; background:#FDE6D8; padding:1px 6px; border-radius:5px; letter-spacing:.04em;">NEW</span></label><input class="f-input" value="Panadol"></div>
+                <div><label class="f-label">Manufacturer <span style="font-size:9px; font-weight:700; color:#B84E12; background:#FDE6D8; padding:1px 6px; border-radius:5px; letter-spacing:.04em;">NEW</span></label><input class="f-input" value="GSK Consumer Health"></div>
+                <div><label class="f-label">Unit of measure</label><select class="f-input"><option>Box (24)</option><option>Each</option><option>Strip (12)</option></select></div>
+                <div><label class="f-label">Country of origin <span style="font-size:9px; font-weight:700; color:#B84E12; background:#FDE6D8; padding:1px 6px; border-radius:5px; letter-spacing:.04em;">NEW</span></label><input class="f-input" value="United Kingdom"></div>
+                <div style="grid-column:1 / -1; display:flex; gap:24px; padding-top:4px;">
+                  <label style="display:flex; align-items:center; gap:9px; font-size:14px; color:#1C1E21; cursor:pointer;"><span style="width:20px; height:20px; border-radius:5px; background:#1E3A5F; display:inline-flex; align-items:center; justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Active (sellable)</label>
+                  <label style="display:flex; align-items:center; gap:9px; font-size:14px; color:#1C1E21; cursor:pointer;"><span style="width:20px; height:20px; border-radius:5px; background:#fff; border:1.5px solid #C7C6C5; display:inline-block;"></span>Active for e-commerce</label>
+                </div>
+              </div>
+          </div>
+          <div id="secB-pricing" class="sec-card">
+            <div class="sec-h">Pricing &amp; Tax</div>
+              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px 18px;">
+                <div><label class="f-label">Purchase price</label><input class="f-input" value="1.20" style="font-family:'IBM Plex Mono',monospace;"><div class="f-help">Ex-tax, from supplier.</div></div>
+                <div><label class="f-label">Margin <span style="font-size:9px; font-weight:700; color:#B84E12; background:#FDE6D8; padding:1px 6px; border-radius:5px; letter-spacing:.04em;">NEW</span></label><input class="f-input" value="58%" style="font-family:'IBM Plex Mono',monospace; background:#F6F7F8;"><div class="f-help">Auto-calculated.</div></div>
+                <div><label class="f-label">Sale price *</label><input class="f-input" value="2.85" style="font-family:'IBM Plex Mono',monospace;"><div class="f-help">Tax-inclusive (TTC).</div></div>
+                <div><label class="f-label">Tax rate / class *</label><select class="f-input"><option>VAT 0% — medicine</option><option>VAT 7%</option><option>VAT 19%</option></select></div>
+                <div><label class="f-label">Loyalty points <span style="font-size:9px; font-weight:700; color:#B84E12; background:#FDE6D8; padding:1px 6px; border-radius:5px; letter-spacing:.04em;">NEW</span></label><input class="f-input" value="3"></div>
+                <div style="display:flex; align-items:flex-end;"><label style="display:flex; align-items:center; gap:9px; font-size:14px; color:#1C1E21; cursor:pointer; padding-bottom:9px;"><span style="width:20px; height:20px; border-radius:5px; background:#1E3A5F; display:inline-flex; align-items:center; justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Eligible for discounts</label></div>
+              </div>
+          </div>
+          <div id="secB-inventory" class="sec-card">
+            <div class="sec-h">Inventory &amp; Units</div>
+            <p style="font-size:13px; color:#5A5F66; margin:0 0 16px; line-height:1.5;">Set the <b style="color:#1C1E21;">opening balance</b> once, at creation. After that, stock only changes through traceable operations &mdash; adjustments, purchases, sales and returns.</p>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px 18px;">
+              <div><label class="f-label">Opening stock <span style="font-size:9px; font-weight:700; color:#B84E12; background:#FDE6D8; padding:1px 6px; border-radius:5px; letter-spacing:.04em;">ONCE</span></label><input class="f-input" value="0" style="font-family:'IBM Plex Mono',monospace;"><div class="f-help">Initial count when you start tracking this item.</div></div>
+              <div><label class="f-label">Opening unit cost</label><div style="position:relative;"><span style="position:absolute; left:12px; top:9px; font-family:'IBM Plex Mono',monospace; font-size:14px; color:#777C84;">$</span><input class="f-input" value="1.20" style="font-family:'IBM Plex Mono',monospace; padding-left:26px;"></div><div class="f-help">Values the opening balance.</div></div>
+              <div><label class="f-label">As of date</label><input class="f-input" value="23 Jun 2026" style="font-family:'IBM Plex Mono',monospace;"></div>
+              <div><label class="f-label">Sold as</label><select class="f-input"><option>Each (box of 24)</option><option>Strip of 12</option><option>Single tablet</option></select></div>
+              <div><label class="f-label">Units per pack</label><input class="f-input" value="24"></div>
+              <div><label class="f-label">Shelf / aisle <span style="font-size:9px; font-weight:700; color:#B84E12; background:#FDE6D8; padding:1px 6px; border-radius:5px; letter-spacing:.04em;">NEW</span></label><input class="f-input" value="A3 · Analgesics"></div>
+              <div><label class="f-label">Reorder point <span style="font-size:9px; font-weight:700; color:#B84E12; background:#FDE6D8; padding:1px 6px; border-radius:5px; letter-spacing:.04em;">NEW</span></label><input class="f-input" value="30" style="font-family:'IBM Plex Mono',monospace;"></div>
+              <div><label class="f-label">Reorder quantity <span style="font-size:9px; font-weight:700; color:#B84E12; background:#FDE6D8; padding:1px 6px; border-radius:5px; letter-spacing:.04em;">NEW</span></label><input class="f-input" value="100" style="font-family:'IBM Plex Mono',monospace;"></div>
+              <div><label class="f-label">Track batches &amp; expiry</label><div style="display:flex; align-items:center; gap:10px; padding-top:6px;"><span style="width:44px; height:25px; border-radius:999px; background:#1F8A5B; display:flex; align-items:center; padding:3px; justify-content:flex-end;"><span style="width:19px; height:19px; border-radius:999px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25);"></span></span><span style="font-size:13px; color:#5A5F66;">On · BatchExpiry</span></div></div>
+            </div>
+            <div style="display:flex; align-items:center; gap:9px; font-size:12.5px; color:#41546E; background:#E7F0FD; border:1px solid #C7DCF7; border-radius:9px; padding:10px 13px; margin-top:16px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2B6CC4" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="8"></line></svg>The opening balance is locked once the product has any movement, keeping the stock ledger auditable.</div>
+          </div>
+          <div id="secB-media" class="sec-card">
+            <div class="sec-h">Media &amp; Files</div>
+              <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px;">
+                <div style="grid-column:1 / 3; grid-row:1 / 3; aspect-ratio:1/1; border-radius:12px; background:repeating-linear-gradient(45deg,#EEF1F5,#EEF1F5 9px,#E6EAF0 9px,#E6EAF0 18px); border:1px solid #E4E7EB; display:flex; align-items:center; justify-content:center; position:relative;"><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#9AA0A8;">featured image</span><span style="position:absolute; top:10px; left:10px; font-size:10px; font-weight:700; color:#fff; background:#EA661A; padding:3px 8px; border-radius:6px;">★ PRIMARY</span></div>
+                <div style="aspect-ratio:1/1; border-radius:10px; background:repeating-linear-gradient(45deg,#EEF1F5,#EEF1F5 7px,#E6EAF0 7px,#E6EAF0 14px); border:1px solid #E4E7EB;"></div>
+                <div style="aspect-ratio:1/1; border-radius:10px; background:repeating-linear-gradient(45deg,#EEF1F5,#EEF1F5 7px,#E6EAF0 7px,#E6EAF0 14px); border:1px solid #E4E7EB;"></div>
+                <div style="aspect-ratio:1/1; border-radius:10px; background:#FBE9E9; border:1px solid #F2C9C9; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#C0392B;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg><span style="font-size:9px; font-weight:700;">Leaflet</span></div>
+                <div style="aspect-ratio:1/1; border-radius:10px; background:#14283F; display:flex; align-items:center; justify-content:center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><polygon points="9 7 19 12 9 17 9 7"></polygon></svg></div>
+                <div style="aspect-ratio:1/1; border-radius:10px; border:1.5px dashed #C7CDD4; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; color:#9AA0A8; cursor:pointer;" style-hover="border-color:#EA661A; color:#D45915;"><span style="font-size:22px; line-height:1;">+</span><span style="font-size:10px; font-weight:600;">Add media</span></div>
+              </div>
+              <div style="font-size:12px; color:#9AA0A8; margin-top:14px;">Drag to reorder · first image becomes the primary · supports images, PDF leaflets &amp; video (<span style="font-family:'IBM Plex Mono',monospace;">ProductMediaItem.role</span>).</div>
+          </div>
+          <div id="secB-pharma" class="sec-card">
+            <div class="sec-h">Pharmacy</div>
+              <div style="display:flex; align-items:center; gap:9px; font-size:13px; color:#3C6B55; background:#E6F4EE; border:1px solid #C3E6D4; border-radius:9px; padding:10px 13px; margin-bottom:16px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1F8A5B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>These map to <span style="font-family:'IBM Plex Mono',monospace; margin:0 3px;">parapharmacy_metadata</span> · shown when the <b style="margin-left:3px;">Parapharmacy</b> module is on.</div>
+              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px 18px;">
+                <div><label class="f-label">Category *</label><select class="f-input"><option>Medical device</option><option>Supplement</option><option>Cosmetic</option><option>Herbal</option><option>Baby care</option></select></div>
+                <div><label class="f-label">Dosage form</label><select class="f-input"><option>Tablet</option><option>Capsule</option><option>Softgel</option><option>Liquid</option></select></div>
+                <div><label class="f-label">Age restriction</label><select class="f-input"><option>All ages</option><option>Adult only</option><option>Children only</option></select></div>
+                <div style="grid-column:1 / -1;"><label class="f-label">Active ingredients</label><div style="display:flex; gap:10px; margin-bottom:8px;"><input class="f-input" value="Paracetamol" style="flex:1;"><input class="f-input" value="500 mg" style="width:140px;"><button style="width:40px; border:1px solid #D8DEE4; background:#fff; border-radius:8px; color:#9AA0A8; cursor:pointer;">×</button></div><button style="font-family:'Public Sans',sans-serif; font-size:13px; font-weight:600; color:#1E3A5F; background:none; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:5px; padding:0;"><span style="font-size:15px;">+</span> Add ingredient</button></div>
+                <div style="grid-column:1 / -1;"><label class="f-label">Usage instructions</label><textarea class="f-input" rows="2" style="resize:vertical;">Adults &amp; children over 12: 1–2 tablets every 4–6 hours. Max 8 in 24 hours.</textarea></div>
+                <div style="grid-column:1 / 3;"><label class="f-label">Warnings</label><textarea class="f-input" rows="2" style="resize:vertical;">Do not exceed the stated dose. Contains paracetamol.</textarea></div>
+                <div><label class="f-label">Min. age</label><input class="f-input" value="12" style="font-family:'IBM Plex Mono',monospace;"><label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#1C1E21; cursor:pointer; margin-top:14px;"><span style="width:18px; height:18px; border-radius:5px; background:#fff; border:1.5px solid #C7C6C5; display:inline-block;"></span>Requires consultation</label></div>
+                <div><label class="f-label">Regulatory code</label><input class="f-input" value="PL 00071/0428" style="font-family:'IBM Plex Mono',monospace;"></div>
+                <div style="grid-column:2 / -1;"><label class="f-label">Storage requirements</label><input class="f-input" value="Store below 25°C in a dry place."></div>
+              </div>
+          </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:18px; box-shadow:0 1px 3px rgba(20,40,63,.06);">
+            <div style="font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#777C84; margin-bottom:12px;">Live on POS</div>
+            <div style="border:1px solid #ECEDEE; border-radius:10px; overflow:hidden; width:140px;">
+              <div style="height:84px; background:repeating-linear-gradient(45deg,#F2F6FB,#F2F6FB 8px,#E9EFF7 8px,#E9EFF7 16px);"></div>
+              <div style="padding:9px 11px;"><div style="font-size:13px; font-weight:600; line-height:1.25;">Paracetamol 500mg ×24</div><div style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EA661A; font-weight:600; margin-top:3px;">$2.85</div></div>
+            </div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:18px; box-shadow:0 1px 3px rgba(20,40,63,.06);">
+            <div style="font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#777C84; margin-bottom:12px;">Before publish</div>
+            <div style="display:flex; flex-direction:column; gap:11px; font-size:13.5px;">
+              <div style="display:flex; gap:9px; color:#41454B;"><span style="color:#1F8A5B; font-weight:700;">✓</span>Name &amp; sale price set</div>
+              <div style="display:flex; gap:9px; color:#41454B;"><span style="color:#1F8A5B; font-weight:700;">✓</span>Primary image</div>
+              <div style="display:flex; gap:9px; color:#41454B;"><span style="color:#1F8A5B; font-weight:700;">✓</span>Tax class chosen</div>
+              <div style="display:flex; gap:9px; color:#9AA0A8;"><span style="color:#C7C6C5; font-weight:700;">○</span>Parapharmacy category</div>
+            </div>
+          </div>
+          <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:18px; box-shadow:0 1px 3px rgba(20,40,63,.06);">
+            <div style="font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#777C84; margin-bottom:4px;">Related operations</div>
+            <div style="font-size:12px; color:#9AA0A8; margin-bottom:12px;">Opens with this product preselected.</div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <a href="#" style="display:flex; align-items:center; gap:11px; padding:10px 12px; border-radius:10px; border:1px solid #E4E7EB; text-decoration:none; color:#1C1E21;" style-hover="border-color:#1E3A5F; background:#F2F6FB;">
+                <span style="width:30px; height:30px; flex:none; border-radius:8px; background:#FEF3EC; color:#D45915; display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg></span>
+                <span style="flex:1;"><span style="display:block; font-size:13.5px; font-weight:600;">New stock adjustment</span><span style="font-size:12px; color:#9AA0A8;">Correct the count, with a reason</span></span>
+                <span style="color:#C7CDD4;">›</span>
+              </a>
+              <a href="#" style="display:flex; align-items:center; gap:11px; padding:10px 12px; border-radius:10px; border:1px solid #E4E7EB; text-decoration:none; color:#1C1E21;" style-hover="border-color:#1E3A5F; background:#F2F6FB;">
+                <span style="width:30px; height:30px; flex:none; border-radius:8px; background:#E5ECF4; color:#1E3A5F; display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1z"></path><path d="M16 8h4l3 3v5h-7V8z"></path><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg></span>
+                <span style="flex:1;"><span style="display:block; font-size:13.5px; font-weight:600;">Start a purchase</span><span style="font-size:12px; color:#9AA0A8;">Restock from a supplier</span></span>
+                <span style="color:#C7CDD4;">›</span>
+              </a>
+              <a href="#" style="display:flex; align-items:center; gap:11px; padding:10px 12px; border-radius:10px; border:1px solid #E4E7EB; text-decoration:none; color:#1C1E21;" style-hover="border-color:#1E3A5F; background:#F2F6FB;">
+                <span style="width:30px; height:30px; flex:none; border-radius:8px; background:#E6F4EE; color:#1F8A5B; display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"></path></svg></span>
+                <span style="flex:1;"><span style="display:block; font-size:13.5px; font-weight:600;">Start a sale</span><span style="font-size:12px; color:#9AA0A8;">B2B / quote with this item</span></span>
+                <span style="color:#C7CDD4;">›</span>
+              </a>
+              <a href="#" style="display:flex; align-items:center; gap:8px; padding:6px 4px 0; font-size:13px; font-weight:600; color:#1E3A5F; text-decoration:none;" style-hover="color:#EA661A;">View stock movements <span>›</span></a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  state = { nav: 'general' };
+  navItem(on) {
+    return { display: 'block', width: '100%', textAlign: 'left', textDecoration: 'none', boxSizing: 'border-box', fontFamily: "'Public Sans',sans-serif", fontWeight: on ? 600 : 500, fontSize: '14px', padding: '9px 12px', borderRadius: '8px', cursor: 'pointer', background: on ? '#E5ECF4' : 'transparent', color: on ? '#14283F' : '#5A5F66', boxShadow: on ? 'inset 2px 0 0 #EA661A' : 'none', transition: 'all .15s' };
+  }
+  componentDidMount() {
+    this._scroller = document.querySelector('main.ez-scroll');
+    this._onScroll = () => {
+      if (!this._scroller) return;
+      const mt = this._scroller.getBoundingClientRect().top;
+      const ids = ['general', 'pricing', 'inventory', 'media', 'pharma'];
+      let cur = ids[0];
+      for (const id of ids) {
+        const el = document.getElementById('secB-' + id);
+        if (el && el.getBoundingClientRect().top - mt <= 80) cur = id;
+      }
+      if (cur !== this.state.nav) this.setState({ nav: cur });
+    };
+    if (this._scroller) this._scroller.addEventListener('scroll', this._onScroll, { passive: true });
+  }
+  componentWillUnmount() {
+    if (this._scroller && this._onScroll) this._scroller.removeEventListener('scroll', this._onScroll);
+  }
+  renderVals() {
+    const n = this.state.nav;
+    const ids = ['general', 'pricing', 'inventory', 'media', 'pharma'];
+    const o = {};
+    ids.forEach(id => {
+      o['navStyle_' + id] = this.navItem(n === id);
+      o['goNav_' + id] = () => this.setState({ nav: id });
+    });
+    return o;
+  }
+}
+</script>
+</body>
+</html>

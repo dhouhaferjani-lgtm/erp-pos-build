@@ -6,10 +6,14 @@ function makeFormData(overrides: Partial<ProductFormData> = {}): ProductFormData
   return {
     name: 'Café Express 250g',
     sku: 'SKU-CAFE-001',
+    type: null,
     is_physical: true,
+    is_active_for_ecommerce: false,
+    unit_id: null,
     category_id: null,
     description: '',
     sale_price: '12.500',
+    purchase_price: '',
     // The form copies the selected tax configuration's 4-decimal percentage_rate
     // into tax_rate; the backend rejects >2dp, and the value is redundant.
     tax_rate: '19.0000',
@@ -34,6 +38,10 @@ function makeFormData(overrides: Partial<ProductFormData> = {}): ProductFormData
     },
     requires_batch_tracking: false,
     default_shelf_life_days: null,
+    units_per_pack: null,
+    shelf_location: '',
+    reorder_point: '',
+    reorder_quantity: '',
     ...overrides,
   }
 }
@@ -84,5 +92,126 @@ describe('buildProductPayload', () => {
     )
     expect(payload.default_tax_configuration_id).toBeNull()
     expect(payload).not.toHaveProperty('tax_rate')
+  })
+
+  it('includes type in the payload when set', () => {
+    const payload = buildProductPayload(makeFormData({ type: 'part' }), { isParapharmacy: false })
+    expect(payload.type).toBe('part')
+  })
+
+  it('includes null type in the payload when unset', () => {
+    const payload = buildProductPayload(makeFormData({ type: null }), { isParapharmacy: false })
+    expect(payload.type).toBeNull()
+  })
+
+  it('includes unit_id in the payload when set', () => {
+    const payload = buildProductPayload(
+      makeFormData({ unit_id: 'unit-uuid-abc' }),
+      { isParapharmacy: false },
+    )
+    expect(payload.unit_id).toBe('unit-uuid-abc')
+  })
+
+  it('includes null unit_id in the payload when unset', () => {
+    const payload = buildProductPayload(makeFormData({ unit_id: null }), { isParapharmacy: false })
+    expect(payload.unit_id).toBeNull()
+  })
+
+  it('includes is_active_for_ecommerce in the payload', () => {
+    const payload = buildProductPayload(
+      makeFormData({ is_active_for_ecommerce: true }),
+      { isParapharmacy: false },
+    )
+    expect(payload.is_active_for_ecommerce).toBe(true)
+  })
+
+  it('sets is_physical=false when type is service', () => {
+    // The derive happens in the form (not in buildProductPayload itself); this
+    // test asserts the form value flows through the payload unchanged.
+    const payload = buildProductPayload(
+      makeFormData({ type: 'service', is_physical: false }),
+      { isParapharmacy: false },
+    )
+    expect(payload.type).toBe('service')
+    expect(payload.is_physical).toBe(false)
+  })
+
+  it('sets is_physical=true when type is part', () => {
+    const payload = buildProductPayload(
+      makeFormData({ type: 'part', is_physical: true }),
+      { isParapharmacy: false },
+    )
+    expect(payload.type).toBe('part')
+    expect(payload.is_physical).toBe(true)
+  })
+
+  it('sets is_physical=true when type is consumable', () => {
+    const payload = buildProductPayload(
+      makeFormData({ type: 'consumable', is_physical: true }),
+      { isParapharmacy: false },
+    )
+    expect(payload.type).toBe('consumable')
+    expect(payload.is_physical).toBe(true)
+  })
+
+  it('includes purchase_price in the payload when provided', () => {
+    const payload = buildProductPayload(
+      makeFormData({ purchase_price: '60.000' }),
+      { isParapharmacy: false },
+    )
+    expect(payload.purchase_price).toBe('60.000')
+  })
+
+  it('includes empty purchase_price in the payload (default state)', () => {
+    const payload = buildProductPayload(makeFormData(), { isParapharmacy: false })
+    expect(payload).toHaveProperty('purchase_price')
+    expect(payload.purchase_price).toBe('')
+  })
+
+  it('includes units_per_pack in the payload (null when unset)', () => {
+    const payload = buildProductPayload(makeFormData(), { isParapharmacy: false })
+    expect(payload).toHaveProperty('units_per_pack')
+    expect(payload.units_per_pack).toBeNull()
+  })
+
+  it('includes units_per_pack in the payload (numeric value when set)', () => {
+    const payload = buildProductPayload(makeFormData({ units_per_pack: 12 }), { isParapharmacy: false })
+    expect(payload.units_per_pack).toBe(12)
+  })
+
+  it('includes shelf_location in the payload (empty string by default)', () => {
+    const payload = buildProductPayload(makeFormData(), { isParapharmacy: false })
+    expect(payload).toHaveProperty('shelf_location')
+    expect(payload.shelf_location).toBe('')
+  })
+
+  it('includes shelf_location in the payload (string value when set)', () => {
+    const payload = buildProductPayload(makeFormData({ shelf_location: 'A3-B12' }), { isParapharmacy: false })
+    expect(payload.shelf_location).toBe('A3-B12')
+  })
+
+  it('includes reorder_point in the payload (empty string by default)', () => {
+    const payload = buildProductPayload(makeFormData(), { isParapharmacy: false })
+    expect(payload).toHaveProperty('reorder_point')
+    expect(payload.reorder_point).toBe('')
+  })
+
+  it('includes reorder_point as a decimal string (never coerced to float)', () => {
+    const payload = buildProductPayload(makeFormData({ reorder_point: '5.0000' }), { isParapharmacy: false })
+    expect(payload.reorder_point).toBe('5.0000')
+    // Must remain a string — never a float
+    expect(typeof payload.reorder_point).toBe('string')
+  })
+
+  it('includes reorder_quantity in the payload (empty string by default)', () => {
+    const payload = buildProductPayload(makeFormData(), { isParapharmacy: false })
+    expect(payload).toHaveProperty('reorder_quantity')
+    expect(payload.reorder_quantity).toBe('')
+  })
+
+  it('includes reorder_quantity as a decimal string (never coerced to float)', () => {
+    const payload = buildProductPayload(makeFormData({ reorder_quantity: '10.0000' }), { isParapharmacy: false })
+    expect(payload.reorder_quantity).toBe('10.0000')
+    expect(typeof payload.reorder_quantity).toBe('string')
   })
 })

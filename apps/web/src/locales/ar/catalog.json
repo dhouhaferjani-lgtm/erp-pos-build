@@ -1,4 +1,57 @@
 {
+  "editor": {
+    "sections": "الأقسام",
+    "complete": "الاكتمال",
+    "hero": {
+      "barcodePlaceholder": "امسح أو اكتب الباركود",
+      "namePlaceholder": "اسم المنتج",
+      "refreshLabel": "تحديث الإثراء",
+      "enrichmentLoading": "Synerivia…",
+      "enrichmentSuccess": "Synerivia · {{count}} حقول",
+      "enrichmentFields": "{{count}} حقول",
+      "enrichmentUnavailable": "Synerivia · غير متاح",
+      "helper": "يتم الجلب تلقائيًا بعد فترة وجيزة من توقفك عن كتابة الباركود (يعود إلى اسم المنتج عند عدم وجود باركود). زر التحديث يعيد تشغيله يدويًا."
+    },
+    "subtitle": "امسح الباركود للتعبئة التلقائية من Synerivia، أو اكتب يدويًا.",
+    "sectionLabels": {
+      "general": "عام",
+      "pricing": "السعر والضريبة",
+      "inventory": "المخزون والوحدات",
+      "pharmacy": "الصيدلية",
+      "suppliers": "الموردون",
+      "media": "الوسائط والملفات"
+    },
+    "related": {
+      "title": "العمليات ذات الصلة",
+      "newCount": "جرد مخزون جديد",
+      "startPurchase": "بدء عملية شراء",
+      "startSale": "بدء بيع / عرض سعر",
+      "viewMovements": "عرض حركات المخزون",
+      "subtitle": "يفتح مع تحديد هذا المنتج مسبقًا.",
+      "subtitleNewCount": "صحّح العدد، مع ذكر السبب",
+      "subtitleStartPurchase": "إعادة التخزين من مورّد",
+      "subtitleStartSale": "B2B / عرض سعر بهذا الصنف"
+    },
+    "checklist": {
+      "title": "قبل النشر",
+      "name": "يحتوي على اسم المنتج",
+      "sku": "يحتوي على رمز SKU",
+      "salePrice": "يحتوي على سعر بيع",
+      "tax": "يحتوي على معدل ضريبة"
+    },
+    "suppliers": {
+      "managedHint": "تتم إدارة الموردين في المشتريات. اربط هذا المنتج بمورد من أمر شراء.",
+      "manageLink": "الذهاب إلى الموردين"
+    },
+    "livePos": {
+      "title": "معاينة في نقطة البيع",
+      "namePlaceholder": "اسم المنتج"
+    },
+    "actions": {
+      "saveDraft": "حفظ كمسودة",
+      "publish": "نشر المنتج"
+    }
+  },
   "compositeItem": "عنصر مركب",
   "compositeItems": "عناصر مركبة",
   "recipe": "وصفة",

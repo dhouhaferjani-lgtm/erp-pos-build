@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\BatchExpiry\Presentation\Controllers\BatchController;
 use App\Modules\BatchExpiry\Presentation\Controllers\BatchTraceabilityController;
+use App\Modules\BatchExpiry\Presentation\Controllers\GroupedWriteOffController;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Support\Facades\Route;
@@ -12,6 +13,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // Batch operations (literal routes BEFORE parameterized)
     Route::get('/batches/expiring', [BatchController::class, 'expiring']);
     Route::get('/batches/expired', [BatchController::class, 'expired']);
+
+    // Grouped (multi-lot) write-off — literal route, must stay before {uuid} routes.
+    Route::post('/batches/write-off-grouped', [GroupedWriteOffController::class, 'writeOffGrouped'])
+        ->middleware('can:batches.write-off');
 
     // Batch CRUD
     Route::get('/batches', [BatchController::class, 'index']);
@@ -24,6 +29,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/batches/{uuid}/recall', [BatchController::class, 'recall']);
     Route::post('/batches/{uuid}/transfer', [BatchController::class, 'transfer']);
     Route::post('/batches/{uuid}/write-off', [BatchController::class, 'writeOff']);
+
+    // Write-off reversal (targets the write-off stock_movement, not the batch).
+    Route::post('/stock-movements/{movementId}/reverse-write-off', [BatchController::class, 'reverseWriteOff'])
+        ->middleware('can:batches.write-off');
 
     // Batch traceability
     Route::get('/batches/{uuid}/traceability', [BatchTraceabilityController::class, 'forwardTrace']);

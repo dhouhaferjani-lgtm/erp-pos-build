@@ -94,6 +94,7 @@ export const textColors = {
   warning: 'text-yellow-700',
   warningDark: 'text-yellow-600',
   brand: 'text-blue-600',
+  hoverBrand: 'hover:text-blue-800',
   hoverSecondary: 'hover:text-gray-600',
   hoverPrimary: 'hover:text-gray-900',
   hoverError: 'hover:text-red-700',
@@ -282,7 +283,7 @@ export const tokens = {
    * Input field styles
    */
   input: {
-    base: 'mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed',
+    base: 'mt-1 block w-full rounded-[var(--radius-input)] border border-gray-300 px-3 py-2 shadow-[var(--elevation-input)] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed',
     error: 'border-red-500 focus:border-red-500 focus:ring-red-500',
     success: 'border-green-500 focus:border-green-500 focus:ring-green-500',
   },
@@ -291,7 +292,7 @@ export const tokens = {
    * Select dropdown styles
    */
   select: {
-    base: 'mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed',
+    base: 'mt-1 block w-full rounded-[var(--radius-input)] border border-gray-300 px-3 py-2 shadow-[var(--elevation-input)] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed',
     error: 'border-red-500 focus:border-red-500 focus:ring-red-500',
   },
 
@@ -299,7 +300,7 @@ export const tokens = {
    * Textarea styles
    */
   textarea: {
-    base: 'mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed resize-y',
+    base: 'mt-1 block w-full rounded-[var(--radius-input)] border border-gray-300 px-3 py-2 shadow-[var(--elevation-input)] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed resize-y',
     error: 'border-red-500 focus:border-red-500 focus:ring-red-500',
   },
 
@@ -315,6 +316,37 @@ export const tokens = {
    */
   radio: {
     base: 'h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500',
+  },
+
+  /**
+   * Toggle (switch) styles
+   *
+   * Track: 44×25px, fully rounded. Uses CSS variables bridged from the active
+   * theme so that IziPOS (copper) and Otospex (pink) each render correctly.
+   * Falls back to green-600/gray-300 when no theme variable is present.
+   *
+   * Usage:
+   * ```tsx
+   * import { tokens } from '@/lib/designTokens'
+   * // track
+   * <span className={cn(tokens.toggle.track, checked && tokens.toggle.trackOn, !checked && tokens.toggle.trackOff)} />
+   * // knob
+   * <span className={tokens.toggle.knob} />
+   * ```
+   */
+  toggle: {
+    /** Outer track — always applied */
+    track: 'relative inline-flex h-[25px] w-[44px] shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 ease-in-out focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-[var(--color-primary,theme(colors.green.600))]',
+    /** Applied when checked=true */
+    trackOn: 'bg-[var(--color-success,theme(colors.green.600))]',
+    /** Applied when checked=false */
+    trackOff: 'bg-[var(--color-neutral-300,theme(colors.gray.300))]',
+    /** Applied when disabled */
+    trackDisabled: 'opacity-50 cursor-not-allowed',
+    /** Knob (white circle) */
+    knob: 'pointer-events-none inline-block h-[19px] w-[19px] translate-x-[3px] rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ease-in-out',
+    /** Knob shifted right when checked */
+    knobOn: 'translate-x-[22px]',
   },
 
   /**
@@ -349,7 +381,7 @@ export const tokens = {
    * Button styles (variants)
    */
   button: {
-    base: 'inline-flex items-center justify-center rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+    base: 'inline-flex items-center justify-center rounded-[var(--radius-button)] font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
     primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
     secondary: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-gray-500',
     danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
@@ -389,7 +421,7 @@ export const tokens = {
    * Card styles
    */
   card: {
-    base: 'rounded-lg border border-gray-200 bg-white p-6 shadow-sm',
+    base: 'rounded-[var(--radius-card)] border border-gray-200 bg-white p-6 shadow-[var(--elevation-card)]',
     hover: 'hover:shadow-md transition-shadow',
     // Hover variants for interactive cards (selection UI, list rows).
     hoverPrimary: 'hover:border-blue-400 hover:bg-blue-50',

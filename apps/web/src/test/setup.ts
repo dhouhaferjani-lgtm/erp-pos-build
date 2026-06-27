@@ -35,3 +35,23 @@ Object.defineProperty(window, 'localStorage', {
   value: new LocalStorageMock(),
   writable: true,
 })
+
+// jsdom does not implement IntersectionObserver. Components that use it (e.g.
+// the product-editor scroll-spy via `useScrollSpy`) need a no-op stub so they
+// can mount in tests. Tests that exercise observer behaviour install their own
+// mock, which overwrites this stub.
+if (typeof globalThis.IntersectionObserver === 'undefined') {
+  class IntersectionObserverStub implements IntersectionObserver {
+    readonly root: Element | Document | null = null
+    readonly rootMargin: string = ''
+    readonly thresholds: ReadonlyArray<number> = []
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+    takeRecords(): IntersectionObserverEntry[] {
+      return []
+    }
+  }
+  globalThis.IntersectionObserver =
+    IntersectionObserverStub as unknown as typeof IntersectionObserver
+}

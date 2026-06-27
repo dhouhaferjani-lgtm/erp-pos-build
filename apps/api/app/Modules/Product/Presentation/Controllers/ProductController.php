@@ -718,15 +718,38 @@ class ProductController extends Controller
      * Matches code/symbol/name case-insensitively across the tenant's units and
      * shared system units; only a unique match is applied.
      *
+     * FORWARD direction (unit_id → unit): when unit_id is present, look up the
+     * Unit and overwrite the `unit` string with its `code`. This ensures
+     * getSellableUnit() (which returns `$this->unit`) always reflects the
+     * canonical unit code that the editor selected via the FK.
+     *
      * @param  array<string, mixed>  $validated
      * @return array<string, mixed>
      */
     private function resolveUnitId(array $validated, ?string $tenantId): array
     {
         if (! empty($validated['unit_id'])) {
+            // FORWARD mirror: unit_id is set — resolve the Unit and overwrite `unit`
+            // with its code so getSellableUnit() stays in sync.
+            $unitModel = Unit::query()
+                ->where('id', $validated['unit_id'])
+                ->where(function ($query) use ($tenantId): void {
+                    $query->whereNull('tenant_id');
+                    if ($tenantId !== null) {
+                        $query->orWhere('tenant_id', $tenantId);
+                    }
+                })
+                ->first();
+
+            if ($unitModel instanceof Unit) {
+                $validated['unit'] = $unitModel->code;
+            }
+
             return $validated;
         }
 
+        // REVERSE direction: unit_id is absent — attempt to resolve it from
+        // the free-text `unit` string (legacy path, no regression).
         $unit = $validated['unit'] ?? null;
         if (! is_string($unit) || trim($unit) === '') {
             return $validated;

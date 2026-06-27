@@ -1,4 +1,57 @@
 {
+  "editor": {
+    "sections": "SECTIONS",
+    "complete": "Completeness",
+    "hero": {
+      "barcodePlaceholder": "Scan or type barcode",
+      "namePlaceholder": "Product name",
+      "refreshLabel": "Refresh enrichment",
+      "enrichmentLoading": "Synerivia…",
+      "enrichmentSuccess": "Synerivia · {{count}} fields",
+      "enrichmentFields": "{{count}} fields",
+      "enrichmentUnavailable": "Synerivia · unavailable",
+      "helper": "Auto-fetches shortly after you stop typing the barcode (falls back to the product name when there is no barcode). Refresh re-runs it manually."
+    },
+    "subtitle": "Scan a barcode to auto-fill from Synerivia, or type by hand.",
+    "sectionLabels": {
+      "general": "General",
+      "pricing": "Pricing & Tax",
+      "inventory": "Inventory & Units",
+      "pharmacy": "Pharmacy",
+      "suppliers": "Suppliers",
+      "media": "Media & Files"
+    },
+    "related": {
+      "title": "Related operations",
+      "newCount": "New stock count",
+      "startPurchase": "Start a purchase",
+      "startSale": "Start a sale / quote",
+      "viewMovements": "View stock movements",
+      "subtitle": "Opens with this product preselected.",
+      "subtitleNewCount": "Correct the count, with a reason",
+      "subtitleStartPurchase": "Restock from a supplier",
+      "subtitleStartSale": "B2B / quote with this item"
+    },
+    "checklist": {
+      "title": "Before publish",
+      "name": "Has a product name",
+      "sku": "Has a SKU",
+      "salePrice": "Has a sale price",
+      "tax": "Has a tax rate"
+    },
+    "suppliers": {
+      "managedHint": "Suppliers are managed in Purchases. Link this product to a supplier from a purchase order.",
+      "manageLink": "Go to suppliers"
+    },
+    "livePos": {
+      "title": "Live on POS",
+      "namePlaceholder": "Product name"
+    },
+    "actions": {
+      "saveDraft": "Save draft",
+      "publish": "Publish product"
+    }
+  },
   "compositeItem": "Composite Item",
   "compositeItems": "Composite Items",
   "recipe": "Recipe",

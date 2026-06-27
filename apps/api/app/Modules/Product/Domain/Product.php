@@ -58,6 +58,10 @@ use Illuminate\Support\Carbon;
  * @property string $company_id
  * @property Carbon|null $deleted_at
  * @property string|null $unit_id
+ * @property int|null $units_per_pack
+ * @property string|null $shelf_location
+ * @property string|null $reorder_point
+ * @property string|null $reorder_quantity
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read Unit|null $unitOfMeasure
@@ -91,6 +95,10 @@ class Product extends Model implements SellableContract
         'default_tax_configuration_id',
         'unit',
         'unit_id',
+        'units_per_pack',
+        'shelf_location',
+        'reorder_point',
+        'reorder_quantity',
         'barcode',
         'is_active',
         'is_active_for_ecommerce',
@@ -143,6 +151,9 @@ class Product extends Model implements SellableContract
             'target_margin_override' => 'decimal:3',
             'minimum_margin_override' => 'decimal:3',
             'tax_rate' => 'decimal:2',
+            'units_per_pack' => 'integer',
+            'reorder_point' => 'decimal:4',
+            'reorder_quantity' => 'decimal:4',
         ];
     }
 

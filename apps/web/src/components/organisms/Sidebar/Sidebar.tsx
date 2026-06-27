@@ -58,6 +58,7 @@ import {
   Tags,
   Repeat,
   Globe,
+  Trash2,
 } from 'lucide-react'
 import type { BackendModule } from '../../../lib/modules'
 import { usePermissions } from '../../../hooks/usePermissions'
@@ -203,6 +204,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         { key: 'stockTransfers', href: '/inventory/stock-transfers', icon: Repeat },
         { key: 'counting', href: '/inventory/counting', icon: ClipboardCheck },
         { key: 'batches', href: '/inventory/batches', icon: Pill, module: 'BatchExpiry' },
+        { key: 'expiryWriteOff', href: '/inventory/expiry-write-off', icon: Trash2, module: 'BatchExpiry', permission: 'batches.write-off' },
         { key: 'enrichmentQueue', href: '/inventory/enrichment-results', icon: Sparkles },
       ],
     },

@@ -3,7 +3,7 @@
  * Shared types for product management across the application
  */
 
-export type ProductType = 'part' | 'service' | 'consumable' | 'storable'
+export type ProductType = 'part' | 'service' | 'consumable'
 
 export interface ProductMediaItem {
   id: string

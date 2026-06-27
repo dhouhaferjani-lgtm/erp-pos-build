@@ -1,8 +1,10 @@
 import { useTranslation } from 'react-i18next'
 import { useFieldArray, type Control, type UseFormRegister, type FieldErrors } from 'react-hook-form'
 import { Plus, X } from 'lucide-react'
+import { Input, Select, Textarea } from '../../../components/atoms'
+import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 
- 
+
 interface ParapharmacyMetadataFieldsProps {
   control: Control<any>
   register: UseFormRegister<any>
@@ -22,21 +24,22 @@ export function ParapharmacyMetadataFields({
   })
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
-      <h2 className="mb-4 text-lg font-semibold text-gray-900">
+    <div className={tokens.card.base}>
+      <h2 className={`mb-4 ${tokens.heading.section}`}>
         {t('products:parapharmacy.title')}
       </h2>
 
-      <div className="space-y-6">
-        {/* Category - Required */}
+      {/* 3-column responsive grid */}
+      <div className="grid grid-cols-1 gap-x-[18px] gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+
+        {/* Row 1 col 1: Category - Required */}
         <div>
-          <label htmlFor="parapharmacy_category" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="parapharmacy_category" className={tokens.label.base}>
             {t('products:parapharmacy.category')} *
           </label>
-          <select
+          <Select
             id="parapharmacy_category"
             {...register('parapharmacy_metadata.category', { required: t('validation:required') || 'Required' })}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             <option value="">{t('common:actions.select')}</option>
             <option value="supplement">{t('products:parapharmacy.categories.supplement')}</option>
@@ -46,25 +49,24 @@ export function ParapharmacyMetadataFields({
             <option value="baby_care">{t('products:parapharmacy.categories.baby_care')}</option>
             <option value="sports_nutrition">{t('products:parapharmacy.categories.sports_nutrition')}</option>
             <option value="other">{t('products:parapharmacy.categories.other')}</option>
-          </select>
+          </Select>
           {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
           {(errors as any)?.parapharmacy_metadata?.category && (
-            <p className="mt-1 text-sm text-red-600">
+            <p className={`mt-1 text-sm ${textColors.error}`}>
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               {(errors as any).parapharmacy_metadata.category.message}
             </p>
           )}
         </div>
 
-        {/* Dosage Form */}
+        {/* Row 1 col 2: Dosage Form */}
         <div>
-          <label htmlFor="dosage_form" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="dosage_form" className={tokens.label.base}>
             {t('products:parapharmacy.dosageForm')}
           </label>
-          <select
+          <Select
             id="dosage_form"
             {...register('parapharmacy_metadata.dosage_form')}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             <option value="">{t('common:actions.select')}</option>
             <option value="capsule">{t('products:parapharmacy.dosageForms.capsule')}</option>
@@ -78,33 +80,49 @@ export function ParapharmacyMetadataFields({
             <option value="spray">{t('products:parapharmacy.dosageForms.spray')}</option>
             <option value="patch">{t('products:parapharmacy.dosageForms.patch')}</option>
             <option value="other">{t('products:parapharmacy.dosageForms.other')}</option>
-          </select>
+          </Select>
         </div>
 
-        {/* Active Ingredients */}
+        {/* Row 1 col 3: Age Restriction */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label htmlFor="age_restriction" className={tokens.label.base}>
+            {t('products:parapharmacy.ageRestriction')}
+          </label>
+          <Select
+            id="age_restriction"
+            {...register('parapharmacy_metadata.age_restriction')}
+          >
+            <option value="">{t('common:actions.select')}</option>
+            <option value="adult_only">{t('products:parapharmacy.ageRestrictions.adult_only')}</option>
+            <option value="children_only">{t('products:parapharmacy.ageRestrictions.children_only')}</option>
+            <option value="all_ages">{t('products:parapharmacy.ageRestrictions.all_ages')}</option>
+          </Select>
+        </div>
+
+        {/* Row 2: Active Ingredients — full width */}
+        <div className="col-span-1 sm:col-span-2 lg:col-span-3">
+          <label className={`${tokens.label.base} mb-2`}>
             {t('products:parapharmacy.activeIngredients')}
           </label>
           <div className="space-y-2">
             {ingredientFields.map((field, index) => (
               <div key={field.id} className="flex gap-2">
-                <input
+                <Input
                   type="text"
                   {...register(`parapharmacy_metadata.active_ingredients.${index}.name`)}
                   placeholder={t('products:parapharmacy.ingredientName')}
-                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="flex-1 w-auto"
                 />
-                <input
+                <Input
                   type="text"
                   {...register(`parapharmacy_metadata.active_ingredients.${index}.concentration`)}
                   placeholder={t('products:parapharmacy.concentration')}
-                  className="w-40 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-40"
                 />
                 <button
                   type="button"
                   onClick={() => { removeIngredient(index) }}
-                  className="inline-flex items-center rounded-lg border border-gray-300 bg-white p-2 text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+                  className={`inline-flex items-center rounded-[var(--radius-button)] border ${borderColors.default} ${colors.white} p-2 ${textColors.disabled} ${colors.hover.gray50} ${textColors.hoverSecondary}`}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -114,123 +132,102 @@ export function ParapharmacyMetadataFields({
           <button
             type="button"
             onClick={() => { appendIngredient({ name: '', concentration: '' }) }}
-            className="mt-2 inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+            className={`mt-2 inline-flex items-center gap-1 text-sm ${textColors.brand} ${textColors.hoverBrand}`}
           >
             <Plus className="h-4 w-4" />
             {t('products:parapharmacy.addIngredient')}
           </button>
         </div>
 
-        {/* Usage Instructions */}
-        <div>
-          <label htmlFor="usage_instructions" className="block text-sm font-medium text-gray-700">
+        {/* Row 3: Usage Instructions — full width */}
+        <div className="col-span-1 sm:col-span-2 lg:col-span-3">
+          <label htmlFor="usage_instructions" className={tokens.label.base}>
             {t('products:parapharmacy.usageInstructions')}
           </label>
-          <textarea
+          <Textarea
             id="usage_instructions"
             rows={3}
             {...register('parapharmacy_metadata.usage_instructions')}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
 
-        {/* Warnings */}
-        <div>
-          <label htmlFor="warnings" className="block text-sm font-medium text-gray-700">
+        {/* Row 4 cols 1-2: Warnings */}
+        <div className="col-span-1 sm:col-span-2">
+          <label htmlFor="warnings" className={tokens.label.base}>
             {t('products:parapharmacy.warnings')}
           </label>
-          <textarea
+          <Textarea
             id="warnings"
             rows={3}
             {...register('parapharmacy_metadata.warnings')}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
 
-        {/* Contraindications */}
-        <div>
-          <label htmlFor="contraindications" className="block text-sm font-medium text-gray-700">
-            {t('products:parapharmacy.contraindications')}
-          </label>
-          <textarea
-            id="contraindications"
-            rows={3}
-            {...register('parapharmacy_metadata.contraindications')}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-        </div>
-
-        {/* Age Information */}
-        <div className="grid gap-6 sm:grid-cols-2">
+        {/* Row 4 col 3: Minimum Age + Requires Consultation */}
+        <div className="col-span-1 flex flex-col gap-4">
           <div>
-            <label htmlFor="minimum_age" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="minimum_age" className={tokens.label.base}>
               {t('products:parapharmacy.minimumAge')}
             </label>
-            <input
+            <Input
               type="number"
               id="minimum_age"
               min="0"
               step="1"
               {...register('parapharmacy_metadata.minimum_age', { valueAsNumber: true })}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
 
-          <div>
-            <label htmlFor="age_restriction" className="block text-sm font-medium text-gray-700">
-              {t('products:parapharmacy.ageRestriction')}
+          {/* Requires Consultation — paired with min_age in col 3 */}
+          <div className="flex items-center gap-2 mt-auto">
+            <input
+              type="checkbox"
+              id="requires_consultation"
+              {...register('parapharmacy_metadata.requires_consultation')}
+              className={tokens.checkbox.base}
+            />
+            <label htmlFor="requires_consultation" className={tokens.label.base}>
+              {t('products:parapharmacy.requiresConsultation')}
             </label>
-            <select
-              id="age_restriction"
-              {...register('parapharmacy_metadata.age_restriction')}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">{t('common:actions.select')}</option>
-              <option value="adult_only">{t('products:parapharmacy.ageRestrictions.adult_only')}</option>
-              <option value="children_only">{t('products:parapharmacy.ageRestrictions.children_only')}</option>
-              <option value="all_ages">{t('products:parapharmacy.ageRestrictions.all_ages')}</option>
-            </select>
           </div>
         </div>
 
-        {/* Requires Consultation */}
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="requires_consultation"
-            {...register('parapharmacy_metadata.requires_consultation')}
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          <label htmlFor="requires_consultation" className="text-sm font-medium text-gray-700">
-            {t('products:parapharmacy.requiresConsultation')}
-          </label>
-        </div>
-
-        {/* Regulatory Code */}
+        {/* Row 5 col 1: Regulatory Code */}
         <div>
-          <label htmlFor="regulatory_code" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="regulatory_code" className={tokens.label.base}>
             {t('products:parapharmacy.regulatoryCode')}
           </label>
-          <input
+          <Input
             type="text"
             id="regulatory_code"
             {...register('parapharmacy_metadata.regulatory_code')}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
 
-        {/* Storage Requirements */}
-        <div>
-          <label htmlFor="storage_requirements" className="block text-sm font-medium text-gray-700">
+        {/* Row 5 cols 2-3: Storage Requirements */}
+        <div className="col-span-1 sm:col-span-2 lg:col-span-2">
+          <label htmlFor="storage_requirements" className={tokens.label.base}>
             {t('products:parapharmacy.storageRequirements')}
           </label>
-          <textarea
+          <Textarea
             id="storage_requirements"
             rows={2}
             {...register('parapharmacy_metadata.storage_requirements')}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
+
+        {/* Contraindications — full width (kept from original, not in mock but field must be preserved) */}
+        <div className="col-span-1 sm:col-span-2 lg:col-span-3">
+          <label htmlFor="contraindications" className={tokens.label.base}>
+            {t('products:parapharmacy.contraindications')}
+          </label>
+          <Textarea
+            id="contraindications"
+            rows={3}
+            {...register('parapharmacy_metadata.contraindications')}
+          />
+        </div>
+
       </div>
     </div>
   )
