@@ -1,9 +1,9 @@
-# Design — Inline Product Opening Balance (Stage 3, IZI POS editor) — v2.2
+# Design — Inline Product Opening Balance (Stage 3, IZI POS editor) — v2.3
 
-> Status: **DESIGN v2.2 — two Codex passes + industry best-practice research folded in; awaiting final adversarial review → user sign-off**
-> Date: 2026-06-26
+> Status: **DESIGN v2.3 — three Codex adversarial passes + industry best-practice research folded in; ready for user sign-off → writing-plans**
+> Date: 2026-06-26 (rev 2026-06-27)
 > Branch/worktree: `feat/izipos-theme-product-editor` (`/Users/houssamr/Projects/syneriva/apps/erp/.claude/worktrees/izipos-product-editor`)
-> Adversarial reviews: `…-adversarial-review.md` (20 findings) + `…-adversarial-review-v2.md` (new-surface pass). Dispositions in §13.
+> Adversarial reviews: `…-adversarial-review.md` (20 findings) + `…-adversarial-review-v2.md` (new-surface) + `…-adversarial-review-v3.md` (final gate; 1 blocking re-entry-path fix). Dispositions in §13.
 > Handover origin: `docs/handoff/HANDOVER-opening-balance.md` (uncommitted, main-repo only — **not** present in this worktree; its open questions are resolved inline here, so this spec is self-contained).
 
 ## 1. Goal
@@ -38,10 +38,15 @@ existing stock-adjustment flow (`StockAdjustmentService`, `POST /stock-movements
    `can:products.create`, enforced **server-side** (not just UI). Opening is an inventory-valuation
    action in the same family as stock adjustment. (Resolves review C1 — escalation under bare
    `products.create`.)
-4. **Location: strict company default**, resolved via `LocationContext::getDefaultLocation(companyId)`
-   (NOT `resolveLocationId`, which returns the current-active location first). 422 if none exists.
-   Then `LocationContext::validateLocationAccess(locationId, companyId, user)` before posting.
-   (Resolves H1 + C5.) No picker this delivery; the use case already takes `location_id`.
+4. **Location: company default (or first active), via `getDefaultLocation`.** Resolve via
+   `LocationContext::getDefaultLocation(companyId)` — the company's explicit default, falling back to
+   its first active location (NOT `resolveLocationId`, which returns the *current-session* active
+   location first — H1's concern). 422 only when the company has **no active location at all**. Then
+   `LocationContext::validateLocationAccess(locationId, companyId, user)` before posting. (Resolves
+   H1 — avoids the session-current-location surprise — + C5.) For a single-branch tenant (launch),
+   default-or-first-active is the sole correct location. No picker this delivery; the use case
+   already takes `location_id`. (v3: corrected from "strict default + 422-if-none" — that mismatched
+   `getDefaultLocation`'s real first-active fallback semantics; no LocationContext change needed.)
 5. **Enter-once enforced in the service, under the advisory lock** (resolves C3 — v1's
    controller-only guard was racy and bypassable by other callers): the authoritative guard is an
    in-lock check for "no **active** (non-reversed) opening" for the product+location, run inside
@@ -158,20 +163,36 @@ DB::transaction:
   if opening_qty present && bccomp(opening_qty,'0',4) > 0:
       require $product->is_physical === true            # §H3 — no opening on Service/non-physical
       $locationId = LocationContext->getDefaultLocation($companyId)?->id
-      if $locationId === null: 422 "no default location"
+      if $locationId === null: 422 "no active location configured"          # §2.4
       LocationContext->validateLocationAccess($locationId, $companyId, $user)   # §C5
       # opening_unit_cost is REQUIRED here (§H7) — enforced in CreateProductRequest
-      $postingService->post(OpeningBalancePosting{
-          company, userId, entryDate: today, isHistorical: true,              # §2.2
-          sourceType:'opening_balance', sourceId:$product->id,
-          reference:"Opening balance: {$product->sku}",
-          lines:[ OpeningBalanceLine{ product->id, null, locationId, opening_qty, opening_unit_cost } ],
-      })
+      $postingService->post(OpeningBalancePosting{ … as §5.1 … sourceId:$product->id })
 DB::afterCommit: fire ProductCreated + opening movement events
-return 201 with ProductData (has_movements true)
+return 201 with ProductData (opening-state fields — §7)
 ```
 
-Empty/0 `opening_qty` → nothing posted (and `opening_unit_cost` ignored — see §6).
+Empty/0 `opening_qty` → nothing posted (and `opening_unit_cost` ignored — see §6). The opening
+posting call is **identical** to the standalone re-entry endpoint (§5.1) — both are thin adapters
+over the one `OpeningBalancePostingService` use case; create just does it atomically in the same
+transaction as the product insert.
+
+### 5.1 Standalone opening endpoint (resolves v3 BLOCKING — the re-entry path)
+
+`POST /products/{id}/opening` on the Product routes
+(`['api','auth:sanctum',SetPermissionsTeam::class,…,'module:Inventory']` + `can:inventory.adjust`),
+a thin adapter over `OpeningBalancePostingService`. It posts an opening for an **existing** product
+that is eligible (`can_enter_opening` — §7), with the same physical guard, location resolution
+(§2.4), access check (§C5), required-cost rule (§H7), and in-lock enter-once guard (§4.1 step 3) as
+create. Two callers it serves:
+- **Post-reset re-entry** — after §8 reverses a wrong opening, the product has `can_enter_opening`
+  true again, so this endpoint enters the corrected opening. **This is what closes the "reverse +
+  re-enter" loop** that reversal-based reset (v2.1) otherwise left open.
+- **First opening on a product created without one** — a product created with no opening (then no
+  activity yet) can still receive its opening here. This also matches the standard "add opening
+  later" path (Zoho/QuickBooks) and keeps create-time opening optional.
+
+The create flow (§5) and this endpoint are the two adapters; the service + its guard are the single
+source of truth.
 
 ## 6. Validation (`CreateProductRequest`) — precision rule 19 + conditional
 
@@ -189,21 +210,38 @@ Empty/0 `opening_qty` → nothing posted (and `opening_unit_cost` ignored — se
   inline form.
 - Strings end-to-end; no `parseFloat`/float casts.
 
-## 7. `has_movements` exposure — module boundary (rule 6)
+## 7. Opening-state exposure — module boundary (rule 6) — resolves v3 BLOCKING
 
-Add to `Shared/Contracts/InventoryServiceInterface` (impl `InventoryService`, bound in
-`AppServiceProvider`), **company-scoped** (resolves Med2; tenant isolation is the per-tenant DB):
+A single coarse `has_movements` bool **cannot** drive the lock once reset-by-reversal keeps rows
+around (a reset product still "has movements" yet must be re-openable). The DTO instead exposes an
+**opening state**. Add to `Shared/Contracts/InventoryServiceInterface` (impl `InventoryService`,
+bound in `AppServiceProvider`), **company-scoped** (resolves Med2; tenant isolation is the
+per-tenant DB):
 
 ```php
-public function hasMovements(string $companyId, string $productId): bool;
-public function hasOnlyOpeningMovement(string $companyId, string $productId): bool;  // for reset guard §6
+public function hasActiveOpening(string $companyId, string $productId): bool;       // a non-reversed Opening movement exists
+public function hasDownstreamMovements(string $companyId, string $productId): bool; // any movement that is neither the opening nor its reversal
 ```
 
-`ProductController` injects the contract, computes `has_movements`, threads it into
-`ProductData::fromModel(Product $product, ?ProductMediaData $media = null, bool $hasMovements = false)`
-→ new `has_movements: bool`. Run `CACHE_STORE=array php artisan typescript:transform` after.
-(`Product` already imports `Inventory\Domain\StockLevel` for `stockLevels()`, but the movements
-check deliberately routes through the contract rather than widening that coupling.)
+`ProductData` gains three fields (the third derived):
+
+```php
+has_active_opening:       bool   // there is a live opening
+has_downstream_movements: bool   // real activity (receipt/sale/adjustment) exists
+can_enter_opening:        bool   // = !has_active_opening && !has_downstream_movements
+```
+
+- `can_enter_opening` drives the UI: the opening section is editable iff true (a fresh product, OR a
+  reset product with no later activity). It is **not** equivalent to "create mode" — an existing
+  product can be eligible (post-reset / never-opened).
+- The §8 reset guard = `hasActiveOpening && !hasDownstreamMovements` (exactly one active opening, no
+  activity). The §4.1-step-3 enter-once guard = `!hasActiveOpening` under the lock.
+
+`ProductController` injects the contract and threads these into
+`ProductData::fromModel(Product $product, ?ProductMediaData $media = null, ?OpeningState $opening = null)`.
+Run `CACHE_STORE=array php artisan typescript:transform` after. (`Product` already imports
+`Inventory\Domain\StockLevel` for `stockLevels()`, but the movement checks deliberately route
+through the contract rather than widening that coupling.)
 
 ## 8. Correction — reset-opening via contra-reversal (resolves C4 + v2 reset-audit finding)
 
@@ -211,9 +249,9 @@ New `POST /products/{id}/opening/reset` on the Product routes
 (`['api','auth:sanctum',SetPermissionsTeam::class,…,'module:Inventory']` + `can:inventory.adjust`),
 handled by a `ResetOpeningBalanceService` (Inventory Application), under the product advisory lock:
 
-1. Guard: `hasOnlyOpeningMovement(companyId, productId)` must be true — exactly one **active**
-   movement, of type Opening (no downstream, no prior reversal). Otherwise 409 "Opening locked —
-   downstream movements exist; use stock adjustment."
+1. Guard: `hasActiveOpening(companyId, productId) && !hasDownstreamMovements(companyId, productId)`
+   (§7) — exactly one **active** Opening, no downstream activity, no prior reversal. Otherwise 409
+   "Opening locked — downstream movements exist; use stock adjustment."
 2. In one transaction, **reverse** (do not delete) — reusing the existing `reverses_movement_id`
    reversal infrastructure (stock-adjustment-writeoff merge): post a reversing `StockMovement`
    (`reverses_movement_id` = the opening movement, quantity negated) bringing the stock level to 0,
@@ -222,8 +260,10 @@ handled by a `ResetOpeningBalanceService` (Inventory Application), under the pro
 3. `afterCommit`: dispatch `StockMovementRecorded` + `StockMovementRecordedV2` for the reversal so
    channels resync.
 
-After reset, the §4.1-step-3 check sees the original opening as **reversed** (inactive), so a
-corrected opening can be re-entered. **Both rows persist → full audit trail.** Rationale for
+After reset, `hasActiveOpening` is false and (no activity) `can_enter_opening` is true, so the
+corrected opening is re-entered via the standalone endpoint **`POST /products/{id}/opening` (§5.1)**
+— this is what completes the "reverse + re-enter" loop. **Both rows persist → full audit trail.**
+Rationale for
 reversal over hard-delete: `StockMovement` has no soft-delete/audit columns, so deletion would
 leave no record; reversal is the compliant correction and reuses tested infrastructure. Pre-launch
 setup operation, but auditable regardless.
@@ -239,26 +279,30 @@ standard-aligned enhancement.
 
 ## 9. Frontend (`apps/web/src/features/inventory/ProductForm.tsx`)
 
-- New **create-only** "Opening stock" section, **rendered only when `hasModule('Inventory')` &&
+- "Opening stock" section, **rendered only when `hasModule('Inventory')` &&
   `hasPermission('inventory.adjust')` && the product is physical** (mirrors the server gate §2.3/§H3):
   `<QuantityInput>` (`opening_qty`) + `<MoneyInput>` (`opening_unit_cost`). Strings in the payload.
+  It shows on **create**, and on an **existing product when `can_enter_opening === true`** (post-reset
+  / never-opened) — submitting then calls `POST /products/{id}/opening` (§5.1) instead of create.
 - **Label/help clarifies valuation** (resolves Low2): e.g. "Coût unitaire de valorisation du stock
   (sert de base au coût moyen pondéré)" — not sale/purchase price. All copy via `t()`; design tokens.
 - `opening_unit_cost` is shown required once `opening_qty > 0`; disabled/cleared when qty is empty
   (resolves Med3).
-- When `has_movements === true`: section is locked with helper text. If the product has **only** the
-  opening movement, show a **Reset opening** action (calls §8) → re-enter. Otherwise the helper links
-  to the exact adjustment surface — **Inventory › Stock** (`/inventory/stock`, `StockLevelsPage`,
-  `POST /stock-movements/adjust`) (resolves Low1).
+- When **`can_enter_opening === false`**: section is locked with helper text. If `has_active_opening &&
+  !has_downstream_movements`, show a **Reset opening** action (§8) → then the section becomes
+  re-enterable. Otherwise (downstream activity exists) the helper links to the exact adjustment
+  surface — **Inventory › Stock** (`/inventory/stock`, `StockLevelsPage`, `POST /stock-movements/adjust`)
+  (resolves Low1).
 
 ## 10. Edge cases
 
 Future date N/A (no input). `opening_qty` 0/empty → nothing posted, `opening_unit_cost` rejected if
 supplied. `opening_unit_cost` required when qty>0 (no zero-cost inventory). Service/non-physical →
-opening rejected (server + UI). No default location → 422. User lacks default-location access → 403.
-Concurrent openings (same product) → second blocked by the in-lock enter-once check + DB index.
-Concurrent openings (different products) → distinct safe entry numbers (no `(tenant,entry_number)`
-collision). Opening GL entries are `is_historical` and excluded from the POS + GL hash chains.
+opening rejected (server + UI). No active location → 422. User lacks default-location access → 403.
+Concurrent openings (same product) → second blocked by the product advisory lock + in-lock
+active-opening check (§4.1 step 3; no DB index — §4.3). Concurrent openings (different products) →
+distinct safe entry numbers (no `(tenant,entry_number)` collision). Opening GL entries are
+`is_historical` and excluded from the POS + GL hash chains.
 
 ## 11. Testing (TDD, run **by path**, never the full suite; `{error:{errors}}` envelope via `AssertsApiValidation`)
 
@@ -279,33 +323,40 @@ Backend:
 - **Required cost (H7):** `opening_qty>0` without `opening_unit_cost` → 422.
 - **afterCommit (H5):** opening posting failure rolls back the product AND fires no `ProductCreated`.
 - **Reset (C4):** reset while sole active movement posts a reversal movement (`reverses_movement_id`
-  set) + contra GL, zeroes the stock level, clears cost, and unlocks — **original + reversal rows
-  both persist** (audit); a corrected opening can then be re-entered. Reset after a second movement →
-  409. Reset when an opening was already reversed → 409.
+  set) + contra GL, zeroes the stock level, clears cost — **original + reversal rows both persist**
+  (audit). Reset after a second movement → 409. Reset when an opening was already reversed → 409.
+- **Re-entry endpoint (§5.1 / v3 BLOCKING):** `POST /products/{id}/opening` posts an opening on an
+  eligible existing product; **post-reset re-entry** succeeds and yields one fresh active opening +
+  correct stock/cost; the endpoint is gated `inventory.adjust` (403 without); rejected when
+  `can_enter_opening` is false (active opening still present → enter-once; or downstream activity →
+  409). State assertions: `has_active_opening`/`has_downstream_movements`/`can_enter_opening`
+  transition correctly across create → reset → re-enter.
 
-Frontend (Vitest): section hidden without `inventory.adjust` / for non-physical; inputs disabled
-when `has_movements`; Reset action shown only when opening is the sole movement.
+Frontend (Vitest): section hidden without `inventory.adjust` / for non-physical; section locked when
+`can_enter_opening === false`; **Reset opening** action shown only when `has_active_opening &&
+!has_downstream_movements`; section re-enterable (calls §5.1) after reset.
 
 Pre-flight (`./scripts/preflight.sh`) before commit.
 
 ## 12. Blast radius
 
 - **New:** `OpeningBalancePostingService`, `ResetOpeningBalanceService` (reuses the existing
-  `reverses_movement_id` reversal infra), 3 posting DTOs, `OpeningAlreadyExistsException`;
-  `hasMovements`/`hasOnlyOpeningMovement` on `InventoryServiceInterface` + impl; concurrency-safe
-  `INV-OB` numbering support (sequence/advisory lock — no new uniqueness index);
-  `POST /products/{id}/opening/reset` route.
+  `reverses_movement_id` reversal infra), 3 posting DTOs + an `OpeningState` DTO,
+  `OpeningAlreadyExistsException`; `hasActiveOpening`/`hasDownstreamMovements` on
+  `InventoryServiceInterface` + impl; concurrency-safe `INV-OB` numbering support (sequence/advisory
+  lock — no new uniqueness index); `POST /products/{id}/opening` (re-entry, §5.1) +
+  `POST /products/{id}/opening/reset` routes + their controller actions.
 - **Modified:** `InventoryOpeningService::postBatch` (delegates + hardening),
   `ProductController::store` (authz + transaction + afterCommit + opening post),
-  `CreateProductRequest` (rules), `ProductData` (`has_movements`), `ProductForm.tsx`, generated FE
-  types. Import flow gains movement-event dispatch + safe numbering (intended; regression-checked).
+  `CreateProductRequest` (rules), `ProductData` (opening-state fields), `ProductForm.tsx`, generated
+  FE types. Import flow gains movement-event dispatch + safe numbering (intended; regression-checked).
 - **Untouched:** `StockAdjustmentService`, `WeightedAverageCostService`, the merged
   stock-adjustment-writeoff code. No TODO seams.
 
 ## 13. Review disposition (`…-adversarial-review.md`)
 
 - **Accepted & resolved:** C1 (§2.3 authz), C2 (§2.2 `is_historical`), C3 (§4.1 in-lock
-  active-opening check), C4 (§8 reset), C5 (§5 location access), H1 (§2.4 strict default), H3 (§5 physical),
+  active-opening check), C4 (§8 reset), C5 (§5 location access), H1 (§2.4 default-or-first-active — refined in v3), H3 (§5 physical),
   H4/H5/H6 (§2.7 shared hardening), H7 (§6 required cost), Med1 (§4.1 canonicalization),
   Med2 (§7 scope), Med3 (§6 qty/cost UX), Med4 (§6 negatives documented), Med5 (§11 concurrency
   tests), Med6 (handover note in header), Low1 (§9 route), Low2 (§9 label).
@@ -326,6 +377,23 @@ Pre-flight (`./scripts/preflight.sh`) before commit.
 - **Out of scope — `is_historical` immutability:** pre-existing, GL-wide (the `JournalEntryObserver`
   `updating` guard only protects entries that already hold a `fiscal_hash`; all historical opening
   entries lack one today). Not introduced by this feature → §14 follow-up, not scope creep here.
+
+### v3 final-review disposition (`…-adversarial-review-v3.md`)
+
+- **Accepted (BLOCKING) — reset preserved rows but no re-entry path:** real contradiction introduced
+  by the v2.1 hard-delete→reversal switch. Resolved: §5.1 adds the standalone
+  `POST /products/{id}/opening` endpoint (completes "reverse + re-enter"); §7 replaces the coarse
+  `has_movements` with the `has_active_opening` / `has_downstream_movements` / `can_enter_opening`
+  state; §8/§9/§11 updated to match. (Also enables "add opening to a product created without one" —
+  the standard later-opening path.)
+- **Accepted (MAJOR) — "strict default" mislabeled:** `getDefaultLocation` falls back to first-active,
+  not strict. §2.4 reworded to "company default or first active"; 422 only when **no active
+  location** exists. No `LocationContext` change needed; H1's session-current-location concern stays
+  resolved (we use `getDefaultLocation`, not `resolveLocationId`).
+- **Accepted (MINOR) — stale "+ DB index" in §10:** removed; §10 now cites the advisory lock +
+  in-lock active-opening check only.
+- **Confirmed coherent (no change):** reversal reset primitive, in-lock enter-once, `is_historical`
+  exclusion, `inventory.adjust` gate, concurrency-safe numbering — all verified against worktree code.
 
 ## 14. Out of scope (clean future adapters / separate follow-ups, no rework)
 
