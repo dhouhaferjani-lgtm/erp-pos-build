@@ -258,7 +258,8 @@ final class SaleEarningServiceTest extends TestCase
         $program = $this->seedActiveSpendProgram($tenantId, '1');
         $enrollment = $this->enrollContactMember($tenantId, $program->id, $contactId);
 
-        app(CompanyContextHelperForTest::class ?? \App\Modules\Identity\Domain\CompanyContext::class)->clear();
+        // Projections/workers run with NO CompanyContext (rule 20) — prove it.
+        app(\App\Modules\Company\Services\CompanyContext::class)->clear();
 
         app(LoyaltyEarningContract::class)->earnForSale(
             $this->context($tenantId, $contactId, '12.000', 'receipt-1')
@@ -323,12 +324,101 @@ final class SaleEarningServiceTest extends TestCase
 }
 ```
 
-> Note: use the project's standard way to clear CompanyContext in tests (rule 20 — projections run with none). If the codebase exposes `app(CompanyContext::class)->clear()`, call that directly instead of the defensive expression above; check an existing projection test (e.g. `PosCoreReceiptProjection` tests) for the exact helper and copy it. Remove the `??` fallback once confirmed.
+> CompanyContext FQCN confirmed: `App\Modules\Company\Services\CompanyContext` (its `clear()` is the real method — the sibling `PosCoreReceiptProjection` test *sets* context rather than clearing, so there's nothing to copy; call `clear()` directly as above).
+
+- [ ] **Step 0: Create the three missing Loyalty factories (prerequisite for these tests)**
+
+Only `LoyaltyProgramFactory` exists today, and module models are NOT auto-discovered — each needs a `newFactory()` override (mirror `LoyaltyProgram.php`). Create:
+
+`apps/api/database/factories/Loyalty/LoyaltyMemberFactory.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace Database\Factories\Loyalty;
+
+use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
+use App\Modules\Loyalty\Domain\Enums\MemberStatus;
+use Illuminate\Database\Eloquent\Factories\Factory;
+
+/** @extends Factory<LoyaltyMember> */
+final class LoyaltyMemberFactory extends Factory
+{
+    protected $model = LoyaltyMember::class;
+
+    public function definition(): array
+    {
+        return [
+            'tenant_id' => $this->faker->uuid(),
+            'customer_id' => null,
+            'loyaltyable_type' => 'contact',
+            'loyaltyable_id' => $this->faker->uuid(),
+            'phone' => $this->faker->unique()->numerify('+216########'),
+            'email' => null,
+            'first_name' => $this->faker->firstName(),
+            'last_name' => $this->faker->lastName(),
+            'status' => MemberStatus::Active,
+            'enrollment_date' => now(),
+        ];
+    }
+}
+```
+
+`apps/api/database/factories/Loyalty/EnrollmentFactory.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace Database\Factories\Loyalty;
+
+use App\Modules\Loyalty\Domain\Entities\Enrollment;
+use App\Modules\Loyalty\Domain\Enums\EnrollmentStatus;
+use Illuminate\Database\Eloquent\Factories\Factory;
+
+/** @extends Factory<Enrollment> */
+final class EnrollmentFactory extends Factory
+{
+    protected $model = Enrollment::class;
+
+    public function definition(): array
+    {
+        return [
+            'program_id' => $this->faker->uuid(),
+            'member_id' => $this->faker->uuid(),
+            'current_balance' => '0.000',
+            'lifetime_earned' => '0.000',
+            'lifetime_redeemed' => '0.000',
+            'current_tier_id' => null,
+            'status' => EnrollmentStatus::Active,
+            'enrolled_at' => now(),
+        ];
+    }
+}
+```
+
+`apps/api/database/factories/Loyalty/EarningRuleFactory.php` — see Task 4 Step 1 (create it now if doing Task 2 first).
+
+Then add a `newFactory()` override to EACH of the three models (`LoyaltyMember`, `Enrollment`, `EarningRule`), mirroring the one already on `LoyaltyProgram`:
+
+```php
+use Illuminate\Database\Eloquent\Factories\Factory;
+
+protected static function newFactory(): Factory
+{
+    return \Database\Factories\Loyalty\LoyaltyMemberFactory::new(); // EnrollmentFactory / EarningRuleFactory respectively
+}
+```
+
+> Open `LoyaltyProgram.php` and copy its exact `newFactory()` + `HasFactory` usage. Verify each model's real columns/casts (`MemberStatus`, balance casts) before finalizing the factory defaults — adjust to match the migration. If you prefer zero model edits, instead rewrite the Task 2 helpers to insert via `Model::create([...])` (mirror `tests/Feature/Loyalty/LoyaltyPOSControllerTest.php` ~lines 225-245), but factories are cleaner and reused by Task 4.
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd apps/api && ./vendor/bin/phpunit tests/Feature/Loyalty/SaleEarningServiceTest.php`
-Expected: FAIL — `LoyaltyEarningContract` has no binding / `EarningRuleFactory` missing (Task 4 adds the factory; if the factory is not yet present, do Task 4's factory step first, then return — see ordering note at the end).
+Expected: FAIL — `LoyaltyEarningContract` has no binding.
 
 - [ ] **Step 3: Implement `SaleEarningService`**
 
@@ -404,9 +494,22 @@ final readonly class SaleEarningService implements LoyaltyEarningContract
                         : null,
                 );
             } catch (InvalidArgumentException $e) {
-                // Already earned for this (sourceType, sourceId): idempotent
-                // replay / double-fire. Swallow — balance unchanged.
-                continue;
+                // earnPoints() throws InvalidArgumentException for BOTH the
+                // already-earned duplicate AND enrollment-not-found. Only the
+                // duplicate is the idempotent replay/double-fire we swallow —
+                // discriminate by message (Codex S1). Anything else falls through
+                // to the loud-log branch.
+                if (str_contains($e->getMessage(), 'already earned')) {
+                    continue;
+                }
+                Log::error('Loyalty earn failed for sale (recoverable by hand)', [
+                    'tenant_id' => $context->tenantId,
+                    'enrollment_id' => $enrollment->id,
+                    'source_type' => $context->sourceType,
+                    'source_id' => $context->sourceId,
+                    'receipt_number' => $context->receiptNumber,
+                    'error' => $e->getMessage(),
+                ]);
             } catch (\Throwable $e) {
                 // Real, non-duplicate failure (e.g. transient DB error). Log
                 // loudly with recovery context; never break the sale. Auto-retry
@@ -514,12 +617,21 @@ public function test_sale_without_buyer_credits_nothing(): void
 
 public function test_refund_receipt_credits_nothing(): void
 {
-    // invoiceTypeCode REFUND (maps to ReceiptType::Return) with original ref ⇒ no Earn.
+    // Codex B3: a REFUND/VOID event throws OriginalReceiptUnresolvableException and
+    // ROLLS BACK unless the original SALE was projected first — so a naive refund
+    // event would fail for the wrong reason and never reach the earn guard.
+    // GIVEN: first project a normal SALE for the enrolled buyer (original receipt),
+    //   THEN build+apply a REFUND event whose original_receipt_reference resolves to it.
+    // THEN: the enrolled buyer's Earn count stays at 1 (the original sale's), the
+    //   refund adds NO Earn transaction (earn-eligibility guard skips Return).
 }
 
 public function test_training_receipt_credits_nothing(): void
 {
-    // trainingFlag = true ⇒ no Earn.
+    // Codex B2: the sibling builder hardcodes training_flag=false. Build the event
+    // with trainingFlag=true — either parametrize storeSaleReceiptFiscalEvent() to
+    // accept a trainingFlag arg, or construct the payload inline with
+    // 'training_flag' => true. THEN apply ⇒ no Earn transaction.
 }
 
 public function test_replaying_the_same_fiscal_event_credits_once(): void
@@ -528,7 +640,7 @@ public function test_replaying_the_same_fiscal_event_credits_once(): void
 }
 ```
 
-Write these out fully using the real `FiscalEvent` fixture builder from the sibling projection test. The replay test directly satisfies rule 20.
+Write these out fully using the real `FiscalEvent` fixture builder from the sibling projection test. **Two builder limitations to handle (Codex B2/B3):** (a) the builder hardcodes `training_flag => false` — parametrize it (add an optional `bool $trainingFlag = false` param) so the training test can set `true`; (b) a REFUND/VOID needs its original SALE projected first or it throws `OriginalReceiptUnresolvableException` and rolls back — the refund test must project the original sale, then a refund event referencing it. The replay test directly satisfies rule 20.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -754,7 +866,6 @@ use App\Modules\Loyalty\Domain\Entities\EarningRule;
 use App\Modules\Loyalty\Domain\Enums\EarningRuleType;
 use App\Modules\Loyalty\Domain\Events\ProgramActivated;
 use App\Modules\Loyalty\Domain\Repositories\EarningRuleRepositoryInterface;
-use Illuminate\Support\Str;
 
 /**
  * On program activation, seed a default points-per-money-unit Spend rule
@@ -774,8 +885,8 @@ final readonly class SeedDefaultEarningRuleOnProgramActivated
             return;
         }
 
+        // EarningRule uses HasUuids — `id` is auto-generated, NOT fillable (Codex S4).
         $rule = new EarningRule([
-            'id' => (string) Str::uuid(),
             'program_id' => $event->programId,
             'name' => 'Points per dinar',
             'rule_type' => EarningRuleType::Spend,
@@ -791,7 +902,7 @@ final readonly class SeedDefaultEarningRuleOnProgramActivated
 }
 ```
 
-> Confirm `EarningRule` has `id` in `$fillable` or uses a `HasUuids`/booted UUID. If `id` is not fillable, set it after construction (`$rule->id = (string) Str::uuid();`) or rely on the model's UUID generation — check how `EarningRuleController@store` creates a rule and mirror it exactly.
+> `EarningRule` uses `HasUuids` (`id` auto-generated, not in `$fillable`). Mirror `EarningRuleController@store`'s construction exactly if any other column is required by a NOT NULL constraint.
 
 - [ ] **Step 5: Register the listener in `EventServiceProvider::$listen`**
 
@@ -890,7 +1001,7 @@ use App\Modules\Loyalty\Domain\Enums\EarningRuleType;
 use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
 use App\Modules\Loyalty\Domain\Repositories\EarningRuleRepositoryInterface;
 use App\Modules\Loyalty\Domain\Repositories\LoyaltyProgramRepositoryInterface;
-use App\Shared\Context\CompanyContext; // confirm the actual CompanyContext FQCN used elsewhere
+use App\Modules\Company\Services\CompanyContext;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -926,7 +1037,7 @@ final class LoyaltyEarnRateController extends Controller
 }
 ```
 
-> Confirm the `CompanyContext` FQCN by copying the `use` + injection from `LoyaltyProgramController` (it already injects a company-context to read `tenant_id`). Match its pattern exactly.
+> CompanyContext FQCN confirmed: `App\Modules\Company\Services\CompanyContext` (same one `LoyaltyProgramController` injects; `requireCompany()->tenant_id` is the pattern).
 
 - [ ] **Step 4: Add the route inside the `module:Loyalty` group**
 
@@ -935,11 +1046,11 @@ In `apps/api/app/Modules/Loyalty/Presentation/routes.php`, within the existing
 
 ```php
 Route::get('loyalty/earn-rate', [\App\Modules\Loyalty\Presentation\Controllers\LoyaltyEarnRateController::class, 'show'])
-    ->middleware('can:pos.operate_terminal')
+    ->middleware('can:loyalty.view')
     ->name('loyalty.earn-rate');
 ```
 
-> Use a permission the product editor user already holds. If `pos.operate_terminal` is wrong for back-office editor users, use the same `can:` ability guarding the product editor / a read ability the admin holds — check `Product/routes.php` for the editor's ability and reuse it. The key requirement is the `module:Loyalty` group (both-layer gating, rule 12).
+> Ability confirmed: `can:loyalty.view` — the module's read permission used by every Loyalty GET, and the ability a back-office editor user holds (NOT `pos.operate_terminal`, which is the POS-operator perm). The `module:Loyalty` group provides both-layer gating (rule 12).
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
@@ -1165,7 +1276,11 @@ git commit -m "docs(loyalty): mark earn-on-purchase demo verified end-to-end"
 
 ## Task ordering note
 
-`EarningRuleFactory` (Task 4, Step 1) is a dependency of Task 2's tests. If executing strictly in order, create the `EarningRuleFactory` first (Task 4 Step 1) before Task 2, or do Task 4 before Task 2. Tasks 5 and 6 depend only on the endpoint contract and can follow in any order after Task 4. Task 3 depends on Tasks 1–2.
+Execute in order 1 → 7. The three Loyalty factories + their `newFactory()` model overrides are created in **Task 2 Step 0** and are a prerequisite for Tasks 2 and 4 (`EarningRuleFactory`'s canonical body is shown in Task 4 Step 1; create it during Task 2 Step 0). Task 3 depends on Tasks 1–2. Tasks 5 and 6 depend only on the endpoint contract and can follow in any order after Task 4. Task 7 is last.
+
+## Codex review fold-in (2026-06-27)
+
+Adversarial review (`docs/superpowers/audits/2026-06-27-loyalty-earn-plan-codex-review.md`) confirmed all signatures, enums, decimal casts, Spend math, the safe 5th ctor param, projection-local scope, and FE assumptions. Folded fixes: **B1** three missing factories + `newFactory()` overrides (Task 2 Step 0); **B2** parametrize the training-flag in the FiscalEvent builder (Task 3); **B3** refund test must project the original SALE first (Task 3); **S1** discriminate `already earned` before swallowing (Task 2); **S2** route ability `can:loyalty.view` (Task 5); **S3** `CompanyContext` = `App\Modules\Company\Services\CompanyContext` (Tasks 2, 5); **S4** `EarningRule` `id` is `HasUuids`, not fillable (Task 4).
 
 ## Self-review (completed by plan author)
 
