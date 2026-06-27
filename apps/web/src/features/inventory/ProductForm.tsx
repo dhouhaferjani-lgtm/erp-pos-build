@@ -27,6 +27,7 @@ import { TaxConfigurationField } from '../../components/molecules/TaxConfigurati
 import { usePermissions } from '../../hooks/usePermissions'
 import { inventoryProductsInvalidationPredicate } from './_invalidation'
 import { buildProductPayload } from './productPayload'
+import { LoyaltyPointsDisplay } from './LoyaltyPointsDisplay'
 import { BarcodeHero } from '../products/editor/components/BarcodeHero'
 import { SectionNav } from '../products/editor/components/SectionNav'
 import type { EditorSection } from '../products/editor/components/SectionNav'
@@ -557,6 +558,9 @@ export function ProductForm() {
     { id: 'section-inventory', labelKey: 'catalog:editor.sectionLabels.inventory' },
     ...(isParapharmacy
       ? [{ id: 'section-pharmacy', labelKey: 'catalog:editor.sectionLabels.pharmacy' }]
+      : []),
+    ...(hasModule('Loyalty')
+      ? [{ id: 'section-loyalty', labelKey: 'catalog:editor.sectionLabels.loyalty' }]
       : []),
     { id: 'section-suppliers', labelKey: 'catalog:editor.sectionLabels.suppliers' },
     { id: 'section-media', labelKey: 'catalog:editor.sectionLabels.media' },
@@ -1277,6 +1281,16 @@ export function ProductForm() {
                   errors={errors}
                 />
               </div>
+            )}
+
+            {/* Loyalty — module-gated read-only indicative points display */}
+            {hasModule('Loyalty') && (
+              <EditorSectionCard
+                id="section-loyalty"
+                title={t('catalog:editor.sectionLabels.loyalty')}
+              >
+                <LoyaltyPointsDisplay salePrice={salePriceValue} />
+              </EditorSectionCard>
             )}
 
             {/* Suppliers — no product-level supplier fields exist on this form;

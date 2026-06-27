@@ -18,8 +18,12 @@
       "pricing": "Prix & Taxes",
       "inventory": "Stock & Unités",
       "pharmacy": "Pharmacie",
+      "loyalty": "Fidélité",
       "suppliers": "Fournisseurs",
       "media": "Médias & Fichiers"
+    },
+    "loyalty": {
+      "indicativeCaption": "Indicatif — les points réels dépendent du montant payé."
     },
     "related": {
       "title": "Opérations liées",
