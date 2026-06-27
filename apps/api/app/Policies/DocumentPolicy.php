@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace App\Policies;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\User;
 
 class DocumentPolicy
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext
+    ) {}
+
     /**
      * Determine whether the user can view any models.
      */
@@ -33,8 +38,9 @@ class DocumentPolicy
      */
     public function view(User $user, Document $document): bool
     {
-        // Check tenant isolation
-        if ($document->company_id !== $user->company_id) {
+        // Check company isolation via CompanyContext (not $user->company_id —
+        // that column does not exist on the users table).
+        if ($document->company_id !== $this->companyContext->getCompanyId()) {
             return false;
         }
 
@@ -73,8 +79,8 @@ class DocumentPolicy
      */
     public function update(User $user, Document $document): bool
     {
-        // Check tenant isolation
-        if ($document->company_id !== $user->company_id) {
+        // Check company isolation via CompanyContext
+        if ($document->company_id !== $this->companyContext->getCompanyId()) {
             return false;
         }
 
@@ -96,8 +102,8 @@ class DocumentPolicy
      */
     public function delete(User $user, Document $document): bool
     {
-        // Check tenant isolation
-        if ($document->company_id !== $user->company_id) {
+        // Check company isolation via CompanyContext
+        if ($document->company_id !== $this->companyContext->getCompanyId()) {
             return false;
         }
 
@@ -119,8 +125,8 @@ class DocumentPolicy
      */
     public function post(User $user, Document $document): bool
     {
-        // Check tenant isolation
-        if ($document->company_id !== $user->company_id) {
+        // Check company isolation via CompanyContext
+        if ($document->company_id !== $this->companyContext->getCompanyId()) {
             return false;
         }
 
