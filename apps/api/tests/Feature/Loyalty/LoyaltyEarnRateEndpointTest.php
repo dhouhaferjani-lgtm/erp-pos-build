@@ -110,6 +110,11 @@ final class LoyaltyEarnRateEndpointTest extends TestCase
             'role' => 'admin',
         ]);
 
+        // Grant loyalty.view so the ONLY 403 source is the module:Loyalty middleware (rule 12).
+        app(PermissionRegistrar::class)->setPermissionsTeamId($tenant->id);
+        Permission::findOrCreate('loyalty.view', 'sanctum');
+        $user->givePermissionTo('loyalty.view');
+
         Sanctum::actingAs($user);
 
         $response = $this->getJson('/api/v1/loyalty/earn-rate');
