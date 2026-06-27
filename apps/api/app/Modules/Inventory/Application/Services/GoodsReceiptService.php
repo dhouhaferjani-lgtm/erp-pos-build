@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Inventory\Domain\Events\GoodsReceived;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Product\Domain\Product;
 use Illuminate\Support\Facades\DB;
@@ -150,8 +151,11 @@ final class GoodsReceiptService
                 throw new \DomainException("Batch data is required for batch-tracked product {$product->id}");
             }
 
-            // Use landed cost from the PO line (includes allocated additional costs)
-            $landedUnitCost = (float) ($line->landed_unit_cost ?? $line->unit_price);
+            // Use landed cost from the PO line (includes allocated additional costs).
+            // Capture as a numeric string BEFORE the float cast so GoodsReceived can
+            // carry the cost with full precision (no float rounding artefacts).
+            $unitCostStr = (string) ($line->landed_unit_cost ?? $line->unit_price);
+            $landedUnitCost = (float) $unitCostStr;
 
             // Thread variant_id from the PO line (Task 20). null for non-variant
             // products → product-level stock (backward compat). WAC stays
@@ -169,6 +173,21 @@ final class GoodsReceiptService
                 referenceId: $purchaseOrder->id,
                 variantId: $variantId,
             );
+
+            // Emit GoodsReceived so Accounting can post Dr Inventory / Cr 408 (GR-IR).
+            // The event is immutable and carries only scalars — the listener is decoupled
+            // from Inventory internals. movementId is the idempotency anchor.
+            event(new GoodsReceived(
+                tenantId: $purchaseOrder->tenant_id,
+                companyId: $purchaseOrder->company_id,
+                productId: (string) $product->id,
+                locationId: (string) $location->id,
+                poLineId: (string) $line->id,
+                movementId: (string) $movement->id,
+                receivedQty: $qtyToReceive,
+                unitCost: $unitCostStr,
+                currency: (string) ($purchaseOrder->currency ?? 'TND'),
+            ));
 
             // Receive batch stock if batch data is provided for this line
             if (isset($batchData[$line->id]) && ($product->requires_batch_tracking ?? false)) {
@@ -191,6 +210,13 @@ final class GoodsReceiptService
                 );
 
                 $line->batch_id = $batch->id;
+            }
+
+            // Record the receipt-time 408 accrual basis (immutable after first receipt).
+            // SupplierInvoicePostingService::post() asserts against this to detect
+            // post-receipt landed-cost reallocations that would leave a 408 residue.
+            if ($line->accrual_unit_cost === null) {
+                $line->accrual_unit_cost = $unitCostStr;
             }
 
             // Update line's received quantity

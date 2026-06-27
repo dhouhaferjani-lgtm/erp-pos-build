@@ -22,6 +22,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -174,6 +175,11 @@ class PaymentAllocationService
                     ->where('company_id', $command->companyId)
                     ->lockForUpdate()
                     ->findOrFail($allocation['document_id']);
+
+                // Supplier invoices (AP) are payable only through the supplier-aware
+                // PaymentController::store() path (Dr 401 / Cr Bank). This generic
+                // allocation path posts the AR direction (Dr Bank / Cr AR), so reject.
+                $this->rejectSupplierInvoiceAllocation($document);
 
                 // Create allocation record
                 PaymentAllocation::create([
@@ -565,6 +571,27 @@ class PaymentAllocationService
     }
 
     /**
+     * Reject allocating a payment to a supplier_invoice via the generic allocation
+     * path. Supplier invoices (AP) must be paid through the supplier-aware
+     * PaymentController::store() flow, which posts the 401-clearing entry and
+     * reduces payable_balance. Throws a 422 HttpResponseException.
+     */
+    private function rejectSupplierInvoiceAllocation(Document $document): void
+    {
+        if ($document->type === DocumentType::SupplierInvoice) {
+            throw new HttpResponseException(response()->json([
+                'error' => [
+                    'code' => 'SUPPLIER_INVOICE_NOT_PAYABLE_HERE',
+                    'message' => 'Supplier invoices must be paid through the supplier payment flow, not document allocation',
+                    'details' => [
+                        'document_id' => $document->id,
+                    ],
+                ],
+            ], 422));
+        }
+    }
+
+    /**
      * Preview manual allocation
      *
      * @param  array<int, array{document_id: string, amount: string}>  $manualAllocations
@@ -590,6 +617,11 @@ class PaymentAllocationService
                 ->where('tenant_id', $tenantId)
                 ->where('company_id', $companyId)
                 ->findOrFail($manual['document_id']);
+
+            // Supplier invoices (AP) are not allocable here — reject in the preview
+            // so the manual smart-payment path fails fast before any write.
+            $this->rejectSupplierInvoiceAllocation($invoice);
+
             $invoiceBalance = $this->getInvoiceBalance($invoice);
 
             $allocations[] = [

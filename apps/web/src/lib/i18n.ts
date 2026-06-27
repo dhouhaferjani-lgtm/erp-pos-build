@@ -49,6 +49,7 @@ import enChannels from '../locales/en/channels.json'
 import enReports from '../locales/en/reports.json'
 import enStockTransfers from '../locales/en/stock-transfers.json'
 import enAdmin from '../locales/en/admin.json'
+import enPurchases from '../locales/en/purchases.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -96,6 +97,7 @@ import frChannels from '../locales/fr/channels.json'
 import frReports from '../locales/fr/reports.json'
 import frStockTransfers from '../locales/fr/stock-transfers.json'
 import frAdmin from '../locales/fr/admin.json'
+import frPurchases from '../locales/fr/purchases.json'
 
 // Arabic: fully translated AutoSpecs + shared foundations (🟠-4 Tunisia Go-Live).
 // Other namespaces still fall back to the EN bundle below.
@@ -116,6 +118,7 @@ import arVouchers from '../locales/ar/vouchers.json'
 import arChannels from '../locales/ar/channels.json'
 import arReports from '../locales/ar/reports.json'
 import arAdmin from '../locales/ar/admin.json'
+import arPurchases from '../locales/ar/purchases.json'
 import arProducts from '../locales/ar/products.json'
 
 export const languages = [
@@ -174,6 +177,7 @@ const resources = {
     reports: enReports,
     'stock-transfers': enStockTransfers,
     admin: enAdmin,
+    purchases: enPurchases,
   },
   fr: {
     common: frCommon,
@@ -222,6 +226,7 @@ const resources = {
     reports: frReports,
     'stock-transfers': frStockTransfers,
     admin: frAdmin,
+    purchases: frPurchases,
   },
   ar: {
     // 🟠-4 Tunisia Go-Live: AutoSpecs namespaces + shared foundations are now
@@ -273,6 +278,7 @@ const resources = {
     reports: arReports,
     'stock-transfers': enStockTransfers,
     admin: arAdmin,
+    purchases: arPurchases,
   },
 }
 
@@ -283,7 +289,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'deposits', 'customer-history-audit', 'channels', 'reports', 'stock-transfers', 'admin'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'deposits', 'customer-history-audit', 'channels', 'reports', 'stock-transfers', 'admin', 'purchases'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

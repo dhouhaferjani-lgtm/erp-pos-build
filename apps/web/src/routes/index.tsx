@@ -54,6 +54,8 @@ const ReturnNoteDetailPage = lazy(() => import('../features/documents/return-not
 
 // Purchases module
 const GoodsReceiptListPage = lazy(() => import('../features/purchases/GoodsReceiptListPage').then((m) => ({ default: m.GoodsReceiptListPage })))
+const SupplierInvoiceListPage = lazy(() => import('../features/purchases/supplier-invoices/SupplierInvoiceListPage').then((m) => ({ default: m.SupplierInvoiceListPage })))
+const SupplierInvoiceDetailPage = lazy(() => import('../features/purchases/supplier-invoices/SupplierInvoiceDetailPage').then((m) => ({ default: m.SupplierInvoiceDetailPage })))
 
 // Treasury module
 const PaymentListPage = lazy(() => import('../features/treasury/PaymentListPage').then((m) => ({ default: m.PaymentListPage })))
@@ -823,6 +825,28 @@ export function AppRoutes() {
               <RequirePermission moduleKey="purchases">
                 <SuspenseWrapper>
                   <GoodsReceiptListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          {/* Supplier Invoices */}
+          <Route
+            path="supplier-invoices"
+            element={
+              <RequirePermission moduleKey="purchases">
+                <SuspenseWrapper>
+                  <SupplierInvoiceListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="supplier-invoices/:id"
+            element={
+              <RequirePermission moduleKey="purchases">
+                <SuspenseWrapper>
+                  <SupplierInvoiceDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

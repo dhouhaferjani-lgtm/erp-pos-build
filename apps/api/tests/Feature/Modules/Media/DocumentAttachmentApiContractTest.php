@@ -18,6 +18,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Media\Domain\Enums\MediaAssetType;
 use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaRole;
+use App\Modules\Media\Domain\Media\MediaAttachment;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -29,6 +30,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
@@ -407,6 +409,110 @@ final class DocumentAttachmentApiContractTest extends TestCase
     }
 
     // -----------------------------------------------------------------------
+    // Stage E: SourceDocument role + role validation (Task B1-E)
+    // -----------------------------------------------------------------------
+
+    /**
+     * @test
+     *
+     * Stage E: uploading a PDF to a supplier_invoice Document with role=SOURCE_DOCUMENT
+     * must persist MediaRole::SourceDocument on the MediaAttachment, MediaAssetType::Document
+     * on the asset, storage_disk 's3', and owner = (MediaOwnerType::Document, supplier_invoice.id).
+     * The legacy document_attachments table must remain absent (dropped in Task 3.1).
+     */
+    public function test_store_source_document_role_on_supplier_invoice_persists_correctly(): void
+    {
+        Storage::fake('s3');
+        Queue::fake();
+
+        [$user, $document] = $this->seedUserWithDocument(DocumentType::SupplierInvoice);
+
+        $this->actingAs($user, 'sanctum');
+
+        $store = $this->postJson(
+            "/api/v1/documents/{$document->id}/attachments",
+            [
+                'file' => UploadedFile::fake()->create('source-invoice.pdf', 50, 'application/pdf'),
+                'role' => 'SOURCE_DOCUMENT',
+            ],
+        );
+
+        $store->assertCreated();
+
+        $attachmentId = $store->json('data.id');
+        $this->assertNotEmpty($attachmentId);
+
+        // Verify MediaAttachment record
+        $attachment = MediaAttachment::find($attachmentId);
+        $this->assertNotNull($attachment, 'MediaAttachment must be persisted after upload');
+        $this->assertSame(MediaRole::SourceDocument, $attachment->role);
+        $this->assertSame(MediaOwnerType::Document, $attachment->owner_type);
+        $this->assertSame($document->id, $attachment->owner_id);
+
+        // Verify MediaAsset record
+        $asset = $attachment->mediaAsset;
+        $this->assertNotNull($asset, 'MediaAsset must be persisted');
+        $this->assertSame(MediaAssetType::Document, $asset->type);
+        $this->assertSame('s3', $asset->storage_disk);
+
+        // Legacy document_attachments table was dropped in Task 3.1 — still absent.
+        $this->assertFalse(
+            Schema::hasTable('document_attachments'),
+            'document_attachments table must remain dropped — legacy path was not used',
+        );
+    }
+
+    /**
+     * @test
+     *
+     * Stage E: omitting the role field defaults to MediaRole::Datasheet (no regression
+     * to existing document upload behaviour).
+     */
+    public function test_store_without_role_defaults_to_datasheet_role(): void
+    {
+        Storage::fake('s3');
+        Queue::fake();
+
+        [$user, $document] = $this->seedUserWithDocument();
+        $this->actingAs($user, 'sanctum');
+
+        $store = $this->postJson(
+            "/api/v1/documents/{$document->id}/attachments",
+            ['file' => UploadedFile::fake()->create('contract.pdf', 50, 'application/pdf')],
+        );
+
+        $store->assertCreated();
+
+        $attachmentId = $store->json('data.id');
+        $attachment = MediaAttachment::find($attachmentId);
+        $this->assertNotNull($attachment);
+        $this->assertSame(MediaRole::Datasheet, $attachment->role);
+    }
+
+    /**
+     * @test
+     *
+     * Stage E: an image-gallery role (PRIMARY) must be rejected with 422 because
+     * UploadDocumentMediaRequest only permits document-appropriate roles.
+     */
+    public function test_store_with_image_role_primary_returns_422(): void
+    {
+        Storage::fake('s3');
+        Queue::fake();
+
+        [$user, $document] = $this->seedUserWithDocument();
+        $this->actingAs($user, 'sanctum');
+
+        $this->postJson(
+            "/api/v1/documents/{$document->id}/attachments",
+            [
+                'file' => UploadedFile::fake()->create('photo.pdf', 50, 'application/pdf'),
+                'role' => 'PRIMARY',
+            ],
+        )->assertStatus(422);
+    }
+
+    // -----------------------------------------------------------------------
     // Private seeding helpers
     // -----------------------------------------------------------------------
 
@@ -416,7 +522,7 @@ final class DocumentAttachmentApiContractTest extends TestCase
      *
      * @return array{0: User, 1: Document}
      */
-    private function seedUserWithDocument(): array
+    private function seedUserWithDocument(DocumentType $type = DocumentType::Invoice): array
     {
         $tenant = $this->makeTenant('tenant-dac-'.Str::random(6));
         $company = $this->makeCompany($tenant->id, 'Company DAC', 'TAX-DAC-'.Str::random(4));
@@ -442,7 +548,7 @@ final class DocumentAttachmentApiContractTest extends TestCase
             'status' => MembershipStatus::Active,
         ]);
 
-        $document = $this->makeDocument($tenant->id, $company->id, 'INV-DAC-'.Str::random(4));
+        $document = $this->makeDocument($tenant->id, $company->id, 'INV-DAC-'.Str::random(4), $type);
 
         return [$user, $document];
     }
@@ -577,14 +683,25 @@ final class DocumentAttachmentApiContractTest extends TestCase
         ]);
     }
 
-    private function makeDocument(string $tenantId, string $companyId, string $number): Document
-    {
+    private function makeDocument(
+        string $tenantId,
+        string $companyId,
+        string $number,
+        DocumentType $type = DocumentType::Invoice,
+    ): Document {
+        $partnerType = match ($type) {
+            DocumentType::SupplierInvoice,
+            DocumentType::PurchaseOrder,
+            DocumentType::SupplierCreditNote => PartnerType::Supplier,
+            default => PartnerType::Customer,
+        };
+
         $partner = Partner::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
             'name' => 'Partner '.$number,
-            'type' => PartnerType::Customer,
+            'type' => $partnerType,
             'email' => 'partner-'.strtolower(str_replace(['/', ' '], '-', $number)).'@example.com',
         ]);
 
@@ -593,8 +710,8 @@ final class DocumentAttachmentApiContractTest extends TestCase
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
             'partner_id' => $partner->id,
-            'type' => DocumentType::Invoice,
-            'fiscal_category' => FiscalCategory::TaxInvoice,
+            'type' => $type,
+            'fiscal_category' => FiscalCategory::fromDocumentType($type),
             'fiscal_status' => FiscalStatus::Draft,
             'status' => DocumentStatus::Draft,
             'document_number' => $number,
