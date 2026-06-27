@@ -559,8 +559,8 @@ class ProductController extends Controller
 
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
-        $qty = (string) ($validated['opening_qty'] ?? '0');
-        $cost = (string) ($validated['opening_unit_cost'] ?? '0.000');
+        $qty = (string) $validated['opening_qty'];
+        $cost = (string) $validated['opening_unit_cost'];
 
         // Pass the company currency explicitly — no bare no-arg getScale() per rule 19.
         $scale = $this->scaleResolver->getScale($company->currency);

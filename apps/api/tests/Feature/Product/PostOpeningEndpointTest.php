@@ -18,6 +18,7 @@ use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -286,5 +287,43 @@ class PostOpeningEndpointTest extends TestCase
             'opening_qty' => '7',
             'opening_unit_cost' => '3.000',
         ])->assertForbidden();
+    }
+
+    /**
+     * A non-physical (Service) product must be rejected with 422 —
+     * the abort_unless($model->is_physical, 422, ...) guard fires.
+     */
+    public function test_rejects_non_physical_product(): void
+    {
+        $this->actingAsUserWith(['products.create', 'inventory.adjust']);
+
+        $serviceProduct = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Service Product',
+            'sku' => 'SVC-SKU-001',
+            'type' => ProductType::Service,
+            'is_physical' => false,
+        ]);
+
+        $this->postJson("/api/v1/products/{$serviceProduct->id}/opening", [
+            'opening_qty' => '5',
+            'opening_unit_cost' => '10.000',
+        ])->assertStatus(422);
+    }
+
+    /**
+     * A zero opening_qty must be rejected with 422 — the withValidator
+     * opening_qty_positive check fires. Proves Fix 1.
+     */
+    public function test_rejects_zero_opening_qty(): void
+    {
+        $this->actingAsUserWith(['products.create', 'inventory.adjust']);
+        $product = $this->createPhysicalProductNoOpening();
+
+        $this->postJson("/api/v1/products/{$product->id}/opening", [
+            'opening_qty' => '0',
+            'opening_unit_cost' => '3.000',
+        ])->assertStatus(422);
     }
 }

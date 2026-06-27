@@ -15,23 +15,15 @@ class PostOpeningBalanceRequest extends FormRequest
     }
 
     /**
-     * Enforce the qty ↔ cost conditional: if a positive opening_qty is given,
-     * opening_unit_cost is required; cost without qty is also rejected.
-     * Mirrors the identical logic in CreateProductRequest (Task 6).
+     * Reject a zero or negative opening_qty — this re-entry endpoint only accepts
+     * a strictly positive quantity (unlike the optional inline create fields).
      */
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
             $qty = $this->input('opening_qty');
-            $cost = $this->input('opening_unit_cost');
-            $hasPositiveQty = $qty !== null && $qty !== '' && is_numeric($qty) && bccomp((string) $qty, '0', 4) > 0;
-
-            if ($hasPositiveQty && ($cost === null || $cost === '')) {
-                $validator->errors()->add('opening_unit_cost', __('validation.opening_cost_required_with_qty'));
-            }
-
-            if (! $hasPositiveQty && $cost !== null && $cost !== '') {
-                $validator->errors()->add('opening_unit_cost', __('validation.opening_cost_without_qty'));
+            if ($qty !== null && $qty !== '' && is_numeric($qty) && bccomp((string) $qty, '0', 4) <= 0) {
+                $validator->errors()->add('opening_qty', __('validation.opening_qty_positive'));
             }
         });
     }
@@ -42,8 +34,8 @@ class PostOpeningBalanceRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'opening_qty' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
-            'opening_unit_cost' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'opening_qty' => ['required', 'numeric', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'opening_unit_cost' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
         ];
     }
 
@@ -53,8 +45,8 @@ class PostOpeningBalanceRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'opening_qty.regex' => 'Opening quantity must have at most 4 decimal places.',
-            'opening_unit_cost.regex' => 'Opening unit cost must have at most 3 decimal places.',
+            'opening_qty.regex' => __('validation.opening_qty_format'),
+            'opening_unit_cost.regex' => __('validation.opening_cost_format'),
         ];
     }
 }

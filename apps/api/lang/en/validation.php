@@ -175,6 +175,9 @@ return [
 
     'opening_cost_required_with_qty' => 'Opening unit cost is required when opening quantity is positive.',
     'opening_cost_without_qty' => 'Opening unit cost cannot be provided without a positive opening quantity.',
+    'opening_qty_positive' => 'Opening quantity must be greater than zero.',
+    'opening_qty_format' => 'Opening quantity must have at most 4 decimal places.',
+    'opening_cost_format' => 'Opening unit cost must have at most 3 decimal places.',
 
     'custom' => [
         'attribute-name' => [
