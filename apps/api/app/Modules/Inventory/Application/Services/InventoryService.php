@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Application\Services;
 
+use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockMovement;
 use App\Shared\Contracts\InventoryServiceInterface;
 use Illuminate\Support\Facades\DB;
 
@@ -60,5 +62,42 @@ final class InventoryService implements InventoryServiceInterface
             ),
             attempts: 3
         );
+    }
+
+    /**
+     * Return true iff a non-reversed Opening movement exists for the product
+     * in the given company. Mirrors the enter-once guard in
+     * OpeningBalancePostingService (lines 80–87) but at product scope
+     * (no location_id filter) so the Product module can ask once without
+     * importing Inventory models directly.
+     */
+    public function hasActiveOpening(string $companyId, string $productId): bool
+    {
+        return StockMovement::query()
+            ->where('company_id', $companyId)
+            ->where('product_id', $productId)
+            ->where('movement_type', MovementType::Opening)
+            ->whereNull('reverses_movement_id')
+            ->whereDoesntHave('reversalOf')
+            ->exists();
+    }
+
+    /**
+     * Return true iff any movement that is neither an Opening nor a reversal
+     * of an Opening exists for the product in the given company.
+     *
+     * A reversal row has reverses_movement_id set — it points back to the
+     * original opening it undoes. Excluding it keeps the "downstream activity"
+     * definition clean: only real inventory transactions (receipts, issues,
+     * adjustments, transfers) count.
+     */
+    public function hasDownstreamMovements(string $companyId, string $productId): bool
+    {
+        return StockMovement::query()
+            ->where('company_id', $companyId)
+            ->where('product_id', $productId)
+            ->where('movement_type', '!=', MovementType::Opening)
+            ->whereNull('reverses_movement_id')
+            ->exists();
     }
 }
