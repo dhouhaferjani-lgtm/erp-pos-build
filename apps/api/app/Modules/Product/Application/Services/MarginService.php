@@ -168,7 +168,7 @@ class MarginService
      */
     public function computeAutoPrice(Product $product): ?string
     {
-        $product->loadMissing('company');
+        $product->loadMissing(['company', 'category']);
 
         $cost = $this->toNumericString($product->cost_price ?? '0');
 

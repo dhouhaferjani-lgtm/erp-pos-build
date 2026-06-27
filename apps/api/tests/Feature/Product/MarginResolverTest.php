@@ -83,6 +83,22 @@ class MarginResolverTest extends TestCase
         $this->assertSame($parent->id, $m->target_source_category_id);
     }
 
+    public function test_falls_back_to_hardcoded_when_company_default_is_corrupt(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->for($tenant)->create(['default_target_margin' => '30', 'default_minimum_margin' => '10']);
+        // Corrupt the NOT NULL defaults to empty strings directly in the DB (bypassing the model)
+        \Illuminate\Support\Facades\DB::table('companies')->where('id', $company->id)
+            ->update(['default_target_margin' => '', 'default_minimum_margin' => '']);
+        $product = Product::factory()->for($company)->create();      // no overrides, no category
+        $fresh = Product::query()->with('company')->findOrFail($product->id);
+        $m = $this->resolver()->resolve($fresh);
+        $this->assertSame('30.00', $m->target_margin);
+        $this->assertSame(\App\Modules\Product\Domain\Enums\MarginSource::DefaultFallback, $m->target_source);
+        $this->assertSame('15.00', $m->minimum_margin);
+        $this->assertSame(\App\Modules\Product\Domain\Enums\MarginSource::DefaultFallback, $m->minimum_source);
+    }
+
     public function test_resolve_many_is_bounded_query(): void
     {
         $tenant = Tenant::factory()->create();

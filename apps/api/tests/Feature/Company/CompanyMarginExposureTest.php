@@ -76,6 +76,14 @@ class CompanyMarginExposureTest extends TestCase
         ]);
     }
 
+    public function test_update_rejects_null_default_target_margin(): void
+    {
+        $res = $this->putJson("/api/v1/companies/{$this->company->id}", [
+            'default_target_margin' => null,
+        ]);
+        $this->assertApiValidationErrors($res, ['default_target_margin']);
+    }
+
     public function test_update_rejects_inverted_default_band(): void
     {
         $res = $this->putJson("/api/v1/companies/{$this->company->id}", [

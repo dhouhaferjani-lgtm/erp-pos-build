@@ -201,7 +201,7 @@ final class MarginResolver
             }
         }
 
-        if ($companyDefault !== null) {
+        if ($companyDefault !== null && is_numeric($companyDefault)) {
             return [(string) $companyDefault, MarginSource::Company, null];
         }
 
