@@ -16,7 +16,9 @@ use App\Modules\Inventory\Application\DTOs\OpeningBalanceLine;
 use App\Modules\Inventory\Application\DTOs\OpeningBalancePosting;
 use App\Modules\Inventory\Application\DTOs\StockLevelData;
 use App\Modules\Inventory\Application\Services\OpeningBalancePostingService;
+use App\Modules\Inventory\Application\Services\ResetOpeningBalanceService;
 use App\Modules\Inventory\Domain\Exceptions\OpeningAlreadyExistsException;
+use App\Modules\Inventory\Domain\Exceptions\OpeningLockedException;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Application\DTOs\OpeningStateData;
 use App\Modules\Product\Application\DTOs\ProductData;
@@ -57,6 +59,7 @@ class ProductController extends Controller
         private readonly LocationContext $locationContext,
         private readonly InventoryServiceInterface $inventory,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly ResetOpeningBalanceService $resetOpening,
     ) {}
 
     /**
@@ -595,6 +598,44 @@ class ProductController extends Controller
         $freshModel = $model->fresh();
 
         return response()->json(['data' => ProductData::fromModel($freshModel, $media, $opening)], 201);
+    }
+
+    /**
+     * Reset the opening balance for an existing product by posting a reversing
+     * movement + contra GL entry (audit-preserving — the original rows are kept).
+     *
+     * The product is re-enterable via postOpening() after a successful reset.
+     *
+     * Guards (delegated to ResetOpeningBalanceService):
+     *   - An active (non-reversed) opening movement must exist.
+     *   - No downstream (non-opening) movements must exist.
+     *
+     * Returns 200 with the fresh ProductData (opening.can_enter_opening = true).
+     * Returns 409 when the guard fails (no active opening or downstream exists).
+     */
+    public function resetOpening(Request $request, string $product): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $model = Product::where('company_id', $companyId)->findOrFail($product);
+
+        try {
+            $this->resetOpening->reset($companyId, $company->tenant_id, $model->id, (string) $request->user()?->id);
+        } catch (OpeningLockedException) {
+            abort(409, __('inventory.opening_locked_downstream'));
+        }
+
+        $media = $this->catalogMedia->forProduct($model->id, $company->tenant_id);
+
+        $opening = OpeningStateData::fromFlags(
+            $this->inventory->hasActiveOpening($companyId, $model->id),
+            $this->inventory->hasDownstreamMovements($companyId, $model->id),
+        );
+
+        /** @var Product $freshModel */
+        $freshModel = $model->fresh();
+
+        return response()->json(['data' => ProductData::fromModel($freshModel, $media, $opening)], 200);
     }
 
     /**
