@@ -47,7 +47,10 @@
     "export": "Exporter",
     "actions": "Actions",
     "newPurchaseOrder": "Nouvelle commande fournisseur",
-    "processing": "Traitement…"
+    "processing": "Traitement…",
+    "saveAndNew": "Enregistrer & Nouveau",
+    "saveAndClose": "Enregistrer & Fermer",
+    "openSaveMenu": "Plus d'options d'enregistrement"
   },
   "common": {
     "create": "Créer",
@@ -387,7 +390,11 @@
   "descending": "Décroissant",
   "confirmation": {
     "delete": "Êtes-vous sûr de vouloir supprimer cet élément ?",
-    "unsavedChanges": "Vous avez des modifications non enregistrées. Êtes-vous sûr de vouloir quitter ?"
+    "unsavedChanges": "Vous avez des modifications non enregistrées. Êtes-vous sûr de vouloir quitter ?",
+    "unsavedChangesTitle": "Modifications non enregistrées",
+    "unsavedChangesBody": "Vous avez des modifications non enregistrées. Quitter sans enregistrer ?",
+    "leaveWithoutSaving": "Quitter",
+    "stayOnPage": "Rester"
   },
   "loading": "Chargement…",
   "noData": "Aucune donnée disponible",
