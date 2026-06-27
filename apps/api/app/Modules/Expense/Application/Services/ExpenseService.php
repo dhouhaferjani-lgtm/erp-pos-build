@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Identity\Domain\User;
+use App\Shared\Contracts\Treasury\RepositoryOutflowInterface;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -18,7 +19,8 @@ use Illuminate\Support\Facades\DB;
 final class ExpenseService
 {
     public function __construct(
-        private readonly GeneralLedgerService $glService
+        private readonly GeneralLedgerService $glService,
+        private readonly RepositoryOutflowInterface $outflow,
     ) {}
 
     /**
@@ -114,6 +116,20 @@ final class ExpenseService
 
             // Create GL entry
             $this->glService->createFromExpense($expense, $user);
+
+            // Decrement treasury cash balance when the expense is paid and linked
+            // to a payment repository. Amount and currency are passed as strings
+            // so the port handles all bcmath/scale operations (Rule 19).
+            $metadata = $expense->expenseMetadata;
+            if ($metadata?->is_paid === true && $metadata->payment_repository_id !== null) {
+                $this->outflow->applyOutflow(
+                    $metadata->payment_repository_id,
+                    $expense->tenant_id,
+                    $expense->company_id,
+                    (string) $expense->total,
+                    (string) $expense->currency,
+                );
+            }
 
             $freshExpense = $expense->fresh(['expenseMetadata']);
             if ($freshExpense === null) {
