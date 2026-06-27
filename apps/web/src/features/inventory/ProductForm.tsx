@@ -24,6 +24,7 @@ import { useCompanyConfig } from '../../contexts/CompanyConfigContext'
 import { useCurrency } from '../../hooks/useCurrency'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
 import { TaxConfigurationField } from '../../components/molecules/TaxConfigurationField'
+import { usePermissions } from '../../hooks/usePermissions'
 import { inventoryProductsInvalidationPredicate } from './_invalidation'
 import { buildProductPayload } from './productPayload'
 import { BarcodeHero } from '../products/editor/components/BarcodeHero'
@@ -69,6 +70,8 @@ interface Product {
   reorder_quantity: string | null
   created_at: string
   updated_at: string | null
+  // Generated type: App.Modules.Product.Application.DTOs.OpeningStateData
+  opening: App.Modules.Product.Application.DTOs.OpeningStateData | null
 }
 
 interface ProductResponse {
@@ -114,6 +117,10 @@ export interface ProductFormData {
   shelf_location: string
   reorder_point: string
   reorder_quantity: string
+  /** Opening balance quantity (decimal string). Submitted only when > 0. */
+  opening_qty: string
+  /** Opening balance unit cost (decimal string). Required when opening_qty > 0. */
+  opening_unit_cost: string
 }
 
 export function ProductForm() {
@@ -125,6 +132,7 @@ export function ProductForm() {
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const { config, hasModule } = useCompanyConfig()
+  const { hasPermission } = usePermissions()
   const isParapharmacy = config?.vertical === 'parapharmacy'
   const showBatchTracking = hasModule('BatchExpiry') || hasModule('Inventory')
   const { isOtospex } = useProductConfig()
@@ -133,6 +141,8 @@ export function ProductForm() {
   const [showVariants, setShowVariants] = useState(false)
   const [oemInput, setOemInput] = useState('')
   const [lookupState, setLookupState] = useState<LookupState>('idle')
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [isResettingOpening, setIsResettingOpening] = useState(false)
   const [enrichmentOptIn, setEnrichmentOptIn] = useState(true)
   const suggestedProductRef = useRef<SuggestedProduct | null>(null)
   const [prefilledFields, setPrefilledFields] = useState<Set<string>>(new Set())
@@ -187,6 +197,8 @@ export function ProductForm() {
       shelf_location: '',
       reorder_point: '',
       reorder_quantity: '',
+      opening_qty: '',
+      opening_unit_cost: '',
     },
   })
 
@@ -218,6 +230,24 @@ export function ProductForm() {
   const oemNumbers = watch('oem_numbers')
   const categoryId = watch('category_id')
   const requiresBatchTracking = watch('requires_batch_tracking')
+  const watchIsPhysical = watch('is_physical')
+  const openingQtyValue = watch('opening_qty')
+
+  // Clear opening cost when qty is empty/zero so the cost is never submitted
+  // without a corresponding quantity.
+  useEffect(() => {
+    const trimmed = openingQtyValue.trim()
+    if (trimmed === '' || trimmed === '0') {
+      setValue('opening_unit_cost', '', { shouldDirty: false })
+    }
+  }, [openingQtyValue, setValue])
+
+  // Opening section gate: module + permission + physical product.
+  // The per-product state derivations (canEnterOpening etc.) live AFTER
+  // the useQuery that loads `product` — see below.
+  const canAdjustInventory = hasPermission('inventory.adjust')
+  const showOpeningSection =
+    hasModule('Inventory') && canAdjustInventory && watchIsPhysical
 
   const { fields: crossRefFields, append: appendCrossRef, remove: removeCrossRef } = useFieldArray({
     control,
@@ -233,6 +263,24 @@ export function ProductForm() {
     },
     enabled: isEditing && !!tenantId && !!companyId,
   })
+
+  // Opening state derivations — must follow useQuery so `product` is in scope.
+  // Derive opening state from the loaded product (null = no opening recorded yet).
+  const openingState = product?.opening ?? null
+  // Can enter if: creating, OR product has no opening yet, OR backend says can enter.
+  const canEnterOpening = !isEditing || openingState === null || openingState.can_enter_opening
+  // Locked when editing and the opening cannot be re-entered.
+  const isOpeningLocked = isEditing && openingState !== null && !openingState.can_enter_opening
+  // Can reset if: locked, has an active opening, AND no downstream stock movements.
+  const canResetOpening =
+    isOpeningLocked &&
+    openingState.has_active_opening &&
+    !openingState.has_downstream_movements
+  // Cost becomes required (and enabled) once qty has a non-zero value.
+  const openingCostRequired =
+    canEnterOpening &&
+    openingQtyValue.trim() !== '' &&
+    openingQtyValue.trim() !== '0'
 
   // Existing variants for this product (edit mode only). If any exist, default
   // the variants section open so the user lands on the matrix editor.
@@ -290,13 +338,28 @@ export function ProductForm() {
         shelf_location: product.shelf_location ?? '',
         reorder_point: product.reorder_point ?? '',
         reorder_quantity: product.reorder_quantity ?? '',
+        // Opening fields are not stored on the product; reset to empty so
+        // the section reflects a clean entry state on load.
+        opening_qty: '',
+        opening_unit_cost: '',
       })
     }
   }, [product, reset])
 
   const createMutation = useMutation({
-    mutationFn: (data: ProductFormData) =>
-      apiPost<Product>('/products', buildProductPayload(data, { isParapharmacy })),
+    mutationFn: (data: ProductFormData) => {
+      const basePayload = buildProductPayload(data, { isParapharmacy })
+      const hasOpeningQty =
+        data.opening_qty.trim() !== '' && data.opening_qty.trim() !== '0'
+      if (hasOpeningQty) {
+        return apiPost<Product>('/products', {
+          ...basePayload,
+          opening_qty: data.opening_qty,
+          opening_unit_cost: data.opening_unit_cost,
+        })
+      }
+      return apiPost<Product>('/products', basePayload)
+    },
     onSuccess: async (newProduct: Product) => {
       await queryClient.invalidateQueries({
         predicate: inventoryProductsInvalidationPredicate(tenantId, companyId),
@@ -327,19 +390,61 @@ export function ProductForm() {
     mutationFn: (data: ProductFormData) =>
       apiPatch<Product>(`/products/${id}`, buildProductPayload(data, { isParapharmacy })),
     onSuccess: async () => {
+      // Invalidate caches; navigation is handled in onSubmit so opening
+      // submission can be sequenced before the redirect.
       await Promise.all([
         queryClient.invalidateQueries({
           predicate: inventoryProductsInvalidationPredicate(tenantId, companyId),
         }),
         queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product', id]) }),
       ])
-      void navigate(`/inventory/products/${id}`)
     },
   })
 
+  const handleResetOpening = async () => {
+    setIsResettingOpening(true)
+    try {
+      await apiPost(`/products/${id}/opening/reset`, {})
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product', id]) })
+      setShowResetConfirm(false)
+      toast.success(t('inventory:opening.resetSuccess'))
+    } catch {
+      toast.error(t('inventory:opening.resetError'))
+    } finally {
+      setIsResettingOpening(false)
+    }
+  }
+
   const onSubmit = async (data: ProductFormData) => {
     if (isEditing) {
-      updateMutation.mutate(data)
+      try {
+        await updateMutation.mutateAsync(data)
+
+        // After product update succeeds, submit opening balance if eligible and
+        // a non-zero quantity was provided. Uses a separate endpoint so the
+        // opening can be recorded independently of the product metadata PATCH.
+        const openingState = product?.opening ?? null
+        const canEnterOpeningNow = openingState === null || openingState.can_enter_opening
+        const hasOpeningQty =
+          data.opening_qty.trim() !== '' && data.opening_qty.trim() !== '0'
+
+        if (canEnterOpeningNow && hasOpeningQty) {
+          try {
+            await apiPost(`/products/${id}/opening`, {
+              opening_qty: data.opening_qty,
+              opening_unit_cost: data.opening_unit_cost,
+            })
+          } catch {
+            toast.error(t('inventory:opening.submitError'))
+            // Stay on page so user can retry
+            return
+          }
+        }
+      } catch {
+        // updateMutation error already displayed by react-query
+        return
+      }
+      void navigate(`/inventory/products/${id}`)
       return
     }
 
@@ -930,6 +1035,128 @@ export function ProductForm() {
                 </div>
               )}
             </EditorSectionCard>
+
+            {/* Opening Stock — shown when Inventory module is enabled, the user
+                has inventory.adjust permission, and the product is physical.
+                Section is absent for services; operators without adjust rights
+                do not see it. On create it allows entering initial qty + cost
+                (WAC seed). On edit it reflects the backend opening state:
+                editable if can_enter_opening, locked otherwise. */}
+            {showOpeningSection && (
+              <div data-testid="opening-section">
+                <EditorSectionCard
+                  id="section-opening"
+                  title={t('inventory:opening.title')}
+                >
+                  {/* Qty input — disabled in locked mode */}
+                  <FormField
+                    label={t('inventory:opening.qty_label')}
+                    htmlFor="opening_qty"
+                  >
+                    <Controller
+                      name="opening_qty"
+                      control={control}
+                      render={({ field }) => (
+                        <QuantityInput
+                          id="opening_qty"
+                          data-testid="opening-qty-input"
+                          decimalPlaces={4}
+                          value={field.value ?? ''}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          disabled={!canEnterOpening}
+                        />
+                      )}
+                    />
+                  </FormField>
+
+                  {/* Cost input — required when qty > 0, disabled when locked or qty empty */}
+                  <FormField
+                    label={`${t('inventory:opening.cost_label')}${openingCostRequired ? ' *' : ''}`}
+                    htmlFor="opening_unit_cost"
+                    helperText={t('inventory:opening.cost_help')}
+                  >
+                    <Controller
+                      name="opening_unit_cost"
+                      control={control}
+                      render={({ field }) => (
+                        <MoneyInput
+                          id="opening_unit_cost"
+                          data-testid="opening-cost-input"
+                          currency={currency}
+                          value={field.value ?? ''}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          disabled={!canEnterOpening || !openingCostRequired}
+                        />
+                      )}
+                    />
+                  </FormField>
+
+                  {/* Lock / reset controls — only shown when can_enter_opening is false */}
+                  {isOpeningLocked && (
+                    <div className="sm:col-span-2">
+                      {canResetOpening ? (
+                        <>
+                          <p className={cn('mb-2 text-sm', textColors.tertiary)}>
+                            {t('inventory:opening.locked_helper')}
+                          </p>
+                          {!showResetConfirm ? (
+                            <button
+                              type="button"
+                              data-testid="opening-reset-btn"
+                              onClick={() => { setShowResetConfirm(true) }}
+                              className={cn('text-sm font-medium', textColors.brand)}
+                            >
+                              {t('inventory:opening.reset_label')}
+                            </button>
+                          ) : (
+                            <div className={cn('rounded-lg p-4', colors.neutral[100])}>
+                              <p className={cn('mb-3 text-sm font-medium', textColors.secondary)}>
+                                {t('inventory:opening.reset_confirm_body')}
+                              </p>
+                              <div className="flex gap-2">
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => { setShowResetConfirm(false) }}
+                                >
+                                  {t('inventory:opening.reset_confirm_cancel')}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="danger"
+                                  size="sm"
+                                  disabled={isResettingOpening}
+                                  onClick={() => { void handleResetOpening() }}
+                                >
+                                  {isResettingOpening
+                                    ? t('status.saving')
+                                    : t('inventory:opening.reset_confirm_proceed')}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <p className={cn('mb-1 text-sm', textColors.tertiary)}>
+                            {t('inventory:opening.locked_with_downstream')}
+                          </p>
+                          <Link
+                            to="/inventory/stock"
+                            className={cn('text-sm', textColors.brand)}
+                          >
+                            {t('inventory:opening.view_stock_link')}
+                          </Link>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </EditorSectionCard>
+              </div>
+            )}
 
             {/* Automotive Information - Otospex only (no section nav entry; it
                 is a vertical-exclusive block layered between inventory and the

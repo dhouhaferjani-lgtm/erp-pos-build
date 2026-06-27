@@ -22,6 +22,8 @@ export const PERMISSIONS = {
   'inventory.create': ['admin', 'inventory', 'manager'],
   'inventory.edit': ['admin', 'inventory', 'manager'],
 
+  'inventory.adjust': ['admin', 'inventory', 'manager'],
+
   // Inventory - Stock Transfers (document-based, lifecycle-tracked)
   'inventory.transfers.view': ['admin', 'inventory', 'manager'],
   'inventory.transfers.create': ['admin', 'inventory', 'manager'],

@@ -42,6 +42,8 @@ function makeFormData(overrides: Partial<ProductFormData> = {}): ProductFormData
     shelf_location: '',
     reorder_point: '',
     reorder_quantity: '',
+    opening_qty: '',
+    opening_unit_cost: '',
     ...overrides,
   }
 }
