@@ -100,4 +100,27 @@ class ProductMarginIntentEndToEndTest extends TestCase
         $this->assertSame(PricingMode::Manual, $fresh->pricing_mode);
         $this->assertSame('99.000', (string) $fresh->sale_price);
     }
+
+    /**
+     * A PATCH that changes ONLY pricing fields (no base fields) must still
+     * dispatch ProductUpdated — the event must not be gated solely on base-field
+     * changes ($productModel->getChanges() after the base update is empty in this
+     * case, but the pricing seam mutated the model).
+     */
+    public function test_pricing_only_update_emits_product_updated_event(): void
+    {
+        \Illuminate\Support\Facades\Event::fake([\App\Modules\Product\Domain\Events\ProductUpdated::class]);
+
+        $product = Product::factory()->for($this->company)->create([
+            'tenant_id'  => $this->tenant->id,
+            'cost_price' => '10.000000',
+        ]);
+
+        $this->patchJson("/api/v1/products/{$product->id}", [
+            'pricing_mode'           => 'auto',
+            'target_margin_override' => '50.00',
+        ])->assertOk();
+
+        \Illuminate\Support\Facades\Event::assertDispatched(\App\Modules\Product\Domain\Events\ProductUpdated::class);
+    }
 }

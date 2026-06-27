@@ -428,7 +428,9 @@ class ProductController extends Controller
             $product = Product::create([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
-                ...$validated,
+                // Exclude pricing intent fields from the blind create mass-assign;
+                // they are applied authoritatively by the pricing intent seam below.
+                ...Arr::except($validated, ['pricing_mode', 'target_margin_override', 'minimum_margin_override', 'sale_price']),
             ]);
 
             // Re-evaluate pricing fields through the intent seam so that
@@ -765,7 +767,17 @@ class ProductController extends Controller
         $changes = $productModel->getChanges();
         unset($changes['updated_at']);
 
-        if ($changes !== []) {
+        // Route pricing fields through the intent seam (separate save so that
+        // override suppression and Auto reprice fire after the base update).
+        $this->pricingIntent->applyIntent($productModel, $validated);
+        $productModel->save();
+        $pricingChanged = $productModel->wasChanged();
+        if ($productModel->pricing_mode === PricingMode::Auto) {
+            $pricingChanged = $this->marginService->updateSalePrice($productModel) || $pricingChanged;
+        }
+
+        // Emit once — whether the base fields changed OR the pricing flow changed.
+        if ($changes !== [] || $pricingChanged) {
             event(new ProductUpdated(
                 productId: $productModel->id,
                 tenantId: $productModel->tenant_id,
@@ -773,14 +785,6 @@ class ProductController extends Controller
                 changes: $changes,
                 updatedAt: $productModel->updated_at?->toIso8601String(),
             ));
-        }
-
-        // Route pricing fields through the intent seam (separate save so that
-        // override suppression and Auto reprice fire after the base update).
-        $this->pricingIntent->applyIntent($productModel, $validated);
-        $productModel->save();
-        if ($productModel->pricing_mode === PricingMode::Auto) {
-            $this->marginService->updateSalePrice($productModel);
         }
 
         // Update or create parapharmacy metadata if provided AND tenant is Parapharmacy vertical
