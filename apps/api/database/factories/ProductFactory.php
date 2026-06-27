@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
-use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -58,7 +57,7 @@ class ProductFactory extends Factory
         return [
             'id' => Str::uuid()->toString(),
             'tenant_id' => Str::uuid()->toString(), // Falls back to a stub UUID; override via ->for($tenant)
-            'company_id' => Company::factory(), // Auto-creates a Company when not overridden via ->for($company)
+            'company_id' => Str::uuid()->toString(), // Stub UUID — overridden by ->for($company); does not cascade a Company insert
             'sku' => 'PRD-'.strtoupper(Str::random(8)),
             'name' => $item,
             'description' => $this->faker->optional(0.7)->sentence(10),

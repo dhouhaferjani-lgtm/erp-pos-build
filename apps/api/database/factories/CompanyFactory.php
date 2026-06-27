@@ -31,7 +31,7 @@ class CompanyFactory extends Factory
 
         return [
             'id' => Str::uuid()->toString(),
-            'tenant_id' => Str::uuid()->toString(), // Falls back to a stub UUID; override via ->for($tenant)
+            'tenant_id' => null, // Will be set when creating
             'name' => $companyName,
             'legal_name' => "{$companyName} {$companyType}",
             'code' => strtoupper(Str::random(4)),

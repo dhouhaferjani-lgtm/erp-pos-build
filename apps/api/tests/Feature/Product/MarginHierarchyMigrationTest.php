@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Product;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Enums\PricingMode;
 use App\Modules\Product\Domain\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class MarginHierarchyMigrationTest extends TestCase
@@ -23,7 +25,8 @@ class MarginHierarchyMigrationTest extends TestCase
     public function test_product_pricing_mode_defaults_to_manual(): void
     {
         $this->assertTrue(Schema::hasColumn('products', 'pricing_mode'));
-        $product = Product::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => Str::uuid()->toString()]);
+        $product = Product::factory()->for($company)->create();
         $this->assertSame(PricingMode::Manual, $product->fresh()->pricing_mode);
     }
 }
