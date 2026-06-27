@@ -7,6 +7,9 @@ namespace Tests\Feature\Inventory;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\BatchExpiry\Application\Services\BatchStockService;
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
@@ -81,6 +84,64 @@ final class OpeningBalancePostingServiceTest extends TestCase
 
         $this->expectException(OpeningAlreadyExistsException::class);
         $service->post($posting());
+    }
+
+    public function test_opening_a_batch_tracked_product_mints_a_default_lot(): void
+    {
+        [$tenant, $company, $product, $location, $user] = $this->seedOpeningContext();
+        // Activate batch management with a default expiry period.
+        $product->update(['requires_batch_tracking' => true, 'default_shelf_life_days' => 90]);
+
+        $service = app(OpeningBalancePostingService::class);
+        $service->post(new OpeningBalancePosting(
+            tenantId: $tenant->id,
+            companyId: $company->id,
+            userId: $user->id,
+            entryDate: now(),
+            isHistorical: true,
+            sourceType: 'opening_balance',
+            sourceId: $product->id,
+            reference: 'Opening balance: '.$product->sku,
+            notes: null,
+            lines: [OpeningBalanceLine::make($product->id, null, $location->id, '40', '5.000', 3)],
+        ));
+
+        // Opening a batch-tracked product auto-mints a DEFAULT lot whose batch
+        // stock reconciles to the opened quantity, with expiry = entry date +
+        // the product's default expiry period.
+        $batch = Batch::where('product_id', $product->id)
+            ->where('batch_number', BatchStockService::DEFAULT_BATCH_NUMBER)
+            ->firstOrFail();
+        $this->assertSame(now()->addDays(90)->toDateString(), $batch->expiry_date->toDateString());
+
+        $batchStock = BatchStock::where('batch_id', $batch->id)
+            ->where('location_id', $location->id)
+            ->firstOrFail();
+        $this->assertSame(0, bccomp('40.0000', (string) $batchStock->quantity, 4));
+
+        // The aggregate stock level and the lot agree — no stock outside a lot.
+        $this->assertSame('40.0000', StockLevel::where('product_id', $product->id)->where('location_id', $location->id)->value('quantity'));
+    }
+
+    public function test_opening_a_non_batch_tracked_product_mints_no_lot(): void
+    {
+        [$tenant, $company, $product, $location, $user] = $this->seedOpeningContext();
+
+        $service = app(OpeningBalancePostingService::class);
+        $service->post(new OpeningBalancePosting(
+            tenantId: $tenant->id,
+            companyId: $company->id,
+            userId: $user->id,
+            entryDate: now(),
+            isHistorical: true,
+            sourceType: 'opening_balance',
+            sourceId: $product->id,
+            reference: 'x',
+            notes: null,
+            lines: [OpeningBalanceLine::make($product->id, null, $location->id, '10', '5.000', 3)],
+        ));
+
+        $this->assertSame(0, Batch::where('product_id', $product->id)->count(), 'non-batch products must not get lots');
     }
 
     // ---------------------------------------------------------------

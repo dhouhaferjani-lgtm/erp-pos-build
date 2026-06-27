@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
+use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Inventory\Application\DTOs\OpeningBalanceLine;
 use App\Modules\Inventory\Application\DTOs\OpeningBalancePosting;
@@ -24,6 +25,7 @@ use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -49,6 +51,7 @@ final class OpeningBalancePostingService
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly ProductCostLock $costLock,
+        private readonly BatchStockService $batchStockService,
     ) {}
 
     public function post(OpeningBalancePosting $posting): OpeningBalancePostingResult
@@ -62,13 +65,18 @@ final class OpeningBalancePostingService
             array_map(static fn (OpeningBalanceLine $line): string => $line->productId, $posting->lines),
         ));
 
+        // Resolve products up front for the default-batch invariant: a
+        // batch-tracked product's opening stock must land inside a lot.
+        /** @var Collection<int, Product> $products */
+        $products = Product::query()->whereIn('id', $productIds)->get()->keyBy('id');
+
         /** @var OpeningBalancePostingResult $result */
-        $result = DB::transaction(function () use ($posting, $company, $monetaryScale, $quantityScale, $productIds): OpeningBalancePostingResult {
+        $result = DB::transaction(function () use ($posting, $company, $monetaryScale, $quantityScale, $productIds, $products): OpeningBalancePostingResult {
             return $this->costLock->acquire(
                 $posting->tenantId,
                 $posting->companyId,
                 $productIds,
-                function () use ($posting, $company, $monetaryScale, $quantityScale): OpeningBalancePostingResult {
+                function () use ($posting, $company, $monetaryScale, $quantityScale, $products): OpeningBalancePostingResult {
                     $entryNumber = $this->generateOpeningEntryNumber($posting->companyId);
 
                     $totalInventoryValue = '0';
@@ -137,6 +145,25 @@ final class OpeningBalancePostingService
                                 'quantity' => $quantityAfter,
                                 'reserved' => CurrencyScale::bcformatStrict('0', $quantityScale),
                             ]);
+                        }
+
+                        // Default-batch invariant: a batch-tracked product must
+                        // never hold stock that isn't inside a lot. Back the
+                        // opened quantity with a DEFAULT lot (expiry = entry date
+                        // + the product's default expiry period) so PO receipt,
+                        // transfers and POS lot selection all have a lot to pick.
+                        $product = $products->get($line->productId);
+                        if ($product !== null && $product->requires_batch_tracking) {
+                            $this->batchStockService->ensureDefaultBatch(
+                                companyId: $posting->companyId,
+                                tenantId: $posting->tenantId,
+                                productId: $line->productId,
+                                locationId: $line->locationId,
+                                targetQuantity: $line->quantity,
+                                shelfLifeDays: $product->default_shelf_life_days,
+                                asOfDate: $posting->entryDate->toDateString(),
+                                variantId: $line->variantId,
+                            );
                         }
 
                         // Stamp the product's cost_price when unit_cost is positive.
