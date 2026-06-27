@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import i18n from '@/lib/i18n';
+import {
+  DEFAULT_THEME_SETTINGS,
+  type AccentName,
+  type CornerStyle,
+  type Density,
+  type ThemeMode,
+} from '@/lib/theme';
 
 interface SettingsState {
   displayMode: 'grid' | 'visual';
@@ -15,6 +22,14 @@ interface SettingsState {
   inactivityTimeout: number;
   /** Lock the screen after completing a sale. */
   lockAfterSale: boolean;
+  /** Appearance — light/dark theme. */
+  theme: ThemeMode;
+  /** Appearance — UX accent colour (not brand-locked). */
+  accent: AccentName;
+  /** Appearance — corner-radius style. */
+  corner: CornerStyle;
+  /** Appearance — product-grid density (column step). */
+  density: Density;
   setDisplayMode: (mode: 'grid' | 'visual') => void;
   setLanguage: (lang: string) => void;
   setTouchMode: (enabled: boolean) => void;
@@ -22,6 +37,10 @@ interface SettingsState {
   setCartPosition: (position: 'start' | 'end') => void;
   setInactivityTimeout: (seconds: number) => void;
   setLockAfterSale: (enabled: boolean) => void;
+  setTheme: (theme: ThemeMode) => void;
+  setAccent: (accent: AccentName) => void;
+  setCorner: (corner: CornerStyle) => void;
+  setDensity: (density: Density) => void;
 }
 
 export const SUPPORTED_LANGUAGES = [
@@ -39,6 +58,10 @@ export const useSettingsStore = create<SettingsState>()(
       cartPosition: 'start',
       inactivityTimeout: 300,
       lockAfterSale: false,
+      theme: DEFAULT_THEME_SETTINGS.theme,
+      accent: DEFAULT_THEME_SETTINGS.accent,
+      corner: DEFAULT_THEME_SETTINGS.corner,
+      density: DEFAULT_THEME_SETTINGS.density,
 
       setDisplayMode: (mode: 'grid' | 'visual') => {
         set({ displayMode: mode });
@@ -67,6 +90,22 @@ export const useSettingsStore = create<SettingsState>()(
 
       setLockAfterSale: (enabled: boolean) => {
         set({ lockAfterSale: enabled });
+      },
+
+      setTheme: (theme: ThemeMode) => {
+        set({ theme });
+      },
+
+      setAccent: (accent: AccentName) => {
+        set({ accent });
+      },
+
+      setCorner: (corner: CornerStyle) => {
+        set({ corner });
+      },
+
+      setDensity: (density: Density) => {
+        set({ density });
       },
     }),
     {

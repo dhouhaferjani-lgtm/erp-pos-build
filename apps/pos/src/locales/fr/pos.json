@@ -590,7 +590,23 @@
       "displayOpened": "Affichage client ouvert avec succès.",
       "primaryBadge": "Principal",
       "monitorFallback": "Écran {{number}}"
-    }
+    },
+    "appearance": "Apparence",
+    "appearanceDesc": "Thème, couleur d’accent et disposition",
+    "theme": "Thème",
+    "themeLight": "Clair",
+    "themeDark": "Sombre",
+    "accent": "Couleur d’accent",
+    "accentOrange": "Orange",
+    "accentGreen": "Vert",
+    "accentBlue": "Bleu",
+    "accentTeal": "Sarcelle",
+    "corner": "Coins",
+    "cornerRounded": "Arrondis",
+    "cornerSharp": "Nets",
+    "density": "Densité de la grille",
+    "densityComfortable": "Confortable",
+    "densityDense": "Dense"
   },
   "numpad": {
     "backspace": "Effacer",

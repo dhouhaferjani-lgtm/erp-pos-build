@@ -590,7 +590,23 @@
       "displayOpened": "Customer display opened successfully.",
       "primaryBadge": "Primary",
       "monitorFallback": "Monitor {{number}}"
-    }
+    },
+    "appearance": "Appearance",
+    "appearanceDesc": "Theme, accent colour and layout",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "accent": "Accent colour",
+    "accentOrange": "Orange",
+    "accentGreen": "Green",
+    "accentBlue": "Blue",
+    "accentTeal": "Teal",
+    "corner": "Corners",
+    "cornerRounded": "Rounded",
+    "cornerSharp": "Sharp",
+    "density": "Grid density",
+    "densityComfortable": "Comfortable",
+    "densityDense": "Dense"
   },
   "numpad": {
     "backspace": "Delete",

@@ -1,9 +1,11 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield, RefreshCw, LogOut } from 'lucide-react';
+import { ArrowLeft, Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield, RefreshCw, LogOut, Sun, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { tokens } from '@/lib/designTokens';
+import { SegmentedControl } from '@/components/ui';
+import { ACCENTS, type AccentName } from '@/lib/theme';
 import { useSettingsStore, SUPPORTED_LANGUAGES } from '@/stores/settingsStore';
 import { usePrinterStore } from '@/stores/printerStore';
 import { useTerminalStore } from '@/stores/terminalStore';
@@ -36,6 +38,18 @@ const TIMEOUT_PRESETS = [
   { value: 0, labelKey: 'settings.timeoutNever' },
 ] as const;
 
+/**
+ * Accent preview swatches. These literal values mirror the [data-accent] tokens
+ * in index.css and are used only to paint the colour-picker dots (a swatch must
+ * show its own colour). The live UI accent comes from the tokens, not these.
+ */
+const ACCENT_SWATCH: Record<string, string> = {
+  orange: '#EA661A',
+  green: '#1F8A5B',
+  blue: '#2B6CC4',
+  teal: '#0E8E80',
+};
+
 
 export function SettingsPage() {
   const { t } = useTranslation('pos');
@@ -53,6 +67,15 @@ export function SettingsPage() {
   const lockAfterSale = useSettingsStore((s) => s.lockAfterSale);
   const setInactivityTimeout = useSettingsStore((s) => s.setInactivityTimeout);
   const setLockAfterSale = useSettingsStore((s) => s.setLockAfterSale);
+  // Appearance — theme foundation knobs (light/dark, accent, corners, density).
+  const theme = useSettingsStore((s) => s.theme);
+  const accent = useSettingsStore((s) => s.accent);
+  const corner = useSettingsStore((s) => s.corner);
+  const density = useSettingsStore((s) => s.density);
+  const setTheme = useSettingsStore((s) => s.setTheme);
+  const setAccent = useSettingsStore((s) => s.setAccent);
+  const setCorner = useSettingsStore((s) => s.setCorner);
+  const setDensity = useSettingsStore((s) => s.setDensity);
 
   const terminal = useTerminalStore((s) => s.terminal);
   const shift = useTerminalStore((s) => s.shift);
@@ -221,6 +244,94 @@ export function SettingsPage() {
                   ))}
                 </select>
               </div>
+            </div>
+          </section>
+
+          {/* Appearance — theme foundation knobs */}
+          <section className="rounded-xl bg-surface-raised p-4 shadow-sm">
+            <h2 className="mb-1 text-base font-bold text-ink">
+              {t('settings.appearance')}
+            </h2>
+            <p className="mb-4 text-sm text-ink-muted">{t('settings.appearanceDesc')}</p>
+
+            {/* Theme */}
+            <div className="mb-4">
+              <label className="mb-2 block text-sm font-medium text-ink-muted">
+                {t('settings.theme')}
+              </label>
+              <SegmentedControl
+                className="flex w-full"
+                ariaLabel={t('settings.theme')}
+                value={theme}
+                onChange={setTheme}
+                options={[
+                  { value: 'light', label: t('settings.themeLight'), icon: <Sun className="h-4 w-4" /> },
+                  { value: 'dark', label: t('settings.themeDark'), icon: <Moon className="h-4 w-4" /> },
+                ]}
+              />
+            </div>
+
+            {/* Accent */}
+            <div className="mb-4">
+              <label className="mb-2 block text-sm font-medium text-ink-muted">
+                {t('settings.accent')}
+              </label>
+              <div className="flex gap-3">
+                {ACCENTS.map((name) => {
+                  const active = accent === name;
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => setAccent(name as AccentName)}
+                      aria-pressed={active}
+                      aria-label={t(`settings.accent${name.charAt(0).toUpperCase()}${name.slice(1)}`)}
+                      title={t(`settings.accent${name.charAt(0).toUpperCase()}${name.slice(1)}`)}
+                      className={cn(
+                        'h-11 w-11 rounded-full border-2 transition-transform',
+                        active
+                          ? 'border-ink scale-110 shadow-sm'
+                          : 'border-border-subtle hover:scale-105',
+                      )}
+                      style={{ backgroundColor: ACCENT_SWATCH[name] }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Corners */}
+            <div className="mb-4">
+              <label className="mb-2 block text-sm font-medium text-ink-muted">
+                {t('settings.corner')}
+              </label>
+              <SegmentedControl
+                className="flex w-full"
+                ariaLabel={t('settings.corner')}
+                value={corner}
+                onChange={setCorner}
+                options={[
+                  { value: 'rounded', label: t('settings.cornerRounded') },
+                  { value: 'sharp', label: t('settings.cornerSharp') },
+                ]}
+              />
+            </div>
+
+            {/* Grid density */}
+            <div>
+              <label className="mb-2 block text-sm font-medium text-ink-muted">
+                {t('settings.density')}
+              </label>
+              <SegmentedControl
+                className="flex w-full"
+                ariaLabel={t('settings.density')}
+                value={density}
+                onChange={setDensity}
+                options={[
+                  { value: 'comfortable', label: t('settings.densityComfortable') },
+                  { value: 'dense', label: t('settings.densityDense') },
+                ]}
+              />
             </div>
           </section>
 

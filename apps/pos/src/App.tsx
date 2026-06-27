@@ -16,6 +16,7 @@ import { applyFullscreen, useFullscreenEscapeKey, useFullscreenWatchdog } from '
 import { openCustomerDisplay, sendIdleScreen } from '@/lib/customerDisplay';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppShell } from '@/components/AppShell';
+import { ThemeProvider } from '@/components/ThemeProvider';
 import { BootstrapErrorScreen } from '@/components/BootstrapErrorScreen';
 import { runC2BareCartLineDump } from '@/lib/migration/c2BareCartLineDump';
 import { startConnectivityAuditSubscriber } from '@/lib/audit/connectivityAuditSubscriber';
@@ -413,16 +414,18 @@ export function MainApp() {
 
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <AppRouter />
-        </BrowserRouter>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter>
+            <AppRouter />
+          </BrowserRouter>
         {/* Task 11 — sonner mount point. `toast.*` calls (Header, TodaySales,
             stock gate) previously had NO <Toaster /> anywhere in the tree and
             silently rendered nothing. Top-center matches the scan-feedback
             banner position the cashier already watches. */}
-        <Toaster position="top-center" richColors />
-      </QueryClientProvider>
+          <Toaster position="top-center" richColors />
+        </QueryClientProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

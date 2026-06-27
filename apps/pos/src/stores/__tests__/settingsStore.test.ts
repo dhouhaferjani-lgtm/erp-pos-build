@@ -62,4 +62,27 @@ describe('settingsStore', () => {
     useSettingsStore.getState().setCartPosition('end');
     expect(useSettingsStore.getState().cartPosition).toBe('end');
   });
+
+  describe('appearance (theme knobs)', () => {
+    it('defaults to light / orange / rounded / comfortable', () => {
+      const s = useSettingsStore.getState();
+      expect(s.theme).toBe('light');
+      expect(s.accent).toBe('orange');
+      expect(s.corner).toBe('rounded');
+      expect(s.density).toBe('comfortable');
+    });
+
+    it('sets theme, accent, corner and density', () => {
+      const s = useSettingsStore.getState();
+      s.setTheme('dark');
+      s.setAccent('teal');
+      s.setCorner('sharp');
+      s.setDensity('dense');
+      const next = useSettingsStore.getState();
+      expect(next.theme).toBe('dark');
+      expect(next.accent).toBe('teal');
+      expect(next.corner).toBe('sharp');
+      expect(next.density).toBe('dense');
+    });
+  });
 });

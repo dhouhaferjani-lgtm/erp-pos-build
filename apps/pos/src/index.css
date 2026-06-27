@@ -1,7 +1,19 @@
+/* Hallmark · component: design-tokens · genre: modern-minimal · theme: IziPOS Caisse
+ * Token foundation for the Caisse Parapharmacie redesign.
+ * Five runtime knobs on <html>: data-theme (light|dark), data-accent
+ * (orange|green|blue|teal), data-corner (rounded|sharp), plus density + cart-side
+ * driven from settingsStore. Light is the default (bare :root); dark/accent/corner
+ * override the raw vars; @theme inline maps semantic --color-* to those raw vars so
+ * the overrides cascade at runtime (the documented Tailwind v4 pattern). Never use
+ * `@theme` (non-inline) for theme-switched tokens — it freezes the value at :root.
+ * contrast target: AAA 7:1 body (bright-retail glare), 3:1 non-text.
+ */
 @import 'tailwindcss';
 
+/* Dark variant for any author-written `dark:` utilities. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
   font-synthesis: none;
@@ -9,69 +21,287 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
+  /* ---- Typography families (self-hosted @font-face added separately) ------- */
+  --font-display-stack: 'Montserrat', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  --font-sans-stack: 'Public Sans', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  --font-mono-stack: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-family: var(--font-sans-stack);
+
+  /* ---- Ergonomic type scale (POS 15", ~50-70cm; spec §6) ------------------- *
+   * Body floor 16px; meta 14px; never below 14px for primary content.         */
+  --fs-meta: 0.875rem;   /* 14px — SKU, unit, timestamps */
+  --fs-body: 1rem;       /* 16px — min body / dense lists */
+  --fs-body-lg: 1.125rem;/* 18px — primary body / cart line text */
+  --fs-label: 1rem;      /* 16px — button labels (use medium/bold weight) */
+  --fs-price: 1.375rem;  /* 22px — line prices / qty / subtotals (mono) */
+  --fs-total: 2rem;      /* 32px — grand total / amount due (mono bold) */
+
+  /* ---- Ergonomic sizing tokens -------------------------------------------- */
+  --touch-floor: 48px;     /* any tappable control */
+  --touch-primary: 64px;   /* Encaisser / Valider / numpad keys */
+  --touch-gap: 12px;       /* gap between adjacent targets */
+
+  /* ====================  RAW THEME VARS — LIGHT (default)  ================== *
+   * Mock-named surface/ink/border tokens (README §6). Overridden under
+   * [data-theme='dark']. @theme inline maps semantic --color-* onto these.    */
+  --app-bg: #ebeef1;
+  --surface: #ffffff;
+  --surface-2: #f7f9fb;
+  --bg-subtle: #f2f4f6;
+  --hover: #f0f2f4;
+  --border: #dce1e7;
+  --border-soft: #edf0f3;
+  --text-strong: #14283f;
+  --text: #1c1e21;
+  --text-muted: #5a5f66;
+  --text-faint: #9aa0a8;
+  --pill-on: #14283f;
+  --pill-on-fg: #ffffff;
+  --ink-inverse: #ffffff;
+
+  /* Navy payment panels (constant across themes) */
+  --pay-navy: #14283f;
+  --pay-navy-fg: #f6f8fb;
+
+  /* ---- Semantic status (money/sync/errors) — light ------------------------ */
+  --success: #1f8a5b;
+  --success-strong: #176b42;
+  --success-surface: #e6f4ee;
+  --warning: #c77e00;
+  --warning-strong: #8a5a00;
+  --warning-surface: #fcf3dc;
+  --danger: #d64545;
+  --danger-strong: #9b2c2c;
+  --danger-surface: #fbe9e9;
+
+  /* ---- Stock badges — DELIBERATELY DISTINCT from success/warning/danger ---- *
+   * The colour grammar reserves success/warning/danger for money/sync/errors.  *
+   * Stock state gets its own tokens (visually green/amber/red). See            *
+   * docs/design-language.md "Stock badge exception".                           */
+  --stock-ok: #1f8a5b;
+  --stock-ok-surface: #e6f4ee;
+  --stock-low: #c77e00;
+  --stock-low-surface: #fcf3dc;
+  --stock-out: #d64545;
+  --stock-out-surface: #fbe9e9;
+
+  /* ---- Category thumb tints (bg / fg) — parapharmacy (README §6) ----------- */
+  --cat-visage-bg: #eaf1f8;       --cat-visage-fg: #3a5c88;
+  --cat-solaire-bg: #fef1e6;      --cat-solaire-fg: #c85f18;
+  --cat-corps-bg: #e6f4ee;        --cat-corps-fg: #1f8a5b;
+  --cat-cheveux-bg: #f1ecf7;      --cat-cheveux-fg: #8a4196;
+  --cat-bebe-bg: #fceef3;         --cat-bebe-fg: #c2557a;
+  --cat-complements-bg: #faf2dc;  --cat-complements-fg: #a9791a;
+  --cat-hygiene-bg: #e7f0fd;      --cat-hygiene-fg: #2b6cc4;
+
+  /* ====================  CORNER RADIUS — ROUNDED (default)  ================= */
+  --r-panel: 16px;
+  --r-card: 12px;
+  --r-tile: 9px;
+  --r-ctl: 11px;
+  --r-sm: 8px;
+  --r-pill: 99px;
+
+  /* ====================  LEGACY PALETTE RAMPS (chrome — kept)  ============== */
   /* Primary - Deep Ocean Blue */
-  --theme-primary-50: #E8F4FC;
-  --theme-primary-100: #C5E2F7;
-  --theme-primary-200: #9DCEF1;
-  --theme-primary-300: #6BB5E8;
-  --theme-primary-400: #3E9EDF;
-  --theme-primary-500: #1E7EC3;
-  --theme-primary-600: #1A6FB5;
-  --theme-primary-700: #155C9A;
-  --theme-primary-800: #104A7E;
-  --theme-primary-900: #0C355A;
-  --theme-primary-950: #071F38;
+  --theme-primary-50: #e8f4fc;
+  --theme-primary-100: #c5e2f7;
+  --theme-primary-200: #9dcef1;
+  --theme-primary-300: #6bb5e8;
+  --theme-primary-400: #3e9edf;
+  --theme-primary-500: #1e7ec3;
+  --theme-primary-600: #1a6fb5;
+  --theme-primary-700: #155c9a;
+  --theme-primary-800: #104a7e;
+  --theme-primary-900: #0c355a;
+  --theme-primary-950: #071f38;
 
   /* Secondary - Copper */
-  --theme-secondary-50: #FDF3EC;
-  --theme-secondary-100: #F9E0CE;
-  --theme-secondary-200: #F3C6A4;
-  --theme-secondary-300: #EDAB79;
-  --theme-secondary-400: #E49356;
-  --theme-secondary-500: #C2703E;
-  --theme-secondary-600: #A85E33;
-  --theme-secondary-700: #8C4D2A;
-  --theme-secondary-800: #713D21;
-  --theme-secondary-900: #562E19;
-  --theme-secondary-950: #3A1F11;
+  --theme-secondary-50: #fdf3ec;
+  --theme-secondary-100: #f9e0ce;
+  --theme-secondary-200: #f3c6a4;
+  --theme-secondary-300: #edab79;
+  --theme-secondary-400: #e49356;
+  --theme-secondary-500: #c2703e;
+  --theme-secondary-600: #a85e33;
+  --theme-secondary-700: #8c4d2a;
+  --theme-secondary-800: #713d21;
+  --theme-secondary-900: #562e19;
+  --theme-secondary-950: #3a1f11;
 
   /* Neutral - Navy-tinted */
-  --theme-neutral-50: #F7F8FA;
-  --theme-neutral-100: #EBEDF2;
-  --theme-neutral-200: #D5D9E2;
-  --theme-neutral-300: #B8BFC9;
-  --theme-neutral-400: #929DAD;
-  --theme-neutral-500: #6C7A8E;
+  --theme-neutral-50: #f7f8fa;
+  --theme-neutral-100: #ebedf2;
+  --theme-neutral-200: #d5d9e2;
+  --theme-neutral-300: #b8bfc9;
+  --theme-neutral-400: #929dad;
+  --theme-neutral-500: #6c7a8e;
   --theme-neutral-600: #556275;
-  --theme-neutral-700: #434E5E;
-  --theme-neutral-800: #343D4A;
-  --theme-neutral-900: #242B35;
-  --theme-neutral-950: #161A22;
-
-  /* Semantic */
-  --theme-success: #1B7F4E;
-  --theme-success-hover: #15673E;
-  --theme-warning: #D97706;
-  --theme-error: #C53030;
-
-  /* Semantic status surfaces (light tint / strong text / subtle border) */
-  --theme-success-surface: #E7F4EC;
-  --theme-success-strong: #176B42;
-  --theme-success-subtle: #B8DEC8;
-  --theme-warning-surface: #FBF0DD;
-  --theme-warning-strong: #8A4B06;
-  --theme-warning-subtle: #F0D49A;
-  --theme-danger-surface: #FBEAEA;
-  --theme-danger-strong: #9B2C2C;
-  --theme-danger-subtle: #EFC2C2;
-
-  /* POS-specific */
-  --pos-header-bg: var(--theme-primary-900);
-  --pos-header-text: #FFFFFF;
-  --pos-surface: #FFFFFF;
-  --pos-grid-bg: var(--theme-neutral-50);
+  --theme-neutral-700: #434e5e;
+  --theme-neutral-800: #343d4a;
+  --theme-neutral-900: #242b35;
+  --theme-neutral-950: #161a22;
 }
 
+/* =========================  RAW THEME VARS — DARK  ========================= */
+:root[data-theme='dark'] {
+  --app-bg: #080b11;
+  --surface: #161d29;
+  --surface-2: #1f2735;
+  --bg-subtle: #0e1019;
+  --hover: #28313f;
+  --border: #2e3845;
+  --border-soft: #232c39;
+  --text-strong: #f6f8fb;
+  --text: #d7dee8;
+  --text-muted: #8c97a8;
+  --text-faint: #5e6a7b;
+  --pill-on: #eaf0f6;
+  --pill-on-fg: #080b11;
+  --ink-inverse: #080b11;
+
+  /* Status surfaces re-tinted for dark backgrounds (hues constant) */
+  --success-surface: color-mix(in srgb, var(--success) 22%, var(--surface));
+  --warning-surface: color-mix(in srgb, var(--warning) 22%, var(--surface));
+  --danger-surface: color-mix(in srgb, var(--danger) 22%, var(--surface));
+  --stock-ok-surface: color-mix(in srgb, var(--stock-ok) 22%, var(--surface));
+  --stock-low-surface: color-mix(in srgb, var(--stock-low) 22%, var(--surface));
+  --stock-out-surface: color-mix(in srgb, var(--stock-out) 22%, var(--surface));
+}
+
+/* ============================  ACCENT SWATCHES  =========================== *
+ * Default orange lives in :root via [data-accent='orange'] fallback below.   *
+ * --accent-tint resolves light/dark via the theme override after these.      */
+:root,
+:root[data-accent='orange'] {
+  --accent: #ea661a;
+  --accent-strong: #d45915;
+  --accent-ring: rgba(234, 102, 26, 0.16);
+  --accent-text: #ffffff;
+  --accent-tint-light: #fef3ec;
+  --accent-tint-dark: color-mix(in srgb, var(--accent) 20%, transparent);
+  --accent-tint: var(--accent-tint-light);
+}
+:root[data-accent='green'] {
+  --accent: #1f8a5b;
+  --accent-strong: #19744c;
+  --accent-ring: rgba(31, 138, 91, 0.16);
+  --accent-text: #ffffff;
+  --accent-tint-light: #e6f4ee;
+  --accent-tint-dark: color-mix(in srgb, var(--accent) 20%, transparent);
+  --accent-tint: var(--accent-tint-light);
+}
+:root[data-accent='blue'] {
+  --accent: #2b6cc4;
+  --accent-strong: #22569e;
+  --accent-ring: rgba(43, 108, 196, 0.16);
+  --accent-text: #ffffff;
+  --accent-tint-light: #e7f0fd;
+  --accent-tint-dark: color-mix(in srgb, var(--accent) 20%, transparent);
+  --accent-tint: var(--accent-tint-light);
+}
+:root[data-accent='teal'] {
+  --accent: #0e8e80;
+  --accent-strong: #0b7468;
+  --accent-ring: rgba(14, 142, 128, 0.16);
+  --accent-text: #ffffff;
+  --accent-tint-light: #e0f2ef;
+  --accent-tint-dark: color-mix(in srgb, var(--accent) 20%, transparent);
+  --accent-tint: var(--accent-tint-light);
+}
+/* Theme resolves which accent tint applies (after accent blocks → wins on <html>). */
+:root[data-theme='dark'] {
+  --accent-tint: var(--accent-tint-dark);
+}
+
+/* ==========================  CORNER — SHARP  ============================== */
+:root[data-corner='sharp'] {
+  --r-panel: 4px;
+  --r-card: 3px;
+  --r-tile: 2px;
+  --r-ctl: 4px;
+  --r-sm: 3px;
+  --r-pill: 4px;
+}
+
+/* ===========================  TAILWIND THEME  ============================= *
+ * @theme inline → utilities inline `var(--raw)` so [data-theme]/[data-accent]
+ * overrides above cascade at runtime. Semantic --color-* NAMES are unchanged
+ * so already-tokenized components adopt the new palette automatically.       */
+@theme inline {
+  /* Surfaces — canvas < raised < overlay; sunken = inset/disabled */
+  --color-surface-canvas: var(--app-bg);
+  --color-surface-raised: var(--surface);
+  --color-surface-overlay: var(--surface);
+  --color-surface-sunken: var(--surface-2);
+
+  /* Ink — text hierarchy */
+  --color-ink: var(--text);
+  --color-ink-strong: var(--text-strong);
+  --color-ink-muted: var(--text-muted);
+  --color-ink-faint: var(--text-faint);
+  --color-ink-inverse: var(--ink-inverse);
+
+  /* Borders */
+  --color-border-subtle: var(--border-soft);
+  --color-border-strong: var(--border);
+
+  /* Action — primary interactive + selected → re-pointed to ACCENT */
+  --color-action: var(--accent);
+  --color-action-hover: var(--accent-strong);
+  --color-action-subtle: var(--accent-tint);
+  --color-action-strong: var(--accent-strong);
+
+  /* Accent (explicit, for new surfaces) */
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-tint: var(--accent-tint);
+  --color-accent-ring: var(--accent-ring);
+  --color-accent-text: var(--accent-text);
+
+  /* Brand → accent (copper wordmark retired) */
+  --color-brand: var(--accent);
+
+  /* Payment navy panels */
+  --color-pay-navy: var(--pay-navy);
+  --color-pay-navy-fg: var(--pay-navy-fg);
+
+  /* Status — confirmed money/sync; warning; danger */
+  --color-success: var(--success);
+  --color-success-hover: var(--success-strong);
+  --color-success-surface: var(--success-surface);
+  --color-success-strong: var(--success-strong);
+  --color-warning: var(--warning);
+  --color-warning-surface: var(--warning-surface);
+  --color-warning-strong: var(--warning-strong);
+  --color-danger: var(--danger);
+  --color-danger-surface: var(--danger-surface);
+  --color-danger-strong: var(--danger-strong);
+
+  /* Stock (distinct from status) */
+  --color-stock-ok: var(--stock-ok);
+  --color-stock-ok-surface: var(--stock-ok-surface);
+  --color-stock-low: var(--stock-low);
+  --color-stock-low-surface: var(--stock-low-surface);
+  --color-stock-out: var(--stock-out);
+  --color-stock-out-surface: var(--stock-out-surface);
+
+  /* Fonts */
+  --font-sans: var(--font-sans-stack);
+  --font-display: var(--font-display-stack);
+  --font-mono: var(--font-mono-stack);
+
+  /* Corner radius → rounded-{panel,card,tile,ctl,sm,pill} utilities */
+  --radius-panel: var(--r-panel);
+  --radius-card: var(--r-card);
+  --radius-tile: var(--r-tile);
+  --radius-ctl: var(--r-ctl);
+  --radius-sm: var(--r-sm);
+  --radius-pill: var(--r-pill);
+}
+
+/* Keep legacy palette ramps as utilities (chrome: header, etc.). Static, so
+ * non-inline var() indirection is fine — these are not theme-switched. */
 @theme {
   --color-primary-50: var(--theme-primary-50);
   --color-primary-100: var(--theme-primary-100);
@@ -96,56 +326,6 @@
   --color-secondary-800: var(--theme-secondary-800);
   --color-secondary-900: var(--theme-secondary-900);
   --color-secondary-950: var(--theme-secondary-950);
-
-  /* ----------------------------------------------------------------------
-   * Semantic role tokens — the canonical design-language vocabulary.
-   * Components must use these (bg-surface-*, text-ink*, bg-action, etc.)
-   * rather than raw Tailwind palette classes. See
-   * docs/superpowers/plans/2026-06-13-pos-ui-remediation.md and
-   * apps/pos/docs/design-language.md.
-   * -------------------------------------------------------------------- */
-
-  /* Surfaces — the separation scale: canvas < raised < overlay */
-  --color-surface-canvas: var(--theme-neutral-100);
-  --color-surface-raised: #FFFFFF;
-  --color-surface-overlay: #FFFFFF;
-  --color-surface-sunken: var(--theme-neutral-50);
-
-  /* Ink — text hierarchy */
-  --color-ink: var(--theme-neutral-900);
-  --color-ink-muted: var(--theme-neutral-600);
-  --color-ink-faint: var(--theme-neutral-400);
-  --color-ink-inverse: #FFFFFF;
-
-  /* Borders */
-  --color-border-subtle: var(--theme-neutral-200);
-  --color-border-strong: var(--theme-neutral-300);
-
-  /* Action — primary interactive + selected (ocean blue) */
-  --color-action: var(--theme-primary-600);
-  --color-action-hover: var(--theme-primary-700);
-  --color-action-subtle: var(--theme-primary-50);
-  --color-action-strong: var(--theme-primary-700);
-
-  /* Brand accent (copper) — wordmark / brand chrome only */
-  --color-brand: var(--theme-secondary-600);
-
-  /* Status — success = confirmed money/sync; warning; danger = errors/destructive */
-  --color-success: var(--theme-success);
-  --color-success-hover: var(--theme-success-hover);
-  --color-success-surface: var(--theme-success-surface);
-  --color-success-strong: var(--theme-success-strong);
-  --color-success-subtle: var(--theme-success-subtle);
-
-  --color-warning: var(--theme-warning);
-  --color-warning-surface: var(--theme-warning-surface);
-  --color-warning-strong: var(--theme-warning-strong);
-  --color-warning-subtle: var(--theme-warning-subtle);
-
-  --color-danger: var(--theme-error);
-  --color-danger-surface: var(--theme-danger-surface);
-  --color-danger-strong: var(--theme-danger-strong);
-  --color-danger-subtle: var(--theme-danger-subtle);
 }
 
 html,
@@ -155,20 +335,22 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
+  background: var(--app-bg);
+  color: var(--text);
 }
 
+/* Focus ring — accent/theme-aware (was hardcoded ocean-blue). Appears
+ * instantly; never transitioned. ≥3:1 against surfaces. */
 *:focus-visible {
-  outline: 2px solid var(--theme-primary-500);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-/* Suppress the macOS overlay scrollbar (the stray gray "pill") on horizontal
- * strips like the category-tabs row. Apply `scrollbar-none` to any
- * `overflow-x-auto` element whose scrollbar should not render. */
+/* Suppress the macOS overlay scrollbar on horizontal strips (category tabs). */
 .scrollbar-none {
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* legacy Edge */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 .scrollbar-none::-webkit-scrollbar {
-  display: none; /* WebKit / Tauri webview */
+  display: none;
 }
