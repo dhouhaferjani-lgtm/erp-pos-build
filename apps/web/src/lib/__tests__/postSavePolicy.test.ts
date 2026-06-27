@@ -16,7 +16,9 @@ describe('postSavePolicy', () => {
     expect(isListReturnException('document')).toBe(false)
   })
 
-  it('recognizes a declared exception', () => {
-    expect(isListReturnException('coupon')).toBe(true)
+  it('recognizes every declared exception', () => {
+    for (const key of LIST_RETURN_EXCEPTIONS) {
+      expect(isListReturnException(key)).toBe(true)
+    }
   })
 })

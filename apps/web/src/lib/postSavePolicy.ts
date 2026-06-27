@@ -9,6 +9,6 @@ export const LIST_RETURN_EXCEPTIONS = [
 
 export type ListReturnException = typeof LIST_RETURN_EXCEPTIONS[number]
 
-export function isListReturnException(key: string): boolean {
-  return (LIST_RETURN_EXCEPTIONS as readonly string[]).includes(key)
+export function isListReturnException(key: string): key is ListReturnException {
+  return LIST_RETURN_EXCEPTIONS.some((exception) => exception === key)
 }
