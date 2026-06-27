@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Enums\Vertical;
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
 use App\Modules\Billing\Domain\Plan;
 use App\Modules\Billing\Domain\TenantSubscription;
@@ -340,6 +342,12 @@ class ParapharmacySeeder extends Seeder
         // 7. Seed stock levels
         $this->command->info('📊 Seeding stock levels...');
         $this->seedStockLevels($this->company, $this->location, $products);
+
+        // 7b. Mint FEFO lots for batch-tracked products. Without this a product
+        //     flagged requires_batch_tracking has stock but zero selectable
+        //     lots, which silently blocks PO goods-receipt and stock transfers.
+        $this->command->info('🏷️  Seeding product batches...');
+        $this->seedBatchesForBatchTrackedProducts($this->company);
 
         // 8. Create test users
         $this->command->info('👤 Creating test users...');
@@ -968,6 +976,141 @@ class ParapharmacySeeder extends Seeder
         }
 
         $this->command->info("✓ Stock levels created ({$stockCount} products in stock)");
+    }
+
+    /**
+     * Mint FEFO lots for every batch-tracked product that holds stock.
+     *
+     * A product flagged `requires_batch_tracking` but with no `product_batches`
+     * row has stock yet zero selectable lots, which silently blocks PO
+     * goods-receipt and stock-transfer flows (there is no lot to pick). For
+     * each batch-tracked product (per variant) we create two staggered-expiry
+     * lots and split each location's StockLevel across them so the per-location
+     * lot quantity reconciles EXACTLY to the StockLevel — quantities are
+     * carried as scale-4 numeric strings via bcmath, never floats.
+     *
+     * Additive + idempotent: a product/variant that already carries lots is
+     * skipped, so a re-run never double-mints.
+     */
+    protected function seedBatchesForBatchTrackedProducts(Company $company): void
+    {
+        $batchTrackedIds = Product::query()
+            ->where('company_id', $company->id)
+            ->where('requires_batch_tracking', true)
+            ->pluck('id');
+
+        if ($batchTrackedIds->isEmpty()) {
+            return;
+        }
+
+        $stockLevels = StockLevel::query()
+            ->whereIn('product_id', $batchTrackedIds)
+            ->where('quantity', '>', 0)
+            ->get();
+
+        // Group stock rows by product (+ variant) so each lot is shared across
+        // the product's locations; quantities are still split per-location.
+        $grouped = $stockLevels->groupBy(
+            static fn (StockLevel $s): string => $s->product_id.'|'.($s->variant_id ?? '')
+        );
+
+        $lotCount = 0;
+
+        foreach ($grouped as $rows) {
+            /** @var StockLevel $first */
+            $first = $rows->first();
+
+            // Idempotency: never double-mint for a product/variant that already
+            // has lots (e.g. a seeder re-run on the same tenant).
+            $alreadySeeded = Batch::query()
+                ->where('company_id', $company->id)
+                ->where('product_id', $first->product_id)
+                ->when(
+                    $first->variant_id === null,
+                    static fn ($q) => $q->whereNull('variant_id'),
+                    static fn ($q) => $q->where('variant_id', $first->variant_id),
+                )
+                ->exists();
+
+            if ($alreadySeeded) {
+                continue;
+            }
+
+            $product = Product::find($first->product_id);
+            $sku = $product->sku ?? (string) $first->product_id;
+            $shelfLifeDays = $product->default_shelf_life_days ?? 730;
+
+            // Two FEFO lots: the near lot expires sooner (older stock, picked
+            // first), the far lot later. Staggering gives lot selection a
+            // deterministic FEFO order.
+            $nearExpiryDays = max(30, intdiv($shelfLifeDays, 3));
+
+            $nearLot = $this->createLot($company, $first, $sku, 1, $nearExpiryDays);
+            $farLot = $this->createLot($company, $first, $sku, 2, $shelfLifeDays);
+            $lotCount += 2;
+
+            foreach ($rows as $stock) {
+                $qty = bcadd((string) $stock->quantity, '0', 4);
+
+                // Integer-floor the near lot; remainder to the far lot.
+                // qtyFar = qty - qtyNear guarantees exact reconciliation.
+                $qtyNear = bcadd(bcdiv($qty, '2', 0), '0', 4);
+                $qtyFar = bcsub($qty, $qtyNear, 4);
+
+                $this->createBatchStock($company, $nearLot, (string) $stock->location_id, $qtyNear);
+                $this->createBatchStock($company, $farLot, (string) $stock->location_id, $qtyFar);
+            }
+        }
+
+        $this->command->info("✓ Batch lots created ({$lotCount} lots for batch-tracked products)");
+    }
+
+    /**
+     * Create a single FEFO lot for a product/variant with a future expiry.
+     */
+    private function createLot(
+        Company $company,
+        StockLevel $reference,
+        string $sku,
+        int $index,
+        int $expiryInDays,
+    ): Batch {
+        return Batch::create([
+            'tenant_id' => $company->tenant_id,
+            'company_id' => $company->id,
+            'product_id' => $reference->product_id,
+            'variant_id' => $reference->variant_id,
+            'batch_number' => "{$sku}-L{$index}",
+            'manufacturing_date' => now()->subDays(30)->toDateString(),
+            'expiry_date' => now()->addDays($expiryInDays)->toDateString(),
+            'is_active' => true,
+            'is_expired' => false,
+            'is_recalled' => false,
+        ]);
+    }
+
+    /**
+     * Create a per-location batch-stock row (skips zero/negative quantities).
+     *
+     * @param  numeric-string  $quantity
+     */
+    private function createBatchStock(
+        Company $company,
+        Batch $lot,
+        string $locationId,
+        string $quantity,
+    ): void {
+        if (bccomp($quantity, '0', 4) <= 0) {
+            return;
+        }
+
+        BatchStock::create([
+            'tenant_id' => $company->tenant_id,
+            'batch_id' => $lot->id,
+            'location_id' => $locationId,
+            'quantity' => $quantity,
+            'reserved_quantity' => '0',
+        ]);
     }
 
     /**
