@@ -51,6 +51,21 @@ interface AutoSaveState {
   lastSavedAt: Date | null
 
   /**
+   * Whether a debounced save is scheduled but has not yet fired
+   */
+  autosavePending: boolean
+
+  /**
+   * Whether the last save attempt failed
+   */
+  autosaveFailed: boolean
+
+  /**
+   * The error from the last failed save attempt (null if no failure)
+   */
+  lastError: Error | null
+
+  /**
    * Save the draft immediately (bypasses debounce)
    */
   saveNow: () => Promise<void>
@@ -112,6 +127,9 @@ export function useDraftAutoSave(
   const [draftId, setDraftId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
+  const [autosavePending, setAutosavePending] = useState(false)
+  const [autosaveFailed, setAutosaveFailed] = useState(false)
+  const [lastError, setLastError] = useState<Error | null>(null)
 
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
   const isUnmountedRef = useRef(false)
@@ -123,6 +141,7 @@ export function useDraftAutoSave(
     if (!data || !enabled) return
 
     setIsSaving(true)
+    setAutosaveFailed(false)
 
     try {
       const response = await apiPost<{ draft_id: string; saved_at: string }>('/documents/auto-save', {
@@ -134,12 +153,16 @@ export function useDraftAutoSave(
         setDraftId(response.draft_id)
         setLastSavedAt(new Date(response.saved_at))
         setIsSaving(false)
+        setAutosavePending(false)
 
         onSuccess?.(response.draft_id)
       }
     } catch (error) {
       if (!isUnmountedRef.current) {
         setIsSaving(false)
+        setAutosaveFailed(true)
+        setLastError(error as Error)
+        setAutosavePending(false)
         onError?.(error as Error)
       }
       // Silent failure - don't disrupt user experience
@@ -155,6 +178,7 @@ export function useDraftAutoSave(
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current)
       debounceTimerRef.current = null
+      setAutosavePending(false)
     }
 
     await performSave()
@@ -167,6 +191,9 @@ export function useDraftAutoSave(
     setDraftId(null)
     setLastSavedAt(null)
     setIsSaving(false)
+    setAutosavePending(false)
+    setAutosaveFailed(false)
+    setLastError(null)
 
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current)
@@ -190,6 +217,7 @@ export function useDraftAutoSave(
     }
 
     // Set new timer
+    setAutosavePending(true)
     debounceTimerRef.current = setTimeout(() => {
       performSave()
     }, debounceMs)
@@ -198,6 +226,7 @@ export function useDraftAutoSave(
     return () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current)
+        setAutosavePending(false)
       }
     }
   }, [data, enabled, debounceMs, performSave])
@@ -218,6 +247,9 @@ export function useDraftAutoSave(
     draftId,
     isSaving,
     lastSavedAt,
+    autosavePending,
+    autosaveFailed,
+    lastError,
     saveNow,
     reset,
   }
