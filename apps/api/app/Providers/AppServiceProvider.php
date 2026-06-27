@@ -6,6 +6,11 @@ namespace App\Providers;
 
 use App\Models\Country;
 use App\Models\VerticalConfig;
+use App\Modules\Document\Domain\Document;
+use App\Modules\Expense\Domain\ExpenseCategory;
+use App\Policies\DocumentPolicy;
+use App\Policies\ExpenseCategoryPolicy;
+use Illuminate\Support\Facades\Gate;
 use App\Modules\Accounting\Application\Services\AccountingService;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
@@ -95,6 +100,8 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->loadTenantMigrationsInTestingEnvironment();
 
+        $this->registerPolicies();
+
         Password::defaults(function () {
             return Password::min(10)
                 ->letters()
@@ -149,6 +156,15 @@ class AppServiceProvider extends ServiceProvider
 
             return $isValid;
         });
+    }
+
+    /**
+     * Register model policies for authorization.
+     */
+    private function registerPolicies(): void
+    {
+        Gate::policy(Document::class, DocumentPolicy::class);
+        Gate::policy(ExpenseCategory::class, ExpenseCategoryPolicy::class);
     }
 
     /**
