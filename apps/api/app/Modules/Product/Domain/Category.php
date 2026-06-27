@@ -32,6 +32,8 @@ use Illuminate\Support\Str;
  * @property string|null $default_tax_rate
  * @property string|null $default_tax_configuration_id
  * @property RestockPolicy|null $restock_policy Category-level return restock policy
+ * @property string|null $target_margin_override
+ * @property string|null $minimum_margin_override
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
@@ -62,6 +64,8 @@ class Category extends Model
         'default_tax_rate',
         'default_tax_configuration_id',
         'restock_policy',
+        'target_margin_override',
+        'minimum_margin_override',
     ];
 
     /**
@@ -85,6 +89,8 @@ class Category extends Model
             'is_active' => 'boolean',
             'default_tax_rate' => 'decimal:2',
             'restock_policy' => RestockPolicy::class,
+            'target_margin_override' => 'decimal:2',
+            'minimum_margin_override' => 'decimal:2',
         ];
     }
 
