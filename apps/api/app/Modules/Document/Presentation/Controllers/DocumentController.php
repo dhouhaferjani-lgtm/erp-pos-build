@@ -144,7 +144,7 @@ class DocumentController extends Controller
         $companyId = $this->companyContext->requireCompanyId();
 
         $documentModel = Document::forCompany($companyId)
-            ->with(['lines', 'vehicleContext'])
+            ->with(['lines', 'lines.product.unitOfMeasure', 'vehicleContext'])
             ->find($document);
 
         if ($documentModel === null) {

@@ -11,6 +11,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { bccomp, bcsub } from '../../lib/decimal'
 import { formatQuantity } from '../../lib/format'
+import { getQuantityDecimals } from '../../lib/quantityScale'
 import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
 import { SearchInput } from '../../components/molecules/SearchInput'
 import { FilterTabs } from '../../components/molecules/FilterTabs'
@@ -555,7 +556,7 @@ export function StockLevelsPage() {
                   id="quantity"
                   value={adjustmentQuantity}
                   onChange={setAdjustmentQuantity}
-                  decimalPlaces={4}
+                  decimalPlaces={getQuantityDecimals(selectedStock)}
                   min="0"
                   placeholder={adjustmentType === 'adjust' ? t('inventory:stock.modal.enterNewQuantity') : t('inventory:stock.modal.enterQuantity')}
                 />

@@ -355,6 +355,9 @@ class CreditNoteController extends Controller
                 );
             }
 
+            // Surface per-line quantity_decimals (unit precision) in the response.
+            $postedCreditNote->load(['lines.product.unitOfMeasure']);
+
             return response()->json([
                 'data' => DocumentData::fromModel($postedCreditNote),
                 'meta' => [

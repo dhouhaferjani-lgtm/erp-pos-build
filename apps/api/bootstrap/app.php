@@ -21,6 +21,7 @@ use App\Modules\Voucher\Domain\Exceptions\VoucherInsufficientBalanceException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherInvalidStatusException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherNotForThisCustomerException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherNotForThisTerminalException;
+use App\Shared\Exceptions\PermissionDeniedException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -32,6 +33,7 @@ use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Sentry\Laravel\Integration;
 use Sentry\State\Scope;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -152,6 +154,34 @@ return Application::configure(basePath: dirname(__DIR__))
                     ],
                 ], 401);
             }
+        });
+
+        // Return JSON 403 for authorization denials. Descriptive + i18n so an
+        // onboarding tenant never hits a bare 403; names the missing ability when
+        // it was raised via the AuthorizesAbility trait (PermissionDeniedException).
+        //
+        // NOTE: Laravel's prepareException() converts AuthorizationException into a
+        // Symfony AccessDeniedHttpException (with the original as `previous`) BEFORE
+        // render callbacks match — so we must type on the converted type and recover
+        // the ability from getPrevious(). This also catches plain abort(403) so no
+        // API 403 is ever a bare framework message.
+        $exceptions->render(function (AccessDeniedHttpException $e, Request $request) {
+            if (! ($request->expectsJson() || $request->is('api/*'))) {
+                return null;
+            }
+
+            $previous = $e->getPrevious();
+            $ability = $previous instanceof PermissionDeniedException ? $previous->ability : null;
+
+            return response()->json([
+                'error' => [
+                    'code' => 'FORBIDDEN',
+                    'message' => $ability !== null
+                        ? __('auth.permission_denied', ['ability' => $ability])
+                        : __('auth.permission_denied_generic'),
+                    'ability' => $ability,
+                ],
+            ], 403);
         });
 
         // Return JSON 404 for model not found

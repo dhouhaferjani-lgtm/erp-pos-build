@@ -30,6 +30,7 @@ export interface Invoice {
     unit_price: string
     tax_rate: string
     total: string
+    quantity_decimals?: number | null
   }>
 }
 

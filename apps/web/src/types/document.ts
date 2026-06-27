@@ -30,6 +30,8 @@ export interface DocumentLineData {
   line_total: string  // Formatted number string from backend
   notes: string | null
   designation_default_snapshot: string | null
+  // Unit precision (unit decimal_places) → drives the qty input step.
+  quantity_decimals?: number
   // Extended fields for delivery/receipt tracking (may be in payload)
   quantity_delivered?: string
   quantity_received?: string

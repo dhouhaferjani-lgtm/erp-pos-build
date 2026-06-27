@@ -20,6 +20,8 @@ return [
 
     // Custom authentication messages
     'unauthorized' => 'Vous n\'êtes pas autorisé à effectuer cette action.',
+    'permission_denied' => "Vous n'avez pas la permission pour « :ability ». Un administrateur peut l'accorder dans Paramètres → Rôles.",
+    'permission_denied_generic' => 'Vous n\'avez pas la permission d\'effectuer cette action. Un administrateur peut accorder l\'accès dans Paramètres → Rôles.',
     'unauthenticated' => 'Veuillez vous connecter pour continuer.',
     'token_expired' => 'Votre session a expiré. Veuillez vous reconnecter.',
     'token_invalid' => 'Jeton d\'authentification invalide.',

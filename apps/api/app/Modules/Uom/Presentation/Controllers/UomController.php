@@ -16,13 +16,15 @@ use App\Modules\Uom\Domain\Exceptions\IncompatibleUnitsException;
 use App\Modules\Uom\Domain\Services\UnitConversionService;
 use App\Modules\Uom\Presentation\Requests\CreateUnitRequest;
 use App\Modules\Uom\Presentation\Requests\UpdateUnitRequest;
+use App\Shared\Authorization\AuthorizesAbility;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\Gate;
 
 class UomController extends Controller
 {
+    use AuthorizesAbility;
+
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly UnitConversionService $conversionService,
@@ -33,7 +35,7 @@ class UomController extends Controller
      */
     public function indexCategories(Request $request): JsonResponse
     {
-        Gate::authorize('uom.view');
+        $this->authorizeAbility('uom.view');
 
         $tenantId = $this->companyContext->requireCompany()->tenant_id;
 
@@ -65,7 +67,7 @@ class UomController extends Controller
      */
     public function indexUnits(Request $request): JsonResponse
     {
-        Gate::authorize('uom.view');
+        $this->authorizeAbility('uom.view');
 
         $tenantId = $this->companyContext->requireCompany()->tenant_id;
         $categoryId = $request->query('category_id');
@@ -99,7 +101,7 @@ class UomController extends Controller
      */
     public function showUnit(Request $request, string $id): JsonResponse
     {
-        Gate::authorize('uom.view');
+        $this->authorizeAbility('uom.view');
 
         /** @var Unit $unit */
         $unit = Unit::with('category')->findOrFail($id);
@@ -118,7 +120,7 @@ class UomController extends Controller
      */
     public function storeUnit(CreateUnitRequest $request): JsonResponse
     {
-        Gate::authorize('uom.create');
+        $this->authorizeAbility('uom.create');
 
         $tenantId = $this->companyContext->requireCompany()->tenant_id;
 
@@ -155,7 +157,7 @@ class UomController extends Controller
      */
     public function updateUnit(UpdateUnitRequest $request, string $id): JsonResponse
     {
-        Gate::authorize('uom.edit');
+        $this->authorizeAbility('uom.edit');
 
         /** @var Unit $unit */
         $unit = Unit::findOrFail($id);
@@ -209,7 +211,7 @@ class UomController extends Controller
      */
     public function destroyUnit(Request $request, string $id): JsonResponse
     {
-        Gate::authorize('uom.delete');
+        $this->authorizeAbility('uom.delete');
 
         /** @var Unit $unit */
         $unit = Unit::findOrFail($id);

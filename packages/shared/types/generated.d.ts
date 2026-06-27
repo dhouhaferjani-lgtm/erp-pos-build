@@ -646,6 +646,7 @@ tax_rate: string | null;
 line_total: string;
 notes: string | null;
 designation_default_snapshot: string | null;
+quantity_decimals: number;
 };
 export type VehicleContextData = {
 vehicle_id: string;
@@ -741,6 +742,7 @@ projected_available: string;
 min_quantity: string | null;
 max_quantity: string | null;
 is_below_minimum: boolean;
+quantity_decimals: number;
 };
 }
 declare namespace App.Modules.Inventory.Domain.Enums {

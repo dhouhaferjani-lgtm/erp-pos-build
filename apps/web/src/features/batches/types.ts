@@ -298,6 +298,8 @@ export interface ExpiredBatch {
     id: string
     name: string
     sku: string
+    /** Unit precision (unit decimal_places) → drives the qty input step. */
+    quantity_decimals?: number | null
   }
   /** Always present — endpoint loads the batchStock relation */
   batch_stock: ExpiredBatchStock[]
