@@ -881,9 +881,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 currency: $payload->currencyCode,
                 sourceType: 'pos_receipt',
                 sourceId: $receiptId,
-                receiptNumber: $event->sequence_number !== null
-                    ? (string) $event->sequence_number
-                    : null,
+                receiptNumber: (string) $event->sequence_number,
                 postedAt: $event->event_time_device,
                 earnBase: $totalNorm,
             ));

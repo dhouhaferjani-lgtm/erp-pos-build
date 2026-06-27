@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Loyalty\Providers;
 
 use App\Modules\Contact\Domain\Contact;
+use App\Modules\Loyalty\Application\Services\SaleEarningService;
 use App\Modules\Loyalty\Domain\Repositories\EarningRuleRepositoryInterface;
 use App\Modules\Loyalty\Domain\Repositories\EnrollmentRepositoryInterface;
 use App\Modules\Loyalty\Domain\Repositories\LoyaltyMemberRepositoryInterface;
@@ -18,7 +19,6 @@ use App\Modules\Loyalty\Infrastructure\Repositories\EloquentEnrollmentRepository
 use App\Modules\Loyalty\Infrastructure\Repositories\EloquentLoyaltyMemberRepository;
 use App\Modules\Loyalty\Infrastructure\Repositories\EloquentLoyaltyProgramRepository;
 use App\Modules\Loyalty\Infrastructure\Repositories\EloquentRewardRepository;
-use App\Modules\Loyalty\Application\Services\SaleEarningService;
 use App\Modules\Loyalty\Infrastructure\Repositories\EloquentStampCardRepository;
 use App\Modules\Loyalty\Infrastructure\Repositories\EloquentTierRepository;
 use App\Modules\Loyalty\Infrastructure\Repositories\EloquentTransactionRepository;
