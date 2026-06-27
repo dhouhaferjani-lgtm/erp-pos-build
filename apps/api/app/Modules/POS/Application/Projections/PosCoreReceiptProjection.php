@@ -30,6 +30,9 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Voucher\Application\DTOs\VoucherRedemptionRequest;
 use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
+use App\Shared\Contracts\Loyalty\LoyaltyEarningContract;
+use App\Shared\Contracts\Loyalty\SaleEarnContext;
+use App\Modules\Fiscal\Domain\DTOs\SaleReceiptPayload;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -124,6 +127,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         private readonly ReceiptHashService $receiptHashService,
         private readonly CanonicalPayloadReader $canonicalReader,
         private readonly PaymentMethodResolver $paymentMethodResolver,
+        private readonly LoyaltyEarningContract $loyaltyEarning,
     ) {}
 
     public function name(): string
@@ -316,6 +320,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             $this->writeVatBreakdown($receiptId, $view);
             $this->writePayments($receiptId, $event, $view);
             $this->redeemVouchers($receiptId, $event, $view);
+            $this->earnLoyaltyPoints($receiptId, $event, $view, $payload, $receiptTypeEnum, $totalNorm);
             $this->decrementStockForLines($receiptId, $event, $terminal, $view);
         });
     }
@@ -847,6 +852,47 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 partnerId: null,
                 instrumentKind: PaymentInstrumentKind::StoreVoucher,
             ));
+        }
+    }
+
+    /**
+     * Credit loyalty points for an earning SALE. Mirrors redeemVouchers() —
+     * synchronous, try/catch, must never break the sale projection.
+     * Earns only on a real SALE (not REFUND/VOID → Return, not training).
+     */
+    private function earnLoyaltyPoints(
+        string $receiptId,
+        FiscalEvent $event,
+        SaleReceiptCanonicalView $view,
+        SaleReceiptPayload $payload,
+        ReceiptType $receiptType,
+        string $totalNorm,
+    ): void {
+        // Earn-eligibility guard (Codex BLOCKER-2): refunds/voids/training earn nothing.
+        if ($receiptType !== ReceiptType::Sale || $payload->trainingFlag === true) {
+            return;
+        }
+
+        try {
+            $this->loyaltyEarning->earnForSale(new SaleEarnContext(
+                tenantId: $event->tenant_id,
+                contactId: $view->buyer?->contactId,
+                partnerId: $view->buyer?->customerId,
+                currency: $payload->currencyCode,
+                sourceType: 'pos_receipt',
+                sourceId: $receiptId,
+                receiptNumber: $event->sequence_number !== null
+                    ? (string) $event->sequence_number
+                    : null,
+                postedAt: $event->event_time_device,
+                earnBase: $totalNorm,
+            ));
+        } catch (\Throwable $e) {
+            Log::error('PosCoreReceiptProjection: loyalty earn failed (sale unaffected)', [
+                'fiscal_event_id' => $event->id,
+                'receipt_id' => $receiptId,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
