@@ -4,7 +4,7 @@ import { useDraftAutoSave } from '../useDraftAutoSave'
 import * as api from '../../lib/api'
 
 vi.mock('../../lib/api', () => ({ apiPost: vi.fn() }))
-const apiPost = api.apiPost as unknown as ReturnType<typeof vi.fn>
+const apiPost = vi.mocked(api.apiPost)
 
 const draft = { type: 'invoice' as const, lines: [{ product_id: 'p1', quantity: 1, unit_price: 1 }] }
 
@@ -22,11 +22,21 @@ describe('useDraftAutoSave failure/pending state', () => {
     expect(result.current.lastError?.message).toBe('boom')
   })
 
-  it('clears autosaveFailed after a subsequent success', async () => {
-    apiPost.mockResolvedValueOnce({ draft_id: 'd1', saved_at: new Date(0).toISOString() })
+  it('clears autosaveFailed and lastError after a subsequent success', async () => {
+    // First attempt: failure
+    apiPost.mockRejectedValueOnce(new Error('network error'))
     const { result } = renderHook(() => useDraftAutoSave(draft, { debounceMs: 10 }))
+    await act(async () => { await result.current.saveNow().catch(() => {}) })
+    await act(() => Promise.resolve())
+    expect(result.current.autosaveFailed).toBe(true)
+    expect(result.current.lastError?.message).toBe('network error')
+
+    // Second attempt: success — must clear both failure fields
+    apiPost.mockResolvedValueOnce({ draft_id: 'd1', saved_at: new Date(0).toISOString() })
     await act(async () => { await result.current.saveNow() })
+    await act(() => Promise.resolve())
     expect(result.current.autosaveFailed).toBe(false)
+    expect(result.current.lastError).toBeNull()
     expect(result.current.draftId).toBe('d1')
   })
 })

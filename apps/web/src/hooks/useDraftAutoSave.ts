@@ -141,7 +141,6 @@ export function useDraftAutoSave(
     if (!data || !enabled) return
 
     setIsSaving(true)
-    setAutosaveFailed(false)
 
     try {
       const response = await apiPost<{ draft_id: string; saved_at: string }>('/documents/auto-save', {
@@ -154,6 +153,8 @@ export function useDraftAutoSave(
         setLastSavedAt(new Date(response.saved_at))
         setIsSaving(false)
         setAutosavePending(false)
+        setAutosaveFailed(false)
+        setLastError(null)
 
         onSuccess?.(response.draft_id)
       }
