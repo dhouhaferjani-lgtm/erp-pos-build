@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useForm, type Resolver } from 'react-hook-form'
@@ -8,6 +8,9 @@ import { ArrowLeft } from 'lucide-react'
 import { Button, Input, FormField, Select } from '@/components/atoms'
 import { Textarea } from '@/components/atoms/Textarea/Textarea'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
+import { SaveSplitButton } from '@/components/molecules/SaveSplitButton'
+import { useAfterSaveNavigation } from '@/hooks/useAfterSaveNavigation'
+import { useUnsavedChangesGuard, confirmDiscard } from '@/hooks/useUnsavedChangesGuard'
 
 import { useProgram, useCreateProgram, useUpdateProgram } from '../hooks/usePrograms'
 import type { CreateProgramData, ProgramType } from '../types/loyalty'
@@ -45,6 +48,21 @@ export function ProgramFormPage() {
     },
   })
 
+  const nav = useAfterSaveNavigation({
+    recordPath: (rid) => `/pos/loyalty/programs/${rid}`,
+    listPath: '/pos/loyalty/programs',
+  })
+
+  const closeIntentRef = useRef(false)
+
+  useUnsavedChangesGuard({ isDirty: form.formState.isDirty })
+
+  const cancel = () => {
+    if (!form.formState.isDirty || confirmDiscard(t('common:confirmation.unsavedChangesBody'))) {
+      navigate('/pos/loyalty/programs')
+    }
+  }
+
   useEffect(() => {
     if (existingProgram) {
       form.reset({
@@ -71,11 +89,23 @@ export function ProgramFormPage() {
     if (isEditing && id) {
       updateMutation.mutate(
         { id, data: payload },
-        { onSuccess: () => navigate(`/pos/loyalty/programs/${id}`) },
+        {
+          onSuccess: () => {
+            const close = closeIntentRef.current
+            closeIntentRef.current = false
+            if (close) nav.goToList()
+            else nav.goToRecord(id)
+          },
+        },
       )
     } else {
       createMutation.mutate(payload, {
-        onSuccess: () => navigate('/pos/loyalty/programs'),
+        onSuccess: (created) => {
+          const close = closeIntentRef.current
+          closeIntentRef.current = false
+          if (close) nav.goToList()
+          else nav.goToRecord(created.id)
+        },
       })
     }
   }
@@ -91,7 +121,7 @@ export function ProgramFormPage() {
       <div className="flex items-center gap-4">
         <button
           type="button"
-          onClick={() => navigate('/pos/loyalty/programs')}
+          onClick={cancel}
           className="p-2 rounded-lg hover:bg-gray-100"
         >
           <ArrowLeft className="w-5 h-5" />
@@ -157,13 +187,18 @@ export function ProgramFormPage() {
           <Button
             type="button"
             variant="secondary"
-            onClick={() => navigate('/pos/loyalty/programs')}
+            onClick={cancel}
           >
             {t('common:cancel')}
           </Button>
-          <Button type="submit" disabled={isSaving}>
-            {isSaving ? t('common:saving') : isEditing ? t('common:save') : t('loyalty:programs.create')}
-          </Button>
+          <SaveSplitButton
+            onPrimarySave={() => {}}
+            onSaveAndClose={() => {
+              closeIntentRef.current = true
+              void form.handleSubmit(onSubmit)()
+            }}
+            isPending={isSaving}
+          />
         </StickyFormFooter>
       </form>
     </div>

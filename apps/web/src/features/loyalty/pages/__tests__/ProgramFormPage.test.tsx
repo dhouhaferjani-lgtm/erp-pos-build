@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ProgramFormPage } from '../ProgramFormPage'
 
 const mockNavigate = vi.fn()
@@ -19,7 +19,10 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   return {
     ...actual,
     useQuery: () => ({ data: undefined, isLoading: false }),
-    useMutation: () => ({ mutate: vi.fn(), isPending: false }),
+    useMutation: () => ({
+      mutate: (_vars: unknown, opts?: { onSuccess?: (d: unknown) => void }) => opts?.onSuccess?.({ id: 'prog-1' }),
+      isPending: false,
+    }),
     useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   }
 })
@@ -54,5 +57,16 @@ describe('ProgramFormPage', () => {
     render(<ProgramFormPage />)
     expect(screen.getByText('common:cancel')).toBeInTheDocument()
     expect(screen.getAllByText('loyalty:programs.create').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('navigates to the new program detail page after create (not the list)', async () => {
+    mockParams = {}
+    const { container } = render(<ProgramFormPage />)
+    // Fill the required name field so RHF validation passes
+    fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: 'Test Program' } })
+    fireEvent.submit(container.querySelector('form')!)
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/pos/loyalty/programs/prog-1')
+    })
   })
 })
