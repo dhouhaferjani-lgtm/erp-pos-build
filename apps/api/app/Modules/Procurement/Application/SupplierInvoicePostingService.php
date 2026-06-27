@@ -130,6 +130,25 @@ final class SupplierInvoicePostingService
                 // unit_price here would leave a landed-vs-unit_price residue on 408.
                 /** @var numeric-string $accrualUnitCost */
                 $accrualUnitCost = $poLine->landed_unit_cost ?? $poLine->unit_price;
+
+                // B3 guard: if the PO line has an immutable receipt-accrual basis
+                // recorded (set by GoodsReceiptService), assert the clearing basis
+                // equals it. A mismatch means LandedCostService reallocated costs
+                // after receipt — the 408 accrual and the clearing would diverge,
+                // leaving an irreconcilable residue on account 408.
+                if ($poLine->accrual_unit_cost !== null) {
+                    if (bccomp($accrualUnitCost, (string) $poLine->accrual_unit_cost, 6) !== 0) {
+                        throw new \DomainException(sprintf(
+                            'Supplier invoice [%s] cannot be posted: PO line [%s] 408 accrual basis '
+                            .'divergence — clearing at %s but receipt accrued at %s. '
+                            .'landed_unit_cost was reallocated after receipt; resolve before posting.',
+                            $supplierInvoice->id,
+                            $poLine->id,
+                            $accrualUnitCost,
+                            $poLine->accrual_unit_cost,
+                        ));
+                    }
+                }
                 /** @var numeric-string $lineAccrual */
                 $lineAccrual = bcmul($qty, $accrualUnitCost, $working);
                 $accruedHt = bcadd($accruedHt, $lineAccrual, $working);
@@ -184,7 +203,10 @@ final class SupplierInvoicePostingService
                 $timbre,
             );
 
-            // 8. Draft → Posted; persist the match status.
+            // 8. Draft → Posted; initialize payable ceiling; persist the match status.
+            // balance_due is set to total here so PaymentController has an authoritative
+            // ceiling (deferred B2 credit-note decrement will subtract from this).
+            $supplierInvoice->balance_due = $supplierInvoice->total;
             $supplierInvoice->status = DocumentStatus::Posted;
             $supplierInvoice->match_status = $matchStatus;
             $supplierInvoice->save();

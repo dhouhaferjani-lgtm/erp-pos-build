@@ -799,4 +799,88 @@ final class SupplierInvoiceGlTest extends TestCase
         $this->assertSame(0, JournalEntry::where('source_type', 'supplier_invoice')->where('source_id', $invoice2->id)->count());
         $this->assertSame(DocumentStatus::Draft, $this->freshDoc($invoice2)->status);
     }
+
+    // =========================================================================
+    // 13. B3 BLOCKER: landed_unit_cost changed AFTER receipt → post() throws
+    //     divergence DomainException; no JE, status unchanged.
+    // =========================================================================
+
+    public function test_landed_cost_changed_after_receipt_post_throws_divergence_exception(): void
+    {
+        // Receipt accrued 408 at landed_unit_cost=10.500 (B1 = 5 × 10.500 = 52.500).
+        $poLine = $this->confirmedPoWithReceipt('5.0000', '10.000', landedUnitCost: '10.500');
+        $this->assertSame('52.500', $this->net408(), 'precondition: 408 accrued at 52.500');
+
+        // Explicitly record the receipt-time accrual basis on the PO line (simulates
+        // what GoodsReceiptService::processReceiptLines() will set after the B3 fix).
+        $poLine->accrual_unit_cost = '10.500';
+        $poLine->save();
+
+        // Simulate LandedCostService reallocating costs AFTER receipt — changes the
+        // mutable landed_unit_cost while the JE (52.500 Cr-408) is already immutable.
+        $poLine->landed_unit_cost = '12.000';
+        $poLine->save();
+
+        $invoice = $this->supplierInvoice(
+            $this->freshLine($poLine),
+            ['qty' => '5.0000', 'unit_price' => '10.000', 'recoverable_vat' => '9.500'],
+            stampDuty: '0.000',
+            subtotal: '50.000',
+            total: '59.500',
+        );
+
+        $threw = false;
+        $exceptionMessage = '';
+        try {
+            $this->service()->post($invoice);
+        } catch (\DomainException $e) {
+            $threw = true;
+            $exceptionMessage = $e->getMessage();
+        }
+
+        $this->assertTrue($threw, 'Post must throw when landed_unit_cost diverges from accrual basis');
+        $this->assertStringContainsStringIgnoringCase('accrual', $exceptionMessage,
+            'Exception message must mention "accrual" to be diagnosable');
+
+        // Rolled back: no JE, no quantity_invoiced increment, invoice still Draft.
+        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_invoice')
+            ->where('source_id', $invoice->id)->count());
+        $this->assertSame('0.0000', $this->freshLine($poLine)->quantity_invoiced);
+        $this->assertSame(DocumentStatus::Draft, $this->freshDoc($invoice)->status);
+
+        // 408 is still at the receipt-accrued credit (not partially cleared).
+        $this->assertSame('52.500', $this->net408(), '408 must not be touched when post throws');
+    }
+
+    // =========================================================================
+    // 14. B3 HAPPY PATH: no landed-cost change → post balanced, 408 zeroes.
+    //     Explicitly verifies the guard is a no-op when basis is unchanged.
+    // =========================================================================
+
+    public function test_accrual_unit_cost_unchanged_no_divergence_posts_balanced(): void
+    {
+        // PO line with landed_unit_cost=10.500 AND accrual_unit_cost=10.500 (same).
+        $poLine = $this->confirmedPoWithReceipt('5.0000', '10.000', landedUnitCost: '10.500');
+        $poLine->accrual_unit_cost = '10.500';
+        $poLine->save();
+
+        // No change to landed_unit_cost after receipt — bases match, guard is a no-op.
+        $invoice = $this->supplierInvoice(
+            $this->freshLine($poLine),
+            ['qty' => '5.0000', 'unit_price' => '10.000', 'recoverable_vat' => '9.500'],
+            stampDuty: '0.000',
+            subtotal: '50.000',
+            total: '59.500',
+        );
+
+        $this->service()->post($invoice);
+
+        $entry = $this->clearingEntry($invoice);
+        // 408 cleared at the landed basis: 5 × 10.500 = 52.500.
+        $dr408 = $this->legOn($entry, $this->grirAccount);
+        $this->assertNotNull($dr408);
+        $this->assertSame('52.500', $dr408->debit);
+        $this->assertBalanced($entry);
+        $this->assertSame('0.000', $this->net408(), '408 must zero when no divergence');
+    }
 }

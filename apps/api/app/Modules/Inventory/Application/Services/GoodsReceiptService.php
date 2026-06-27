@@ -212,6 +212,13 @@ final class GoodsReceiptService
                 $line->batch_id = $batch->id;
             }
 
+            // Record the receipt-time 408 accrual basis (immutable after first receipt).
+            // SupplierInvoicePostingService::post() asserts against this to detect
+            // post-receipt landed-cost reallocations that would leave a 408 residue.
+            if ($line->accrual_unit_cost === null) {
+                $line->accrual_unit_cost = $unitCostStr;
+            }
+
             // Update line's received quantity
             $line->quantity_received = bcadd($alreadyReceived, $qtyToReceive, 4);
             $line->save();

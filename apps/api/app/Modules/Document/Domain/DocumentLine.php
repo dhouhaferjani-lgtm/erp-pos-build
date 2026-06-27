@@ -39,6 +39,7 @@ use Illuminate\Support\Carbon;
  * @property numeric-string $line_total
  * @property numeric-string $allocated_costs
  * @property numeric-string|null $landed_unit_cost
+ * @property numeric-string|null $accrual_unit_cost Receipt-time 408 accrual basis (immutable after receipt); null for pre-B3 rows.
  * @property numeric-string|null $non_recoverable_tax
  * @property string|null $notes
  * @property string|null $designation_default_snapshot
@@ -93,6 +94,7 @@ class DocumentLine extends Model
         'line_total',
         'allocated_costs',
         'landed_unit_cost',
+        'accrual_unit_cost',
         'notes',
         'designation_default_snapshot',
         'source_line_id',
@@ -135,6 +137,7 @@ class DocumentLine extends Model
             // pre-truncated. See the scale-6 widening migration.
             'allocated_costs' => 'decimal:6',
             'landed_unit_cost' => 'decimal:6',
+            'accrual_unit_cost' => 'decimal:6',
             'non_recoverable_tax' => 'decimal:3',
             // Eco-tax columns: cast as strings for bcmath-safe arithmetic (project convention).
             // Phase 1: always null; Phase 2 wires the writer.

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Presentation\Controllers;
 
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
@@ -217,6 +218,39 @@ class PaymentController extends Controller
             if ($document->type === DocumentType::SupplierInvoice) {
                 $isSupplierPayment = true;
                 $supplierDocCount++;
+
+                // B1 guard: the invoice must be Posted AND have a real Cr-401 JE.
+                // Without this check a Draft invoice could be paid — Dr 401 with no
+                // matching Cr 401 from posting → negative payable_balance.
+                if ($document->status !== DocumentStatus::Posted) {
+                    return response()->json([
+                        'error' => [
+                            'code' => 'SUPPLIER_INVOICE_NOT_POSTED',
+                            'message' => 'Supplier invoice must be in Posted status before payment. Post the invoice first.',
+                            'details' => [
+                                'document_id' => $document->id,
+                                'current_status' => $document->status->value,
+                            ],
+                        ],
+                    ], 422);
+                }
+
+                $supplierJeExists = JournalEntry::query()
+                    ->where('source_type', 'supplier_invoice')
+                    ->where('source_id', $document->id)
+                    ->where('company_id', $document->company_id)
+                    ->exists();
+                if (! $supplierJeExists) {
+                    return response()->json([
+                        'error' => [
+                            'code' => 'SUPPLIER_INVOICE_NOT_POSTED',
+                            'message' => 'Supplier invoice has no posted journal entry (Cr 401). Post the invoice first.',
+                            'details' => [
+                                'document_id' => $document->id,
+                            ],
+                        ],
+                    ], 422);
+                }
 
                 // Over-allocation guard (M-5): paying a supplier beyond the invoice's
                 // outstanding balance would over-debit 401 and drive payable_balance
