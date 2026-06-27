@@ -70,6 +70,19 @@ class MarginResolverTest extends TestCase
         $this->assertSame(MarginSource::Category, $m->minimum_source);
     }
 
+    public function test_nearest_category_beats_far_ancestor(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->for($tenant)->create(['default_target_margin' => '30', 'default_minimum_margin' => '15']);
+        $grand = Category::factory()->for($company)->create(['target_margin_override' => '50.00']);
+        $parent = Category::factory()->for($company)->create(['parent_id' => $grand->id, 'target_margin_override' => '45.00']);
+        $leaf = Category::factory()->for($company)->create(['parent_id' => $parent->id]);
+        $product = Product::factory()->for($company)->create(['category_id' => $leaf->id]);
+        $m = $this->resolver()->resolve($product);
+        $this->assertSame('45.00', $m->target_margin);                 // parent (nearest) wins, not grandparent
+        $this->assertSame($parent->id, $m->target_source_category_id);
+    }
+
     public function test_resolve_many_is_bounded_query(): void
     {
         $tenant = Tenant::factory()->create();

@@ -64,7 +64,9 @@ final class MarginResolver
             ->all();
 
         /** @var Collection<int, Category> $byId */
-        $byId = Category::query()->whereIn('id', $ancestorIds)->get()->keyBy('id');
+        $byId = $ancestorIds
+            ? Category::query()->whereIn('id', $ancestorIds)->get()->keyBy('id')
+            : collect();
 
         $out = [];
         foreach ($products as $product) {
