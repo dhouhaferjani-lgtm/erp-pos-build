@@ -32,6 +32,7 @@ use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Application\Services\IdentityIndexService;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\Enums\SkinType;
 use Database\Seeders\Contracts\ChartOfAccountsSeederContract;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
@@ -339,6 +340,11 @@ class ParapharmacySeeder extends Seeder
         $this->command->info('🏷️ Seeding brands...');
         $brands = $this->seedBrands($this->company);
         $this->command->info("✓ Created {$brands->count()} brands");
+
+        // 5b. Seed skin suitability mappings for cosmetic products
+        $this->command->info('🧴 Seeding skin suitability...');
+        $this->seedProductSkinSuitability($this->company);
+        $this->command->info('✓ Skin suitability rows seeded');
 
         // 6. Seed partners (customers and suppliers)
         $this->command->info('👥 Seeding partners...');
@@ -763,6 +769,73 @@ class ParapharmacySeeder extends Seeder
 
         /** @var Collection<int, array{id: string, slug: string}> */
         return collect($rows)->map(fn (array $r): array => ['id' => $r['id'], 'slug' => $r['slug']]);
+    }
+
+    /**
+     * Seed skin suitability mappings for cosmetic/visage products.
+     *
+     * Maps each cosmetic product to 1–3 {@see SkinType} values using a
+     * round-robin heuristic over 6 predefined combinations, then
+     * batch-inserts the rows into `product_skin_suitability`. Rows are
+     * chunked at 150 per insert to stay within SQLite's 999-variable
+     * prepared-statement limit (6 columns × 150 = 900 < 999).
+     *
+     * The unique(product_id, skin_type) constraint is respected because
+     * each combination contains no repeated SkinType values.
+     */
+    protected function seedProductSkinSuitability(Company $company): void
+    {
+        // 6 predefined combinations spanning all 5 SkinType cases.
+        // Round-robin assignment ensures every product gets 1–3 distinct
+        // skin types and the full type space appears in the fixture.
+        /** @var list<list<SkinType>> $combinations */
+        $combinations = [
+            [SkinType::Normal, SkinType::Dry],
+            [SkinType::Sensitive, SkinType::Normal],
+            [SkinType::Oily, SkinType::Combination],
+            [SkinType::Dry, SkinType::Sensitive],
+            [SkinType::Combination, SkinType::Normal, SkinType::Oily],
+            [SkinType::Sensitive, SkinType::Dry, SkinType::Normal],
+        ];
+
+        $tenantId = $company->tenant_id;
+        $now = now();
+        $combinationCount = count($combinations);
+
+        /** @var list<string> $productIds */
+        $productIds = DB::table('parapharmacy_product_metadata')
+            ->join('products', 'products.id', '=', 'parapharmacy_product_metadata.product_id')
+            ->where('products.company_id', $company->id)
+            ->where('parapharmacy_product_metadata.category', ParapharmacyCategory::Cosmetic->value)
+            ->pluck('parapharmacy_product_metadata.product_id')
+            ->toArray();
+
+        if ($productIds === []) {
+            return;
+        }
+
+        $rows = [];
+
+        foreach ($productIds as $idx => $productId) {
+            /** @var list<SkinType> $types */
+            $types = $combinations[$idx % $combinationCount];
+
+            foreach ($types as $skinType) {
+                $rows[] = [
+                    'id' => Str::uuid()->toString(),
+                    'tenant_id' => $tenantId,
+                    'product_id' => $productId,
+                    'skin_type' => $skinType->value,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+        }
+
+        // 6 columns × 150 rows = 900 params — safely under SQLite's 999 limit.
+        foreach (array_chunk($rows, 150) as $chunk) {
+            DB::table('product_skin_suitability')->insert($chunk);
+        }
     }
 
     /**
