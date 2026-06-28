@@ -80,9 +80,23 @@ NEXT on resume:
 - **✅ P4 visual pass — owner signed off** (2026-06-28, CashPaymentScreen light screenshot: navy panel + mono amounts confirmed). **Deferred polish (owner: "use the space a bit better, but fine for now"):** the full-screen payment layouts have dead space — the navy summary panel has empty vertical room (content centred) and there's a gap between the numpad and the Valider button. Fold into the payment-screen LAYOUT phase (distribute the navy panel content; let the numpad fill / anchor Valider better). NOT urgent. (Dark mode + Advanced/Card/Success modals not individually screenshotted — flag if anything looks off there.)
 - **AdvancedPaymentsModal 3-column LAYOUT restyle** (deferred — detox shipped first): method+repo / amount+numpad / total+lines+Finaliser per mock §5.2. Authed-verify-heavy. (Address the space-usage feedback here too.)
 - **PaymentSummary mock §5.1 breakdown — NEEDS A DECISION (deferred):** split discount into **Remises produits** (line) vs **Remise panier** (transaction) — needs HomePage to plumb both; and the **"dont TVA 19%"** framing — HT/TTC fiscal-display + mixed VAT rates (current generic "TVA" line is safe). Don't change money display unilaterally; confirm with owner.
-- Per tracker: P5 per-modal restyles (+ exit transitions on the Modal shell + `Drawer`/`Toast` shells), P6 returns (incl. the deferred `ReturnLineItem` 48px floor), P7 reports restyle (tokenize `TodaySalesPanel` + `ReportsMenu`).
 - Customer/loyalty card slot in the cart = seam owned by the loyalty session.
 - `ProductCard`/`ProductGrid` + product-detail fiche → parapharmacy session Phase D (do not touch).
+
+## ✅ DARK-MODE TOKEN-DETOX SWEEP — P4-P7 (2026-06-28, batched; +4 ahead of origin/dev, NOT yet promoted)
+Owner asked to batch a lot then check. Detoxed **14 surfaces** → semantic tokens, ALL added to the ESLint token guard (dark-mode ready + regression-proof). Every file's own tests pass; big files fork-migrated per my mapping table, combined diffs verified COLOR-ONLY (no logic/JSX/testid/aria); typecheck + eslint(guarded) + react-doctor clean throughout.
+- **P4 payments** (1ee3854d4, 0d424cf7b, d0dab0155): CashPaymentScreen (+navy restyle), AdvancedPaymentsModal (916L), CardPaymentModal, CheckoutSuccessModal.
+- **P5 modals** (7671bc8d6): LineDiscountModal, DiscountModal, HeldTransactionsModal.
+- **P6 returns** (7671bc8d6): RefundCheckoutFlow + ReturnLineItem 48px floor.
+- **P7 reports/shift** (b3f752afe, 074df5294): TodaySalesPanel, ReportsMenu, ZReportModal, EndOfDayPreviewModal, CashDrawerModal, XReportModal, CloseShiftModal.
+- Consistent fork conventions: selection-highlight→accent, segmented-control tabs→surface-raised active, info boxes→action, CTAs→action, confirm-green→success, destructive→danger, warnings→warning, high-value money amounts kept high-contrast text-ink.
+- **⚠️ The CloseShift fork accidentally ran the FULL vitest suite** (no-full-suite rule): reported 6 pre-existing failing files (2505/2511 pass) — NOT from these color-only changes (all touched-file tests pass; diffs color-only; repo has a `triage/pg-suite-98-failures` worktree of known fails). Confirm via CI/triage.
+- **NEEDS: a DARK-MODE visual pass** on the detoxed payment/discount/returns/reports/shift screens (the detox's payoff; not yet eyeballed in dark).
+- **Remaining untokenized tail** (smaller, mostly mine-lane; future round): VoucherTenderModal(32), CashTenderedModal(22), ReceiptLocatorScreen(22), QuantityNumpad(18), ModifierSelectionModal(17), RefundConfirmModal(14), RefundDestinationPicker(14), ResumeRefundDraftBanner(13), CashReconciliationSection(11), CashCountTable(11), OpenShiftScreen(9), ReceiptScanConfirmationSheet(8), ManagerPinPanel(7), VariantPickerModal(5), CurrencyNumpad(4), ToleranceDrillDown(2). AVOID (parapharmacy-owned): ProductDetailDrawer, ProductVariantStockView, CrossLocationStockSection.
+
+## Other NEXT (deferred, need decisions / authed-verify)
+- AdvancedPaymentsModal 3-column LAYOUT restyle (detox shipped; layout deferred — also fold the CashPaymentScreen space-usage feedback here).
+- PaymentSummary §5.1 breakdown — NEEDS owner decision (discount split + "dont TVA 19%" framing).
 
 ## Guardrails (always)
 Worktree off dev; merge to LOCAL dev first, promote to origin/dev as clean fast-forwards; never force-push dev. NEVER run the full PHPUnit suite (crashes laptop) — run by path. Tokens only in `apps/pos/src` (ESLint guard); i18n all strings; TDD; Codex for CODE review (Claude agent for DOC review). Commit frequently (crash-safety).
