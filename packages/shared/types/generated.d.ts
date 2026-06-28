@@ -1341,6 +1341,14 @@ platform_synced_at: string | null;
 created_at: string;
 updated_at: string | null;
 };
+export type BrandData = {
+id: string;
+name: string;
+slug: string;
+country_of_origin: string | null;
+website_url: string | null;
+is_active: boolean;
+};
 export type CategoryData = {
 id: number;
 company_id: string;
