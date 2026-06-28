@@ -44,7 +44,7 @@ export function Modal({ isOpen, onClose, title, children, footer, size = 'md', c
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/50"
+        className="ez-fade-in absolute inset-0 bg-black/50"
         onClick={closable ? onClose : undefined}
       />
 
@@ -54,7 +54,7 @@ export function Modal({ isOpen, onClose, title, children, footer, size = 'md', c
         role="dialog"
         aria-modal="true"
         className={cn(
-          'relative z-10 flex w-full flex-col rounded-2xl bg-surface-overlay shadow-2xl overflow-hidden',
+          'ez-sheet-rise relative z-10 flex w-full flex-col rounded-2xl bg-surface-overlay shadow-2xl overflow-hidden',
           size === 'sm' && 'max-w-sm max-h-[45vh]',
           size === 'md' && 'max-w-md max-h-[80vh]',
           size === 'lg' && 'max-w-lg max-h-[70vh]',
@@ -69,7 +69,7 @@ export function Modal({ isOpen, onClose, title, children, footer, size = 'md', c
             onClick={onClose}
             disabled={!closable}
             data-testid="modal-close-button"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-ink-faint hover:bg-surface-sunken hover:text-ink disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-ink-faint"
+            className="flex h-12 w-12 items-center justify-center rounded-full text-ink-faint hover:bg-surface-sunken hover:text-ink disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-ink-faint"
           >
             <X className="h-5 w-5" />
           </button>
