@@ -102,6 +102,12 @@ Core subsystem (B0, A1–A4, B1–B4, C1–C3, E1) is **shipped and merged to `d
 - Cheap win extractable independently of the full G refactor: the **`BatchController::transfer()` → `transferBatchStock()` audit** (moves batch stock with no aggregate `stock_movements` row — may hide a real ledger gap).
 - See risk/complexity write-up in the session handoff; both are HIGH-surface-area, most-capable-model work.
 
+## Cross-session: shared `journal_entries(source_type, source_id)` uniqueness — RESOLVED (2026-06-26)
+The procurement-to-pay session added a uniqueness guard on the shared `journal_entries(source_type, source_id)` table (their Task B2, `134e7b382`, 20 tests). Decision (coordination note `docs/superpowers/coordination/2026-06-26-procurement-to-stock-adjustment-coordination.md`): **supplier-scoped partial index** `WHERE source_type IN ('supplier_invoice','supplier_credit_note')` — **NOT global.**
+- **Why not global:** a global unique index would break flows that legitimately write multiple JEs per `source_id` — independently confirmed for `prepayment_application` and `pos_receipt`. (See [[reference_journal_entries_no_global_source_uniqueness]].)
+- **Impact on us: none.** The index excludes `batch_write_off`/`batch_write_off_reversal`. Verified our flows are already strictly one-JE-per-`(source_type, source_id)`: write-off posts `batch_write_off`+movementId (single, and grouped multi-lot loops one JE per line/movement — never a shared id); the reversal posts a **distinct** `source_type='batch_write_off_reversal'` + the inverse movement id, so it never collides with the original.
+- **Our idempotency is unchanged:** app-level already-reversed guard + the `stock_movements.reverses_movement_id` partial unique index (the C1/MED-3 DB double-reverse guard). If we ever want DB-level structural idempotency on write-offs too, add our **own** `WHERE source_type IN ('batch_write_off','batch_write_off_reversal')` partial index in a coordinated migration — do NOT add an overlapping/global one on this shared table.
+
 ## Deferred (not in this decomposition)
 - Approval gating (Phase D) — context-agnostic, when F&B-POS/high-value need is concrete.
 - Justification documents (Phase F) — via the media-unification session (`docs/superpowers/coordination/2026-06-24-media-unification-handover.md`).

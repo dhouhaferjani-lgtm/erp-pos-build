@@ -853,16 +853,23 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     /**
      * Stock decrement for product lines — iterates the canonical view.
      *
-     * **T2 variant_id gap (Task 18).** `LineItemDTO` does not carry a
-     * `variant_id` field (the canonical payload shape pre-dates T2 variants).
-     * Consequently, every projection-path decrement scopes to the product-level
-     * stock row (`variant_id IS NULL`). For variant sales that arrived via the
-     * draft-creation path (`ReceiptCreationService`) the stock was already
-     * decremented correctly at draft time — the projection-path decrement here
-     * is a SECOND decrement, which is the existing pre-T2 behaviour (draft +
-     * projection). Resolving the double-decrement and adding `variant_id` to
-     * the canonical payload is deferred to Phase 2 T2. No change to the
-     * existing decrement logic in this task scope.
+     * **Single authoritative decrement (T2).** This projection is the SOLE
+     * server-side stock decrement for a POS sale. Under device-SoT the device
+     * authors the sealed `SALE_RECEIPT`; the server projects it exactly once,
+     * keyed and locked on `fiscal_event_id` (fast-path `Receipt::exists()` probe
+     * + the atomic `INSERT … ON CONFLICT … DO NOTHING` in
+     * `insertReceiptOnConflictDoNothing`, all inside the
+     * `ApplyFiscalEventProjectionJob` per-row `WithoutOverlapping` lock). The
+     * legacy draft-creation path (`ReceiptCreationService::createReceipt`) that
+     * historically decremented at draft time is retired — every caller is 410
+     * Gone / inert (see `scripts/saleReceipt-chokepoint-manifest.json`), so the
+     * pre-T2 "draft + projection" double-decrement no longer occurs.
+     *
+     * **Variant-aware (T2).** `LineItemDTO` carries `variant_id` since
+     * SaleReceiptV2 (M4); we thread `$line->variantId` into `decrementStock()`
+     * so a variant line hits the variant-scoped `stock_levels` row and writes
+     * `variant_id` onto the `stock_movements` row. Non-variant lines pass null
+     * and keep the product-level (`variant_id IS NULL`) behaviour.
      */
     private function decrementStockForLines(
         string $receiptId,
@@ -888,9 +895,10 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 quantity: $line->quantity,
                 receiptId: $receiptId,
                 cashierId: $event->operator_id,
-                // variantId intentionally omitted — LineItemDTO does not carry
-                // variant_id (T2 gap documented in writeLines() above).
-                // Scopes to product-level (variant_id IS NULL) row.
+                // T2 — variant-aware: a variant line scopes to the variant
+                // `stock_levels` row and stamps `variant_id` on the movement;
+                // a non-variant line passes null → product-level row.
+                variantId: $line->variantId,
             );
         }
     }
@@ -929,6 +937,21 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         $stockLevel = $stockLevelQuery->lockForUpdate()->first();
 
         if ($stockLevel === null) {
+            // A variant line with no variant-scoped stock_levels row must NOT
+            // fall back to decrementing the product-level pool (the pre-T2
+            // bug). Nothing is decremented; surface the absent variant grain
+            // so an unseeded-variant leak is observable rather than silent.
+            // Product-level lines with no row are normal (non-inventory /
+            // service items) and stay silent to avoid log noise.
+            if ($variantId !== null) {
+                Log::warning('PosCoreReceiptProjection: variant sale found no variant-scoped stock_levels row; nothing decremented', [
+                    'product_id' => $productId,
+                    'variant_id' => $variantId,
+                    'location_id' => $locationId,
+                    'receipt_id' => $receiptId,
+                ]);
+            }
+
             return;
         }
 
