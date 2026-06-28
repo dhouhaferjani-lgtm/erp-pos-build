@@ -13,6 +13,7 @@ import {
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { useExpense, useDeleteExpense, usePostExpense } from '../hooks/useExpenses'
 import { DocumentAttachments } from '../../documents/components/DocumentAttachments'
+import { usePermissions } from '@/hooks/usePermissions'
 
 /**
  * Expense-status tone overrides for the shared StatusBadge. The built-in
@@ -37,6 +38,7 @@ export function ExpenseDetailPage() {
   const { data: expense, isLoading } = useExpense(id || '')
   const deleteExpense = useDeleteExpense()
   const postExpense = usePostExpense()
+  const { hasPermission } = usePermissions()
 
   const handleDelete = async () => {
     if (
@@ -115,25 +117,25 @@ export function ExpenseDetailPage() {
         subtitle={expense.metadata?.vendor_name ?? t('expenses:noVendor')}
         actions={
           <>
-            {isDraft && (
-              <>
-                <Link to={`/expenses/${expense.id}`}>
-                  <Button variant="secondary">
-                    <Edit className="me-2 h-4 w-4" />
-                    {t('common:edit')}
-                  </Button>
-                </Link>
-                <Button
-                  variant="danger"
-                  onClick={handleDelete}
-                  disabled={deleteExpense.isPending}
-                >
-                  <Trash2 className="me-2 h-4 w-4" />
-                  {t('common:delete')}
+            {isDraft && hasPermission('expenses.update') && (
+              <Link to={`/expenses/${expense.id}`}>
+                <Button variant="secondary">
+                  <Edit className="me-2 h-4 w-4" />
+                  {t('common:edit')}
                 </Button>
-              </>
+              </Link>
             )}
-            {!isPosted && (
+            {isDraft && hasPermission('expenses.delete') && (
+              <Button
+                variant="danger"
+                onClick={handleDelete}
+                disabled={deleteExpense.isPending}
+              >
+                <Trash2 className="me-2 h-4 w-4" />
+                {t('common:delete')}
+              </Button>
+            )}
+            {!isPosted && hasPermission('expenses.post') && (
               <Button
                 variant="primary"
                 onClick={handlePost}
