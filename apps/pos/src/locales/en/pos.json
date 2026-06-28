@@ -14,6 +14,8 @@
     "removeItem": "Remove item",
     "confirmRemoveItem": "Tap to confirm",
     "lineDiscount": "Item discount",
+    "lineDiscountsTotal": "Product discounts",
+    "cartDiscount": "Cart discount",
     "editModifiers": "Edit options",
     "applyDiscount": "Apply Discount",
     "itemDiscount": "Item Discount"

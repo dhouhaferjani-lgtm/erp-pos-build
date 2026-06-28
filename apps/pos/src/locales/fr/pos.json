@@ -14,6 +14,8 @@
     "removeItem": "Supprimer l'article",
     "confirmRemoveItem": "Appuyez pour confirmer",
     "lineDiscount": "Remise article",
+    "lineDiscountsTotal": "Remises produits",
+    "cartDiscount": "Remise panier",
     "editModifiers": "Modifier les options",
     "applyDiscount": "Appliquer la remise",
     "itemDiscount": "Remise article"
