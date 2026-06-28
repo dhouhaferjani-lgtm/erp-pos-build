@@ -14,6 +14,8 @@ use App\Modules\Accounting\Domain\Observers\JournalLineObserver;
 use App\Modules\Company\Application\Services\LocationService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
+use App\Modules\Document\Domain\Document;
+use App\Modules\Expense\Domain\ExpenseCategory;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Identity\Infrastructure\CentralPersonalAccessToken;
 use App\Modules\Inventory\Application\Services\InventoryService;
@@ -26,6 +28,8 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Observers\TenantObserver;
 use App\Observers\UserObserver;
 use App\Observers\VerticalConfigObserver;
+use App\Policies\DocumentPolicy;
+use App\Policies\ExpenseCategoryPolicy;
 use App\Services\CompanyConfigService;
 use App\Services\ProductService as AppProductService;
 use App\Services\VerticalConfigService;
@@ -41,6 +45,7 @@ use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\Infrastructure\CurrencyScaleResolver;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -94,6 +99,8 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadTenantMigrationsInTestingEnvironment();
+
+        $this->registerPolicies();
 
         Password::defaults(function () {
             return Password::min(10)
@@ -149,6 +156,15 @@ class AppServiceProvider extends ServiceProvider
 
             return $isValid;
         });
+    }
+
+    /**
+     * Register model policies for authorization.
+     */
+    private function registerPolicies(): void
+    {
+        Gate::policy(Document::class, DocumentPolicy::class);
+        Gate::policy(ExpenseCategory::class, ExpenseCategoryPolicy::class);
     }
 
     /**

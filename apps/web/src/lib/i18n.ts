@@ -11,6 +11,7 @@ import enTreasury from '../locales/en/treasury.json'
 import enValidation from '../locales/en/validation.json'
 import enPricing from '../locales/en/pricing.json'
 import enFinance from '../locales/en/finance.json'
+import enExpenses from '../locales/en/expenses.json'
 import enImport from '../locales/en/import.json'
 import enSettings from '../locales/en/settings.json'
 import enUom from '../locales/en/uom.json'
@@ -59,6 +60,7 @@ import frTreasury from '../locales/fr/treasury.json'
 import frValidation from '../locales/fr/validation.json'
 import frPricing from '../locales/fr/pricing.json'
 import frFinance from '../locales/fr/finance.json'
+import frExpenses from '../locales/fr/expenses.json'
 import frImport from '../locales/fr/import.json'
 import frSettings from '../locales/fr/settings.json'
 import frUom from '../locales/fr/uom.json'
@@ -139,6 +141,7 @@ const resources = {
     validation: enValidation,
     pricing: enPricing,
     finance: enFinance,
+    expenses: enExpenses,
     import: enImport,
     settings: enSettings,
     uom: enUom,
@@ -188,6 +191,7 @@ const resources = {
     validation: frValidation,
     pricing: frPricing,
     finance: frFinance,
+    expenses: frExpenses,
     import: frImport,
     settings: frSettings,
     uom: frUom,
@@ -240,6 +244,7 @@ const resources = {
     validation: arValidation,
     pricing: enPricing,
     finance: enFinance,
+    expenses: enExpenses,
     import: enImport,
     settings: enSettings,
     uom: enUom,
@@ -289,7 +294,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'deposits', 'customer-history-audit', 'channels', 'reports', 'stock-transfers', 'admin', 'purchases'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'expenses', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'deposits', 'customer-history-audit', 'channels', 'reports', 'stock-transfers', 'admin', 'purchases'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

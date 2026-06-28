@@ -76,7 +76,7 @@ const NAVIGATION_ITEMS: CommandItem[] = [
   { id: 'nav-inventory-counting', label: 'Inventory Counting', translationKey: 'nav.counting', href: '/inventory/counting', icon: ClipboardList, section: 'navigation', moduleKey: 'inventory', keywords: ['stocktake', 'count'] },
   { id: 'nav-price-lists', label: 'Price Lists', translationKey: 'nav.priceLists', href: '/pricing/price-lists', icon: Tag, section: 'navigation', moduleKey: 'pricing', keywords: ['pricing', 'rates'] },
   { id: 'nav-payments', label: 'Payments', translationKey: 'nav.payments', href: '/treasury/payments', icon: Wallet, section: 'navigation', moduleKey: 'treasury', keywords: ['transactions'] },
-  { id: 'nav-expenses', label: 'Expenses', translationKey: 'nav.expenses', href: '/expenses', icon: PiggyBank, section: 'navigation', moduleKey: 'treasury', keywords: ['costs', 'spending'] },
+  { id: 'nav-expenses', label: 'Expenses', translationKey: 'nav.expenses', href: '/expenses', icon: PiggyBank, section: 'navigation', moduleKey: 'expenses', keywords: ['costs', 'spending'] },
   { id: 'nav-chart-of-accounts', label: 'Chart of Accounts', translationKey: 'nav.chartOfAccounts', href: '/finance/chart-of-accounts', icon: BookOpen, section: 'navigation', moduleKey: 'accounts', keywords: ['coa', 'accounting'] },
   { id: 'nav-general-ledger', label: 'General Ledger', translationKey: 'nav.generalLedger', href: '/finance/ledger', icon: Columns3, section: 'navigation', moduleKey: 'accounts', keywords: ['gl', 'ledger'] },
   { id: 'nav-journal-entries', label: 'Journal Entries', translationKey: 'nav.journalEntries', href: '/finance/journal-entries', icon: PenLine, section: 'navigation', moduleKey: 'finance', keywords: ['je', 'entries'] },
@@ -92,7 +92,7 @@ const ACTION_ITEMS: CommandItem[] = [
   { id: 'action-create-customer', label: 'Create Customer', translationKey: 'commandPalette.createCustomer', href: '/sales/customers/new', icon: Plus, section: 'actions', permission: 'sales.create', keywords: ['new customer', 'add client'] },
   { id: 'action-create-product', label: 'Create Product', translationKey: 'commandPalette.createProduct', href: '/inventory/products/new', icon: Plus, section: 'actions', permission: 'inventory.create', keywords: ['new product', 'add item'] },
   { id: 'action-create-payment', label: 'Create Payment', translationKey: 'commandPalette.createPayment', href: '/treasury/payments/new', icon: Plus, section: 'actions', permission: 'treasury.create', keywords: ['new payment', 'record payment'] },
-  { id: 'action-create-expense', label: 'Create Expense', translationKey: 'commandPalette.createExpense', href: '/expenses/new', icon: Plus, section: 'actions', permission: 'treasury.create', keywords: ['new expense', 'add expense'] },
+  { id: 'action-create-expense', label: 'Create Expense', translationKey: 'commandPalette.createExpense', href: '/expenses/new', icon: Plus, section: 'actions', permission: 'expenses.create', keywords: ['new expense', 'add expense'] },
   { id: 'action-create-purchase-order', label: 'Create Purchase Order', translationKey: 'commandPalette.createPurchaseOrder', href: '/purchases/orders/new', icon: Plus, section: 'actions', permission: 'purchases.create', keywords: ['new po', 'buy'] },
   { id: 'action-open-pos', label: 'Open POS', translationKey: 'nav.openPos', href: '/pos/transactions', icon: Store, section: 'actions', permission: 'pos.operate_terminal', keywords: ['point of sale', 'register', 'cash'] },
 ]

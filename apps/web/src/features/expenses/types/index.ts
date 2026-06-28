@@ -43,17 +43,6 @@ export interface ExpenseMetadata {
 }
 
 /**
- * Expense document attachment
- */
-export interface ExpenseAttachment {
-  id: string
-  filename: string
-  mime_type: string
-  size: number
-  url: string
-}
-
-/**
  * Expense document
  */
 export interface Expense {
@@ -69,7 +58,6 @@ export interface Expense {
   created_at: string
   updated_at: string
   metadata: ExpenseMetadata | null
-  attachments?: ExpenseAttachment[]
   company?: {
     id: string
     name: string
@@ -125,6 +113,7 @@ export interface CreateExpenseDTO {
   is_paid?: boolean
   status?: DocumentStatus
   document_date?: string
+  idempotency_key?: string
 }
 
 /**

@@ -1434,7 +1434,7 @@ export function AppRoutes() {
           <Route
             index
             element={
-              <RequirePermission moduleKey="treasury">
+              <RequirePermission permission="expenses.view">
                 <SuspenseWrapper>
                   <ExpenseListPage />
                 </SuspenseWrapper>
@@ -1444,7 +1444,7 @@ export function AppRoutes() {
           <Route
             path="new"
             element={
-              <RequirePermission permission="treasury.create">
+              <RequirePermission permission="expenses.create">
                 <SuspenseWrapper>
                   <ExpenseFormPage />
                 </SuspenseWrapper>
@@ -1454,7 +1454,7 @@ export function AppRoutes() {
           <Route
             path="categories"
             element={
-              <RequirePermission moduleKey="treasury">
+              <RequirePermission permission="expense-categories.view">
                 <SuspenseWrapper>
                   <ExpenseCategoryPage />
                 </SuspenseWrapper>
@@ -1464,7 +1464,7 @@ export function AppRoutes() {
           <Route
             path=":id"
             element={
-              <RequirePermission moduleKey="treasury">
+              <RequirePermission permission="expenses.view">
                 <SuspenseWrapper>
                   <ExpenseFormPage />
                 </SuspenseWrapper>
@@ -1474,7 +1474,7 @@ export function AppRoutes() {
           <Route
             path=":id/view"
             element={
-              <RequirePermission moduleKey="treasury">
+              <RequirePermission permission="expenses.view">
                 <SuspenseWrapper>
                   <ExpenseDetailPage />
                 </SuspenseWrapper>
@@ -1484,7 +1484,7 @@ export function AppRoutes() {
           <Route
             path=":id/edit"
             element={
-              <RequirePermission permission="treasury.edit">
+              <RequirePermission permission="expenses.update">
                 <SuspenseWrapper>
                   <ExpenseFormPage />
                 </SuspenseWrapper>
