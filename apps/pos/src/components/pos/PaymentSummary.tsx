@@ -59,13 +59,13 @@ export function PaymentSummary({
       {/* Subtotal */}
       <div className="flex justify-between text-xs text-ink-muted">
         <span>{t('common:subtotal')}</span>
-        <span className="tabular-nums text-ink">{format(subtotal)}</span>
+        <span className="font-mono tabular-nums text-ink">{format(subtotal)}</span>
       </div>
 
       {/* Tax */}
       <div className="flex justify-between text-xs text-ink-muted">
         <span>{t('common:tax')}</span>
-        <span className="tabular-nums text-ink">{format(taxAmount)}</span>
+        <span className="font-mono tabular-nums text-ink">{format(taxAmount)}</span>
       </div>
 
       {/* Discount */}
@@ -73,7 +73,7 @@ export function PaymentSummary({
         <div className="flex items-center justify-between text-sm">
           <span className="font-medium text-danger-strong">{t('common:discount')}</span>
           <div className="flex items-center gap-2">
-            <span className="font-medium tabular-nums text-danger-strong">-{format(discountAmount)}</span>
+            <span className="font-mono font-medium tabular-nums text-danger-strong">-{format(discountAmount)}</span>
             {onRemoveDiscount && (
               <IconButton
                 variant="destructive"
@@ -92,7 +92,7 @@ export function PaymentSummary({
       <div className="rounded-lg bg-action px-3 py-2 text-ink-inverse">
         <div className="flex items-center justify-between">
           <span className="text-lg font-medium">{t('common:total')}</span>
-          <span className="text-2xl font-bold tabular-nums">{format(total)}</span>
+          <span className="font-mono text-2xl font-bold tabular-nums">{format(total)}</span>
         </div>
       </div>
 

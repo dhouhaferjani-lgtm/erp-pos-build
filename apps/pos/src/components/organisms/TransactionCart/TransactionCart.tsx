@@ -290,7 +290,7 @@ export function TransactionCart({
                   <div className="flex items-center justify-between">
                     <span className="text-lg font-medium">{t('common.total')}</span>
                     <span
-                      className={`text-2xl font-bold tabular-nums ${netTotal < -0.005 ? 'opacity-80' : ''}`}
+                      className={`font-mono text-2xl font-bold tabular-nums ${netTotal < -0.005 ? 'opacity-80' : ''}`}
                     >
                       {netTotal < -0.005 ? '−' : ''}{format(Math.abs(netTotal))}
                     </span>
