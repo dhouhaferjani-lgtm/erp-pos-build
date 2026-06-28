@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
 import { Tag, SlidersHorizontal, Trash2, X, ChevronDown, ChevronUp } from 'lucide-react';
@@ -58,9 +58,11 @@ export function CartLineItem({
 
   // Reset the guard when the line collapses (React "adjust state on prop change"
   // pattern — done during render, not in an effect, to avoid cascading renders).
-  const [prevOpen, setPrevOpen] = useState(isOpen);
-  if (prevOpen !== isOpen) {
-    setPrevOpen(isOpen);
+  // prevOpen is render-bookkeeping only (never displayed), so a ref avoids an
+  // extra state slot/render; the real visible reset is setRemoveArmed.
+  const prevOpenRef = useRef(isOpen);
+  if (prevOpenRef.current !== isOpen) {
+    prevOpenRef.current = isOpen;
     if (!isOpen && removeArmed) setRemoveArmed(false);
   }
 
