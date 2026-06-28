@@ -175,18 +175,18 @@ export function EndOfDayPreviewModal({
     <Modal isOpen={isOpen} onClose={handleClose} title={title} size="full">
       {phase === 'loading' && (
         <div className="flex flex-col items-center gap-3 py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-          <p className="text-sm text-gray-500">{t('reports.loading')}</p>
+          <Loader2 className="h-8 w-8 animate-spin text-action" />
+          <p className="text-sm text-ink-muted">{t('reports.loading')}</p>
         </div>
       )}
 
       {phase === 'error' && (
         <div className="flex flex-col items-center gap-3 py-8">
-          <AlertCircle className="h-10 w-10 text-red-500" />
-          <p className="text-center text-sm text-red-600">{errorMessage}</p>
+          <AlertCircle className="h-10 w-10 text-danger" />
+          <p className="text-center text-sm text-danger-strong">{errorMessage}</p>
           <button
             onClick={handleClose}
-            className="mt-4 rounded-xl border border-gray-300 px-6 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+            className="mt-4 rounded-xl border border-border-strong px-6 py-2.5 text-sm font-semibold text-ink-muted hover:bg-surface-sunken"
           >
             {t('reports.endOfDay.cancel')}
           </button>
@@ -214,10 +214,10 @@ export function EndOfDayPreviewModal({
           )}
 
           {/* Subtitle */}
-          <p className="text-sm text-gray-500">{t('reports.endOfDay.subtitle')}</p>
+          <p className="text-sm text-ink-muted">{t('reports.endOfDay.subtitle')}</p>
 
           {/* Shift info */}
-          <div className="flex items-center justify-between text-xs text-gray-500">
+          <div className="flex items-center justify-between text-xs text-ink-muted">
             <span>{t('shift.number', { number: shift.shift_number })}</span>
             <span>
               {new Date(shift.opened_at).toLocaleString()}
@@ -240,18 +240,18 @@ export function EndOfDayPreviewModal({
               redundant card MUST NOT render — otherwise it leaks the expected
               total. Only show it when there is no cash-count reconciliation. */}
           {!cashCountEnabled && (
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-5">
-              <h4 className="mb-3 text-sm font-semibold text-blue-800">
+            <div className="rounded-xl border border-action-subtle bg-action-subtle p-5">
+              <h4 className="mb-3 text-sm font-semibold text-action-strong">
                 {t('reports.endOfDay.cashReconciliation')}
               </h4>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="text-xs text-blue-600">{t('reports.endOfDay.openingCash')}</p>
-                  <p className="mt-0.5 text-lg font-bold text-blue-900">{format(preview.opening_cash)}</p>
+                  <p className="text-xs text-action">{t('reports.endOfDay.openingCash')}</p>
+                  <p className="mt-0.5 text-lg font-bold text-action-strong">{format(preview.opening_cash)}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-blue-600">{t('reports.endOfDay.expectedCash')}</p>
-                  <p className="mt-0.5 text-lg font-bold text-blue-900">{format(preview.expected_cash)}</p>
+                  <p className="text-xs text-action">{t('reports.endOfDay.expectedCash')}</p>
+                  <p className="mt-0.5 text-lg font-bold text-action-strong">{format(preview.expected_cash)}</p>
                 </div>
               </div>
             </div>
@@ -261,12 +261,12 @@ export function EndOfDayPreviewModal({
           <div className="grid grid-cols-2 gap-5">
             {preview.vat_breakdown.length > 0 && (
               <div>
-                <h4 className="mb-2 text-sm font-semibold text-gray-700">
+                <h4 className="mb-2 text-sm font-semibold text-ink-muted">
                   {t('reports.endOfDay.vatBreakdown')}
                 </h4>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
+                    <tr className="border-b border-border-subtle text-left text-xs text-ink-muted">
                       <th className="pb-2">{t('reports.vatRate')}</th>
                       <th className="pb-2 text-right">{t('reports.vatNet')}</th>
                       <th className="pb-2 text-right">{t('reports.vatVat')}</th>
@@ -275,7 +275,7 @@ export function EndOfDayPreviewModal({
                   </thead>
                   <tbody>
                     {preview.vat_breakdown.map((row) => (
-                      <tr key={row.tax_rate} className="border-b border-gray-100">
+                      <tr key={row.tax_rate} className="border-b border-border-subtle">
                         <td className="py-2">{row.tax_rate}%</td>
                         <td className="py-2 text-right">{format(row.net_amount)}</td>
                         <td className="py-2 text-right">{format(row.vat_amount)}</td>
@@ -289,12 +289,12 @@ export function EndOfDayPreviewModal({
 
             {preview.payment_methods.length > 0 && (
               <div>
-                <h4 className="mb-2 text-sm font-semibold text-gray-700">
+                <h4 className="mb-2 text-sm font-semibold text-ink-muted">
                   {t('reports.endOfDay.payments')}
                 </h4>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
+                    <tr className="border-b border-border-subtle text-left text-xs text-ink-muted">
                       <th className="pb-2">{t('reports.paymentType')}</th>
                       <th className="pb-2 text-right">{t('reports.paymentCount')}</th>
                       <th className="pb-2 text-right">{t('reports.paymentAmount')}</th>
@@ -302,7 +302,7 @@ export function EndOfDayPreviewModal({
                   </thead>
                   <tbody>
                     {preview.payment_methods.map((row) => (
-                      <tr key={row.payment_method_code} className="border-b border-gray-100">
+                      <tr key={row.payment_method_code} className="border-b border-border-subtle">
                         <td className="py-2">{row.payment_method_code}</td>
                         <td className="py-2 text-right">{row.transaction_count}</td>
                         <td className="py-2 text-right">{format(row.total_amount)}</td>
@@ -332,7 +332,7 @@ export function EndOfDayPreviewModal({
             <button
               onClick={handleClose}
               disabled={phase === 'confirming'}
-              className="flex-1 rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex-1 rounded-xl border border-border-strong bg-surface-raised px-4 py-3 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
             >
               {t('reports.endOfDay.cancel')}
             </button>
@@ -341,7 +341,7 @@ export function EndOfDayPreviewModal({
               disabled={confirmDisabled}
               aria-label={t('reports.endOfDay.confirmLabel')}
               data-testid="end-of-day-confirm-button"
-              className="flex-1 rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-75"
+              className="flex-1 rounded-xl bg-danger px-4 py-3 text-sm font-semibold text-ink-inverse transition-colors hover:bg-danger-strong disabled:cursor-not-allowed disabled:opacity-75"
             >
               {phase === 'confirming' ? (
                 <span className="flex items-center justify-center gap-2">
@@ -358,17 +358,17 @@ export function EndOfDayPreviewModal({
 
       {phase === 'success' && result !== null && (
         <div className="flex flex-col items-center gap-4 py-8">
-          <CheckCircle className="h-16 w-16 text-green-500" />
+          <CheckCircle className="h-16 w-16 text-success" />
 
           <div className="text-center">
-            <p className="mt-2 text-sm text-gray-600">
+            <p className="mt-2 text-sm text-ink-muted">
               {t('reports.endOfDay.successZNumber')}: {' '}
-              <span className="rounded bg-blue-100 px-2 py-0.5 font-mono font-bold text-blue-800">
+              <span className="rounded bg-action-subtle px-2 py-0.5 font-mono font-bold text-action-strong">
                 {result.formattedZNumber}
               </span>
             </p>
             {result.wasReused && (
-              <p className="mt-2 text-xs text-amber-600">
+              <p className="mt-2 text-xs text-warning-strong">
                 {t('reports.endOfDay.successReused')}
               </p>
             )}
@@ -378,7 +378,7 @@ export function EndOfDayPreviewModal({
             {onPrintReceipt && (
               <button
                 onClick={() => onPrintReceipt(result)}
-                className="flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-6 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                className="flex items-center gap-2 rounded-xl border border-border-strong bg-surface-raised px-6 py-2.5 text-sm font-semibold text-ink-muted hover:bg-surface-sunken"
               >
                 <Printer className="h-4 w-4" />
                 {t('reports.endOfDay.printReceipt')}
@@ -386,7 +386,7 @@ export function EndOfDayPreviewModal({
             )}
             <button
               onClick={onClose}
-              className="rounded-xl bg-gray-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-gray-800"
+              className="rounded-xl bg-action px-6 py-2.5 text-sm font-semibold text-ink-inverse hover:bg-action-hover"
             >
               {t('reports.endOfDay.done')}
             </button>
@@ -399,9 +399,9 @@ export function EndOfDayPreviewModal({
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg bg-gray-50 px-4 py-3 text-center">
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className="mt-1 text-lg font-bold text-gray-900">{value}</p>
+    <div className="rounded-lg bg-surface-sunken px-4 py-3 text-center">
+      <p className="text-xs text-ink-muted">{label}</p>
+      <p className="mt-1 text-lg font-bold text-ink">{value}</p>
     </div>
   );
 }

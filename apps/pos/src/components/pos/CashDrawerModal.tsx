@@ -102,14 +102,14 @@ export function CashDrawerModal({
     <Modal isOpen={isOpen} onClose={handleClose} title={t('cashDrawer.title')} size="md">
       <div className="space-y-4">
         {/* Tabs */}
-        <div className="flex rounded-lg bg-gray-100 p-1">
+        <div className="flex rounded-lg bg-surface-sunken p-1">
           <button
             onClick={() => { setTab('deposit'); setSuccess(false); }}
             className={cn(
               'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
               tab === 'deposit'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700',
+                ? 'bg-surface-raised text-ink shadow-sm'
+                : 'text-ink-muted hover:text-ink',
             )}
           >
             {t('cashDrawer.deposit')}
@@ -119,8 +119,8 @@ export function CashDrawerModal({
             className={cn(
               'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
               tab === 'payout'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700',
+                ? 'bg-surface-raised text-ink shadow-sm'
+                : 'text-ink-muted hover:text-ink',
             )}
           >
             {t('cashDrawer.payout')}
@@ -129,19 +129,19 @@ export function CashDrawerModal({
 
         {/* Error */}
         {error && (
-          <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>
+          <div className="rounded-lg bg-danger-surface p-3 text-sm text-danger-strong">{error}</div>
         )}
 
         {/* Success */}
         {success && (
-          <div className="rounded-lg bg-green-50 p-3 text-sm text-green-700">
+          <div className="rounded-lg bg-success-surface p-3 text-sm text-success-strong">
             {tab === 'deposit' ? t('cashDrawer.deposit') : t('cashDrawer.payout')} OK
           </div>
         )}
 
         {/* Amount */}
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
+          <label className="mb-1 block text-sm font-medium text-ink-muted">
             {t('cashDrawer.amount')}
           </label>
           <MoneyInput
@@ -149,33 +149,33 @@ export function CashDrawerModal({
             min="0"
             value={amount}
             onChange={setAmount}
-            className="w-full rounded-lg border border-gray-300 px-4 py-3 text-right text-xl font-semibold focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="w-full rounded-lg border border-border-strong px-4 py-3 text-right text-xl font-semibold focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
           />
         </div>
 
         {/* Reason */}
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            {t('cashDrawer.reason')} <span className="text-red-500">*</span>
+          <label className="mb-1 block text-sm font-medium text-ink-muted">
+            {t('cashDrawer.reason')} <span className="text-danger">*</span>
           </label>
           <input
             type="text"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="w-full rounded-lg border border-border-strong px-3 py-2 text-sm focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
           />
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            {t('cashDrawer.managerPin')} <span className="text-red-500">*</span>
+          <label className="mb-1 block text-sm font-medium text-ink-muted">
+            {t('cashDrawer.managerPin')} <span className="text-danger">*</span>
           </label>
           <input
             type="password"
             inputMode="numeric"
             value={managerPin}
             onChange={(e) => setManagerPin(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="w-full rounded-lg border border-border-strong px-3 py-2 text-sm focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
           />
         </div>
 
@@ -184,10 +184,10 @@ export function CashDrawerModal({
           onClick={() => void handleSubmit()}
           disabled={!isValid || managerPin.length < 4 || isProcessing}
           className={cn(
-            'flex min-h-[48px] w-full items-center justify-center rounded-xl px-6 py-3 text-base font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+            'flex min-h-[48px] w-full items-center justify-center rounded-xl px-6 py-3 text-base font-semibold text-ink-inverse transition-colors disabled:cursor-not-allowed disabled:opacity-50',
             tab === 'deposit'
-              ? 'bg-green-600 hover:bg-green-700'
-              : 'bg-red-600 hover:bg-red-700',
+              ? 'bg-success hover:bg-success-hover'
+              : 'bg-danger hover:bg-danger-strong',
           )}
         >
           {tab === 'deposit' ? t('cashDrawer.deposit') : t('cashDrawer.payout')}
