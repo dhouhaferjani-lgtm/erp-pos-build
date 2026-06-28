@@ -42,7 +42,7 @@ Industry standard (GS1, Akeneo, SAP, Odoo, Auto Care/TecDoc) separates **Brand**
 - **[Both IMPORTANT] SmartPrompts enum** → migrate both consumers, delete the old enum, derive validation from the shared enum (no hardcoded `in:` string), regenerate types (§1.1).
 - **[Both IMPORTANT] `pullCustomers` wiring** → extend `SyncResult` (`customersPulled`/`customersFailed`); IDs from `authStore`; explicit catch-log-degrade-continue failure policy; never advance the cursor on failure (§4).
 - **[Claude IMPORTANT] migration version collision** → split product-v58 / customer-v59, idempotent ALTERs, **coordinate version numbers with the loyalty session before pushing** (§4).
-- **[Claude IMPORTANT] rule-12 exception** → the data-unconditional/experience-gated split is recorded as a **conscious rule-12 exception requiring owner sign-off** (§2).
+- **[Owner 2026-06-28] vertical-gate the data (rule-12 exception REJECTED)** → parapharmacy-specific merchandising data (skin type, suitability, equivalents, complements, routines, customer skin advice) is **gated to the parapharmacy vertical** — it's parapharmacy business logic — via the existing `parapharmacyMetadata` conditional-load precedent. Brand stays universal. No rule-12 exception needed; both layers genuinely gated (§2).
 - **[Claude IMPORTANT] equivalents symmetry / self-reference** → seeder writes identical `equivalence_type` both directions + a symmetry test; DB CHECK prevents self-reference (§1.7).
 - **[Nits] dropped** `external_refs`, `confidence`, `merchandising.*` permission set (§0.2 out-of-scope).
 
@@ -85,7 +85,7 @@ Industry standard (GS1, Akeneo, SAP, Odoo, Auto Care/TecDoc) separates **Brand**
 - **Automotive (out of scope):** universal `Brand` does not constrain a future automotive model; `AutomotiveProductMetadata.supplier_brand`/`BrandQualityTier` untouched.
 
 ### 1.4 Customer skin type (`Partner` module)
-- Migration `*_add_skin_type_to_partners.php`: nullable `skin_type` (cast to `Shared\Domain\Enums\SkinType`) + nullable `skin_advice_note` (text). Add to `Partner` `$fillable`/`$casts` + customer DTO. Direct columns (a metadata table is overkill for two fields).
+- Migration `*_add_skin_type_to_partners.php`: nullable `skin_type` (cast to `Shared\Domain\Enums\SkinType`) + nullable `skin_advice_note` (text). Add to `Partner` `$fillable`/`$casts` + customer DTO. Direct columns (a metadata table is overkill for two fields). **Serialized/synced only for the parapharmacy vertical** (§2a).
 
 ### 1.5 Product skin suitability (HasMany — not belongsToMany)
 - Migration `*_create_product_skin_suitability_table.php`: `id (uuid)`, `tenant_id (uuid)`, `product_id (uuid, FK cascade)`, `skin_type (string, SkinType cast)`, timestamps. Unique (`product_id`, `skin_type`).
@@ -118,15 +118,22 @@ Industry standard (GS1, Akeneo, SAP, Odoo, Auto Care/TecDoc) separates **Brand**
 
 ---
 
-## 2. Merchandising module gating (productization seam)
+## 2. Gating — vertical (data) + module (experience). Both layers, no rule-12 exception.
 
-**Separate data from experience.**
-- **Data is unconditional** (`brand_id`, `skin_type`, suitability/equivalents/complements/routines) — plain columns/pivots, always in `/products` + `/pos/customers/sync`. **Recorded rule-12 exception (needs owner sign-off):** vertical-shaped fields ship in shared payloads ungated on the server because the data is cross-vertical, cheap, and harmless; **only the experience is gated.** If any endpoint later becomes merchandising-only, gate it `module:Merchandising`.
-- **The POS merchandising *experience* is gated by a `Merchandising` module key** (Filtres drawer, skin-advice bar, Équivalents/Compléments/Routine tabs).
-  - Add `case Merchandising` to `app/Enums/ModuleName.php` **and** to `parapharmacy.default_modules` in `config/verticals.php` **in the same commit** — `ModuleNameTest` enforces the enum value-set *equals* the union of config names bidirectionally; either alone fails CI.
-  - **Entitlement mechanism (verified, no new device plumbing):** FE `hasModule(config, 'Merchandising')` reads `companyConfig.all_enabled_modules` (`productStore.ts`), fetched from `/company/config` (`productApi.ts`), persisted via `companyConfigCache`, and refreshed each `runFullSync` (`authStore.refreshCompanyConfig`). Backend `CompanyConfigService` builds `all_enabled_modules` by merging `default_modules` + enabled extras (`CompanyConfigController`). **Only backend check needed:** a test that `/company/config` includes `Merchandising` for parapharmacy tenants. Offline correctness depends on the cache being hydrated after the module is added — covered by an offline-startup hydration test.
-  - **Unbundling later = config-only:** move `Merchandising` from `default_modules` to a priced `compatible_extras` entry.
-- **No dedicated `merchandising.*` permission set now** — module gating suffices for a bundled USP; add per-action perms only if/when unbundled.
+### 2a. Parapharmacy-specific DATA is vertical-gated
+Skin type, product suitability, equivalents, complements, routines, and customer skin advice are parapharmacy business logic. The server emits them **only for the parapharmacy vertical**, via the established precedent: `ProductController` already conditionally loads `parapharmacyMetadata.*` `if ($tenant->vertical === Vertical::Parapharmacy)` (and `isAutomotive()` for automotive) — the new merchandising arrays **extend `ParapharmacyProductMetadataData`**, so they ride that gated load automatically. Customer `skin_type`/`skin_advice_note` are serialized/synced only for parapharmacy tenants. Non-parapharmacy tenants never receive these fields. (The POS device columns from §4 exist regardless but stay null for non-parapharmacy — harmless.)
+
+### 2b. Brand is universal (intentionally NOT gated)
+Per the locked decision, `Brand`/`brand_id`/`brand_name` is cross-vertical and ecommerce-ready — emitted for all verticals, eager-loaded on every product read path (§1.8). It is the one merchandising-adjacent field that is deliberately not vertical-scoped.
+
+### 2c. The merchandising EXPERIENCE is module-gated within parapharmacy
+A `Merchandising` module key gates the UX (Filtres drawer, skin-advice bar, Équivalents/Compléments/Routine tabs) so it can be unbundled to a paid extra later even though the vertical already has the data.
+- Add `case Merchandising` to `app/Enums/ModuleName.php` **and** `parapharmacy.default_modules` in `config/verticals.php` **in the same commit** — `ModuleNameTest` enforces enum value-set == config union, bidirectionally; either alone fails CI.
+- **Entitlement mechanism (verified, no new device plumbing):** FE `hasModule(config,'Merchandising')` reads `companyConfig.all_enabled_modules` (`productStore.ts`), fetched from `/company/config` (`productApi.ts`), cached (`companyConfigCache`), refreshed each `runFullSync` (`authStore.refreshCompanyConfig`). Backend `CompanyConfigService` merges `default_modules` + enabled extras. **Only backend check:** a test that `/company/config` includes `Merchandising` for parapharmacy tenants. Offline correctness depends on the cache being hydrated after the module is added — covered by an offline-startup hydration test.
+- **Unbundle later = config-only:** move `Merchandising` from `default_modules` to a priced `compatible_extras` entry.
+- **No dedicated `merchandising.*` permission set now** — vertical + module gating suffice.
+
+**Net (rule 12 satisfied on both layers):** backend serves parapharmacy-specific fields only to the parapharmacy vertical; FE renders the merchandising UX only when `hasModule('Merchandising')`.
 
 ---
 
@@ -147,7 +154,7 @@ Verify row counts after `db:seed --class=ParapharmacySeeder`.
 
 ## 4. POS offline sync (device SQLite, `apps/pos`)
 
-Current max device migration = **v57**. **Split into two versions; coordinate the exact numbers with the loyalty session (`feat/loyalty-earn-per-product`) before either pushes** — both touch device migrations and must not both claim the same version.
+Current max device migration = **v57**. **Split into two versions; coordinate the exact numbers with the loyalty session (`feat/loyalty-earn-per-product`) before either pushes** — both touch device migrations and must not both claim the same version. The server emits the parapharmacy merchandising JSON and customer skin fields **only for the parapharmacy vertical** (§2a); `brand_id`/`brand_name` are universal.
 
 - **v58 — products.** `ALTER TABLE products ADD COLUMN brand_id TEXT; ADD COLUMN brand_name TEXT; ADD COLUMN parapharmacy_metadata TEXT` (JSON `{suitable_skin_types[], equivalent_product_ids[], complement_product_ids[], routine_refs[]}`). **Then `DELETE FROM sync_metadata WHERE key = 'products_last_sync'`** so the next pull is a full re-fetch and backfills the new columns (v57 precedent at `migrations.ts:1773-1788`). Guard ALTERs idempotently.
 - **v59 — customers.** `ALTER TABLE customers ADD COLUMN skin_type TEXT; ADD COLUMN skin_advice_note TEXT`. **Then clear the customer cursor** (`customers.updated_since` / whatever key `pullCustomers` persists) so customers re-baseline.
@@ -158,15 +165,36 @@ Current max device migration = **v57**. **Split into two versions; coordinate th
 
 ---
 
-## 5. POS UI (redesign phases P9/P5/P8) — gated `hasModule('Merchandising')`
+## 5. POS UI (redesign phases P9/P5/P8)
 
-> **Sequencing:** reuses redesign atoms (`Pill`, `Tab`, `ProductThumb`, `StockBadge`) + tokens, which live on `feat/pos-caisse-redesign` (**not yet on `origin/dev`**, diverged 3/10). Data/sync layers (§1–4) proceed now; this UI rebases onto the redesign branch once it lands. Escalate if still unmerged when UI work starts.
+> **Sequencing:** reuses redesign atoms + token system, which live on `feat/pos-caisse-redesign` (**not yet on `origin/dev`**, diverged 3/10). Data/sync layers (§1–4) proceed now; **this UI rebases onto the redesign branch** so the token system resolves (`bg-stock-*`, `bg-accent`, `rounded-tile`/`rounded-card`, `font-mono`). Escalate if still unmerged when UI work starts. ESLint color guard is **ERROR** on these files — tokens only; both themes.
 
+### 5.0 Ownership split (coordination handoff from the redesign session, 2026-06-28)
+Because this session owns product/customer **data rendering** (brand, skin-type, equivalents/complements on the card/grid), it also does the **visual restyle of `ProductCard` + `ProductGrid`** — restyling once together with the data wiring avoids a guaranteed merge conflict between the two branches.
+- **This session owns:** `ProductCard`, `ProductGrid`, Filtres drawer, skin-advice bar, product-detail Équivalents/Compléments/Routine tabs, the **`/customers` page** (a placeholder + route + nav-rail item already exist on the redesign branch — **build it out in place, do not create a parallel page**), and all product/customer data + sync.
+- **Redesign session owns (ping before touching):** theme tokens + atoms (`components/ui/*`), `NavRail`, `Header`, `AppShell` layout, the cart (`TransactionCart`, `CartLineItem`), payment/modal/report shells.
+- **Reuse from `@/components/ui`** (do not duplicate): `ProductThumb` (88px tinted-initials tile + category tint + image fallback), `StockBadge` (`status="ok"|"low"|"out"` using dedicated `stock-*` tokens — **NOT** success/warning/danger; see `apps/pos/docs/design-language.md` stock exception; map from `isOutOfStock`/`isLowStock`), `Pill` (category toggle + removable filter chips), `Tabs` (detail tabs w/ counts), `Badge`, `SegmentedControl` (view toggle), `Button`/`IconButton`. Tokens: surfaces/ink/border; **accent** = selected/highlight (in-cart, active pill); **action** (blue) = primary CTA only; prices `font-mono` + `tabular-nums`.
+
+### 5.1 `ProductCard` restyle — IN PLACE (mock §5.1/§5.7)
+Preserve **all** logic + data-testids (`in-cart-badge`, `view-details-button`, `price-row`, `stock-row`, `incoming-badge`), the `locationStock` three-path stock logic, modifiers, activation-block, keyboard handling, and `memo`.
+- **Visual:** `ProductThumb` on top; info-eye top-left (must work out-of-stock); **brand in caps above the name** (universal, §2b); price mono; `StockBadge`.
+- **In-cart state (§5.7):** full **accent** outline + accent-tint bg + 3px top accent bar + ✓ in the qty badge. Use **accent**, not action (owner decision).
+- **Tap pulse:** `ezTap` ~420ms on add — add the keyframe to `index.css` (not yet present), named `ezTap`, using `var(--accent-ring)`.
+- **Compact card:** no thumb. **Out-of-stock:** dimmed (`surface-sunken`/`ink-faint`) + `StockBadge status="out"`, fiche still openable.
+
+### 5.2 `ProductGrid` restyle + required dual-source reconcile
+`ProductGrid` currently keeps its own `useState` from `localStorage['pos-display-mode']` and **ignores `settingsStore.displayMode`**. Make it read `displayMode` + the new **density** from `settingsStore` (the Appearance settings — theme/accent/corner/density — already shipped). Density is **JS-driven**: thread it into `getColumns(displayMode, density, width)` + `CARD_MIN_H_*` (visual+comfortable=5, visual+dense=6, compact+comfortable=4, compact+dense=5).
+- **Toolbar:** search · Filtres (badge) · Top ventes · view toggle (`SegmentedControl`). Category `Pill` row; active filter-chip row + count.
+
+### 5.3 Merchandising overlays (module-gated `hasModule('Merchandising')`, §2c)
 - **P9 Filtres drawer** (`HomePage`): brand / category / routine / skin-type multi-select from the local product set; removable chips (`Pill`) + live count.
 - **P9 Skin-advice bar** (`ProductGrid` header): skin-type pills filter by `suitable_skin_types`; defaults from the selected customer's `skin_type`.
-- **P9 Product-detail tabs** (`ProductDetailDrawer`): **Équivalents / Compléments / Routine** (`Tab`) — resolve IDs → local products → `ProductThumb` rows with one-tap add-to-cart.
-- **P5/P8 Customer:** capture/show `skin_type` (+ advice note); drives the advice-bar default.
-- All surfaces conditional on `hasModule('Merchandising')`. French i18n; tokens only; both themes.
+- **P9 Product-detail tabs** (`ProductDetailDrawer`): **Équivalents / Compléments / Routine** (`Tab` w/ counts) — resolve IDs → local products → `ProductThumb` rows with one-tap add-to-cart.
+
+### 5.4 Customers page + capture (P5/P8) — build out `/customers` in place
+Capture/show `skin_type` (+ advice note); the customer detail drives the skin-advice-bar default.
+
+> Gating: the base `ProductCard`/`ProductGrid` restyle and universal brand caps are unconditional; the **§5.3 merchandising overlays** are module-gated. French i18n; tokens only; both themes.
 
 ---
 
@@ -183,7 +211,7 @@ ERP is the source of truth now. The Synerivia platform later pushes enrichment (
 5. **Seeder** — brands/suitability/equivalents(both dirs)/complements/routines/customer skin types; run + verify counts.
 6. **Server payloads** — `/products` (flat `brand_id`/`brand_name` + merchandising arrays) and `/pos/customers/sync` (skin fields).
 7. **POS offline** — v58 (products + cursor reset) + v59 (customers + cursor reset) + repos + types + `upsertProducts` rewrite + **wire `pullCustomers`** + `SyncResult` contract.
-8. **POS UI** — Filtres, skin-advice, detail tabs, customer capture (gated; behind redesign atoms).
+8. **POS UI** (rebase onto redesign branch) — `ProductCard` + `ProductGrid` restyle in place + `settingsStore` dual-source reconcile (§5.1–5.2); build out `/customers` in place (§5.4); module-gated Filtres / skin-advice / detail tabs (§5.3).
 9. **Docs** — REALIGNMENT-LOG enrichment field-mapping; memory update.
 
 ---
@@ -196,7 +224,7 @@ ERP is the source of truth now. The Synerivia platform later pushes enrichment (
 ---
 
 ## 9. Risks & open items
-- **Owner sign-off needed:** the rule-12 exception in §2 (merchandising data ships ungated in shared payloads; only the experience is gated).
+- **Resolved (owner 2026-06-28):** parapharmacy merchandising data is vertical-gated (§2a); brand stays universal (§2b) — no rule-12 exception.
 - **Redesign-branch dependency** for §5 UI (atoms not on `origin/dev`). Mitigation: build §1–4 first; rebase UI later.
 - **Device migration version coordination** with the loyalty session — claim distinct v58/v59 numbers (or land the shared customer ALTER once and have loyalty rebase) before either pushes.
 - **POS catalog endpoint** — verify whether the POS pulls the same `/products` (nested `ProductData`) or a POS-specific serializer, to pin the brand flatten point (§1.8/§4).
