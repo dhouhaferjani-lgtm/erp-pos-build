@@ -2,183 +2,187 @@
 
 > **Goal (owner, 2026-06-28):** surface loyalty in the POS for the parapharmacy demo. When a customer
 > account is attached at checkout and the device is online, show the customer's **balance + tier** and
-> a live **"+N pts this sale"** estimate, gated on the Loyalty add-on. Customers **auto-enroll on their
-> first sale** so the feature works without manual setup. Points still accrue **server-side** on sale
+> a live **"+N pts this sale"** estimate, gated on the Loyalty add-on. Customers **auto-enroll when
+> attached** (online) so the feature works without manual setup. Points accrue **server-side** on sale
 > sync (already built + idempotent).
 >
-> **This spec supersedes the earlier handover** `…loyalty-pos-gating-offline-handover.md` **§1**: the
-> owner chose **online-only, pure server-side balance** over an offline balance mirror.
+> Supersedes the earlier handover `…loyalty-pos-gating-offline-handover.md`: **online-only** (not the
+> offline mirror), and **auto-enroll at attach** (not inside the fiscal projection).
 
 ## Scope
 
 **IN (Phase 1)**
-- **Auto-enroll on first sale (server-side):** when a sale syncs with a customer account attached who
-  has no `LoyaltyMember`, the backend creates the member + enrollment in the active program, then
-  credits. Idempotent. Walk-ins (no customer account) never enroll.
-- **POS balance lookup endpoint:** online, gated, returns a customer's `{enrolled, balance, tier}`.
-- **POS loyalty chrome:** online + module-on + customer-account attached → show balance + tier + a
-  local earn estimate (`floor(cart TTC total × rate)`), rate cached at login.
+- **Auto-enroll at customer-attach (online):** the POS's online balance call doubles as
+  "ensure-enrolled" — it passes the attached customer's already-known phone, and the backend
+  find-or-creates the `LoyaltyMember` + enrollment in the active program, then returns the balance.
+- **POS balance/ensure-enroll endpoint:** online, gated, returns `{enrolled, balance, tier}`.
+- **POS loyalty chrome:** online + module-on + customer-account attached → balance + tier + a local
+  earn estimate (`floor(cart TTC total × rate)`), rate cached at login.
 - **Module gating** both layers (rule 12).
 
-**OUT (Phase 2 — design must not preclude, but do NOT build now)**
-- Redeem / pay-with-points tender.
-- Device-side accrual (points accrue only server-side on sync).
-- **Offline balance mirror** (no SQLite loyalty columns, no `pullCustomers` loyalty wiring) — offline
-  ⇒ loyalty chrome hidden.
-- QR-code customer/member resolution (the balance endpoint is the seam a future QR scan reuses).
-- Explicit enrollment consent/opt-in UI (auto-enroll is the seam this refines later).
+**OUT (Phase 2 — design must not preclude, do NOT build now)**
+- Redeem / pay-with-points tender; device-side accrual.
+- **Offline balance mirror** (no SQLite loyalty columns, no `pullCustomers` loyalty) — offline ⇒
+  loyalty chrome hidden.
+- **Auto-enroll inside the fiscal projection** / catching offline sales for un-enrolled customers
+  (a customer never attached while online won't earn — acceptable; offline = no loyalty).
+- QR-code resolution (the balance/ensure-enroll endpoint is the seam a future QR scan reuses).
+- Explicit enrollment consent/opt-in UI (the attach-time auto-enroll is the seam this refines later).
 
 ## Locked decisions (owner, 2026-06-28)
 
-1. **Auto-enroll on first sale, server-side.** Easiest path that expands into the correct solution
-   (later: gate behind a consent flag). No customer account attached ⇒ no enrollment, no earn.
-2. **Balance = online-only, pure server-side.** Offline ⇒ no loyalty chrome at all. Replaces the
-   handover's offline-mirror design.
-3. **Earn basis = TTC** (receipt total). The shipped server earn uses the TTC total, so the POS
-   estimate uses cart **TTC total × rate** to match — never HT, or the estimate would mislead.
+1. **Auto-enroll at customer-attach, online, folded into the balance call.** The POS passes the
+   attached customer's phone; the backend find-or-creates member+enrollment in a normal HTTP request
+   (CompanyContext present). Chosen after the adversarial review showed sale-sync auto-enroll needed a
+   new Partner contract + member find-or-create + fiscal-transaction savepoint safety; attach-time
+   dissolves all three because the POS already holds the phone and there is no fiscal-transaction
+   write. The fiscal projection / `SaleEarningService` is **unchanged** — by sale time the member
+   already exists and earns normally.
+2. **Balance = online-only, pure server-side.** Offline ⇒ no loyalty chrome.
+3. **Earn basis = TTC** (receipt total). The POS estimate uses cart **TTC total × rate** to match the
+   server's TTC accrual.
 4. **Phase-1 UI = balance + tier + live earn estimate.**
-5. **Base = local `dev`** (contains the earn foundation). Build chrome with the `Badge` atom already on
-   `dev` (not the `KpiCard` on the unmerged redesign branch). Earn + POS promote together.
+5. **Base = local `dev`** (carries the earn foundation). Build chrome with the `Badge` atom on `dev`
+   (not the `KpiCard` on the unmerged redesign branch). Earn + POS promote together.
 
-## Codebase facts (verified 2026-06-28, on this base)
+## Codebase facts (verified 2026-06-28, incl. adversarial review)
 
-- **Earn engine + server earn (already merged):** `SaleEarningService` (`apps/api/app/Modules/Loyalty/
-  Application/Services/SaleEarningService.php`) resolves the member by `contactId`→`partnerId`
-  (polymorphic `loyaltyable`), loops active enrollments, credits via `EarningProcessingService::
-  earnPoints()` (idempotent via `findBySourceDocument`). It is invoked from
-  `PosCoreReceiptProjection::earnLoyaltyPoints()` after `redeemVouchers`, sale-only, with TTC
-  `earnBase`. **Currently: no member ⇒ returns (no earn).**
+- **Earn foundation (already merged on this base):** `SaleEarningService` resolves member by
+  `contactId`→`partnerId`, credits via idempotent `EarningProcessingService::earnPoints()` (uses
+  `getScaleSafe($currency, FALLBACK_SCALE)` — **CompanyContext-safe; the "no-arg getScale() throws"
+  review claim was false, dismissed**). Invoked from `PosCoreReceiptProjection::earnLoyaltyPoints()`,
+  sale-only, TTC `earnBase`. **This path is NOT modified by this phase.**
+- **`loyalty_members.phone` is NOT NULL + UNIQUE `(tenant_id, phone)`** (`2026_01_10_100001_create_
+  loyalty_members_table.php:26,47`). So member creation requires a phone — supplied by the POS at
+  attach (the attached customer / synced mirror carries `phone`). Members dedupe by `(tenant, phone)`.
+- **`MemberEnrollmentService::enroll(memberId, programId, ?welcomeBonus)` THROWS if the member is
+  already enrolled** (`:56-58`) and does **not** create the member. So the endpoint must:
+  find-or-create the member, then enroll only if `findByMemberAndProgram` is null (replay/re-attach
+  safe). The member-**create** path is NOT in `MemberEnrollmentService` — the plan locates it (the
+  member-registration service/repo behind the existing `EnrollMemberModal`).
+- **`PartnerServiceInterface` exposes only `findByVatOrName` + `upsertWithTypeMerge`** — no phone/
+  contact-by-id read. We deliberately **avoid needing it**: the POS supplies the phone (rule 6 stays
+  clean; no new cross-module contract).
 - **Active program:** `LoyaltyProgramRepositoryInterface::findByTenantAndStatus($tenantId,
-  ProgramStatus::Active)`. **`MemberEnrollmentService`** exists for enrollment;
-  `LoyaltyMember`/`Enrollment` models exist (`Enrollment.current_balance` decimal:3, `current_tier_id`,
-  `status`, `currentTier` relation with `name`/`earning_multiplier`).
-- **`LoyaltyMember.phone` is unique per tenant** (normalized) — the dedup key. **The sealed buyer
-  snapshot has name/tax-number but NO phone.** Auto-enroll must source phone (and name) from the
-  customer's `Partner`/`Contact` (cross-module read via a Partner contract, rule 6). The plan MUST
-  verify `phone` nullability in the `loyalty_members` migration; design = source phone from the
-  Partner, and if absent, **skip enrollment + log** (sale unaffected).
+  ProgramStatus::Active)`. `Enrollment.current_balance` (decimal:3), `currentTier.name`.
 - **Earn-rate API:** `GET /api/v1/loyalty/earn-rate` → `{"data":{"rate": string|null}}`, gated
-  `module:Loyalty` + `can:loyalty.view` (built last cutoff).
-- **Existing POS loyalty endpoints:** `POST /loyalty/pos/member-lookup` (by phone) on
-  `LoyaltyPOSController`, gated `module:Loyalty` + `can:pos.operate_terminal`. We add a **by-customer-id
-  balance** variant on the same controller/group.
-- **POS module awareness:** `apps/pos/src/types/companyConfig.ts` has `all_enabled_modules: string[]`;
-  `productStore.companyConfig` holds it; `hasModule(config, name)` at `productStore.ts:110`
-  (defensive array/obj coercion); used in `syncService.ts:702`.
-- **POS config caching:** `authStore.refreshCompanyConfig()` (`authStore.ts:418`) fetches
-  `/company/config` and persists via `companyConfigCache.ts`; runs during bootstrap
-  (`bootstrapStore.ts`). This is where we also fetch+cache the earn rate when Loyalty is on.
-- **POS customer attach:** `paymentStore.attachCustomer(AttachedCheckoutCustomer)`
-  (`paymentStore.ts:165-184`, no loyalty fields), emits a `pos.customer_attached` audit event. The
-  attached customer carries `id` (+ tenant/company).
-- **POS UI atoms:** `Badge` (`components/ui/Badge.tsx`, tones neutral/success/warning/danger/action) +
-  `CustomerBalanceBadge` (A/R balances) on `dev`. `KpiCard` is only on `feat/pos-caisse-redesign` —
-  NOT used here. Design tokens at `apps/pos/src/lib/designTokens.ts`.
-- **Cart TTC total:** lives in the POS cart/payment store (the plan locates the exact tax-inclusive
-  cart-total selector used by checkout) — the estimate reads it.
+  `module:Loyalty` + `can:loyalty.view`.
+- **Existing POS loyalty routes:** `LoyaltyPOSController` under `module:Loyalty` +
+  `can:pos.operate_terminal` (e.g. `member-lookup` by phone). `SaleEarningService::resolveMember` is
+  **private** — extract a shared resolver so the new endpoint and the service agree.
+- **POS:** `companyConfig.all_enabled_modules`; `hasModule(config,name)` (`productStore.ts:110`);
+  `authStore.refreshCompanyConfig()` (`:418`) + `companyConfigCache.ts` (the rate-cache seam);
+  `paymentStore.attachCustomer(AttachedCheckoutCustomer)` — the attached customer **carries `phone`**
+  and `id`; emits `pos.customer_attached` audit. `Badge` at `components/ui/Badge.tsx`; tokens at
+  `lib/designTokens.ts`. **Cart total:** `cartStore.total()` returns a **`number`** (and
+  `subtotalString()` a decimal string) — the estimate is display-only so a `number` is acceptable
+  (mirror the editor's display-only `Number()`); the plan confirms `total()` is **TTC**.
 
 ## Architecture
 
 ```
-ONLINE path (Phase 1 chrome)                         SALE-SYNC path (accrual, already built + auto-enroll)
-----------------------------                         ------------------------------------------------------
-attach customer (online) ─▶ GET /loyalty/pos/balance  fiscal SALE_RECEIPT sync ─▶ PosCoreReceiptProjection
-   │  hasModule('Loyalty')      {enrolled,balance,tier}    └▶ SaleEarningService.earnForSale()
-   ▼                                                            ├─ resolve member (contact→partner)
-loyalty chrome (Badge):                                        ├─ NEW: no member + has buyer + active
-   balance + tier                                              │     program ⇒ auto-enroll (find-or-create
-   + "+N pts this sale" = floor(cartTTC × rate_cached)         │     member[phone from Partner]+enrollment)
-offline / module-off / walk-in ⇒ hidden                        └─ earnPoints() (idempotent)
+ATTACH (online) ─▶ POST /loyalty/pos/balance {partner_id?, contact_id?, phone, name?}
+   hasModule('Loyalty')        backend (normal request, CompanyContext present):
+   │                             ├─ resolve member (contact→partner; shared resolver)
+   ▼                             ├─ none + phone + active program ⇒ find-or-create member(phone) + enroll (guarded)
+loyalty chrome (Badge):         └─ return {enrolled, balance, tier}
+   balance + tier
+   + "+N pts this sale" = floor(cartTTC × rate_cached)
+offline / module-off / walk-in / no-phone ⇒ hidden or "joins on purchase"
+
+SALE-SYNC (unchanged): fiscal SALE_RECEIPT ─▶ PosCoreReceiptProjection ─▶ SaleEarningService
+   member already exists (enrolled at attach) ⇒ earnPoints() credits idempotently
 ```
 
 ### Backend components (apps/api)
 
-**A. Auto-enroll in `SaleEarningService`.** Replace the "no member ⇒ return" with: if `contactId`/
-`partnerId` present AND an active program exists AND no member resolves, **auto-enroll** then earn:
-- Find-or-create `LoyaltyMember` keyed on `(tenant_id, loyaltyable_type, loyaltyable_id)`; source
-  `phone`/`name` from the customer's `Partner`/`Contact` via a Partner read (rule 6 — use an existing
-  Partner contract/service; the plan identifies it). No phone on file ⇒ skip + `Log::info`, no earn.
-- Find-or-create `Enrollment` for `(active program, member)`, status Active. Prefer reusing
-  `MemberEnrollmentService` rather than hand-rolling.
-- Idempotent: find-or-create on both, so replaying the same sale never duplicates the member,
-  enrollment, or earn (earn idempotency already proven).
-- Seam: a future consent gate wraps this auto-enroll branch; structure it as one private method
-  `resolveOrAutoEnrollMember(context)` so the gate is a one-line addition later.
+**A. `POST /loyalty/pos/balance` (ensure-enroll + balance)** on `LoyaltyPOSController`, same group
+(`module:Loyalty` + `can:pos.operate_terminal`). FormRequest: `partner_id?`/`contact_id?` (≥1, UUID),
+`phone?` (string), `name?`. Behavior, in a normal request:
+1. Resolve member via a **shared resolver** extracted from `SaleEarningService` (contact→partner,
+   tenant-scoped).
+2. If no member AND `phone` present AND an active program exists: **find-or-create** the member —
+   first by `(tenant, loyaltyable)`, else by `(tenant, phone)` (the unique key), else create with
+   `phone`/`name`/loyaltyable — then **enroll** only if `findByMemberAndProgram` is null (guards the
+   `enroll()`-throws-on-duplicate behavior; replay/re-attach safe).
+3. Return `{"data":{"enrolled": bool, "balance": string, "tier": string|null}}`. No phone / no active
+   program ⇒ `{enrolled:false, balance:"0.000", tier:null}` (no throw).
+- Tenant-scoped; validate ids are UUIDs before query; never leak cross-tenant data.
+- **Member-create path:** reuse the existing member-registration service/repo (the plan locates it).
+- Seam: the find-or-create-member branch is where a future consent gate slots in.
 
-**B. `GET /loyalty/pos/balance`** on `LoyaltyPOSController` (same `module:Loyalty` +
-`can:pos.operate_terminal` group): query `partner_id` and/or `contact_id`; resolve the member (reuse
-the resolution logic — extract a shared resolver so the service and controller agree); return
-`{"data":{"enrolled": bool, "balance": string, "tier": string|null}}`. No member ⇒
-`{enrolled:false, balance:"0.000", tier:null}`. Tenant-scoped; validate ids are UUIDs before query.
+### POS components (apps/pos), online-only
 
-### POS components (apps/pos)
+**B. `useHasModule('Loyalty')`** — selector over `productStore.companyConfig` via `hasModule`.
 
-**C. `useHasModule('Loyalty')`** — a selector over `productStore.companyConfig` using the existing
-`hasModule(config, 'Loyalty')`.
+**C. Earn-rate cache** — in bootstrap/config-refresh, when `hasModule('Loyalty')`, fetch
+`/loyalty/earn-rate` and persist the rate (small store field + `companyConfigCache`-style persistence).
+Missing rate ⇒ no estimate.
 
-**D. Earn-rate cache** — in the bootstrap/config-refresh flow, when `hasModule('Loyalty')`, fetch
-`/loyalty/earn-rate` and persist the rate (a small store field + the existing
-`companyConfigCache`-style persistence). Read it for the estimate. Missing/no-rate ⇒ no estimate.
-
-**E. Loyalty chrome** (a `Badge`-based component near the attached-customer/checkout area). On customer
-attach, when `hasModule('Loyalty')`: call `GET /loyalty/pos/balance` for the attached customer id.
-- **Fetch success (online):** show tier + balance (if `enrolled`), and the estimate `floor(cartTTC ×
-  rate)` recomputed when the cart total changes. `enrolled:false` ⇒ hide balance, show the estimate +
-  a subtle "joins on purchase" note (makes auto-enroll visible).
-- **Fetch failure (offline/network) or module off or walk-in:** render nothing. Tying the chrome to a
-  successful online fetch IS the "offline = no loyalty" rule — no separate connectivity flag needed.
+**D. Loyalty chrome** (`Badge`-based component near the attached-customer/checkout area). On attach,
+when `hasModule('Loyalty')` AND the customer is **server-synced** (has a server id) AND has a phone:
+`POST /loyalty/pos/balance`.
+- **Success (online):** show tier + balance (if `enrolled`) + estimate `floor(cartTTC × rate)`
+  recomputed on cart-total change. `enrolled:false` (e.g. no phone) ⇒ hide balance, show estimate + a
+  subtle "joins on purchase" note.
+- **Fetch failure (offline/network) / module off / walk-in / unsynced-local customer:** render
+  nothing. Tying the chrome to a successful online call IS the "offline = no loyalty" rule.
 
 ## Data flow
 
-login/bootstrap → company config cached → (if Loyalty) earn rate cached → cashier attaches customer
-(online) → balance fetched → chrome shows balance+tier+estimate → cart changes → estimate recomputed →
-sale completes → fiscal event queued → on sync, server projection → `SaleEarningService` (auto-enroll
-if needed) credits idempotently → next attach/fetch reflects the new balance.
+login/bootstrap → config cached → (if Loyalty) rate cached → cashier attaches a synced customer
+(online) → `POST /loyalty/pos/balance` ensures member+enrollment and returns balance → chrome shows
+balance+tier+estimate → cart changes → estimate recomputed → sale completes → fiscal event syncs →
+server projection → `SaleEarningService` credits the (already-enrolled) member idempotently → next
+attach reflects the new balance.
 
 ## Error handling / edges
 
-- **Offline / network error on balance fetch:** chrome hidden (no stale numbers shown).
-- **Module off / walk-in (no customer account):** no chrome; no rate fetch.
-- **Customer attached, not yet enrolled (`enrolled:false`):** show estimate + "joins on purchase".
-- **No active rate (no Spend rule):** no estimate (balance/tier still shown if enrolled).
-- **Auto-enroll, customer has no phone:** skip enrollment + log; sale unaffected, no earn that sale.
-- **Replay / double sync:** find-or-create member+enrollment + idempotent earn ⇒ exactly once.
-- **Worker context (no CompanyContext, rule 20):** the Partner read + program lookup pass explicit
-  tenant id; no `now()` (earn timestamp already device-time).
+- **Offline / network error / module off / walk-in / unsynced-local customer (no server id yet):**
+  chrome hidden (no stale numbers; no enroll attempt against a non-existent server record — Codex S5).
+- **Customer with no phone on file:** endpoint returns `enrolled:false`; chrome shows estimate +
+  "joins on purchase" (no member created — phone is the required unique key).
+- **Re-attach / repeated calls:** find-first on member and enrollment ⇒ no duplicate member,
+  no duplicate enrollment, no throw (replay-safe).
+- **No active rate (no Spend rule):** no estimate; balance/tier still shown if enrolled.
+- **Estimate precision:** display-only integer (`floor`), so reading `cartStore.total()` as a number
+  is acceptable (rule 19 governs persisted/payload money, not an on-screen estimate).
 
 ## Testing (TDD; PHPUnit by-path only — NEVER the full suite/`--parallel`; Vitest for POS)
 
 Backend (PHPUnit):
-1. `SaleEarningService` auto-enroll: attached customer-account, no member, active program, Partner has
-   phone ⇒ member+enrollment created + points credited. Replay same sale ⇒ exactly one member, one
-   enrollment, one earn (idempotent). Walk-in (no buyer id) ⇒ no member/earn. Partner without phone ⇒
-   skip + log, no member, sale-path returns cleanly. No active program ⇒ no enroll.
-2. `GET /loyalty/pos/balance`: enrolled member ⇒ balance+tier; not enrolled ⇒ `enrolled:false`,
-   `0.000`; 403 when `module:Loyalty` disabled (isolate module gating, grant `pos.operate_terminal`);
-   non-UUID id rejected; cross-tenant id not leaked.
+1. `POST /loyalty/pos/balance`: (a) existing enrolled member → balance+tier; (b) no member + phone +
+   active program → creates member+enrollment, returns `enrolled:true, balance:"0.000"`; (c) repeat
+   call (same customer) → no duplicate member/enrollment, same result (replay-safe); (d) no phone →
+   `enrolled:false`, nothing created; (e) no active program → `enrolled:false`; (f) 403 when
+   `module:Loyalty` disabled (grant `pos.operate_terminal` to isolate module gating); (g) non-UUID id
+   rejected; cross-tenant id not leaked.
+2. Shared member resolver: extracted and used identically by the endpoint and `SaleEarningService`
+   (behavior unchanged for the service — a characterization test).
 
 POS (Vitest):
 3. `useHasModule('Loyalty')` true/false.
-4. Loyalty chrome: renders when online-fetch-succeeds + module-on + customer attached; hidden when
-   fetch fails (offline), module off, or walk-in; `enrolled:false` shows estimate + "joins on
-   purchase"; estimate = `floor(cartTTC × rate)` and recomputes on cart change; balance/tier from the
-   fetch.
+4. Loyalty chrome: renders when online-call-succeeds + module-on + synced customer attached; hidden
+   when the call fails (offline), module off, walk-in, or unsynced-local customer; `enrolled:false`
+   shows estimate + "joins on purchase"; estimate = `floor(cartTTC × rate)` and recomputes on
+   cart-total change; balance/tier from the response.
 5. Earn-rate caching at bootstrap (fetched only when module on; persisted; read by the estimate).
 
 ## File-target map
 
 | Concern | File | Action |
 |---|---|---|
-| Auto-enroll seam | `apps/api/app/Modules/Loyalty/Application/Services/SaleEarningService.php` (+ reuse `MemberEnrollmentService`, a Partner read contract) | edit |
-| Balance endpoint | `apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyPOSController.php` + `Loyalty/Presentation/routes.php` (+ FormRequest) | edit |
-| Shared member resolver | extract from `SaleEarningService` so service + controller agree | refactor |
+| Ensure-enroll + balance endpoint | `apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyPOSController.php` + `Loyalty/Presentation/routes.php` + a FormRequest | edit/new |
+| Shared member resolver | extract from `SaleEarningService` (e.g. a small resolver class/method both use) | refactor |
+| Member create + enroll | reuse member-registration service/repo + `MemberEnrollmentService::enroll` (guarded) | reuse |
 | POS module selector | `apps/pos/src/...` `useHasModule` (reuse `productStore.hasModule`) | new |
 | Earn-rate cache | POS bootstrap/config flow (`authStore.refreshCompanyConfig` + a rate store/cache) | edit |
-| Loyalty chrome | new `CustomerLoyaltyBadge`-style component (Badge + tokens) wired into the attached-customer/checkout UI | new/edit |
+| Loyalty chrome | new `CustomerLoyaltyBadge`-style component (Badge + tokens) in the attached-customer/checkout UI | new/edit |
 | i18n | POS locale files (en + fr) for loyalty labels | edit |
 
 ## Out-of-scope guard (restate)
 
-Do NOT this phase: build redeem / pay-with-points; device-side accrual; an offline balance mirror
-(SQLite loyalty columns / `pullCustomers` loyalty); QR scanning; explicit consent/opt-in UI. Offline ⇒
-loyalty chrome hidden.
+Do NOT this phase: redeem / pay-with-points; device-side accrual; an offline balance mirror (SQLite
+loyalty columns / `pullCustomers` loyalty); auto-enroll inside the fiscal projection / a new Partner
+phone-read contract; QR scanning; explicit consent/opt-in UI. Offline ⇒ loyalty chrome hidden. The
+fiscal projection and `SaleEarningService` earn path are unchanged by this phase.
