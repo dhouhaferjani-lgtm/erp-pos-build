@@ -69,7 +69,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $brand_id
  * @property BrandSource|null $brand_source
  * @property-read Brand|null $brand
- * @property PricingMode $pricing_mode
+ * @property PricingMode|null $pricing_mode Null only on unsaved instances; DB column is NOT NULL (default 'manual')
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read Unit|null $unitOfMeasure

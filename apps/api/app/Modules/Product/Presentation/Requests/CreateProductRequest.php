@@ -97,6 +97,7 @@ class CreateProductRequest extends FormRequest
             $cost = $this->input('opening_unit_cost');
             // is_numeric covers int, float AND numeric-string — a JSON-number
             // opening_qty must not silently bypass the cost-required guard.
+            // (is_numeric already excludes null and '', so no separate empty guard needed.)
             $hasPositiveQty = is_numeric($qty) && bccomp((string) $qty, '0', 4) > 0;
 
             if ($hasPositiveQty && ($cost === null || $cost === '')) {

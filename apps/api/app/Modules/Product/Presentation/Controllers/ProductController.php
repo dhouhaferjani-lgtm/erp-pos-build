@@ -339,7 +339,7 @@ class ProductController extends Controller
         $media = $this->catalogMedia->forProduct($productModel->id, $company->tenant_id);
 
         return response()->json([
-            'data' => ProductData::fromModel($productModel, $media, $this->marginResolver->resolve($productModel)),
+            'data' => ProductData::fromModel($productModel, $media, effective: $this->marginResolver->resolve($productModel)),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
@@ -865,7 +865,7 @@ class ProductController extends Controller
         $media = $this->catalogMedia->forProduct($freshProduct->id, $company->tenant_id);
 
         return response()->json([
-            'data' => ProductData::fromModel($freshProduct, $media, $this->marginResolver->resolve($freshProduct)),
+            'data' => ProductData::fromModel($freshProduct, $media, effective: $this->marginResolver->resolve($freshProduct)),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
