@@ -87,7 +87,7 @@ export function CartLineItem({
         </button>
 
         <div className="flex shrink-0 flex-col items-end leading-tight">
-          {originalTotal && (
+          {originalTotal !== null && (
             <span className="font-mono text-xs tabular-nums text-ink-faint line-through">
               {format(originalTotal)}
             </span>
@@ -116,7 +116,7 @@ export function CartLineItem({
       {item.product.comboComponents && item.product.comboComponents.length > 0 && (
         <div className="space-y-0.5 px-2 pb-1">
           {item.product.comboComponents.map((c, idx) => (
-            <p key={idx} className="pl-2 text-xs text-ink-muted">
+            <p key={`${idx}-${c}`} className="pl-2 text-xs text-ink-muted">
               &bull; {c}
             </p>
           ))}
