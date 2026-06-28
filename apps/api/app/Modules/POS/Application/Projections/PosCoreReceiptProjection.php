@@ -321,7 +321,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             $this->writePayments($receiptId, $event, $view);
             $this->redeemVouchers($receiptId, $event, $view);
             $this->earnLoyaltyPoints($receiptId, $event, $view, $payload, $receiptTypeEnum, $totalNorm);
-            $this->decrementStockForLines($receiptId, $event, $terminal, $view);
+            $this->applyStockMovementForLines($receiptId, $event, $terminal, $view, $receiptTypeEnum);
         });
     }
 
@@ -895,6 +895,42 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     }
 
     /**
+     * Apply the line-level stock effect for the projected receipt, branching on
+     * the resolved receipt type:
+     *   - `ReceiptType::Sale`   → decrement (goods leave the shelf).
+     *   - `ReceiptType::Return` → restock (a REFUND/VOID returns goods to the
+     *     shelf — see `docs/handoff/HANDOVER-refund-void-stock-decrement.md`).
+     *
+     * **Direction lives in `invoice_type_code`, never in the quantity sign.**
+     * The canonical `line_items[].quantity` is a POSITIVE MAGNITUDE for every
+     * invoice type — the fiscal payload validator's quantity regex
+     * (`moneyRegex(QUANTITY_SCALE=3)`) forbids a leading `-`. So a Return adds
+     * back the same magnitude the original sale subtracted, netting the two
+     * movements to zero. Pre-fix this method unconditionally decremented, so a
+     * refund double-removed stock (original sale −q, refund −q again).
+     *
+     * Both branches keep the same grain discipline (variant-scoped vs
+     * product-level), idempotency (the whole `apply()` is guarded by the
+     * `fiscal_event_id` probe + `INSERT … ON CONFLICT DO NOTHING`), and scale-4
+     * bcmath precision; neither touches `CompanyContext` (rule 20).
+     */
+    private function applyStockMovementForLines(
+        string $receiptId,
+        FiscalEvent $event,
+        Terminal $terminal,
+        SaleReceiptCanonicalView $view,
+        ReceiptType $receiptType,
+    ): void {
+        if ($receiptType === ReceiptType::Return) {
+            $this->restockForLines($receiptId, $event, $terminal, $view);
+
+            return;
+        }
+
+        $this->decrementStockForLines($receiptId, $event, $terminal, $view);
+    }
+
+    /**
      * Stock decrement for product lines — iterates the canonical view.
      *
      * **Single authoritative decrement (T2).** This projection is the SOLE
@@ -1039,6 +1075,126 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             'reference_type' => 'pos_receipt',
             'reference_id' => $receiptId,
             'notes' => "Stock issued via PosCoreReceiptProjection (receipt: {$receiptId})",
+            'user_id' => $cashierId,
+            'is_historical' => false,
+        ]);
+    }
+
+    /**
+     * Stock restock for the lines of a REFUND/VOID receipt — the mirror of
+     * `decrementStockForLines`. A refund/void returns goods to the shelf, so it
+     * ADDS each line's positive magnitude back to the same grain the original
+     * sale decremented (variant-scoped when the line carries a `variant_id`,
+     * product-level otherwise). Same non-UUID-product skip as the decrement
+     * path (the canonical snapshot stays authoritative; stock is a best-effort
+     * downstream projection).
+     */
+    private function restockForLines(
+        string $receiptId,
+        FiscalEvent $event,
+        Terminal $terminal,
+        SaleReceiptCanonicalView $view,
+    ): void {
+        foreach ($view->lineItems as $line) {
+            $productId = $line->productId;
+            if ($productId === '' || ! Str::isUuid($productId)) {
+                continue;
+            }
+
+            $this->restockStock(
+                tenantId: $event->tenant_id,
+                companyId: $event->company_id,
+                locationId: (string) $terminal->location_id,
+                productId: $productId,
+                quantity: $line->quantity,
+                receiptId: $receiptId,
+                cashierId: $event->operator_id,
+                // Same variant grain the sale decremented — a variant refund
+                // restocks the variant row, a non-variant refund the
+                // product-level row.
+                variantId: $line->variantId,
+            );
+        }
+    }
+
+    /**
+     * Restock one product line for a REFUND/VOID — the mirror of
+     * `decrementStock`. Adds the positive line quantity back to the grain the
+     * sale decremented and records a `MovementType::Receipt` /
+     * `MovementReason::POSReturn` movement.
+     *
+     * Same grain discipline as `decrementStock`: a variant line with no
+     * variant-scoped `stock_levels` row must NOT restock the product-level pool
+     * (the symmetric counterpart of the pre-T2 fallback bug). Nothing is
+     * restocked and the absent variant grain is surfaced; a product-level line
+     * with no row (non-inventory / service item) stays silent.
+     */
+    private function restockStock(
+        string $tenantId,
+        string $companyId,
+        string $locationId,
+        string $productId,
+        string $quantity,
+        string $receiptId,
+        string $cashierId,
+        ?string $variantId = null,
+    ): void {
+        $stockLevelQuery = StockLevel::query()
+            ->where('product_id', $productId)
+            ->where('location_id', $locationId)
+            ->where('company_id', $companyId);
+
+        if ($variantId !== null) {
+            $stockLevelQuery->where('variant_id', $variantId);
+        } else {
+            $stockLevelQuery->whereNull('variant_id');
+        }
+
+        /** @var StockLevel|null $stockLevel */
+        $stockLevel = $stockLevelQuery->lockForUpdate()->first();
+
+        if ($stockLevel === null) {
+            if ($variantId !== null) {
+                Log::warning('PosCoreReceiptProjection: variant refund/void found no variant-scoped stock_levels row; nothing restocked', [
+                    'product_id' => $productId,
+                    'variant_id' => $variantId,
+                    'location_id' => $locationId,
+                    'receipt_id' => $receiptId,
+                ]);
+            }
+
+            return;
+        }
+
+        /** @var numeric-string $stockQty */
+        $stockQty = $stockLevel->quantity;
+        $quantityBefore = $stockQty;
+        /** @var numeric-string $qty */
+        $qty = $quantity;
+        // stock_levels.quantity and the canonical line quantity are stored at
+        // scale 4 (canonical quantity storage scale). Add at scale 4 so
+        // sub-centi quantities are not truncated to zero.
+        $quantityAfter = bcadd($stockQty, $qty, 4); // 4 = canonical quantity storage scale
+
+        $stockLevel->quantity = $quantityAfter;
+        $stockLevel->save();
+
+        StockMovement::query()->create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $tenantId,
+            'company_id' => $companyId,
+            'product_id' => $productId,
+            'variant_id' => $variantId,
+            'location_id' => $locationId,
+            'movement_type' => MovementType::Receipt,
+            'reason' => MovementReason::POSReturn,
+            'quantity' => $quantity,
+            'quantity_before' => $quantityBefore,
+            'quantity_after' => $quantityAfter,
+            'reference' => 'POS Fiscal Event Projection (refund/void restock)',
+            'reference_type' => 'pos_receipt',
+            'reference_id' => $receiptId,
+            'notes' => "Stock restocked via PosCoreReceiptProjection refund/void (receipt: {$receiptId})",
             'user_id' => $cashierId,
             'is_historical' => false,
         ]);
