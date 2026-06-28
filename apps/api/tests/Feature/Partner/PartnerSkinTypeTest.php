@@ -6,8 +6,8 @@ namespace Tests\Feature\Partner;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Partner\Domain\Partner;
-use App\Modules\SmartPrompts\Domain\Enums\SkinType;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\Enums\SkinType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
