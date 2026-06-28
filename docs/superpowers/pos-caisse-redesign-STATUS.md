@@ -56,5 +56,12 @@ NEXT on resume:
 - **Verify all authed-screen layouts in a logged-in session** (offline gate blocks them here): nav-rail layout, header, cart, sale-detail, blind-close.
 - React-doctor `--diff` warnings (button-type, only-export-components, untokenized `TodaySalesPanel`) — triage during the P7 restyle.
 
+## Deferred touch-ergonomics fixes (owner feedback 2026-06-28, live `pnpm tauri dev`)
+Do these in a later pass (NOT regressions — known follow-ups):
+- **Cart-line remove ✕ sits next to the expand chevron → mis-tap risk.** Separate them (move remove into the expanded controls, or add a clear gap / larger hit-targets), so tapping to expand can't accidentally delete the line.
+- **Line deletion has no confirmation.** Add a guard — **ideally a configurable setting** (e.g. `confirmLineDelete` in `settingsStore` + an Appearance/behaviour toggle) so a store can turn confirm-on-delete on/off. Consider optimistic-delete + Undo toast vs a confirm tap.
+- General touch-friendliness sweep of the restyled surfaces against the §6 ergonomics floor (48px targets, 12–16px gaps) — several controls are still sub-floor (e.g. cart-line buttons were `h-7`/28px before the Stepper; audit the rest as restyled).
+- (owner: "some other stuff" — capture more as they surface during the visual passes.)
+
 ## Guardrails (always)
 Worktree off dev; merge to LOCAL dev first, promote to origin/dev as clean fast-forwards; never force-push dev. NEVER run the full PHPUnit suite (crashes laptop) — run by path. Tokens only in `apps/pos/src` (ESLint guard); i18n all strings; TDD; Codex for CODE review (Claude agent for DOC review). Commit frequently (crash-safety).
