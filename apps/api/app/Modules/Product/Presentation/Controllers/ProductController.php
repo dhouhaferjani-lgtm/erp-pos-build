@@ -77,6 +77,10 @@ class ProductController extends Controller
             $with[] = 'parapharmacyMetadata.keyComponents';
             $with[] = 'parapharmacyMetadata.healthClaims';
             $with[] = 'parapharmacyMetadata.certifications';
+            $with[] = 'parapharmacyMetadata.skinSuitabilities';
+            $with[] = 'parapharmacyMetadata.routines';
+            $with[] = 'parapharmacyMetadata.equivalentProducts';
+            $with[] = 'parapharmacyMetadata.complementProducts';
         }
 
         if ($company->tenant->vertical->isAutomotive()) {
@@ -288,6 +292,10 @@ class ProductController extends Controller
                 'parapharmacyMetadata.keyComponents',
                 'parapharmacyMetadata.healthClaims',
                 'parapharmacyMetadata.certifications',
+                'parapharmacyMetadata.skinSuitabilities',
+                'parapharmacyMetadata.routines',
+                'parapharmacyMetadata.equivalentProducts',
+                'parapharmacyMetadata.complementProducts',
             ]);
         }
 
@@ -411,6 +419,10 @@ class ProductController extends Controller
                 'parapharmacyMetadata.keyComponents',
                 'parapharmacyMetadata.healthClaims',
                 'parapharmacyMetadata.certifications',
+                'parapharmacyMetadata.skinSuitabilities',
+                'parapharmacyMetadata.routines',
+                'parapharmacyMetadata.equivalentProducts',
+                'parapharmacyMetadata.complementProducts',
             ]);
         }
 
@@ -564,6 +576,10 @@ class ProductController extends Controller
                 'parapharmacyMetadata.keyComponents',
                 'parapharmacyMetadata.healthClaims',
                 'parapharmacyMetadata.certifications',
+                'parapharmacyMetadata.skinSuitabilities',
+                'parapharmacyMetadata.routines',
+                'parapharmacyMetadata.equivalentProducts',
+                'parapharmacyMetadata.complementProducts',
             ]);
         }
 
