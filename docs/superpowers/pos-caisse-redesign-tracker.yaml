@@ -287,10 +287,14 @@ shared_atoms_to_build:
   preview: apps/pos/src/pages/ThemePreviewPage.tsx  # DEV-only /theme-preview gallery (auth-bypass, import.meta.env.DEV)
 
 backend_tickets:
-  - surface POSProduct.brand (exists in EnrichedProductData)
-  - add product skin_type field/endpoint
-  - add product routine-membership model
-  - add equivalent/complementary product relations
-  - persist customer skin_type
-  - surface loyalty points/tier/enrollment in POS customer payloads
-  - customer purchase-history endpoint for POS detail page
+  # Now PLANNED end-to-end in two handovers (build after owner sign-off):
+  parapharmacy_merchandising:
+    handover: docs/superpowers/specs/2026-06-28-parapharmacy-merchandising-handover.md
+    covers: [brand (parapharmacy_metadata col), product skin-suitability pivot, customer skin_type (partners), routines + product_routine, product_equivalents + product_complements pivots, ParapharmacySeeder demo data, POS offline (parapharmacy_metadata JSON col + wire pullCustomers), Filtres/skin-advice/detail-tabs UI]
+    note: ERP user-populatable now; Synerivia platform enrichment later via enrichment_results pipeline
+  loyalty_pos:
+    handover: docs/superpowers/specs/2026-06-28-loyalty-pos-gating-offline-handover.md
+    status: engine+gating ALREADY EXIST; earn-wiring on feat/loyalty-earn-per-product@28de62f90 (ready to merge)
+    covers: [merge loyalty-earn branch, POS hasModule('Loyalty') gating, read-only balance mirror on customer (offline), checkout earn preview (local floor(total*rate)), points display UI]
+    out_of_scope_demo: [redeem/pay-with-points, device-side accrual queue (Phase 2)]
+  shared_prereq: wire orphaned pullCustomers() into runFullSync (needed by BOTH parapharmacy customer skin_type AND loyalty balance mirror)
