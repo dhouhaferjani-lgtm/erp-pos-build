@@ -5,12 +5,16 @@ declare(strict_types=1);
 namespace App\Modules\Product\Application\Services;
 
 use App\Modules\Product\Application\DTOs\EnrichedProductData;
+use App\Modules\Product\Domain\Brand;
 use App\Modules\Product\Domain\EnrichmentResult;
+use App\Modules\Product\Domain\Enums\BrandSource;
 use App\Modules\Product\Domain\Enums\EnrichmentReviewStatus;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\PlatformSubmissionInterface;
 use App\Shared\Enums\EnrichmentStatus;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 
 final class EnrichmentReviewService
 {
@@ -72,42 +76,57 @@ final class EnrichmentReviewService
     {
         $product = $enrichmentResult->product;
         $enrichedData = $enrichmentResult->enriched_data;
-        $updates = [];
 
-        foreach ($acceptedFields as $field) {
-            match ($field) {
-                'name' => $updates['name'] = $enrichedData->name,
-                'brand' => null, // Brand is metadata, not a direct product field — skip silently
-                'description' => $updates['description'] = $enrichedData->description,
-                'barcode' => $updates['barcode'] = $enrichedData->assigned_barcode,
-                default => null,
-            };
-        }
+        DB::transaction(function () use ($product, $enrichedData, $acceptedFields, $enrichmentResult, $reviewedBy): void {
+            // Start with mandatory tracking clear; merge scalar-field updates on top.
+            // Note: platform_product_id is set during barcode lookup when a match is found.
+            // The enrichment flow uses tracking_id (submission ID), not the canonical product ID.
+            $productUpdates = [
+                'enrichment_status' => null,
+                'platform_submission_id' => null,
+            ];
 
-        if ($updates !== []) {
-            $product->update($updates);
-        }
+            foreach ($acceptedFields as $field) {
+                match ($field) {
+                    'name' => $productUpdates['name'] = $enrichedData->name,
+                    'description' => $productUpdates['description'] = $enrichedData->description,
+                    'barcode' => $productUpdates['barcode'] = $enrichedData->assigned_barcode,
+                    default => null,
+                };
+            }
 
-        // Clear enrichment tracking from product
-        // Note: platform_product_id is set during barcode lookup when a match is found.
-        // The enrichment flow uses tracking_id (submission ID), not the canonical product ID.
-        $product->update([
-            'enrichment_status' => null,
-            'platform_submission_id' => null,
-        ]);
+            // Brand upsert: firstOrCreate on (tenant_id, slug), retry once on concurrent race.
+            if (in_array('brand', $acceptedFields, true) && filled($enrichedData->brand)) {
+                $slug = Brand::slugFor($enrichedData->brand);
+                $criteria = ['tenant_id' => $product->tenant_id, 'slug' => $slug];
+                $createAttrs = ['name' => $enrichedData->brand, 'is_active' => true];
 
-        // Record accepted fields as a map
-        $acceptedFieldsMap = [];
-        foreach ($acceptedFields as $field) {
-            $acceptedFieldsMap[$field] = true;
-        }
+                try {
+                    $brand = Brand::firstOrCreate($criteria, $createAttrs);
+                } catch (QueryException) {
+                    // Concurrent accept race — retry once; the row now exists.
+                    $brand = Brand::firstOrCreate($criteria, $createAttrs);
+                }
 
-        $enrichmentResult->update([
-            'status' => EnrichmentReviewStatus::Accepted,
-            'reviewed_at' => now(),
-            'reviewed_by' => $reviewedBy,
-            'accepted_fields' => $acceptedFieldsMap,
-        ]);
+                $productUpdates['brand_id'] = $brand->id;
+                $productUpdates['brand_source'] = BrandSource::Enriched;
+            }
+
+            $product->update($productUpdates);
+
+            // Record accepted fields as a map
+            $acceptedFieldsMap = [];
+            foreach ($acceptedFields as $field) {
+                $acceptedFieldsMap[$field] = true;
+            }
+
+            $enrichmentResult->update([
+                'status' => EnrichmentReviewStatus::Accepted,
+                'reviewed_at' => now(),
+                'reviewed_by' => $reviewedBy,
+                'accepted_fields' => $acceptedFieldsMap,
+            ]);
+        });
     }
 
     /**
