@@ -97,10 +97,10 @@ phases:
         new_molecules: [CartLine, QuickActions]
         parity: [add, increment, decrement, remove, clear, line-discount, cart-discount, totals+TVA, customer-attach, checkout-cash, checkout-mixte]
         status: todo
-      - key: cart-line-restyle
-        desc: "DEVIATE FROM MOCK (review): keep steppers/discount/delete VISIBLE by default (today they are; collapsing adds a tap to the most frequent action). Restyle visually only; preserve onQuantityTap numpad; chevron/expand only for SECONDARY detail (fiche/skin advice). Add behavior test (no current test)."
+      - key: cart-line-expand
+        desc: "USE MOCK (product decision 2026-06-28): collapsed by default (avatar, brand, name, xqty, line total, remove); TAP ROW BODY to expand -> qty stepper + per-line discount + fiche. Tap toggles expand (NOT increment). Accordion: one line expanded at a time -> more items fit on screen. Preserve onQuantityTap numpad in expanded state. Add behavior test (no current test)."
         real_path: apps/pos/src/components/molecules/CartLineItem/CartLineItem.tsx
-        ergonomics: minimize-taps
+        rationale: collapsed lines fit more cart items; edit still 1 tap away
         status: todo
       - key: payment-summary
         desc: Sous-total, Remises produits, Remise panier, dont TVA 19%, Total big mono

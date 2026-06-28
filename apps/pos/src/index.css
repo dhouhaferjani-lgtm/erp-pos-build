@@ -59,6 +59,16 @@
   --pill-on-fg: #ffffff;
   --ink-inverse: #ffffff;
 
+  /* Action = primary CTA + interactive (ocean blue, theme-aware). Kept SEPARATE
+   * from `accent`: in the Caisse theme blue = "commit/CTA" (Encaisser, Valider,
+   * primary buttons) and the swappable accent = "selected/highlight" (active nav,
+   * selected pills, in-cart). White on this blue clears WCAG AA. */
+  --action: #1a6fb5;
+  --action-hover: #155c9a;
+  --action-subtle: #e8f4fc;
+  --action-strong: #155c9a;
+  --action-fg: #ffffff;
+
   /* Navy payment panels (constant across themes) */
   --pay-navy: #14283f;
   --pay-navy-fg: #f6f8fb;
@@ -166,6 +176,10 @@
   --pill-on-fg: #080b11;
   --ink-inverse: #080b11;
 
+  /* Action (blue) on dark: same hue, white fg still ~4.6:1; subtle tints over the
+   * dark surface instead of the light-blue #E8F4FC. */
+  --action-subtle: color-mix(in srgb, var(--action) 22%, var(--surface));
+
   /* Status surfaces re-tinted for dark backgrounds (hues constant) */
   --success-surface: color-mix(in srgb, var(--success) 22%, var(--surface));
   --warning-surface: color-mix(in srgb, var(--warning) 22%, var(--surface));
@@ -266,16 +280,15 @@
   --color-border-subtle: var(--border-soft);
   --color-border-strong: var(--border);
 
-  /* Action — primary interactive + selected → re-pointed to ACCENT.
-   * `action-fg` is the on-action text colour (white). NOTE: white on the
-   * accent fill is ~3.2:1 (orange) — passes WCAG AA for LARGE/BOLD text (3:1)
-   * but not small text. Primary CTAs (Encaisser/Valider) are lg + bold, so they
-   * qualify; do not put small/normal-weight text on a bare `bg-action`. */
-  --color-action: var(--accent);
-  --color-action-hover: var(--accent-strong);
-  --color-action-subtle: var(--accent-tint);
-  --color-action-strong: var(--accent-strong);
-  --color-action-fg: var(--accent-text);
+  /* Action — primary CTA + interactive/selected (ocean blue, theme-aware).
+   * Kept blue per product decision (2026-06-28); `accent` is a separate
+   * swappable highlight dimension, NOT wired to the CTA. White-on-blue (#1A6FB5)
+   * clears WCAG AA for normal text. */
+  --color-action: var(--action);
+  --color-action-hover: var(--action-hover);
+  --color-action-subtle: var(--action-subtle);
+  --color-action-strong: var(--action-strong);
+  --color-action-fg: var(--action-fg);
 
   /* Accent (explicit, for new surfaces) */
   --color-accent: var(--accent);
