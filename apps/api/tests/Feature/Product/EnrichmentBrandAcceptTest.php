@@ -148,6 +148,7 @@ final class EnrichmentBrandAcceptTest extends TestCase
         $enrichmentResult->refresh();
         $this->assertSame(EnrichmentReviewStatus::Accepted, $enrichmentResult->status);
         $this->assertNotNull($enrichmentResult->reviewed_at);
+        $this->assertSame($this->user->id, $enrichmentResult->reviewed_by);
     }
 
     public function test_accepting_same_brand_for_second_product_reuses_existing_brand_row(): void

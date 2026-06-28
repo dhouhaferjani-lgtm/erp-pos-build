@@ -77,56 +77,71 @@ final class EnrichmentReviewService
         $product = $enrichmentResult->product;
         $enrichedData = $enrichmentResult->enriched_data;
 
-        DB::transaction(function () use ($product, $enrichedData, $acceptedFields, $enrichmentResult, $reviewedBy): void {
-            // Start with mandatory tracking clear; merge scalar-field updates on top.
-            // Note: platform_product_id is set during barcode lookup when a match is found.
-            // The enrichment flow uses tracking_id (submission ID), not the canonical product ID.
-            $productUpdates = [
-                'enrichment_status' => null,
-                'platform_submission_id' => null,
-            ];
+        // Wrap the entire transaction in a closure so the retry restarts a FRESH transaction.
+        // On PostgreSQL a unique-constraint violation inside a transaction aborts the whole
+        // transaction, meaning any subsequent query (including the retry firstOrCreate) fails
+        // with "current transaction is aborted". Moving the retry outside DB::transaction()
+        // avoids that aborted-state problem.
+        $attempt = function () use ($product, $enrichedData, $acceptedFields, $enrichmentResult, $reviewedBy): void {
+            DB::transaction(function () use ($product, $enrichedData, $acceptedFields, $enrichmentResult, $reviewedBy): void {
+                // Start with mandatory tracking clear; merge scalar-field updates on top.
+                // Note: platform_product_id is set during barcode lookup when a match is found.
+                // The enrichment flow uses tracking_id (submission ID), not the canonical product ID.
+                $productUpdates = [
+                    'enrichment_status' => null,
+                    'platform_submission_id' => null,
+                ];
 
-            foreach ($acceptedFields as $field) {
-                match ($field) {
-                    'name' => $productUpdates['name'] = $enrichedData->name,
-                    'description' => $productUpdates['description'] = $enrichedData->description,
-                    'barcode' => $productUpdates['barcode'] = $enrichedData->assigned_barcode,
-                    default => null,
-                };
-            }
-
-            // Brand upsert: firstOrCreate on (tenant_id, slug), retry once on concurrent race.
-            if (in_array('brand', $acceptedFields, true) && filled($enrichedData->brand)) {
-                $slug = Brand::slugFor($enrichedData->brand);
-                $criteria = ['tenant_id' => $product->tenant_id, 'slug' => $slug];
-                $createAttrs = ['name' => $enrichedData->brand, 'is_active' => true];
-
-                try {
-                    $brand = Brand::firstOrCreate($criteria, $createAttrs);
-                } catch (QueryException) {
-                    // Concurrent accept race — retry once; the row now exists.
-                    $brand = Brand::firstOrCreate($criteria, $createAttrs);
+                foreach ($acceptedFields as $field) {
+                    match ($field) {
+                        'name' => $productUpdates['name'] = $enrichedData->name,
+                        'description' => $productUpdates['description'] = $enrichedData->description,
+                        'barcode' => $productUpdates['barcode'] = $enrichedData->assigned_barcode,
+                        default => null,
+                    };
                 }
 
-                $productUpdates['brand_id'] = $brand->id;
-                $productUpdates['brand_source'] = BrandSource::Enriched;
+                // Brand upsert: firstOrCreate on (tenant_id, slug).
+                // Concurrent-race retry is handled by the outer try/catch — it restarts a fresh
+                // transaction so the retry firstOrCreate finds the row inserted by the racing request.
+                if (in_array('brand', $acceptedFields, true) && filled($enrichedData->brand)) {
+                    $slug = Brand::slugFor($enrichedData->brand);
+                    $criteria = ['tenant_id' => $product->tenant_id, 'slug' => $slug];
+                    $createAttrs = ['name' => $enrichedData->brand, 'is_active' => true];
+
+                    $brand = Brand::firstOrCreate($criteria, $createAttrs);
+
+                    $productUpdates['brand_id'] = $brand->id;
+                    $productUpdates['brand_source'] = BrandSource::Enriched;
+                }
+
+                $product->update($productUpdates);
+
+                // Record accepted fields as a map
+                $acceptedFieldsMap = [];
+                foreach ($acceptedFields as $field) {
+                    $acceptedFieldsMap[$field] = true;
+                }
+
+                $enrichmentResult->update([
+                    'status' => EnrichmentReviewStatus::Accepted,
+                    'reviewed_at' => now(),
+                    'reviewed_by' => $reviewedBy,
+                    'accepted_fields' => $acceptedFieldsMap,
+                ]);
+            });
+        };
+
+        try {
+            $attempt();
+        } catch (QueryException $e) {
+            // Only retry on a unique-constraint violation (concurrent brand-insert race).
+            // Any other database error is re-thrown immediately.
+            if (! str_contains($e->getMessage(), '23505') && ! str_contains(strtolower($e->getMessage()), 'unique')) {
+                throw $e;
             }
-
-            $product->update($productUpdates);
-
-            // Record accepted fields as a map
-            $acceptedFieldsMap = [];
-            foreach ($acceptedFields as $field) {
-                $acceptedFieldsMap[$field] = true;
-            }
-
-            $enrichmentResult->update([
-                'status' => EnrichmentReviewStatus::Accepted,
-                'reviewed_at' => now(),
-                'reviewed_by' => $reviewedBy,
-                'accepted_fields' => $acceptedFieldsMap,
-            ]);
-        });
+            $attempt(); // fresh transaction; firstOrCreate now finds the racing row
+        }
     }
 
     /**
