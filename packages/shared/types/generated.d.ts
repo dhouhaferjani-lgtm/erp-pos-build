@@ -1525,9 +1525,11 @@ declare namespace App.Modules.Product.Domain.Enums {
 export type AgeRestriction = 'adult_only' | 'children_only' | 'all_ages';
 export type AutomotiveArticleStatus = 'active' | 'discontinued' | 'superseded' | 'pending_review';
 export type BrandQualityTier = 'oe' | 'oes' | 'premium_aftermarket' | 'aftermarket' | 'economy';
+export type BrandSource = 'user' | 'enriched';
 export type CrossReferenceType = 'oe' | 'oem' | 'trade' | 'iam' | 'ean' | 'internal';
 export type DosageForm = 'capsule' | 'tablet' | 'softgel' | 'liquid' | 'powder' | 'cream' | 'gel' | 'lotion' | 'spray' | 'patch' | 'other';
 export type EnrichmentReviewStatus = 'pending_review' | 'accepted' | 'rejected';
+export type EquivalenceType = 'generic' | 'therapeutic' | 'brand_alt';
 export type ParapharmacyCategory = 'supplement' | 'cosmetic' | 'medical_device' | 'herbal' | 'baby_care' | 'sports_nutrition' | 'other';
 export type PlatformLinkStatus = 'linked' | 'unlinked' | 'pending_match' | 'rejected';
 export type ProductType = 'part' | 'service' | 'consumable';
