@@ -138,12 +138,12 @@ final class ExpenseService
             // to a payment repository. Amount and currency are passed as strings
             // so the port handles all bcmath/scale operations (Rule 19).
             $metadata = $expense->expenseMetadata;
-            if ($metadata?->is_paid === true && $metadata->payment_repository_id !== null) {
+            if ($metadata?->is_paid === true && $metadata->payment_repository_id !== null && $expense->total !== null) {
                 $this->outflow->applyOutflow(
                     $metadata->payment_repository_id,
                     $expense->tenant_id,
                     $expense->company_id,
-                    (string) $expense->total,
+                    $expense->total,
                     (string) $expense->currency,
                 );
             }
