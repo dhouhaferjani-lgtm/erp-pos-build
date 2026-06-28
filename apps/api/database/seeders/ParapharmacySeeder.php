@@ -366,6 +366,11 @@ class ParapharmacySeeder extends Seeder
         $this->command->info('👥 Seeding partners...');
         $this->seedPartners($this->tenant, $this->company);
 
+        // 6a. Seed skin types for individual (customer-type) partners
+        $this->command->info('🧴 Seeding customer skin types...');
+        $this->seedCustomerSkinTypes($this->company);
+        $this->command->info('✓ Customer skin types seeded');
+
         // 7. Seed stock levels
         $this->command->info('📊 Seeding stock levels...');
         $this->seedStockLevels($this->company, $this->location, $products);
@@ -2004,6 +2009,71 @@ class ParapharmacySeeder extends Seeder
         // 7 columns × 140 rows = 980 params — safely under SQLite's 999 limit.
         foreach (array_chunk($rows, 140) as $chunk) {
             DB::table('product_complements')->insert($chunk);
+        }
+    }
+
+    /**
+     * Assign a SkinType to every customer-type partner and give ~30% a short
+     * French skin advice note.
+     *
+     * Rounds-robin the 5 SkinType cases across all customer partners (ordered
+     * by id) so the full type space is represented in the fixture, then issues
+     * one UPDATE per skin_type group for efficiency. A second pass sets
+     * `skin_advice_note` for every 3rd customer (≈ 30%).
+     */
+    protected function seedCustomerSkinTypes(Company $company): void
+    {
+        $cases = SkinType::cases();
+        $caseCount = count($cases);
+
+        /** @var array<string, string> $adviceByType */
+        $adviceByType = [
+            SkinType::Normal->value => 'Peau normale : maintenez l\'équilibre avec un soin hydratant léger, matin et soir.',
+            SkinType::Oily->value => 'Peau grasse : privilégiez les soins matifiants et les nettoyants doux sans détergents agressifs.',
+            SkinType::Dry->value => 'Peau sèche : appliquez une crème riche nourrissante après chaque nettoyage pour restaurer la barrière cutanée.',
+            SkinType::Combination->value => 'Peau mixte : utilisez des soins différenciés pour la zone T et les joues, en évitant les formules trop riches.',
+            SkinType::Sensitive->value => 'Peau sensible : choisissez des formules sans parfum ni alcool et testez tout nouveau produit sur une petite zone.',
+        ];
+
+        /** @var list<string> $ids */
+        $ids = DB::table('partners')
+            ->where('company_id', $company->id)
+            ->where('type', 'customer')
+            ->orderBy('id')
+            ->pluck('id')
+            ->toArray();
+
+        if ($ids === []) {
+            return;
+        }
+
+        // Group IDs by skin_type via round-robin; track which also get a note.
+        /** @var array<string, list<string>> $bySkinType */
+        $bySkinType = [];
+        /** @var array<string, list<string>> $noteIds */
+        $noteIds = [];
+
+        foreach ($ids as $idx => $id) {
+            $typeValue = $cases[$idx % $caseCount]->value;
+            $bySkinType[$typeValue][] = $id;
+
+            if ($idx % 10 < 3) {
+                $noteIds[$typeValue][] = $id;
+            }
+        }
+
+        // One UPDATE per skin_type group to set skin_type.
+        foreach ($bySkinType as $typeValue => $groupIds) {
+            DB::table('partners')
+                ->whereIn('id', $groupIds)
+                ->update(['skin_type' => $typeValue]);
+        }
+
+        // One UPDATE per skin_type group to set skin_advice_note (~30%).
+        foreach ($noteIds as $typeValue => $groupIds) {
+            DB::table('partners')
+                ->whereIn('id', $groupIds)
+                ->update(['skin_advice_note' => $adviceByType[$typeValue]]);
         }
     }
 
