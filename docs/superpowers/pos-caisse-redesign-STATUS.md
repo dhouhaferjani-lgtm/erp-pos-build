@@ -41,5 +41,20 @@ Authed POS screens need online + login (offline gate blocks); **`/theme-preview`
 - **New session B (loyalty):** kickoff prompt above. Land `feat/loyalty-earn-per-product` first, then POS gating + offline balance mirror + earn estimate.
 - **Shared prereq (one owner):** wire orphaned `pullCustomers()` into `runFullSync()` — needed by both A (customer skin_type) and B (loyalty balance). First to land owns it; other rebases.
 
+## Session pause 2026-06-28 (resume here)
+Done since last note (all committed, tree clean, tests/typecheck/lint green):
+- **P2 NavRail wired into AppShell** (rail opposite cart; `/customers` route + placeholder `CustomersPage` — parapharmacy/loyalty build out P8 in place).
+- **P3 cart-line collapse/expand** (`CartLineItem` + `TransactionCart` accordion) — verified in `/theme-preview`.
+- **Owner access constraints (points 1/2):** nav `Caisse-Shift` (Z-report history) = managers only (`isManagerRole`) + `/reports/z` route guarded; **SECURITY fix:** `EndOfDayPreviewModal` no longer leaks `expected_cash` via the legacy card during a blind count (+2 regression tests).
+- **Owner point 3:** read-only **`SaleDetailModal`** + "Voir" action in `TodaySalesPanel` (view a past sale's lines/totals/payments without a DUPLICATA reprint).
+- **Coordination handoff** for `ProductCard`/`ProductGrid` → parapharmacy session: `docs/superpowers/kickoffs/2026-06-28-coordination-productcard-grid-handoff.md` (reachable via `git checkout feat/pos-caisse-redesign -- <path>`).
+
+NEXT on resume:
+- **Header restyle (P2)** — NOT started (62px, group `Divider`s, operator `Avatar`, ghost actions; keep the B3 single status-pill + all EOD/reports/manager-PIN logic). Also gate the **X-report / manager-only items in the Header `ReportsMenu`** (X-report payload is safe but should still be manager-gated per point 1).
+- Full `TransactionCart` panel restyle; P4 payments; P5 modals (+ shell atoms); P7 reports restyle (tokenize `TodaySalesPanel`/`SaleDetailModal` already tokenized).
+- `ProductCard`/`ProductGrid` → owned by the parapharmacy session (handoff sent).
+- **Verify all authed-screen layouts in a logged-in session** (offline gate blocks them here): nav-rail layout, header, cart, sale-detail, blind-close.
+- React-doctor `--diff` warnings (button-type, only-export-components, untokenized `TodaySalesPanel`) — triage during the P7 restyle.
+
 ## Guardrails (always)
 Worktree off dev; merge to LOCAL dev first, promote to origin/dev as clean fast-forwards; never force-push dev. NEVER run the full PHPUnit suite (crashes laptop) — run by path. Tokens only in `apps/pos/src` (ESLint guard); i18n all strings; TDD; Codex for CODE review (Claude agent for DOC review). Commit frequently (crash-safety).
