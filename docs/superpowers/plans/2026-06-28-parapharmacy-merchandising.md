@@ -13,7 +13,8 @@
 ## Global Constraints
 
 - **Worktree:** `feat/parapharmacy-merchandising` (`../erp.parapharm`), off `origin/dev`. Never edit/commit on shared `dev`; never push to `dev`. Coordinate device migration version numbers (v58/v59) with the loyalty session before pushing.
-- **TDD always:** failing test → minimal impl → green → refactor → commit. **NEVER run the full PHPUnit suite** (crashes the laptop) — run by path only. POS: `pnpm test <path>` (Vitest).
+- **TDD always:** failing test → minimal impl → green → refactor → commit. **NEVER run the full PHPUnit suite** (crashes the laptop) — run by path only: `CACHE_STORE=array ./vendor/bin/phpunit tests/path/SomeTest.php` (or `--filter test_name`). POS: `pnpm test <path>` (Vitest).
+- **Tests are PHPUnit class-based** (PHP 8.4; `extends Tests\TestCase`, `public function test_*()`, `$this->assert*`, `RefreshDatabase`) — **the project does NOT use Pest.** The plan's `it()/expect()` snippets are illustrative pseudocode; translate each to PHPUnit by matching neighboring tests in the same dir.
 - **Strict typing:** no `mixed` (PHP) / no `any` (TS). Constructor injection only — never `app()`. Enums for all type columns.
 - **Tenant scope:** every tenant table carries `tenant_id`; top-level entities mirror `products` (`tenant_id` + `unique(tenant_id, …)`). Migrations go in `apps/api/database/migrations/tenant/`.
 - **Backend test DB = SQLite `:memory:`** (`phpunit.xml`: `DB_CONNECTION=sqlite`, `TENANCY_DB_PER_TENANT=false`). Use the **portable Schema builder** for all migrations. **Guard any Postgres-specific raw DDL** — `DB::statement('ALTER TABLE … ADD CONSTRAINT …')`, gin indexes — with `if (DB::getDriverName() === 'pgsql')`, and enforce the same invariant at the **application layer** (model guard) so it is testable on SQLite. `$table->json(...)` is portable (TEXT on sqlite) — fine.
