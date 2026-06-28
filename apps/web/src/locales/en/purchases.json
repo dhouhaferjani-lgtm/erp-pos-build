@@ -1,0 +1,95 @@
+{
+  "supplierInvoices": {
+    "title": "Supplier Invoices",
+    "description": "Manage supplier invoices linked to purchase orders",
+    "new": "New Supplier Invoice",
+    "empty": "No supplier invoices found",
+    "emptyHint": "Create a supplier invoice from a purchase order to get started.",
+    "filters": {
+      "partner": "Supplier",
+      "partnerPlaceholder": "Filter by supplier",
+      "status": "Status",
+      "statusPlaceholder": "All statuses",
+      "matchStatus": "Match Status",
+      "matchStatusPlaceholder": "All match statuses",
+      "dateFrom": "From",
+      "dateTo": "To"
+    },
+    "columns": {
+      "number": "Invoice #",
+      "partner": "Supplier",
+      "issueDate": "Issue Date",
+      "currency": "Currency",
+      "total": "Total",
+      "status": "Status",
+      "matchStatus": "Match Status"
+    },
+    "status": {
+      "draft": "Draft",
+      "posted": "Posted",
+      "paid": "Paid"
+    },
+    "matchStatus": {
+      "matched": "Matched",
+      "price_variance": "Price Variance",
+      "qty_blocked": "Qty Blocked",
+      "unmatched": "Unmatched"
+    },
+    "detail": {
+      "header": "Invoice Details",
+      "linkedPO": "Linked Purchase Order",
+      "poNumber": "PO #{{number}}",
+      "lines": "Lines",
+      "matchTable": "3-Way Match",
+      "attachments": "Attachments",
+      "postedAt": "Posted At",
+      "payment": "Record Payment"
+    },
+    "lines": {
+      "ordered": "Ordered",
+      "received": "Received",
+      "invoiced": "Invoiced",
+      "matchable": "Matchable",
+      "priceVariance": "Price Variance",
+      "quantity": "Quantity",
+      "unitPrice": "Unit Price (net)",
+      "vatRate": "VAT Rate",
+      "subtotal": "Subtotal"
+    },
+    "actions": {
+      "post": "Post Invoice",
+      "postDisabled": "Cannot post: {{reason}}",
+      "postBlocked": "Posting blocked: quantity over-invoice vs received",
+      "postPriceBlock": "Posting blocked: price variance exceeds policy threshold",
+      "rematch": "Re-match",
+      "recordPayment": "Record Payment",
+      "uploadAttachment": "Upload Attachment",
+      "downloadAttachment": "Download",
+      "deleteAttachment": "Delete"
+    },
+    "attachments": {
+      "empty": "No attachments",
+      "uploadHint": "Upload supporting documents (PDF, images)",
+      "uploading": "Uploading…"
+    },
+    "confirm": {
+      "post": {
+        "title": "Post Supplier Invoice",
+        "message": "Are you sure you want to post this invoice? This action cannot be undone.",
+        "button": "Post"
+      },
+      "deleteAttachment": {
+        "title": "Delete Attachment",
+        "message": "Are you sure you want to delete this attachment?",
+        "button": "Delete"
+      }
+    },
+    "toast": {
+      "posted": "Invoice posted successfully",
+      "rematched": "Match status updated",
+      "paymentRecorded": "Payment recorded successfully",
+      "attachmentUploaded": "Attachment uploaded",
+      "attachmentDeleted": "Attachment deleted"
+    }
+  }
+}

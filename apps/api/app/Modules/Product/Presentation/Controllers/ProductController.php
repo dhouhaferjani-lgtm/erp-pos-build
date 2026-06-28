@@ -7,12 +7,20 @@ namespace App\Modules\Product\Presentation\Controllers;
 use App\Enums\Vertical;
 use App\Modules\Catalog\Application\DTOs\ProductMediaData;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\DTOs\OpeningBalanceLine;
+use App\Modules\Inventory\Application\DTOs\OpeningBalancePosting;
 use App\Modules\Inventory\Application\DTOs\StockLevelData;
+use App\Modules\Inventory\Application\Services\OpeningBalancePostingService;
+use App\Modules\Inventory\Application\Services\ResetOpeningBalanceService;
+use App\Modules\Inventory\Domain\Exceptions\OpeningAlreadyExistsException;
+use App\Modules\Inventory\Domain\Exceptions\OpeningLockedException;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Product\Application\DTOs\OpeningStateData;
 use App\Modules\Product\Application\DTOs\ProductData;
 use App\Modules\Product\Application\Services\ProductTombstoneService;
 use App\Modules\Product\Domain\Enums\ProductType;
@@ -21,16 +29,20 @@ use App\Modules\Product\Domain\Events\ProductDeleted;
 use App\Modules\Product\Domain\Events\ProductUpdated;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Presentation\Requests\CreateProductRequest;
+use App\Modules\Product\Presentation\Requests\PostOpeningBalanceRequest;
 use App\Modules\Product\Presentation\Requests\UpdateProductRequest;
 use App\Modules\Taxation\Domain\Services\TaxResolutionService;
 use App\Modules\Uom\Domain\Entities\Unit;
 use App\Shared\Contracts\CatalogMediaQueryInterface;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\InventoryServiceInterface;
 use App\Support\Traits\FiltersAndSorts;
 use App\Support\Traits\PaginatesResults;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ProductController extends Controller
@@ -43,6 +55,11 @@ class ProductController extends Controller
         private readonly ProductTombstoneService $tombstoneService,
         private readonly CatalogMediaQueryInterface $catalogMedia,
         private readonly TaxResolutionService $taxResolution,
+        private readonly OpeningBalancePostingService $openingPosting,
+        private readonly LocationContext $locationContext,
+        private readonly InventoryServiceInterface $inventory,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly ResetOpeningBalanceService $resetOpening,
     ) {}
 
     /**
@@ -310,7 +327,12 @@ class ProductController extends Controller
     }
 
     /**
-     * Create a new product.
+     * Create a new product, optionally posting an inline opening balance.
+     *
+     * The full create body (product row + optional metadata + optional opening balance)
+     * executes inside a single DB::transaction so a failed posting rolls back the
+     * product as well. ProductCreated is deferred to DB::afterCommit so a rolled-back
+     * transaction never leaks the event to downstream listeners.
      */
     public function store(CreateProductRequest $request): JsonResponse
     {
@@ -318,9 +340,20 @@ class ProductController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
+        /** @var User $user */
+        $user = $request->user();
+
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
         $validated = $this->resolveUnitId($validated, $tenantId);
+
+        // Extract opening balance fields before mass-assignment so they are not
+        // passed to Product::create (the columns do not exist on the products table).
+        /** @var string|null $openingQty */
+        $openingQty = isset($validated['opening_qty']) ? (string) $validated['opening_qty'] : null;
+        /** @var string|null $openingCost */
+        $openingCost = isset($validated['opening_unit_cost']) ? (string) $validated['opening_unit_cost'] : null;
+        unset($validated['opening_qty'], $validated['opening_unit_cost']);
 
         // Extract parapharmacy metadata if provided
         $parapharmacyMetadata = null;
@@ -345,55 +378,120 @@ class ProductController extends Controller
             );
         }
 
-        $product = Product::create([
-            'tenant_id' => $tenantId,
-            'company_id' => $companyId,
-            ...$validated,
-        ]);
-
-        event(new ProductCreated(
-            productId: $product->id,
-            tenantId: $tenantId,
-            companyId: $companyId,
-            name: $product->name,
-            sku: $product->sku ?? '',
-            type: $product->type?->value ?? '',
-            salePrice: (string) $product->sale_price,
-            createdAt: $product->created_at?->toIso8601String(),
-        ));
-
-        // Create parapharmacy metadata if provided AND tenant is Parapharmacy vertical
-        if ($parapharmacyMetadata !== null && is_array($parapharmacyMetadata) && $company->tenant->vertical === Vertical::Parapharmacy) {
-            $product->parapharmacyMetadata()->create($parapharmacyMetadata);
+        // Authz gate: posting an opening balance is an inventory-adjustment action.
+        // Check BEFORE any write so no partial state is created.
+        // is_numeric() doubles as a PHPStan type-guard: narrows string → numeric-string for bccomp.
+        if ($openingQty !== null && is_numeric($openingQty) && bccomp($openingQty, '0', 4) > 0) {
+            abort_unless($user->can('inventory.adjust'), 403);
         }
 
-        // Create automotive metadata if provided AND tenant is automotive vertical
-        if ($automotiveMetadata !== null && is_array($automotiveMetadata) && $company->tenant->vertical->isAutomotive()) {
-            $crossReferences = $automotiveMetadata['cross_references'] ?? null;
-            $vehicles = $automotiveMetadata['vehicles'] ?? null;
-            $criteria = $automotiveMetadata['criteria'] ?? null;
-            unset($automotiveMetadata['cross_references'], $automotiveMetadata['vehicles'], $automotiveMetadata['criteria']);
+        /** @var Product $product */
+        $product = DB::transaction(function () use (
+            $validated,
+            $tenantId,
+            $companyId,
+            $company,
+            $parapharmacyMetadata,
+            $automotiveMetadata,
+            $openingQty,
+            $openingCost,
+            $user,
+        ): Product {
+            $product = Product::create([
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                ...$validated,
+            ]);
 
-            $metadata = $product->automotiveMetadata()->create($automotiveMetadata);
+            // Defer the domain event to after a successful commit so a rolled-back
+            // opening balance does not leak ProductCreated to downstream listeners.
+            $productSnapshot = $product;
+            $tenantSnapshot = $tenantId;
+            $companySnapshot = $companyId;
+            DB::afterCommit(static function () use ($productSnapshot, $tenantSnapshot, $companySnapshot): void {
+                event(new ProductCreated(
+                    productId: $productSnapshot->id,
+                    tenantId: $tenantSnapshot,
+                    companyId: $companySnapshot,
+                    name: $productSnapshot->name,
+                    sku: $productSnapshot->sku ?? '',
+                    type: $productSnapshot->type?->value ?? '',
+                    salePrice: (string) $productSnapshot->sale_price,
+                    createdAt: $productSnapshot->created_at?->toIso8601String(),
+                ));
+            });
 
-            if (is_array($crossReferences)) {
-                foreach ($crossReferences as $crossRef) {
-                    $metadata->crossReferences()->create($crossRef);
+            // Create parapharmacy metadata if provided AND tenant is Parapharmacy vertical
+            if ($parapharmacyMetadata !== null && is_array($parapharmacyMetadata) && $company->tenant->vertical === Vertical::Parapharmacy) {
+                $product->parapharmacyMetadata()->create($parapharmacyMetadata);
+            }
+
+            // Create automotive metadata if provided AND tenant is automotive vertical
+            if ($automotiveMetadata !== null && is_array($automotiveMetadata) && $company->tenant->vertical->isAutomotive()) {
+                $crossReferences = $automotiveMetadata['cross_references'] ?? null;
+                $vehicles = $automotiveMetadata['vehicles'] ?? null;
+                $criteria = $automotiveMetadata['criteria'] ?? null;
+                unset($automotiveMetadata['cross_references'], $automotiveMetadata['vehicles'], $automotiveMetadata['criteria']);
+
+                $metadata = $product->automotiveMetadata()->create($automotiveMetadata);
+
+                if (is_array($crossReferences)) {
+                    foreach ($crossReferences as $crossRef) {
+                        $metadata->crossReferences()->create($crossRef);
+                    }
+                }
+
+                if (is_array($vehicles)) {
+                    foreach ($vehicles as $vehicle) {
+                        $metadata->vehicles()->create($vehicle);
+                    }
+                }
+
+                if (is_array($criteria)) {
+                    foreach ($criteria as $criterion) {
+                        $metadata->criteria()->create($criterion);
+                    }
                 }
             }
 
-            if (is_array($vehicles)) {
-                foreach ($vehicles as $vehicle) {
-                    $metadata->vehicles()->create($vehicle);
-                }
+            // Post opening balance when a positive quantity was supplied.
+            // is_numeric() doubles as a PHPStan type-guard: narrows string → numeric-string for bccomp.
+            if ($openingQty !== null && is_numeric($openingQty) && bccomp($openingQty, '0', 4) > 0) {
+                abort_unless($product->is_physical, 422, __('inventory.opening_requires_physical'));
+
+                $location = $this->locationContext->getDefaultLocation($companyId);
+                abort_if($location === null, 422, __('inventory.no_active_location'));
+
+                $this->locationContext->validateLocationAccess($location->id, $companyId, $user);
+
+                // Pass the company currency explicitly — no bare no-arg getScale() per rule 19.
+                $scale = $this->scaleResolver->getScale($company->currency);
+
+                $this->openingPosting->post(new OpeningBalancePosting(
+                    tenantId: $tenantId,
+                    companyId: $companyId,
+                    userId: $user->id,
+                    entryDate: now(),
+                    isHistorical: true,
+                    sourceType: 'opening_balance',
+                    sourceId: $product->id,
+                    reference: 'Opening balance: '.($product->sku ?? $product->id),
+                    notes: null,
+                    lines: [
+                        OpeningBalanceLine::make(
+                            $product->id,
+                            null,
+                            $location->id,
+                            $openingQty,
+                            $openingCost ?? '0.000',
+                            $scale,
+                        ),
+                    ],
+                ));
             }
 
-            if (is_array($criteria)) {
-                foreach ($criteria as $criterion) {
-                    $metadata->criteria()->create($criterion);
-                }
-            }
-        }
+            return $product;
+        });
 
         // Load metadata for response if Parapharmacy vertical
         if ($company->tenant->vertical === Vertical::Parapharmacy) {
@@ -418,13 +516,126 @@ class ProductController extends Controller
 
         $media = $this->catalogMedia->forProduct($product->id, $tenantId);
 
+        // Compute opening state — queried after the transaction so committed data is visible.
+        $opening = OpeningStateData::fromFlags(
+            $this->inventory->hasActiveOpening($companyId, $product->id),
+            $this->inventory->hasDownstreamMovements($companyId, $product->id),
+        );
+
         return response()->json([
-            'data' => ProductData::fromModel($product, $media),
+            'data' => ProductData::fromModel($product, $media, $opening),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],
         ], 201);
+    }
+
+    /**
+     * Post an opening balance on an existing eligible physical product.
+     *
+     * Re-entry path: used after a reset, or to add an opening to a product
+     * that was created without one. Reuses the same OpeningBalancePostingService
+     * as the inline create flow (store()).
+     *
+     * Guards (in order):
+     *   1. product must be physical (422)
+     *   2. no downstream non-opening movements (409 — inventory is live)
+     *   3. active default location must exist (422)
+     *   4. openingPosting->post() → OpeningAlreadyExistsException → 409
+     */
+    public function postOpening(PostOpeningBalanceRequest $request, string $product): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $model = Product::where('company_id', $companyId)->findOrFail($product);
+
+        abort_unless($model->is_physical, 422, __('inventory.opening_requires_physical'));
+        abort_if($this->inventory->hasDownstreamMovements($companyId, $model->id), 409, __('inventory.opening_locked_downstream'));
+
+        /** @var User $user */
+        $user = $request->user();
+
+        $location = $this->locationContext->getDefaultLocation($companyId);
+        abort_if($location === null, 422, __('inventory.no_active_location'));
+        $this->locationContext->validateLocationAccess($location->id, $companyId, $user);
+
+        /** @var array<string, mixed> $validated */
+        $validated = $request->validated();
+        $qty = (string) $validated['opening_qty'];
+        $cost = (string) $validated['opening_unit_cost'];
+
+        // Pass the company currency explicitly — no bare no-arg getScale() per rule 19.
+        $scale = $this->scaleResolver->getScale($company->currency);
+
+        try {
+            $this->openingPosting->post(new OpeningBalancePosting(
+                tenantId: $company->tenant_id,
+                companyId: $companyId,
+                userId: $user->id,
+                entryDate: now(),
+                isHistorical: true,
+                sourceType: 'opening_balance',
+                sourceId: $model->id,
+                reference: 'Opening balance: '.($model->sku ?? $model->id),
+                notes: null,
+                lines: [
+                    OpeningBalanceLine::make($model->id, null, $location->id, $qty, $cost, $scale),
+                ],
+            ));
+        } catch (OpeningAlreadyExistsException) {
+            abort(409, __('inventory.opening_already_exists'));
+        }
+
+        $media = $this->catalogMedia->forProduct($model->id, $company->tenant_id);
+
+        $opening = OpeningStateData::fromFlags(
+            $this->inventory->hasActiveOpening($companyId, $model->id),
+            $this->inventory->hasDownstreamMovements($companyId, $model->id),
+        );
+
+        /** @var Product $freshModel */
+        $freshModel = $model->fresh();
+
+        return response()->json(['data' => ProductData::fromModel($freshModel, $media, $opening)], 201);
+    }
+
+    /**
+     * Reset the opening balance for an existing product by posting a reversing
+     * movement + contra GL entry (audit-preserving — the original rows are kept).
+     *
+     * The product is re-enterable via postOpening() after a successful reset.
+     *
+     * Guards (delegated to ResetOpeningBalanceService):
+     *   - An active (non-reversed) opening movement must exist.
+     *   - No downstream (non-opening) movements must exist.
+     *
+     * Returns 200 with the fresh ProductData (opening.can_enter_opening = true).
+     * Returns 409 when the guard fails (no active opening or downstream exists).
+     */
+    public function resetOpening(Request $request, string $product): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $model = Product::where('company_id', $companyId)->findOrFail($product);
+
+        try {
+            $this->resetOpening->reset($companyId, $company->tenant_id, $model->id, (string) $request->user()?->id);
+        } catch (OpeningLockedException) {
+            abort(409, __('inventory.opening_locked_downstream'));
+        }
+
+        $media = $this->catalogMedia->forProduct($model->id, $company->tenant_id);
+
+        $opening = OpeningStateData::fromFlags(
+            $this->inventory->hasActiveOpening($companyId, $model->id),
+            $this->inventory->hasDownstreamMovements($companyId, $model->id),
+        );
+
+        /** @var Product $freshModel */
+        $freshModel = $model->fresh();
+
+        return response()->json(['data' => ProductData::fromModel($freshModel, $media, $opening)], 200);
     }
 
     /**

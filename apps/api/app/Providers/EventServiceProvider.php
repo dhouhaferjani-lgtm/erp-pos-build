@@ -6,13 +6,17 @@ namespace App\Providers;
 
 use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
 use App\Modules\Accounting\Listeners\InvoicePostedListener;
+use App\Modules\Accounting\Listeners\PostGrIrOnGoodsReceipt;
 use App\Modules\Accounting\Listeners\RefreshPartnerBalanceOnJournalEntryPosted;
 use App\Modules\Company\Domain\Events\CompanyCreated;
 use App\Modules\Company\Listeners\CreateFiscalYearsForNewCompany;
 use App\Modules\Compliance\Listeners\EnsureFraudSettingsOnCompanyCreated;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Import\Infrastructure\Listeners\BroadcastImportEventsListener;
+use App\Modules\Inventory\Domain\Events\GoodsReceived;
 use App\Modules\Loyalty\Application\Listeners\EarnPointsOnReceiptCompleted;
+use App\Modules\Loyalty\Application\Listeners\SeedDefaultEarningRuleOnProgramActivated;
+use App\Modules\Loyalty\Domain\Events\ProgramActivated;
 use App\Modules\Partner\Domain\Events\PartnerDeleted;
 use App\Modules\Partner\Infrastructure\Listeners\BroadcastPartnerEventsListener;
 use App\Modules\POS\Domain\Events\ReceiptCompleted;
@@ -63,6 +67,9 @@ class EventServiceProvider extends ServiceProvider
             InvoicePostedListener::class,
             WriteDocumentVehicleContextForWorkOrderInvoice::class,
         ],
+        ProgramActivated::class => [
+            SeedDefaultEarningRuleOnProgramActivated::class,
+        ],
         ReceiptCompleted::class => [
             EarnPointsOnReceiptCompleted::class,
         ],
@@ -104,6 +111,11 @@ class EventServiceProvider extends ServiceProvider
         ],
         WorkOrderPartsNeeded::class => [
             LogPartsNeededForProcurement::class,
+        ],
+
+        // Procurement-to-Pay: GR-IR accrual on goods receipt
+        GoodsReceived::class => [
+            PostGrIrOnGoodsReceipt::class,
         ],
     ];
 

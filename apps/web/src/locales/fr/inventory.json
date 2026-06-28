@@ -858,5 +858,21 @@
     "preparing": "Préparation…",
     "clear": "Effacer la sélection",
     "noVariants": "Aucune variante à étiqueter pour les produits sélectionnés."
+  },
+  "opening": {
+    "title": "Stock initial",
+    "qty_label": "Quantité initiale",
+    "cost_label": "Coût unitaire initial",
+    "cost_help": "Coût de valorisation utilisé comme CMUP (Coût Moyen Unitaire Pondéré) initial — pas le prix de vente ou d'achat.",
+    "locked_helper": "Le stock initial a été enregistré et est verrouillé.",
+    "locked_with_downstream": "Ce produit a des mouvements de stock. Le stock initial ne peut plus être réinitialisé.",
+    "reset_label": "Réinitialiser le stock initial",
+    "reset_confirm_body": "Cette opération annulera l'écriture de stock initial. Vous pourrez ensuite saisir de nouvelles valeurs.",
+    "reset_confirm_cancel": "Annuler",
+    "reset_confirm_proceed": "Réinitialiser",
+    "view_stock_link": "Voir dans Inventaire › Stock",
+    "submitError": "Impossible d'enregistrer le stock initial. Veuillez réessayer.",
+    "resetSuccess": "Le stock initial a été réinitialisé.",
+    "resetError": "Impossible de réinitialiser le stock initial. Veuillez réessayer."
   }
 }

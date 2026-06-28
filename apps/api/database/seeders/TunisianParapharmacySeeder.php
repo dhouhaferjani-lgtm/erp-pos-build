@@ -97,6 +97,10 @@ class TunisianParapharmacySeeder extends Seeder
             $this->command->info('Payment repositories already exist - skipping');
         }
 
+        // Seed expense categories linked to PCG-TN class-6 GL accounts (idempotent).
+        $this->command->info('Seeding expense categories...');
+        app(ExpenseCategorySeeder::class)->seedForCompany($company);
+
         // Provision country tax configurations for this TN company (idempotent).
         // Uses provisionForCompany() instead of calling TunisiaTaxConfigurationSeeder
         // directly so the company.default_tax_configuration_id FK is also set.

@@ -13,8 +13,6 @@ use Tests\TestCase;
 /**
  * Characterization test: verifies that extracting locale hooks from
  * ParapharmacySeeder does NOT change France output.
- *
- * Mirrors the test style of ParapharmacyMultiBranchSeederTest.
  */
 final class ParapharmacySeederLocaleHooksTest extends TestCase
 {

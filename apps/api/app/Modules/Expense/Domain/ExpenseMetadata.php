@@ -24,6 +24,7 @@ use Illuminate\Support\Carbon;
  * @property bool $is_paid
  * @property string|null $receipt_number
  * @property string|null $vendor_name
+ * @property string|null $idempotency_key
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Document $document
@@ -52,6 +53,7 @@ class ExpenseMetadata extends Model
         'is_paid',
         'receipt_number',
         'vendor_name',
+        'idempotency_key',
     ];
 
     /**

@@ -8,7 +8,6 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use Database\Seeders\CoffeeShopSeeder;
 use Database\Seeders\DatabaseSeeder;
-use Database\Seeders\ParapharmacyMultiBranchSeeder;
 use Database\Seeders\ParapharmacySeeder;
 use Database\Seeders\TunisianParapharmacySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -74,28 +73,6 @@ final class DemoSeedersTaxTest extends TestCase
             4,
             TaxConfiguration::where('country_code', 'TN')->count(),
             'TunisiaTaxConfigurationSeeder must create at least 4 TN tax configurations'
-        );
-    }
-
-    /**
-     * ParapharmacyMultiBranchSeeder creates a French multi-branch company and
-     * must provision FR tax configurations + set the company default FK.
-     */
-    public function test_parapharmacy_multi_branch_seeder_provisions_fr_tax(): void
-    {
-        $this->artisan('db:seed', ['--class' => ParapharmacyMultiBranchSeeder::class, '--force' => true])
-            ->assertExitCode(0);
-
-        $company = Company::where('country_code', 'FR')->latest('id')->first();
-        $this->assertNotNull($company, 'ParapharmacyMultiBranchSeeder must create a FR company');
-        $this->assertNotNull(
-            $company->default_tax_configuration_id,
-            'company.default_tax_configuration_id must be set after provisioning'
-        );
-        $this->assertSame(
-            5,
-            TaxConfiguration::where('country_code', 'FR')->count(),
-            'FranceTaxConfigurationSeeder must create exactly 5 TVA bands'
         );
     }
 

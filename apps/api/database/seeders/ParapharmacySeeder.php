@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Enums\Vertical;
+use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
 use App\Modules\Billing\Domain\Plan;
 use App\Modules\Billing\Domain\TenantSubscription;
@@ -30,6 +31,7 @@ use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Application\Services\IdentityIndexService;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
 use Database\Seeders\Contracts\ChartOfAccountsSeederContract;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
@@ -84,6 +86,15 @@ class ParapharmacySeeder extends Seeder
     protected Company $company;
 
     protected Location $location;
+
+    /**
+     * Units of measure keyed by code, resolved once after UomSeeder runs so
+     * {@see createProduct()} can link each product to a real unit (which drives
+     * the per-unit quantity step in the qty editor).
+     *
+     * @var array<string, Unit>
+     */
+    protected array $unitsByCode = [];
 
     /**
      * Single writer of the central identity index (`central_identities`).
@@ -305,6 +316,18 @@ class ParapharmacySeeder extends Seeder
             $this->call(KeyComponentsSeeder::class);
         }
 
+        // Units of measure — drive the per-unit quantity step in the qty editor
+        // (Unit.decimal_places → step 1/10^places). Without a linked unit a
+        // product falls back to 4 decimals (step 0.0001). UomSeeder seeds GLOBAL
+        // reference units via non-idempotent ::create, so guard like the others.
+        if (DB::table('unit_categories')->count() === 0) {
+            $this->call(UomSeeder::class);
+        }
+        $this->unitsByCode = Unit::whereIn('code', ['pc', 'kg', 'l'])
+            ->get()
+            ->keyBy('code')
+            ->all();
+
         $this->command->info('✓ Reference data ready');
 
         // 3. Create company with location
@@ -340,6 +363,12 @@ class ParapharmacySeeder extends Seeder
         // 7. Seed stock levels
         $this->command->info('📊 Seeding stock levels...');
         $this->seedStockLevels($this->company, $this->location, $products);
+
+        // 7b. Mint FEFO lots for batch-tracked products. Without this a product
+        //     flagged requires_batch_tracking has stock but zero selectable
+        //     lots, which silently blocks PO goods-receipt and stock transfers.
+        $this->command->info('🏷️  Seeding product batches...');
+        $this->seedBatchesForBatchTrackedProducts($this->company);
 
         // 8. Create test users
         $this->command->info('👤 Creating test users...');
@@ -543,6 +572,10 @@ class ParapharmacySeeder extends Seeder
         // Payment repositories
         $this->call(PaymentRepositorySeeder::class, false, ['company' => $company]);
         $this->command->info('✓ Payment Repositories (6 repositories)');
+
+        // Expense categories linked to class-6 GL accounts (idempotent).
+        app(ExpenseCategorySeeder::class)->seedForCompany($company);
+        $this->command->info('✓ Expense Categories');
     }
 
     /**
@@ -654,6 +687,12 @@ class ParapharmacySeeder extends Seeder
         $requiresBatchTracking = rand(1, 100) <= 70;
         $shelfLifeDays = $requiresBatchTracking ? $this->getShelfLife($category) : null;
 
+        // Unit of measure — most parapharmacy items are sold as pieces
+        // (boxes/tubes/bottles/packs); weight-based categories get kg/g so the
+        // demo shows both a step-1 and a fractional-step quantity selector.
+        $unitCode = $this->unitCodeForCategory($category);
+        $unit = $this->unitsByCode[$unitCode] ?? null;
+
         $product = Product::create([
             'tenant_id' => $company->tenant_id,
             'company_id' => $company->id,
@@ -668,6 +707,10 @@ class ParapharmacySeeder extends Seeder
             'is_physical' => true,
             'requires_batch_tracking' => $requiresBatchTracking,
             'default_shelf_life_days' => $shelfLifeDays,
+            // Set both the FK and the mirrored legacy string (the create path
+            // mirrors the code from unit_id — match that contract here).
+            'unit_id' => $unit?->id,
+            'unit' => $unitCode,
         ]);
 
         // Create parapharmacy metadata
@@ -686,6 +729,25 @@ class ParapharmacySeeder extends Seeder
         ]);
 
         return $product;
+    }
+
+    /**
+     * Pick a sensible unit-of-measure code per category.
+     *
+     * Weight-sold categories get a fractional-step unit (kg → 0.001, g → 0.01);
+     * everything else is sold as discrete pieces (pc → step 1). This guarantees
+     * the demo catalog shows both quantity-step behaviors.
+     */
+    private function unitCodeForCategory(ParapharmacyCategory $category): string
+    {
+        // Note: in this system g/ml are whole-number units (decimal_places 0);
+        // only kg/l step fractionally (decimal_places 3). Pick kg/l for the
+        // weight/volume categories so the demo actually shows a fractional step.
+        return match ($category) {
+            ParapharmacyCategory::SportsNutrition => 'kg', // bulk powders/protein by weight → 0.001
+            ParapharmacyCategory::Herbal => 'l',           // extracts/oils/syrups by volume → 0.001
+            default => 'pc',                               // boxes, tubes, bottles, packs → 1
+        };
     }
 
     /**
@@ -968,6 +1030,66 @@ class ParapharmacySeeder extends Seeder
         }
 
         $this->command->info("✓ Stock levels created ({$stockCount} products in stock)");
+    }
+
+    /**
+     * Mint FEFO lots for every batch-tracked product that holds stock.
+     *
+     * A product flagged `requires_batch_tracking` but with no `product_batches`
+     * row has stock yet zero selectable lots, which silently blocks PO
+     * goods-receipt and stock-transfer flows (there is no lot to pick).
+     *
+     * Delegates to the shared {@see BatchStockService::ensureDefaultBatch()} so
+     * seeded data mirrors the production default-batch behavior: one DEFAULT lot
+     * per product (+ variant) with expiry = today + the product's default expiry
+     * period, whose per-location batch stock reconciles to the StockLevel.
+     *
+     * Additive + idempotent: re-running reconciles to the current StockLevel and
+     * never double-counts, so it is safe to call again after more stock is
+     * seeded at additional locations.
+     */
+    protected function seedBatchesForBatchTrackedProducts(Company $company): void
+    {
+        $batchTrackedIds = Product::query()
+            ->where('company_id', $company->id)
+            ->where('requires_batch_tracking', true)
+            ->pluck('id');
+
+        if ($batchTrackedIds->isEmpty()) {
+            return;
+        }
+
+        $stockLevels = StockLevel::query()
+            ->whereIn('product_id', $batchTrackedIds)
+            ->where('quantity', '>', 0)
+            ->get();
+
+        /** @var Collection<string, int|null> $shelfLifeByProduct */
+        $shelfLifeByProduct = Product::query()
+            ->whereIn('id', $batchTrackedIds)
+            ->pluck('default_shelf_life_days', 'id');
+
+        /** @var BatchStockService $batchStockService */
+        $batchStockService = $this->container->make(BatchStockService::class);
+
+        $asOfDate = now()->toDateString();
+        $count = 0;
+
+        foreach ($stockLevels as $stock) {
+            $batchStockService->ensureDefaultBatch(
+                companyId: $company->id,
+                tenantId: $company->tenant_id,
+                productId: $stock->product_id,
+                locationId: $stock->location_id,
+                targetQuantity: (string) $stock->quantity,
+                shelfLifeDays: $shelfLifeByProduct[$stock->product_id] ?? null,
+                asOfDate: $asOfDate,
+                variantId: $stock->variant_id,
+            );
+            $count++;
+        }
+
+        $this->command->info("✓ Default batches reconciled ({$count} batch-tracked stock rows)");
     }
 
     /**

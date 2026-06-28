@@ -46,6 +46,10 @@ class BatchResource extends JsonResource
                     'id' => $product->id,
                     'name' => $product->name,
                     'sku' => $product->sku,
+                    // Unit precision → drives the write-off qty input step.
+                    'quantity_decimals' => ($product->relationLoaded('unitOfMeasure') && $product->unitOfMeasure !== null)
+                        ? $product->unitOfMeasure->decimal_places
+                        : 4,
                 ];
             }),
             'batch_stock' => $this->whenLoaded('batchStock', fn () => $this->batchStock->map(fn ($stock) => [

@@ -33,6 +33,17 @@ vi.mock('../../documents/components/DocumentAttachments', () => ({
   DocumentAttachments: () => <div data-testid="document-attachments" />,
 }))
 
+// ─── usePermissions: configurable mock — default grants all ──────────────────
+const mockHasPermission = vi.fn((_p: string): boolean => true)
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({
+    hasPermission: (p: string) => mockHasPermission(p),
+    hasAnyPermission: vi.fn(() => true),
+    hasAllPermissions: vi.fn(() => true),
+    canAccessModule: vi.fn(() => true),
+  }),
+}))
+
 const fixtureExpense = {
   id: 'exp-1',
   type: 'expense' as const,
@@ -56,9 +67,18 @@ const fixtureExpense = {
   },
 }
 
+const fixtureDraftExpense = {
+  ...fixtureExpense,
+  status: 'draft' as const,
+  document_number: 'EXP-DRAFT-0001',
+}
+
 beforeEach(() => {
   mockNavigate.mockReset()
   mockUseExpense.mockReset()
+  mockHasPermission.mockReset()
+  // Default: grant all permissions
+  mockHasPermission.mockReturnValue(true)
   mockUseExpense.mockReturnValue({ data: fixtureExpense, isLoading: false })
 })
 
@@ -79,5 +99,74 @@ describe('ExpenseDetailPage shell', () => {
   it('renders the attachments organism', () => {
     render(<ExpenseDetailPage />)
     expect(screen.getByTestId('document-attachments')).toBeInTheDocument()
+  })
+})
+
+describe('ExpenseDetailPage — Post button permission gating', () => {
+  it('hides the Post button when user lacks expenses.post on a draft expense', () => {
+    mockUseExpense.mockReturnValue({ data: fixtureDraftExpense, isLoading: false })
+    // Deny expenses.post only
+    mockHasPermission.mockImplementation((p: string) => p !== 'expenses.post')
+
+    render(<ExpenseDetailPage />)
+
+    expect(screen.queryByText('expenses:postExpense')).not.toBeInTheDocument()
+  })
+
+  it('shows the Post button when user has expenses.post on a draft expense', () => {
+    mockUseExpense.mockReturnValue({ data: fixtureDraftExpense, isLoading: false })
+    // Grant all permissions (default)
+    mockHasPermission.mockReturnValue(true)
+
+    render(<ExpenseDetailPage />)
+
+    expect(screen.getByText('expenses:postExpense')).toBeInTheDocument()
+  })
+
+  it('never shows the Post button on an already-posted expense regardless of permission', () => {
+    // fixtureExpense is posted — Post button must not render even with permission
+    mockHasPermission.mockReturnValue(true)
+
+    render(<ExpenseDetailPage />)
+
+    expect(screen.queryByText('expenses:postExpense')).not.toBeInTheDocument()
+  })
+})
+
+describe('ExpenseDetailPage — Edit / Delete button permission gating', () => {
+  it('hides Edit button when user lacks expenses.update', () => {
+    mockUseExpense.mockReturnValue({ data: fixtureDraftExpense, isLoading: false })
+    mockHasPermission.mockImplementation((p: string) => p !== 'expenses.update')
+
+    render(<ExpenseDetailPage />)
+
+    expect(screen.queryByText('common:edit')).not.toBeInTheDocument()
+  })
+
+  it('shows Edit button when user has expenses.update on a draft expense', () => {
+    mockUseExpense.mockReturnValue({ data: fixtureDraftExpense, isLoading: false })
+    mockHasPermission.mockReturnValue(true)
+
+    render(<ExpenseDetailPage />)
+
+    expect(screen.getByText('common:edit')).toBeInTheDocument()
+  })
+
+  it('hides Delete button when user lacks expenses.delete', () => {
+    mockUseExpense.mockReturnValue({ data: fixtureDraftExpense, isLoading: false })
+    mockHasPermission.mockImplementation((p: string) => p !== 'expenses.delete')
+
+    render(<ExpenseDetailPage />)
+
+    expect(screen.queryByText('common:delete')).not.toBeInTheDocument()
+  })
+
+  it('shows Delete button when user has expenses.delete on a draft expense', () => {
+    mockUseExpense.mockReturnValue({ data: fixtureDraftExpense, isLoading: false })
+    mockHasPermission.mockReturnValue(true)
+
+    render(<ExpenseDetailPage />)
+
+    expect(screen.getByText('common:delete')).toBeInTheDocument()
   })
 })

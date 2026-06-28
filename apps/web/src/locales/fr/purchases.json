@@ -1,0 +1,95 @@
+{
+  "supplierInvoices": {
+    "title": "Factures fournisseurs",
+    "description": "Gérer les factures fournisseurs liées aux bons de commande",
+    "new": "Nouvelle facture fournisseur",
+    "empty": "Aucune facture fournisseur trouvée",
+    "emptyHint": "Créez une facture fournisseur à partir d'un bon de commande.",
+    "filters": {
+      "partner": "Fournisseur",
+      "partnerPlaceholder": "Filtrer par fournisseur",
+      "status": "Statut",
+      "statusPlaceholder": "Tous les statuts",
+      "matchStatus": "Statut de rapprochement",
+      "matchStatusPlaceholder": "Tous les statuts",
+      "dateFrom": "Du",
+      "dateTo": "Au"
+    },
+    "columns": {
+      "number": "N° Facture",
+      "partner": "Fournisseur",
+      "issueDate": "Date d'émission",
+      "currency": "Devise",
+      "total": "Total",
+      "status": "Statut",
+      "matchStatus": "Rapprochement"
+    },
+    "status": {
+      "draft": "Brouillon",
+      "posted": "Comptabilisée",
+      "paid": "Payée"
+    },
+    "matchStatus": {
+      "matched": "Rapprochée",
+      "price_variance": "Écart de prix",
+      "qty_blocked": "Quantité bloquée",
+      "unmatched": "Non rapprochée"
+    },
+    "detail": {
+      "header": "Détails de la facture",
+      "linkedPO": "Bon de commande lié",
+      "poNumber": "BC #{{number}}",
+      "lines": "Lignes",
+      "matchTable": "Rapprochement à 3 voies",
+      "attachments": "Pièces jointes",
+      "postedAt": "Comptabilisée le",
+      "payment": "Enregistrer le paiement"
+    },
+    "lines": {
+      "ordered": "Commandé",
+      "received": "Reçu",
+      "invoiced": "Facturé",
+      "matchable": "Rapprochable",
+      "priceVariance": "Écart de prix",
+      "quantity": "Quantité",
+      "unitPrice": "Prix unitaire (HT)",
+      "vatRate": "Taux TVA",
+      "subtotal": "Sous-total"
+    },
+    "actions": {
+      "post": "Comptabiliser",
+      "postDisabled": "Impossible de comptabiliser : {{reason}}",
+      "postBlocked": "Comptabilisation bloquée : sur-facturation de quantité",
+      "postPriceBlock": "Comptabilisation bloquée : écart de prix hors politique",
+      "rematch": "Re-rapprocher",
+      "recordPayment": "Enregistrer le paiement",
+      "uploadAttachment": "Joindre un document",
+      "downloadAttachment": "Télécharger",
+      "deleteAttachment": "Supprimer"
+    },
+    "attachments": {
+      "empty": "Aucune pièce jointe",
+      "uploadHint": "Joindre des documents justificatifs (PDF, images)",
+      "uploading": "Envoi en cours…"
+    },
+    "confirm": {
+      "post": {
+        "title": "Comptabiliser la facture",
+        "message": "Êtes-vous sûr de vouloir comptabiliser cette facture ? Cette action est irréversible.",
+        "button": "Comptabiliser"
+      },
+      "deleteAttachment": {
+        "title": "Supprimer la pièce jointe",
+        "message": "Êtes-vous sûr de vouloir supprimer cette pièce jointe ?",
+        "button": "Supprimer"
+      }
+    },
+    "toast": {
+      "posted": "Facture comptabilisée avec succès",
+      "rematched": "Statut de rapprochement mis à jour",
+      "paymentRecorded": "Paiement enregistré avec succès",
+      "attachmentUploaded": "Pièce jointe envoyée",
+      "attachmentDeleted": "Pièce jointe supprimée"
+    }
+  }
+}

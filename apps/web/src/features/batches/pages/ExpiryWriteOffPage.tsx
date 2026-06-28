@@ -6,6 +6,7 @@ import { isApiError } from '../../../lib/api'
 import { cn } from '../../../lib/utils'
 import { tokens, textColors, borderColors, colors } from '../../../lib/designTokens'
 import { formatQuantity } from '../../../lib/format'
+import { getQuantityDecimals } from '../../../lib/quantityScale'
 import { bccomp, bcadd, formatQuantity as toQuantityString } from '../../../lib/decimal'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
@@ -226,7 +227,7 @@ export function ExpiryWriteOffPage() {
           <QuantityInput
             value={quantities[batch.uuid]}
             onChange={(value) => { setQuantity(batch.uuid, value) }}
-            decimalPlaces={QUANTITY_SCALE}
+            decimalPlaces={getQuantityDecimals(batch.product)}
             min="0"
             max={toQuantityString(batch.available_quantity, QUANTITY_SCALE)}
             error={lineHasError(batch)}

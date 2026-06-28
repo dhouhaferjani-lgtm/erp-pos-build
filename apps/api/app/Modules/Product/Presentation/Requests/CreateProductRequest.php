@@ -87,6 +87,20 @@ class CreateProductRequest extends FormRequest
 
             $this->validateTypePhysicalCoherence($validator);
         });
+
+        $validator->after(function (Validator $validator): void {
+            $qty = $this->input('opening_qty');
+            $cost = $this->input('opening_unit_cost');
+            $hasPositiveQty = $qty !== null && $qty !== '' && bccomp((string) $qty, '0', 4) > 0;
+
+            if ($hasPositiveQty && ($cost === null || $cost === '')) {
+                $validator->errors()->add('opening_unit_cost', __('validation.opening_cost_required_with_qty'));
+            }
+
+            if (! $hasPositiveQty && $cost !== null && $cost !== '') {
+                $validator->errors()->add('opening_unit_cost', __('validation.opening_cost_without_qty'));
+            }
+        });
     }
 
     /**
@@ -185,6 +199,8 @@ class CreateProductRequest extends FormRequest
             'shelf_location' => ['sometimes', 'nullable', 'string', 'max:100'],
             'reorder_point' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
             'reorder_quantity' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'opening_qty' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'opening_unit_cost' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'is_active' => ['sometimes', 'boolean'],
             'is_active_for_ecommerce' => ['sometimes', 'boolean'],
             'requires_batch_tracking' => ['sometimes', 'boolean'],
@@ -273,6 +289,8 @@ class CreateProductRequest extends FormRequest
             'tax_rate.regex' => 'Tax rate must have at most 2 decimal places.',
             'reorder_point.regex' => 'Reorder point must have at most 4 decimal places.',
             'reorder_quantity.regex' => 'Reorder quantity must have at most 4 decimal places.',
+            'opening_qty.regex' => 'Opening quantity must have at most 4 decimal places.',
+            'opening_unit_cost.regex' => 'Opening unit cost must have at most 3 decimal places.',
         ];
     }
 }

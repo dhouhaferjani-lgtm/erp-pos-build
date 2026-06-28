@@ -8,6 +8,7 @@ use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\PaymentDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\SaleReceiptCanonicalView;
+use App\Modules\Fiscal\Domain\DTOs\SaleReceiptPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Exceptions\OriginalReceiptUnresolvableException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
@@ -30,6 +31,8 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Voucher\Application\DTOs\VoucherRedemptionRequest;
 use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
+use App\Shared\Contracts\Loyalty\LoyaltyEarningContract;
+use App\Shared\Contracts\Loyalty\SaleEarnContext;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -124,6 +127,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         private readonly ReceiptHashService $receiptHashService,
         private readonly CanonicalPayloadReader $canonicalReader,
         private readonly PaymentMethodResolver $paymentMethodResolver,
+        private readonly LoyaltyEarningContract $loyaltyEarning,
     ) {}
 
     public function name(): string
@@ -316,6 +320,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             $this->writeVatBreakdown($receiptId, $view);
             $this->writePayments($receiptId, $event, $view);
             $this->redeemVouchers($receiptId, $event, $view);
+            $this->earnLoyaltyPoints($receiptId, $event, $view, $payload, $receiptTypeEnum, $totalNorm);
             $this->decrementStockForLines($receiptId, $event, $terminal, $view);
         });
     }
@@ -851,18 +856,64 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     }
 
     /**
+     * Credit loyalty points for an earning SALE. Mirrors redeemVouchers() —
+     * synchronous, try/catch, must never break the sale projection.
+     * Earns only on a real SALE (not REFUND/VOID → Return, not training).
+     */
+    private function earnLoyaltyPoints(
+        string $receiptId,
+        FiscalEvent $event,
+        SaleReceiptCanonicalView $view,
+        SaleReceiptPayload $payload,
+        ReceiptType $receiptType,
+        string $totalNorm,
+    ): void {
+        // Earn-eligibility guard (Codex BLOCKER-2): refunds/voids/training earn nothing.
+        if ($receiptType !== ReceiptType::Sale || $payload->trainingFlag === true) {
+            return;
+        }
+
+        try {
+            $this->loyaltyEarning->earnForSale(new SaleEarnContext(
+                tenantId: $event->tenant_id,
+                contactId: $view->buyer?->contactId,
+                partnerId: $view->buyer?->customerId,
+                currency: $payload->currencyCode,
+                sourceType: 'pos_receipt',
+                sourceId: $receiptId,
+                receiptNumber: (string) $event->sequence_number,
+                postedAt: $event->event_time_device,
+                earnBase: $totalNorm,
+            ));
+        } catch (\Throwable $e) {
+            Log::error('PosCoreReceiptProjection: loyalty earn failed (sale unaffected)', [
+                'fiscal_event_id' => $event->id,
+                'receipt_id' => $receiptId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Stock decrement for product lines — iterates the canonical view.
      *
-     * **T2 variant_id gap (Task 18).** `LineItemDTO` does not carry a
-     * `variant_id` field (the canonical payload shape pre-dates T2 variants).
-     * Consequently, every projection-path decrement scopes to the product-level
-     * stock row (`variant_id IS NULL`). For variant sales that arrived via the
-     * draft-creation path (`ReceiptCreationService`) the stock was already
-     * decremented correctly at draft time — the projection-path decrement here
-     * is a SECOND decrement, which is the existing pre-T2 behaviour (draft +
-     * projection). Resolving the double-decrement and adding `variant_id` to
-     * the canonical payload is deferred to Phase 2 T2. No change to the
-     * existing decrement logic in this task scope.
+     * **Single authoritative decrement (T2).** This projection is the SOLE
+     * server-side stock decrement for a POS sale. Under device-SoT the device
+     * authors the sealed `SALE_RECEIPT`; the server projects it exactly once,
+     * keyed and locked on `fiscal_event_id` (fast-path `Receipt::exists()` probe
+     * + the atomic `INSERT … ON CONFLICT … DO NOTHING` in
+     * `insertReceiptOnConflictDoNothing`, all inside the
+     * `ApplyFiscalEventProjectionJob` per-row `WithoutOverlapping` lock). The
+     * legacy draft-creation path (`ReceiptCreationService::createReceipt`) that
+     * historically decremented at draft time is retired — every caller is 410
+     * Gone / inert (see `scripts/saleReceipt-chokepoint-manifest.json`), so the
+     * pre-T2 "draft + projection" double-decrement no longer occurs.
+     *
+     * **Variant-aware (T2).** `LineItemDTO` carries `variant_id` since
+     * SaleReceiptV2 (M4); we thread `$line->variantId` into `decrementStock()`
+     * so a variant line hits the variant-scoped `stock_levels` row and writes
+     * `variant_id` onto the `stock_movements` row. Non-variant lines pass null
+     * and keep the product-level (`variant_id IS NULL`) behaviour.
      */
     private function decrementStockForLines(
         string $receiptId,
@@ -888,9 +939,10 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 quantity: $line->quantity,
                 receiptId: $receiptId,
                 cashierId: $event->operator_id,
-                // variantId intentionally omitted — LineItemDTO does not carry
-                // variant_id (T2 gap documented in writeLines() above).
-                // Scopes to product-level (variant_id IS NULL) row.
+                // T2 — variant-aware: a variant line scopes to the variant
+                // `stock_levels` row and stamps `variant_id` on the movement;
+                // a non-variant line passes null → product-level row.
+                variantId: $line->variantId,
             );
         }
     }
@@ -929,6 +981,21 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         $stockLevel = $stockLevelQuery->lockForUpdate()->first();
 
         if ($stockLevel === null) {
+            // A variant line with no variant-scoped stock_levels row must NOT
+            // fall back to decrementing the product-level pool (the pre-T2
+            // bug). Nothing is decremented; surface the absent variant grain
+            // so an unseeded-variant leak is observable rather than silent.
+            // Product-level lines with no row are normal (non-inventory /
+            // service items) and stay silent to avoid log noise.
+            if ($variantId !== null) {
+                Log::warning('PosCoreReceiptProjection: variant sale found no variant-scoped stock_levels row; nothing decremented', [
+                    'product_id' => $productId,
+                    'variant_id' => $variantId,
+                    'location_id' => $locationId,
+                    'receipt_id' => $receiptId,
+                ]);
+            }
+
             return;
         }
 

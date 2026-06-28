@@ -20,9 +20,9 @@ use Tests\TestCase;
  *   - TunisianParapharmacySeeder (TN): all products (explicit + factory-100) get
  *     19.00; zero NULLs.
  *
- * ParapharmacyMultiBranchSeeder and CoffeeShopSeeder are verified by code reading
- * (both already set explicit rates — 20.00 and 7.00 respectively) and are omitted
- * from this test because they are heavy seeders that would exhaust the CI harness.
+ * CoffeeShopSeeder is verified by code reading (it already sets an explicit
+ * 7.00 rate) and is omitted from this test because it is a heavy seeder that
+ * would exhaust the CI harness.
  */
 final class SeededProductsHaveTaxRateTest extends TestCase
 {

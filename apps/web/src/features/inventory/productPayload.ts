@@ -15,16 +15,30 @@ import type { ProductFormData } from './ProductForm'
  *    any other business type, which blocked product creation for retail tenants.
  */
 export interface ProductApiPayload
-  extends Omit<ProductFormData, 'tax_rate' | 'tax_configuration_id' | 'parapharmacy_metadata'> {
+  extends Omit<
+    ProductFormData,
+    'tax_rate' | 'tax_configuration_id' | 'parapharmacy_metadata' | 'opening_qty' | 'opening_unit_cost'
+  > {
   default_tax_configuration_id: string | null
   parapharmacy_metadata?: ProductFormData['parapharmacy_metadata']
+  /** Included only on create when opening_qty > 0. */
+  opening_qty?: string
+  /** Included only on create when opening_qty > 0. */
+  opening_unit_cost?: string
 }
 
 export function buildProductPayload(
   data: ProductFormData,
   opts: { isParapharmacy: boolean },
 ): ProductApiPayload {
-  const { tax_rate: _taxRate, tax_configuration_id, parapharmacy_metadata, ...rest } = data
+  const {
+    tax_rate: _taxRate,
+    tax_configuration_id,
+    parapharmacy_metadata,
+    opening_qty: _openingQty,
+    opening_unit_cost: _openingUnitCost,
+    ...rest
+  } = data
 
   const payload: ProductApiPayload = {
     ...rest,

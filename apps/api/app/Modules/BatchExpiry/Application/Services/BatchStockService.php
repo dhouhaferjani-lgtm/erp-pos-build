@@ -11,6 +11,7 @@ use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
 use App\Modules\BatchExpiry\Domain\Repositories\BatchRepositoryInterface;
 use App\Shared\Contracts\ProductVariantLookup;
 use App\Shared\Domain\Exceptions\MissingVariantException;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -22,10 +23,89 @@ use Illuminate\Support\Facades\DB;
  */
 final class BatchStockService
 {
+    /**
+     * Batch number used for the auto-created lot that backs a batch-tracked
+     * product's opening / seeded stock when no explicit lot was supplied.
+     */
+    public const DEFAULT_BATCH_NUMBER = 'DEFAULT';
+
+    /**
+     * Fallback shelf life (days) when a batch-tracked product has no
+     * `default_shelf_life_days` configured. Conservative 1-year default.
+     */
+    public const DEFAULT_SHELF_LIFE_DAYS = 365;
+
     public function __construct(
         private readonly BatchRepositoryInterface $batchRepository,
         private readonly ProductVariantLookup $variantLookup,
     ) {}
+
+    /**
+     * Guarantee a batch-tracked product's stock is backed by a lot
+     * (the default-batch invariant).
+     *
+     * Mints — or reuses — a single {@see self::DEFAULT_BATCH_NUMBER} lot for the
+     * product (+ variant) with expiry = asOfDate + shelf life, then reconciles
+     * the location's batch stock UP to $targetQuantity. Idempotent: re-calling
+     * with the same target is a no-op; calling with a larger target tops up the
+     * difference (multi-location / incremental seeding safe). Never reduces
+     * stock. Returns null (mints nothing) for a non-positive target.
+     *
+     * Used by the opening-balance posting path (production) and the demo
+     * seeders so seeded data mirrors real default behavior.
+     *
+     * @param  numeric-string  $targetQuantity  Desired batch-stock quantity at the location
+     * @param  ?int  $shelfLifeDays  Product default expiry period; null falls back to {@see self::DEFAULT_SHELF_LIFE_DAYS}
+     * @param  string  $asOfDate  Opening/seed date (Y-m-d); expiry is measured from here
+     */
+    public function ensureDefaultBatch(
+        string $companyId,
+        string $tenantId,
+        string $productId,
+        string $locationId,
+        string $targetQuantity,
+        ?int $shelfLifeDays,
+        string $asOfDate,
+        ?string $variantId = null,
+    ): ?Batch {
+        if (bccomp($targetQuantity, '0', 4) <= 0) { // precision-ok: batch quantity is decimal(15,4), canonical scale 4
+            return null;
+        }
+
+        $days = $shelfLifeDays ?? self::DEFAULT_SHELF_LIFE_DAYS;
+        $expiryDate = CarbonImmutable::parse($asOfDate)->addDays($days)->toDateString();
+
+        $batch = $this->findOrCreateBatch(
+            companyId: $companyId,
+            tenantId: $tenantId,
+            productId: $productId,
+            batchNumber: self::DEFAULT_BATCH_NUMBER,
+            expiryDate: $expiryDate,
+            manufacturingDate: $asOfDate,
+            variantId: $variantId,
+        );
+
+        // Reconcile the location's batch stock DIRECTLY (no BatchMovement):
+        // inventory_batch_movements.movement_id is a NOT-NULL FK to
+        // stock_movements, but a default/seeded backfill has no movement — and
+        // the seeder already creates aggregate StockLevel rows movement-free.
+        // Batch totals sum BatchStock (not the movement ledger), so this keeps
+        // lot totals correct without inventing a movement.
+        $batchStock = BatchStock::firstOrCreate(
+            ['batch_id' => $batch->id, 'location_id' => $locationId],
+            ['tenant_id' => $tenantId, 'quantity' => '0.0000', 'reserved_quantity' => '0.0000'],
+        );
+
+        /** @var numeric-string $current */
+        $current = (string) $batchStock->quantity;
+        $delta = bcsub($targetQuantity, $current, 4); // precision-ok: batch quantity is decimal(15,4), canonical scale 4
+
+        if (bccomp($delta, '0', 4) > 0) { // precision-ok: batch quantity is decimal(15,4), canonical scale 4
+            $batchStock->update(['quantity' => bcadd($current, $delta, 4)]); // precision-ok: batch quantity is decimal(15,4), canonical scale 4
+        }
+
+        return $batch;
+    }
 
     /**
      * Find an existing batch or create a new one (for goods receipt).

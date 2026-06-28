@@ -236,7 +236,7 @@ export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
 export type OpeningBatchStatus = 'DRAFT' | 'VALIDATED' | 'LOCKED';
 export type OpeningBatchType = 'ACCOUNTING' | 'INVENTORY' | 'AR_OPEN_ITEMS' | 'AP_OPEN_ITEMS';
 export type OpeningImportRowStatus = 'PENDING' | 'VALID' | 'INVALID' | 'SKIPPED' | 'POSTED';
-export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'sales_return' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount' | 'sales_returns_clearing' | 'voucher_liability' | 'marketing_goodwill_expense' | 'voucher_breakage_income' | 'rounding_loss_expense' | 'pos_tender_clearing';
+export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'sales_return' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount' | 'sales_returns_clearing' | 'voucher_liability' | 'marketing_goodwill_expense' | 'voucher_breakage_income' | 'rounding_loss_expense' | 'pos_tender_clearing' | 'goods_received_not_invoiced' | 'purchase_stamp_duty';
 }
 declare namespace App.Modules.BatchExpiry.Domain.Enums {
 export type ExpiryStatus = 'ok' | 'approaching' | 'warning' | 'critical' | 'expired';
@@ -646,6 +646,7 @@ tax_rate: string | null;
 line_total: string;
 notes: string | null;
 designation_default_snapshot: string | null;
+quantity_decimals: number;
 };
 export type VehicleContextData = {
 vehicle_id: string;
@@ -659,7 +660,7 @@ declare namespace App.Modules.Document.Domain.Enums {
 export type CreditNoteReason = 'return' | 'price_adjustment' | 'billing_error' | 'damaged_goods' | 'service_issue' | 'other';
 export type DeliveryStatus = 'not_delivered' | 'partially_delivered' | 'fully_delivered';
 export type DocumentStatus = 'draft' | 'confirmed' | 'posted' | 'paid' | 'received' | 'cancelled';
-export type DocumentType = 'quote' | 'sales_order' | 'purchase_order' | 'invoice' | 'credit_note' | 'delivery_note' | 'return_note' | 'expense';
+export type DocumentType = 'quote' | 'sales_order' | 'purchase_order' | 'invoice' | 'credit_note' | 'delivery_note' | 'return_note' | 'expense' | 'supplier_invoice' | 'supplier_credit_note';
 export type FacturXProfile = 'minimum' | 'basicwl' | 'basic' | 'en16931' | 'extended';
 export type FiscalCategory = 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | 'CREDIT_NOTE' | 'DELIVERY_NOTE' | 'RETURN_NOTE';
 export type FiscalStatus = 'DRAFT' | 'SEALED' | 'VOIDED';
@@ -668,6 +669,7 @@ export type PaymentStatus = 'unpaid' | 'partially_paid' | 'in_payment' | 'paid' 
 export type RefundMethod = 'original_payment' | 'store_credit' | 'exchange' | 'none';
 export type ReturnCondition = 'unopened' | 'used' | 'damaged' | 'unusable';
 export type ReturnReason = 'defective' | 'wrong_item' | 'customer_regret' | 'damaged_in_transit' | 'warranty' | 'exchange' | 'other';
+export type SupplierInvoiceMatchStatus = 'unmatched' | 'matched' | 'price_variance' | 'quantity_variance' | 'exception';
 }
 declare namespace App.Modules.Fiscal.Domain.Enums {
 export type DeviceLossIncidentStatus = 'reported' | 'recovering' | 'resolved' | 'unrecoverable';
@@ -740,6 +742,7 @@ projected_available: string;
 min_quantity: string | null;
 max_quantity: string | null;
 is_below_minimum: boolean;
+quantity_decimals: number;
 };
 }
 declare namespace App.Modules.Inventory.Domain.Enums {
@@ -982,7 +985,7 @@ export type SellerType = 'erp_tenant' | 'external' | 'syneriva';
 declare namespace App.Modules.Media.Domain.Enums {
 export type MediaAssetType = 'IMAGE' | 'DOCUMENT' | 'VIDEO' | 'EXTERNAL_VIDEO' | 'SPIN_360';
 export type MediaOwnerType = 'PRODUCT' | 'PRODUCT_VARIANT' | 'CATEGORY' | 'DOCUMENT';
-export type MediaRole = 'PRIMARY' | 'GALLERY' | 'DATASHEET' | 'MANUAL' | 'VIDEO_POSTER' | 'SPIN' | 'SWATCH';
+export type MediaRole = 'PRIMARY' | 'GALLERY' | 'DATASHEET' | 'MANUAL' | 'VIDEO_POSTER' | 'SPIN' | 'SWATCH' | 'SOURCE_DOCUMENT';
 export type MediaSource = 'UPLOAD' | 'EXTERNAL_URL';
 export type MediaStatus = 'UPLOADED' | 'PROCESSING' | 'READY' | 'FAILED';
 export type RenditionFormat = 'WEBP' | 'JPEG';
@@ -1271,6 +1274,12 @@ message: string | null;
 declare namespace App.Modules.PlatformIntegration.Domain.Enums {
 export type PlatformLookupStatus = 'found' | 'not_found' | 'error' | 'cached';
 }
+declare namespace App.Modules.Procurement.Domain.Enums {
+export type BillControlMode = 'received' | 'ordered';
+export type MatchEnforcement = 'warn' | 'block';
+export type MatchMode = 'two_way' | 'three_way';
+export type SupplierCreditNoteReason = 'price_adjustment' | 'goods_return';
+}
 declare namespace App.Modules.Product.Application.DTOs {
 export type AutomotiveCriterionData = {
 id: string;
@@ -1436,6 +1445,11 @@ description: string | null;
 created_at: string;
 updated_at: string | null;
 };
+export type OpeningStateData = {
+has_active_opening: boolean;
+has_downstream_movements: boolean;
+can_enter_opening: boolean;
+};
 export type ParapharmacyProductMetadataData = {
 id: string;
 product_id: string;
@@ -1498,6 +1512,7 @@ primary_image_url: string | null;
 media: Array<App.Modules.Catalog.Application.DTOs.MediaAttachmentData>;
 parapharmacy_metadata: App.Modules.Product.Application.DTOs.ParapharmacyProductMetadataData | null;
 automotive_metadata: App.Modules.Product.Application.DTOs.AutomotiveProductMetadataData | null;
+opening: App.Modules.Product.Application.DTOs.OpeningStateData | null;
 };
 export type ProductHealthClaimData = {
 health_claim: App.Modules.Product.Application.DTOs.HealthClaimData;

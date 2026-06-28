@@ -175,7 +175,7 @@ function BatchAllocationPanel({ line, sourceLocationId, batches, onChange }: Bat
                     onChange={(value) => {
                       updateAllocation(batch.id, value)
                     }}
-                    decimalPlaces={4}
+                    decimalPlaces={getQuantityDecimals(line.product)}
                     min="0"
                     disabled={disabled}
                     aria-label={t('create.batch.quantityFor', { batch: batch.batch_number })}

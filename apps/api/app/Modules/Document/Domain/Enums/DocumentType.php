@@ -14,6 +14,8 @@ enum DocumentType: string
     case DeliveryNote = 'delivery_note';
     case ReturnNote = 'return_note';
     case Expense = 'expense';
+    case SupplierInvoice = 'supplier_invoice';
+    case SupplierCreditNote = 'supplier_credit_note';
 
     /**
      * Get the prefix for document numbering
@@ -29,6 +31,8 @@ enum DocumentType: string
             self::DeliveryNote => 'DN',
             self::ReturnNote => 'RN',
             self::Expense => 'EXP',
+            self::SupplierInvoice => 'SI',
+            self::SupplierCreditNote => 'SCN',
         };
     }
 
@@ -46,6 +50,8 @@ enum DocumentType: string
             self::DeliveryNote => 'Delivery Note',
             self::ReturnNote => 'Return Note',
             self::Expense => 'Expense',
+            self::SupplierInvoice => 'Supplier Invoice',
+            self::SupplierCreditNote => 'Supplier Credit Note',
         };
     }
 
@@ -81,7 +87,7 @@ enum DocumentType: string
     public function canTransitionToPaid(): bool
     {
         return match ($this) {
-            self::Invoice, self::CreditNote => true,
+            self::Invoice, self::CreditNote, self::SupplierInvoice => true,
             default => false,
         };
     }

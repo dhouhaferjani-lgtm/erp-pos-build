@@ -169,6 +169,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         { key: 'suppliers', href: '/purchases/suppliers', icon: Users },
         { key: 'purchaseOrders', href: '/purchases/orders', icon: ClipboardList },
         { key: 'goodsReceipts', href: '/purchases/receipts', icon: Package },
+        { key: 'supplierInvoices', href: '/purchases/supplier-invoices', icon: Receipt },
         { key: 'returnNotes', href: '/inventory/return-notes', icon: RotateCcw },
       ],
     },

@@ -71,6 +71,7 @@ class ExpenseRequest extends FormRequest
             'is_paid' => ['boolean'],
             'status' => ['nullable', Rule::enum(DocumentStatus::class)],
             'document_date' => ['nullable', 'date'],
+            'idempotency_key' => ['nullable', 'string', 'uuid'],
         ];
 
         return $rules;

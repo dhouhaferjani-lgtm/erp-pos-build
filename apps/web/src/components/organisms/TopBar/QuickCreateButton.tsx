@@ -56,7 +56,7 @@ const QUICK_CREATE_ACTIONS: QuickCreateAction[] = [
   {
     labelKey: 'common:quickCreate.newExpense',
     path: '/expenses/new',
-    permission: 'treasury.create',
+    permission: 'expenses.create',
     icon: Receipt,
   },
   {

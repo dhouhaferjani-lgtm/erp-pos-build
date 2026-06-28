@@ -252,9 +252,9 @@ describe('ProductForm — create-mode image buffer (integration)', () => {
     fireEvent.change(skuInput, { target: { value: 'SKU-001' } })
 
     // Submit the form
-    const publishBtn = screen.getAllByText('catalog:editor.actions.publish')[0]
+    const saveBtn = screen.getByRole('button', { name: 'catalog:editor.actions.save' })
     await act(async () => {
-      fireEvent.click(publishBtn)
+      fireEvent.click(saveBtn)
     })
 
     await waitFor(() => {
@@ -294,9 +294,9 @@ describe('ProductForm — create-mode image buffer (integration)', () => {
     fireEvent.change(nameInput, { target: { value: 'Fail Product' } })
     fireEvent.change(skuInput, { target: { value: 'SKU-FAIL' } })
 
-    const publishBtn = screen.getAllByText('catalog:editor.actions.publish')[0]
+    const saveBtn = screen.getByRole('button', { name: 'catalog:editor.actions.save' })
     await act(async () => {
-      fireEvent.click(publishBtn)
+      fireEvent.click(saveBtn)
     })
 
     // Product creation mutation was still called and succeeded
@@ -326,9 +326,9 @@ describe('ProductForm — create-mode image buffer (integration)', () => {
     fireEvent.change(nameInput, { target: { value: 'No Images Product' } })
     fireEvent.change(skuInput, { target: { value: 'SKU-NONE' } })
 
-    const publishBtn = screen.getAllByText('catalog:editor.actions.publish')[0]
+    const saveBtn = screen.getByRole('button', { name: 'catalog:editor.actions.save' })
     await act(async () => {
-      fireEvent.click(publishBtn)
+      fireEvent.click(saveBtn)
     })
 
     await waitFor(() => {

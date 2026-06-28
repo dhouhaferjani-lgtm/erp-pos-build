@@ -20,6 +20,8 @@ return [
 
     // Custom authentication messages
     'unauthorized' => 'You are not authorized to perform this action.',
+    'permission_denied' => "You do not have permission for ':ability'. An administrator can grant it under Settings → Roles.",
+    'permission_denied_generic' => 'You do not have permission to perform this action. An administrator can grant access under Settings → Roles.',
     'unauthenticated' => 'Please log in to continue.',
     'token_expired' => 'Your session has expired. Please log in again.',
     'token_invalid' => 'Invalid authentication token.',

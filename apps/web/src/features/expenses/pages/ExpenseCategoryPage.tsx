@@ -7,6 +7,8 @@ import {
   useUpdateExpenseCategory,
   useDeleteExpenseCategory,
 } from '../hooks/useExpenseCategories'
+import { useAccounts } from '../../finance/hooks/useAccounts'
+import { tokens } from '@/lib/designTokens'
 import type { CreateExpenseCategoryDTO, ExpenseCategory } from '../types'
 
 /**
@@ -23,11 +25,13 @@ export function ExpenseCategoryPage() {
   const createCategory = useCreateExpenseCategory()
   const updateCategory = useUpdateExpenseCategory()
   const deleteCategory = useDeleteExpenseCategory()
+  const { data: accounts } = useAccounts({ type: 'expense' })
 
   const [formData, setFormData] = useState<CreateExpenseCategoryDTO>({
     name: '',
     description: '',
     parent_id: '',
+    account_id: '',
     is_active: true,
   })
 
@@ -38,6 +42,7 @@ export function ExpenseCategoryPage() {
         name: category.name,
         description: category.description || '',
         parent_id: category.parent_id || '',
+        account_id: category.account_id ?? '',
         is_active: category.is_active,
       })
     } else {
@@ -46,6 +51,7 @@ export function ExpenseCategoryPage() {
         name: '',
         description: '',
         parent_id: '',
+        account_id: '',
         is_active: true,
       })
     }
@@ -59,6 +65,7 @@ export function ExpenseCategoryPage() {
       name: '',
       description: '',
       parent_id: '',
+      account_id: '',
       is_active: true,
     })
   }
@@ -260,6 +267,28 @@ export function ExpenseCategoryPage() {
                         {cat.name}
                       </option>
                     ))}
+                </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="category-account"
+                  className={tokens.label.base}
+                >
+                  {t('expenses:categories.form.glAccount')}
+                </label>
+                <select
+                  id="category-account"
+                  value={formData.account_id}
+                  onChange={(e) => { setFormData({ ...formData, account_id: e.target.value }); }}
+                  className={tokens.select.base}
+                >
+                  <option value="">{t('common:none')}</option>
+                  {accounts?.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.code} – {account.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 

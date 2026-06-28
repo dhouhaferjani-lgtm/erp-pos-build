@@ -93,7 +93,9 @@ trait HandlesDocuments
      */
     protected function defaultRelations(): array
     {
-        $relations = ['lines'];
+        // lines.product.unitOfMeasure powers per-line quantity_decimals so the
+        // document editor steps quantity by the product's unit precision.
+        $relations = ['lines', 'lines.product.unitOfMeasure'];
         if ($this->isVehicleModuleEnabled()) {
             $relations[] = 'vehicleContext';
         }
@@ -108,7 +110,7 @@ trait HandlesDocuments
      */
     protected function detailRelations(): array
     {
-        $relations = ['lines', 'allocations.payment.paymentMethod'];
+        $relations = ['lines', 'lines.product.unitOfMeasure', 'allocations.payment.paymentMethod'];
         if ($this->isVehicleModuleEnabled()) {
             $relations[] = 'vehicleContext';
         }

@@ -129,7 +129,6 @@ class ExpenseController extends Controller
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',
                 'expenseMetadata.paymentRepository',
-                'attachments',
                 'company',
             ])
             ->firstOrFail();

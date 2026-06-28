@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
@@ -23,13 +24,20 @@ export function ExpenseFormPage() {
   const createExpense = useCreateExpense()
   const updateExpense = useUpdateExpense()
 
+  // Stable idempotency key for the current create session — generated once on
+  // mount and reused across retries so the backend can deduplicate.
+  const idempotencyKeyRef = useRef<string>(crypto.randomUUID())
+
   const handleSubmit = async (data: CreateExpenseDTO) => {
     try {
       if (isEditMode && id) {
         await updateExpense.mutateAsync({ id, data })
         navigate(`/expenses/${id}/view`)
       } else {
-        const createdExpense = await createExpense.mutateAsync(data)
+        const createdExpense = await createExpense.mutateAsync({
+          ...data,
+          idempotency_key: idempotencyKeyRef.current,
+        })
         // Redirect to detail page after creation so user can add attachments
         navigate(`/expenses/${createdExpense.id}/view`)
       }

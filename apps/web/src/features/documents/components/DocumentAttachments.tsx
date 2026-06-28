@@ -23,13 +23,15 @@ import {
 interface DocumentAttachmentsProps {
   documentId: string
   readOnly?: boolean
+  /** Optional attachment role forwarded to the backend on upload (e.g. "SOURCE_DOCUMENT"). */
+  defaultRole?: string
 }
 
-export function DocumentAttachments({ documentId, readOnly = false }: DocumentAttachmentsProps) {
+export function DocumentAttachments({ documentId, readOnly = false, defaultRole }: DocumentAttachmentsProps) {
   const { t } = useTranslation(['common', 'documents'])
   const { data: attachments, isLoading } = useAttachments(documentId)
   const { data: config } = useAttachmentConfig()
-  const uploadMutation = useUploadAttachment(documentId)
+  const uploadMutation = useUploadAttachment(documentId, defaultRole)
   const deleteMutation = useDeleteAttachment(documentId)
 
   const [dragActive, setDragActive] = useState(false)

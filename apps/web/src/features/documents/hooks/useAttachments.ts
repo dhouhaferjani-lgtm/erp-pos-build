@@ -81,8 +81,10 @@ export function useAttachmentConfig() {
 
 /**
  * Upload a new attachment
+ * @param documentId - The document to attach the file to
+ * @param defaultRole - Optional attachment role sent to the backend (e.g. "SOURCE_DOCUMENT")
  */
-export function useUploadAttachment(documentId: string) {
+export function useUploadAttachment(documentId: string, defaultRole?: string) {
   const queryClient = useQueryClient()
   useAuthStore((state) => state.user?.tenant_id ?? null)
   useCompanyStore((state) => state.currentCompanyId ?? null)
@@ -93,6 +95,9 @@ export function useUploadAttachment(documentId: string) {
       formData.append('file', file)
       if (description) {
         formData.append('description', description)
+      }
+      if (defaultRole) {
+        formData.append('role', defaultRole)
       }
 
       const response = await api.post<AttachmentResponse>(

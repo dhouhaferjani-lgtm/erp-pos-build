@@ -37,7 +37,7 @@ final class InventoryCostLockCoverageTest extends TestCase
             ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function receive'],
             ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function adjust'],
             ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function transfer'],
-            ['app/Modules/Inventory/Application/Services/InventoryOpeningService.php', 'public function postBatch'],
+            ['app/Modules/Inventory/Application/Services/OpeningBalancePostingService.php', 'public function post'],
             ['app/Modules/Inventory/Application/Services/InventoryService.php', 'public function upsertStockLevel'],
         ];
     }
@@ -108,7 +108,7 @@ final class InventoryCostLockCoverageTest extends TestCase
             ['app/Modules/Inventory/Application/Services/StockTransferService.php', 'public function complete'],
             ['app/Modules/Inventory/Application/Services/StockTransferService.php', 'public function cancel'],
             ['app/Modules/Inventory/Application/Services/GoodsReceiptService.php', 'public function receiveGoods'],
-            ['app/Modules/Inventory/Application/Services/InventoryOpeningService.php', 'public function postBatch'],
+            ['app/Modules/Inventory/Application/Services/OpeningBalancePostingService.php', 'public function post'],
             ['app/Modules/Document/Domain/Services/ReturnNoteService.php', 'public function confirm'],
         ];
     }

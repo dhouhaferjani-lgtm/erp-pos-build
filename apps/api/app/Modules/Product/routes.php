@@ -66,6 +66,14 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:products.delete')
         ->name('products.destroy');
 
+    Route::post('products/{product}/opening', [ProductController::class, 'postOpening'])
+        ->middleware('can:inventory.adjust')
+        ->name('products.opening.post');
+
+    Route::post('products/{product}/opening/reset', [ProductController::class, 'resetOpening'])
+        ->middleware('can:inventory.adjust')
+        ->name('products.opening.reset');
+
     // Parapharmacy master data — additionally gated on the Parapharmacy
     // module (default module of the parapharmacy vertical). Appended after
     // the outer group's middleware so the rule-12 ordering is preserved.

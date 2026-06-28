@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ProductForm } from './ProductForm'
 import { bcsub, bcdiv, bcmul } from '../../lib/decimal'
 
@@ -13,13 +13,17 @@ vi.mock('react-i18next', () => ({
 
 // router
 const mockNavigate = vi.fn()
+let mockParams: Record<string, string> = {}
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
-  useParams: () => ({ id: '' }),
+  useParams: () => mockParams,
   Link: ({ to, children, ...props }: { to: string; children: React.ReactNode; className?: string }) => (
     <a href={to} {...props}>{children}</a>
   ),
 }))
+
+// Shared mutateAsync handle so tests can configure per-test resolution.
+const mockMutateAsync = vi.fn()
 
 // decouple from network
 vi.mock('@tanstack/react-query', async (importOriginal) => {
@@ -27,7 +31,7 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   return {
     ...actual,
     useQuery: () => ({ data: undefined, isLoading: false }),
-    useMutation: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+    useMutation: () => ({ mutate: vi.fn(), mutateAsync: mockMutateAsync, isPending: false }),
     useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   }
 })
@@ -109,6 +113,12 @@ vi.mock('../uom/components/UnitDropdown', () => ({
   ),
 }))
 
+beforeEach(() => {
+  mockParams = {}
+  mockNavigate.mockReset()
+  mockMutateAsync.mockReset()
+})
+
 describe('ProductForm (canonical layout)', () => {
   it('renders a single page-level heading', () => {
     render(<ProductForm />)
@@ -147,16 +157,24 @@ describe('ProductForm (canonical layout)', () => {
     expect(priceInput).toHaveAttribute('inputmode', 'decimal')
   })
 
-  it('renders Save-draft and Publish submit buttons targeting the form', () => {
+  it('shows a single Save action (no separate Publish) in nav-only phase', () => {
     render(<ProductForm />)
-    // Chrome parity (1.7a): the footer Save/Cancel were replaced by header
-    // Cancel (ghost) + Save draft (outline) + Publish (primary). Save draft and
-    // Publish both submit the form for now (Publish = primary) via `form=`.
-    const publish = screen.getByRole('button', { name: 'catalog:editor.actions.publish' })
-    expect(publish).toHaveAttribute('type', 'submit')
-    expect(publish).toHaveAttribute('form', 'product-editor-form')
-    const saveDraft = screen.getByRole('button', { name: 'catalog:editor.actions.saveDraft' })
-    expect(saveDraft).toHaveAttribute('type', 'submit')
+    // Phase 1: Publish is deferred — only a single primary Save button exists.
+    expect(screen.queryByText('catalog:editor.actions.publish')).not.toBeInTheDocument()
+    expect(screen.queryByText('catalog:editor.actions.saveDraft')).not.toBeInTheDocument()
+    const save = screen.getByRole('button', { name: 'catalog:editor.actions.save' })
+    expect(save).toHaveAttribute('type', 'submit')
+    expect(save).toHaveAttribute('form', 'product-editor-form')
+  })
+
+  it('navigates to the new product detail page after create', async () => {
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-9' })
+    render(<ProductForm />)
+    // Fill required fields so RHF validation passes
+    fireEvent.change(screen.getByLabelText('inventory:products.name', { exact: false }), { target: { value: 'Test Product' } })
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-9' } })
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/inventory/products/prod-9'))
   })
 })
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Loyalty\Domain\Entities;
 
 use App\Modules\Loyalty\Domain\Enums\EarningRuleType;
+use Database\Factories\Loyalty\EarningRuleFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -32,10 +33,18 @@ use Illuminate\Support\Carbon;
  */
 class EarningRule extends Model
 {
-    /** @use HasFactory<Factory<static>> */
+    /** @use HasFactory<EarningRuleFactory> */
     use HasFactory;
 
     use HasUuids;
+
+    /**
+     * Create a new factory instance for the model.
+     */
+    protected static function newFactory(): EarningRuleFactory
+    {
+        return EarningRuleFactory::new();
+    }
 
     protected $fillable = [
         'program_id',

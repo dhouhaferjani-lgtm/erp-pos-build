@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Loyalty\Domain\Entities;
 
 use App\Modules\Loyalty\Domain\Enums\EnrollmentStatus;
+use Database\Factories\Loyalty\EnrollmentFactory;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -36,10 +37,18 @@ use Illuminate\Support\Carbon;
  */
 class Enrollment extends Model
 {
-    /** @use HasFactory<Factory<static>> */
+    /** @use HasFactory<EnrollmentFactory> */
     use HasFactory;
 
     use HasUuids;
+
+    /**
+     * Create a new factory instance for the model.
+     */
+    protected static function newFactory(): EnrollmentFactory
+    {
+        return EnrollmentFactory::new();
+    }
 
     protected $table = 'loyalty_enrollments';
 
