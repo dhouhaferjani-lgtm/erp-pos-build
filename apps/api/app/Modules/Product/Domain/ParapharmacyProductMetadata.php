@@ -39,6 +39,8 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, KeyComponent> $keyComponents
  * @property-read Collection<int, ProductSkinSuitability> $skinSuitabilities
  * @property-read Collection<int, Routine> $routines
+ * @property-read Collection<int, Product> $equivalentProducts
+ * @property-read Collection<int, Product> $complementProducts
  */
 class ParapharmacyProductMetadata extends Model
 {
@@ -204,5 +206,41 @@ class ParapharmacyProductMetadata extends Model
             ->using(ProductRoutinePivot::class)
             ->withPivot(['step_order', 'step_label'])
             ->orderByPivot('step_order');
+    }
+
+    /**
+     * Get all equivalent products for this product.
+     *
+     * @return BelongsToMany<Product, $this, ProductEquivalent>
+     */
+    public function equivalentProducts(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            Product::class,
+            'product_equivalents',
+            'product_id',
+            'equivalent_product_id',
+            'product_id'
+        )
+            ->using(ProductEquivalent::class)
+            ->withPivot(['equivalence_type', 'notes']);
+    }
+
+    /**
+     * Get all complementary products for this product.
+     *
+     * @return BelongsToMany<Product, $this, ProductComplement>
+     */
+    public function complementProducts(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            Product::class,
+            'product_complements',
+            'product_id',
+            'complement_product_id',
+            'product_id'
+        )
+            ->using(ProductComplement::class)
+            ->withPivot(['reason']);
     }
 }
