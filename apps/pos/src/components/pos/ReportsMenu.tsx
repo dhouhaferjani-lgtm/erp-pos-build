@@ -67,9 +67,9 @@ export function ReportsMenu({
       <div className="absolute inset-0" onClick={onClose} />
       <div
         ref={menuRef}
-        className="relative z-10 w-72 rounded-2xl bg-white py-2 shadow-2xl"
+        className="relative z-10 w-72 rounded-2xl bg-surface-overlay py-2 shadow-2xl"
       >
-        <h3 className="px-4 py-2 text-sm font-bold text-gray-900">
+        <h3 className="px-4 py-2 text-sm font-bold text-ink">
           {t('reports.title')}
         </h3>
         {items.map((item) => {
@@ -81,9 +81,9 @@ export function ReportsMenu({
                 item.onClick();
                 onClose();
               }}
-              className="flex w-full items-center gap-3 px-4 py-3 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+              className="flex w-full items-center gap-3 px-4 py-3 text-sm text-ink transition-colors hover:bg-surface-sunken"
             >
-              <Icon className="h-5 w-5 text-gray-400" />
+              <Icon className="h-5 w-5 text-ink-faint" />
               {item.label}
             </button>
           );
