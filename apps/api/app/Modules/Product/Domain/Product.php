@@ -7,6 +7,7 @@ namespace App\Modules\Product\Domain;
 use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Product\Domain\Enums\BrandSource;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Tenant\Domain\Tenant;
@@ -62,6 +63,9 @@ use Illuminate\Support\Carbon;
  * @property string|null $shelf_location
  * @property string|null $reorder_point
  * @property string|null $reorder_quantity
+ * @property string|null $brand_id
+ * @property BrandSource|null $brand_source
+ * @property-read Brand|null $brand
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read Unit|null $unitOfMeasure
@@ -114,6 +118,8 @@ class Product extends Model implements SellableContract
         'platform_product_id',
         'platform_submission_id',
         'enrichment_status',
+        'brand_id',
+        'brand_source',
     ];
 
     /**
@@ -140,6 +146,7 @@ class Product extends Model implements SellableContract
             'cross_references' => 'array',
             'cost_updated_at' => 'datetime',
             'enrichment_status' => EnrichmentStatus::class,
+            'brand_source' => BrandSource::class,
             'sale_price' => 'decimal:3',
             'purchase_price' => 'decimal:3',
             // WAC / cost-carrying columns carry higher internal precision (6 dp)
@@ -215,6 +222,14 @@ class Product extends Model implements SellableContract
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
+    }
+
+    /**
+     * @return BelongsTo<Brand, $this>
+     */
+    public function brand(): BelongsTo
+    {
+        return $this->belongsTo(Brand::class);
     }
 
     // -- SellableContract implementation --

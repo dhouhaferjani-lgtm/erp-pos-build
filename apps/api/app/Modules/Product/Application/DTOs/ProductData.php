@@ -51,6 +51,7 @@ class ProductData extends Data
         public bool $has_variants = false,
         public ?string $primary_image_url = null,
         public array $media = [],
+        public ?BrandData $brand = null,
         public ?ParapharmacyProductMetadataData $parapharmacy_metadata = null,
         public ?AutomotiveProductMetadataData $automotive_metadata = null,
     ) {}
@@ -89,6 +90,9 @@ class ProductData extends Data
             has_variants: $product->has_variants,
             primary_image_url: $media !== null ? $media->primary_image_url : null,
             media: $media !== null ? $media->media : [],
+            brand: $product->relationLoaded('brand') && $product->brand !== null
+                ? BrandData::fromModel($product->brand)
+                : null,
             parapharmacy_metadata: $product->relationLoaded('parapharmacyMetadata') && $product->parapharmacyMetadata !== null
                 ? ParapharmacyProductMetadataData::fromModel($product->parapharmacyMetadata)
                 : null,

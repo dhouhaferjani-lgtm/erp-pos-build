@@ -15,6 +15,7 @@ use App\Modules\Inventory\Application\DTOs\StockLevelData;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Application\DTOs\ProductData;
 use App\Modules\Product\Application\Services\ProductTombstoneService;
+use App\Modules\Product\Domain\Enums\BrandSource;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Events\ProductCreated;
 use App\Modules\Product\Domain\Events\ProductDeleted;
@@ -70,7 +71,7 @@ class ProductController extends Controller
         $perPage = min((int) $request->input('per_page', 25), 2000);
 
         // Build query with conditional vertical-specific metadata loading
-        $with = ['category', 'unitOfMeasure'];
+        $with = ['category', 'unitOfMeasure', 'brand'];
         if ($company->tenant->vertical === Vertical::Parapharmacy) {
             $with[] = 'parapharmacyMetadata.ingredients';
             $with[] = 'parapharmacyMetadata.keyComponents';
@@ -264,7 +265,7 @@ class ProductController extends Controller
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->where('id', $product)
-            ->with(['unitOfMeasure'])
+            ->with(['unitOfMeasure', 'brand'])
             ->first();
 
         if (! $productModel) {
@@ -345,6 +346,14 @@ class ProductController extends Controller
             );
         }
 
+        // C-2: derive brand_source from the supplied brand_id — never trust the client.
+        // isset() returns false when brand_id is absent OR null, so a non-null
+        // brand_id unambiguously means the user is assigning a brand.
+        unset($validated['brand_source']);
+        $validated['brand_source'] = isset($validated['brand_id'])
+            ? BrandSource::User->value
+            : null;
+
         $product = Product::create([
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
@@ -414,7 +423,7 @@ class ProductController extends Controller
             ]);
         }
 
-        $product->load(['unitOfMeasure']);
+        $product->load(['unitOfMeasure', 'brand']);
 
         $media = $this->catalogMedia->forProduct($product->id, $tenantId);
 
@@ -472,6 +481,16 @@ class ProductController extends Controller
         if (array_key_exists('automotive_metadata', $validated)) {
             $automotiveMetadata = $validated['automotive_metadata'];
             unset($validated['automotive_metadata']);
+        }
+
+        // C-2: derive brand_source from the supplied brand_id — never trust the client.
+        if (array_key_exists('brand_id', $validated)) {
+            unset($validated['brand_source']);
+            if ($validated['brand_id'] !== null) {
+                $validated['brand_source'] = BrandSource::User->value;
+            } else {
+                $validated['brand_source'] = null;
+            }
         }
 
         // Update product core fields
@@ -557,7 +576,7 @@ class ProductController extends Controller
             ]);
         }
 
-        $freshProduct->load(['unitOfMeasure']);
+        $freshProduct->load(['unitOfMeasure', 'brand']);
 
         $media = $this->catalogMedia->forProduct($freshProduct->id, $company->tenant_id);
 

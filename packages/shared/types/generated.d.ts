@@ -1509,6 +1509,7 @@ updated_at: string | null;
 has_variants: boolean;
 primary_image_url: string | null;
 media: Array<App.Modules.Catalog.Application.DTOs.MediaAttachmentData>;
+brand: App.Modules.Product.Application.DTOs.BrandData | null;
 parapharmacy_metadata: App.Modules.Product.Application.DTOs.ParapharmacyProductMetadataData | null;
 automotive_metadata: App.Modules.Product.Application.DTOs.AutomotiveProductMetadataData | null;
 };
