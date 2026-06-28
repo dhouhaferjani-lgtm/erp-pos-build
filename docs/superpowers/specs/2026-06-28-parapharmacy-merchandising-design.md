@@ -22,7 +22,7 @@ Build five parapharmacy merchandising capabilities **full-stack with seeded real
 - **SkinType:** canonical **shared** enum reusing the existing **5 values** (`normal, oily, dry, combination, sensitive`). Migrate the existing `SmartPrompts` enum onto it.
 - **Brand:** first-class cross-vertical entity. Build the **universal core now**; design the platform-canonical registry as a seam; **automotive brand/manufacturer is out of scope** (separate catalogue-search-driven design).
 - **Routines:** seeded demo only; authoring editor later.
-- **Merchandising UX:** built **gateable** behind a `Merchandising` module key, **granted by default (bundled)** to parapharmacy now as a USP, structured so it can be unbundled to a paid extra via config later.
+- **Merchandising UX:** built **gateable** behind a `Merchandising` module key, **granted by default (bundled)** to parapharmacy now as a USP. Unbundling later hides the **UX**; the data stays vertical-gated (withholding data from a non-entitled tenant is a future server-side code change, not config-only — §2c).
 
 ### 0.2 Three scope tiers
 - **Built now:** universal `Brand` core + full parapharmacy merchandising **data** + POS **UX**, with `Merchandising` gated-but-bundled; enrichment-accept fix for brand.
@@ -42,7 +42,8 @@ Industry standard (GS1, Akeneo, SAP, Odoo, Auto Care/TecDoc) separates **Brand**
 - **[Both IMPORTANT] SmartPrompts enum** → migrate both consumers, delete the old enum, derive validation from the shared enum (no hardcoded `in:` string), regenerate types (§1.1).
 - **[Both IMPORTANT] `pullCustomers` wiring** → extend `SyncResult` (`customersPulled`/`customersFailed`); IDs from `authStore`; explicit catch-log-degrade-continue failure policy; never advance the cursor on failure (§4).
 - **[Claude IMPORTANT] migration version collision** → split product-v58 / customer-v59, idempotent ALTERs, **coordinate version numbers with the loyalty session before pushing** (§4).
-- **[Owner 2026-06-28] vertical-gate the data (rule-12 exception REJECTED)** → parapharmacy-specific merchandising data (skin type, suitability, equivalents, complements, routines, customer skin advice) is **gated to the parapharmacy vertical** — it's parapharmacy business logic — via the existing `parapharmacyMetadata` conditional-load precedent. Brand stays universal. No rule-12 exception needed; both layers genuinely gated (§2).
+- **[Owner 2026-06-28] vertical-gate the data** → parapharmacy-specific merchandising data is **gated to the parapharmacy vertical** (established pattern, not a rule-12 violation — see §2c). Brand stays universal. Product side rides the `parapharmacyMetadata` gate automatically (relations anchored on `ParapharmacyProductMetadata`, §1.5); customer side needs an **explicit guard** (§2a). Unbundling the `Merchandising` module hides UX, not data (§2c).
+- **[r2 reviews] structural + leak fixes** → (D1-C1) customer-sync guard mandated (§2a); (D1-I1) merchandising relations anchored on `ParapharmacyProductMetadata` so they're DTO-reachable AND gated (§1.5–1.8); (D1-I2) dropped the "unbundle = config-only" overclaim (§2c/§0.1); (§5) redesign-branch artifacts marked as rebase prerequisites (§5).
 - **[Claude IMPORTANT] equivalents symmetry / self-reference** → seeder writes identical `equivalence_type` both directions + a symmetry test; DB CHECK prevents self-reference (§1.7).
 - **[Nits] dropped** `external_refs`, `confidence`, `merchandising.*` permission set (§0.2 out-of-scope).
 
@@ -89,21 +90,23 @@ Industry standard (GS1, Akeneo, SAP, Odoo, Auto Care/TecDoc) separates **Brand**
 
 ### 1.5 Product skin suitability (HasMany — not belongsToMany)
 - Migration `*_create_product_skin_suitability_table.php`: `id (uuid)`, `tenant_id (uuid)`, `product_id (uuid, FK cascade)`, `skin_type (string, SkinType cast)`, timestamps. Unique (`product_id`, `skin_type`).
-- New `ProductSkinSuitability` model. `Product::skinSuitabilities(): HasMany`. The DTO exposes `suitable_skin_types: SkinType[]` by **plucking** `skin_type` (cast to the shared enum). **Not** `belongsToMany withPivot` — there is no `skin_types` lookup table; do not cite `product_ingredient` here (that pivot belongs to a real `ingredients` table). `withPivot` applies only to the real product↔product/routine relations below.
+- New `ProductSkinSuitability` model. **Declare the relation on `ParapharmacyProductMetadata`** (anchored on `product_id`, mirroring the existing `ParapharmacyProductMetadata::ingredients()` precedent) — **NOT on `Product`** — so it is reachable by `ParapharmacyProductMetadataData::fromModel` (which only holds the metadata model) AND loads only under the vertical-gated `parapharmacyMetadata.*` path (§2a): `ParapharmacyProductMetadata::skinSuitabilities(): HasMany(ProductSkinSuitability::class, 'product_id', 'product_id')`. The DTO exposes `suitable_skin_types: SkinType[]` by **plucking** `skin_type` (cast to the shared enum). **Not** `belongsToMany` — there is no `skin_types` lookup table.
+
+> **Relation-home rule (resolves r2 D1-I1):** ALL four merchandising relations (suitability, routines, equivalents, complements) live on **`ParapharmacyProductMetadata`** (parented via `product_id`), never on `Product`. `ParapharmacyProductMetadataData` is built only inside the `if vertical === Parapharmacy` branch (`ProductData::fromModel`), so anchoring here makes the gate "ride automatically" AND keeps the arrays DTO-reachable.
 
 ### 1.6 Routines
 - Migration `*_create_routines_table.php`: `id, tenant_id, name, description nullable, period nullable, is_active`, timestamps.
 - Pivot `*_create_product_routine_table.php`: `id, routine_id (FK cascade), product_id (FK cascade), step_order (int), step_label (string)`, timestamps. Unique (`routine_id`, `product_id`).
-- `Routine` model; `Product::routines()` `belongsToMany` withPivot(`step_order`,`step_label`)->orderByPivot(`step_order`). (Anchors on `products.id` — do not copy the `ParapharmacyProductMetadata::ingredients` parentKey wiring verbatim.)
+- `Routine` model; **`ParapharmacyProductMetadata::routines()`** = `belongsToMany(Routine::class, 'product_routine', 'product_id', 'routine_id', 'product_id')` withPivot(`step_order`,`step_label`)->orderByPivot(`step_order`) — anchored on `product_id` per the `ingredients()` precedent (§1.5 relation-home rule).
 
 ### 1.7 Equivalents / Complements (directional pivots)
 - Migration `*_create_product_equivalents_table.php`: `id, tenant_id, product_id (FK cascade), equivalent_product_id (FK cascade), equivalence_type (string, EquivalenceType cast), notes (text nullable)`, timestamps. Unique (`product_id`, `equivalent_product_id`). **DB CHECK `product_id <> equivalent_product_id`** (no self-equivalence).
 - Migration `*_create_product_complements_table.php`: `id, tenant_id, product_id (FK cascade), complement_product_id (FK cascade), reason (string nullable)`, timestamps. Unique (`product_id`, `complement_product_id`). **CHECK `product_id <> complement_product_id`**.
-- `Product::equivalentProducts()` / `complementProducts()` — `belongsToMany withPivot`.
+- **`ParapharmacyProductMetadata::equivalentProducts()` / `complementProducts()`** = `belongsToMany(Product::class, 'product_equivalents'|'product_complements', 'product_id', 'equivalent_product_id'|'complement_product_id', 'product_id')` (anchored on `product_id` per `ingredients()` — §1.5 relation-home rule), so they ride the gated metadata load and are DTO-reachable.
 - **Store directionally; seed BOTH directions for equivalents** (A↔B) with **identical `equivalence_type`** so symmetric resolution needs no union query; a test asserts symmetry (same type both ways). (`confidence` dropped — §0.2.)
 
 ### 1.8 DTOs & API
-- Extend `ParapharmacyProductMetadataData` (`#[TypeScript]`): `suitable_skin_types: SkinType[]`, `equivalent_product_ids: string[]`, `complement_product_ids: string[]`, `routine_refs: {routine_id, step_order, step_label}[]`.
+- Extend `ParapharmacyProductMetadataData` (`#[TypeScript]`): `suitable_skin_types: SkinType[]`, `equivalent_product_ids: string[]`, `complement_product_ids: string[]`, `routine_refs: {routine_id, step_order, step_label}[]`. `fromModel` maps these from the **metadata-model relations** declared in §1.5–1.7 (`$metadata->skinSuitabilities`/`routines`/`equivalentProducts`/`complementProducts`) — reachable precisely because they live on `ParapharmacyProductMetadata`. Eager-load them inside the existing parapharmacy-only `$with` (`parapharmacyMetadata.skinSuitabilities`, etc.), never the base `$with`.
 - New `BrandData` (`#[TypeScript]`): `id, name, slug, country_of_origin, website_url, is_active`.
 - `ProductData` gains `public ?BrandData $brand`; `ProductData::fromModel()` maps it **only when the relation is loaded**.
 - **Eager-load brand on EVERY read path** (it's universal, not vertical-gated): `ProductController::index` (`$with`), `show`, `store`, `update` response loads. Add tests for list/detail/create/update response shape.
@@ -121,7 +124,11 @@ Industry standard (GS1, Akeneo, SAP, Odoo, Auto Care/TecDoc) separates **Brand**
 ## 2. Gating — vertical (data) + module (experience). Both layers, no rule-12 exception.
 
 ### 2a. Parapharmacy-specific DATA is vertical-gated
-Skin type, product suitability, equivalents, complements, routines, and customer skin advice are parapharmacy business logic. The server emits them **only for the parapharmacy vertical**, via the established precedent: `ProductController` already conditionally loads `parapharmacyMetadata.*` `if ($tenant->vertical === Vertical::Parapharmacy)` (and `isAutomotive()` for automotive) — the new merchandising arrays **extend `ParapharmacyProductMetadataData`**, so they ride that gated load automatically. Customer `skin_type`/`skin_advice_note` are serialized/synced only for parapharmacy tenants. Non-parapharmacy tenants never receive these fields. (The POS device columns from §4 exist regardless but stay null for non-parapharmacy — harmless.)
+Skin type, product suitability, equivalents, complements, routines, and customer skin advice are parapharmacy business logic, emitted **only for the parapharmacy vertical**.
+
+**Product side (automatic):** `ProductController` already loads `parapharmacyMetadata.*` only `if ($tenant->vertical === Vertical::Parapharmacy)` (index/show/store/update). The merchandising relations live on `ParapharmacyProductMetadata` (§1.5 relation-home rule) and the arrays are on `ParapharmacyProductMetadataData`, which `ProductData::fromModel` builds only in that vertical branch — so they ride the gate automatically (eager-load inside the parapharmacy-only `$with`).
+
+**Customer side (needs an EXPLICIT guard — the sync path is NOT auto-gated):** `/pos/customers/sync` (`PosCustomerSyncController` → `PosCustomerMirrorResource`) is not vertical-aware — the resource `toArray` is a flat unconditional array and the controller resolves only tenant/company IDs. **Mandatory:** (1) `PosCustomerSyncController::index` resolves `$isParapharmacy = $companyContext->requireCompany()->tenant->vertical === Vertical::Parapharmacy` (vertical is reachable — `CompanyContext::requireCompany()` eager-loads `tenant`) and threads it into the resource (constructor arg or `->additional([...])`); (2) `PosCustomerMirrorResource` wraps the two keys in `mergeWhen($isParapharmacy, ['skin_type'=>…, 'skin_advice_note'=>…])` — **omit the keys entirely** when false (a bare `when()` can't reach the vertical alone). Feature-test both verticals (parapharmacy includes; non-parapharmacy excludes). The server payload is the authority for non-leakage; the POS SQLite columns stay nullable.
 
 ### 2b. Brand is universal (intentionally NOT gated)
 Per the locked decision, `Brand`/`brand_id`/`brand_name` is cross-vertical and ecommerce-ready — emitted for all verticals, eager-loaded on every product read path (§1.8). It is the one merchandising-adjacent field that is deliberately not vertical-scoped.
@@ -130,10 +137,11 @@ Per the locked decision, `Brand`/`brand_id`/`brand_name` is cross-vertical and e
 A `Merchandising` module key gates the UX (Filtres drawer, skin-advice bar, Équivalents/Compléments/Routine tabs) so it can be unbundled to a paid extra later even though the vertical already has the data.
 - Add `case Merchandising` to `app/Enums/ModuleName.php` **and** `parapharmacy.default_modules` in `config/verticals.php` **in the same commit** — `ModuleNameTest` enforces enum value-set == config union, bidirectionally; either alone fails CI.
 - **Entitlement mechanism (verified, no new device plumbing):** FE `hasModule(config,'Merchandising')` reads `companyConfig.all_enabled_modules` (`productStore.ts`), fetched from `/company/config` (`productApi.ts`), cached (`companyConfigCache`), refreshed each `runFullSync` (`authStore.refreshCompanyConfig`). Backend `CompanyConfigService` merges `default_modules` + enabled extras. **Only backend check:** a test that `/company/config` includes `Merchandising` for parapharmacy tenants. Offline correctness depends on the cache being hydrated after the module is added — covered by an offline-startup hydration test.
-- **Unbundle later = config-only:** move `Merchandising` from `default_modules` to a priced `compatible_extras` entry.
 - **No dedicated `merchandising.*` permission set now** — vertical + module gating suffice.
 
-**Net (rule 12 satisfied on both layers):** backend serves parapharmacy-specific fields only to the parapharmacy vertical; FE renders the merchandising UX only when `hasModule('Merchandising')`.
+**Gating model (stated precisely — no overclaim):** merchandising **data** is **vertical-gated** — the established pattern for vertical-exclusive metadata that has no single owning module (see `docs/architecture/vertical-module-gating.md`; automotive metadata is likewise authorized by vertical, not module). The `Merchandising` **module gates only the experience (UX)**.
+
+**Unbundle-to-paid consequence (honest):** moving `Merchandising` from `default_modules` to a priced `compatible_extras` later **hides the POS UX but does NOT withhold the data** — the tenant is still the parapharmacy vertical, so the server still emits it and the device still caches it. The monetized lever is the merchandising *experience*, not the raw fields; a non-entitled parapharmacy terminal still holds the dataset in SQLite. **This is fine for a bundled-by-default demo.** If real confidentiality on unbundle is ever required, the payload emission must **also** become module-gated server-side (a future code change — gate the `/products` arrays + `/pos/customers/sync` skin fields on the `Merchandising` entitlement, not just the vertical). That is explicitly out of scope now; "unbundle = config-only" is therefore **not** claimed.
 
 ---
 
@@ -167,7 +175,9 @@ Current max device migration = **v57**. **Split into two versions; coordinate th
 
 ## 5. POS UI (redesign phases P9/P5/P8)
 
-> **Sequencing:** reuses redesign atoms + token system, which live on `feat/pos-caisse-redesign` (**not yet on `origin/dev`**, diverged 3/10). Data/sync layers (§1–4) proceed now; **this UI rebases onto the redesign branch** so the token system resolves (`bg-stock-*`, `bg-accent`, `rounded-tile`/`rounded-card`, `font-mono`). Escalate if still unmerged when UI work starts. ESLint color guard is **ERROR** on these files — tokens only; both themes.
+> **Sequencing:** reuses redesign atoms + token system, which live on `feat/pos-caisse-redesign` (**not yet on `origin/dev`**, diverged 3/10). Data/sync layers (§1–4) proceed now; **this UI rebases onto the redesign branch** so the token system resolves. Escalate if still unmerged when UI work starts. ESLint color guard is **ERROR** on these files — tokens only; both themes.
+>
+> **REBASE PREREQUISITES (verify these exist on the rebased branch BEFORE starting §5; r2 confirmed they are NOT on `origin/dev`):** atoms `ProductThumb`/`StockBadge`/`Pill`/`Tabs` (current `components/ui/index.ts` exports only `Button`/`IconButton`/`Badge`/`StatusPill`/`SegmentedControl`); tokens `stock-*`/`accent`/`rounded-tile`/`rounded-card`; the `ezTap` keyframe (spec already notes it must be added); `settingsStore.density` (current store has `displayMode` only); the `/customers` route + `NavRail` (current routes: `/`, `/settings`, `/sales`, `/reports/z`). If any are absent after rebase, coordinate with the redesign owner — do NOT create them in pre-rebase data/sync work. **Only the `displayMode` dual-source reconcile (§5.2) is buildable pre-rebase.** Active in-place targets are `apps/pos/src/components/organisms/ProductGrid/ProductGrid.tsx` and `apps/pos/src/components/molecules/ProductCard/ProductCard.tsx` — **NOT** the legacy `components/pos/*` copies.
 
 ### 5.0 Ownership split (coordination handoff from the redesign session, 2026-06-28)
 Because this session owns product/customer **data rendering** (brand, skin-type, equivalents/complements on the card/grid), it also does the **visual restyle of `ProductCard` + `ProductGrid`** — restyling once together with the data wiring avoids a guaranteed merge conflict between the two branches.
@@ -183,7 +193,7 @@ Preserve **all** logic + data-testids (`in-cart-badge`, `view-details-button`, `
 - **Compact card:** no thumb. **Out-of-stock:** dimmed (`surface-sunken`/`ink-faint`) + `StockBadge status="out"`, fiche still openable.
 
 ### 5.2 `ProductGrid` restyle + required dual-source reconcile
-`ProductGrid` currently keeps its own `useState` from `localStorage['pos-display-mode']` and **ignores `settingsStore.displayMode`**. Make it read `displayMode` + the new **density** from `settingsStore` (the Appearance settings — theme/accent/corner/density — already shipped). Density is **JS-driven**: thread it into `getColumns(displayMode, density, width)` + `CARD_MIN_H_*` (visual+comfortable=5, visual+dense=6, compact+comfortable=4, compact+dense=5).
+`ProductGrid` (`components/organisms/ProductGrid/ProductGrid.tsx`) currently keeps its own `useState` from `localStorage['pos-display-mode']` and **ignores `settingsStore.displayMode`**. **Buildable now:** make it read `displayMode` from `settingsStore` (resolves the dual-source). **Density is a rebase prerequisite** — `settingsStore.density` does NOT exist on `origin/dev` (the store has only `displayMode`); it's expected from the redesign branch. Once present, thread it (JS-driven) into `getColumns(displayMode, density, width)` (currently takes `displayMode` only) + `CARD_MIN_H_*` (visual+comfortable=5, visual+dense=6, compact+comfortable=4, compact+dense=5; current `cardSizing.ts` has only `CARD_MIN_H_GRID`/`CARD_MIN_H_VISUAL`). If density is absent after rebase, escalate to the redesign owner — do not invent it here.
 - **Toolbar:** search · Filtres (badge) · Top ventes · view toggle (`SegmentedControl`). Category `Pill` row; active filter-chip row + count.
 
 ### 5.3 Merchandising overlays (module-gated `hasModule('Merchandising')`, §2c)
@@ -209,7 +219,7 @@ ERP is the source of truth now. The Synerivia platform later pushes enrichment (
 3. **Merchandising data** — `partners.skin_type`/`skin_advice_note`; `product_skin_suitability` (HasMany); `routines`+`product_routine`; `product_equivalents` (CHECK); `product_complements` (CHECK); models/relations; extend `ParapharmacyProductMetadataData`. `typescript:transform`.
 4. **Module gating** — `Merchandising` in `ModuleName` enum + `parapharmacy.default_modules` (same commit); `/company/config` projection test.
 5. **Seeder** — brands/suitability/equivalents(both dirs)/complements/routines/customer skin types; run + verify counts.
-6. **Server payloads** — `/products` (flat `brand_id`/`brand_name` + merchandising arrays) and `/pos/customers/sync` (skin fields).
+6. **Server payloads** — `/products` (flat `brand_id`/`brand_name` + merchandising arrays inside the parapharmacy-only `$with`) and `/pos/customers/sync` (skin fields **with the §2a vertical guard**: controller resolves `$isParapharmacy`, resource `mergeWhen`).
 7. **POS offline** — v58 (products + cursor reset) + v59 (customers + cursor reset) + repos + types + `upsertProducts` rewrite + **wire `pullCustomers`** + `SyncResult` contract.
 8. **POS UI** (rebase onto redesign branch) — `ProductCard` + `ProductGrid` restyle in place + `settingsStore` dual-source reconcile (§5.1–5.2); build out `/customers` in place (§5.4); module-gated Filtres / skin-advice / detail tabs (§5.3).
 9. **Docs** — REALIGNMENT-LOG enrichment field-mapping; memory update.
@@ -217,14 +227,14 @@ ERP is the source of truth now. The Synerivia platform later pushes enrichment (
 ---
 
 ## 8. Testing strategy
-- **Backend (PHPUnit, by path — never the full suite):** enum cases + `Rule::enum` SmartPrompts validation accepts all 5 / rejects invalid; Brand slug `unique(tenant_id,slug)`; `brand_id` nullable + nullOnDelete; brand present on **all** product read paths (list/detail/create/update); enrichment-accept `firstOrCreate` upserts + links Brand + sets `brand_source` (incl. concurrent-accept dedup); `skinSuitabilities` HasMany pluck → `suitable_skin_types`; routines/equivalents/complements withPivot ordering; equivalents seeded both directions identical type (symmetry); self-reference CHECK rejects; `/company/config` includes `Merchandising` for parapharmacy; seeder row counts at scale=1.
+- **Backend (PHPUnit, by path — never the full suite):** enum cases + `Rule::enum` SmartPrompts validation accepts all 5 / rejects invalid; Brand slug `unique(tenant_id,slug)`; `brand_id` nullable + nullOnDelete; brand present on **all** product read paths (list/detail/create/update); enrichment-accept `firstOrCreate` upserts + links Brand + sets `brand_source` (incl. concurrent-accept dedup); `skinSuitabilities` HasMany pluck → `suitable_skin_types`; routines/equivalents/complements withPivot ordering; equivalents seeded both directions identical type (symmetry); self-reference CHECK rejects; **`/pos/customers/sync` includes skin fields for parapharmacy and EXCLUDES them (keys absent) for a non-parapharmacy tenant with populated columns (D1-C1 guard)**; product merch arrays absent for non-parapharmacy product reads; `/company/config` includes `Merchandising` for parapharmacy; seeder row counts at scale=1.
 - **POS (Vitest):** v58 & v59 apply + **cursor-reset tests** (seed cursor → migrate → assert gone, next pull omits `updated_since`); `productRepository` round-trips brand columns + parapharmacy JSON + nested→flat flatten; `customerRepository` round-trips skin fields; `runFullSync` calls `pullCustomers` (orphan regression) with `authStore` IDs; `SyncResult.customersPulled`/failure accounting; failure policy (swallow vs propagate); local resolution of equivalent/complement/routine IDs; `hasModule('Merchandising')` gating + offline-startup hydration from `companyConfigCache`.
 - Constructor injection only; enums for type columns; i18n `t()` for POS strings; tokens only; no float casts.
 
 ---
 
 ## 9. Risks & open items
-- **Resolved (owner 2026-06-28):** parapharmacy merchandising data is vertical-gated (§2a); brand stays universal (§2b) — no rule-12 exception.
+- **Gating (owner 2026-06-28):** merchandising data is **vertical-gated** (established pattern — see §2c + `vertical-module-gating.md`); the `Merchandising` module gates the **experience only**; unbundling hides UX, not data. Customer-sync needs the explicit guard in §2a (the path is not auto-gated).
 - **Redesign-branch dependency** for §5 UI (atoms not on `origin/dev`). Mitigation: build §1–4 first; rebase UI later.
 - **Device migration version coordination** with the loyalty session — claim distinct v58/v59 numbers (or land the shared customer ALTER once and have loyalty rebase) before either pushes.
 - **POS catalog endpoint** — verify whether the POS pulls the same `/products` (nested `ProductData`) or a POS-specific serializer, to pin the brand flatten point (§1.8/§4).
