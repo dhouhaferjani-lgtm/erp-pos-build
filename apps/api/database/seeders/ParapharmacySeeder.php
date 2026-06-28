@@ -17,8 +17,10 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Product\Domain\Brand;
 use App\Modules\Product\Domain\Certification;
 use App\Modules\Product\Domain\Enums\AgeRestriction;
+use App\Modules\Product\Domain\Enums\BrandSource;
 use App\Modules\Product\Domain\Enums\DosageForm;
 use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
 use App\Modules\Product\Domain\HealthClaim;
@@ -333,6 +335,11 @@ class ParapharmacySeeder extends Seeder
         $products = $this->seedProducts($this->company);
         $this->command->info("✓ Created {$products->count()} products across 6 categories");
 
+        // 5a. Seed brands and assign brand_id to cosmetic / baby-care products
+        $this->command->info('🏷️ Seeding brands...');
+        $brands = $this->seedBrands($this->company);
+        $this->command->info("✓ Created {$brands->count()} brands");
+
         // 6. Seed partners (customers and suppliers)
         $this->command->info('👥 Seeding partners...');
         $this->seedPartners($this->tenant, $this->company);
@@ -629,6 +636,133 @@ class ParapharmacySeeder extends Seeder
         }
 
         return $products;
+    }
+
+    /**
+     * Seed real French parapharmacy brands and assign brand_id to products.
+     *
+     * Inserts ~21 real brands via a single batch insert, then distributes
+     * brand assignments across products by category (round-robin), setting
+     * `brand_source = 'user'` on every assigned row.
+     *
+     * @return Collection<int, array{id: string, slug: string}>
+     */
+    protected function seedBrands(Company $company): Collection
+    {
+        $now = now();
+        $tenantId = $company->tenant_id;
+
+        // Real French parapharmacy brands, grouped by category hint used for
+        // the assignment heuristic below. `category_hint` mirrors the
+        // ParapharmacyCategory::value that these brands are best known for.
+        $brandData = [
+            // Cosmetic & Skincare
+            ['name' => 'Avène',          'country' => 'FR', 'url' => 'https://www.eau-thermale-avene.fr', 'category_hint' => 'cosmetic'],
+            ['name' => 'La Roche-Posay', 'country' => 'FR', 'url' => 'https://www.laroche-posay.fr',     'category_hint' => 'cosmetic'],
+            ['name' => 'Bioderma',       'country' => 'FR', 'url' => 'https://www.bioderma.fr',           'category_hint' => 'cosmetic'],
+            ['name' => 'Vichy',          'country' => 'FR', 'url' => 'https://www.vichy.fr',              'category_hint' => 'cosmetic'],
+            ['name' => 'CeraVe',         'country' => 'US', 'url' => 'https://www.cerave.fr',             'category_hint' => 'cosmetic'],
+            ['name' => 'Nuxe',           'country' => 'FR', 'url' => 'https://www.nuxe.com',              'category_hint' => 'cosmetic'],
+            ['name' => 'Caudalie',       'country' => 'FR', 'url' => 'https://www.caudalie.com',          'category_hint' => 'cosmetic'],
+            ['name' => 'Uriage',         'country' => 'FR', 'url' => 'https://www.uriage.com',            'category_hint' => 'cosmetic'],
+            ['name' => 'Ducray',         'country' => 'FR', 'url' => 'https://www.ducray.com',            'category_hint' => 'cosmetic'],
+            ['name' => 'A-Derma',        'country' => 'FR', 'url' => 'https://www.a-derma.fr',            'category_hint' => 'cosmetic'],
+            ['name' => 'Klorane',        'country' => 'FR', 'url' => 'https://www.klorane.com',           'category_hint' => 'cosmetic'],
+            ['name' => 'SVR',            'country' => 'FR', 'url' => 'https://www.laboratoiresvr.com',    'category_hint' => 'cosmetic'],
+            ['name' => 'Embryolisse',    'country' => 'FR', 'url' => 'https://www.embryolisse.com',       'category_hint' => 'cosmetic'],
+            // Baby care
+            ['name' => 'Mustela',        'country' => 'FR', 'url' => 'https://www.mustela.com',           'category_hint' => 'baby_care'],
+            ['name' => 'Bébé Cadum',     'country' => 'FR', 'url' => null,                                'category_hint' => 'baby_care'],
+            // Dietary supplements
+            ['name' => 'Pileje',         'country' => 'FR', 'url' => 'https://www.pileje.com',            'category_hint' => 'supplement'],
+            ['name' => 'Nutergia',       'country' => 'FR', 'url' => 'https://www.nutergia.com',          'category_hint' => 'supplement'],
+            ['name' => 'Forté Pharma',   'country' => 'FR', 'url' => 'https://www.fortepharma.com',       'category_hint' => 'supplement'],
+            ['name' => 'Boiron',         'country' => 'FR', 'url' => 'https://www.boiron.fr',             'category_hint' => 'supplement'],
+            // Herbal / phytotherapy
+            ['name' => 'Arkopharma',     'country' => 'FR', 'url' => 'https://www.arkopharma.com',        'category_hint' => 'herbal'],
+            ['name' => 'Weleda',         'country' => 'DE', 'url' => 'https://www.weleda.fr',             'category_hint' => 'herbal'],
+        ];
+
+        // Build flat rows for a single batch insert
+        $rows = [];
+        /** @var array<string, array{id: string, category_hint: string}> */
+        $brandsBySlug = [];
+
+        foreach ($brandData as $data) {
+            $id = Str::uuid()->toString();
+            $slug = Brand::slugFor($data['name']);
+
+            $rows[] = [
+                'id' => $id,
+                'tenant_id' => $tenantId,
+                'name' => $data['name'],
+                'slug' => $slug,
+                'canonical_brand_id' => null,
+                'logo_media_id' => null,
+                'website_url' => $data['url'],
+                'country_of_origin' => $data['country'],
+                'description' => null,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+
+            $brandsBySlug[$slug] = ['id' => $id, 'category_hint' => $data['category_hint']];
+        }
+
+        DB::table('brands')->insert($rows);
+
+        // Assign brands to products by category using round-robin distribution.
+        // Only categories that have matching brands are processed; others are
+        // left with brand_id = null (medical_device, sports_nutrition, etc.).
+        $brandSource = BrandSource::User->value;
+
+        foreach (['cosmetic', 'baby_care', 'supplement', 'herbal'] as $categoryHint) {
+            $categoryBrandIds = array_column(
+                array_filter(
+                    $brandsBySlug,
+                    fn (array $b): bool => $b['category_hint'] === $categoryHint,
+                ),
+                'id',
+            );
+
+            if ($categoryBrandIds === []) {
+                continue;
+            }
+
+            /** @var list<string> $productIds */
+            $productIds = DB::table('parapharmacy_product_metadata')
+                ->join('products', 'products.id', '=', 'parapharmacy_product_metadata.product_id')
+                ->where('products.company_id', $company->id)
+                ->where('parapharmacy_product_metadata.category', $categoryHint)
+                ->pluck('parapharmacy_product_metadata.product_id')
+                ->toArray();
+
+            if ($productIds === []) {
+                continue;
+            }
+
+            // Group product IDs by brand (round-robin), then one UPDATE per brand.
+            $brandCount = count($categoryBrandIds);
+            $groupedByBrand = [];
+
+            foreach ($productIds as $idx => $productId) {
+                $brandId = $categoryBrandIds[$idx % $brandCount];
+                $groupedByBrand[$brandId][] = $productId;
+            }
+
+            foreach ($groupedByBrand as $brandId => $ids) {
+                DB::table('products')
+                    ->whereIn('id', $ids)
+                    ->update([
+                        'brand_id' => $brandId,
+                        'brand_source' => $brandSource,
+                    ]);
+            }
+        }
+
+        /** @var Collection<int, array{id: string, slug: string}> */
+        return collect($rows)->map(fn (array $r): array => ['id' => $r['id'], 'slug' => $r['slug']]);
     }
 
     /**
