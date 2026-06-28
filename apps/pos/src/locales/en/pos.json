@@ -952,5 +952,17 @@
       "cp858": "CP858 (Western Europe)",
       "cp1252": "CP1252 (Windows Latin)"
     }
+  },
+  "nav": {
+    "caisse": "Sale",
+    "clients": "Customers",
+    "rapports": "Reports",
+    "shift": "Register",
+    "ariaLabel": "Main navigation",
+    "themeToggle": "Toggle theme"
+  },
+  "customers": {
+    "pageTitle": "Customers",
+    "placeholder": "Customer management is coming soon."
   }
 }

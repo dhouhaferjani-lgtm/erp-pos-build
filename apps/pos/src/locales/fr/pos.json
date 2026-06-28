@@ -952,5 +952,17 @@
       "cp858": "CP858 (Europe occidentale)",
       "cp1252": "CP1252 (Windows latin occidental)"
     }
+  },
+  "nav": {
+    "caisse": "Caisse",
+    "clients": "Clients",
+    "rapports": "Rapports",
+    "shift": "Caisse",
+    "ariaLabel": "Navigation principale",
+    "themeToggle": "Changer de thème"
+  },
+  "customers": {
+    "pageTitle": "Clients",
+    "placeholder": "La gestion des clients arrive bientôt."
   }
 }
