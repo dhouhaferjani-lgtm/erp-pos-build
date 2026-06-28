@@ -357,6 +357,11 @@ class ParapharmacySeeder extends Seeder
         $this->seedProductComplements($this->company);
         $this->command->info('✓ Product complements seeded');
 
+        // 5e. Seed skincare routines + ordered membership
+        $this->command->info('🧴 Seeding routines...');
+        $this->seedRoutines($this->company);
+        $this->command->info('✓ Routines seeded');
+
         // 6. Seed partners (customers and suppliers)
         $this->command->info('👥 Seeding partners...');
         $this->seedPartners($this->tenant, $this->company);
@@ -1663,6 +1668,159 @@ class ParapharmacySeeder extends Seeder
         ];
 
         return $types[rand(0, count($types) - 1)];
+    }
+
+    /**
+     * Seed French skincare routines and their ordered product memberships.
+     *
+     * Inserts 3 named routines into `routines` and 3–4 ordered step rows per
+     * routine into `product_routine`, picking one cosmetic product per step
+     * from a deterministic dosage-form bucket:
+     *   Gel     → "Nettoyage"
+     *   Liquid  → "Sérum"
+     *   Cream   → "Hydratation intense" / "Protection"
+     *   Lotion  → "Hydratation légère" / "Hydratation"
+     *   Spray   → "Protection solaire"
+     *
+     * The unique(routine_id, product_id) constraint is respected by
+     * construction: every step within a routine draws from a **different**
+     * dosage-form pool, so a product cannot appear twice in the same routine.
+     *
+     * Rows are chunked at 100 (`routines`) and 150 (`product_routine`) to
+     * stay under SQLite's 999-parameter prepared-statement limit.
+     */
+    protected function seedRoutines(Company $company): void
+    {
+        $tenantId = $company->tenant_id;
+        $now = now();
+
+        // ── 1. Resolve one product pool per cosmetic dosage form ───────────
+        // Ordered deterministically (by product_id) so the seeder is stable
+        // across re-runs.  Each pool maps dosage_form_value → [product_id, …].
+        /** @var array<string, list<string>> $byForm */
+        $byForm = [];
+
+        foreach (['gel', 'liquid', 'cream', 'lotion', 'spray'] as $form) {
+            /** @var list<string> $ids */
+            $ids = DB::table('parapharmacy_product_metadata as m')
+                ->join('products as p', 'p.id', '=', 'm.product_id')
+                ->where('p.company_id', $company->id)
+                ->where('m.category', ParapharmacyCategory::Cosmetic->value)
+                ->where('m.dosage_form', $form)
+                ->orderBy('m.product_id')
+                ->pluck('m.product_id')
+                ->toArray();
+
+            $byForm[$form] = $ids;
+        }
+
+        // ── 2. Insert 3 routine header rows ───────────────────────────────
+        /** @var list<array{id: string, tenant_id: string, name: string, description: string, period: string, is_active: bool, created_at: mixed, updated_at: mixed}> $routineRows */
+        $routineRows = [
+            [
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $tenantId,
+                'name' => 'Routine visage — peau sèche',
+                'description' => 'Routine quotidienne adaptée aux peaux sèches et inconfortables.',
+                'period' => 'matin-soir',
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $tenantId,
+                'name' => 'Routine visage — peau grasse',
+                'description' => 'Routine légère pour les peaux grasses et à tendance acnéique.',
+                'period' => 'matin-soir',
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $tenantId,
+                'name' => 'Routine visage — peau sensible',
+                'description' => 'Routine douce pour les peaux réactives et sensibles.',
+                'period' => 'matin-soir',
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+        ];
+
+        // 8 columns × 3 rows = 24 params — well under SQLite's 999 limit.
+        foreach (array_chunk($routineRows, 100) as $chunk) {
+            DB::table('routines')->insert($chunk);
+        }
+
+        // ── 3. Build product_routine membership rows ───────────────────────
+        // Routine 0 "peau sèche"   : 4 steps — gel[0], liquid[0], cream[0], spray[0]
+        // Routine 1 "peau grasse"  : 3 steps — gel[1], liquid[1], lotion[0]
+        // Routine 2 "peau sensible": 4 steps — gel[2], liquid[2], lotion[1], cream[1]
+        //
+        // Each step draws from a DISTINCT dosage-form pool so product_id
+        // never repeats within the same routine.
+
+        /** @var list<array{ri: int, form: string, idx: int, label: string}> $stepDefs */
+        $stepDefs = [
+            // Routine 0 — peau sèche (4 steps)
+            ['ri' => 0, 'form' => 'gel',    'idx' => 0, 'label' => 'Nettoyage'],
+            ['ri' => 0, 'form' => 'liquid', 'idx' => 0, 'label' => 'Sérum actif'],
+            ['ri' => 0, 'form' => 'cream',  'idx' => 0, 'label' => 'Hydratation intense'],
+            ['ri' => 0, 'form' => 'spray',  'idx' => 0, 'label' => 'Protection solaire'],
+            // Routine 1 — peau grasse (3 steps)
+            ['ri' => 1, 'form' => 'gel',    'idx' => 1, 'label' => 'Nettoyage purifiant'],
+            ['ri' => 1, 'form' => 'liquid', 'idx' => 1, 'label' => 'Sérum régulateur'],
+            ['ri' => 1, 'form' => 'lotion', 'idx' => 0, 'label' => 'Hydratation légère'],
+            // Routine 2 — peau sensible (4 steps)
+            ['ri' => 2, 'form' => 'gel',    'idx' => 2, 'label' => 'Nettoyage doux'],
+            ['ri' => 2, 'form' => 'liquid', 'idx' => 2, 'label' => 'Sérum apaisant'],
+            ['ri' => 2, 'form' => 'lotion', 'idx' => 1, 'label' => 'Hydratation'],
+            ['ri' => 2, 'form' => 'cream',  'idx' => 1, 'label' => 'Protection'],
+        ];
+
+        /** @var list<array{id: string, routine_id: string, product_id: string, step_order: int, step_label: string, created_at: mixed, updated_at: mixed}> $memberRows */
+        $memberRows = [];
+
+        /** @var array<int, int> $stepCounters — routine index → next step_order (1-based) */
+        $stepCounters = [];
+
+        foreach ($stepDefs as $def) {
+            $ri = $def['ri'];
+            $pool = $byForm[$def['form']] ?? [];
+
+            // Skip step gracefully when the dosage-form pool is empty; the
+            // remaining steps stay contiguous because we only increment the
+            // counter when we actually write a row.
+            if ($pool === []) {
+                continue;
+            }
+
+            $productId = $pool[$def['idx'] % count($pool)];
+            $routineId = $routineRows[$ri]['id'];
+
+            if (! isset($stepCounters[$ri])) {
+                $stepCounters[$ri] = 1;
+            }
+
+            $memberRows[] = [
+                'id' => Str::uuid()->toString(),
+                'routine_id' => $routineId,
+                'product_id' => $productId,
+                'step_order' => $stepCounters[$ri],
+                'step_label' => $def['label'],
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+
+            $stepCounters[$ri]++;
+        }
+
+        // 6 columns × 150 rows = 900 params — safely under SQLite's 999 limit.
+        foreach (array_chunk($memberRows, 150) as $chunk) {
+            DB::table('product_routine')->insert($chunk);
+        }
     }
 
     /**
