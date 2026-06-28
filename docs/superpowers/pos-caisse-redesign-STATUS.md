@@ -57,11 +57,23 @@ NEXT on resume:
 - React-doctor `--diff` warnings (button-type, only-export-components, untokenized `TodaySalesPanel`) — triage during the P7 restyle.
 
 ## Deferred touch-ergonomics fixes (owner feedback 2026-06-28, live `pnpm tauri dev`)
-Do these in a later pass (NOT regressions — known follow-ups):
-- **Cart-line remove ✕ sits next to the expand chevron → mis-tap risk.** Separate them (move remove into the expanded controls, or add a clear gap / larger hit-targets), so tapping to expand can't accidentally delete the line.
-- **Line deletion has no confirmation.** Add a guard — **ideally a configurable setting** (e.g. `confirmLineDelete` in `settingsStore` + an Appearance/behaviour toggle) so a store can turn confirm-on-delete on/off. Consider optimistic-delete + Undo toast vs a confirm tap.
-- General touch-friendliness sweep of the restyled surfaces against the §6 ergonomics floor (48px targets, 12–16px gaps) — several controls are still sub-floor (e.g. cart-line buttons were `h-7`/28px before the Stepper; audit the rest as restyled).
+- ✅ **DONE (commit 834d73a33 / ref cleanup 791209cc5):** Cart-line remove ✕ moved OUT of the collapsed header (was next to the expand chevron → mis-tap) INTO the expanded controls (left, separated from the +/- · discount cluster). The whole collapsed header row is now a single `min-h-[48px]` expand/collapse `<button>` — tapping to expand can no longer delete the line.
+- ✅ **DONE:** Configurable confirm-on-delete — `settingsStore.confirmLineDelete` (default ON) + a **Touch & Display** toggle in `SettingsPage`. When ON, the delete control arms on the first tap and removes on a confirming second tap (auto-disarms after 3s / on collapse). i18n `cart.confirmRemoveItem`, `settings.confirmLineDelete*` (en+fr). Chose two-tap-arm over optimistic-delete+Undo because the Toast shell isn't built yet (P5).
+- ✅ **DONE (partial):** 48px floor applied to the new cart-line expanded controls (delete/discount/modifier) + the collapsed row min-height.
+- ⏳ **REMAINING:** `ReturnLineItem` (refund section in `TransactionCart.tsx`) still uses `h-7`/28px qty+remove buttons — left for the **P6 returns restyle** (deferring to avoid unverified layout regressions in the unrestyled returns flow).
 - (owner: "some other stuff" — capture more as they surface during the visual passes.)
+
+## Session pause 2026-06-28 (cont. — resume here)
+Done since the last pause (all committed on `feat/pos-caisse-redesign`, tree clean, typecheck + lint + react-doctor + targeted tests green):
+- **Cart-line touch-ergonomics** (834d73a33, 791209cc5) — see the updated "Deferred touch-ergonomics fixes" block above (remove relocated, configurable confirm-on-delete). 9 CartLineItem tests + 2 settingsStore tests; TransactionCart test mocks the settings hook.
+- **Header restyle (P2 §5.0)** (16664cec8) — 62px bar, `font-display` wordmark, decorative `aria-hidden` online dot, vertical `Divider` atoms between right-zone clusters (shift · operator · actions), operator `Avatar`. ALL logic preserved (B3 StatusPill, sync, StockFreshness, shift→EOD, manager-PIN, every modal/handler). Header.test.tsx green. Tokens-only (passes the ESLint token guard).
+- **ReportsMenu manager-gating** (db2936fb3) — X-report + cash-drawer ops + Z-report history are manager-only (`isManagerRole(operator?.roles)`); transaction-history + today-sales stay open. New ReportsMenu.test.tsx (3 tests). NOTE: ReportsMenu still has hardcoded colors (bg-white/text-gray-*) — deliberately NOT tokenized here (gating-only scope); **P7 reports restyle owns the tokenization**.
+- **Code review:** Codex detached-runtime produced NO output again (known-unreliable) → used a Claude reviewer agent per project precedent; findings → `docs/superpowers/audits/2026-06-28-pos-cart-line-header-review.md` (fold before next chunk).
+
+NEXT on resume (kickoff WORK IN ORDER item 4 onward):
+- **Owner-driven logged-in visual pass** (BLOCKING the authed-surface sign-off; can't render past the offline gate headless): run `pnpm tauri dev` from this worktree and confirm — nav-rail layout (rail opposite cart), the new 62px Header (wordmark/dividers/operator avatar/online dot, both themes), cart collapse/expand + the relocated delete + armed confirm state (turn the Touch & Display "Confirm before removing a line" toggle on/off), SaleDetailModal, blind-close. Screenshot.
+- Then per tracker: full `TransactionCart` panel restyle (header/quick-actions/summary), P4 payments, P5 modals (+ build `ModalShell`/`Drawer`/`Toast` shells), P7 reports restyle (tokenize `TodaySalesPanel` + `ReportsMenu`).
+- `ProductCard`/`ProductGrid` → owned by the parapharmacy session (do not touch).
 
 ## Guardrails (always)
 Worktree off dev; merge to LOCAL dev first, promote to origin/dev as clean fast-forwards; never force-push dev. NEVER run the full PHPUnit suite (crashes laptop) — run by path. Tokens only in `apps/pos/src` (ESLint guard); i18n all strings; TDD; Codex for CODE review (Claude agent for DOC review). Commit frequently (crash-safety).
