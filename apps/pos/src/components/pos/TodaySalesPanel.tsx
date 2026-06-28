@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RotateCcw, Printer } from 'lucide-react';
+import { ArrowLeft, RotateCcw, Printer, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchShiftReceipts, type ShiftReceipt } from '@/api/reportApi';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useCurrency } from '@/lib/currency';
 import { printReceiptAsPdf } from '@/lib/printing';
+import { SaleDetailModal } from '@/components/pos/SaleDetailModal';
 
 function getLineName(line: ShiftReceipt['lines'][number]): string {
   return line.product?.name ?? line.product_name ?? '—';
@@ -37,6 +38,7 @@ export function TodaySalesPage() {
   const [receipts, setReceipts] = useState<ShiftReceipt[]>([]);
   const [loading, setLoading] = useState(false);
   const [reprintingId, setReprintingId] = useState<string | null>(null);
+  const [detailReceipt, setDetailReceipt] = useState<ShiftReceipt | null>(null);
 
   const loadReceipts = useCallback(async () => {
     if (!shiftId) return;
@@ -204,15 +206,25 @@ export function TodaySalesPage() {
                         </span>
                       </td>
                       <td className="px-5 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => void handleReprint(receipt.id)}
-                          disabled={reprintingId === receipt.id}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200 disabled:opacity-50"
-                        >
-                          <Printer className="h-3.5 w-3.5" />
-                          {reprintingId === receipt.id ? '...' : t('reports.reprint')}
-                        </button>
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setDetailReceipt(receipt)}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            {t('reports.view')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleReprint(receipt.id)}
+                            disabled={reprintingId === receipt.id}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200 disabled:opacity-50"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                            {reprintingId === receipt.id ? '...' : t('reports.reprint')}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -224,6 +236,14 @@ export function TodaySalesPage() {
       </div>
         </>
       )}
+
+      <SaleDetailModal
+        receipt={detailReceipt}
+        isOpen={detailReceipt !== null}
+        onClose={() => setDetailReceipt(null)}
+        onReprint={(id) => void handleReprint(id)}
+        reprinting={detailReceipt !== null && reprintingId === detailReceipt.id}
+      />
     </div>
   );
 }

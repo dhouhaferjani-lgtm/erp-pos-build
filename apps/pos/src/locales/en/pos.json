@@ -456,7 +456,16 @@
       },
       "empty": "No Z reports found.",
       "duplicataBanner": "DUPLICATA"
-    }
+    },
+    "view": "View",
+    "saleDetailTitle": "Sale details",
+    "qty": "Qty",
+    "unitPrice": "Unit price",
+    "lineTotal": "Line total",
+    "subtotal": "Subtotal",
+    "taxLabel": "VAT",
+    "paymentLabel": "Payment",
+    "voided": "Voided"
   },
   "productDetail": {
     "title": "Product Details",

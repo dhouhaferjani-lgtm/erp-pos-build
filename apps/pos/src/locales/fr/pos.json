@@ -456,7 +456,16 @@
       },
       "empty": "Aucun rapport Z trouvé.",
       "duplicataBanner": "DUPLICATA"
-    }
+    },
+    "view": "Voir",
+    "saleDetailTitle": "Détail de la vente",
+    "qty": "Qté",
+    "unitPrice": "Prix unitaire",
+    "lineTotal": "Total ligne",
+    "subtotal": "Sous-total",
+    "taxLabel": "TVA",
+    "paymentLabel": "Règlement",
+    "voided": "Annulé"
   },
   "productDetail": {
     "title": "Détails du produit",
