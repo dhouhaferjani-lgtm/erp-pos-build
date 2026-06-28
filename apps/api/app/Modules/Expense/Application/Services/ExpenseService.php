@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Expense\Application\Services;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -21,6 +22,7 @@ final class ExpenseService
     public function __construct(
         private readonly GeneralLedgerService $glService,
         private readonly RepositoryOutflowInterface $outflow,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     /**
@@ -41,13 +43,16 @@ final class ExpenseService
             }
         }
 
-        return DB::transaction(function () use ($data, $user, $idempotencyKey): Document {
+        $companyCurrency = $this->companyContext->requireCompany()->currency;
+
+        return DB::transaction(function () use ($data, $user, $idempotencyKey, $companyCurrency): Document {
             // Create the expense document
             $expense = Document::create([
                 'tenant_id' => $user->tenant_id,
                 'company_id' => $data['company_id'],
                 'type' => DocumentType::Expense,
                 'status' => DocumentStatus::Draft,
+                'currency' => $companyCurrency,
                 'document_date' => $data['payment_date'] ?? now()->toDateString(),
                 'total' => $data['total'] ?? '0.00',
                 'subtotal' => $data['total'] ?? '0.00',
