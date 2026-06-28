@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -36,6 +37,7 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, Certification> $certifications
  * @property-read Collection<int, HealthClaim> $healthClaims
  * @property-read Collection<int, KeyComponent> $keyComponents
+ * @property-read Collection<int, ProductSkinSuitability> $skinSuitabilities
  */
 class ParapharmacyProductMetadata extends Model
 {
@@ -178,5 +180,15 @@ class ParapharmacyProductMetadata extends Model
             ->withPivot(['order'])
             ->withTimestamps()
             ->orderByPivot('order');
+    }
+
+    /**
+     * Get all skin suitability entries for this product.
+     *
+     * @return HasMany<ProductSkinSuitability, $this>
+     */
+    public function skinSuitabilities(): HasMany
+    {
+        return $this->hasMany(ProductSkinSuitability::class, 'product_id', 'product_id');
     }
 }
