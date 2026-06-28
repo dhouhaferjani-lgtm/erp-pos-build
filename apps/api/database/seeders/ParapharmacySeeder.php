@@ -22,6 +22,7 @@ use App\Modules\Product\Domain\Certification;
 use App\Modules\Product\Domain\Enums\AgeRestriction;
 use App\Modules\Product\Domain\Enums\BrandSource;
 use App\Modules\Product\Domain\Enums\DosageForm;
+use App\Modules\Product\Domain\Enums\EquivalenceType;
 use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
 use App\Modules\Product\Domain\HealthClaim;
 use App\Modules\Product\Domain\Ingredient;
@@ -345,6 +346,16 @@ class ParapharmacySeeder extends Seeder
         $this->command->info('🧴 Seeding skin suitability...');
         $this->seedProductSkinSuitability($this->company);
         $this->command->info('✓ Skin suitability rows seeded');
+
+        // 5c. Seed product equivalents (both directions)
+        $this->command->info('🔁 Seeding product equivalents...');
+        $this->seedProductEquivalents($this->company);
+        $this->command->info('✓ Product equivalents seeded');
+
+        // 5d. Seed product complements (cross-category bundles)
+        $this->command->info('🔗 Seeding product complements...');
+        $this->seedProductComplements($this->company);
+        $this->command->info('✓ Product complements seeded');
 
         // 6. Seed partners (customers and suppliers)
         $this->command->info('👥 Seeding partners...');
@@ -1652,6 +1663,190 @@ class ParapharmacySeeder extends Seeder
         ];
 
         return $types[rand(0, count($types) - 1)];
+    }
+
+    /**
+     * Seed product equivalents (generic / brand-alt) in both directions.
+     *
+     * Groups products by (category, dosage_form) sub-group and links up to 3
+     * consecutive pairs within each sub-group as equivalents. Every forward
+     * row (A→B) is immediately followed by its reverse (B→A) with the same
+     * `equivalence_type`, satisfying the symmetry invariant.
+     *
+     * Safety guarantees enforced in PHP (the SQLite test DB does not run the
+     * PostgreSQL CHECK constraint):
+     *  - `product_id != equivalent_product_id` (self-ref guard)
+     *  - `unique(product_id, equivalent_product_id)` (dedup via `$seen`)
+     *
+     * Rows are chunked at 100 to stay under SQLite's 999-parameter limit
+     * (8 columns × 100 = 800).
+     */
+    protected function seedProductEquivalents(Company $company): void
+    {
+        $tenantId = $company->tenant_id;
+        $now = now();
+
+        // Pull product IDs ordered deterministically per (category, dosage_form) sub-group.
+        /** @var Collection<string, Collection<int, object{product_id: string}>> $groups */
+        $groups = DB::table('parapharmacy_product_metadata as m')
+            ->join('products as p', 'p.id', '=', 'm.product_id')
+            ->where('p.company_id', $company->id)
+            ->whereNotNull('m.dosage_form')
+            ->select('m.category', 'm.dosage_form', 'm.product_id')
+            ->orderBy('m.product_id')
+            ->get()
+            ->groupBy(fn (object $row): string => $row->category.'|'.$row->dosage_form);
+
+        /** @var list<string> $validTypes */
+        $validTypes = [EquivalenceType::Generic->value, EquivalenceType::BrandAlt->value];
+        $typeIndex = 0;
+
+        /** @var list<array{id: string, tenant_id: string, product_id: string, equivalent_product_id: string, equivalence_type: string, notes: null, created_at: mixed, updated_at: mixed}> $rows */
+        $rows = [];
+
+        /** @var array<string, true> $seen — deduplicate unordered pairs across groups */
+        $seen = [];
+
+        foreach ($groups as $productCollection) {
+            // Limit to 4 candidates per sub-group so the seeder stays lean.
+            /** @var list<string> $ids */
+            $ids = $productCollection->take(4)->pluck('product_id')->toArray();
+
+            if (count($ids) < 2) {
+                continue;
+            }
+
+            $type = $validTypes[$typeIndex % count($validTypes)];
+            $typeIndex++;
+
+            // Consecutive pairs: (0,1), (1,2), (2,3) — at most 3 pairs per sub-group.
+            for ($i = 0, $n = count($ids) - 1; $i < $n; $i++) {
+                $a = $ids[$i];
+                $b = $ids[$i + 1];
+
+                // Self-reference guard (impossible with distinct product IDs, but defensive).
+                if ($a === $b) {
+                    continue;
+                }
+
+                // Dedup across groups: store canonical (min, max) key.
+                $key = ($a < $b) ? $a.'|'.$b : $b.'|'.$a;
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+
+                // Forward direction A → B
+                $rows[] = [
+                    'id' => Str::uuid()->toString(),
+                    'tenant_id' => $tenantId,
+                    'product_id' => $a,
+                    'equivalent_product_id' => $b,
+                    'equivalence_type' => $type,
+                    'notes' => null,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+
+                // Reverse direction B → A (same type — symmetry)
+                $rows[] = [
+                    'id' => Str::uuid()->toString(),
+                    'tenant_id' => $tenantId,
+                    'product_id' => $b,
+                    'equivalent_product_id' => $a,
+                    'equivalence_type' => $type,
+                    'notes' => null,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+        }
+
+        // 8 columns × 100 rows = 800 params — safely under SQLite's 999 limit.
+        foreach (array_chunk($rows, 100) as $chunk) {
+            DB::table('product_equivalents')->insert($chunk);
+        }
+    }
+
+    /**
+     * Seed product complements as cross-category bundles.
+     *
+     * Resolves one representative product per parapharmacy category and creates
+     * directed complement links across pre-defined category pairs (e.g. supplement
+     * paired with cosmetic, herbal paired with supplement, etc.). Every row must
+     * link products from different categories — enforced by construction and
+     * verified by the test.
+     *
+     * Rows are chunked at 140 to stay under SQLite's 999-parameter limit
+     * (7 columns × 140 = 980).
+     */
+    protected function seedProductComplements(Company $company): void
+    {
+        $tenantId = $company->tenant_id;
+        $now = now();
+
+        // One representative product ID per category (lexicographic minimum UUID).
+        /** @var array<string, string> $firstByCategory — category value => product_id */
+        $firstByCategory = DB::table('parapharmacy_product_metadata as m')
+            ->join('products as p', 'p.id', '=', 'm.product_id')
+            ->where('p.company_id', $company->id)
+            ->select('m.category', DB::raw('MIN(m.product_id) as product_id'))
+            ->groupBy('m.category')
+            ->pluck('product_id', 'category')
+            ->all();
+
+        // Cross-category pairs that form clinically meaningful bundles:
+        // supplement + cosmetic (e.g. vitamin D + SPF sunscreen),
+        // herbal + supplement (e.g. echinacea + zinc),
+        // baby_care + supplement (e.g. baby lotion + vitamin D drops),
+        // sports_nutrition + supplement (e.g. creatine + magnesium),
+        // cosmetic + herbal (e.g. face cream + plant extract),
+        // medical_device + supplement (e.g. blood glucose meter + chromium).
+        /** @var list<array{0: string, 1: string}> $pairs */
+        $pairs = [
+            ['supplement', 'cosmetic'],
+            ['herbal', 'supplement'],
+            ['baby_care', 'supplement'],
+            ['sports_nutrition', 'supplement'],
+            ['cosmetic', 'herbal'],
+            ['medical_device', 'supplement'],
+        ];
+
+        /** @var list<array{id: string, tenant_id: string, product_id: string, complement_product_id: string, reason: null, created_at: mixed, updated_at: mixed}> $rows */
+        $rows = [];
+
+        /** @var array<string, true> $seen — dedup unordered pairs */
+        $seen = [];
+
+        foreach ($pairs as [$catA, $catB]) {
+            $a = $firstByCategory[$catA] ?? null;
+            $b = $firstByCategory[$catB] ?? null;
+
+            if ($a === null || $b === null || $a === $b) {
+                continue;
+            }
+
+            $key = ($a < $b) ? $a.'|'.$b : $b.'|'.$a;
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+
+            $rows[] = [
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $tenantId,
+                'product_id' => $a,
+                'complement_product_id' => $b,
+                'reason' => null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        // 7 columns × 140 rows = 980 params — safely under SQLite's 999 limit.
+        foreach (array_chunk($rows, 140) as $chunk) {
+            DB::table('product_complements')->insert($chunk);
+        }
     }
 
     /**
