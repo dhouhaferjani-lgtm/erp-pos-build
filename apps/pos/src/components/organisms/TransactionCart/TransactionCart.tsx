@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ShoppingCart, Trash2, RotateCcw } from 'lucide-react';
 import { CartLineItem } from '@/components/molecules/CartLineItem';
@@ -80,6 +80,12 @@ export function TransactionCart({
 }: TransactionCartProps) {
   const { t } = useTranslation('pos');
   const { format } = useCurrency();
+
+  // Cart-line accordion (mock pattern): collapsed by default so more items fit;
+  // tapping a line expands it (and collapses any previously-open line).
+  const [expandedLineId, setExpandedLineId] = useState<string | null>(null);
+  const toggleLine = (id: string) =>
+    setExpandedLineId((prev) => (prev === id ? null : id));
 
   const returnItems = items.filter((i) => (i.kind ?? 'sale') === 'return');
   const saleItems = items.filter((i) => (i.kind ?? 'sale') === 'sale');
@@ -209,6 +215,8 @@ export function TransactionCart({
                       onDiscount={onLineDiscount}
                       onEditModifiers={onEditModifiers}
                       onRemoveDiscount={onRemoveLineDiscount}
+                      expanded={expandedLineId === item.id}
+                      onToggleExpand={toggleLine}
                     />
                   ))}
                 </div>
@@ -228,6 +236,8 @@ export function TransactionCart({
                 onDiscount={onLineDiscount}
                 onEditModifiers={onEditModifiers}
                 onRemoveDiscount={onRemoveLineDiscount}
+                expanded={expandedLineId === item.id}
+                onToggleExpand={toggleLine}
               />
             ))}
           </div>
