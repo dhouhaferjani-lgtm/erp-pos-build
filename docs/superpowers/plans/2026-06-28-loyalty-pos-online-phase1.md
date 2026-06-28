@@ -37,10 +37,7 @@
 | `apps/api/app/Modules/Loyalty/Presentation/routes.php` | Add the route (edit) |
 | `apps/api/app/Modules/Loyalty/Application/Services/SaleEarningService.php` | Use the shared resolver (edit) |
 | `apps/pos/src/stores/productStore.ts` | Add `useHasModule(name)` (edit) |
-| `apps/pos/src/lib/loyaltyRateCache.ts` | Persist/load the earn rate offline (new) |
-| `apps/pos/src/stores/loyaltyStore.ts` | Hold the cached earn rate (new) |
-| `apps/pos/src/stores/authStore.ts` | Fetch+cache the rate in `refreshCompanyConfig` (edit) |
-| `apps/pos/src/lib/loyalty/loyaltyApi.ts` + `useLoyaltyBalance.ts` | API client + balance hook (new) |
+| `apps/pos/src/lib/loyalty/loyaltyApi.ts` + `useLoyaltyBalance.ts` | API client (returns `rate` too) + balance hook (new) |
 | `apps/pos/src/components/customers/CustomerLoyaltyBadge.tsx` | The chrome (new) |
 | `apps/pos/src/components/customers/CartCustomerControl.tsx` | Render the badge (edit) |
 | `apps/pos/src/locales/{en,fr}/pos.json` | `loyalty.*` labels (edit) |
@@ -209,8 +206,8 @@ git commit -m "refactor(loyalty): extract MemberResolver shared by earn + POS ba
 - Test: `apps/api/tests/Feature/Loyalty/PosLoyaltyBalanceTest.php`
 
 **Interfaces:**
-- Consumes: `MemberResolver` (Task 1); `LoyaltyProgramRepositoryInterface::findByTenantAndStatus($tenantId, ProgramStatus::Active): Collection`; `MemberEnrollmentService::enroll(string $memberId, string $programId, ?float $welcomeBonus = null): EnrollmentData`; `EnrollmentRepositoryInterface::findByMemberAndProgram(string $memberId, string $programId): ?Enrollment`; `LoyaltyMember` model (`::create`, `normalizePhone`).
-- Produces: `PosLoyaltyBalanceService::ensureAndGetBalance(string $tenantId, ?string $partnerId, ?string $contactId, ?string $phone, ?string $name): array{enrolled: bool, balance: string, tier: string|null}`; route `loyalty.pos.balance`.
+- Consumes: `MemberResolver` (Task 1); `LoyaltyProgramRepositoryInterface::findByTenantAndStatus($tenantId, ProgramStatus::Active): Collection`; `EarningRuleRepositoryInterface::findActiveByProgram($programId): Collection` (for the rate); `MemberEnrollmentService::enroll(string $memberId, string $programId, ?float $welcomeBonus = null): EnrollmentData`; `EnrollmentRepositoryInterface::findByMemberAndProgram(string $memberId, string $programId): ?Enrollment`; `LoyaltyMember` model (`::create`, `::withTrashed`, `normalizePhone`).
+- Produces: `PosLoyaltyBalanceService::ensureAndGetBalance(string $tenantId, ?string $partnerId, ?string $contactId, ?string $phone, ?string $name): array{enrolled: bool, balance: string, tier: string|null, rate: string|null}`; route `loyalty.pos.balance`. **The response carries `rate`** (active program's active Spend `reward_value`) so the POS estimate needs no separate `can:loyalty.view`-gated call (Codex S1).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -222,8 +219,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Loyalty;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Identity\Domain\UserCompanyMembership;
 use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
 use App\Modules\Loyalty\Domain\Entities\LoyaltyProgram;
 use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
@@ -257,14 +254,23 @@ final class PosLoyaltyBalanceTest extends TestCase
         Sanctum::actingAs($this->user);
     }
 
-    private function activeProgram(): LoyaltyProgram
+    private function activeProgram(string $rate = '2'): LoyaltyProgram
     {
-        return LoyaltyProgram::factory()->create(['tenant_id' => $this->tenant->id, 'status' => ProgramStatus::Active]);
+        $program = LoyaltyProgram::factory()->create(['tenant_id' => $this->tenant->id, 'status' => ProgramStatus::Active]);
+        \App\Modules\Loyalty\Domain\Entities\EarningRule::factory()->create([
+            'program_id' => $program->id,
+            'rule_type' => \App\Modules\Loyalty\Domain\Enums\EarningRuleType::Spend,
+            'reward_value' => $rate,
+            'is_active' => true,
+            'conditions' => [],
+        ]);
+
+        return $program;
     }
 
     public function test_creates_member_and_enrollment_for_new_customer_with_phone(): void
     {
-        $this->activeProgram();
+        $this->activeProgram('2');
         $partnerId = (string) Str::uuid();
 
         $res = $this->postJson('/api/v1/loyalty/pos/balance', [
@@ -273,7 +279,8 @@ final class PosLoyaltyBalanceTest extends TestCase
 
         $res->assertOk()
             ->assertJsonPath('data.enrolled', true)
-            ->assertJsonPath('data.balance', '0.000');
+            ->assertJsonPath('data.balance', '0.000')
+            ->assertJsonPath('data.rate', '2.0000'); // EarningRule.reward_value decimal:4 cast
         $this->assertDatabaseHas('loyalty_members', ['tenant_id' => $this->tenant->id, 'loyaltyable_id' => $partnerId]);
     }
 
@@ -340,18 +347,23 @@ declare(strict_types=1);
 namespace App\Modules\Loyalty\Application\Services;
 
 use App\Modules\Loyalty\Application\Resolvers\MemberResolver;
+use App\Modules\Loyalty\Domain\Entities\EarningRule;
 use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
+use App\Modules\Loyalty\Domain\Entities\LoyaltyProgram;
+use App\Modules\Loyalty\Domain\Enums\EarningRuleType;
 use App\Modules\Loyalty\Domain\Enums\MemberStatus;
 use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
+use App\Modules\Loyalty\Domain\Repositories\EarningRuleRepositoryInterface;
 use App\Modules\Loyalty\Domain\Repositories\EnrollmentRepositoryInterface;
 use App\Modules\Loyalty\Domain\Repositories\LoyaltyProgramRepositoryInterface;
 
 /**
  * Attach-time ensure-enroll + balance read. Online (normal request, CompanyContext
  * present). The POS supplies the phone (no cross-module Partner read). Idempotent:
- * find-first on member + enrollment so re-attach never duplicates.
+ * find-first on member + enrollment so re-attach never duplicates. Returns the active
+ * Spend `rate` so the POS estimate needs no separate (loyalty.view-gated) call.
  *
- * @phpstan-type BalanceResult array{enrolled: bool, balance: string, tier: string|null}
+ * @phpstan-type BalanceResult array{enrolled: bool, balance: string, tier: string|null, rate: string|null}
  */
 final readonly class PosLoyaltyBalanceService
 {
@@ -359,6 +371,7 @@ final readonly class PosLoyaltyBalanceService
         private MemberResolver $memberResolver,
         private LoyaltyProgramRepositoryInterface $programRepository,
         private EnrollmentRepositoryInterface $enrollmentRepository,
+        private EarningRuleRepositoryInterface $earningRuleRepository,
         private MemberEnrollmentService $enrollmentService,
     ) {}
 
@@ -370,12 +383,13 @@ final readonly class PosLoyaltyBalanceService
         ?string $phone,
         ?string $name,
     ): array {
-        $notEnrolled = ['enrolled' => false, 'balance' => '0.000', 'tier' => null];
-
         $program = $this->programRepository->findByTenantAndStatus($tenantId, ProgramStatus::Active)->first();
         if ($program === null) {
-            return $notEnrolled;
+            return ['enrolled' => false, 'balance' => '0.000', 'tier' => null, 'rate' => null];
         }
+
+        $rate = $this->activeSpendRate($program);
+        $notEnrolled = ['enrolled' => false, 'balance' => '0.000', 'tier' => null, 'rate' => $rate];
 
         $member = $this->memberResolver->resolveByContactOrPartner($tenantId, $contactId, $partnerId);
 
@@ -403,7 +417,16 @@ final readonly class PosLoyaltyBalanceService
             'enrolled' => true,
             'balance' => (string) $enrollment->current_balance,
             'tier' => $enrollment->currentTier?->name,
+            'rate' => $rate,
         ];
+    }
+
+    private function activeSpendRate(LoyaltyProgram $program): ?string
+    {
+        $spend = $this->earningRuleRepository->findActiveByProgram($program->id)
+            ->first(fn (EarningRule $r) => $r->rule_type === EarningRuleType::Spend);
+
+        return $spend !== null ? (string) $spend->reward_value : null;
     }
 
     private function findOrCreateMember(
@@ -416,9 +439,16 @@ final readonly class PosLoyaltyBalanceService
         $normalized = LoyaltyMember::normalizePhone($phone);
 
         // Dedupe by the unique key (tenant, phone): reuse an existing member if present.
-        $existing = LoyaltyMember::query()
+        // The unique index is non-partial and the model soft-deletes, so a soft-deleted
+        // row still occupies the index — query withTrashed and restore it instead of
+        // creating (which would 500 on the unique violation). (Codex N2)
+        $existing = LoyaltyMember::withTrashed()
             ->where('tenant_id', $tenantId)->where('phone', $normalized)->first();
         if ($existing !== null) {
+            if ($existing->trashed()) {
+                $existing->restore();
+            }
+
             return $existing;
         }
 
@@ -522,80 +552,40 @@ git commit -m "feat(loyalty): POST /loyalty/pos/balance — attach-time ensure-e
 
 ---
 
-## Task 3: POS `useHasModule` selector + earn-rate cache
+## Task 3: POS `useHasModule` selector
+
+> The rate now rides on the `POST /loyalty/pos/balance` response (Codex S1) — no separate
+> `loyalty.view`-gated fetch, no login-time rate cache. This task is just the module selector.
 
 **Files:**
 - Modify: `apps/pos/src/stores/productStore.ts` (add `useHasModule`)
-- Create: `apps/pos/src/stores/loyaltyStore.ts` (holds the rate)
-- Create: `apps/pos/src/lib/loyaltyRateCache.ts`
-- Modify: `apps/pos/src/stores/authStore.ts` (`refreshCompanyConfig` fetch+cache)
 - Test: `apps/pos/src/stores/__tests__/loyalty.test.ts`
 
 **Interfaces:**
-- Produces: `useHasModule(name: string): boolean`; `useLoyaltyStore` with `earnRate: string | null` + `setEarnRate(rate: string | null)`; `loadCachedLoyaltyRate(companyId)`, `persistLoyaltyRate(companyId, rate)`.
+- Produces: `useHasModule(name: string): boolean`.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
 import { describe, it, expect } from 'vitest'
 import { hasModule } from '../productStore'
-import { useLoyaltyStore } from '../loyaltyStore'
 
-describe('loyalty store + module gate', () => {
+describe('loyalty module gate', () => {
   it('hasModule detects Loyalty', () => {
     expect(hasModule({ all_enabled_modules: ['Loyalty'] } as never, 'Loyalty')).toBe(true)
     expect(hasModule({ all_enabled_modules: ['Inventory'] } as never, 'Loyalty')).toBe(false)
   })
-
-  it('loyalty store holds the earn rate', () => {
-    useLoyaltyStore.getState().setEarnRate('2')
-    expect(useLoyaltyStore.getState().earnRate).toBe('2')
-    useLoyaltyStore.getState().setEarnRate(null)
-    expect(useLoyaltyStore.getState().earnRate).toBeNull()
-  })
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+> `useHasModule` itself is a thin wrapper over the already-tested `hasModule`; it's exercised end-to-end in Task 4's component test (which mocks it). A dedicated render test for the hook would only test Zustand, so this task's automated check is the `hasModule` assertion above + the typecheck.
+
+- [ ] **Step 2: Run test to verify it passes (hasModule already exists)**
 
 Run: `cd apps/pos && pnpm vitest run src/stores/__tests__/loyalty.test.ts`
-Expected: FAIL — `loyaltyStore` not found.
+Expected: PASS (1) — this guards the gate semantics before Task 4 depends on them.
 
-- [ ] **Step 3: Create `loyaltyStore.ts`**
-
-```ts
-import { create } from 'zustand'
-
-interface LoyaltyState {
-  earnRate: string | null
-  setEarnRate: (rate: string | null) => void
-}
-
-export const useLoyaltyStore = create<LoyaltyState>((set) => ({
-  earnRate: null,
-  setEarnRate: (rate) => set({ earnRate: rate }),
-}))
-```
-
-- [ ] **Step 4: Create `loyaltyRateCache.ts` (mirror `companyConfigCache.ts`)**
-
-```ts
-import { getStoredValue, setStoredValue } from './storage' // confirm the real storage helpers used by companyConfigCache.ts
-
-const key = (companyId: string): string => `loyalty_rate:${companyId}`
-
-export async function persistLoyaltyRate(companyId: string, rate: string | null): Promise<void> {
-  await setStoredValue(key(companyId), rate)
-}
-
-export async function loadCachedLoyaltyRate(companyId: string): Promise<string | null> {
-  return (await getStoredValue<string | null>(key(companyId))) ?? null
-}
-```
-
-> Open `companyConfigCache.ts` and reuse its exact storage imports/helpers (`getStoredValue`/`setStoredValue` names may differ) — match them verbatim.
-
-- [ ] **Step 5: Add `useHasModule` to `productStore.ts` (near `hasModule`)**
+- [ ] **Step 3: Add `useHasModule` to `productStore.ts` (near `hasModule`)**
 
 ```ts
 export function useHasModule(moduleName: string): boolean {
@@ -603,38 +593,11 @@ export function useHasModule(moduleName: string): boolean {
 }
 ```
 
-- [ ] **Step 6: Fetch+cache the rate in `authStore.refreshCompanyConfig` (after config is cached)**
-
-After `persistCompanyConfig(...)` in `refreshCompanyConfig`, add:
-```ts
-const { hasModule } = await import('@/stores/productStore')
-if (companyId && hasModule(config, 'Loyalty')) {
-  try {
-    const res = await apiGet<{ rate: string | null }>('/loyalty/earn-rate')
-    const { useLoyaltyStore } = await import('@/stores/loyaltyStore')
-    useLoyaltyStore.getState().setEarnRate(res.rate ?? null)
-    const { persistLoyaltyRate } = await import('@/lib/loyaltyRateCache')
-    await persistLoyaltyRate(companyId, res.rate ?? null).catch(() => {})
-  } catch (error) {
-    console.debug('[auth] earn-rate fetch failed (loyalty estimate disabled)', error)
-  }
-}
-```
-
-> `apiGet` unwraps `response.data`, so `res` is `{ rate }` (the endpoint returns `{data:{rate}}`). Confirm `apiGet` is already imported in `authStore.ts`.
-
-- [ ] **Step 7: Run the test to verify it passes**
-
-Run: `cd apps/pos && pnpm vitest run src/stores/__tests__/loyalty.test.ts`
-Expected: PASS (2).
-
-- [ ] **Step 8: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add apps/pos/src/stores/loyaltyStore.ts apps/pos/src/lib/loyaltyRateCache.ts \
-        apps/pos/src/stores/productStore.ts apps/pos/src/stores/authStore.ts \
-        apps/pos/src/stores/__tests__/loyalty.test.ts
-git commit -m "feat(pos): useHasModule selector + earn-rate cache at login"
+git add apps/pos/src/stores/productStore.ts apps/pos/src/stores/__tests__/loyalty.test.ts
+git commit -m "feat(pos): useHasModule selector for module-gated chrome"
 ```
 
 ---
@@ -650,8 +613,8 @@ git commit -m "feat(pos): useHasModule selector + earn-rate cache at login"
 - Test: `apps/pos/src/components/customers/__tests__/CustomerLoyaltyBadge.test.tsx`
 
 **Interfaces:**
-- Consumes: `useHasModule` + `useLoyaltyStore.earnRate` (Task 3); `apiPost`; `cartStore.total()`; `AttachedCheckoutCustomer` (`id`, `phone`, `customer_sync_status`).
-- Produces: `fetchLoyaltyBalance(customer)` → `{enrolled, balance, tier}`; `<CustomerLoyaltyBadge customer={...} />`.
+- Consumes: `useHasModule` (Task 3); `apiPost`; `cartStore.total()`; `AttachedCheckoutCustomer` (`id`, `phone`, `customer_sync_status`).
+- Produces: `fetchLoyaltyBalance(customer)` → `{enrolled, balance, tier, rate}`; `<CustomerLoyaltyBadge customer={...} />`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -660,11 +623,10 @@ import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string, o?: Record<string, unknown>) => (o ? `${k}:${JSON.stringify(o)}` : k) }) }))
-vi.mock('@/stores/productStore', () => ({ useHasModule: () => true }))
-vi.mock('@/stores/loyaltyStore', () => ({ useLoyaltyStore: (sel: (s: { earnRate: string | null }) => unknown) => sel({ earnRate: '2' }) }))
 vi.mock('@/stores/cartStore', () => ({ useCartStore: (sel: (s: { total: () => number }) => unknown) => sel({ total: () => 12 }) }))
 
-const balance = { current: { enrolled: true, balance: '340.000', tier: 'Gold' } as { enrolled: boolean; balance: string; tier: string | null } | null }
+type Bal = { enrolled: boolean; balance: string; tier: string | null; rate: string | null } | null
+const balance: { current: Bal } = { current: { enrolled: true, balance: '340.000', tier: 'Gold', rate: '2' } }
 vi.mock('@/lib/loyalty/useLoyaltyBalance', () => ({ useLoyaltyBalance: () => balance.current }))
 
 import { CustomerLoyaltyBadge } from '../CustomerLoyaltyBadge'
@@ -672,14 +634,14 @@ const synced = { id: 'p1', phone: '+216200', customer_sync_status: 'synced' } as
 
 describe('CustomerLoyaltyBadge', () => {
   it('shows tier, balance and the floor(total*rate) estimate when enrolled', () => {
-    balance.current = { enrolled: true, balance: '340.000', tier: 'Gold' }
+    balance.current = { enrolled: true, balance: '340.000', tier: 'Gold', rate: '2' }
     render(<CustomerLoyaltyBadge customer={synced} />)
     expect(screen.getByTestId('loyalty-balance')).toHaveTextContent('340')
     expect(screen.getByTestId('loyalty-estimate')).toHaveTextContent('24') // floor(12 * 2)
   })
 
   it('shows the estimate + joins-on-purchase when not enrolled', () => {
-    balance.current = { enrolled: false, balance: '0.000', tier: null }
+    balance.current = { enrolled: false, balance: '0.000', tier: null, rate: '2' }
     render(<CustomerLoyaltyBadge customer={synced} />)
     expect(screen.queryByTestId('loyalty-balance')).toBeNull()
     expect(screen.getByTestId('loyalty-estimate')).toHaveTextContent('24')
@@ -708,6 +670,7 @@ export interface LoyaltyBalance {
   enrolled: boolean
   balance: string
   tier: string | null
+  rate: string | null
 }
 
 export async function fetchLoyaltyBalance(customer: AttachedCheckoutCustomer): Promise<LoyaltyBalance> {
@@ -750,25 +713,24 @@ export function useLoyaltyBalance(customer: AttachedCheckoutCustomer | null): Lo
 - [ ] **Step 5: Implement the component**
 
 ```tsx
+import type { ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/Badge'
 import { useCartStore } from '@/stores/cartStore'
-import { useLoyaltyStore } from '@/stores/loyaltyStore'
 import { useLoyaltyBalance } from '@/lib/loyalty/useLoyaltyBalance'
 import type { AttachedCheckoutCustomer } from '@/stores/paymentStore'
 
 interface Props { customer: AttachedCheckoutCustomer }
 
-export function CustomerLoyaltyBadge({ customer }: Props): JSX.Element | null {
+export function CustomerLoyaltyBadge({ customer }: Props): ReactElement | null {
   const { t } = useTranslation('pos')
   const balance = useLoyaltyBalance(customer)
-  const rate = useLoyaltyStore((s) => s.earnRate)
   const total = useCartStore((s) => s.total())
 
   if (balance === null) return null // module off / offline / unsynced / call failed
 
-  // Display-only estimate (never persisted): floor(cart TTC total × rate).
-  // eslint-disable-next-line precision/no-parsefloat-on-money -- display estimate, not persisted money
+  // Display-only estimate (never persisted): floor(cart TTC total × rate from the balance response).
+  const rate = balance.rate
   const estimate = rate !== null ? Math.floor(total * Number(rate)) : null
 
   return (
@@ -872,7 +834,7 @@ Expected: zero PHPStan errors; Pint clean.
 
 ```bash
 cd apps/pos && pnpm typecheck && \
-  pnpm exec eslint src/stores/loyaltyStore.ts src/lib/loyaltyRateCache.ts src/lib/loyalty src/components/customers/CustomerLoyaltyBadge.tsx && \
+  pnpm exec eslint src/stores/productStore.ts src/lib/loyalty src/components/customers/CustomerLoyaltyBadge.tsx && \
   pnpm vitest run src/stores/__tests__/loyalty.test.ts src/components/customers/__tests__/CustomerLoyaltyBadge.test.tsx
 ```
 Expected: PASS; 0 lint errors (pre-existing warnings unchanged).
@@ -896,10 +858,14 @@ git commit -m "docs(loyalty-pos): mark Phase 1 verified end-to-end"
 
 ## Self-review (completed by plan author)
 
-- **Spec coverage:** auto-enroll-at-attach + balance endpoint (T2), shared resolver (T1), module selector + rate cache (T3), gated chrome + estimate + i18n + unsynced/offline handling (T4), verify (T5). Earn basis TTC (T4 estimate + unchanged server path). Out-of-scope items (offline mirror, projection auto-enroll, redeem, QR, consent UI) intentionally have no task.
+- **Spec coverage:** auto-enroll-at-attach + balance endpoint returning the rate (T2), shared resolver (T1), module selector (T3), gated chrome + estimate + i18n + unsynced/offline handling (T4), verify (T5). Earn basis TTC (T4 estimate + unchanged server path). Out-of-scope items (offline mirror, projection auto-enroll, redeem, QR, consent UI) intentionally have no task.
 - **Placeholder scan:** none — every code step has full code; the few "confirm X against file Y" notes name an exact existing file to mirror.
-- **Type consistency:** `MemberResolver::resolveByContactOrPartner`, `PosLoyaltyBalanceService::ensureAndGetBalance` shape `{enrolled,balance,tier}`, `useHasModule`, `useLoyaltyStore.earnRate`, `fetchLoyaltyBalance`/`useLoyaltyBalance`, and the `{enrolled,balance,tier}` contract are consistent across backend and POS tasks.
+- **Type consistency:** `MemberResolver::resolveByContactOrPartner`, `PosLoyaltyBalanceService::ensureAndGetBalance` shape `{enrolled,balance,tier,rate}`, `useHasModule`, `fetchLoyaltyBalance`/`useLoyaltyBalance` returning `{enrolled,balance,tier,rate}`, and the component reading `balance.rate` are consistent across backend and POS tasks.
+
+## Codex/adversarial review fold-in (2026-06-28)
+
+Reviewed against real code (`docs/superpowers/audits/2026-06-28-loyalty-pos-plan-codex-review.md`). All T1/T2 signatures, columns, casts (`'0.000'`), the route group's inherited gating, and the POS facts were confirmed correct. Folded fixes: **B1** `UserCompanyMembership` is in `App\Modules\Company\Domain` (T2 test import); **S1** the earn-rate is now returned by `POST /loyalty/pos/balance` (already `pos.operate_terminal`-gated) instead of a separate `can:loyalty.view` call — removes T3's rate-cache subsystem entirely; **S2** component returns `ReactElement | null` (not `JSX.Element`); **N1** removed the apps/web-only eslint-disable; **N2** `findOrCreateMember` queries `withTrashed()` and restores, so a soft-deleted same-phone member can't 500 the create.
 
 ## Task ordering note
 
-T0 (deps) first. T1 before T2 (resolver). T3 before T4 (selector + rate). T2 and T3 are independent after T1. T5 last.
+T0 (deps) first. T1 before T2 (resolver). T3 (selector) before T4. T2 and T3 are independent after T1. T5 last.

@@ -115,9 +115,11 @@ SALE-SYNC (unchanged): fiscal SALE_RECEIPT ─▶ PosCoreReceiptProjection ─�
 
 **B. `useHasModule('Loyalty')`** — selector over `productStore.companyConfig` via `hasModule`.
 
-**C. Earn-rate cache** — in bootstrap/config-refresh, when `hasModule('Loyalty')`, fetch
-`/loyalty/earn-rate` and persist the rate (small store field + `companyConfigCache`-style persistence).
-Missing rate ⇒ no estimate.
+**C. Earn rate** — returned by `POST /loyalty/pos/balance` itself (it already loads the active
+program and is `pos.operate_terminal`-gated), so the POS needs no separate `can:loyalty.view` call and
+no login-time rate cache. The chrome only renders on attach, which is exactly when the rate is needed.
+Missing rate ⇒ no estimate. *(Revised from a login-time fetch of `/loyalty/earn-rate` after the
+adversarial review showed POS terminal users lack `loyalty.view`.)*
 
 **D. Loyalty chrome** (`Badge`-based component near the attached-customer/checkout area). On attach,
 when `hasModule('Loyalty')` AND the customer is **server-synced** (has a server id) AND has a phone:
