@@ -14,10 +14,14 @@ You are continuing the IziPOS "Caisse Parapharmacie" redesign. **Read the resume
 - P2 `NavRail` wired into `AppShell` (rail opposite cart; `/customers` placeholder route). P3 `CartLineItem` collapse/expand + `TransactionCart` accordion.
 - Access gating (owner): nav `Caisse-Shift`/`/reports/z` = managers only (`isManagerRole`); blind-count `expected_cash` leak in `EndOfDayPreviewModal` fixed (+regression tests). Read-only `SaleDetailModal` ("Voir") in `TodaySalesPanel`.
 
+## INTEGRATION STATE (2026-06-28)
+The redesign branch was **merged up to current `origin/dev` (133 commits, 0 conflicts)** and **local `dev` was fast-forwarded onto it** — local `dev` = `origin/dev` + ~21 redesign commits (NOT yet promoted to `origin/dev`). Continue in the existing worktree `apps/erp.pos-caisse` on `feat/pos-caisse-redesign` (it == local `dev`). Periodically `git checkout dev && git merge --ff-only feat/pos-caisse-redesign` (in the MAIN worktree) to keep local `dev` current; promote `origin/dev` only in a verified batch with the owner.
+
 ## PRE-FLIGHT (before coding)
-1. `git -C . log --oneline origin/dev..HEAD` and `git status` — confirm clean, on `feat/pos-caisse-redesign`.
-2. `git fetch origin dev` — have the **parapharmacy** and/or **loyalty** sessions merged to dev? If so, `git merge origin/dev` (or rebase) FIRST and resolve, since they may have landed `index.css`/types/sync changes. They own `ProductCard`/`ProductGrid`/product+customer data; **do not touch those** (coordination handoff: `docs/superpowers/kickoffs/2026-06-28-coordination-productcard-grid-handoff.md`).
-3. Confirm `apps/pos` builds: `pnpm typecheck` and the redesign tests `pnpm vitest run src/components/ui/__tests__ src/components/molecules/CartLineItem`.
+1. `git -C . status` + `git log --oneline -5` — confirm clean, on `feat/pos-caisse-redesign` at the merge commit.
+2. `git fetch origin dev` — if the parapharmacy/loyalty sessions pushed MORE since, `git merge origin/dev` again and resolve. They own `ProductCard`/`ProductGrid`/product+customer data; **do not touch those** (coordination handoff: `docs/superpowers/kickoffs/2026-06-28-coordination-productcard-grid-handoff.md`).
+3. Confirm `apps/pos` builds: `pnpm typecheck` and the redesign tests `pnpm vitest run src/components/ui/__tests__ src/components/molecules/CartLineItem src/components/__tests__/NavRail.test.tsx`.
+4. **First, address the deferred touch-ergonomics fixes** in STATUS.md (cart-line remove-vs-expand mis-tap; configurable confirm-on-delete) — owner flagged these from a live `pnpm tauri dev` pass.
 
 ## NEXT WORK (in order)
 1. **Header restyle (P2)** — `apps/pos/src/components/Header.tsx` (the `<header>` block, ~lines 540–644). Mock §5.0: 62px, `--surface` + bottom border + slight elevation; left = brand (font-display) + terminal `Badge` + online dot; grouped clusters separated by vertical `Divider`s (atom); operator `Avatar` + name + switch; lock/reports/settings as ghost `IconButton`s. **PRESERVE ALL LOGIC**: the B3 single `StatusPill` (connectivity+sync), the sync `IconButton`, `StockFreshness`, the shift chip → EndOfDay, and every handler/modal (EOD, Reports, X-report, CashDrawer, manager-PIN). Tokens only (Header is in ESLint `tokenMigratedGlobs`), i18n, both themes.
