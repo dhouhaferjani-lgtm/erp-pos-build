@@ -355,7 +355,7 @@ export function VoucherTenderModal({
         {phase === 'scan' ? (
           /* ── Scan / type phase ────────────────────────────────────────────── */
           <div className="space-y-3">
-            <label htmlFor="voucher-code-input" className="text-sm font-medium text-gray-700">
+            <label htmlFor="voucher-code-input" className="text-sm font-medium text-ink-muted">
               {t('voucherTender.codeLabel', { defaultValue: 'Voucher code' })}
             </label>
             <input
@@ -374,11 +374,11 @@ export function VoucherTenderModal({
               placeholder={t('voucherTender.codePlaceholder', { defaultValue: 'Scan or type code…' })}
               autoFocus
               data-testid="voucher-code-input"
-              className="w-full rounded-md border border-gray-300 p-2 font-mono text-sm uppercase focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded-md border border-border-strong p-2 font-mono text-sm uppercase focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
 
             {lookupError !== null && (
-              <p data-testid="voucher-lookup-error" className="text-sm text-red-600">
+              <p data-testid="voucher-lookup-error" className="text-sm text-danger-strong">
                 {lookupError}
               </p>
             )}
@@ -389,7 +389,7 @@ export function VoucherTenderModal({
                 onClick={handleClose}
                 disabled={isLooking}
                 data-testid="voucher-cancel"
-                className="flex-1 rounded-md border border-gray-300 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                className="flex-1 rounded-md border border-border-strong py-2 text-sm text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
               >
                 {t('voucherTender.cancel', { defaultValue: 'Cancel' })}
               </button>
@@ -398,7 +398,7 @@ export function VoucherTenderModal({
                 onClick={() => void handleLookup()}
                 disabled={isLooking || code.trim() === ''}
                 data-testid="voucher-lookup-button"
-                className="flex-1 rounded-md bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                className="flex-1 rounded-md bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover disabled:opacity-50"
               >
                 {isLooking
                   ? t('voucherTender.looking', { defaultValue: 'Looking up…' })
@@ -411,16 +411,16 @@ export function VoucherTenderModal({
           voucher !== null && (
             <div className="space-y-3" data-testid="voucher-found-section">
               {/* Voucher details */}
-              <div className="rounded-md border border-green-200 bg-green-50 p-3 space-y-1 text-sm">
+              <div className="rounded-md border border-success-subtle bg-success-surface p-3 space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">{t('voucherTender.balance', { defaultValue: 'Balance' })}</span>
-                  <span className="font-semibold text-green-800" data-testid="voucher-balance">
+                  <span className="text-ink-muted">{t('voucherTender.balance', { defaultValue: 'Balance' })}</span>
+                  <span className="font-semibold text-success-strong" data-testid="voucher-balance">
                     {voucher.current_balance} {currency}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">{t('voucherTender.redemptionMode', { defaultValue: 'Mode' })}</span>
-                  <span className="text-gray-800" data-testid="voucher-redemption-mode">
+                  <span className="text-ink-muted">{t('voucherTender.redemptionMode', { defaultValue: 'Mode' })}</span>
+                  <span className="text-ink" data-testid="voucher-redemption-mode">
                     {voucher.redemption_mode === 'Bearer'
                       ? t('voucherTender.modeBearer', { defaultValue: 'Bearer (any holder)' })
                       : t('voucherTender.modeCustomerBound', { defaultValue: 'Customer-bound' })}
@@ -428,8 +428,8 @@ export function VoucherTenderModal({
                 </div>
                 {voucher.expires_at !== null && (
                   <div className="flex justify-between">
-                    <span className="text-gray-500">{t('voucherTender.expires', { defaultValue: 'Expires' })}</span>
-                    <span className="text-gray-800" data-testid="voucher-expiry">
+                    <span className="text-ink-muted">{t('voucherTender.expires', { defaultValue: 'Expires' })}</span>
+                    <span className="text-ink" data-testid="voucher-expiry">
                       {new Date(voucher.expires_at).toLocaleDateString()}
                     </span>
                   </div>
@@ -438,7 +438,7 @@ export function VoucherTenderModal({
 
               {/* Amount input */}
               <div className="space-y-1">
-                <label htmlFor="voucher-amount-input" className="text-sm font-medium text-gray-700">
+                <label htmlFor="voucher-amount-input" className="text-sm font-medium text-ink-muted">
                   {t('voucherTender.amountLabel', { defaultValue: 'Amount to apply' })}
                 </label>
                 <div className="flex items-center gap-2">
@@ -453,14 +453,14 @@ export function VoucherTenderModal({
                     value={amountInput}
                     onChange={handleAmountChange}
                     data-testid="voucher-amount-input"
-                    className="w-full rounded-md border border-gray-300 p-2 text-right font-mono text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full rounded-md border border-border-strong p-2 text-right font-mono text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
                   />
-                  <span className="text-sm text-gray-500">{currency}</span>
+                  <span className="text-sm text-ink-muted">{currency}</span>
                 </div>
               </div>
 
               {lookupError !== null && (
-                <p data-testid="voucher-apply-error" className="text-sm text-red-600">
+                <p data-testid="voucher-apply-error" className="text-sm text-danger-strong">
                   {lookupError}
                 </p>
               )}
@@ -470,7 +470,7 @@ export function VoucherTenderModal({
                   type="button"
                   onClick={resetToScan}
                   data-testid="voucher-back"
-                  className="flex-1 rounded-md border border-gray-300 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  className="flex-1 rounded-md border border-border-strong py-2 text-sm text-ink-muted hover:bg-surface-sunken"
                 >
                   {t('voucherTender.back', { defaultValue: 'Back' })}
                 </button>
@@ -478,7 +478,7 @@ export function VoucherTenderModal({
                   type="button"
                   onClick={handleApply}
                   data-testid="voucher-apply-button"
-                  className="flex-1 rounded-md bg-green-600 py-2 text-sm font-semibold text-white hover:bg-green-700"
+                  className="flex-1 rounded-md bg-success py-2 text-sm font-semibold text-ink-inverse hover:bg-success-hover"
                 >
                   {t('voucherTender.apply', { defaultValue: 'Apply' })}
                 </button>

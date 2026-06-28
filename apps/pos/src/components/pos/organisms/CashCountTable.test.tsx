@@ -127,7 +127,7 @@ describe('CashCountTable', () => {
         variances={{ 'pm-cash': { amount: '0.0000', direction: 'balanced', status: 'balanced' } }}
       />,
     );
-    expect(screen.getByTestId('tender-variance-CASH').className).toContain('text-green');
+    expect(screen.getByTestId('tender-variance-CASH').className).toContain('text-success-strong');
 
     rerender(
       <CashCountTable
@@ -139,6 +139,6 @@ describe('CashCountTable', () => {
         variances={{ 'pm-cash': { amount: '50.0000', direction: 'over', status: 'critical' } }}
       />,
     );
-    expect(screen.getByTestId('tender-variance-CASH').className).toContain('text-red');
+    expect(screen.getByTestId('tender-variance-CASH').className).toContain('text-danger-strong');
   });
 });

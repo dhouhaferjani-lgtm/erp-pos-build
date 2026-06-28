@@ -126,9 +126,9 @@ export function ModifierSelectionModal({
     <Modal isOpen={isOpen} onClose={onClose} title={t('modifiers.customize')} size="full">
       <div className="flex flex-col">
         {/* Product header */}
-        <div className="mb-4 rounded-xl bg-gray-50 px-4 py-3">
-          <h3 className="text-lg font-bold text-gray-900">{product.name}</h3>
-          <p className="text-sm text-gray-700">
+        <div className="mb-4 rounded-xl bg-surface-sunken px-4 py-3">
+          <h3 className="text-lg font-bold text-ink">{product.name}</h3>
+          <p className="text-sm text-ink-muted">
             {t('modifiers.basePrice')}: {format(product.sale_price ?? '0')}
           </p>
         </div>
@@ -143,14 +143,14 @@ export function ModifierSelectionModal({
               <div key={group.id} className="mb-4">
                 {/* Group header */}
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-gray-900">
+                  <span className="text-sm font-semibold text-ink">
                     {group.name}
                     {group.is_required && !satisfied && (
-                      <span className="ml-1 text-red-500">*</span>
+                      <span className="ml-1 text-danger">*</span>
                     )}
                   </span>
                   {group.selection_type === 'multiple' && (
-                    <span className="text-xs text-gray-600">
+                    <span className="text-xs text-ink-muted">
                       {t('modifiers.selectUpTo', { max: group.max_selections })}
                       {' '}({selected.size}/{group.max_selections})
                     </span>
@@ -173,18 +173,18 @@ export function ModifierSelectionModal({
                           className={cn(
                             'flex items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-medium transition-all',
                             isSelected
-                              ? 'border-primary-500 bg-primary-50 text-primary-700'
-                              : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300',
+                              ? 'border-accent bg-accent-tint text-accent-strong'
+                              : 'border-border-subtle bg-surface-raised text-ink-muted hover:border-border-strong',
                           )}
                         >
                           {isSelected && (
-                            <Check className="h-3.5 w-3.5 text-primary-600" />
+                            <Check className="h-3.5 w-3.5 text-accent-strong" />
                           )}
                           {modifier.name}
                           {priceAdj !== 0 && (
                             <span className={cn(
                               'text-xs',
-                              priceAdj > 0 ? 'text-gray-600' : 'text-green-600',
+                              priceAdj > 0 ? 'text-ink-muted' : 'text-success-strong',
                             )}>
                               {priceAdj > 0 ? '+' : ''}{format(modifier.price_adjustment)}
                             </span>
@@ -199,22 +199,22 @@ export function ModifierSelectionModal({
         </div>
 
         {/* Footer: total + add to cart */}
-        <div className="mt-2 border-t border-gray-200 pt-2">
+        <div className="mt-2 border-t border-border-subtle pt-2">
           <div className="mb-3 flex items-center justify-between">
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-ink-muted">
               {t('modifiers.selected')}: {Object.values(selections).reduce((sum, s) => sum + s.size, 0)}
             </span>
-            <span className="text-xl font-bold text-gray-900">{format(totalPrice)}</span>
+            <span className="text-xl font-bold text-ink">{format(totalPrice)}</span>
           </div>
           <button
             onClick={handleConfirm}
             disabled={!allValid}
-            className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-action px-6 py-3 text-base font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t('modifiers.addToCart')}
           </button>
           {!allValid && (
-            <p className="mt-2 text-center text-sm text-red-500">
+            <p className="mt-2 text-center text-sm text-danger">
               {t('modifiers.required')}
             </p>
           )}

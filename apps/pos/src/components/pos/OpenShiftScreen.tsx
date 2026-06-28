@@ -38,18 +38,18 @@ export function OpenShiftScreen({ terminalName, isLoading, error, onOpenShift }:
   return (
     <div className="flex flex-1 items-center justify-center">
       <div className="w-full max-w-sm text-center">
-        <h2 className="text-xl font-bold text-gray-900">{t('shift.openTitle')}</h2>
-        <p className="mt-1 text-sm text-gray-500">
+        <h2 className="text-xl font-bold text-ink">{t('shift.openTitle')}</h2>
+        <p className="mt-1 text-sm text-ink-muted">
           {t('shift.terminal')} {terminalName ?? t('shift.unknown')}
         </p>
 
         <div className="mt-6">
-          <span className="block text-sm font-medium text-gray-700">
+          <span className="block text-sm font-medium text-ink-muted">
             {t('shift.openingCash')}
           </span>
           <div
             data-testid="opening-cash-display"
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-center text-2xl font-semibold tabular-nums"
+            className="mt-1 block w-full rounded-md border border-border-strong px-3 py-2 text-center text-2xl font-semibold tabular-nums"
           >
             {displayValue}
           </div>
@@ -64,7 +64,7 @@ export function OpenShiftScreen({ terminalName, isLoading, error, onOpenShift }:
         </div>
 
         {error && (
-          <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+          <div className="mt-4 rounded-md bg-danger-surface p-3 text-sm text-danger-strong">
             {error}
           </div>
         )}
@@ -73,7 +73,7 @@ export function OpenShiftScreen({ terminalName, isLoading, error, onOpenShift }:
           data-testid="open-shift-submit"
           onClick={handleSubmit}
           disabled={isLoading}
-          className="mt-4 w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="mt-4 w-full rounded-md bg-action px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-action-hover disabled:opacity-50"
         >
           {isLoading ? t('shift.openingLoading') : t('shift.openingButton')}
         </button>

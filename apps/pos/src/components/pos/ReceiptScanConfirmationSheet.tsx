@@ -62,21 +62,21 @@ export function ReceiptScanConfirmationSheet({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="rounded-md border border-border-strong bg-surface-raised px-4 py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken"
           >
             {t('receiptScan.cancel')}
           </button>
           <button
             type="button"
             onClick={onAccept}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            className="rounded-md bg-action px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-action-hover"
           >
             {t('receiptScan.startRefund')}
           </button>
         </div>
       }
     >
-      <p className="text-base text-gray-800">
+      <p className="text-base text-ink">
         {t('receiptScan.body', { date: formattedDate })}
       </p>
     </Modal>

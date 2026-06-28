@@ -233,17 +233,17 @@ export function RefundConfirmModal({
     >
       <div className="space-y-4 p-4" data-testid="refund-confirm-modal">
         {/* Refund amount summary */}
-        <div className="rounded-lg bg-gray-50 p-3 text-center" data-testid="refund-amount-summary">
-          <p className="text-sm text-gray-500">
+        <div className="rounded-lg bg-surface-sunken p-3 text-center" data-testid="refund-amount-summary">
+          <p className="text-sm text-ink-muted">
             {t('refundFlow.confirm.amountLabel', { defaultValue: 'Refund amount' })}
           </p>
-          <p className="text-2xl font-bold text-gray-900" data-testid="refund-amount-value">
+          <p className="text-2xl font-bold text-ink" data-testid="refund-amount-value">
             {refundAmount}
           </p>
           {/* Fixed-height destination row — space is reserved even when no
               destination label is supplied, so the modal height never jumps
               when the label appears (modals keep fixed dimensions). */}
-          <p className="mt-1 min-h-5 text-sm text-gray-600" data-testid="refund-destination-summary">
+          <p className="mt-1 min-h-5 text-sm text-ink-muted" data-testid="refund-destination-summary">
             {destinationLabel !== undefined ? (
               <>
                 {t('refundFlow.destination.label', { defaultValue: 'Refund destination' })}
@@ -259,7 +259,7 @@ export function RefundConfirmModal({
         {/* Manager PIN panel — shown when override is required */}
         {showManagerPin && (
           <div data-testid="manager-pin-override-section" className="space-y-2">
-            <h4 className="text-sm font-semibold text-amber-700">
+            <h4 className="text-sm font-semibold text-warning-strong">
               {pinSectionTitle()}
             </h4>
             <ManagerPinPanel
@@ -277,7 +277,7 @@ export function RefundConfirmModal({
         {authorizedManagerId !== null && !showManagerPin && (
           <p
             data-testid="refund-manager-authorized"
-            className="text-sm font-medium text-green-700"
+            className="text-sm font-medium text-success-strong"
           >
             {t('refundFlow.confirm.authorizedBy', {
               defaultValue: 'Authorized by manager',
@@ -289,7 +289,7 @@ export function RefundConfirmModal({
         {errorMessage !== null && !showManagerPin && (
           <p
             data-testid="refund-confirm-error"
-            className="rounded-md bg-red-50 p-3 text-sm text-red-700"
+            className="rounded-md bg-danger-surface p-3 text-sm text-danger-strong"
           >
             {errorMessage}
           </p>
@@ -303,7 +303,7 @@ export function RefundConfirmModal({
               onClick={handleClose}
               disabled={isSubmitting}
               data-testid="refund-confirm-cancel"
-              className="flex-1 rounded-md border border-gray-300 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              className="flex-1 rounded-md border border-border-strong py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
             >
               {t('refundFlow.confirm.cancel', { defaultValue: 'Cancel' })}
             </button>
@@ -312,7 +312,7 @@ export function RefundConfirmModal({
               onClick={() => void submitRefund(authorizedManagerId ?? undefined)}
               disabled={isSubmitting}
               data-testid="refund-confirm-submit"
-              className="flex-1 rounded-md bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              className="flex-1 rounded-md bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover disabled:opacity-50"
             >
               {isSubmitting
                 ? t('refundFlow.confirm.submitting', { defaultValue: 'Processing…' })

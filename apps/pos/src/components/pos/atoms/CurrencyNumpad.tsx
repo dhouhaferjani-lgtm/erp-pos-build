@@ -60,7 +60,7 @@ export function CurrencyNumpad({
 
   const buttonBase = cn(
     'flex h-14 w-full items-center justify-center rounded-md text-xl font-medium transition-colors',
-    'bg-gray-50 text-gray-900 hover:bg-gray-100 active:bg-gray-200',
+    'bg-surface-sunken text-ink hover:bg-surface-raised active:bg-surface-raised',
     disabled && 'cursor-not-allowed opacity-50',
   );
 

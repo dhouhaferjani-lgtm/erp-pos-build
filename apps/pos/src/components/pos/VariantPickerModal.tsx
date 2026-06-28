@@ -65,15 +65,15 @@ export function VariantPickerModal({
       <div className="flex flex-col">
         <div className="min-h-[120px] flex-1 overflow-y-auto">
           {isLoading ? (
-            <p className="py-6 text-center text-sm text-gray-600">
+            <p className="py-6 text-center text-sm text-ink-muted">
               {t('variants.loading')}
             </p>
           ) : status === 'offline-empty' ? (
-            <p className="py-6 text-center text-sm text-gray-600">
+            <p className="py-6 text-center text-sm text-ink-muted">
               {t('variants.offlineNoCache')}
             </p>
           ) : status === 'error' ? (
-            <p className="py-6 text-center text-sm text-red-600">
+            <p className="py-6 text-center text-sm text-danger-strong">
               {t('variants.loadError')}
             </p>
           ) : (
@@ -86,12 +86,12 @@ export function VariantPickerModal({
           )}
         </div>
 
-        <div className="mt-3 border-t border-gray-200 pt-3">
+        <div className="mt-3 border-t border-border-subtle pt-3">
           <button
             type="button"
             onClick={handleConfirm}
             disabled={selectedVariantId === null}
-            className="flex min-h-[48px] w-full items-center justify-center rounded-xl bg-primary-600 px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex min-h-[48px] w-full items-center justify-center rounded-xl bg-action px-6 py-3 text-base font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t('variants.addToCart')}
           </button>
