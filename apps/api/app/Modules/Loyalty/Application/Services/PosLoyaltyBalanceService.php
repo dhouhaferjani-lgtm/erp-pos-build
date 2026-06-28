@@ -112,14 +112,11 @@ final readonly class PosLoyaltyBalanceService
 
         [$type, $id] = $contactId !== null ? ['contact', $contactId] : ['partner', $partnerId];
 
-        // customer_id has an FK to partners (nullOnDelete) — not safe to set in the POS
-        // context where partner_id may be an external device identifier that lacks a
-        // partners row. The polymorphic columns (loyaltyable_type/loyaltyable_id) carry
-        // the reference without a FK constraint.
         return LoyaltyMember::create([
             'tenant_id' => $tenantId,
             'loyaltyable_type' => $type,
             'loyaltyable_id' => $id,
+            'customer_id' => $partnerId,
             'phone' => $normalized,
             'first_name' => $name,
             'status' => MemberStatus::Active,

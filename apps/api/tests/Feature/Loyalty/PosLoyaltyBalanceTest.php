@@ -10,6 +10,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
 use App\Modules\Loyalty\Domain\Entities\LoyaltyProgram;
 use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -57,7 +58,12 @@ final class PosLoyaltyBalanceTest extends TestCase
     public function test_creates_member_and_enrollment_for_new_customer_with_phone(): void
     {
         $this->activeProgram('2');
-        $partnerId = (string) Str::uuid();
+        $partner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => 'customer',
+        ]);
+        $partnerId = (string) $partner->id;
 
         $res = $this->postJson('/api/v1/loyalty/pos/balance', [
             'partner_id' => $partnerId, 'phone' => '+21620123456', 'name' => 'Amina',
@@ -67,19 +73,26 @@ final class PosLoyaltyBalanceTest extends TestCase
             ->assertJsonPath('data.enrolled', true)
             ->assertJsonPath('data.balance', '0.000')
             ->assertJsonPath('data.rate', '2.0000'); // EarningRule.reward_value decimal:4 cast
-        $this->assertDatabaseHas('loyalty_members', ['tenant_id' => $this->tenant->id, 'loyaltyable_id' => $partnerId]);
+        $this->assertDatabaseHas('loyalty_members', ['tenant_id' => $this->tenant->id, 'loyaltyable_id' => $partnerId, 'customer_id' => $partnerId]);
     }
 
     public function test_repeat_call_does_not_duplicate_member_or_enrollment(): void
     {
         $this->activeProgram();
-        $partnerId = (string) Str::uuid();
+        $partner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => 'customer',
+        ]);
+        $partnerId = (string) $partner->id;
         $payload = ['partner_id' => $partnerId, 'phone' => '+21620123456', 'name' => 'Amina'];
 
         $this->postJson('/api/v1/loyalty/pos/balance', $payload)->assertOk();
         $this->postJson('/api/v1/loyalty/pos/balance', $payload)->assertOk()->assertJsonPath('data.enrolled', true);
 
         self::assertSame(1, LoyaltyMember::where('tenant_id', $this->tenant->id)->where('loyaltyable_id', $partnerId)->count());
+        $memberId = LoyaltyMember::where('tenant_id', $this->tenant->id)->where('loyaltyable_id', $partnerId)->value('id');
+        self::assertSame(1, \App\Modules\Loyalty\Domain\Entities\Enrollment::where('member_id', $memberId)->count());
     }
 
     public function test_no_phone_returns_not_enrolled_and_creates_nothing(): void
