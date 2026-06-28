@@ -63,6 +63,13 @@ final class Brand extends Model
         return Str::slug($name);
     }
 
+    protected static function booted(): void
+    {
+        self::deleting(function (self $brand): void {
+            Product::where('brand_id', $brand->id)->update(['brand_source' => null]);
+        });
+    }
+
     /**
      * @return HasMany<Product, $this>
      */

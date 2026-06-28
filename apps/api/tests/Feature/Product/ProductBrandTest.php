@@ -126,7 +126,7 @@ class ProductBrandTest extends TestCase
             ->assertJsonPath('data.brand', null);
     }
 
-    public function test_deleting_brand_nullifies_product_brand_id(): void
+    public function test_deleting_brand_nullifies_product_brand_id_and_brand_source(): void
     {
         $product = Product::create([
             'tenant_id' => $this->tenant->id,
@@ -137,15 +137,14 @@ class ProductBrandTest extends TestCase
             'brand_source' => BrandSource::User->value,
         ]);
 
-        // Delete the brand — FK nullOnDelete should null brand_id on the DB row.
-        // brand_source is NOT part of the FK cascade; it records the provenance
-        // of how the brand was originally assigned (user vs enriched). Clearing
-        // brand_source when a brand is hard-deleted requires an observer/trigger,
-        // which is out of scope for Task 4 (C-2 only covers the API write path).
+        // Delete the brand — FK nullOnDelete nulls brand_id, and the Brand::deleting
+        // hook nulls brand_source BEFORE the cascade, preventing a contradictory state
+        // where brand_id IS NULL but brand_source still carries a stale provenance value.
         $this->brand->delete();
 
         $product->refresh();
         $this->assertNull($product->brand_id);
+        $this->assertNull($product->brand_source);
     }
 
     // ------------------------------------------------------------------
