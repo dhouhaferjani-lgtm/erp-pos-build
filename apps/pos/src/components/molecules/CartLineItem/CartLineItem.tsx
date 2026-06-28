@@ -1,6 +1,7 @@
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
-import { Tag, SlidersHorizontal, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Tag, SlidersHorizontal, Trash2, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { bcadd, bccomp } from '@/lib/decimal';
 import { ProductThumb } from '@/components/ui/ProductThumb';
 import { Stepper } from '@/components/ui/Stepper';
@@ -23,6 +24,13 @@ export interface CartLineItemProps {
    */
   expanded?: boolean;
   onToggleExpand?: (itemId: string) => void;
+  /**
+   * Mis-tap guard (owner feedback 2026-06-28). When `true` the remove control
+   * requires a second confirming tap before it calls `onRemove` (the first tap
+   * "arms" it; it auto-disarms after a few seconds or when the line collapses).
+   * Driven by `settingsStore.confirmLineDelete` so a store can opt out for speed.
+   */
+  confirmDelete?: boolean;
 }
 
 export function CartLineItem({
@@ -35,12 +43,45 @@ export function CartLineItem({
   onRemoveDiscount,
   expanded,
   onToggleExpand,
+  confirmDelete = false,
 }: CartLineItemProps) {
   const { t } = useTranslation();
   const { format, decimals } = useCurrency();
 
   const collapsible = typeof onToggleExpand === 'function';
   const isOpen = collapsible ? expanded === true : true;
+
+  // Mis-tap guard: when confirmDelete is on, the first delete tap "arms" the
+  // control and a second tap confirms. Disarm when the line collapses (the
+  // controls are no longer visible) and auto-disarm after a short window.
+  const [removeArmed, setRemoveArmed] = useState(false);
+
+  // Reset the guard when the line collapses (React "adjust state on prop change"
+  // pattern — done during render, not in an effect, to avoid cascading renders).
+  const [prevOpen, setPrevOpen] = useState(isOpen);
+  if (prevOpen !== isOpen) {
+    setPrevOpen(isOpen);
+    if (!isOpen && removeArmed) setRemoveArmed(false);
+  }
+
+  useEffect(() => {
+    if (!removeArmed) return;
+    const id = setTimeout(() => setRemoveArmed(false), 3000);
+    return () => clearTimeout(id);
+  }, [removeArmed]);
+
+  const handleRemoveClick = () => {
+    if (!confirmDelete) {
+      onRemove(item.id);
+      return;
+    }
+    if (!removeArmed) {
+      setRemoveArmed(true);
+      return;
+    }
+    setRemoveArmed(false);
+    onRemove(item.id);
+  };
 
   const hasDiscount = !!item.discount_amount && bccomp(item.discount_amount, '0') > 0;
   const originalTotal = hasDiscount
@@ -62,55 +103,61 @@ export function CartLineItem({
       data-expanded={isOpen}
       className="rounded-card border border-border-subtle bg-surface-raised transition-all duration-150"
     >
-      {/* Header row — tap toggles expand (when collapsible) */}
-      <div className="flex items-center gap-2 p-2">
-        <ProductThumb name={name} size={40} />
+      {/* Header row — the whole row is the expand/collapse target (when
+       * collapsible). The remove control lives in the expanded controls below
+       * so it can never be mis-tapped while reaching for the expand affordance
+       * (owner feedback 2026-06-28). */}
+      {(() => {
+        const headerInner = (
+          <>
+            <ProductThumb name={name} size={40} />
 
-        <button
-          type="button"
-          onClick={collapsible ? () => onToggleExpand?.(item.id) : undefined}
-          disabled={!collapsible}
-          aria-expanded={collapsible ? isOpen : undefined}
-          className="min-w-0 flex-1 text-left"
-        >
-          <div className="flex items-center gap-1.5">
-            <span className="truncate text-[15px] font-semibold text-ink">{name}</span>
-            <span className="shrink-0 rounded-pill bg-surface-sunken px-1.5 text-xs font-medium tabular-nums text-ink-muted">
-              ×{item.quantity}
-            </span>
-          </div>
-          {hasMods && (
-            <p className="truncate text-xs text-ink-muted">
-              {item.product.selectedModifiers?.map((m) => m.name).join(', ')}
-            </p>
-          )}
-        </button>
+            <div className="min-w-0 flex-1 text-left">
+              <div className="flex items-center gap-1.5">
+                <span className="truncate text-[15px] font-semibold text-ink">{name}</span>
+                <span className="shrink-0 rounded-pill bg-surface-sunken px-1.5 text-xs font-medium tabular-nums text-ink-muted">
+                  ×{item.quantity}
+                </span>
+              </div>
+              {hasMods && (
+                <p className="truncate text-xs text-ink-muted">
+                  {item.product.selectedModifiers?.map((m) => m.name).join(', ')}
+                </p>
+              )}
+            </div>
 
-        <div className="flex shrink-0 flex-col items-end leading-tight">
-          {originalTotal !== null && (
-            <span className="font-mono text-xs tabular-nums text-ink-faint line-through">
-              {format(originalTotal)}
-            </span>
-          )}
-          <span className="font-mono text-[15px] font-bold tabular-nums text-ink">
-            {format(item.line_total)}
-          </span>
-        </div>
+            <div className="flex shrink-0 flex-col items-end leading-tight">
+              {originalTotal !== null && (
+                <span className="font-mono text-xs tabular-nums text-ink-faint line-through">
+                  {format(originalTotal)}
+                </span>
+              )}
+              <span className="font-mono text-[15px] font-bold tabular-nums text-ink">
+                {format(item.line_total)}
+              </span>
+            </div>
 
-        <button
-          onClick={() => onRemove(item.id)}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-ctl text-ink-faint hover:bg-danger-surface hover:text-danger-strong"
-          aria-label={t('cart.removeItem')}
-        >
-          <X className="h-4 w-4" />
-        </button>
+            {collapsible && (
+              <span className="shrink-0 text-ink-faint" aria-hidden>
+                {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </span>
+            )}
+          </>
+        );
 
-        {collapsible && (
-          <span className="shrink-0 text-ink-faint" aria-hidden>
-            {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </span>
-        )}
-      </div>
+        return collapsible ? (
+          <button
+            type="button"
+            onClick={() => onToggleExpand?.(item.id)}
+            aria-expanded={isOpen}
+            className="flex min-h-[48px] w-full items-center gap-2 p-2 text-left"
+          >
+            {headerInner}
+          </button>
+        ) : (
+          <div className="flex min-h-[48px] items-center gap-2 p-2">{headerInner}</div>
+        );
+      })()}
 
       {/* Combo components (fixed bundle) */}
       {item.product.comboComponents && item.product.comboComponents.length > 0 && (
@@ -144,9 +191,24 @@ export function CartLineItem({
         </div>
       )}
 
-      {/* Expanded controls — qty stepper + discount + modifiers */}
+      {/* Expanded controls — remove (left, separated from positive actions) +
+       * qty stepper + discount + modifiers (right). */}
       {isOpen && (
         <div className="flex items-center gap-2 border-t border-border-subtle px-2 py-2">
+          <button
+            type="button"
+            onClick={handleRemoveClick}
+            className={
+              removeArmed
+                ? 'flex h-12 items-center gap-1.5 rounded-ctl bg-danger-strong px-3 text-sm font-semibold text-ink-inverse active:opacity-80'
+                : 'flex h-12 w-12 items-center justify-center rounded-ctl text-danger-strong hover:bg-danger-surface active:opacity-80'
+            }
+            aria-label={removeArmed ? t('cart.confirmRemoveItem') : t('cart.removeItem')}
+            title={removeArmed ? t('cart.confirmRemoveItem') : t('cart.removeItem')}
+          >
+            <Trash2 className="h-5 w-5" />
+            {removeArmed && <span>{t('cart.confirmRemoveItem')}</span>}
+          </button>
           <span className="font-mono text-xs tabular-nums text-ink-muted">
             {format(item.unit_price)}
           </span>

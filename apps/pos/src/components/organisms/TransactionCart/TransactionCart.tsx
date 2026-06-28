@@ -6,6 +6,7 @@ import { PaymentSummary } from '@/components/organisms/PaymentSummary';
 import { QuickActions } from '@/components/molecules/QuickActions';
 import { Button, IconButton } from '@/components/ui';
 import { useCurrency } from '@/lib/currency';
+import { useSettingsStore } from '@/stores/settingsStore';
 import type { CartItem } from '@/types/cart';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 
@@ -80,6 +81,7 @@ export function TransactionCart({
 }: TransactionCartProps) {
   const { t } = useTranslation('pos');
   const { format } = useCurrency();
+  const confirmLineDelete = useSettingsStore((s) => s.confirmLineDelete);
 
   // Cart-line accordion (mock pattern): collapsed by default so more items fit;
   // tapping a line expands it (and collapses any previously-open line).
@@ -217,6 +219,7 @@ export function TransactionCart({
                       onRemoveDiscount={onRemoveLineDiscount}
                       expanded={expandedLineId === item.id}
                       onToggleExpand={toggleLine}
+                      confirmDelete={confirmLineDelete}
                     />
                   ))}
                 </div>
@@ -238,6 +241,7 @@ export function TransactionCart({
                 onRemoveDiscount={onRemoveLineDiscount}
                 expanded={expandedLineId === item.id}
                 onToggleExpand={toggleLine}
+                confirmDelete={confirmLineDelete}
               />
             ))}
           </div>

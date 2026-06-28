@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield, RefreshCw, LogOut, Sun, Moon } from 'lucide-react';
+import { ArrowLeft, Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield, RefreshCw, LogOut, Sun, Moon, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { tokens } from '@/lib/designTokens';
 import { SegmentedControl } from '@/components/ui';
@@ -63,6 +63,8 @@ export function SettingsPage() {
   const setLanguage = useSettingsStore((s) => s.setLanguage);
   const setTouchMode = useSettingsStore((s) => s.setTouchMode);
   const setFullscreen = useSettingsStore((s) => s.setFullscreen);
+  const confirmLineDelete = useSettingsStore((s) => s.confirmLineDelete);
+  const setConfirmLineDelete = useSettingsStore((s) => s.setConfirmLineDelete);
   const inactivityTimeout = useSettingsStore((s) => s.inactivityTimeout);
   const lockAfterSale = useSettingsStore((s) => s.lockAfterSale);
   const setInactivityTimeout = useSettingsStore((s) => s.setInactivityTimeout);
@@ -410,6 +412,25 @@ export function SettingsPage() {
                 >
                   {t('settings.forceFullscreen')}
                 </button>
+              </div>
+
+              {/* Confirm before removing a cart line (mis-tap guard) */}
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-sunken px-3 py-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Trash2 className="h-4 w-4 shrink-0 text-ink-muted" />
+                  <div className="min-w-0">
+                    <span className="text-sm font-medium text-ink">
+                      {t('settings.confirmLineDelete')}
+                    </span>
+                    <p className="text-xs text-ink-faint">
+                      {t('settings.confirmLineDeleteDesc')}
+                    </p>
+                  </div>
+                </div>
+                <ToggleSwitch
+                  checked={confirmLineDelete}
+                  onChange={() => setConfirmLineDelete(!confirmLineDelete)}
+                />
               </div>
             </div>
           </section>

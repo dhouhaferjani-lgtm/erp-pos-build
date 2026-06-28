@@ -72,6 +72,98 @@ describe('CartLineItem collapse/expand', () => {
     expect(getByLabelText('cart.incrementQty')).toBeTruthy();
   });
 
+  it('hides the remove control while collapsed (prevents mis-tap next to expand)', () => {
+    const onRemove = vi.fn();
+    const { queryByLabelText } = render(
+      <CartLineItem
+        item={baseItem}
+        onUpdateQuantity={vi.fn()}
+        onRemove={onRemove}
+        expanded={false}
+        onToggleExpand={vi.fn()}
+      />,
+    );
+    expect(queryByLabelText('cart.removeItem')).toBeNull();
+  });
+
+  it('removes immediately from the expanded controls when confirmDelete is off', () => {
+    const onRemove = vi.fn();
+    const { getByLabelText } = render(
+      <CartLineItem
+        item={baseItem}
+        onUpdateQuantity={vi.fn()}
+        onRemove={onRemove}
+        expanded
+        onToggleExpand={vi.fn()}
+      />,
+    );
+    fireEvent.click(getByLabelText('cart.removeItem'));
+    expect(onRemove).toHaveBeenCalledWith('line-1');
+  });
+
+  it('arms on first tap and removes only on the second when confirmDelete is on', () => {
+    const onRemove = vi.fn();
+    const { getByLabelText, queryByLabelText } = render(
+      <CartLineItem
+        item={baseItem}
+        onUpdateQuantity={vi.fn()}
+        onRemove={onRemove}
+        expanded
+        onToggleExpand={vi.fn()}
+        confirmDelete
+      />,
+    );
+    // First tap arms the guard — does NOT remove.
+    fireEvent.click(getByLabelText('cart.removeItem'));
+    expect(onRemove).not.toHaveBeenCalled();
+    // Control now asks for confirmation.
+    const confirmBtn = getByLabelText('cart.confirmRemoveItem');
+    expect(confirmBtn).toBeTruthy();
+    // Second tap confirms.
+    fireEvent.click(confirmBtn);
+    expect(onRemove).toHaveBeenCalledWith('line-1');
+    expect(queryByLabelText('cart.confirmRemoveItem')).toBeNull();
+  });
+
+  it('disarms the delete guard when the line collapses', () => {
+    const onRemove = vi.fn();
+    const { getByLabelText, queryByLabelText, rerender } = render(
+      <CartLineItem
+        item={baseItem}
+        onUpdateQuantity={vi.fn()}
+        onRemove={onRemove}
+        expanded
+        onToggleExpand={vi.fn()}
+        confirmDelete
+      />,
+    );
+    fireEvent.click(getByLabelText('cart.removeItem')); // arm
+    expect(queryByLabelText('cart.confirmRemoveItem')).toBeTruthy();
+    // Collapse, then re-expand: the guard must be reset (not still armed).
+    rerender(
+      <CartLineItem
+        item={baseItem}
+        onUpdateQuantity={vi.fn()}
+        onRemove={onRemove}
+        expanded={false}
+        onToggleExpand={vi.fn()}
+        confirmDelete
+      />,
+    );
+    rerender(
+      <CartLineItem
+        item={baseItem}
+        onUpdateQuantity={vi.fn()}
+        onRemove={onRemove}
+        expanded
+        onToggleExpand={vi.fn()}
+        confirmDelete
+      />,
+    );
+    expect(queryByLabelText('cart.confirmRemoveItem')).toBeNull();
+    expect(getByLabelText('cart.removeItem')).toBeTruthy();
+  });
+
   it('decrement at qty 1 removes the line', () => {
     const onRemove = vi.fn();
     const { getByLabelText } = render(

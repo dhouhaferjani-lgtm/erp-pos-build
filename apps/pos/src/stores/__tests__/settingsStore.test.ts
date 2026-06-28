@@ -63,6 +63,17 @@ describe('settingsStore', () => {
     expect(useSettingsStore.getState().cartPosition).toBe('end');
   });
 
+  describe('confirmLineDelete (cart mis-tap guard)', () => {
+    it('defaults to true (confirmation on)', () => {
+      expect(useSettingsStore.getState().confirmLineDelete).toBe(true);
+    });
+
+    it('allows turning the confirmation off', () => {
+      useSettingsStore.getState().setConfirmLineDelete(false);
+      expect(useSettingsStore.getState().confirmLineDelete).toBe(false);
+    });
+  });
+
   describe('appearance (theme knobs)', () => {
     it('defaults to light / orange / rounded / comfortable', () => {
       const s = useSettingsStore.getState();

@@ -22,6 +22,8 @@ interface SettingsState {
   inactivityTimeout: number;
   /** Lock the screen after completing a sale. */
   lockAfterSale: boolean;
+  /** Require a second confirming tap before a cart line is removed (mis-tap guard). */
+  confirmLineDelete: boolean;
   /** Appearance — light/dark theme. */
   theme: ThemeMode;
   /** Appearance — UX accent colour (not brand-locked). */
@@ -37,6 +39,7 @@ interface SettingsState {
   setCartPosition: (position: 'start' | 'end') => void;
   setInactivityTimeout: (seconds: number) => void;
   setLockAfterSale: (enabled: boolean) => void;
+  setConfirmLineDelete: (enabled: boolean) => void;
   setTheme: (theme: ThemeMode) => void;
   setAccent: (accent: AccentName) => void;
   setCorner: (corner: CornerStyle) => void;
@@ -58,6 +61,7 @@ export const useSettingsStore = create<SettingsState>()(
       cartPosition: 'start',
       inactivityTimeout: 300,
       lockAfterSale: false,
+      confirmLineDelete: true,
       theme: DEFAULT_THEME_SETTINGS.theme,
       accent: DEFAULT_THEME_SETTINGS.accent,
       corner: DEFAULT_THEME_SETTINGS.corner,
@@ -90,6 +94,10 @@ export const useSettingsStore = create<SettingsState>()(
 
       setLockAfterSale: (enabled: boolean) => {
         set({ lockAfterSale: enabled });
+      },
+
+      setConfirmLineDelete: (enabled: boolean) => {
+        set({ confirmLineDelete: enabled });
       },
 
       setTheme: (theme: ThemeMode) => {

@@ -12,6 +12,11 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+vi.mock('@/stores/settingsStore', () => ({
+  useSettingsStore: (selector: (s: { confirmLineDelete: boolean }) => unknown) =>
+    selector({ confirmLineDelete: true }),
+}));
+
 vi.mock('@/components/molecules/CartLineItem', () => ({
   CartLineItem: ({ item }: { item: { id: string; product: { name: string } } }) => (
     <div data-testid={`cart-line-${item.id}`}>{item.product.name}</div>
