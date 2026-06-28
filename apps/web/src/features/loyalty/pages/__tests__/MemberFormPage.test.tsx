@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemberFormPage } from '../MemberFormPage'
 
 const mockNavigate = vi.fn()
@@ -19,7 +19,10 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   return {
     ...actual,
     useQuery: () => ({ data: undefined, isLoading: false }),
-    useMutation: () => ({ mutate: vi.fn(), isPending: false }),
+    useMutation: () => ({
+      mutate: (_vars: unknown, opts?: { onSuccess?: (d: unknown) => void }) => opts?.onSuccess?.({ id: 'mem-1' }),
+      isPending: false,
+    }),
     useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   }
 })
@@ -54,5 +57,16 @@ describe('MemberFormPage', () => {
     render(<MemberFormPage />)
     expect(screen.getByText('common:cancel')).toBeInTheDocument()
     expect(screen.getAllByText('loyalty:members.create').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('navigates to the new member detail page after create (not the list)', async () => {
+    mockParams = {}
+    const { container } = render(<MemberFormPage />)
+    // Fill the required phone field (first textbox) so RHF validation passes
+    fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: '+33600000000' } })
+    fireEvent.submit(container.querySelector('form')!)
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/pos/loyalty/members/mem-1')
+    })
   })
 })

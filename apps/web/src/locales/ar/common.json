@@ -45,7 +45,10 @@
     "retry": "إعادة المحاولة",
     "import": "استيراد",
     "export": "تصدير",
-    "actions": "إجراءات"
+    "actions": "إجراءات",
+    "saveAndNew": "حفظ وإنشاء جديد",
+    "saveAndClose": "حفظ وإغلاق",
+    "openSaveMenu": "خيارات حفظ إضافية"
   },
   "common": {
     "create": "إنشاء",
@@ -352,7 +355,11 @@
   "descending": "تنازلي",
   "confirmation": {
     "delete": "هل أنت متأكد من حذف هذا العنصر؟",
-    "unsavedChanges": "لديك تغييرات غير محفوظة. هل أنت متأكد من المغادرة؟"
+    "unsavedChanges": "لديك تغييرات غير محفوظة. هل أنت متأكد من المغادرة؟",
+    "unsavedChangesTitle": "تغييرات غير محفوظة",
+    "unsavedChangesBody": "لديك تغييرات غير محفوظة. المغادرة دون حفظ؟",
+    "leaveWithoutSaving": "مغادرة",
+    "stayOnPage": "البقاء"
   },
   "loading": "جارٍ التحميل…",
   "noData": "لا توجد بيانات",

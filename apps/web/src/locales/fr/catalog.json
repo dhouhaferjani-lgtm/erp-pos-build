@@ -52,6 +52,7 @@
       "namePlaceholder": "Nom du produit"
     },
     "actions": {
+      "save": "Enregistrer",
       "saveDraft": "Enregistrer le brouillon",
       "publish": "Publier le produit"
     }

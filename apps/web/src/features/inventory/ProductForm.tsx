@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useAfterSaveNavigation } from '@/hooks/useAfterSaveNavigation'
+import { useUnsavedChangesGuard, confirmDiscard } from '@/hooks/useUnsavedChangesGuard'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -28,6 +30,7 @@ import { usePermissions } from '../../hooks/usePermissions'
 import { inventoryProductsInvalidationPredicate } from './_invalidation'
 import { buildProductPayload } from './productPayload'
 import { LoyaltyPointsDisplay } from './LoyaltyPointsDisplay'
+import { SaveSplitButton } from '@/components/molecules/SaveSplitButton'
 import { BarcodeHero } from '../products/editor/components/BarcodeHero'
 import { SectionNav } from '../products/editor/components/SectionNav'
 import type { EditorSection } from '../products/editor/components/SectionNav'
@@ -130,6 +133,10 @@ export function ProductForm() {
   const { t } = useTranslation()
   const { id = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const nav = useAfterSaveNavigation({
+    recordPath: (rid) => `/inventory/products/${rid}`,
+    listPath: '/inventory/products',
+  })
   const queryClient = useQueryClient()
   const isEditing = id.length > 0
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
@@ -161,7 +168,7 @@ export function ProductForm() {
     reset,
     watch,
     setValue,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isDirty },
   } = useForm<ProductFormData>({
     defaultValues: {
       name: '',
@@ -204,6 +211,8 @@ export function ProductForm() {
       opening_unit_cost: '',
     },
   })
+
+  useUnsavedChangesGuard({ isDirty })
 
   const handleProductData = useCallback((data: SuggestedProduct) => {
     suggestedProductRef.current = data
@@ -462,7 +471,7 @@ export function ProductForm() {
     }
 
     try {
-      await createMutation.mutateAsync(data)
+      const created = await createMutation.mutateAsync(data)
 
       if (lookupState === 'not_found' && enrichmentOptIn) {
         const payload: Parameters<typeof submissionMutation.mutate>[0] = {
@@ -481,7 +490,7 @@ export function ProductForm() {
         toast.success(t('inventory:barcodeLookup.toastProductSaved'))
       }
 
-      void navigate('/inventory/products')
+      nav.goToRecord(created.id)
     } catch {
       // Error handling via react-query
     }
@@ -619,7 +628,11 @@ export function ProductForm() {
           <div className="flex shrink-0 items-center gap-2.5">
             <button
               type="button"
-              onClick={() => { void navigate('/inventory/products') }}
+              onClick={() => {
+                if (!isDirty || confirmDiscard(t('common:confirmation.unsavedChangesBody'))) {
+                  void navigate('/inventory/products')
+                }
+              }}
               className={cn(
                 'rounded-[var(--radius-button)] px-2.5 py-2 text-sm font-semibold',
                 textColors.tertiary,
@@ -628,26 +641,12 @@ export function ProductForm() {
             >
               {t('actions.cancel')}
             </button>
-            <button
-              type="submit"
+            <SaveSplitButton
+              primaryLabel={t('catalog:editor.actions.save')}
               form="product-editor-form"
-              disabled={isSubmitting}
-              className={cn(
-                'whitespace-nowrap rounded-[var(--radius-button)] border border-primary-100 bg-white px-4 py-2 text-sm font-semibold',
-                textColors.brand,
-                'hover:bg-primary-50 disabled:opacity-50',
-              )}
-            >
-              {t('catalog:editor.actions.saveDraft')}
-            </button>
-            <button
-              type="submit"
-              form="product-editor-form"
-              disabled={isSubmitting}
-              className="whitespace-nowrap rounded-[var(--radius-button)] bg-secondary-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_1px_2px_rgba(138,58,13,.3)] hover:bg-secondary-600 disabled:opacity-50"
-            >
-              {isSubmitting ? t('status.saving') : t('catalog:editor.actions.publish')}
-            </button>
+              isPending={isSubmitting}
+              onPrimarySave={() => { /* form= handles submission */ }}
+            />
           </div>
         </div>
       </div>
