@@ -2,8 +2,8 @@
 
 > Status: **DESIGN for review** (build after sign-off). Date: 2026-06-28.
 > Branch: `feat/parapharmacy-merchandising` (worktree `../erp.parapharm`, off `origin/dev` @ `74c1c8668`).
-> Supersedes the merchandising scope in `2026-06-28-parapharmacy-merchandising-handover.md` (which lives on `feat/pos-caisse-redesign`). Pairs with the POS redesign (`2026-06-27-pos-caisse-redesign-design.md`, phases P5/P8/P9).
-> Owner decisions captured 2026-06-28 (see §0.1).
+> Supersedes the merchandising scope in `2026-06-28-parapharmacy-merchandising-handover.md` (on `feat/pos-caisse-redesign`). Pairs with the POS redesign (`2026-06-27-pos-caisse-redesign-design.md`, phases P5/P8/P9).
+> **Adversarial reviews folded** (both grounded in file:line, both no-go-until-amended → now amended): `docs/superpowers/audits/2026-06-28-parapharmacy-merchandising-design-codex-review.md` and `…-claude-review.md`. See §0.4.
 
 ---
 
@@ -24,108 +24,122 @@ Build five parapharmacy merchandising capabilities **full-stack with seeded real
 - **Routines:** seeded demo only; authoring editor later.
 - **Merchandising UX:** built **gateable** behind a `Merchandising` module key, **granted by default (bundled)** to parapharmacy now as a USP, structured so it can be unbundled to a paid extra via config later.
 
-### 0.2 Three scope tiers (explicit)
-- **Built now:** universal `Brand` core + full parapharmacy merchandising **data** (skin type, suitability, equivalents, complements, routines) + POS **UX**, with `Merchandising` gated-but-bundled; enrichment-accept fix for brand.
+### 0.2 Three scope tiers
+- **Built now:** universal `Brand` core + full parapharmacy merchandising **data** + POS **UX**, with `Merchandising` gated-but-bundled; enrichment-accept fix for brand.
 - **Designed-as-seam now, built later:** platform-canonical brand registry (`canonical_brand_id`), enrichment field-mapping contract.
-- **Out of scope (separate design):** automotive brand/manufacturer (catalogue-search/OE — TecDoc/AAIA), a `Manufacturer` entity, routine authoring UI, brand logo upload.
+- **Out of scope (separate design):** automotive brand/manufacturer (catalogue-search/OE — TecDoc/AAIA); a `Manufacturer` entity; routine authoring UI; brand logo upload; brand `external_refs`/GS1; equivalence `confidence` score; a dedicated `merchandising.*` permission set.
 
-### 0.3 Why first-class Brand (research summary)
-Industry standard (GS1, Akeneo, SAP, Odoo, Auto Care/TecDoc) keeps three concepts separate: **Brand** (commercial label / spec-controlling brand owner), **Manufacturer** (producer; 1→N brands), **Supplier/Vendor** (tenant-local sourcing relationship — stays on the purchasing side). Brand is a slow-changing **catalog reference entity**, enrichable and shareable. Recommended storage = typed columns for a universal core + (later, per vertical) a gated extension table + a thin JSONB tail for sparse external IDs — never global EAV, never automotive columns on a shared retail table. In our codebase, brand is currently **enrichment-only and silently dropped** (`EnrichmentReviewService` sets `'brand' => null` on accept), so first-classing it also fixes a real latent gap.
+### 0.3 Why first-class Brand (research)
+Industry standard (GS1, Akeneo, SAP, Odoo, Auto Care/TecDoc) separates **Brand** (commercial label / spec-controlling brand owner), **Manufacturer** (producer; 1→N brands), **Supplier/Vendor** (tenant-local sourcing — stays on purchasing). Brand is a slow-changing **catalog reference entity**. Storage = typed columns for a universal core + (later, per vertical) a gated extension table — never global EAV, never automotive columns on a shared retail table. In our codebase, brand is currently **enrichment-only and silently dropped** (`EnrichmentReviewService` sets `'brand' => null` on accept), so first-classing it also fixes a real latent gap.
+
+### 0.4 Review resolution (what changed after the adversarial pass)
+- **[Codex CRITICAL] v58 cursor reset** → migrations now delete the relevant `sync_metadata` cursors so upgraded devices backfill (§4). v57 is the precedent.
+- **[Both CRITICAL/IMPORTANT] `brands` tenant scoping** → `brands` carries `tenant_id`; `unique(tenant_id, slug)`; brand is tenant-scoped (shared across companies in a tenant) — `company_id` deliberately omitted, justified (§1.3).
+- **[Both IMPORTANT] suitability relation** → `Product::skinSuitabilities()` is `HasMany(ProductSkinSuitability)`, not `belongsToMany` (no `skin_types` table). DTO plucks the enum (§1.5).
+- **[Both IMPORTANT] brand wire-shape + read paths** → nested `BrandData` on `ProductData`; **all** `ProductController` read paths load `brand`; POS payload is **flat** `brand_id`+`brand_name`; device flattens on upsert (§1.8, §4).
+- **[Both IMPORTANT] enrichment upsert** → `firstOrCreate` on a single normalized `(tenant_id, slug)` key inside a transaction; provenance stored as `products.brand_source` enum (§1.9).
+- **[Both IMPORTANT] device entitlement** → it's the cached `/company/config` `all_enabled_modules` read by `hasModule()` — **no new device sync**. Spec rewritten to state the verified mechanism; the only backend check is that `/company/config` projects `default_modules` (§2).
+- **[Both IMPORTANT] SmartPrompts enum** → migrate both consumers, delete the old enum, derive validation from the shared enum (no hardcoded `in:` string), regenerate types (§1.1).
+- **[Both IMPORTANT] `pullCustomers` wiring** → extend `SyncResult` (`customersPulled`/`customersFailed`); IDs from `authStore`; explicit catch-log-degrade-continue failure policy; never advance the cursor on failure (§4).
+- **[Claude IMPORTANT] migration version collision** → split product-v58 / customer-v59, idempotent ALTERs, **coordinate version numbers with the loyalty session before pushing** (§4).
+- **[Claude IMPORTANT] rule-12 exception** → the data-unconditional/experience-gated split is recorded as a **conscious rule-12 exception requiring owner sign-off** (§2).
+- **[Claude IMPORTANT] equivalents symmetry / self-reference** → seeder writes identical `equivalence_type` both directions + a symmetry test; DB CHECK prevents self-reference (§1.7).
+- **[Nits] dropped** `external_refs`, `confidence`, `merchandising.*` permission set (§0.2 out-of-scope).
 
 ---
 
-## 1. Backend data model (`apps/api`, hexagonal). All tables tenant-scoped (db-per-tenant), under `database/migrations/tenant/`.
+## 1. Backend data model (`apps/api`, hexagonal). All tenant-scoped tables under `database/migrations/tenant/`.
 
 ### 1.1 Canonical SkinType enum (shared)
-- New `app/Shared/Domain/Enums/SkinType.php` — string-backed, `#[TypeScript]`, 5 cases: `Normal=normal, Oily=oily, Dry=dry, Combination=combination, Sensitive=sensitive`. Add a `label()` helper (French labels for POS/editor).
-- **Migrate** `App\Modules\SmartPrompts\Domain\Enums\SkinType` consumers (`RecommendationRequestData`, `SmartPromptsController`) to the shared enum, then delete the SmartPrompts copy. This is a same-values move (no behavior change) — keep it in its own commit so it's reviewable in isolation.
-- Rationale: product suitability and AI recommendations are the same concept; one enum prevents drift. Shared placement avoids the cross-module-import rule violation (Partner + Product + SmartPrompts all reference `Shared`).
+- New `app/Shared/Domain/Enums/SkinType.php` — string-backed, `#[TypeScript]`, 5 cases (`Normal=normal, Oily=oily, Dry=dry, Combination=combination, Sensitive=sensitive`) + `label()` (French).
+- **Migrate every consumer in the same commit:** `SmartPrompts\Application\DTOs\RecommendationRequestData` and `SmartPrompts\Presentation\Controllers\SmartPromptsController` import the shared enum; delete `SmartPrompts\Domain\Enums\SkinType`. Replace the controller's hardcoded `in:normal,oily,dry,combination,sensitive` with a rule **derived from the enum** (`Rule::enum(SkinType::class)` / `SkinType::cases()`) so values can't drift. Regenerate TS types.
+- Legal under rule 6 (shared kernel; Partner + Product + SmartPrompts reference `Shared`, no cross-module model import). Risk is low (identical values, 2 consumers, never persisted to a column) but keep it an isolated commit and run SmartPrompts tests by path.
 
 ### 1.2 EquivalenceType enum
 - New `app/Modules/Product/Domain/Enums/EquivalenceType.php` — string-backed, `#[TypeScript]`: `Generic=generic, Therapeutic=therapeutic, BrandAlt=brand_alt`.
 
 ### 1.3 Brand entity (universal core) — `Product` module
-**Home:** the `Product` module (it owns the `Product` aggregate, the per-vertical metadata tables, and the enrichment pipeline). Our `Catalog` module is structural-only (variants/modifiers/recipes), so Brand does **not** go there.
+**Home:** the `Product` module (owns the `Product` aggregate, per-vertical metadata, enrichment pipeline). `Catalog` is structural-only — Brand does not go there.
 
-- Model `app/Modules/Product/Domain/Brand.php`.
+**Scoping decision:** brands are **tenant-scoped reference data shared across all companies/branches in a tenant** (a brand like "Avène" is identical for every branch). So `brands` carries `tenant_id` but **deliberately omits `company_id`** (unlike `products`), justified by brand being cross-company reference data. The enrichment upsert and slug uniqueness use `tenant_id`.
+
+- Model `app/Modules/Product/Domain/Brand.php` (fillable incl. `tenant_id`; tenant scope helper mirroring `Product`).
 - Migration `*_create_brands_table.php`:
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | uuid PK | |
+| `tenant_id` | uuid, indexed | convention; scope key |
 | `name` | string | |
-| `slug` | string, unique per tenant | derived from name; used by ecommerce/SEO |
-| `canonical_brand_id` | uuid **nullable** | **reserved seam** → future platform-global brand registry. No FK constraint yet. |
-| `logo_media_id` | uuid nullable | reserved for the in-flight MediaAsset unification; **no upload UI now** |
+| `slug` | string | `unique(['tenant_id','slug'])` |
+| `canonical_brand_id` | uuid **nullable** | **reserved seam** → future platform-global registry. No FK yet. |
+| `logo_media_id` | uuid nullable | reserved for MediaAsset unification; **no upload UI now** |
 | `website_url` | string nullable | ecommerce-ready |
 | `country_of_origin` | string(2) nullable | ISO-3166-1 alpha-2 |
-| `description` | text nullable | enrichment/marketing |
+| `description` | text nullable | |
 | `is_active` | boolean, default true | |
-| `external_refs` | jsonb nullable | GS1 GLN etc.; DTO-backed (`BrandExternalRefsData`) |
-| `created_at`/`updated_at` | timestamps | |
+| timestamps | | |
 
-- `products.brand_id` — uuid **nullable**, FK → `brands.id` (`nullOnDelete`), indexed. **Available to ALL verticals** (not vertical-gated), eager-loaded always. Migration `*_add_brand_id_to_products.php`.
+- `products.brand_id` — uuid **nullable**, FK → `brands.id` (`nullOnDelete`), indexed `['tenant_id','brand_id']`. **All verticals**, not gated, eager-loaded on every product read path (§1.8). Migration `*_add_brand_id_and_source_to_products.php` (also adds `brand_source`, §1.9).
 - `Brand::products()` HasMany; `Product::brand()` BelongsTo.
-- **Automotive note (out of scope):** the universal `Brand` does not constrain a future automotive model. A product may later carry both `brand_id` *and* automotive catalogue refs. `AutomotiveProductMetadata.supplier_brand` / `BrandQualityTier` stay untouched.
+- **Automotive (out of scope):** universal `Brand` does not constrain a future automotive model; `AutomotiveProductMetadata.supplier_brand`/`BrandQualityTier` untouched.
 
 ### 1.4 Customer skin type (`Partner` module)
-- Migration `*_add_skin_type_to_partners.php`: nullable `skin_type` (string, cast to `Shared\Domain\Enums\SkinType`) + nullable `skin_advice_note` (text) on `partners`.
-- Add to `Partner` model `$fillable`/`$casts` + the customer DTO.
-- Approach: direct columns (a `partner_parapharmacy_metadata` table is overkill for two fields).
+- Migration `*_add_skin_type_to_partners.php`: nullable `skin_type` (cast to `Shared\Domain\Enums\SkinType`) + nullable `skin_advice_note` (text). Add to `Partner` `$fillable`/`$casts` + customer DTO. Direct columns (a metadata table is overkill for two fields).
 
-### 1.5 Product skin suitability (pivot)
-- Migration `*_create_product_skin_suitability_table.php`: `id (uuid)`, `product_id (uuid, FK cascade)`, `skin_type (string, SkinType cast)`, timestamps. Unique (`product_id`, `skin_type`).
-- `Product::suitableSkinTypes()` — modeled on the `product_ingredient` `belongsToMany withPivot` precedent (`app/Modules/Product/Domain/ParapharmacyProductMetadata.php`). (A product suits N skin types; pivot, no strength column for now.)
+### 1.5 Product skin suitability (HasMany — not belongsToMany)
+- Migration `*_create_product_skin_suitability_table.php`: `id (uuid)`, `tenant_id (uuid)`, `product_id (uuid, FK cascade)`, `skin_type (string, SkinType cast)`, timestamps. Unique (`product_id`, `skin_type`).
+- New `ProductSkinSuitability` model. `Product::skinSuitabilities(): HasMany`. The DTO exposes `suitable_skin_types: SkinType[]` by **plucking** `skin_type` (cast to the shared enum). **Not** `belongsToMany withPivot` — there is no `skin_types` lookup table; do not cite `product_ingredient` here (that pivot belongs to a real `ingredients` table). `withPivot` applies only to the real product↔product/routine relations below.
 
 ### 1.6 Routines
-- Migration `*_create_routines_table.php`: `id, name, description nullable, period nullable (string), is_active`, timestamps.
-- Pivot `*_create_product_routine_table.php`: `id, routine_id (FK cascade), product_id (FK cascade), step_order (int), step_label (string, e.g. "Nettoyage"/"Hydratation"/"Protection")`, timestamps. Unique (`routine_id`, `product_id`).
-- `Routine` model; `Product::routines()` belongsToMany withPivot(`step_order`, `step_label`)->orderByPivot(`step_order`).
+- Migration `*_create_routines_table.php`: `id, tenant_id, name, description nullable, period nullable, is_active`, timestamps.
+- Pivot `*_create_product_routine_table.php`: `id, routine_id (FK cascade), product_id (FK cascade), step_order (int), step_label (string)`, timestamps. Unique (`routine_id`, `product_id`).
+- `Routine` model; `Product::routines()` `belongsToMany` withPivot(`step_order`,`step_label`)->orderByPivot(`step_order`). (Anchors on `products.id` — do not copy the `ParapharmacyProductMetadata::ingredients` parentKey wiring verbatim.)
 
 ### 1.7 Equivalents / Complements (directional pivots)
-- Migration `*_create_product_equivalents_table.php`: `id, product_id (FK cascade), equivalent_product_id (FK cascade), equivalence_type (string, EquivalenceType cast), confidence (decimal nullable), notes (text nullable)`, timestamps. Unique (`product_id`, `equivalent_product_id`).
-- Migration `*_create_product_complements_table.php`: `id, product_id (FK cascade), complement_product_id (FK cascade), reason (string nullable)`, timestamps. Unique (`product_id`, `complement_product_id`).
-- `Product::equivalentProducts()` / `Product::complementProducts()` — `belongsToMany withPivot`.
-- **Store directionally; seed BOTH directions for equivalents** (A↔B) so resolution is symmetric without a union query. Complements are directional by intent (cleanser → moisturiser → SPF) but seed reciprocally where the bundle is mutual.
+- Migration `*_create_product_equivalents_table.php`: `id, tenant_id, product_id (FK cascade), equivalent_product_id (FK cascade), equivalence_type (string, EquivalenceType cast), notes (text nullable)`, timestamps. Unique (`product_id`, `equivalent_product_id`). **DB CHECK `product_id <> equivalent_product_id`** (no self-equivalence).
+- Migration `*_create_product_complements_table.php`: `id, tenant_id, product_id (FK cascade), complement_product_id (FK cascade), reason (string nullable)`, timestamps. Unique (`product_id`, `complement_product_id`). **CHECK `product_id <> complement_product_id`**.
+- `Product::equivalentProducts()` / `complementProducts()` — `belongsToMany withPivot`.
+- **Store directionally; seed BOTH directions for equivalents** (A↔B) with **identical `equivalence_type`** so symmetric resolution needs no union query; a test asserts symmetry (same type both ways). (`confidence` dropped — §0.2.)
 
 ### 1.8 DTOs & API
-- Extend `ParapharmacyProductMetadataData` (`#[TypeScript]`) with: `suitable_skin_types: SkinType[]`, `equivalent_product_ids: string[]`, `complement_product_ids: string[]`, `routine_refs: {routine_id, step_order, step_label}[]`.
-- New `BrandData` (`#[TypeScript]`): `id, name, slug, country_of_origin, website_url, is_active` (logo/canonical/external omitted from the POS-facing payload for now).
-- `ProductData` gains `brand: BrandData|null` (resolved, all verticals).
-- The `/products` payload includes `brand` and the parapharmacy merchandising arrays **resolved as ID arrays** (the device holds all products → resolves IDs locally; avoids N+1 on device).
+- Extend `ParapharmacyProductMetadataData` (`#[TypeScript]`): `suitable_skin_types: SkinType[]`, `equivalent_product_ids: string[]`, `complement_product_ids: string[]`, `routine_refs: {routine_id, step_order, step_label}[]`.
+- New `BrandData` (`#[TypeScript]`): `id, name, slug, country_of_origin, website_url, is_active`.
+- `ProductData` gains `public ?BrandData $brand`; `ProductData::fromModel()` maps it **only when the relation is loaded**.
+- **Eager-load brand on EVERY read path** (it's universal, not vertical-gated): `ProductController::index` (`$with`), `show`, `store`, `update` response loads. Add tests for list/detail/create/update response shape.
+- **POS wire shape (decided): flat.** The POS product payload exposes flat `brand_id` + `brand_name` (denormalized). If the POS shares `ProductData` (nested `brand`), the device flattens nested→flat in `upsertProducts` mapping (§4). The plan verifies which endpoint the POS catalog pull uses and pins the flatten point.
 - Customer DTO (`/pos/customers/sync`) gains `skin_type`, `skin_advice_note`.
-- Run `php artisan typescript:transform` → `packages/shared/types/generated.d.ts` after DTO changes.
+- Run `php artisan typescript:transform` → `packages/shared/types/generated.d.ts` after DTO/enum changes.
 
-### 1.9 Enrichment-accept fix (brand convergence)
-- Today `EnrichmentReviewService` (~line 80) does `'brand' => null` — platform-enriched brand is silently dropped.
-- Change: on accept, if `enriched_data.brand` is present and `brand` is an accepted field, **upsert a `Brand`** (match by tenant-normalized name; create if absent) and set `product.brand_id`. User-edited brand and platform-enriched brand thus converge on one `Brand` entity (handover §5 requirement).
-- Record field provenance (user vs enriched) when accepting. Keep this in its own commit/task.
+### 1.9 Enrichment-accept fix (brand convergence + provenance)
+- Today `EnrichmentReviewService` (~line 80) does `'brand' => null` — enriched brand is dropped.
+- Change: on accept, if `enriched_data.brand` is present and accepted, **`firstOrCreate` a `Brand`** keyed on a **single normalized identity**: normalize the name → derive the slug deterministically from that same normalized form → match/insert on `unique(tenant_id, slug)`, **inside a DB transaction with retry-on-unique-violation** (handles concurrent accepts). Set `product.brand_id`.
+- **Provenance:** add `products.brand_source` (enum `BrandSource: user|enriched`, nullable) set to `enriched` here and `user` on manual edit. This is the concrete store the "field provenance" deliverable refers to (no separate provenance map).
 
 ---
 
 ## 2. Merchandising module gating (productization seam)
 
 **Separate data from experience.**
-- **Data is unconditional:** `brand_id`, `skin_type`, suitability/equivalents/complements/routines are plain columns/pivots, always present, always in the `/products` + customer payloads. Cheap, harmless if unused, reusable by other verticals.
-- **The POS merchandising *experience* is gated behind a new `Merchandising` module key:** the Filtres drawer, skin-advice bar, and Équivalents/Compléments/Routine upsell tabs.
-  - Add `Merchandising` to the `ModuleName` enum (backend) + `config/verticals.php`.
-  - **Grant by default** in `parapharmacy.default_modules` (bundled USP now).
-  - Both-layer gating (rule 12): backend `module:Merchandising` on any dedicated merchandising endpoints; FE `hasModule('Merchandising')` / `RequirePermission` to render the surfaces. The offline POS reads its synced module entitlements (confirm the device entitlement-sync mechanism in the plan).
-  - **Unbundling later = config-only:** move `Merchandising` from `default_modules` to a priced `compatible_extras` entry; no re-architecting.
-- Permissions: add a `merchandising.*` permission set via the project's permission scaffolding; register in `RolesAndPermissionsSeeder`.
+- **Data is unconditional** (`brand_id`, `skin_type`, suitability/equivalents/complements/routines) — plain columns/pivots, always in `/products` + `/pos/customers/sync`. **Recorded rule-12 exception (needs owner sign-off):** vertical-shaped fields ship in shared payloads ungated on the server because the data is cross-vertical, cheap, and harmless; **only the experience is gated.** If any endpoint later becomes merchandising-only, gate it `module:Merchandising`.
+- **The POS merchandising *experience* is gated by a `Merchandising` module key** (Filtres drawer, skin-advice bar, Équivalents/Compléments/Routine tabs).
+  - Add `case Merchandising` to `app/Enums/ModuleName.php` **and** to `parapharmacy.default_modules` in `config/verticals.php` **in the same commit** — `ModuleNameTest` enforces the enum value-set *equals* the union of config names bidirectionally; either alone fails CI.
+  - **Entitlement mechanism (verified, no new device plumbing):** FE `hasModule(config, 'Merchandising')` reads `companyConfig.all_enabled_modules` (`productStore.ts`), fetched from `/company/config` (`productApi.ts`), persisted via `companyConfigCache`, and refreshed each `runFullSync` (`authStore.refreshCompanyConfig`). Backend `CompanyConfigService` builds `all_enabled_modules` by merging `default_modules` + enabled extras (`CompanyConfigController`). **Only backend check needed:** a test that `/company/config` includes `Merchandising` for parapharmacy tenants. Offline correctness depends on the cache being hydrated after the module is added — covered by an offline-startup hydration test.
+  - **Unbundling later = config-only:** move `Merchandising` from `default_modules` to a priced `compatible_extras` entry.
+- **No dedicated `merchandising.*` permission set now** — module gating suffices for a bundled USP; add per-action perms only if/when unbundled.
 
 ---
 
 ## 3. Seeding (`database/seeders/ParapharmacySeeder.php`, 1495L)
 
-`ParapharmacySeeder` is self-provisioning (creates its own tenant with `Vertical::Parapharmacy`; not called from `DatabaseSeeder`/`DemoTenantSeeder`). Add methods mirroring `assignIngredients()` (`DB::table()->insert()` batches, ~line 717) and call them from `run()`. Subclasses `DemoPharmacySeeder` (Tunisia) and `ParapharmacyMultiBranchSeeder` inherit via the base. Scale honored via `PARAPHARMACY_SEEDER_SCALE` (default 1).
+Self-provisioning (creates its own tenant with `Vertical::Parapharmacy`; not called from `DatabaseSeeder`/`DemoTenantSeeder`). Add methods mirroring `assignIngredients()` (`DB::table()->insert()` batches, ~line 717), called from `run()`; subclasses `DemoPharmacySeeder` (Tunisia) / `ParapharmacyMultiBranchSeeder` inherit. Scale via `PARAPHARMACY_SEEDER_SCALE` (default 1). All inserts carry `tenant_id`.
 
-- `seedBrands()` — ~15–25 **real** French parapharmacy brands (Avène, La Roche-Posay, Bioderma, Vichy, CeraVe, Nuxe, Mustela, Caudalie, Uriage, Ducray, A-Derma, Klorane, Bioten, SVR, Embryolisse…). Create `brands` rows; assign `products.brand_id` by category heuristics.
-- `seedProductSkinSuitability()` — map each cosmetic/visage product to 1–3 skin types by category heuristics.
-- `seedProductEquivalents()` — within a category+form, link a few products as `generic`/`brand_alt` equivalents (**both directions**).
+- `seedBrands()` — ~15–25 **real** French parapharmacy brands (Avène, La Roche-Posay, Bioderma, Vichy, CeraVe, Nuxe, Mustela, Caudalie, Uriage, Ducray, A-Derma, Klorane, SVR, Embryolisse…). Create `brands` rows (tenant-scoped, deterministic slug); assign `products.brand_id` by category heuristics; set `brand_source = 'user'`.
+- `seedProductSkinSuitability()` — map cosmetic/visage products to 1–3 skin types by heuristics.
+- `seedProductEquivalents()` — within category+form, link `generic`/`brand_alt` equivalents, **both directions, identical type**.
 - `seedProductComplements()` — cross-category bundles (cleanser → moisturiser → SPF).
-- `seedRoutines()` + membership — a handful of named routines (visage peau sèche/grasse/sensible) with 3–4 ordered steps.
-- `seedCustomerSkinTypes()` — assign skin types to the demo individual partners.
+- `seedRoutines()` + membership — named routines (visage peau sèche/grasse/sensible) with 3–4 ordered steps.
+- `seedCustomerSkinTypes()` — assign skin types to demo individual partners.
 
 Verify row counts after `db:seed --class=ParapharmacySeeder`.
 
@@ -133,65 +147,61 @@ Verify row counts after `db:seed --class=ParapharmacySeeder`.
 
 ## 4. POS offline sync (device SQLite, `apps/pos`)
 
-Current max device migration = **v57**; new migration = **v58**.
+Current max device migration = **v57**. **Split into two versions; coordinate the exact numbers with the loyalty session (`feat/loyalty-earn-per-product`) before either pushes** — both touch device migrations and must not both claim the same version.
 
-- **Products (universal brand as first-class columns, NOT in the parapharmacy JSON):**
-  - v58 `ALTER TABLE products ADD COLUMN brand_id TEXT; ALTER TABLE products ADD COLUMN brand_name TEXT;` (denormalized name for offline filter/display) + `ALTER TABLE products ADD COLUMN parapharmacy_metadata TEXT` (JSON: `{suitable_skin_types[], equivalent_product_ids[], complement_product_ids[], routine_refs[]}`). New parapharmacy fields ride inside the JSON with no further migrations.
-  - `productRepository.ts`: extend `ProductRow` (+`brand_id`, `brand_name`, `parapharmacy_metadata`), `rowToProduct` (JSON.parse metadata), `upsertProducts` (INSERT columns + `ON CONFLICT … SET`, bump `PARAMS_PER_ROW` 15→18), `POSProduct` (`brand_id?`, `brand_name?`, `parapharmacy_metadata?: ParapharmacyMeta`). Server `/products` includes these.
-- **Customers:**
-  - v58 `ALTER TABLE customers ADD COLUMN skin_type TEXT; ALTER TABLE customers ADD COLUMN skin_advice_note TEXT;`. Update `CustomerMirrorRow` (`customerTypes.ts`) + `customerRepository.upsertCustomer`. `/pos/customers/sync` includes the fields.
-  - **Wire `pullCustomers()` into `runFullSync()`** — it is currently orphaned (defined in `customerSyncService.ts`, zero production callers; absent from `syncService.ts`). Without this, customer skin-type never syncs. **Parapharmacy owns this wiring; the loyalty session (`feat/loyalty-earn-per-product`) rebases onto it.** Keep the change minimal/isolated so the rebase is trivial.
-- Equivalents/complements/routines resolve **locally**: the product JSON holds related product IDs; the POS looks them up in its in-memory product store. No extra device tables.
+- **v58 — products.** `ALTER TABLE products ADD COLUMN brand_id TEXT; ADD COLUMN brand_name TEXT; ADD COLUMN parapharmacy_metadata TEXT` (JSON `{suitable_skin_types[], equivalent_product_ids[], complement_product_ids[], routine_refs[]}`). **Then `DELETE FROM sync_metadata WHERE key = 'products_last_sync'`** so the next pull is a full re-fetch and backfills the new columns (v57 precedent at `migrations.ts:1773-1788`). Guard ALTERs idempotently.
+- **v59 — customers.** `ALTER TABLE customers ADD COLUMN skin_type TEXT; ADD COLUMN skin_advice_note TEXT`. **Then clear the customer cursor** (`customers.updated_since` / whatever key `pullCustomers` persists) so customers re-baseline.
+- **Migration tests** mirroring `migrations.v57.test.ts`: seed the cursor, apply v58/v59, assert the cursor is gone and the next pull omits `updated_since`.
+- **`productRepository.ts`:** extend `ProductRow` (+`brand_id`,`brand_name`,`parapharmacy_metadata`), `rowToProduct` (JSON.parse metadata; flatten nested `brand`→`brand_id`/`brand_name` if the payload is nested), `POSProduct` (`brand_id?`,`brand_name?`,`parapharmacy_metadata?`). **`upsertProducts` is a full rewrite, not a constant bump:** the `INSERT (…columns…)`, the `($n … , datetime('now'), datetime('now'))` value template, the `ON CONFLICT … SET`, and `PARAMS_PER_ROW` (15→18) all change together.
+- **Customers + `pullCustomers` wiring:** `CustomerMirrorRow` (`customerTypes.ts`) + `customerRepository.upsertCustomer` gain the two fields; `/pos/customers/sync` includes them. **Wire `pullCustomers(db, tenantId, companyId)` into `runFullSync()`** (currently orphaned — zero callers). IDs come from `authStore`. **Extend `SyncResult`** with `customersPulled` (+ `customersFailed`/error signal). **Failure policy:** catch, log, mark degraded, continue selling (like variants/location-stock); **never advance the customer cursor on failure.** Parapharmacy owns this wiring; loyalty rebases. Add tests: successful call + arg source, result accounting, swallow-vs-propagate per error class, and a regression test that `runFullSync` calls `pullCustomers` (guards the orphan).
+- Equivalents/complements/routines resolve **locally** from the product JSON IDs against the in-memory product store. No extra device tables.
 
 ---
 
-## 5. POS UI (redesign phases P9/P5/P8) — gated `module:Merchandising`
+## 5. POS UI (redesign phases P9/P5/P8) — gated `hasModule('Merchandising')`
 
-> **Sequencing:** reuses the redesign atoms (`Pill`, `Tab`, `ProductThumb`, `StockBadge`) + token system, which live on `feat/pos-caisse-redesign` (**not yet on `origin/dev`**, diverged 3/10). The data/sync layers (§1–4) proceed now; this UI rebases onto the redesign branch once it lands. If still unmerged when UI work starts, escalate.
+> **Sequencing:** reuses redesign atoms (`Pill`, `Tab`, `ProductThumb`, `StockBadge`) + tokens, which live on `feat/pos-caisse-redesign` (**not yet on `origin/dev`**, diverged 3/10). Data/sync layers (§1–4) proceed now; this UI rebases onto the redesign branch once it lands. Escalate if still unmerged when UI work starts.
 
-- **P9 Filtres drawer** (`HomePage`): brand / category / routine / skin-type multi-select from the local product set; removable filter chips (`Pill`) + live result count.
-- **P9 Skin-advice bar** (`ProductGrid` header): skin-type pills filter by `suitable_skin_types`; "Conseil · Type de peau" + count; defaults from the selected customer's `skin_type`.
-- **P9 Product-detail tabs** (`ProductDetailDrawer`): new **Équivalents / Compléments / Routine** (`Tab`) — resolve IDs → local products → `ProductThumb` rows with one-tap add-to-cart (cosmetic upsell).
-- **P5/P8 Customer:** add-customer + detail capture `skin_type` (+ advice note); detail shows it and drives the advice-bar default.
-- All surfaces conditional on `hasModule('Merchandising')`. French via i18n; design tokens only; both themes.
+- **P9 Filtres drawer** (`HomePage`): brand / category / routine / skin-type multi-select from the local product set; removable chips (`Pill`) + live count.
+- **P9 Skin-advice bar** (`ProductGrid` header): skin-type pills filter by `suitable_skin_types`; defaults from the selected customer's `skin_type`.
+- **P9 Product-detail tabs** (`ProductDetailDrawer`): **Équivalents / Compléments / Routine** (`Tab`) — resolve IDs → local products → `ProductThumb` rows with one-tap add-to-cart.
+- **P5/P8 Customer:** capture/show `skin_type` (+ advice note); drives the advice-bar default.
+- All surfaces conditional on `hasModule('Merchandising')`. French i18n; tokens only; both themes.
 
 ---
 
 ## 6. Platform-population seam (later, additive)
-
-ERP is the source of truth for tenant data now. The Synerivia platform later pushes enrichment (brand, equivalents, skin suitability, routines) through the existing `enrichment_results` pipeline (`EnrichmentResult`, `accepted_fields`) → accepted into the brand/metadata/pivots. Keep user-edit and platform-enrichment write paths converging on the same models (§1.9). **Deliverable now:** document the field-provenance + enrichment field-mapping (which `accepted_fields` keys map to brand / skin-suitability / equivalents / routines) in `docs/03-ERP-INTEGRATION/REALIGNMENT-LOG.md`.
+ERP is the source of truth now. The Synerivia platform later pushes enrichment (brand, equivalents, skin suitability, routines) through the existing `enrichment_results` pipeline → accepted into the brand/metadata/pivots (§1.9 keeps user-edit and platform write paths converging). **Deliverable now:** document the field-provenance + enrichment field-mapping in `docs/03-ERP-INTEGRATION/REALIGNMENT-LOG.md`.
 
 ---
 
-## 7. Build order (each step: TDD → PHPStan L8 + Pint → typecheck/lint → seed-verify → Codex code review → commit)
-
-1. **Enums** — shared `SkinType` (+ migrate SmartPrompts, delete old) ; `EquivalenceType`.
-2. **Brand** — `brands` table + model + `products.brand_id` + `BrandData` DTO + eager-load. **Enrichment-accept fix** (§1.9).
-3. **Merchandising data** — `partners.skin_type`/`skin_advice_note`; `product_skin_suitability`; `routines` + `product_routine`; `product_equivalents`; `product_complements`; models/relations; extend `ParapharmacyProductMetadataData`. `typescript:transform`.
-4. **Module gating** — `Merchandising` module key + verticals config (granted to parapharmacy) + permissions.
-5. **Seeder** — `seedBrands`, `seedProductSkinSuitability`, `seedProductEquivalents`, `seedProductComplements`, `seedRoutines`, `seedCustomerSkinTypes`; run + verify.
-6. **Server payloads** — `/products` (brand + merchandising arrays) and `/pos/customers/sync` (skin fields).
-7. **POS offline** — v58 device migration + repos + types + **wire `pullCustomers`**.
-8. **POS UI** — Filtres, skin-advice, detail tabs, customer capture (gated; behind redesign-branch atoms).
+## 7. Build order (each: TDD → PHPStan L8 + Pint → typecheck/lint → seed-verify → Codex code review → commit)
+1. **Enums** — shared `SkinType` (+ migrate both SmartPrompts consumers, enum-derived validation, delete old) ; `EquivalenceType`. `typescript:transform`.
+2. **Brand** — `brands` table (tenant-scoped) + model + `products.brand_id` + `brand_source` + `BrandData` + eager-load on all read paths. **Enrichment-accept fix** (§1.9).
+3. **Merchandising data** — `partners.skin_type`/`skin_advice_note`; `product_skin_suitability` (HasMany); `routines`+`product_routine`; `product_equivalents` (CHECK); `product_complements` (CHECK); models/relations; extend `ParapharmacyProductMetadataData`. `typescript:transform`.
+4. **Module gating** — `Merchandising` in `ModuleName` enum + `parapharmacy.default_modules` (same commit); `/company/config` projection test.
+5. **Seeder** — brands/suitability/equivalents(both dirs)/complements/routines/customer skin types; run + verify counts.
+6. **Server payloads** — `/products` (flat `brand_id`/`brand_name` + merchandising arrays) and `/pos/customers/sync` (skin fields).
+7. **POS offline** — v58 (products + cursor reset) + v59 (customers + cursor reset) + repos + types + `upsertProducts` rewrite + **wire `pullCustomers`** + `SyncResult` contract.
+8. **POS UI** — Filtres, skin-advice, detail tabs, customer capture (gated; behind redesign atoms).
 9. **Docs** — REALIGNMENT-LOG enrichment field-mapping; memory update.
 
 ---
 
 ## 8. Testing strategy
-- **Backend (PHPUnit, by path — never the full suite):** enum cases; Brand model + slug uniqueness; `brand_id` FK nullable + nullOnDelete; pivot relations (suitability/equivalents/complements/routines withPivot ordering); equivalents seeded both directions; DTO shapes; `/products` includes brand + merchandising arrays; `/pos/customers/sync` includes skin fields; enrichment-accept upserts + links Brand; `module:Merchandising` gating returns 403 when ungranted; seeder produces expected row counts at scale=1.
-- **POS (Vitest):** v58 migration applies; `productRepository` round-trips brand columns + parapharmacy JSON; `customerRepository` round-trips skin fields; `runFullSync` calls `pullCustomers` (regression-guards the orphan); local resolution of equivalent/complement/routine IDs; `hasModule('Merchandising')` gating of surfaces.
-- Constructor injection only; enums for all type columns; money/qty via the precision contract (n/a here beyond `confidence` decimal — use bcmath-safe handling, no float casts); i18n `t()` for all POS strings; tokens only.
+- **Backend (PHPUnit, by path — never the full suite):** enum cases + `Rule::enum` SmartPrompts validation accepts all 5 / rejects invalid; Brand slug `unique(tenant_id,slug)`; `brand_id` nullable + nullOnDelete; brand present on **all** product read paths (list/detail/create/update); enrichment-accept `firstOrCreate` upserts + links Brand + sets `brand_source` (incl. concurrent-accept dedup); `skinSuitabilities` HasMany pluck → `suitable_skin_types`; routines/equivalents/complements withPivot ordering; equivalents seeded both directions identical type (symmetry); self-reference CHECK rejects; `/company/config` includes `Merchandising` for parapharmacy; seeder row counts at scale=1.
+- **POS (Vitest):** v58 & v59 apply + **cursor-reset tests** (seed cursor → migrate → assert gone, next pull omits `updated_since`); `productRepository` round-trips brand columns + parapharmacy JSON + nested→flat flatten; `customerRepository` round-trips skin fields; `runFullSync` calls `pullCustomers` (orphan regression) with `authStore` IDs; `SyncResult.customersPulled`/failure accounting; failure policy (swallow vs propagate); local resolution of equivalent/complement/routine IDs; `hasModule('Merchandising')` gating + offline-startup hydration from `companyConfigCache`.
+- Constructor injection only; enums for type columns; i18n `t()` for POS strings; tokens only; no float casts.
 
 ---
 
 ## 9. Risks & open items
+- **Owner sign-off needed:** the rule-12 exception in §2 (merchandising data ships ungated in shared payloads; only the experience is gated).
 - **Redesign-branch dependency** for §5 UI (atoms not on `origin/dev`). Mitigation: build §1–4 first; rebase UI later.
-- **`pullCustomers` wiring co-owned with loyalty** — parapharmacy owns; loyalty rebases. Coordinate before either pushes the sync change to dev.
-- **Device module-entitlement sync** for `Merchandising` gating — confirm the existing mechanism (operator/terminal-state pull) carries module flags; if not, that's a small added pull. Resolve in the plan.
-- **SmartPrompts enum migration** touches an AI feature — isolated commit, run its tests by path.
-- **Slug collisions** in `seedBrands` / enrichment upsert — normalize + de-dupe; unique index enforces.
+- **Device migration version coordination** with the loyalty session — claim distinct v58/v59 numbers (or land the shared customer ALTER once and have loyalty rebase) before either pushes.
+- **POS catalog endpoint** — verify whether the POS pulls the same `/products` (nested `ProductData`) or a POS-specific serializer, to pin the brand flatten point (§1.8/§4).
 
 ---
 
 ## 10. Out of scope (explicit)
-Automotive brand/manufacturer (catalogue-search/OE — TecDoc/AAIA) and a `Manufacturer` entity; routine authoring UI; brand logo upload/management; the platform-side canonical brand registry (only the `canonical_brand_id` nullable seam is added now).
+Automotive brand/manufacturer (catalogue-search/OE — TecDoc/AAIA); a `Manufacturer` entity; routine authoring UI; brand logo upload; brand `external_refs`/GS1; equivalence `confidence`; dedicated `merchandising.*` permissions; the platform-side canonical brand registry (only the `canonical_brand_id` nullable seam is added now).
