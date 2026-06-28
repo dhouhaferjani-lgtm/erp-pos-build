@@ -1427,6 +1427,7 @@ export function HomePage() {
             onDiscount={() => setShowDiscountModal(true)}
             onHold={() => void handleHold()}
             onRecall={() => setShowHeldModal(true)}
+            recallCount={heldTransactions.length}
             onReturns={() => setShowReceiptLocator(true)}
             onLineDiscount={handleLineDiscount}
             onRemoveLineDiscount={handleRemoveLineDiscount}

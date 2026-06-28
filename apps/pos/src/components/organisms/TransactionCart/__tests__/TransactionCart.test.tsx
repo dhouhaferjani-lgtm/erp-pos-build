@@ -131,6 +131,15 @@ describe('TransactionCart', () => {
     expect(onClearCart).toHaveBeenCalledOnce();
   });
 
+  it('renders a Returns icon button (its own flow) when onReturns is provided, even with an empty cart', () => {
+    const onReturns = vi.fn();
+    renderCart({ items: [], itemCount: 0, onReturns });
+    const returnsBtn = screen.getByLabelText('receiptLocator.entryButton');
+    expect(returnsBtn).toBeInTheDocument();
+    fireEvent.click(returnsBtn);
+    expect(onReturns).toHaveBeenCalledOnce();
+  });
+
   it('shows payment summary when items present', () => {
     renderCart({ items: [makeCartItem()], itemCount: 1 });
     expect(screen.getByTestId('payment-summary')).toBeInTheDocument();

@@ -1,31 +1,33 @@
 import { Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Tag, Pause, ClipboardList, RotateCcw } from 'lucide-react';
+import { Tag, Pause, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui';
 
 export interface QuickActionsProps {
   onDiscount: () => void;
   onHold: () => void;
   onRecall: () => void;
-  /** Opens the Returns / Exchange receipt-locator screen. */
-  onReturns: () => void;
   hasItems: boolean;
   hasDiscount?: boolean;
+  /** Number of parked sales — shown as a count badge on Recall (mock §5.1 "Reprendre + count"). */
+  recallCount?: number;
 }
 
 export function QuickActions({
   onDiscount,
   onHold,
   onRecall,
-  onReturns,
   hasItems,
   hasDiscount,
+  recallCount = 0,
 }: QuickActionsProps) {
   const { t } = useTranslation('pos');
 
-  // Two role groups, separated by a divider:
+  // The three sale quick actions (mock §5.1). Returns/Exchange is a SEPARATE
+  // flow (§5.4) surfaced as a compact icon in the cart toolbar, not a co-equal
+  // labelled action here. Two role groups, separated by a divider:
   //  · "modify this sale" (Discount, Hold) — item-dependent
-  //  · "start / retrieve a sale" (Recall, Returns) — always available
+  //  · "retrieve a sale" (Recall) — always available, shows parked count
   const actions = [
     {
       label: t('quickActions.discount'),
@@ -33,6 +35,7 @@ export function QuickActions({
       onClick: onDiscount,
       disabled: !hasItems,
       showBadge: hasDiscount,
+      count: 0,
       group: 0,
     },
     {
@@ -41,6 +44,7 @@ export function QuickActions({
       onClick: onHold,
       disabled: !hasItems,
       showBadge: false,
+      count: 0,
       group: 0,
     },
     {
@@ -49,14 +53,7 @@ export function QuickActions({
       onClick: onRecall,
       disabled: false,
       showBadge: false,
-      group: 1,
-    },
-    {
-      label: t('receiptLocator.entryButton'),
-      icon: RotateCcw,
-      onClick: onReturns,
-      disabled: false,
-      showBadge: false,
+      count: recallCount,
       group: 1,
     },
   ];
@@ -83,6 +80,11 @@ export function QuickActions({
               className="relative flex-1"
             >
               {action.label}
+              {action.count > 0 && (
+                <span className="ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-pill bg-accent-tint px-1.5 text-xs font-semibold tabular-nums text-accent-strong">
+                  {action.count}
+                </span>
+              )}
               {action.showBadge && (
                 <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-danger" />
               )}
