@@ -16,6 +16,7 @@
 - **TDD always:** failing test → minimal impl → green → refactor → commit. **NEVER run the full PHPUnit suite** (crashes the laptop) — run by path only. POS: `pnpm test <path>` (Vitest).
 - **Strict typing:** no `mixed` (PHP) / no `any` (TS). Constructor injection only — never `app()`. Enums for all type columns.
 - **Tenant scope:** every tenant table carries `tenant_id`; top-level entities mirror `products` (`tenant_id` + `unique(tenant_id, …)`). Migrations go in `apps/api/database/migrations/tenant/`.
+- **Backend test DB = SQLite `:memory:`** (`phpunit.xml`: `DB_CONNECTION=sqlite`, `TENANCY_DB_PER_TENANT=false`). Use the **portable Schema builder** for all migrations. **Guard any Postgres-specific raw DDL** — `DB::statement('ALTER TABLE … ADD CONSTRAINT …')`, gin indexes — with `if (DB::getDriverName() === 'pgsql')`, and enforce the same invariant at the **application layer** (model guard) so it is testable on SQLite. `$table->json(...)` is portable (TEXT on sqlite) — fine.
 - **DTOs:** `#[TypeScript]`; run `php artisan typescript:transform` (needs `CACHE_STORE=array`) after DTO/enum changes → `packages/shared/types/generated.d.ts`.
 - **i18n + tokens (POS):** all strings via `t()`; design tokens only (ESLint color guard = ERROR on touched apps/pos files).
 - **Quality gate per task:** `./vendor/bin/phpstan` (L8, 0 new errors) + `./vendor/bin/pint` on touched files; POS: `pnpm lint`/`pnpm typecheck` on touched files.
@@ -328,13 +329,13 @@ public function routines(): BelongsToMany
 
 ### Task 9: `product_equivalents` + `product_complements` (+ CHECK + relations)
 
-**Files:** Create 2 migrations; Modify `ParapharmacyProductMetadata.php`; Test `tests/Feature/Product/ProductRelationsTest.php`
+**Files:** Create 2 migrations + 2 pivot models `app/Modules/Product/Domain/ProductEquivalent.php`, `ProductComplement.php`; Modify `ParapharmacyProductMetadata.php`; Test `tests/Feature/Product/ProductRelationsTest.php`
 
 **Interfaces:** Produces `ParapharmacyProductMetadata::equivalentProducts(): BelongsToMany` (pivot `equivalence_type`), `complementProducts(): BelongsToMany` (pivot `reason`).
 
-- [ ] **Step 1: Failing test** — link A↔B as `generic` equivalents (both rows); assert `$aMeta->equivalentProducts` contains B with `pivot->equivalence_type='generic'`; assert inserting a self-equivalence (`product_id == equivalent_product_id`) throws (CHECK).
+- [ ] **Step 1: Failing test** — link A↔B as `generic` equivalents (both rows); assert `$aMeta->equivalentProducts` contains B with `pivot->equivalence_type='generic'`; assert creating a self-equivalence (`product_id == equivalent_product_id`) **throws via the model guard** (portable — runs on the SQLite test DB).
 - [ ] **Step 2: Run — FAIL**
-- [ ] **Step 3: Migrations** (note the raw CHECK — Postgres):
+- [ ] **Step 3: Migrations + portable self-reference guard.** Schema is portable; the CHECK is **pgsql-only, driver-guarded**, and the model guard enforces the same invariant on SQLite (global constraint):
 ```php
 Schema::create('product_equivalents', function (Blueprint $t) {
     $t->uuid('id')->primary(); $t->uuid('tenant_id')->index();
@@ -344,9 +345,23 @@ Schema::create('product_equivalents', function (Blueprint $t) {
     $t->foreign('equivalent_product_id')->references('id')->on('products')->cascadeOnDelete();
     $t->unique(['product_id', 'equivalent_product_id']);
 });
-DB::statement('ALTER TABLE product_equivalents ADD CONSTRAINT chk_equiv_not_self CHECK (product_id <> equivalent_product_id)');
-// product_complements: same shape with complement_product_id + reason (nullable) + chk_compl_not_self
+if (DB::getDriverName() === 'pgsql') {
+    DB::statement('ALTER TABLE product_equivalents ADD CONSTRAINT chk_equiv_not_self CHECK (product_id <> equivalent_product_id)');
+}
+// product_complements: same shape with complement_product_id + reason (nullable); pgsql-guarded chk_compl_not_self
 ```
+Add pivot models `ProductEquivalent` (table `product_equivalents`, `use HasUuids`) / `ProductComplement` with a `creating` guard:
+```php
+protected static function booted(): void
+{
+    static::creating(function (self $m) {
+        if ($m->product_id === $m->equivalent_product_id) { // complement: complement_product_id
+            throw new \InvalidArgumentException('A product cannot be its own equivalent/complement.');
+        }
+    });
+}
+```
+(The seeder writes pivots via these models — or via `DB::table()` PLUS a guard in the seeder — so the invariant holds even though CHECK is absent on SQLite.)
 - [ ] **Step 4: Relations** (anchored on `product_id`):
 ```php
 public function equivalentProducts(): BelongsToMany
