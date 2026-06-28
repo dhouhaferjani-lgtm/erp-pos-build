@@ -31,6 +31,7 @@ use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Application\Services\IdentityIndexService;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
 use Database\Seeders\Contracts\ChartOfAccountsSeederContract;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
@@ -85,6 +86,15 @@ class ParapharmacySeeder extends Seeder
     protected Company $company;
 
     protected Location $location;
+
+    /**
+     * Units of measure keyed by code, resolved once after UomSeeder runs so
+     * {@see createProduct()} can link each product to a real unit (which drives
+     * the per-unit quantity step in the qty editor).
+     *
+     * @var array<string, Unit>
+     */
+    protected array $unitsByCode = [];
 
     /**
      * Single writer of the central identity index (`central_identities`).
@@ -305,6 +315,18 @@ class ParapharmacySeeder extends Seeder
         if (KeyComponent::count() === 0) {
             $this->call(KeyComponentsSeeder::class);
         }
+
+        // Units of measure — drive the per-unit quantity step in the qty editor
+        // (Unit.decimal_places → step 1/10^places). Without a linked unit a
+        // product falls back to 4 decimals (step 0.0001). UomSeeder seeds GLOBAL
+        // reference units via non-idempotent ::create, so guard like the others.
+        if (DB::table('unit_categories')->count() === 0) {
+            $this->call(UomSeeder::class);
+        }
+        $this->unitsByCode = Unit::whereIn('code', ['pc', 'kg', 'l'])
+            ->get()
+            ->keyBy('code')
+            ->all();
 
         $this->command->info('✓ Reference data ready');
 
@@ -661,6 +683,12 @@ class ParapharmacySeeder extends Seeder
         $requiresBatchTracking = rand(1, 100) <= 70;
         $shelfLifeDays = $requiresBatchTracking ? $this->getShelfLife($category) : null;
 
+        // Unit of measure — most parapharmacy items are sold as pieces
+        // (boxes/tubes/bottles/packs); weight-based categories get kg/g so the
+        // demo shows both a step-1 and a fractional-step quantity selector.
+        $unitCode = $this->unitCodeForCategory($category);
+        $unit = $this->unitsByCode[$unitCode] ?? null;
+
         $product = Product::create([
             'tenant_id' => $company->tenant_id,
             'company_id' => $company->id,
@@ -675,6 +703,10 @@ class ParapharmacySeeder extends Seeder
             'is_physical' => true,
             'requires_batch_tracking' => $requiresBatchTracking,
             'default_shelf_life_days' => $shelfLifeDays,
+            // Set both the FK and the mirrored legacy string (the create path
+            // mirrors the code from unit_id — match that contract here).
+            'unit_id' => $unit?->id,
+            'unit' => $unitCode,
         ]);
 
         // Create parapharmacy metadata
@@ -693,6 +725,25 @@ class ParapharmacySeeder extends Seeder
         ]);
 
         return $product;
+    }
+
+    /**
+     * Pick a sensible unit-of-measure code per category.
+     *
+     * Weight-sold categories get a fractional-step unit (kg → 0.001, g → 0.01);
+     * everything else is sold as discrete pieces (pc → step 1). This guarantees
+     * the demo catalog shows both quantity-step behaviors.
+     */
+    private function unitCodeForCategory(ParapharmacyCategory $category): string
+    {
+        // Note: in this system g/ml are whole-number units (decimal_places 0);
+        // only kg/l step fractionally (decimal_places 3). Pick kg/l for the
+        // weight/volume categories so the demo actually shows a fractional step.
+        return match ($category) {
+            ParapharmacyCategory::SportsNutrition => 'kg', // bulk powders/protein by weight → 0.001
+            ParapharmacyCategory::Herbal => 'l',           // extracts/oils/syrups by volume → 0.001
+            default => 'pc',                               // boxes, tubes, bottles, packs → 1
+        };
     }
 
     /**
