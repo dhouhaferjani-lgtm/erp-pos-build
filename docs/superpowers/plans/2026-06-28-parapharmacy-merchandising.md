@@ -446,11 +446,15 @@ Non-parapharmacy callers get the keys **entirely absent** (not null).
 
 ### Task 16: `seedRoutines()` + membership
 - [ ] **Step 1: Failing test** — ≥3 routines, each with 3–4 ordered steps (`step_order` contiguous from 1).
-- [ ] **Step 2–4:** implement named French routines (visage peau sèche/grasse/sensible); seed+test PASS; Commit `feat(seed): routines + membership`
+- [ ] **Step 2: Run — FAIL**
+- [ ] **Step 3: Implement** `seedRoutines(Company $company, Collection $products): void` — insert ≥3 `routines` rows (e.g. "Routine visage — peau sèche", "…peau grasse", "…peau sensible"); for each, batch-insert 3–4 `product_routine` rows picking products by category (cleanser→serum→moisturiser→SPF) with `step_order` 1..n and French `step_label` ("Nettoyage"/"Hydratation"/"Protection"). Call from `run()`.
+- [ ] **Step 4: Run seeder + test — PASS**; phpstan/pint; Commit `feat(seed): routines + membership`
 
 ### Task 17: `seedCustomerSkinTypes()`
-- [ ] **Step 1: Failing test** — ≥80% of individual demo partners have a `skin_type`.
-- [ ] **Step 2–4:** assign skin types to individual partners; seed+test PASS; Commit `feat(seed): customer skin types`
+- [ ] **Step 1: Failing test** — ≥80% of individual (non-company) demo partners have a non-null `skin_type`.
+- [ ] **Step 2: Run — FAIL**
+- [ ] **Step 3: Implement** `seedCustomerSkinTypes(Tenant $tenant): void` — query the seeded individual partners; assign each a `SkinType` (round-robin or weighted over the 5 cases) and ~30% a short French `skin_advice_note`; persist via `DB::table('partners')->where(...)->update(...)` batches. Call from `run()` after `seedPartners`.
+- [ ] **Step 4: Run seeder + test — PASS**; phpstan/pint; Commit `feat(seed): customer skin types`
 
 ---
 
