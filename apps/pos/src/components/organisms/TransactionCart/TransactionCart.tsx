@@ -400,7 +400,7 @@ function ReturnLineItem({
           {/* Decrement (reduce return qty or keep item) */}
           <button
             onClick={handleDecrement}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-danger-subtle bg-danger-surface text-danger-strong active:opacity-80"
+            className="flex h-12 w-12 items-center justify-center rounded-md border border-danger-subtle bg-danger-surface text-danger-strong active:opacity-80"
             aria-label={t('cart.decrementQty')}
           >
             <span className="text-base font-bold leading-none">−</span>
@@ -408,7 +408,7 @@ function ReturnLineItem({
 
           <button
             onClick={() => onQuantityTap?.(item.id)}
-            className="min-w-[1.5rem] text-center text-base font-bold text-danger-strong tabular-nums"
+            className="flex h-12 min-w-[2.5rem] items-center justify-center text-base font-bold text-danger-strong tabular-nums"
             type="button"
             aria-label={t('cart.editQty')}
           >
@@ -418,7 +418,7 @@ function ReturnLineItem({
           {/* Increment (return more) */}
           <button
             onClick={handleIncrement}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-danger-subtle bg-danger-surface text-danger-strong active:opacity-80"
+            className="flex h-12 w-12 items-center justify-center rounded-md border border-danger-subtle bg-danger-surface text-danger-strong active:opacity-80"
             aria-label={t('cart.incrementQty')}
           >
             <span className="text-base font-bold leading-none">+</span>

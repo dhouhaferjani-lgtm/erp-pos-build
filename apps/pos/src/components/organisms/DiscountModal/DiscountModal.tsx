@@ -205,18 +205,18 @@ export function DiscountModal({
       aria-modal="true"
       aria-labelledby="discount-modal-title"
       data-testid="discount-modal-dialog"
-      className="fixed inset-0 z-50 flex flex-col bg-gray-50 text-gray-900"
+      className="fixed inset-0 z-50 flex flex-col bg-surface-canvas text-ink"
     >
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
+      <div className="flex shrink-0 items-center justify-between border-b border-border-subtle bg-surface-raised px-4 py-3">
         <button
           onClick={onClose}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-muted hover:bg-surface-sunken hover:text-ink"
         >
           <ArrowLeft className="h-4 w-4" />
           {t('discount.cancel')}
         </button>
-        <span id="discount-modal-title" className="text-lg font-bold text-gray-900">
+        <span id="discount-modal-title" className="text-lg font-bold text-ink">
           {t('discount.transactionDiscount')}
         </span>
         <div className="w-20" />
@@ -229,16 +229,16 @@ export function DiscountModal({
             <>
               {/* Manager approval mode */}
               <div className="mb-3 text-center">
-                <h3 className="text-lg font-bold text-gray-900">
+                <h3 className="text-lg font-bold text-ink">
                   {t('discount.managerApproval')}
                 </h3>
-                <p className="mt-1 text-sm text-gray-500">
+                <p className="mt-1 text-sm text-ink-muted">
                   {t('discount.enterManagerPin')}
                 </p>
               </div>
 
               {/* PIN display */}
-              <div className="mb-3 rounded-xl bg-gray-50 px-4 py-4 text-center text-4xl font-bold text-gray-900">
+              <div className="mb-3 rounded-xl bg-surface-sunken px-4 py-4 text-center text-4xl font-bold text-ink">
                 {'•'.repeat(managerPin.length) || '\u00A0'}
               </div>
 
@@ -254,8 +254,8 @@ export function DiscountModal({
                       key === ''
                         ? 'invisible'
                         : key === 'C'
-                          ? 'bg-red-50 text-red-700 hover:bg-red-100'
-                          : 'bg-gray-50 text-gray-900 hover:bg-gray-100 active:bg-gray-200',
+                          ? 'bg-danger-surface text-danger-strong hover:bg-danger-surface'
+                          : 'bg-surface-sunken text-ink hover:bg-surface-raised active:bg-surface-raised',
                     )}
                   >
                     {key}
@@ -267,14 +267,14 @@ export function DiscountModal({
             <>
               {/* Normal discount entry mode */}
               {/* Discount type toggle */}
-              <div className="mb-3 flex rounded-lg bg-gray-100 p-1">
+              <div className="mb-3 flex rounded-lg bg-surface-sunken p-1">
                 <button
                   onClick={() => setDiscountType('percentage')}
                   className={cn(
                     'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                     discountType === 'percentage'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-700 hover:text-gray-900',
+                      ? 'bg-surface-raised text-ink shadow-sm'
+                      : 'text-ink-muted hover:text-ink',
                   )}
                 >
                   {t('discount.percentage')}
@@ -284,8 +284,8 @@ export function DiscountModal({
                   className={cn(
                     'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                     discountType === 'fixed'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-700 hover:text-gray-900',
+                      ? 'bg-surface-raised text-ink shadow-sm'
+                      : 'text-ink-muted hover:text-ink',
                   )}
                 >
                   {t('discount.fixed')}
@@ -293,7 +293,7 @@ export function DiscountModal({
               </div>
 
               {/* Value display */}
-              <div className="mb-3 rounded-xl bg-gray-50 px-4 py-4 text-center text-4xl font-bold text-gray-900">
+              <div className="mb-3 rounded-xl bg-surface-sunken px-4 py-4 text-center text-4xl font-bold text-ink">
                 {value || '0'}
                 {discountType === 'percentage' ? '%' : ''}
               </div>
@@ -309,8 +309,8 @@ export function DiscountModal({
                       'flex items-center justify-center rounded-xl text-xl font-semibold transition-colors',
                       isDiscountDisabled && 'cursor-not-allowed opacity-50',
                       key === 'C'
-                        ? 'bg-red-50 text-red-700 hover:bg-red-100'
-                        : 'bg-gray-50 text-gray-900 hover:bg-gray-100 active:bg-gray-200',
+                        ? 'bg-danger-surface text-danger-strong hover:bg-danger-surface'
+                        : 'bg-surface-sunken text-ink hover:bg-surface-raised active:bg-surface-raised',
                     )}
                   >
                     {key}
@@ -326,7 +326,7 @@ export function DiscountModal({
           {needsApproval ? (
             <>
               {/* Show the discount that will be applied */}
-              <div className="mb-3 rounded-lg bg-blue-50 border border-blue-200 p-3 text-center text-sm text-blue-700">
+              <div className="mb-3 rounded-lg bg-action-subtle border border-action p-3 text-center text-sm text-action">
                 {discountType === 'percentage'
                   ? `${value}% ${t('discount.transactionDiscount').toLowerCase()}`
                   : `${value} ${t('discount.transactionDiscount').toLowerCase()}`}
@@ -334,7 +334,7 @@ export function DiscountModal({
 
               {/* Manager error */}
               {managerError && (
-                <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-center text-sm text-red-700">
+                <div className="mb-3 rounded-lg border border-danger-subtle bg-danger-surface p-3 text-center text-sm text-danger-strong">
                   {managerError}
                 </div>
               )}
@@ -346,7 +346,7 @@ export function DiscountModal({
               <button
                 onClick={() => void handleManagerPinSubmit()}
                 disabled={managerPin.length < 4 || verifyingPin}
-                className="mb-2 flex min-h-[56px] w-full items-center justify-center rounded-xl bg-blue-600 px-6 py-4 text-lg font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="mb-2 flex min-h-[56px] w-full items-center justify-center rounded-xl bg-action px-6 py-4 text-lg font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {verifyingPin ? t('discount.verifyingPin') : t('discount.authorize')}
               </button>
@@ -358,7 +358,7 @@ export function DiscountModal({
                   setManagerPin('');
                   setManagerError(null);
                 }}
-                className="flex min-h-[44px] w-full items-center justify-center rounded-xl border border-gray-300 px-6 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                className="flex min-h-[44px] w-full items-center justify-center rounded-xl border border-border-strong px-6 py-3 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-sunken"
               >
                 {t('cashPayment.back')}
               </button>
@@ -367,13 +367,13 @@ export function DiscountModal({
             <>
               {/* Max exceeded warning — shown as info since manager can override */}
               {disabledReason && (
-                <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-center text-sm text-red-700">
+                <div className="mb-3 rounded-lg border border-danger-subtle bg-danger-surface p-3 text-center text-sm text-danger-strong">
                   {disabledReason}
                 </div>
               )}
 
               {needsManagerOverride && numericValue > 0 && (
-                <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-center text-sm text-amber-700">
+                <div className="mb-3 rounded-lg border border-warning-subtle bg-warning-surface p-3 text-center text-sm text-warning-strong">
                   {!canDiscount
                     ? t('discount.managerApproval')
                     : t('discount.maxExceeded', { max: maxDiscountPercent })}
@@ -385,15 +385,15 @@ export function DiscountModal({
 
               {/* Reason */}
               <div className="mb-4">
-                <label className="mb-1 block text-sm font-medium text-gray-700">
+                <label className="mb-1 block text-sm font-medium text-ink-muted">
                   {t('discount.reason')}
-                  {requiresReason && <span className="text-red-500"> *</span>}
+                  {requiresReason && <span className="text-danger"> *</span>}
                 </label>
                 <input
                   type="text"
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="w-full rounded-lg border border-border-strong px-3 py-2.5 text-sm focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
                 />
               </div>
 
@@ -401,7 +401,7 @@ export function DiscountModal({
               <button
                 onClick={handleApply}
                 disabled={!isValid}
-                className="flex min-h-[56px] w-full items-center justify-center rounded-xl bg-blue-600 px-6 py-4 text-lg font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex min-h-[56px] w-full items-center justify-center rounded-xl bg-action px-6 py-4 text-lg font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {t('discount.apply')}
               </button>
