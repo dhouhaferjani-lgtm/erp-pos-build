@@ -232,22 +232,30 @@ export function EndOfDayPreviewModal({
             <SummaryCard label={t('reports.endOfDay.taxAmount')} value={format(preview.tax_amount)} />
           </div>
 
-          {/* Cash reconciliation summary card (existing, kept for legacy parity) */}
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-5">
-            <h4 className="mb-3 text-sm font-semibold text-blue-800">
-              {t('reports.endOfDay.cashReconciliation')}
-            </h4>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-xs text-blue-600">{t('reports.endOfDay.openingCash')}</p>
-                <p className="mt-0.5 text-lg font-bold text-blue-900">{format(preview.opening_cash)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-blue-600">{t('reports.endOfDay.expectedCash')}</p>
-                <p className="mt-0.5 text-lg font-bold text-blue-900">{format(preview.expected_cash)}</p>
+          {/* Cash reconciliation summary card (legacy parity). SECURITY: this
+              card shows expected_cash unconditionally, which would DEFEAT the
+              blind cash count (the operator must not see the expected total
+              before entering physical counts). When the cash-count section is
+              enabled it owns the blind-aware expected/variance reveal, so this
+              redundant card MUST NOT render — otherwise it leaks the expected
+              total. Only show it when there is no cash-count reconciliation. */}
+          {!cashCountEnabled && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-5">
+              <h4 className="mb-3 text-sm font-semibold text-blue-800">
+                {t('reports.endOfDay.cashReconciliation')}
+              </h4>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-xs text-blue-600">{t('reports.endOfDay.openingCash')}</p>
+                  <p className="mt-0.5 text-lg font-bold text-blue-900">{format(preview.opening_cash)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-blue-600">{t('reports.endOfDay.expectedCash')}</p>
+                  <p className="mt-0.5 text-lg font-bold text-blue-900">{format(preview.expected_cash)}</p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* VAT Breakdown + Payment Methods side by side */}
           <div className="grid grid-cols-2 gap-5">

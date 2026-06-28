@@ -13,6 +13,7 @@ import { DurabilityGateModal } from './fiscal/DurabilityGateModal';
 import { HomePage } from '@/pages/HomePage';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { isManagerRole } from '@/lib/auth/roles';
 import { useSyncStore } from '@/stores/syncStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useCustomerDisplaySync } from '@/hooks/useCustomerDisplaySync';
@@ -66,11 +67,19 @@ export function AppShell() {
   const setTheme = useSettingsStore((s) => s.setTheme);
   const cartPosition = useSettingsStore((s) => s.cartPosition);
   const railOnLeft = cartPosition === 'end'; // cart right ⇒ rail left
+  // Manager-gating (point 1/2): a cashier closes blind, so they must NOT get a
+  // nav path to manager-only report screens (Z-report history / X-report) that
+  // could leak shift totals. Sales history (/sales) stays open — it is already
+  // scoped to the current shift. `isManagerRole` is the canonical check.
+  const isManager = isManagerRole(operator?.roles);
   const navItems: { id: NavDest; label: string; icon: React.ReactNode }[] = [
     { id: 'caisse', label: t('nav.caisse'), icon: <ShoppingCart className="h-5 w-5" /> },
     { id: 'clients', label: t('nav.clients'), icon: <Users className="h-5 w-5" /> },
     { id: 'rapports', label: t('nav.rapports'), icon: <BarChart3 className="h-5 w-5" /> },
-    { id: 'shift', label: t('nav.shift'), icon: <Wallet className="h-5 w-5" /> },
+    // Caisse-Shift → Z-report history: managers only.
+    ...(isManager
+      ? [{ id: 'shift' as const, label: t('nav.shift'), icon: <Wallet className="h-5 w-5" /> }]
+      : []),
   ];
   const railNode = (
     <NavRail
@@ -198,7 +207,12 @@ export function AppShell() {
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/sales" element={<TodaySalesPage />} />
-            <Route path="/reports/z" element={<ZReportListPage />} />
+            {/* Z-report history = manager-only (point 1/2): defense-in-depth
+                even though the nav item is hidden for cashiers. */}
+            <Route
+              path="/reports/z"
+              element={isManager ? <ZReportListPage /> : <Navigate to="/" replace />}
+            />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
