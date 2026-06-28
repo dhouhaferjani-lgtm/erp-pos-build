@@ -27,7 +27,7 @@ Authed POS screens need online + login (offline gate blocks); **`/theme-preview`
 
 ## DONE (committed)
 - **P1 theme foundation** — light/dark + accent/corner/density tokens (Tailwind v4 `@theme inline`, runtime-verified), self-hosted fonts (Montserrat/Public Sans/IBM Plex Mono), ergonomic type/touch scale, ThemeProvider + Appearance settings, stock-token exception. Codex-reviewed + fixed.
-- **Atoms** (TDD, both themes verified in /theme-preview): `StockBadge`, `ProductThumb`, `Avatar`, `Stepper`, `Pill`. Plus DEV `/theme-preview` gallery.
+- **Atom library COMPLETE** (TDD, both themes verified in /theme-preview): `StockBadge`, `ProductThumb`, `Avatar`, `Stepper`, `Pill`, `Tabs`, `Toggle`, `KpiCard`, `BreakdownBar`, `Divider` (+ reuse existing `Button`/`IconButton`/`Badge`/`SegmentedControl`/`StatusPill`/`MoneyInput`). Only shells (`ModalShell`/`Drawer`/`Toast`) remain — build during the modal phases. DEV `/theme-preview` gallery shows them all.
 - **Owner decisions applied:** CTA stays **blue** (`action`=blue; `accent`=separate swappable highlight); cart-line uses **mock collapse/expand**.
 - **Two feature handovers + kickoff prompts** written (parapharmacy, loyalty).
 
