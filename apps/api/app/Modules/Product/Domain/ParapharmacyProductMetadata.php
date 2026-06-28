@@ -38,6 +38,7 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, HealthClaim> $healthClaims
  * @property-read Collection<int, KeyComponent> $keyComponents
  * @property-read Collection<int, ProductSkinSuitability> $skinSuitabilities
+ * @property-read Collection<int, Routine> $routines
  */
 class ParapharmacyProductMetadata extends Model
 {
@@ -190,5 +191,18 @@ class ParapharmacyProductMetadata extends Model
     public function skinSuitabilities(): HasMany
     {
         return $this->hasMany(ProductSkinSuitability::class, 'product_id', 'product_id');
+    }
+
+    /**
+     * Get all routines that include this product.
+     *
+     * @return BelongsToMany<Routine, $this, ProductRoutinePivot>
+     */
+    public function routines(): BelongsToMany
+    {
+        return $this->belongsToMany(Routine::class, 'product_routine', 'product_id', 'routine_id', 'product_id')
+            ->using(ProductRoutinePivot::class)
+            ->withPivot(['step_order', 'step_label'])
+            ->orderByPivot('step_order');
     }
 }
