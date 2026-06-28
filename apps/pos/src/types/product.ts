@@ -1,6 +1,23 @@
 import type { ModifierGroup } from './modifier';
 
 /**
+ * Task 20 — Parapharmacy metadata stored as a JSON blob in the SQLite
+ * `products.parapharmacy_metadata` TEXT column.  Only populated for
+ * products that belong to a parapharmacy vertical; all fields default to
+ * empty arrays so callers can iterate without null checks.
+ */
+export interface ParapharmacyMeta {
+  suitable_skin_types: string[];
+  equivalent_product_ids: string[];
+  complement_product_ids: string[];
+  routine_refs: {
+    routine_id: string;
+    step_order: number;
+    step_label: string;
+  }[];
+}
+
+/**
  * T2 product variant as surfaced to the POS catalog. Mirrors the backend
  * `App.Modules.Catalog.Application.DTOs.ProductVariantData` wire shape
  * (`/products/{productId}/variants`) with the POS-only `stock_quantity`
@@ -60,6 +77,23 @@ export interface POSProduct {
    */
   sellable_id?: string;
   menu_category_id?: string | null;
+  /**
+   * Task 20 — UUID of the product's brand (e.g. "Vichy", "Avène").
+   * Sourced from `ProductData.brand_id` on the server.  Null for products
+   * without a brand or for non-parapharmacy installs.
+   */
+  brand_id?: string | null;
+  /**
+   * Task 20 — Denormalised brand display label.  Avoids a join in the POS
+   * and lets the UI render the brand name on the product card without an
+   * additional lookup.  Null when the product has no brand.
+   */
+  brand_name?: string | null;
+  /**
+   * Task 20 — Structured parapharmacy attributes stored as a JSON blob.
+   * Null for standard-retail (non-parapharmacy) products.
+   */
+  parapharmacy_metadata?: ParapharmacyMeta | null;
   /**
    * Task 10 — whether the product is a physical (stock-tracked) item.
    * `false` means the product is a service/non-physical and is exempt from

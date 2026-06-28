@@ -1,6 +1,6 @@
 import type Database from '@tauri-apps/plugin-sql';
 import { queryAll, queryOne, execute } from '@/lib/db';
-import type { POSProduct } from '@/types/product';
+import type { POSProduct, ParapharmacyMeta } from '@/types/product';
 
 interface ProductRow {
   id: string;
@@ -20,7 +20,25 @@ interface ProductRow {
   is_physical: number;
   /** SQLite integer: 1 = product has ≥1 active variant (picker required), 0 = plain product. */
   has_variants: number;
+  // Task 20 — parapharmacy columns (nullable TEXT, added by migration v58).
+  brand_id: string | null;
+  brand_name: string | null;
+  /** Raw JSON string — parsed by rowToProduct into ParapharmacyMeta | null. */
+  parapharmacy_metadata: string | null;
 }
+
+/**
+ * Task 20 — wire shape accepted by upsertProducts.
+ *
+ * The server `/products` endpoint may send brand as a NESTED object
+ * `brand: {id, name}` (matching the web `ProductData` shape) rather than
+ * flat `brand_id` / `brand_name` fields.  We accept both and resolve via
+ * `??` on the write path so existing call-sites (which send flat fields or
+ * omit brand entirely) stay backwards-compatible.
+ */
+export type ProductPayload = POSProduct & {
+  brand?: { id: string; name: string } | null;
+};
 
 function rowToProduct(row: ProductRow): POSProduct {
   return {
@@ -51,6 +69,17 @@ function rowToProduct(row: ProductRow): POSProduct {
     // Only set in the output when true to preserve the optional semantics of
     // POSProduct.has_variants (callers that don't care are unaffected by absence).
     ...(row.has_variants === 1 ? { has_variants: true } : {}),
+    // Task 20 — brand columns. Passed through as-is (null stays null).
+    brand_id: row.brand_id,
+    brand_name: row.brand_name,
+    // Task 20 — parapharmacy metadata. TEXT → ParapharmacyMeta | null.
+    // rowToProduct is READ-ONLY (SQLite row → POSProduct); brand flattening
+    // lives on the WRITE path in upsertProducts.
+    parapharmacy_metadata: (() => {
+      if (!row.parapharmacy_metadata) return null;
+      try { return JSON.parse(row.parapharmacy_metadata) as ParapharmacyMeta; }
+      catch { console.warn(`[productRepository] corrupt parapharmacy_metadata for product ${row.id}`); return null; }
+    })(),
   };
 }
 
@@ -102,11 +131,13 @@ const BATCH_SIZE = 50;
 /** Number of $-placeholder parameters per product row (excludes datetime('now') literals).
  * Columns: id, name, sku, barcode, sale_price, stock_quantity, category, image_url,
  *          tax_rate, sellable_type, modifier_groups, sellable_id, menu_category_id,
- *          is_physical, has_variants  → 15 data params + 2 datetime('now') literals.
+ *          is_physical, has_variants, brand_id, brand_name, parapharmacy_metadata
+ *          → 18 data params + 2 datetime('now') literals.
+ *          Batch math: 50 × 18 = 900 < SQLite 999-param limit ✓
  */
-const PARAMS_PER_ROW = 15;
+const PARAMS_PER_ROW = 18;
 
-export async function upsertProducts(db: Database, products: POSProduct[]): Promise<void> {
+export async function upsertProducts(db: Database, products: ProductPayload[]): Promise<void> {
   for (let i = 0; i < products.length; i += BATCH_SIZE) {
     const batch = products.slice(i, i + BATCH_SIZE);
     const params: unknown[] = [];
@@ -116,8 +147,16 @@ export async function upsertProducts(db: Database, products: POSProduct[]): Prom
       const p = batch[j]!;
       const offset = j * PARAMS_PER_ROW;
       valueClauses.push(
-        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, datetime('now'), datetime('now'))`
+        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17}, $${offset + 18}, datetime('now'), datetime('now'))`
       );
+
+      // Task 20 — C-1: flatten nested brand object from the server API shape
+      // `brand: {id, name}` onto the flat SQLite columns.  `??` fallback is
+      // safe: if the payload already carries flat brand_id/brand_name (or
+      // neither), this is a no-op.
+      const brand_id = p.brand_id ?? p.brand?.id ?? null;
+      const brand_name = p.brand_name ?? p.brand?.name ?? null;
+
       params.push(
         p.id,
         p.name,
@@ -143,12 +182,17 @@ export async function upsertProducts(db: Database, products: POSProduct[]): Prom
         p.is_physical === false ? 0 : 1,
         // M4 — variant flag. `undefined` / falsy maps to 0 (non-variant).
         p.has_variants === true ? 1 : 0,
+        // Task 20 — brand (flattened from nested or flat API payload).
+        brand_id,
+        brand_name,
+        // Task 20 — parapharmacy metadata: object → JSON string → TEXT, or null.
+        p.parapharmacy_metadata != null ? JSON.stringify(p.parapharmacy_metadata) : null,
       );
     }
 
     await execute(
       db,
-      `INSERT INTO products (id, name, sku, barcode, sale_price, stock_quantity, category, image_url, tax_rate, sellable_type, modifier_groups, sellable_id, menu_category_id, is_physical, has_variants, updated_at, synced_at)
+      `INSERT INTO products (id, name, sku, barcode, sale_price, stock_quantity, category, image_url, tax_rate, sellable_type, modifier_groups, sellable_id, menu_category_id, is_physical, has_variants, brand_id, brand_name, parapharmacy_metadata, updated_at, synced_at)
        VALUES ${valueClauses.join(', ')}
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
@@ -165,6 +209,9 @@ export async function upsertProducts(db: Database, products: POSProduct[]): Prom
          menu_category_id = excluded.menu_category_id,
          is_physical = excluded.is_physical,
          has_variants = excluded.has_variants,
+         brand_id = excluded.brand_id,
+         brand_name = excluded.brand_name,
+         parapharmacy_metadata = excluded.parapharmacy_metadata,
          updated_at = datetime('now'),
          synced_at = datetime('now')`,
       params

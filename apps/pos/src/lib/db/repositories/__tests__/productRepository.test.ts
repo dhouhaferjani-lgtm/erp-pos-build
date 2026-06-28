@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { deleteProducts } from '../productRepository';
+import { deleteProducts, upsertProducts, getAllProducts } from '../productRepository';
+import type { POSProduct } from '@/types/product';
 
 vi.mock('@/lib/db', () => ({
   queryAll: vi.fn(),
@@ -7,7 +8,7 @@ vi.mock('@/lib/db', () => ({
   execute: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { execute } from '@/lib/db';
+import { execute, queryAll } from '@/lib/db';
 
 describe('productRepository.deleteProducts', () => {
   const db = {} as import('@tauri-apps/plugin-sql').default;
@@ -39,5 +40,143 @@ describe('productRepository.deleteProducts', () => {
     const secondBatchParams = vi.mocked(execute).mock.calls[1]![2] as unknown[];
     expect(firstBatchParams.length).toBe(200);
     expect(secondBatchParams.length).toBe(50);
+  });
+});
+
+describe('productRepository — brand + parapharmacy_metadata', () => {
+  const db = {} as import('@tauri-apps/plugin-sql').default;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // ── (a) Read-path round-trip ──────────────────────────────────────────────
+
+  it('rowToProduct parses brand_id, brand_name, and parapharmacy_metadata JSON', async () => {
+    const meta = {
+      suitable_skin_types: ['dry', 'sensitive'],
+      equivalent_product_ids: ['eq-1'],
+      complement_product_ids: [],
+      routine_refs: [{ routine_id: 'r1', step_order: 1, step_label: 'Cleanser' }],
+    };
+
+    vi.mocked(queryAll).mockResolvedValueOnce([
+      {
+        id: 'prod-1',
+        name: 'Vichy Test',
+        sku: 'VCH-001',
+        barcode: null,
+        sale_price: '10.000',
+        stock_quantity: 5,
+        category: null,
+        image_url: null,
+        tax_rate: null,
+        sellable_type: 'product',
+        modifier_groups: null,
+        sellable_id: null,
+        menu_category_id: null,
+        is_physical: 1,
+        has_variants: 0,
+        brand_id: 'brand-uuid',
+        brand_name: 'Vichy',
+        parapharmacy_metadata: JSON.stringify(meta),
+      },
+    ]);
+
+    const products = await getAllProducts(db);
+    expect(products[0]).toMatchObject({
+      brand_id: 'brand-uuid',
+      brand_name: 'Vichy',
+      parapharmacy_metadata: meta,
+    });
+  });
+
+  it('rowToProduct tolerates null brand / meta columns (non-parapharmacy product)', async () => {
+    vi.mocked(queryAll).mockResolvedValueOnce([
+      {
+        id: 'prod-2',
+        name: 'Generic Product',
+        sku: 'GEN-001',
+        barcode: null,
+        sale_price: '5.000',
+        stock_quantity: 10,
+        category: null,
+        image_url: null,
+        tax_rate: null,
+        sellable_type: 'product',
+        modifier_groups: null,
+        sellable_id: null,
+        menu_category_id: null,
+        is_physical: 1,
+        has_variants: 0,
+        brand_id: null,
+        brand_name: null,
+        parapharmacy_metadata: null,
+      },
+    ]);
+
+    const products = await getAllProducts(db);
+    expect(products[0]?.brand_id).toBeNull();
+    expect(products[0]?.brand_name).toBeNull();
+    expect(products[0]?.parapharmacy_metadata).toBeNull();
+  });
+
+  // ── (b) Write-path: flat fields ───────────────────────────────────────────
+
+  it('upsertProducts writes brand_id, brand_name, and parapharmacy_metadata to params', async () => {
+    const meta = {
+      suitable_skin_types: ['oily'],
+      equivalent_product_ids: [],
+      complement_product_ids: ['c-1'],
+      routine_refs: [],
+    };
+    const product: POSProduct = {
+      id: 'prod-3',
+      name: 'Avène Cream',
+      sku: 'AVN-001',
+      barcode: null,
+      sale_price: '20.000',
+      stock_quantity: 2,
+      is_physical: true,
+      brand_id: 'avene-brand-id',
+      brand_name: 'Avène',
+      parapharmacy_metadata: meta,
+    };
+
+    await upsertProducts(db, [product]);
+
+    const [, sql, params] = vi.mocked(execute).mock.calls[0]!;
+    expect(sql).toContain('brand_id');
+    expect(sql).toContain('brand_name');
+    expect(sql).toContain('parapharmacy_metadata');
+    // 18 data params per row (15 legacy + brand_id + brand_name + parapharmacy_metadata)
+    expect((params as unknown[]).length).toBe(18);
+    expect((params as unknown[])[15]).toBe('avene-brand-id');
+    expect((params as unknown[])[16]).toBe('Avène');
+    expect((params as unknown[])[17]).toBe(JSON.stringify(meta));
+  });
+
+  // ── (b) C-1 guard: nested brand object on the write path ─────────────────
+
+  it('[C-1] flattens nested brand:{id,name} payload to brand_id/brand_name on upsert', async () => {
+    // Server API payload with nested brand (not flat brand_id/brand_name)
+    const product = {
+      id: 'prod-4',
+      name: 'La Roche-Posay Gel',
+      sku: 'LRP-001',
+      barcode: null,
+      sale_price: '25.000',
+      stock_quantity: 1,
+      is_physical: true,
+      brand: { id: 'lrp-brand-id', name: 'La Roche-Posay' },
+      // deliberately no flat brand_id / brand_name
+    } as POSProduct & { brand?: { id: string; name: string } | null };
+
+    await upsertProducts(db, [product]);
+
+    const [, sql, params] = vi.mocked(execute).mock.calls[0]!;
+    expect(sql).toContain('brand_id');
+    expect((params as unknown[])[15]).toBe('lrp-brand-id');
+    expect((params as unknown[])[16]).toBe('La Roche-Posay');
   });
 });
