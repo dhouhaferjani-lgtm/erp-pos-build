@@ -13,6 +13,11 @@ import {
   Avatar,
   Stepper,
   Pill,
+  Tabs,
+  Toggle,
+  KpiCard,
+  BreakdownBar,
+  Divider,
 } from '@/components/ui';
 import { ACCENTS, type AccentName } from '@/lib/theme';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -60,6 +65,8 @@ export function ThemePreviewPage() {
   const setCorner = useSettingsStore((s) => s.setCorner);
   const [qty, setQty] = useState(2);
   const [cat, setCat] = useState('Visage');
+  const [tab, setTab] = useState('desc');
+  const [consent, setConsent] = useState(true);
 
   return (
     <div className="h-screen overflow-y-auto bg-surface-canvas p-6 text-ink">
@@ -167,6 +174,43 @@ export function ThemePreviewPage() {
           <div className="mt-3 flex flex-wrap gap-2">
             <Pill onRemove={() => undefined}>Marque: Avène</Pill>
             <Pill onRemove={() => undefined}>Type de peau: Sensible</Pill>
+          </div>
+        </Section>
+
+        <Section title="Onglets & bascule (fiche produit / consentement)">
+          <Tabs
+            value={tab}
+            onChange={setTab}
+            tabs={[
+              { id: 'desc', label: 'Description' },
+              { id: 'equiv', label: 'Équivalents', count: 3 },
+              { id: 'comp', label: 'Compléments', count: 2 },
+              { id: 'routine', label: 'Routine' },
+            ]}
+          />
+          <div className="mt-3 flex items-center gap-3">
+            <Toggle checked={consent} onChange={setConsent} ariaLabel="Consentement marketing" />
+            <span className="text-sm text-ink-muted">Consentement marketing</span>
+          </div>
+        </Section>
+
+        <Section title="Rapports (KPI & répartition)">
+          <div className="grid grid-cols-3 gap-3">
+            <KpiCard label="Ventes" value="4 820,500 DT" hint="Aujourd’hui" />
+            <KpiCard label="Transactions" value="37" />
+            <KpiCard label="Panier moyen" value="130,280 DT" />
+          </div>
+          <div className="mt-4 flex flex-col gap-3">
+            <BreakdownBar label="Espèces" valueText="3 100,000 DT" pct={64} fillClass="bg-accent" />
+            <BreakdownBar label="Carte" valueText="1 200,500 DT" pct={25} fillClass="bg-action" />
+            <BreakdownBar label="Chèque" valueText="520,000 DT" pct={11} fillClass="bg-ink-muted" />
+          </div>
+          <div className="mt-4 flex items-center gap-2 text-sm text-ink-muted">
+            <span>Caisse 1</span>
+            <Divider orientation="vertical" />
+            <span>Service #42</span>
+            <Divider orientation="vertical" />
+            <span>Fond 200,000 DT</span>
           </div>
         </Section>
       </div>
