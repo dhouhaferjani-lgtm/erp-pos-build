@@ -91,7 +91,7 @@ export function CheckoutSuccessModal({
         <button
           onClick={() => void handlePrint()}
           disabled={isPrinting}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-6 py-3 text-base font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-border-strong bg-surface-raised px-6 py-3 text-base font-medium text-ink-muted transition-colors hover:bg-surface-sunken disabled:opacity-50"
         >
           {isPrinting ? (
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -105,7 +105,7 @@ export function CheckoutSuccessModal({
       {/* New sale button */}
       <button
         onClick={onClose}
-        className="w-full rounded-xl bg-blue-600 px-6 py-4 text-lg font-semibold text-white transition-colors hover:bg-blue-700"
+        className="w-full rounded-xl bg-action px-6 py-4 text-lg font-semibold text-ink-inverse transition-colors hover:bg-action-hover"
       >
         {t('payment.newTransaction')}
       </button>
@@ -117,38 +117,38 @@ export function CheckoutSuccessModal({
       <div className="space-y-6 text-center">
         {/* Success icon */}
         <div className="flex justify-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
-            <CheckCircle className="h-12 w-12 text-green-600" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success-surface">
+            <CheckCircle className="h-12 w-12 text-success-strong" />
           </div>
         </div>
 
         {/* Receipt number */}
         <div>
-          <p className="text-sm text-gray-600">{t('payment.transactionComplete')}</p>
-          <p className="mt-1 text-2xl font-bold text-gray-900">
+          <p className="text-sm text-ink-muted">{t('payment.transactionComplete')}</p>
+          <p className="mt-1 text-2xl font-bold text-ink">
             {t('payment.receiptNumber', { number: receiptNumber })}
           </p>
         </div>
 
         {/* Total */}
-        <div className="rounded-xl bg-gray-50 p-4">
-          <p className="text-sm text-gray-700">{t('common:total')}</p>
-          <p className="text-xl font-bold text-gray-900">{format(total)}</p>
+        <div className="rounded-xl bg-surface-sunken p-4">
+          <p className="text-sm text-ink-muted">{t('common:total')}</p>
+          <p className="text-xl font-bold text-ink">{format(total)}</p>
         </div>
 
         {/* Change due */}
         {changeDue > 0 && (
-          <div className="rounded-xl border border-green-200 bg-green-50 p-4">
-            <p className="text-sm font-medium text-green-600">
+          <div className="rounded-xl border border-success-subtle bg-success-surface p-4">
+            <p className="text-sm font-medium text-success-strong">
               {t('cashTendered.changeDue')}
             </p>
-            <p className="text-2xl font-bold text-green-700">{format(changeDue)}</p>
+            <p className="text-2xl font-bold text-success-strong">{format(changeDue)}</p>
           </div>
         )}
 
         {/* Print error */}
         {printError && (
-          <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+          <div className="rounded-md bg-danger-surface p-3 text-sm text-danger-strong">
             {printError}
           </div>
         )}

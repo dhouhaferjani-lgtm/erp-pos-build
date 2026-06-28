@@ -35,16 +35,16 @@ export function CardPaymentModal({
     <Modal isOpen={isOpen} onClose={onClose} title={t('payment.cardPayment')} size="md">
       <div className="space-y-6">
         {/* Amount */}
-        <div className="rounded-xl bg-gray-50 p-4 text-center">
-          <p className="mb-1 text-sm font-medium text-gray-500">
+        <div className="rounded-xl bg-surface-sunken p-4 text-center">
+          <p className="mb-1 text-sm font-medium text-ink-muted">
             {t('cashTendered.amountDue')}
           </p>
-          <p className="text-3xl font-bold text-gray-900">{format(total)}</p>
+          <p className="text-3xl font-bold text-ink">{format(total)}</p>
         </div>
 
         {/* Card last 4 */}
         <div>
-          <label className="mb-2 block text-sm font-medium text-gray-700">
+          <label className="mb-2 block text-sm font-medium text-ink-muted">
             {t('payment.cardLastFour')}
           </label>
           <input
@@ -55,20 +55,20 @@ export function CardPaymentModal({
             value={lastFour}
             onChange={(e) => setLastFour(e.target.value.replace(/\D/g, '').slice(0, 4))}
             placeholder="0000"
-            className="w-full rounded-lg border border-gray-300 px-4 py-3 text-center text-lg tracking-widest focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="w-full rounded-lg border border-border-strong px-4 py-3 text-center text-lg tracking-widest focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
           />
         </div>
 
         {/* Transaction reference */}
         <div>
-          <label className="mb-2 block text-sm font-medium text-gray-700">
+          <label className="mb-2 block text-sm font-medium text-ink-muted">
             {t('payment.transactionRef')}
           </label>
           <input
             type="text"
             value={reference}
             onChange={(e) => setReference(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="w-full rounded-lg border border-border-strong px-4 py-3 text-sm focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
           />
         </div>
 
@@ -76,7 +76,7 @@ export function CardPaymentModal({
         <button
           onClick={handleConfirm}
           disabled={isProcessing}
-          className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-4 text-lg font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-xl bg-action px-6 py-4 text-lg font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           <CreditCard className="h-5 w-5" />
           {isProcessing ? t('cashTendered.processing') : t('cashTendered.confirm')}
