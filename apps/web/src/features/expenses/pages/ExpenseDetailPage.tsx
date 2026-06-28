@@ -279,7 +279,7 @@ export function ExpenseDetailPage() {
           <h2 className={cn(tokens.heading.section, 'mb-4')}>
             {t('expenses:attachments')}
           </h2>
-          <DocumentAttachments documentId={expense.id} readOnly={isPosted} />
+          <DocumentAttachments documentId={expense.id} readOnly={isPosted} defaultRole="SOURCE_DOCUMENT" />
         </div>
       </div>
     </div>
