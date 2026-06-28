@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Enums\Vertical;
+use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
 use App\Modules\Billing\Domain\Plan;
 use App\Modules\Billing\Domain\TenantSubscription;
@@ -340,6 +341,12 @@ class ParapharmacySeeder extends Seeder
         // 7. Seed stock levels
         $this->command->info('📊 Seeding stock levels...');
         $this->seedStockLevels($this->company, $this->location, $products);
+
+        // 7b. Mint FEFO lots for batch-tracked products. Without this a product
+        //     flagged requires_batch_tracking has stock but zero selectable
+        //     lots, which silently blocks PO goods-receipt and stock transfers.
+        $this->command->info('🏷️  Seeding product batches...');
+        $this->seedBatchesForBatchTrackedProducts($this->company);
 
         // 8. Create test users
         $this->command->info('👤 Creating test users...');
@@ -968,6 +975,66 @@ class ParapharmacySeeder extends Seeder
         }
 
         $this->command->info("✓ Stock levels created ({$stockCount} products in stock)");
+    }
+
+    /**
+     * Mint FEFO lots for every batch-tracked product that holds stock.
+     *
+     * A product flagged `requires_batch_tracking` but with no `product_batches`
+     * row has stock yet zero selectable lots, which silently blocks PO
+     * goods-receipt and stock-transfer flows (there is no lot to pick).
+     *
+     * Delegates to the shared {@see BatchStockService::ensureDefaultBatch()} so
+     * seeded data mirrors the production default-batch behavior: one DEFAULT lot
+     * per product (+ variant) with expiry = today + the product's default expiry
+     * period, whose per-location batch stock reconciles to the StockLevel.
+     *
+     * Additive + idempotent: re-running reconciles to the current StockLevel and
+     * never double-counts, so it is safe to call again after more stock is
+     * seeded at additional locations.
+     */
+    protected function seedBatchesForBatchTrackedProducts(Company $company): void
+    {
+        $batchTrackedIds = Product::query()
+            ->where('company_id', $company->id)
+            ->where('requires_batch_tracking', true)
+            ->pluck('id');
+
+        if ($batchTrackedIds->isEmpty()) {
+            return;
+        }
+
+        $stockLevels = StockLevel::query()
+            ->whereIn('product_id', $batchTrackedIds)
+            ->where('quantity', '>', 0)
+            ->get();
+
+        /** @var Collection<string, int|null> $shelfLifeByProduct */
+        $shelfLifeByProduct = Product::query()
+            ->whereIn('id', $batchTrackedIds)
+            ->pluck('default_shelf_life_days', 'id');
+
+        /** @var BatchStockService $batchStockService */
+        $batchStockService = $this->container->make(BatchStockService::class);
+
+        $asOfDate = now()->toDateString();
+        $count = 0;
+
+        foreach ($stockLevels as $stock) {
+            $batchStockService->ensureDefaultBatch(
+                companyId: $company->id,
+                tenantId: $company->tenant_id,
+                productId: $stock->product_id,
+                locationId: $stock->location_id,
+                targetQuantity: (string) $stock->quantity,
+                shelfLifeDays: $shelfLifeByProduct[$stock->product_id] ?? null,
+                asOfDate: $asOfDate,
+                variantId: $stock->variant_id,
+            );
+            $count++;
+        }
+
+        $this->command->info("✓ Default batches reconciled ({$count} batch-tracked stock rows)");
     }
 
     /**
