@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 use Spatie\LaravelData\Data;
+use Spatie\TypeScriptTransformer\Attributes\LiteralTypeScriptType;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 #[TypeScript]
@@ -54,9 +55,13 @@ class ParapharmacyProductMetadataData extends Data
         public ?string $storage_requirements,
         public string $created_at,
         public ?string $updated_at,
+        #[LiteralTypeScriptType('Array<App.Shared.Domain.Enums.SkinType>')]
         public array $suitable_skin_types,
+        #[LiteralTypeScriptType('Array<string>')]
         public array $equivalent_product_ids,
+        #[LiteralTypeScriptType('Array<string>')]
         public array $complement_product_ids,
+        #[LiteralTypeScriptType('Array<{routine_id: string; step_order: number; step_label: string}>')]
         public array $routine_refs,
     ) {}
 

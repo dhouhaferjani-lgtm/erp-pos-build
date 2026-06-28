@@ -1468,10 +1468,10 @@ certifications: Array<App.Modules.Product.Application.DTOs.ProductCertificationD
 storage_requirements: string | null;
 created_at: string;
 updated_at: string | null;
-suitable_skin_types: Array<any>;
-equivalent_product_ids: Array<any>;
-complement_product_ids: Array<any>;
-routine_refs: Array<any>;
+suitable_skin_types: Array<App.Shared.Domain.Enums.SkinType>;
+equivalent_product_ids: Array<string>;
+complement_product_ids: Array<string>;
+routine_refs: Array<{routine_id: string; step_order: number; step_label: string}>;
 };
 export type ProductCertificationData = {
 certification: App.Modules.Product.Application.DTOs.CertificationData;

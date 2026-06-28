@@ -245,7 +245,7 @@ class ProductMerchPayloadTest extends TestCase
         $response = $this->actingAs($otherUser, 'sanctum')
             ->getJson("/api/v1/products/{$product->id}");
 
-        $response->assertStatus(200)
-            ->assertJsonMissing(['parapharmacy_metadata']);
+        $response->assertStatus(200);
+        $this->assertNull($response->json('data.parapharmacy_metadata'));
     }
 }
