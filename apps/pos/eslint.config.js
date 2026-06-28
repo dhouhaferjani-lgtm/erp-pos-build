@@ -77,6 +77,7 @@ const tokenMigratedGlobs = [
   'src/components/customers/CustomerSearchModal.tsx',
   'src/components/pos/Modal.tsx',
   'src/components/organisms/CashPaymentScreen/**/*.{ts,tsx}',
+  'src/components/organisms/AdvancedPaymentsModal/**/*.{ts,tsx}',
   'src/components/molecules/NumPad/**/*.{ts,tsx}',
   'src/pages/SettingsPage.tsx',
   'src/components/organisms/TransactionCart/**/*.{ts,tsx}',
