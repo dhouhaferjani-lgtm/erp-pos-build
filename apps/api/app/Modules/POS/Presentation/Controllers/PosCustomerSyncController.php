@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Controllers;
 
+use App\Enums\Vertical;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -30,8 +31,10 @@ final class PosCustomerSyncController extends Controller
     {
         Gate::authorize('pos.operate_terminal');
 
-        $tenantId = $this->companyContext->requireTenantId();
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
+        $companyId = $company->id;
+        $isParapharmacy = $company->tenant->vertical === Vertical::Parapharmacy;
         $updatedSince = $this->parseUpdatedSince($request);
         $updatedSinceId = $this->parseUpdatedSinceId($request, $updatedSince);
         $limit = $this->parseLimit($request);
@@ -53,7 +56,7 @@ final class PosCustomerSyncController extends Controller
         return response()->json([
             'data' => [
                 'customers' => $page
-                    ->map(static fn (Partner $customer): array => (new PosCustomerMirrorResource($customer))->toArray($request))
+                    ->map(fn (Partner $customer): array => (new PosCustomerMirrorResource($customer, $isParapharmacy))->toArray($request))
                     ->values()
                     ->all(),
                 'has_more' => $hasMore,
