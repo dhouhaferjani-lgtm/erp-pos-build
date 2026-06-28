@@ -181,7 +181,7 @@ Schema::create('brands', function (Blueprint $t) {
     $t->index(['tenant_id', 'name']);
 });
 ```
-- [ ] **Step 4: Model** — `Brand` with `$keyType='string'`, `$incrementing=false`, `booted()` to auto-uuid `id`, `$fillable` per interface, casts `is_active=bool`. Add `public static function slugFor(string $name): string { return Str::slug($name); }` and `public function products(): HasMany`.
+- [ ] **Step 4: Model** — `Brand` with `use HasUuids;` (codebase convention for uuid PKs — not a manual `booted()`), `$keyType='string'`, `$incrementing=false`, `$fillable` per interface, casts `is_active=bool`. Add `public static function slugFor(string $name): string { return Str::slug($name); }` and `public function products(): HasMany`.
 - [ ] **Step 5: Run — PASS**
 - [ ] **Step 6: `BrandData` DTO** (`#[TypeScript]`, `final readonly`, `fromModel`).
 - [ ] **Step 7: phpstan/pint; `typescript:transform`; Commit** `feat(brand): brands table + Brand model + BrandData DTO`
@@ -192,14 +192,14 @@ Schema::create('brands', function (Blueprint $t) {
 
 **Files:**
 - Create: migration `tenant/<ts>_add_brand_to_products.php`
-- Modify: `Product.php` (fillable/casts + `brand()`), `ProductController.php` (eager-load `brand` on index/show/store/update), `ProductData.php` (`?BrandData $brand` + `fromModel`)
+- Modify: `Product.php` (fillable/casts + `brand()`), `ProductController.php` (eager-load `brand` + set `brand_source` on store/update), `ProductData.php` (`?BrandData $brand` + `fromModel`), `Presentation/Requests/CreateProductRequest.php` + `UpdateProductRequest.php` (validate `brand_id`)
 - Test: `tests/Feature/Product/ProductBrandTest.php`
 
 **Interfaces:**
 - Consumes: `Brand` (Task 3), `BrandData` (Task 3), `BrandSource` (Task 2).
 - Produces: `Product::brand(): BelongsTo`; `Product.brand_id` (nullable), `Product.brand_source` (nullable `BrandSource`); `ProductData->brand: ?BrandData`.
 
-- [ ] **Step 1: Failing test** — product with `brand_id` set; `GET /api/v1/products/{id}` response `data.brand.name` present; product without brand → `data.brand` null; deleting the brand nulls `brand_id` (`nullOnDelete`).
+- [ ] **Step 1: Failing test** — (a) `GET /api/v1/products/{id}` with `brand_id` set → `data.brand.name` present; no brand → `data.brand` null; deleting the brand nulls `brand_id` (`nullOnDelete`); **(b) `POST /api/v1/products` with `brand_id` of a tenant brand persists it and sets `brand_source='user'`; `PATCH` changing `brand_id` keeps `brand_source='user'`** (C-2 — exercise the request path, not just a model-created product).
 - [ ] **Step 2: Run — FAIL**
 - [ ] **Step 3: Migration**
 ```php
@@ -211,7 +211,8 @@ Schema::table('products', function (Blueprint $t) {
 });
 ```
 - [ ] **Step 4: Model** — add `brand_id`, `brand_source` to `$fillable`; cast `brand_source => BrandSource::class`; `public function brand(): BelongsTo { return $this->belongsTo(Brand::class); }`.
-- [ ] **Step 5: Controller** — add `'brand'` to the **base** `$with` in `index()` (line ~72) and to the base load in `show()`/`store()`/`update()` (it is universal, NOT vertical-gated). `ProductData::fromModel`: `brand: $product->relationLoaded('brand') && $product->brand ? BrandData::fromModel($product->brand) : null`.
+- [ ] **Step 5: Controller eager-load + DTO** — add `'brand'` to the **base** `$with` in `index()` (line ~72) and to the base load in `show()`/`store()`/`update()` (universal, NOT vertical-gated). `ProductData::fromModel`: `brand: $product->relationLoaded('brand') && $product->brand ? BrandData::fromModel($product->brand) : null`.
+- [ ] **Step 5b: Requests + provenance (C-2)** — in `CreateProductRequest` and `UpdateProductRequest` add `'brand_id' => ['nullable', 'uuid', Rule::exists('brands', 'id')->where('tenant_id', $this->user()->tenant_id)]` (scope the existence to the current tenant). In `ProductController::store`/`update`, when the validated payload includes `brand_id`, set `$data['brand_source'] = BrandSource::User->value` for a non-null assignment (and decide: clearing `brand_id` to null also nulls `brand_source`). Do NOT let `brand_source` be client-supplied.
 - [ ] **Step 6: Run — PASS**; phpstan/pint; `typescript:transform`.
 - [ ] **Step 7: Commit** `feat(brand): products.brand_id + brand_source + universal eager-load`
 
@@ -238,7 +239,7 @@ if (in_array('brand', $acceptedFields, true) && filled($enriched->brand)) {
     $product->brand_source = BrandSource::Enriched;
 }
 ```
-Retry once on a unique-violation (concurrent accept) by re-running `firstOrCreate`.
+Retry once on a unique-violation (concurrent accept) by re-running `firstOrCreate`. **Wrap ALL accept-side mutations in ONE `DB::transaction` — the brand upsert, the `$product->update(...)`, the enrichment-tracking clear, and the `accepted_fields` write — not just the brand block** (so a mid-accept failure rolls back atomically).
 - [ ] **Step 4: Run — PASS**; phpstan/pint.
 - [ ] **Step 5: Commit** `fix(brand): enrichment-accept upserts + links Brand (was silently dropped)`
 
@@ -392,22 +393,21 @@ it('includes skin fields for parapharmacy and excludes them otherwise', function
 });
 ```
 - [ ] **Step 2: Run — FAIL** (resource is flat/unconditional today)
-- [ ] **Step 3: Controller** — resolve the flag and pass it in:
+- [ ] **Step 3: Controller** — resolve the flag from the already-injected `$this->companyContext` (it eager-loads `tenant`) and pass it through the **resource constructor** (the controller maps rows by calling `->toArray($request)` manually, so `->additional()`/`mergeWhen` resolution is bypassed — the constructor is the PRIMARY path, I-1):
 ```php
 $isParapharmacy = $this->companyContext->requireCompany()->tenant->vertical === Vertical::Parapharmacy;
-// per row:
-(new PosCustomerMirrorResource($customer))->additional(['isParapharmacy' => $isParapharmacy])->toArray($request);
+// in the row map closure (NOT a static closure — it captures $isParapharmacy):
+(new PosCustomerMirrorResource($customer, $isParapharmacy))->toArray($request);
 ```
-(Use the existing `$this->companyContext` injection; if absent, inject `CompanyContext` via constructor — never `app()`.)
-- [ ] **Step 4: Resource** — read the flag and merge conditionally:
+- [ ] **Step 4: Resource** — add `public function __construct($resource, private bool $isParapharmacy = false) { parent::__construct($resource); }`. In `toArray`, build `$payload = [ ...existing keys... ];` then plain PHP:
 ```php
-$isParapharmacy = (bool) ($this->additional['isParapharmacy'] ?? false);
-return array_merge([... existing keys ...], $this->mergeWhen($isParapharmacy, [
-    'skin_type' => $this->skin_type instanceof SkinType ? $this->skin_type->value : $this->skin_type,
-    'skin_advice_note' => $this->skin_advice_note,
-]));
+if ($this->isParapharmacy) {
+    $payload['skin_type'] = $this->skin_type instanceof SkinType ? $this->skin_type->value : $this->skin_type;
+    $payload['skin_advice_note'] = $this->skin_advice_note;
+}
+return $payload;
 ```
-(If `->additional()` does not survive the manual `->toArray($request)` call style, pass the flag via the resource constructor instead — add a `__construct($resource, bool $isParapharmacy)`.)
+Non-parapharmacy callers get the keys **entirely absent** (not null).
 - [ ] **Step 5: Run — PASS**; phpstan/pint; Commit `feat(merch): customer skin fields on sync + parapharmacy vertical guard`
 
 ---
@@ -459,34 +459,40 @@ return array_merge([... existing keys ...], $this->mergeWhen($isParapharmacy, [
 ### Task 18: Device migration v58 (products) + cursor reset + test
 **Files:** Modify `apps/pos/src/lib/db/migrations.ts`; Test `apps/pos/src/lib/db/__tests__/migrations.v58.test.ts`
 
-- [ ] **Step 1: Failing test** (mirror `migrations.v57.test.ts`) — seed `sync_metadata['products_last_sync']`, apply migrations through v58, assert: columns `brand_id`/`brand_name`/`parapharmacy_metadata` exist AND `products_last_sync` row is gone.
+- [ ] **Step 1: Failing test** (mirror `migrations.v57.test.ts`) — (a) seed `sync_metadata['products_last_sync']`, apply migrations through v58, assert columns `brand_id`/`brand_name`/`parapharmacy_metadata` exist AND `products_last_sync` is gone; **(b) idempotency: pre-create one target column (e.g. `brand_id`) before running v58, then run it and assert it still completes with all 3 columns + cursor deleted** (I-3).
 - [ ] **Step 2: Run — FAIL** (`cd apps/pos && pnpm test src/lib/db/__tests__/migrations.v58.test.ts`)
-- [ ] **Step 3: Add migration** (confirm 58 is free vs loyalty first):
+- [ ] **Step 3: Add migration via a `run` handler with idempotent ALTER guards** (NOT a bare `sql` string — the migration system supports `run` + already has `isDuplicateColumnError()`, `migrations.ts:8`). Confirm v58 is free vs the loyalty session first:
 ```ts
-{ version: 58, name: 'add_brand_and_parapharmacy_metadata_to_products', sql: `
-  ALTER TABLE products ADD COLUMN brand_id TEXT;
-  ALTER TABLE products ADD COLUMN brand_name TEXT;
-  ALTER TABLE products ADD COLUMN parapharmacy_metadata TEXT;
-  DELETE FROM sync_metadata WHERE key = 'products_last_sync';
-` },
+{ version: 58, name: 'add_brand_and_parapharmacy_metadata_to_products', run: async (db) => {
+  for (const col of ['brand_id', 'brand_name', 'parapharmacy_metadata']) {
+    try { await db.execute(`ALTER TABLE products ADD COLUMN ${col} TEXT`); }
+    catch (e) { if (!isDuplicateColumnError(e)) throw e; }
+  }
+  await db.execute(`DELETE FROM sync_metadata WHERE key = 'products_last_sync'`);
+} },
 ```
-- [ ] **Step 4: Run — PASS**; `pnpm lint`/`typecheck`; Commit `feat(pos): v58 product brand + parapharmacy_metadata + cursor reset`
+(Match the exact `run`/`db.execute` signature the existing migrations use.)
+- [ ] **Step 4: Run — PASS**; `pnpm lint`/`typecheck`; Commit `feat(pos): v58 product brand + parapharmacy_metadata + cursor reset (idempotent)`
 
 ### Task 19: Device migration v59 (customers) + cursor reset + test
-- [ ] **Step 1: Failing test** `migrations.v59.test.ts` — seed the customer sync cursor (`customers.updated_since` key used by `pullCustomers`), apply v59, assert columns `skin_type`/`skin_advice_note` exist AND the cursor key is gone.
-- [ ] **Step 2: Run — FAIL** → **Step 3:** add v59 ALTERs + `DELETE FROM sync_metadata WHERE key = 'customers.updated_since'` (confirm the exact key `pullCustomers` persists, from `customerSyncService.ts`). → **Step 4:** PASS; Commit `feat(pos): v59 customer skin fields + cursor reset`
+- [ ] **Step 1: Failing test** `migrations.v59.test.ts` — seed the customer cursor `sync_metadata['customers.updated_since']` (the key `pullCustomers` persists — confirmed in `customerSyncService.ts`), apply v59, assert columns `skin_type`/`skin_advice_note` exist AND the cursor key is gone; plus the same pre-created-column idempotency assertion as v58.
+- [ ] **Step 2: Run — FAIL**
+- [ ] **Step 3:** add v59 as a `run` handler with the same `isDuplicateColumnError` guard loop over `['skin_type', 'skin_advice_note']`, then `DELETE FROM sync_metadata WHERE key = 'customers.updated_since'`. Confirm v59 is free vs the loyalty session.
+- [ ] **Step 4: PASS**; lint/typecheck; Commit `feat(pos): v59 customer skin fields + cursor reset (idempotent)`
 
 ### Task 20: `productRepository` — columns + flatten + upsert rewrite
 **Files:** Modify `apps/pos/src/lib/db/repositories/productRepository.ts`, `apps/pos/src/types/product.ts`; Test `productRepository.test.ts`
 
-- [ ] **Step 1: Failing test** — `upsertProducts` then `getProducts` round-trips `brand_id`, `brand_name`, and a `parapharmacy_metadata` object; a server payload with nested `brand:{id,name}` flattens to `brand_id`/`brand_name`.
+- [ ] **Step 1: Failing test** — `upsertProducts` then `getProducts` round-trips `brand_id`, `brand_name`, and a `parapharmacy_metadata` object; AND a product whose API payload carries nested `brand:{id,name}` (not flat) persists `brand_id`/`brand_name` after upsert. (The second assertion is the C-1 guard — flattening must happen on the WRITE path.)
 - [ ] **Step 2: Run — FAIL**
-- [ ] **Step 3: Implement** — extend `ProductRow` (+3 cols); `POSProduct` (`brand_id?`,`brand_name?`,`parapharmacy_metadata?: ParapharmacyMeta`); `rowToProduct` (JSON.parse metadata; if payload has nested `brand`, set `brand_id=brand.id`,`brand_name=brand.name`); **rewrite `upsertProducts`**: INSERT column list (+3), value template `($n…$n+3, datetime('now'), datetime('now'))`, `ON CONFLICT … SET` (+3), `PARAMS_PER_ROW 15→18`. Define `ParapharmacyMeta` type in `types/product.ts`.
+- [ ] **Step 3: Implement** — extend `ProductRow` (+3 cols); `POSProduct` (`brand_id?`,`brand_name?`,`parapharmacy_metadata?: ParapharmacyMeta`); define `ParapharmacyMeta` in `types/product.ts`. **C-1 — flatten on the WRITE path, NOT in `rowToProduct`** (`rowToProduct` only runs on SQLite reads — `productRepository.ts:25`; the live `/products` pull sends API rows straight to `upsertProducts` — `syncService.ts:590`). At the top of `upsertProducts` (or in `pullProductsCore` before calling it), accept `POSProduct & { brand?: { id: string; name: string } | null }` and derive `const brand_id = p.brand_id ?? p.brand?.id ?? null; const brand_name = p.brand_name ?? p.brand?.name ?? null;`. `rowToProduct` only `JSON.parse`s `parapharmacy_metadata`. **Rewrite `upsertProducts`** end-to-end: INSERT column list (+3), value template `($n…$n+3, datetime('now'), datetime('now'))`, `ON CONFLICT … SET` (+3), `PARAMS_PER_ROW 15→18`.
 - [ ] **Step 4: Run — PASS**; lint/typecheck; Commit `feat(pos): productRepository brand + parapharmacy_metadata round-trip`
 
 ### Task 21: `customerRepository` + `CustomerMirrorRow` skin fields
 - [ ] **Step 1: Failing test** — `upsertCustomer` round-trips `skin_type`/`skin_advice_note`.
-- [ ] **Step 2–4:** extend `CustomerMirrorRow` (`customerTypes.ts`) + `upsertCustomer` (INSERT/ON CONFLICT + params); PASS; Commit `feat(pos): customer skin fields round-trip`
+- [ ] **Step 2: Run — FAIL**
+- [ ] **Step 3: Implement** — extend `CustomerMirrorRow` (`customerTypes.ts`) with `skin_type: string | null`, `skin_advice_note: string | null`; in `upsertCustomer` add both to the INSERT column list, the `$n` value placeholders (bump the customer param count by 2), the params array, and the `ON CONFLICT … DO UPDATE SET` list (mirror the exact pattern Task 20 uses for products — count the existing placeholders first).
+- [ ] **Step 4: Run — PASS**; lint/typecheck; Commit `feat(pos): customer skin fields round-trip`
 
 ### Task 22: Wire `pullCustomers` into `runFullSync` + `SyncResult` + failure policy
 **Files:** Modify `apps/pos/src/lib/sync/syncService.ts`; Test `syncService.customers.test.ts`
@@ -495,7 +501,17 @@ return array_merge([... existing keys ...], $this->mergeWhen($isParapharmacy, [
 
 - [ ] **Step 1: Failing test** — `runFullSync` calls `pullCustomers` with `tenantId`/`companyId` from `authStore`; result has `customersPulled`; when `pullCustomers` throws, the tick continues (sells), sets a degraded/`customersFailed` signal, and does NOT advance the customer cursor.
 - [ ] **Step 2: Run — FAIL** (orphan today)
-- [ ] **Step 3: Implement** — add `customersPulled` (+`customersFailed`) to `SyncResult` and the returned object; in `runFullSync`, read `tenantId`/`companyId` from `authStore`, `try { customersPulled = await pullCustomers(db, tenantId, companyId) } catch (e) { log; customersFailed = true }` (mirror variants/location-stock swallow-and-continue). Cursor advancement stays inside `pullCustomers`' success path (already correct).
+- [ ] **Step 3: Implement** — add `customersPulled: number` (+ `customersFailed?: boolean`) to `SyncResult` and the returned object. In `runFullSync`, read IDs with a **strict guard** (I-2 — `authStore` exposes `user.tenantId` and store-level `companyId: string | null`):
+```ts
+const tenantId = auth.user?.tenantId; const companyId = auth.companyId;
+if (!tenantId || !companyId) {
+  customersFailed = true; errors.push('Customer pull skipped: missing tenant/company context');
+} else {
+  try { customersPulled = await pullCustomers(db, tenantId, companyId); }
+  catch (e) { customersFailed = true; errors.push(`Customer pull failed: ${sanitize(e)}`); }
+}
+```
+Pushing into `errors` makes `computeDegraded()` (`syncService.ts:201`) return true (it counts `errors.length`); if you prefer an explicit signal, extend `computeDegraded` to take `customersFailed`. Cursor advancement stays inside `pullCustomers`' success path (already correct — never advances on throw).
 - [ ] **Step 4: Run — PASS**; lint/typecheck; Commit `feat(pos): wire pullCustomers into runFullSync + SyncResult contract`
 
 ---
@@ -518,21 +534,31 @@ return array_merge([... existing keys ...], $this->mergeWhen($isParapharmacy, [
 - [ ] **Step 2: Implement** — replace `getStoredDisplayMode()` local state with `useSettingsStore` `displayMode` + `density`; extend `getColumns` + `CARD_MIN_H_*` (visual+comfortable=5/visual+dense=6/compact+comfortable=4/compact+dense=5); toolbar: search · Filtres (badge) · Top ventes · view toggle (`SegmentedControl`); category `Pill` row + active filter-chip row + count.
 - [ ] **Step 3: PASS**; lint/typecheck; Commit `feat(pos): ProductGrid restyle + settingsStore displayMode/density reconcile`
 
+> **Tasks 26–29 are post-rebase.** Confirm the exact atom/token/route targets at Task 23 before starting; the file paths below are the current (pre-rebase) anchors and may shift after the redesign rebase — re-verify each.
+
 ### Task 26: Filtres drawer (module-gated)
-- [ ] **Step 1: Test** — drawer renders brand/category/routine/skin-type multi-selects from the local product set; chips removable; result count live; hidden when `!hasModule('Merchandising')`.
-- [ ] **Step 2: Implement** (`Pill` chips; source facets from `productStore`). **Step 3: PASS**; Commit `feat(pos): Filtres drawer (module-gated)`
+**Files:** new drawer component (e.g. `components/organisms/FiltresDrawer/`); **filter state owner = `HomePage`** (lifts state above `ProductGrid` so the grid + skin-advice bar both read it); facet source = `useProductStore` (in-memory products).
+- [ ] **Step 1: Test** — drawer renders brand/category/routine/skin-type multi-selects derived from the loaded product set; selecting filters narrows the grid; chips (`Pill`) removable; live result count; the Filtres toolbar button + drawer are hidden when `!hasModule(config, 'Merchandising')`.
+- [ ] **Step 2: Implement** — `HomePage` owns `filters` state + passes to `ProductGrid`; drawer reads facet options from `productStore` (`brand_name`, `category`, routines, `suitable_skin_types`); gate the toolbar entry on `hasModule`.
+- [ ] **Step 3: PASS**; lint (color guard)/typecheck; Commit `feat(pos): Filtres drawer (module-gated)`
 
 ### Task 27: Skin-advice bar (module-gated)
-- [ ] **Step 1: Test** — skin-type pills filter grid by `suitable_skin_types`; defaults from selected customer's `skin_type`; gated.
-- [ ] **Step 2–3:** implement in `ProductGrid` header; PASS; Commit `feat(pos): skin-advice bar (module-gated)`
+**Files:** `components/organisms/ProductGrid/ProductGrid.tsx` header; reads the **selected-customer** from the active transaction/customer store; writes a skin-type filter into the `HomePage` filter state (Task 26).
+- [ ] **Step 1: Test** — skin-type `Pill`s filter the grid by `suitable_skin_types`; the bar defaults its active pill from the selected customer's `skin_type`; hidden when `!hasModule('Merchandising')`.
+- [ ] **Step 2: Implement** — render in the grid header; default from selected-customer `skin_type`; toggle updates the shared filter state.
+- [ ] **Step 3: PASS**; lint/typecheck; Commit `feat(pos): skin-advice bar (module-gated)`
 
 ### Task 28: Product-detail Équivalents/Compléments/Routine tabs (module-gated)
-- [ ] **Step 1: Test** — tabs resolve `equivalent_product_ids`/`complement_product_ids`/`routine_refs` against the local product store → `ProductThumb` rows; one-tap add-to-cart; gated.
-- [ ] **Step 2–3:** implement in `ProductDetailDrawer` (`Tabs` with counts); PASS; Commit `feat(pos): detail merchandising tabs (module-gated)`
+**Files:** the detail drawer reached via `components/organisms/ProductDetailDrawer/index.ts` → currently re-exports the legacy `components/pos/ProductDetailDrawer.tsx` (confirm post-rebase). **Local lookup helper:** add `productStore.getByIds(ids: string[]): POSProduct[]` (resolve `equivalent_product_ids`/`complement_product_ids`/`routine_refs[].routine_id`→products in-memory — no network).
+- [ ] **Step 1: Test** — the three new tabs (`Tabs` w/ counts) resolve the ID arrays via `getByIds` → `ProductThumb` rows; tapping a row adds it to the cart; tabs hidden when `!hasModule('Merchandising')`.
+- [ ] **Step 2: Implement** — read the arrays from the product's `parapharmacy_metadata`; resolve via `getByIds`; render `ProductThumb` rows with the existing add-to-cart action.
+- [ ] **Step 3: PASS**; lint/typecheck; Commit `feat(pos): detail merchandising tabs (module-gated)`
 
 ### Task 29: `/customers` page build-out + skin capture (in place)
-- [ ] **Step 1: Test** — `/customers` lists customers; add/edit captures `skin_type` + `skin_advice_note`; detail shows them.
-- [ ] **Step 2–3:** build out the existing placeholder (do NOT create a parallel page); wire to customer create/update + sync; PASS; Commit `feat(pos): build out /customers with skin-type capture`
+**Files:** the `/customers` route + page placeholder added by the redesign session (verify in `AppShell` route tree at Task 23 — **do NOT create a parallel page**). Customer create/update path = the existing customer API/offline write used by the current add-customer flow; skin fields sync via Task 11 (server) + Task 19/21 (device).
+- [ ] **Step 1: Test** — `/customers` lists synced customers; add/edit form captures `skin_type` (`SkinType` options) + `skin_advice_note`; the detail view shows them and feeds the skin-advice-bar default (Task 27).
+- [ ] **Step 2: Implement** — build out the placeholder page; add the skin fields to the customer form + detail; persist via the existing customer write path.
+- [ ] **Step 3: PASS**; lint/typecheck; Commit `feat(pos): build out /customers with skin-type capture`
 
 ---
 
