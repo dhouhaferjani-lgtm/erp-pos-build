@@ -1826,4 +1826,34 @@ export const migrations: Migration[] = [
       await db.execute(`DELETE FROM sync_metadata WHERE key = 'products_last_sync'`);
     },
   },
+  {
+    // v59: Add skin_type and skin_advice_note to the customers mirror table so
+    // the POS can display (and optionally filter by) parapharmacy skin profile
+    // data alongside the customer record.
+    //
+    // Both columns are nullable TEXT — non-parapharmacy installs never receive
+    // these fields and correctly stay NULL; no DEFAULT is needed.
+    //
+    // The `customers.updated_since` cursor is deleted from `sync_metadata` so
+    // the next `pullCustomers` executes a full re-fetch. Without the reset,
+    // existing customer rows keep both skin columns NULL indefinitely because
+    // the delta-keyed sync never re-fetches already-seen customers.
+    //
+    // Uses a `run` handler with idempotent `isDuplicateColumnError` guards
+    // (matching the v58 pattern) so the migration survives re-application or
+    // any schema drift without aborting the entire migration run.
+    version: 59,
+    name: 'add_skin_fields_to_customers',
+    sql: '',
+    async run(db) {
+      for (const col of ['skin_type', 'skin_advice_note']) {
+        try {
+          await db.execute(`ALTER TABLE customers ADD COLUMN ${col} TEXT`);
+        } catch (e) {
+          if (!isDuplicateColumnError(e)) throw e;
+        }
+      }
+      await db.execute(`DELETE FROM sync_metadata WHERE key = 'customers.updated_since'`);
+    },
+  },
 ];
