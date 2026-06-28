@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Loyalty\Application\Services;
 
+use App\Modules\Loyalty\Application\Resolvers\MemberResolver;
 use App\Modules\Loyalty\Domain\Entities\Enrollment;
-use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
 use App\Modules\Loyalty\Domain\Enums\EnrollmentStatus;
 use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
 use App\Modules\Loyalty\Domain\Repositories\LoyaltyProgramRepositoryInterface;
@@ -26,6 +26,7 @@ final readonly class SaleEarningService implements LoyaltyEarningContract
     public function __construct(
         private EarningProcessingService $earningService,
         private LoyaltyProgramRepositoryInterface $programRepository,
+        private MemberResolver $memberResolver,
     ) {}
 
     public function earnForSale(SaleEarnContext $context): void
@@ -40,7 +41,9 @@ final readonly class SaleEarningService implements LoyaltyEarningContract
             return;
         }
 
-        $member = $this->resolveMember($context);
+        $member = $this->memberResolver->resolveByContactOrPartner(
+            $context->tenantId, $context->contactId, $context->partnerId,
+        );
         if ($member === null) {
             return;
         }
@@ -101,31 +104,4 @@ final readonly class SaleEarningService implements LoyaltyEarningContract
         }
     }
 
-    private function resolveMember(SaleEarnContext $context): ?LoyaltyMember
-    {
-        $member = null;
-
-        if ($context->contactId !== null) {
-            $member = LoyaltyMember::query()
-                ->where('loyaltyable_type', 'contact')
-                ->where('loyaltyable_id', $context->contactId)
-                ->where('tenant_id', $context->tenantId)
-                ->first();
-        }
-
-        if ($member === null && $context->partnerId !== null) {
-            $partnerId = $context->partnerId;
-            $member = LoyaltyMember::query()
-                ->where(function ($q) use ($partnerId) {
-                    $q->where(function ($q2) use ($partnerId) {
-                        $q2->where('loyaltyable_type', 'partner')
-                            ->where('loyaltyable_id', $partnerId);
-                    })->orWhere('customer_id', $partnerId);
-                })
-                ->where('tenant_id', $context->tenantId)
-                ->first();
-        }
-
-        return $member;
-    }
 }
