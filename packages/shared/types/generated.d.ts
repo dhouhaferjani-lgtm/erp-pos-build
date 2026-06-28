@@ -1,6 +1,6 @@
 declare global {
 declare namespace App.Enums {
-export type ModuleName = 'Identity' | 'Tenant' | 'Catalog' | 'Vehicle' | 'Partner' | 'Workshop' | 'Sales' | 'Inventory' | 'Treasury' | 'Accounting' | 'PlatformIntegration' | 'BatchExpiry' | 'Menu' | 'Tables' | 'CompositeItems' | 'Parapharmacy' | 'Appointments' | 'Fleet' | 'Prescription' | 'Reservation' | 'Loyalty' | 'Ecommerce';
+export type ModuleName = 'Identity' | 'Tenant' | 'Catalog' | 'Vehicle' | 'Partner' | 'Workshop' | 'Sales' | 'Inventory' | 'Treasury' | 'Accounting' | 'PlatformIntegration' | 'BatchExpiry' | 'Menu' | 'Tables' | 'CompositeItems' | 'Parapharmacy' | 'Appointments' | 'Fleet' | 'Prescription' | 'Reservation' | 'Loyalty' | 'Ecommerce' | 'Merchandising';
 export type Product = 'izipos' | 'otospex';
 export type Vertical = 'mechanic' | 'pharmacy' | 'restaurant' | 'coffee_shop' | 'retail' | 'fashion' | 'body_shop' | 'parts_retailer' | 'car_glass' | 'tire_shop' | 'service_station' | 'parapharmacy';
 }
