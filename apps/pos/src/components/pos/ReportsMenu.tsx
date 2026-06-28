@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FileText, Clock, Wallet, Receipt, FileArchive } from 'lucide-react';
+import { useOperatorStore } from '@/stores/operatorStore';
+import { isManagerRole } from '@/lib/auth/roles';
 
 interface ReportsMenuProps {
   isOpen: boolean;
@@ -23,6 +25,11 @@ export function ReportsMenu({
 }: ReportsMenuProps) {
   const { t } = useTranslation('pos');
   const menuRef = useRef<HTMLDivElement>(null);
+  // Owner access constraint (2026-06-28, point 1): the fiscal/cash reports
+  // (X-report, cash-drawer ops, Z-report history) are manager-only; the
+  // transaction history + today's sales views stay open to every operator.
+  const operator = useOperatorStore((s) => s.operator);
+  const isManager = isManagerRole(operator?.roles);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -48,12 +55,12 @@ export function ReportsMenu({
   if (!isOpen) return null;
 
   const items = [
-    { label: t('reports.xReport'), icon: FileText, onClick: onXReport },
-    { label: t('reports.transactionHistory'), icon: Clock, onClick: onTransactionHistory },
-    { label: t('reports.cashDrawer'), icon: Wallet, onClick: onCashDrawerOps },
-    { label: t('reports.todaySales'), icon: Receipt, onClick: onTodaySales },
-    { label: t('reports.zList.title'), icon: FileArchive, onClick: onZReportHistory },
-  ];
+    { label: t('reports.xReport'), icon: FileText, onClick: onXReport, managerOnly: true },
+    { label: t('reports.transactionHistory'), icon: Clock, onClick: onTransactionHistory, managerOnly: false },
+    { label: t('reports.cashDrawer'), icon: Wallet, onClick: onCashDrawerOps, managerOnly: true },
+    { label: t('reports.todaySales'), icon: Receipt, onClick: onTodaySales, managerOnly: false },
+    { label: t('reports.zList.title'), icon: FileArchive, onClick: onZReportHistory, managerOnly: true },
+  ].filter((item) => isManager || !item.managerOnly);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
