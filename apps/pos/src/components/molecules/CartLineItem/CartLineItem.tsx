@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
 import { Tag, SlidersHorizontal, Trash2, X, ChevronDown, ChevronUp } from 'lucide-react';
@@ -50,40 +50,6 @@ export function CartLineItem({
 
   const collapsible = typeof onToggleExpand === 'function';
   const isOpen = collapsible ? expanded === true : true;
-
-  // Mis-tap guard: when confirmDelete is on, the first delete tap "arms" the
-  // control and a second tap confirms. Disarm when the line collapses (the
-  // controls are no longer visible) and auto-disarm after a short window.
-  const [removeArmed, setRemoveArmed] = useState(false);
-
-  // Reset the guard when the line collapses (React "adjust state on prop change"
-  // pattern — done during render, not in an effect, to avoid cascading renders).
-  // prevOpen is render-bookkeeping only (never displayed), so a ref avoids an
-  // extra state slot/render; the real visible reset is setRemoveArmed.
-  const prevOpenRef = useRef(isOpen);
-  if (prevOpenRef.current !== isOpen) {
-    prevOpenRef.current = isOpen;
-    if (!isOpen && removeArmed) setRemoveArmed(false);
-  }
-
-  useEffect(() => {
-    if (!removeArmed) return;
-    const id = setTimeout(() => setRemoveArmed(false), 3000);
-    return () => clearTimeout(id);
-  }, [removeArmed]);
-
-  const handleRemoveClick = () => {
-    if (!confirmDelete) {
-      onRemove(item.id);
-      return;
-    }
-    if (!removeArmed) {
-      setRemoveArmed(true);
-      return;
-    }
-    setRemoveArmed(false);
-    onRemove(item.id);
-  };
 
   const hasDiscount = !!item.discount_amount && bccomp(item.discount_amount, '0') > 0;
   const originalTotal = hasDiscount
@@ -197,20 +163,10 @@ export function CartLineItem({
        * qty stepper + discount + modifiers (right). */}
       {isOpen && (
         <div className="flex items-center gap-2 border-t border-border-subtle px-2 py-2">
-          <button
-            type="button"
-            onClick={handleRemoveClick}
-            className={
-              removeArmed
-                ? 'flex h-12 items-center gap-1.5 rounded-ctl bg-danger-strong px-3 text-sm font-semibold text-ink-inverse active:opacity-80'
-                : 'flex h-12 w-12 items-center justify-center rounded-ctl text-danger-strong hover:bg-danger-surface active:opacity-80'
-            }
-            aria-label={removeArmed ? t('cart.confirmRemoveItem') : t('cart.removeItem')}
-            title={removeArmed ? t('cart.confirmRemoveItem') : t('cart.removeItem')}
-          >
-            <Trash2 className="h-5 w-5" />
-            {removeArmed && <span>{t('cart.confirmRemoveItem')}</span>}
-          </button>
+          <CartLineRemoveButton
+            confirmDelete={confirmDelete}
+            onRemove={() => onRemove(item.id)}
+          />
           <span className="font-mono text-xs tabular-nums text-ink-muted">
             {format(item.unit_price)}
           </span>
@@ -248,5 +204,60 @@ export function CartLineItem({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Remove control for an expanded cart line. Owns its own "armed" state so the
+ * confirm-on-delete guard resets automatically: the button only mounts inside
+ * the expanded controls, so collapsing the line unmounts it and re-expanding
+ * starts fresh (no prevOpen bookkeeping in the parent). When `confirmDelete` is
+ * off it removes on the first tap; when on, the first tap arms (showing a
+ * confirm label) and the second tap removes — auto-disarming after 3s.
+ */
+function CartLineRemoveButton({
+  confirmDelete,
+  onRemove,
+}: {
+  confirmDelete: boolean;
+  onRemove: () => void;
+}) {
+  const { t } = useTranslation();
+  const [armed, setArmed] = useState(false);
+
+  useEffect(() => {
+    if (!armed) return;
+    const id = setTimeout(() => setArmed(false), 3000);
+    return () => clearTimeout(id);
+  }, [armed]);
+
+  const handleClick = () => {
+    if (!confirmDelete) {
+      onRemove();
+      return;
+    }
+    if (!armed) {
+      setArmed(true);
+      return;
+    }
+    setArmed(false);
+    onRemove();
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className={
+        armed
+          ? 'flex h-12 items-center gap-1.5 rounded-ctl bg-danger-strong px-3 text-sm font-semibold text-ink-inverse active:opacity-80'
+          : 'flex h-12 w-12 items-center justify-center rounded-ctl text-danger-strong hover:bg-danger-surface active:opacity-80'
+      }
+      aria-label={armed ? t('cart.confirmRemoveItem') : t('cart.removeItem')}
+      title={armed ? t('cart.confirmRemoveItem') : t('cart.removeItem')}
+    >
+      <Trash2 className="h-5 w-5" />
+      {armed && <span>{t('cart.confirmRemoveItem')}</span>}
+    </button>
   );
 }

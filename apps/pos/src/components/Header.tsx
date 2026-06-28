@@ -594,11 +594,12 @@ export function Header() {
             <span className="text-sm text-ink-faint">{t('header.noShift')}</span>
           )}
 
-          <Divider orientation="vertical" />
-
-          {/* Operator cluster — avatar + name + switch */}
+          {/* Operator cluster — divider + avatar + name + switch. The leading
+           * divider is part of this cluster so it never orphans when there is
+           * no operator. */}
           {operator && (
             <>
+              <Divider orientation="vertical" />
               <Avatar name={operator.name} size={36} tone="accent" />
               <span className="mx-1 hidden max-w-[10rem] truncate text-sm font-medium text-ink-muted sm:inline">
                 {operator.name}
