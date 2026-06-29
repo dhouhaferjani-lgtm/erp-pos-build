@@ -237,26 +237,23 @@ function CustomerDetail({
   onUpdated,
 }: CustomerDetailProps) {
   const { t } = useTranslation('pos');
+  // `mode` is the only local state: it resets automatically because the parent
+  // remounts this component (key={customer.id}) when the selection changes.
+  // The customer row itself stays the single source of truth via the prop —
+  // optimistic skin-profile edits flow back up through onUpdated and return as
+  // an updated prop, so no local copy is needed.
   const [mode, setMode] = useState<DetailMode>('view');
-  const [current, setCurrent] = useState<CustomerMirrorRow>(customer);
-
-  // Sync when parent changes the selected customer.
-  useEffect(() => {
-    setCurrent(customer);
-    setMode('view');
-  }, [customer.id]);
 
   const handleSkinSaved = (updated: CustomerMirrorRow) => {
-    setCurrent(updated);
     onUpdated(updated);
     setMode('view');
   };
 
   const skinTypeLabel =
-    current.skin_type && isSkinTypeValue(current.skin_type)
-      ? t(`skin_type.${current.skin_type}`, {
+    customer.skin_type && isSkinTypeValue(customer.skin_type)
+      ? t(`skin_type.${customer.skin_type}`, {
           ns: 'smart-prompts',
-          defaultValue: current.skin_type,
+          defaultValue: customer.skin_type,
         })
       : null;
 
@@ -272,7 +269,7 @@ function CustomerDetail({
         >
           <ChevronLeft className="h-4 w-4" aria-hidden="true" />
         </button>
-        <h2 className="text-lg font-bold text-ink">{current.name}</h2>
+        <h2 className="text-lg font-bold text-ink">{customer.name}</h2>
       </div>
 
       {/* Body */}
@@ -282,16 +279,16 @@ function CustomerDetail({
             {/* Contact info */}
             <section aria-labelledby="customer-contact-heading">
               <dl className="flex flex-col gap-2">
-                {current.phone && (
+                {customer.phone && (
                   <div>
                     <dt className="text-xs text-ink-faint">{t('customers.phone')}</dt>
-                    <dd className="text-sm text-ink">{current.phone}</dd>
+                    <dd className="text-sm text-ink">{customer.phone}</dd>
                   </div>
                 )}
-                {current.email && (
+                {customer.email && (
                   <div>
                     <dt className="text-xs text-ink-faint">{t('customers.email')}</dt>
-                    <dd className="text-sm text-ink">{current.email}</dd>
+                    <dd className="text-sm text-ink">{customer.email}</dd>
                   </div>
                 )}
               </dl>
@@ -328,12 +325,12 @@ function CustomerDetail({
                     )}
                   </dd>
                 </div>
-                {current.skin_advice_note && (
+                {customer.skin_advice_note && (
                   <div>
                     <dt className="text-xs text-ink-faint">
                       {t('customers.skinAdviceNote')}
                     </dt>
-                    <dd className="text-sm text-ink">{current.skin_advice_note}</dd>
+                    <dd className="text-sm text-ink">{customer.skin_advice_note}</dd>
                   </div>
                 )}
               </dl>
@@ -345,7 +342,7 @@ function CustomerDetail({
               {t('customers.skinProfileTitle')}
             </h3>
             <SkinProfileForm
-              customer={current}
+              customer={customer}
               tenantId={tenantId}
               companyId={companyId}
               onSaved={handleSkinSaved}
@@ -692,6 +689,7 @@ export function CustomersPage() {
           ) : selectedCustomer && tenantId && companyId ? (
             <div className="p-4 md:p-5 h-full">
               <CustomerDetail
+                key={selectedCustomer.id}
                 customer={selectedCustomer}
                 tenantId={tenantId}
                 companyId={companyId}
