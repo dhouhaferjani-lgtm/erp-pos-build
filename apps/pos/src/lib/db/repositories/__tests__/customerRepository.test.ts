@@ -39,6 +39,9 @@ function customer(overrides: Partial<CustomerMirrorRow> = {}): CustomerMirrorRow
     sync_version: 'sync-v1',
     updated_at: '2026-05-21T08:01:00.000Z',
     synced_at: '2026-05-21T08:02:00.000Z',
+    // Task 21 — skin profile fields default to null (non-parapharmacy baseline).
+    skin_type: null,
+    skin_advice_note: null,
     ...overrides,
   };
 }
@@ -249,5 +252,40 @@ describe('customerRepository', () => {
     expect(isBalanceStale(customer({ balance_updated_at: null }), now, 30)).toBe(true);
     expect(isBalanceStale(customer({ balance_updated_at: '2026-05-21T08:20:00.000Z' }), now, 30)).toBe(true);
     expect(isBalanceStale(customer({ balance_updated_at: '2026-05-21T08:45:00.000Z' }), now, 30)).toBe(false);
+  });
+
+  // Task 21 — skin profile fields round-trip (migration v59 added the columns).
+  it('round-trips skin_type and skin_advice_note through upsertCustomer', async () => {
+    // Write a customer with skin profile data.
+    await upsertCustomer(db, customer({
+      id: 'skin-customer-1',
+      skin_type: 'oily',
+      skin_advice_note: 'Prefer oil-free and non-comedogenic products',
+    }));
+
+    const row = await getCustomerById(db, 'tenant-1', 'company-1', 'skin-customer-1');
+
+    expect(row?.skin_type).toBe('oily');
+    expect(row?.skin_advice_note).toBe('Prefer oil-free and non-comedogenic products');
+  });
+
+  it('stores null skin_type and skin_advice_note when not set (non-parapharmacy customer)', async () => {
+    // Default customer() has skin_type: null and skin_advice_note: null.
+    await upsertCustomer(db, customer({ id: 'plain-customer-1' }));
+
+    const row = await getCustomerById(db, 'tenant-1', 'company-1', 'plain-customer-1');
+
+    expect(row?.skin_type).toBeNull();
+    expect(row?.skin_advice_note).toBeNull();
+  });
+
+  it('updates skin_type and skin_advice_note on conflict (upsert overwrites)', async () => {
+    await upsertCustomer(db, customer({ id: 'update-skin-1', skin_type: 'dry', skin_advice_note: 'Initial note' }));
+    await upsertCustomer(db, customer({ id: 'update-skin-1', skin_type: 'sensitive', skin_advice_note: 'Updated note' }));
+
+    const row = await getCustomerById(db, 'tenant-1', 'company-1', 'update-skin-1');
+
+    expect(row?.skin_type).toBe('sensitive');
+    expect(row?.skin_advice_note).toBe('Updated note');
   });
 });

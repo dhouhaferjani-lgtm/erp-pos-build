@@ -64,6 +64,9 @@ export async function upsertCustomer(db: Database, input: CustomerMirrorRow): Pr
     );
   }
 
+  // Param count before Task 21: 23 ($1–$23). After adding skin_type ($24) and
+  // skin_advice_note ($25) the total is 25. Column list, placeholders, params
+  // array, and ON CONFLICT SET are all kept in sync.
   await execute(
     db,
     `INSERT INTO customers (
@@ -71,9 +74,10 @@ export async function upsertCustomer(db: Database, input: CustomerMirrorRow): Pr
        receivable_balance, credit_balance, credit_limit, payment_terms_days,
        charge_account_enabled, charge_policy_version, balance_updated_at,
        account_status, account_status_changed_at, account_status_reason, account_status_version,
-       is_active, sync_version, updated_at, synced_at
+       is_active, sync_version, updated_at, synced_at,
+       skin_type, skin_advice_note
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
      ON CONFLICT(tenant_id, company_id, id) DO UPDATE SET
        name = excluded.name,
        phone = excluded.phone,
@@ -94,7 +98,9 @@ export async function upsertCustomer(db: Database, input: CustomerMirrorRow): Pr
        is_active = excluded.is_active,
        sync_version = excluded.sync_version,
        updated_at = excluded.updated_at,
-       synced_at = excluded.synced_at`,
+       synced_at = excluded.synced_at,
+       skin_type = excluded.skin_type,
+       skin_advice_note = excluded.skin_advice_note`,
     [
       input.id,
       input.tenant_id,
@@ -119,6 +125,8 @@ export async function upsertCustomer(db: Database, input: CustomerMirrorRow): Pr
       input.sync_version,
       input.updated_at,
       input.synced_at,
+      input.skin_type ?? null,
+      input.skin_advice_note ?? null,
     ],
   );
 }

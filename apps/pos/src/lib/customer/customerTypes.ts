@@ -24,6 +24,9 @@ export interface CustomerMirrorRow {
   sync_version: string | null;
   updated_at: string | null;
   synced_at: string;
+  // Task 21 — parapharmacy skin profile fields (nullable TEXT, added by migration v59).
+  skin_type: string | null;
+  skin_advice_note: string | null;
 }
 
 export interface CustomerSearchInput {
