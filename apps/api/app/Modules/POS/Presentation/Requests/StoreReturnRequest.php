@@ -6,8 +6,10 @@ namespace App\Modules\POS\Presentation\Requests;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Enums\RefundDestination;
+use App\Modules\POS\Domain\Enums\ReturnLineDisposition;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Shared\Presentation\Validation\ScopedExists;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -77,7 +79,67 @@ final class StoreReturnRequest extends FormRequest
             'approval_override_event_id' => ['required', 'uuid'],
             'authorized_by_user_id' => ['required', 'uuid', 'same:approval_supervisor_user_id'],
             'override_reason' => ['nullable', 'string', 'max:255'],
+            // Per-line disposition + receipt-facts fields (Task 5).
+            'lines.*.physical_receipt' => ['sometimes', 'boolean'],
+            'lines.*.resalable' => ['nullable', 'boolean'],
+            'lines.*.disposition' => ['nullable', 'string', Rule::in(ReturnLineDisposition::values())],
         ];
+    }
+
+    /**
+     * Cross-field structural validation for per-line disposition + receipt facts.
+     *
+     * Rules enforced here (business "never" policy is in the service — Task 9):
+     *   1. disposition='restock' requires physical_receipt=true AND resalable=true.
+     *   2. physical_receipt=false requires resalable to be null/absent, and
+     *      disposition to be null or 'not_received'.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            /** @var list<array<string, mixed>> $lines */
+            $lines = $this->input('lines', []);
+
+            foreach ($lines as $i => $line) {
+                /** @var string|null $disposition */
+                $disposition = isset($line['disposition']) ? (string) $line['disposition'] : null;
+                $physicalReceipt = isset($line['physical_receipt']) ? (bool) $line['physical_receipt'] : null;
+                $resalable = isset($line['resalable']) ? (bool) $line['resalable'] : null;
+
+                // Rule 1: restock requires physical_receipt=true AND resalable=true.
+                if ($disposition === ReturnLineDisposition::Restock->value) {
+                    if ($physicalReceipt !== true) {
+                        $validator->errors()->add(
+                            "lines.{$i}.disposition",
+                            'Disposition "restock" requires physical_receipt to be true.',
+                        );
+                    }
+                    if ($resalable !== true) {
+                        $validator->errors()->add(
+                            "lines.{$i}.disposition",
+                            'Disposition "restock" requires resalable to be true.',
+                        );
+                    }
+                }
+
+                // Rule 2: physical_receipt=false forbids non-null resalable and any
+                // disposition other than null or 'not_received'.
+                if ($physicalReceipt === false) {
+                    if ($resalable !== null) {
+                        $validator->errors()->add(
+                            "lines.{$i}.resalable",
+                            'resalable must be absent or null when physical_receipt is false.',
+                        );
+                    }
+                    if ($disposition !== null && $disposition !== ReturnLineDisposition::NotReceived->value) {
+                        $validator->errors()->add(
+                            "lines.{$i}.disposition",
+                            'When physical_receipt is false, disposition must be null or "not_received".',
+                        );
+                    }
+                }
+            }
+        });
     }
 
     /**
