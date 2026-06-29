@@ -841,3 +841,212 @@ describe('ProductGrid — Task 26 Filtres drawer', () => {
     expect(screen.queryByTestId('filter-chip-row')).not.toBeInTheDocument();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task 27 — Skin-advice bar
+// (a) skin pills toggle the shared skinTypes filter (products filtered accordingly)
+// (b) customerSkinType prop auto-defaults the matching pill via onFiltersChange
+// (c) bar hidden when Merchandising module is disabled
+// ---------------------------------------------------------------------------
+
+describe('ProductGrid — Task 27 Skin-advice bar', () => {
+  // Shared ParapharmacyMeta baseline — only suitable_skin_types differs per product.
+  const baseParapharmacyMeta = {
+    equivalent_product_ids: [],
+    complement_product_ids: [],
+    routine_refs: [],
+  };
+
+  // Products with parapharmacy_metadata for skin-type filtering
+  const skinProducts = [
+    makeProduct({
+      id: 'p-dry',
+      name: 'Dry Skin Cream',
+      sku: 'D1',
+      sale_price: '12.000',
+      stock_quantity: 5,
+      parapharmacy_metadata: { ...baseParapharmacyMeta, suitable_skin_types: ['dry'] },
+    }),
+    makeProduct({
+      id: 'p-oily',
+      name: 'Oily Skin Gel',
+      sku: 'O1',
+      sale_price: '10.000',
+      stock_quantity: 5,
+      parapharmacy_metadata: { ...baseParapharmacyMeta, suitable_skin_types: ['oily'] },
+    }),
+    makeProduct({
+      id: 'p-all',
+      name: 'Universal Serum',
+      sku: 'U1',
+      sale_price: '20.000',
+      stock_quantity: 5,
+      parapharmacy_metadata: { ...baseParapharmacyMeta, suitable_skin_types: ['dry', 'oily', 'normal', 'combination', 'sensitive'] },
+    }),
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    settingsStoreMock.state.displayMode = 'grid';
+    settingsStoreMock.state.density = 'comfortable';
+    settingsStoreMock.state.setDisplayMode = vi.fn();
+    // Enable Merchandising module
+    productStoreMock.state.companyConfig = {
+      all_enabled_modules: ['Merchandising'],
+    } as import('@/types/companyConfig').CompanyConfig;
+    mockT.mockImplementation((key: string, opts?: { defaultValue?: string; ns?: string }) =>
+      opts?.defaultValue ?? key,
+    );
+  });
+
+  // (c) bar hidden when module disabled
+  it('(c) hides the skin-advice bar when Merchandising module is disabled', () => {
+    productStoreMock.state.companyConfig = null;
+    render(
+      <ProductGrid
+        products={skinProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+        filters={{ brands: [], categories: [], skinTypes: [] }}
+        onFiltersChange={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('skin-advice-bar')).not.toBeInTheDocument();
+  });
+
+  // (c) bar also hidden when filters prop is absent (module may be on but no filter state)
+  it('(c) hides the skin-advice bar when filters prop is absent', () => {
+    render(
+      <ProductGrid
+        products={skinProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+      />,
+    );
+    expect(screen.queryByTestId('skin-advice-bar')).not.toBeInTheDocument();
+  });
+
+  // (a) skin pills narrow the grid via filters.skinTypes
+  it('(a) grid shows only products matching the active skinTypes filter', () => {
+    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: ['dry'] };
+    render(
+      <ProductGrid
+        products={skinProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+        filters={filters}
+        onFiltersChange={vi.fn()}
+      />,
+    );
+    // 'dry' filter: p-dry and p-all (has 'dry') are visible; p-oily is not
+    expect(screen.getByTestId('product-p-dry')).toBeInTheDocument();
+    expect(screen.getByTestId('product-p-all')).toBeInTheDocument();
+    expect(screen.queryByTestId('product-p-oily')).not.toBeInTheDocument();
+  });
+
+  // (a) clicking a skin-type pill calls onFiltersChange to toggle it
+  it('(a) clicking a skin-type pill calls onFiltersChange with the toggled skinType', () => {
+    const onFiltersChange = vi.fn();
+    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: [] };
+    render(
+      <ProductGrid
+        products={skinProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+        filters={filters}
+        onFiltersChange={onFiltersChange}
+      />,
+    );
+    // The skin-advice bar renders 5 pills — find the 'dry' pill.
+    // mockT returns the defaultValue (= the raw key value like 'dry') for skin_type.* keys.
+    const dryPill = screen.getByRole('button', { name: 'dry' });
+    fireEvent.click(dryPill);
+    expect(onFiltersChange).toHaveBeenCalledWith(
+      expect.objectContaining({ skinTypes: ['dry'] }),
+    );
+  });
+
+  // (a) clicking an already-active pill removes it from skinTypes
+  it('(a) clicking an active skin-type pill removes it from the filter', () => {
+    const onFiltersChange = vi.fn();
+    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: ['dry'] };
+    render(
+      <ProductGrid
+        products={skinProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+        filters={filters}
+        onFiltersChange={onFiltersChange}
+      />,
+    );
+    const dryPill = screen.getByRole('button', { name: 'dry' });
+    fireEvent.click(dryPill);
+    expect(onFiltersChange).toHaveBeenCalledWith(
+      expect.objectContaining({ skinTypes: [] }),
+    );
+  });
+
+  // (b) customerSkinType auto-defaults the skin type filter via onFiltersChange
+  it('(b) customerSkinType="dry" triggers onFiltersChange to add dry to skinTypes', () => {
+    const onFiltersChange = vi.fn();
+    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: [] };
+    render(
+      <ProductGrid
+        products={skinProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+        filters={filters}
+        onFiltersChange={onFiltersChange}
+        customerSkinType="dry"
+      />,
+    );
+    // The useEffect fires on mount (customerSkinType changed from undefined → 'dry')
+    expect(onFiltersChange).toHaveBeenCalledWith(
+      expect.objectContaining({ skinTypes: ['dry'] }),
+    );
+  });
+
+  // (b) no auto-default when customerSkinType is already in the active filter
+  it('(b) does NOT call onFiltersChange when customerSkinType is already active', () => {
+    const onFiltersChange = vi.fn();
+    // 'dry' is already in skinTypes
+    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: ['dry'] };
+    render(
+      <ProductGrid
+        products={skinProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+        filters={filters}
+        onFiltersChange={onFiltersChange}
+        customerSkinType="dry"
+      />,
+    );
+    // Should NOT call onFiltersChange since 'dry' is already active
+    expect(onFiltersChange).not.toHaveBeenCalled();
+  });
+
+  // (b) no auto-default when customerSkinType is null (no customer / no skin type known)
+  it('(b) does NOT call onFiltersChange when customerSkinType is null', () => {
+    const onFiltersChange = vi.fn();
+    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: [] };
+    render(
+      <ProductGrid
+        products={skinProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+        filters={filters}
+        onFiltersChange={onFiltersChange}
+        customerSkinType={null}
+      />,
+    );
+    expect(onFiltersChange).not.toHaveBeenCalled();
+  });
+});

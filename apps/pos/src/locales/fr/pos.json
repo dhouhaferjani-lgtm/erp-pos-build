@@ -47,7 +47,8 @@
     "filtersSkinType": "Type de peau",
     "filtersResultCount": "{{count}} résultats",
     "filtersClearAll": "Effacer tout",
-    "filtersNoFacets": "Aucun filtre disponible pour ce catalogue"
+    "filtersNoFacets": "Aucun filtre disponible pour ce catalogue",
+    "skinAdviceLabel": "Conseil · Type de peau"
   },
   "payment": {
     "success": "Paiement réussi !",

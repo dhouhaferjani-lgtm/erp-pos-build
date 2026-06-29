@@ -26,6 +26,12 @@ type DisplayMode = 'grid' | 'visual';
 type SortMode = 'default' | 'mostSold';
 
 /**
+ * Task 27 — The canonical 5 skin-type values for the advice bar.
+ * Translated via `skin_type.<value>` in the `smart-prompts` namespace.
+ */
+const SKIN_TYPES = ['normal', 'dry', 'oily', 'combination', 'sensitive'] as const;
+
+/**
  * Stable default for the `locationStock` prop — an inline `{}` default would
  * be a brand-new object every render, invalidating the `filteredProducts`
  * memo (which depends on it) on each pass.
@@ -59,6 +65,13 @@ export interface ProductGridProps {
   filters?: FiltresFilters;
   /** Called when the user changes drawer filters. */
   onFiltersChange?: (filters: FiltresFilters) => void;
+  /**
+   * Task 27 — skin_type from the currently-attached customer (resolved by
+   * HomePage from SQLite via getCustomerById). When provided and the
+   * matching skin type is not already active, the bar auto-defaults it into
+   * filters.skinTypes. Null / undefined = no customer or no skin type known.
+   */
+  customerSkinType?: string | null;
 }
 
 export function ProductGrid({
@@ -74,6 +87,7 @@ export function ProductGrid({
   onViewDetails,
   filters,
   onFiltersChange,
+  customerSkinType,
 }: ProductGridProps) {
   const { t } = useTranslation('pos');
 
@@ -94,6 +108,28 @@ export function ProductGrid({
   const companyConfig = useProductStore((s) => s.companyConfig);
   const isMerchandisingEnabled = hasModule(companyConfig, 'Merchandising');
   const [filtresOpen, setFiltresOpen] = useState(false);
+
+  // ---------------------------------------------------------------------------
+  // Task 27 — auto-default skin type from attached customer.
+  // Stable refs ensure the effect only triggers when customerSkinType changes,
+  // not on every filter-state update (avoids infinite-loop risk if the parent
+  // updates filtresFilters on every render).
+  // ---------------------------------------------------------------------------
+  const _filtersRef = useRef(filters);
+  _filtersRef.current = filters;
+  const _onFiltersChangeRef = useRef(onFiltersChange);
+  _onFiltersChangeRef.current = onFiltersChange;
+
+  useEffect(() => {
+    if (!customerSkinType) return;
+    const f = _filtersRef.current;
+    const onChange = _onFiltersChangeRef.current;
+    if (!f || !onChange) return;
+    if (f.skinTypes.includes(customerSkinType)) return;
+    onChange({ ...f, skinTypes: [customerSkinType] });
+    // customerSkinType is the sole change-driver; filters/onFiltersChange are
+    // read via stable refs — refs are excluded from deps by convention.
+  }, [customerSkinType]);
 
   const companyId = useAuthStore((s) => s.companyId);
   const { counts: salesCounts } = useMostSoldCounts({
@@ -541,6 +577,41 @@ export function ProductGrid({
               {t(`skin_type.${st}`, { ns: 'smart-prompts', defaultValue: st })}
             </Pill>
           ))}
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Skin-advice bar (Task 27) — module-gated (Merchandising)          */}
+      {/* Shows the 5 SkinType pills that toggle the shared skinTypes filter */}
+      {/* and auto-defaults from the attached customer's skin_type.          */}
+      {/* ------------------------------------------------------------------ */}
+      {isMerchandisingEnabled && filters && onFiltersChange && (
+        <div
+          className="flex flex-wrap items-center gap-3 py-1"
+          data-testid="skin-advice-bar"
+        >
+          <span className="shrink-0 text-xs font-semibold text-ink-muted">
+            {t('products.skinAdviceLabel')}
+          </span>
+          <div className="flex flex-wrap gap-2">
+            {SKIN_TYPES.map((st) => (
+              <Pill
+                key={st}
+                selected={filters.skinTypes.includes(st)}
+                onClick={() => {
+                  const next = filters.skinTypes.includes(st)
+                    ? filters.skinTypes.filter((s) => s !== st)
+                    : [...filters.skinTypes, st];
+                  onFiltersChange({ ...filters, skinTypes: next });
+                }}
+              >
+                {t(`skin_type.${st}`, { ns: 'smart-prompts', defaultValue: st })}
+              </Pill>
+            ))}
+          </div>
+          <span className="ml-auto shrink-0 text-xs text-ink-faint">
+            {t('products.filtersResultCount', { count: filteredProducts.length })}
+          </span>
         </div>
       )}
 

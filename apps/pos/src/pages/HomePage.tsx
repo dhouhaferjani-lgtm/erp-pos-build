@@ -42,6 +42,7 @@ import { fetchReceipt } from '@/api/receiptApi';
 import { buildEscPosReceiptData } from '@/lib/buildReceiptData';
 import type { ReceiptVisibilitySettings } from '@/lib/buildReceiptData';
 import type { ReceiptData } from '@/lib/printing';
+import { getCustomerById } from '@/lib/db/repositories/customerRepository';
 import { hasModule } from '@/stores/productStore';
 import { EMPTY_FILTRES_FILTERS } from '@/components/organisms/FiltresDrawer';
 import type { FiltresFilters } from '@/components/organisms/FiltresDrawer';
@@ -253,6 +254,44 @@ export function HomePage() {
   // Task 26 — Filtres drawer filter state. Lifted here so the skin-advice bar
   // (Task 27+) can also read/set the skinType selection.
   const [filtresFilters, setFiltresFilters] = useState<FiltresFilters>(EMPTY_FILTRES_FILTERS);
+
+  // Task 27 — resolve the attached customer's skin_type from SQLite so the
+  // skin-advice bar can default its active pill.
+  // AttachedCheckoutCustomer omits skin_type (Task 21); the full record lives
+  // in the customers SQLite table, fetched here via getCustomerById.
+  const attachedCustomer = usePaymentStore((s) => s.selectedCustomer);
+  const [customerSkinType, setCustomerSkinType] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!attachedCustomer) {
+      setCustomerSkinType(null);
+      return;
+    }
+    const companyId = useAuthStore.getState().companyId;
+    const tenantId = activeTenantId;
+    if (!companyId || !tenantId) {
+      setCustomerSkinType(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const db = await getDatabase(companyId);
+        const row = await getCustomerById(db, tenantId, companyId, attachedCustomer.id);
+        if (!cancelled) {
+          setCustomerSkinType(row?.skin_type ?? null);
+        }
+      } catch {
+        if (!cancelled) setCustomerSkinType(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  // Re-run when the attached customer's id changes (new customer attached or detached).
+  // activeTenantId is stable across a session but included for correctness.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachedCustomer?.id, activeTenantId]);
 
   // Line discount state
   const [discountItemId, setDiscountItemId] = useState<string | null>(null);
@@ -1479,6 +1518,7 @@ export function HomePage() {
           ) : undefined}
           filters={filtresFilters}
           onFiltersChange={setFiltresFilters}
+          customerSkinType={customerSkinType}
         />
         {(smartPromptsVariant === 'toast' || smartPromptsVariant === 'both') && (
           <ToastSmartPrompts {...smartPromptsSharedProps} />
