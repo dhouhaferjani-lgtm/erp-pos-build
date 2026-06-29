@@ -16,6 +16,7 @@ use App\Modules\POS\Application\Concerns\RoundsVat;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\RefundDestination;
+use App\Modules\POS\Domain\Enums\ReturnLineDisposition;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Exceptions\DailyRefundCapExceededException;
@@ -1011,10 +1012,10 @@ final class ReceiptReturnService
      * Validate return quantities against original receipt, accounting for previous returns.
      *
      * @param  Receipt  $originalReceipt  The original receipt with lines and returnReceipts loaded
-     * @param  array<int, array{line_id: string, quantity: string}>  $returnLines
-     * @return array<int, array{original_line: ReceiptLine, quantity: string, already_returned: string}>
+     * @param  array<int, array{line_id: string, quantity: string, disposition?: string|null, physical_receipt?: bool|null, resalable?: bool|null}>  $returnLines
+     * @return array<int, array{original_line: ReceiptLine, quantity: string, already_returned: string, disposition: ReturnLineDisposition, physical_receipt: bool|null, resalable: bool|null}>
      *
-     * @throws \InvalidArgumentException If quantities are invalid
+     * @throws \InvalidArgumentException If quantities are invalid or disposition combos are illegal
      */
     private function validateReturnQuantities(Receipt $originalReceipt, array $returnLines): array
     {
@@ -1051,10 +1052,37 @@ final class ReceiptReturnService
                 );
             }
 
+            // ─────────────────────────────────────────────────────────────────
+            // Parse per-line disposition (default RESTOCK when absent)
+            // ─────────────────────────────────────────────────────────────────
+            $dispositionRaw = $returnLine['disposition'] ?? null;
+            $disposition = $dispositionRaw === null
+                ? ReturnLineDisposition::Restock
+                : (ReturnLineDisposition::tryFrom((string) $dispositionRaw)
+                    ?? throw new \InvalidArgumentException("Invalid disposition '{$dispositionRaw}' for line '{$lineId}'"));
+
+            $physicalReceipt = array_key_exists('physical_receipt', $returnLine) ? (bool) $returnLine['physical_receipt'] : null;
+            $resalable = array_key_exists('resalable', $returnLine) ? ($returnLine['resalable'] === null ? null : (bool) $returnLine['resalable']) : null;
+
+            // ─────────────────────────────────────────────────────────────────
+            // Service-side fail-closed illegal-combo guard (defense in depth
+            // vs the request layer — catches direct service callers too).
+            // ─────────────────────────────────────────────────────────────────
+            if ($disposition === ReturnLineDisposition::Restock && ($physicalReceipt === false || $resalable === false)) {
+                throw new \InvalidArgumentException("RESTOCK requires the item received and resalable for line '{$lineId}'");
+            }
+
+            if ($disposition === ReturnLineDisposition::NotReceived && $physicalReceipt === true) {
+                throw new \InvalidArgumentException("NOT_RECEIVED cannot have physical_receipt=true for line '{$lineId}'");
+            }
+
             $validated[] = [
                 'original_line' => $originalLine,
                 'quantity' => $requestedQuantity,
                 'already_returned' => $alreadyReturnedQty,
+                'disposition' => $disposition,
+                'physical_receipt' => $physicalReceipt,
+                'resalable' => $resalable,
             ];
         }
 
