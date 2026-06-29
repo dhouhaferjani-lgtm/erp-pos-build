@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Product\Enums;
 
-use App\Modules\Product\Domain\Enums\EquivalenceType;
 use App\Modules\Product\Domain\Enums\BrandSource;
+use App\Modules\Product\Domain\Enums\EquivalenceType;
 use Tests\TestCase;
 
 class EquivalenceTypeTest extends TestCase
