@@ -1,0 +1,73 @@
+# Session Communication Protocol — AutoERP
+# Load when managing long-running sessions
+
+session_directory: ~/erp-sessions/{task-id}/
+
+files:
+  handoff:
+    path: HANDOFF.md
+    written_by: orchestrator
+    template: ~/erp-agents/orchestrator/templates/HANDOFF.md
+    description: "Full context for the session. Written once at kickoff."
+
+  state:
+    path: STATE.yaml
+    written_by: worker_session
+    template: ~/erp-agents/orchestrator/templates/STATE.yaml
+    update_interval: 30_minutes
+    description: "Current progress. Worker updates every 30 min."
+
+starting_a_session:
+  steps:
+    - mkdir -p ~/erp-sessions/{task-id}/
+    - write HANDOFF.md from template (fill in task details, context, acceptance criteria)
+    - write initial STATE.yaml (status: not_started)
+    - create git worktree: git worktree add ~/erp-worktrees/{task-id} -b feature/{task-id}
+    - launch tmux session:
+        command: >
+          tmux new-session -d -s {task-id}
+          "cd ~/erp-worktrees/{task-id} && claude
+          'Read ~/erp-sessions/{task-id}/HANDOFF.md and implement the task.
+          Update ~/erp-sessions/{task-id}/STATE.yaml every 30 minutes.'"
+    - update MANIFEST.yaml
+
+monitoring:
+  check_interval: 30_minutes
+  stale_threshold: 2_hours  # STATE.yaml not updated
+  actions_on_stale:
+    - check if tmux session exists: tmux has-session -t {task-id}
+    - if dead: re-launch with same HANDOFF.md
+    - if alive but stuck: read STATE.yaml, assess, help or escalate
+    - if stuck > 4 hours total: escalate to Houssam
+
+session_completes:
+  worker_must:
+    - run preflight.sh (must pass)
+    - create PR against local-dev
+    - update STATE.yaml: status completed, pr number
+  orchestrator_then:
+    - detect completion via STATE.yaml
+    - dispatch domain agent review
+    - manage merge flow
+
+session_blocked:
+  worker_must:
+    - update STATE.yaml: status blocked
+    - add blocker with category and description
+  orchestrator_then:
+    - read blockers
+    - if resolvable: provide answer/context to the session
+    - if not: escalate to Houssam via Telegram
+
+session_recovery:
+  - HANDOFF.md has full context (never lost)
+  - git branch has all committed work
+  - STATE.yaml shows last known progress
+  - re-launch: same HANDOFF.md, session reads STATE.yaml to resume
+  - at most 30 min of work lost (frequent commits required)
+
+cleanup:
+  after_merge:
+    - git worktree remove ~/erp-worktrees/{task-id}
+    - git branch -d feature/{task-id}  # only if merged
+    - archive session dir: mv ~/erp-sessions/{task-id}/ ~/erp-sessions/_archive/

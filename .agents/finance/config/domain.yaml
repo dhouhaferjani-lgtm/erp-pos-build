@@ -1,0 +1,174 @@
+# Finance Agent -- Domain Registry
+# Maps all owned modules, their key artifacts, and business validation rules.
+
+modules:
+  accounting:
+    path: apps/api/app/Modules/Accounting/
+    purpose: General ledger, chart of accounts, journal entries, fiscal periods, partner balances
+    key_models:
+      - Domain/Services/DoubleEntryValidator.php
+      - Domain/Services/GeneralLedgerService.php
+      - Domain/Services/AccountHierarchyService.php
+      - Application/Services/AccountingService.php
+      - Application/Services/ChartOfAccountsService.php
+      - Application/Services/FiscalPeriodResolverService.php
+      - Application/Services/GeneralLedgerHashService.php
+      - Application/Services/PartnerBalanceService.php
+      - Application/Services/OpeningBalanceBatchService.php
+      - Application/Services/Reports/
+    key_enums:
+      - Domain/Enums/AccountType.php          # asset, liability, equity, revenue, expense
+      - Domain/Enums/JournalEntryStatus.php
+      - Domain/Enums/SystemAccountPurpose.php
+      - Domain/Enums/OpeningBatchStatus.php
+      - Domain/Enums/OpeningBatchType.php
+      - Domain/Enums/OpeningImportRowStatus.php
+    business_rules:
+      - Every journal entry must be balanced (total debits == total credits via bcmath)
+      - Journal entry lines are XOR: either debit or credit, never both, never neither
+      - Minimum 2 lines per journal entry
+      - Account types have fixed normal balance directions (asset/expense = debit, liability/equity/revenue = credit)
+      - Fiscal periods cannot overlap and must be contiguous
+      - Posted journal entries cannot be modified, only reversed
+      - Opening balances must balance across all accounts
+
+  treasury:
+    path: apps/api/app/Modules/Treasury/
+    purpose: Payment methods (universal 6-switch), repositories, instruments, payment recording, reconciliation
+    key_models:
+      - Domain/Services/MultiPaymentService.php
+      - Domain/Services/PaymentRefundService.php
+      - Domain/Services/VendorRefundService.php
+      - Application/Services/
+      - Application/DTOs/
+      - Application/Results/
+      - Infrastructure/Repositories/
+    key_enums:
+      - Domain/Enums/PaymentType.php           # inbound, outbound
+      - Domain/Enums/PaymentStatus.php
+      - Domain/Enums/InstrumentStatus.php      # received, in_transit, deposited, clearing, cleared, bounced, expired, cancelled
+      - Domain/Enums/AllocationMethod.php
+      - Domain/Enums/AllocationType.php
+      - Domain/Enums/FeeType.php               # percentage, fixed
+      - Domain/Enums/ReconciliationStatus.php
+      - Domain/Enums/RepositoryType.php        # cash_register, safe, bank_account, virtual
+    business_rules:
+      - Payment methods defined by 6 boolean switches (is_physical, has_maturity, requires_third_party, is_push, has_deducted_fees, is_restricted)
+      - Payment instruments follow lifecycle: received -> in_transit -> deposited -> clearing -> cleared (or bounced)
+      - Every instrument status change creates an InstrumentMovement record
+      - Physical instruments must be tracked in a repository at all times
+      - Maturity dates enforced for deferred instruments (configurable per tenant)
+      - Payment fees create separate GL entries
+      - Payment allocation updates invoice amount_paid and status
+      - Payment tolerance configured via PaymentToleranceCheckerContract
+      - Bank reconciliation matches bank statement lines to payments
+
+  billing:
+    path: apps/api/app/Modules/Billing/
+    purpose: Platform-level SaaS billing (subscription plans, not tenant invoicing)
+    key_models:
+      - Domain/Invoice.php
+      - Domain/InvoiceItem.php
+      - Domain/Payment.php
+      - Domain/Plan.php
+      - Domain/PlanLimits.php
+      - Domain/Refund.php
+      - Domain/TenantSubscription.php
+    key_enums:
+      - Domain/Enums/
+    business_rules:
+      - Plan limits enforce tenant feature access
+      - Subscription lifecycle managed independently from tenant accounting
+      - This is PLATFORM billing, not the tenant's own invoicing system
+
+  expense:
+    path: apps/api/app/Modules/Expense/
+    purpose: Expense recording, categorization, approval
+    key_models:
+      - Application/DTOs/
+      - Application/Services/
+      - Presentation/Controllers/
+      - Presentation/Resources/
+    business_rules:
+      - Expenses create GL entries (Dr. Expense account, Cr. Cash/Bank/Payable)
+      - Expense documents use DocumentType::Expense
+      - Must track supplier/vendor reference
+      - Tax (input VAT) on expenses must be calculated and tracked
+
+  taxation:
+    path: apps/api/app/Modules/Taxation/
+    purpose: Tax configuration, calculation, VAT returns, withholding, stamp duty, multi-country rules
+    key_models:
+      - Domain/Services/TaxCalculationService.php
+      - Domain/Services/TaxResolutionService.php
+      - Domain/Services/StampDutyService.php
+      - Domain/Services/WithholdingCalculationService.php
+      - Domain/Services/VatCreditService.php
+      - Application/Services/
+      - Application/DTOs/
+      - Infrastructure/Strategies/
+      - Infrastructure/Exporters/
+      - Infrastructure/Repositories/
+    key_enums:
+      - Domain/Enums/TaxType.php              # vat, withholding, stamp_duty, etc.
+      - Domain/Enums/VatDirection.php         # input, output
+      - Domain/Enums/VatPeriodType.php        # monthly, quarterly
+      - Domain/Enums/VatPeriodStatus.php
+      - Domain/Enums/TransactionType.php      # sale, purchase, import, export
+      - Domain/Enums/TaxApplicationLevel.php  # line, document
+      - Domain/Enums/WithholdingDirection.php
+      - Domain/Enums/CompanyTaxStatus.php
+      - Domain/Enums/PartnerTaxStatus.php
+      - Domain/Enums/StackingBehavior.php
+      - Domain/Enums/VatExportFormat.php
+      - Domain/Enums/CertificateStatus.php
+    business_rules:
+      - Tax resolution considers transaction type, product category, partner status, company config, country
+      - Tunisia: TVA + stamp duty (timbre fiscal) + retenue a la source (withholding)
+      - France: TVA with intra-EU reverse charge rules
+      - Tax calculated at line level or document level per TaxApplicationLevel
+      - VAT periods must be closed sequentially
+      - Withholding certificates must be generated and tracked
+      - Tax amounts recalculated on any line change (never cached stale)
+
+  compliance:
+    path: apps/api/app/Modules/Compliance/
+    purpose: NF525 fiscal compliance, hash chains, JET export, fraud detection
+    key_models:
+      - Services/Nf525/Nf525JetExportService.php
+      - Services/Nf525/Nf525XmlBuilder.php
+      - Application/Services/
+      - Infrastructure/Repositories/
+    key_enums:
+      - Domain/Enums/Nf525EventType.php
+    business_rules:
+      - Tier 1 hash chain (SHA-256) for fiscal documents (posted invoices, credit notes, payments, closings)
+      - Tier 2 audit log for ALL domain events (individual hashes, not chained)
+      - Hash chain is per document type per tenant
+      - Hash calculation happens FIRST inside DB transaction
+      - NF525 requires Z-reports, perpetual totals, receipt chaining, JET
+      - Chain integrity verified by recomputing all hashes in sequence
+
+shared_contracts:
+  provided:
+    - path: app/Shared/Contracts/Treasury/PaymentToleranceCheckerContract.php
+      purpose: Payment tolerance rules consumed by Document module
+    - path: app/Shared/Contracts/Treasury/DTOs/
+      purpose: Treasury DTOs for cross-module communication
+    - path: app/Shared/Contracts/Treasury/Enums/
+      purpose: Treasury enums for cross-module communication
+
+  consumed:
+    - path: app/Shared/Contracts/CurrencyScaleResolverInterface.php
+      purpose: Decimal precision for monetary calculations
+    - path: app/Shared/Contracts/InventoryServiceInterface.php
+      purpose: Stock level updates triggered by financial events
+    - path: app/Shared/Contracts/PartnerServiceInterface.php
+      purpose: Customer/supplier data access
+    - path: app/Shared/Contracts/Company/CompanyVerticalQueryContract.php
+      purpose: Vertical detection for tax rule selection
+
+test_locations:
+  feature: apps/api/tests/Feature/Accounting/, tests/Feature/Document/, etc.
+  unit: apps/api/tests/Unit/Accounting/, tests/Unit/Compliance/, etc.
+  integration: apps/api/tests/Integration/

@@ -1,0 +1,177 @@
+# decision-tree.yaml -- Task Dispatch Decision Tree
+# Machine-readable version of the orchestrator's dispatch logic.
+# The orchestrator follows this tree for every incoming work item.
+
+---
+
+decision_tree:
+  root:
+    question: "Is the spec clear and self-contained?"
+    criteria:
+      - "Acceptance criteria are unambiguous"
+      - "Affected modules are identified"
+      - "Data model changes are defined"
+      - "Expected behavior is testable"
+    yes: check_mechanical
+    no: check_discovery
+
+  check_discovery:
+    question: "Does it need discovery or research?"
+    yes:
+      action: dispatch_product_intel
+      target: product-intel
+      agent_path: "~/erp-agents/product-intel/"
+      output: "Feature spec that re-enters the tree at root"
+      manifest_status: "in_progress"
+      manifest_dispatch: "product_intel"
+    no:
+      action: ask_houssam
+      channel: telegram
+      message_template: |
+        Task needs clarification before dispatch.
+        Task: {title}
+        What I know: {known_context}
+        What is missing: {missing_items}
+        Specific questions: {questions}
+      manifest_status: "blocked"
+      manifest_reason: "awaiting_clarification"
+
+  check_mechanical:
+    question: "Is it mechanical work?"
+    definition:
+      - "Boilerplate / CRUD scaffolding"
+      - "Migration creation from defined schema"
+      - "Test generation from existing patterns"
+      - "Code style / linting fixes"
+      - "Adding translations (i18n keys)"
+      - "API doc generation"
+      - "Adding type hints to untyped code"
+    yes:
+      action: dispatch_codex
+      target: codex
+      requirements:
+        - "Clear, self-contained prompt"
+        - "Exact files to create/modify listed"
+        - "Reference implementation patterns cited"
+        - "Acceptance criteria: must pass preflight.sh"
+      manifest_dispatch: "codex"
+    no: check_fiscal
+
+  check_fiscal:
+    question: "Does it touch fiscal or compliance code?"
+    modules:
+      - name: Compliance
+        path: "app/Modules/Compliance/"
+        always_fiscal: true
+      - name: Taxation
+        path: "app/Modules/Taxation/"
+        always_fiscal: true
+      - name: Accounting
+        path: "app/Modules/Accounting/"
+        fiscal_when: "Modifying GL posting logic, fiscal periods, or journal entry creation"
+      - name: Document
+        path: "app/Modules/Document/"
+        fiscal_when: "Touching invoice posting flow, fiscal hash integration, or sequential numbering"
+      - name: Treasury
+        path: "app/Modules/Treasury/"
+        fiscal_when: "Payment recording that triggers GL entries"
+    also_fiscal:
+      - "Any code participating in SHA-256 fiscal hash chain"
+      - "Any code affecting tax calculation rules"
+      - "Any code modifying sequential document numbering"
+      - "NF525, ZATCA, or Factur-X compliance code"
+    yes:
+      action: dispatch_houssam
+      tier: 3
+      reason: "fiscal_compliance"
+      preparation:
+        - "Complete spec with affected files"
+        - "Risk assessment"
+        - "Test plan"
+      notification: |
+        Fiscal/compliance task ready for your session.
+        Task: {title}
+        Modules: {modules}
+        Briefing: {briefing_path}
+      manifest_dispatch: "houssam"
+    no: check_scope
+
+  check_scope:
+    question: "What is the estimated scope?"
+    options:
+      small:
+        criteria: "Single module, < 2 hours estimated"
+        action: dispatch_subagent
+        target: subagent
+        isolation: worktree
+        worktree_path: "~/erp-worktrees/{task-id}"
+        branch: "feature/{task-id}"
+        handoff: true
+        manifest_dispatch: "subagent"
+
+      medium:
+        criteria: "Multi-module or complex logic, 2-8 hours estimated"
+        action: dispatch_long_session
+        target: long_session
+        session_path: "~/erp-sessions/{task-id}/"
+        state_update_interval: "30 minutes"
+        stale_threshold: "2 hours"
+        handoff: true
+        manifest_dispatch: "long_session"
+
+      large:
+        criteria: "Architectural or cross-cutting, > 8 hours"
+        action: decompose
+        strategy: "Break into subtasks that individually fit small or medium"
+        create_task_group: true
+        dispatch_order: "dependency-first"
+
+  # Post-dispatch: determine domain agent involvement
+  domain_routing:
+    finance:
+      agent_path: "~/erp-agents/finance/"
+      trigger_modules:
+        - Accounting
+        - Treasury
+        - Billing
+        - Expense
+        - Taxation
+        - Compliance
+      trigger_shared:
+        - "Document -- financial lifecycle (invoice posting, payment status, fiscal hash)"
+        - "POS -- payment recording, shift closing, receipt fiscal chaining"
+      review_type: "business_logic"
+
+    supply_chain:
+      agent_path: "~/erp-agents/supply-chain/"
+      trigger_modules:
+        - Product
+        - Catalog
+        - Inventory
+        - BatchExpiry
+        - Uom
+        - PurchaseHub
+        - Pricing
+        - Promotion
+        - Coupon
+      trigger_shared:
+        - "Document -- fulfillment lifecycle (delivery notes, return notes, stock deduction)"
+      review_type: "business_logic"
+
+    architect:
+      agent: orchestrator_self
+      trigger_conditions:
+        - "New module creation"
+        - "New Shared/Contracts/ interface"
+        - "Cross-module dependency introduction"
+        - "Layer violation in Deptrac output"
+        - "New event contract definition"
+        - "Changes to module provider registration"
+      review_type: "structural"
+
+    both_domains:
+      trigger_conditions:
+        - "Changes span Finance and Supply Chain modules"
+        - "New cross-domain event flow"
+        - "Shared contract modification"
+      review_type: "cross_domain"

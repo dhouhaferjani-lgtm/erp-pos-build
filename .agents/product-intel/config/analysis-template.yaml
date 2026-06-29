@@ -1,0 +1,79 @@
+# Product Intelligence Agent -- Analysis Output Template
+# Structured format for gap analysis results.
+
+gap_entry:
+  schema:
+    id: string            # Unique identifier (e.g., PARA-001, AUTO-012)
+    vertical: string      # Which vertical this gap affects
+    module: string        # Which AutoERP module this belongs to
+    title: string         # Short descriptive title
+    description: string   # Detailed explanation of the gap
+    current_state: string # What AutoERP currently does (or doesn't)
+    desired_state: string # What the feature should do
+    category: enum        # compliance | table_stakes | differentiator | future
+    severity: enum        # critical | high | medium | low
+
+    scoring:
+      business_impact: int    # 1-5: revenue/retention impact
+      compliance_risk: int    # 1-5: legal/regulatory risk
+      effort: int             # 1-5: implementation complexity (1=easy, 5=hard)
+      priority_score: float   # Calculated: (business_impact + compliance_risk * 1.5) / effort
+
+    implementation:
+      affected_modules: list      # All modules that need changes
+      new_tables: list            # New database tables needed
+      new_enums: list             # New enums needed
+      new_services: list          # New domain/application services
+      api_endpoints: list         # New API endpoints
+      events: list                # New domain events
+      estimated_effort: enum      # S | M | L | XL
+      dependencies: list          # Other gaps that must be completed first
+      assigned_agent: string      # finance | supply-chain | both
+
+    competitive_reference:
+      erps_that_have_it: list     # Which competing ERPs offer this
+      how_they_do_it: string      # Brief description of their approach
+
+    status: enum                  # identified | spec_drafted | in_progress | implemented | deferred
+    identified_date: date
+    last_updated: date
+
+daily_report:
+  schema:
+    date: date
+    vertical_analyzed: string
+    new_gaps_found: int
+    gaps_closed_by_code: int
+    top_5_priorities:
+      - id: string
+        title: string
+        score: float
+        status: string
+    code_changes_detected:
+      - commit: string
+        modules_affected: list
+        impact_on_gaps: string
+    recommendations:
+      - action: string
+        rationale: string
+        urgency: enum   # immediate | this_week | this_sprint | backlog
+
+roadmap:
+  schema:
+    vertical: string
+    quarter: string
+    phases:
+      - name: string
+        duration: string
+        theme: string
+        features:
+          - gap_id: string
+            title: string
+            module: string
+            effort: enum
+            assigned_agent: string
+        dependencies: list
+    success_metrics:
+      - metric: string
+        target: string
+        measurement: string

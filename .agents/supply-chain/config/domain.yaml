@@ -1,0 +1,223 @@
+# Supply Chain Agent -- Domain Registry
+
+modules:
+  product:
+    path: apps/api/app/Modules/Product/
+    purpose: Product master data, SKUs, barcodes, cost/sale prices, margin management, enrichment
+    key_models:
+      - Domain/Product.php  # may be at Domain root or Domain/Entities/
+      - Application/Services/MarginService.php
+      - Application/Services/  # barcode lookup, enrichment
+      - Application/DTOs/
+      - Application/Jobs/
+      - Application/Listeners/
+      - Infrastructure/Services/
+      - Infrastructure/Persistence/
+    key_enums:
+      - Domain/Enums/ProductType.php
+      - Domain/Enums/ParapharmacyCategory.php
+      - Domain/Enums/DosageForm.php
+      - Domain/Enums/AgeRestriction.php
+      - Domain/Enums/AutomotiveArticleStatus.php
+      - Domain/Enums/BrandQualityTier.php
+      - Domain/Enums/CrossReferenceType.php
+      - Domain/Enums/VehicleTypeRef.php
+      - Domain/Enums/EnrichmentReviewStatus.php
+      - Domain/Enums/PlatformLinkStatus.php
+    key_events:
+      - Domain/Events/ProductCostPriceUpdated.php
+    business_rules:
+      - Products have a base UoM for stock tracking
+      - cost_price is the weighted average cost (maintained by Inventory module)
+      - sale_price auto-updated by MarginService when cost changes
+      - last_purchase_cost tracks most recent purchase unit cost
+      - Vertical-specific fields (parapharmacy DCI, automotive cross-refs)
+      - Enrichment pipeline enriches from barcode DB + marketplace platforms
+      - Product must have tenant_id and company_id
+
+  catalog:
+    path: apps/api/app/Modules/Catalog/
+    purpose: Composite items (bundles, recipes, kits), modifiers, vertical-specific catalog structures
+    key_models:
+      - Domain/Entities/CompositeItem.php
+      - Domain/Entities/CompositeItemVariant.php
+      - Domain/Entities/Modifier.php
+      - Domain/Entities/ModifierGroup.php
+      - Domain/Entities/Recipe.php
+      - Domain/Entities/RecipeLine.php
+      - Application/Services/
+      - Application/DTOs/
+    key_enums:
+      - Domain/Enums/ComponentType.php
+      - Domain/Enums/PriceAdjustmentType.php
+      - Domain/Enums/PricingMode.php
+      - Domain/Enums/ProductionType.php
+      - Domain/Enums/SelectionType.php
+      - Domain/Enums/VerticalType.php
+    business_rules:
+      - Composite items decompose to individual products for stock deduction
+      - Recipes have ingredients with quantities and UoM
+      - Modifiers can adjust price (add, override, percentage)
+      - Vertical type determines available catalog features
+
+  inventory:
+    path: apps/api/app/Modules/Inventory/
+    purpose: Stock levels, movements, WAC costing, reservations, counting, reconciliation
+    key_models:
+      - Domain/StockLevel.php
+      - Domain/StockMovement.php
+      - Application/Services/WeightedAverageCostService.php
+      - Application/Services/StockReservationService.php
+      - Application/Services/GoodsReceiptService.php
+      - Application/Services/LandedCostService.php
+      - Application/Services/InventoryCountingService.php
+      - Application/Services/CountingReconciliationService.php
+      - Application/Services/FraudTriggeredCountingService.php
+      - Application/Services/InventoryOpeningService.php
+      - Domain/Services/StockAdjustmentService.php
+    key_enums:
+      - Domain/Enums/MovementType.php         # receipt, issue, transfer_in, transfer_out, adjustment, opening
+      - Domain/Enums/CountingStatus.php
+      - Domain/Enums/CountingScopeType.php
+      - Domain/Enums/CountingExecutionMode.php
+      - Domain/Enums/AssignmentStatus.php
+      - Domain/Enums/MovementReason.php
+      - Domain/Enums/ReservationSource.php
+      - Domain/Enums/ReleaseReason.php
+      - Domain/Enums/ItemResolutionMethod.php
+    key_events:
+      - Domain/Events/StockMovementRecorded.php
+    business_rules:
+      - ALL stock changes create StockMovement records with before/after snapshots
+      - WAC recalculates on purchases and returns only, not on sales
+      - Pessimistic locking (lockForUpdate) mandatory for stock modifications
+      - Stock cannot go negative (DomainException thrown)
+      - Reserved stock tracked separately from total
+      - Available = quantity - reserved
+      - Events dispatched via DB::afterCommit(), not inside transactions
+
+  batch_expiry:
+    path: apps/api/app/Modules/BatchExpiry/
+    purpose: Batch/lot tracking, expiry management, FEFO allocation, write-offs
+    key_models:
+      - Domain/Entities/Batch.php
+      - Domain/Entities/BatchMovement.php
+      - Domain/Entities/BatchStock.php
+      - Domain/Services/FEFOInventoryService.php
+      - Domain/Services/BatchWriteOffService.php
+      - Infrastructure/Persistence/
+    key_enums:
+      - Domain/Enums/ExpiryStatus.php
+    business_rules:
+      - FEFO mandatory for regulated products (parapharmacy)
+      - Expired batches cannot be allocated for sale
+      - Near-expiry alerts at configurable threshold
+      - Batch write-offs create adjustment stock movements
+      - Each batch has unique lot number within product
+      - Batch stock tracked per location
+
+  uom:
+    path: apps/api/app/Modules/Uom/
+    purpose: Units of measure, categories, conversions
+    key_models:
+      - Domain/Entities/Unit.php
+      - Domain/Entities/UnitCategory.php
+      - Domain/Services/UnitConversionService.php
+    key_enums:
+      - Domain/Enums/
+    business_rules:
+      - Conversions only within same UnitCategory
+      - Stock tracked in product's base unit
+      - Display and purchase can use different units
+      - Conversion factors are bidirectional
+      - Division by zero guarded
+
+  purchase_hub:
+    path: apps/api/app/Modules/PurchaseHub/
+    purpose: Purchase order management, procurement workflows
+    key_models:
+      - Application/Services/PurchaseHubService.php
+    business_rules:
+      - PO lifecycle tracked via DocumentStatus
+      - Goods receipt validates against PO quantities
+      - Over-receipt tolerance configurable
+      - PO links to supplier (Partner module)
+
+  pricing:
+    path: apps/api/app/Modules/Pricing/
+    purpose: Price rules, strategies, price lists
+    key_models:
+      - Domain/Services/
+      - Presentation/Controllers/
+    business_rules:
+      - Multiple price lists per tenant
+      - Price rules can override base sale_price
+      - Partner-specific pricing supported
+
+  promotion:
+    path: apps/api/app/Modules/Promotion/
+    purpose: Promotions, discounts, promotional rules and conditions
+    key_models:
+      - Domain/Entities/
+      - Domain/Services/
+      - Domain/ValueObjects/
+      - Application/DTOs/
+      - Application/Services/
+    key_enums:
+      - Domain/Enums/
+    business_rules:
+      - Promotions have validity periods
+      - Conditions determine applicability (product, category, amount threshold)
+      - Discount types: percentage, fixed amount, buy-X-get-Y
+      - Stacking rules configurable
+
+  coupon:
+    path: apps/api/app/Modules/Coupon/
+    purpose: Coupon codes, validation, redemption
+    key_models:
+      - Domain/Entities/
+      - Domain/Services/
+      - Application/DTOs/
+      - Application/Services/
+    key_enums:
+      - Domain/Enums/
+    business_rules:
+      - Coupon codes are unique per tenant
+      - Usage limits (total, per customer)
+      - Validity period
+      - Minimum purchase amount
+      - Product/category restrictions
+
+shared_contracts:
+  provided:
+    - path: app/Shared/Contracts/InventoryServiceInterface.php
+      purpose: Stock level upsert for cross-module use
+    - path: app/Shared/Contracts/ProductServiceInterface.php
+      purpose: Product data access
+    - path: app/Shared/Contracts/ProductInventoryQueryInterface.php
+      purpose: Product inventory queries
+    - path: app/Shared/Contracts/CompositeItemServiceInterface.php
+      purpose: Composite item operations
+    - path: app/Shared/Contracts/SellableContract.php
+      purpose: Interface for anything sellable
+    - path: app/Shared/Contracts/StockDeductionStrategyInterface.php
+      purpose: Strategy for deducting stock
+    - path: app/Shared/Contracts/EnrichmentQueryInterface.php
+      purpose: Product enrichment queries
+
+  consumed:
+    - path: app/Shared/Contracts/CurrencyScaleResolverInterface.php
+      purpose: Decimal precision for cost calculations
+    - path: app/Shared/Contracts/LocationServiceInterface.php
+      purpose: Location data from Company module
+    - path: app/Shared/Contracts/LoyaltyServiceInterface.php
+      purpose: Loyalty points for promotions
+    - path: app/Shared/Contracts/Company/CompanyVerticalQueryContract.php
+      purpose: Vertical detection for category rules
+    - path: app/Shared/Contracts/PartnerServiceInterface.php
+      purpose: Supplier data for purchase orders
+
+test_locations:
+  feature: apps/api/tests/Feature/Inventory/, tests/Feature/Catalog/, tests/Feature/Product/, etc.
+  unit: apps/api/tests/Unit/Inventory/, tests/Unit/BatchExpiry/, tests/Unit/Catalog/, etc.
+  integration: apps/api/tests/Integration/

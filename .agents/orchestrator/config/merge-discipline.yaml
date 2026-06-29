@@ -1,0 +1,61 @@
+# Merge Discipline — AutoERP
+# Load when managing the merge pipeline
+
+promotion_path:
+  - feature/{task-id}
+  - local-dev
+  - main
+  - remote
+  # NEVER skip a step. NEVER merge directly to main or remote.
+
+pre_merge_gates:
+  - name: preflight
+    command: "./scripts/preflight.sh"
+    required: true
+    description: "PHPStan 8 + Pint + Pest + TypeScript + ESLint"
+
+  - name: deptrac
+    command: "cd apps/api && deptrac analyse"
+    required: true
+    description: "Architectural boundary check"
+
+  - name: playwright
+    command: "./scripts/visual-test-gate.sh"
+    required: conditional  # only if UI files changed
+    description: "Visual/E2E tests for UI changes"
+
+  - name: domain_agent_review
+    required: conditional  # only if business logic modules touched
+    description: "Finance or Supply Chain agent reviews business logic"
+
+  - name: architect_review
+    required: conditional  # only if structural changes
+    triggers:
+      - new module created
+      - Shared/Contracts/ modified
+      - cross-module dependency added
+      - new event contract defined
+
+merge_to_local_dev:
+  approval: tier_2  # ask Houssam via Telegram
+  conditions:
+    - CI passes (all gates above)
+    - domain agent approves (if applicable)
+    - no unresolved review comments
+
+merge_to_main:
+  approval: tier_2  # ask Houssam
+  conditions:
+    - local-dev CI passes after integration
+    - no regressions from merged features
+
+push_to_remote:
+  approval: tier_2  # ask Houssam
+  conditions:
+    - main is stable
+    - all tests pass
+
+conflict_resolution:
+  trivial: resolve_automatically  # formatting, imports
+  semantic: escalate  # both branches modified same logic
+  after_resolution: re_run_preflight
