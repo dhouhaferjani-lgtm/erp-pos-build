@@ -71,6 +71,17 @@ final class DocumentData extends Data
     {
         $lines = [];
         if ($includeLines) {
+            // Ensure the product unit chain is loaded so each line's
+            // quantity_decimals reflects the real unit precision rather than the
+            // fallback. Single batched eager-load (NOT N+1); callers that already
+            // eager-loaded it (e.g. via HandlesDocuments relation lists) pay
+            // nothing. This covers post/convert/goods-receipt response paths that
+            // refresh with fresh(['lines']) only.
+            if (! $document->relationLoaded('lines')
+                || ($document->lines->isNotEmpty() && ! $document->lines->first()->relationLoaded('product'))) {
+                $document->load('lines.product.unitOfMeasure');
+            }
+
             foreach ($document->lines as $line) {
                 $lines[] = DocumentLineData::fromModel($line, $scale);
             }

@@ -13,4 +13,6 @@ enum MediaRole: string
     case VideoPoster = 'VIDEO_POSTER';
     case Spin = 'SPIN';
     case Swatch = 'SWATCH';
+    /** Scanned source PDF of a supplier invoice or other procurement document. */
+    case SourceDocument = 'SOURCE_DOCUMENT';
 }

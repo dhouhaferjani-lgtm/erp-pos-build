@@ -106,29 +106,31 @@ export function CashPaymentScreen({
 
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left: amounts */}
-        <div className="flex flex-[2] flex-col items-center justify-center border-r border-border-subtle bg-surface-raised p-6">
+        {/* Left: amounts — navy summary panel (mock §5.2; --pay-navy is constant
+         * across themes). The change-due box turns green once the tender covers
+         * the total. */}
+        <div className="flex flex-[2] flex-col items-center justify-center bg-pay-navy p-6 text-pay-navy-fg">
           <div className="text-center">
-            <p className="text-xs font-medium uppercase tracking-widest text-ink-muted">
+            <p className="text-xs font-medium uppercase tracking-widest text-pay-navy-fg/70">
               {t('cashPayment.amountDue')}
             </p>
-            <p className="mt-2 text-4xl font-bold tabular-nums text-ink">{format(total)}</p>
+            <p className="mt-2 font-mono text-5xl font-bold tabular-nums text-pay-navy-fg">{format(total)}</p>
           </div>
 
           {discountAmount != null && discountAmount > 0 && (
             <div className="mt-4 text-center">
-              <p className="text-xs font-medium uppercase tracking-widest text-action">
+              <p className="text-xs font-medium uppercase tracking-widest text-pay-navy-fg/70">
                 {t('cashPayment.discount')}
               </p>
-              <p className="mt-1 text-lg font-bold tabular-nums text-action">-{format(discountAmount)}</p>
+              <p className="mt-1 font-mono text-lg font-bold tabular-nums text-pay-navy-fg/90">-{format(discountAmount)}</p>
             </div>
           )}
 
           <div className="mt-8 text-center">
-            <p className="text-xs font-medium uppercase tracking-widest text-ink-muted">
+            <p className="text-xs font-medium uppercase tracking-widest text-pay-navy-fg/70">
               {t('cashPayment.tendered')}
             </p>
-            <p className="mt-2 text-3xl font-bold tabular-nums text-ink">
+            <p className="mt-2 font-mono text-4xl font-bold tabular-nums text-pay-navy-fg">
               {tenderedStr ? format(tenderedNum) : format(0)}
             </p>
           </div>
@@ -138,7 +140,7 @@ export function CashPaymentScreen({
               <p className="text-xs font-medium uppercase tracking-widest text-success-strong">
                 {t('cashPayment.changeDue')}
               </p>
-              <p className="mt-2 text-3xl font-bold tabular-nums text-success-strong">{format(changeDue)}</p>
+              <p className="mt-2 font-mono text-3xl font-bold tabular-nums text-success-strong">{format(changeDue)}</p>
             </div>
           )}
         </div>
@@ -149,7 +151,7 @@ export function CashPaymentScreen({
           <div className="mb-3 flex gap-2">
             <button
               onClick={handleExact}
-              className="flex-1 rounded-lg bg-action px-3 py-3 text-sm font-semibold text-ink-inverse active:bg-action-strong"
+              className="min-h-[56px] flex-1 rounded-lg bg-action px-3 text-sm font-semibold text-ink-inverse active:bg-action-strong"
             >
               {t('cashPayment.exact')}
             </button>
@@ -157,16 +159,17 @@ export function CashPaymentScreen({
               <button
                 key={amount}
                 onClick={() => handleDenomination(amount)}
-                className="flex-1 rounded-lg border border-border-subtle bg-surface-raised px-3 py-3 text-sm font-medium tabular-nums text-ink active:bg-surface-sunken"
+                className="min-h-[56px] flex-1 rounded-lg border border-border-subtle bg-surface-raised px-3 text-sm font-medium tabular-nums text-ink active:bg-surface-sunken"
               >
                 {amount} {currency}
               </button>
             ))}
           </div>
 
-          {/* Numpad */}
-          <div className="flex-1">
-            <NumPad value={tenderedStr} onChange={handleNumPadChange} />
+          {/* Numpad — fills the available height so there is no dead gap above
+           * the confirm button (keys grow from their 56px floor to fill). */}
+          <div className="min-h-0 flex-1">
+            <NumPad value={tenderedStr} onChange={handleNumPadChange} className="h-full auto-rows-fr" />
           </div>
 
           {/* Disabled reason — tell the cashier what's blocking the confirm. */}

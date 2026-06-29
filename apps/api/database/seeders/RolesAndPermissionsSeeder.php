@@ -133,6 +133,12 @@ class RolesAndPermissionsSeeder extends Seeder
             'inventory.transfer',
             'inventory.receive',
 
+            // Units of Measure (read by product/document/stock editors)
+            'uom.view',
+            'uom.create',
+            'uom.edit',
+            'uom.delete',
+
             // Stock Transfer (document-based, lifecycle-tracked)
             'inventory.transfers.view',
             'inventory.transfers.create',
@@ -404,6 +410,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'invoices.view', 'invoices.create', 'invoices.update', 'invoices.post', 'invoices.print',
             'credit-notes.view', 'credit-notes.create', 'credit-notes.post',
             'inventory.view', 'inventory.adjust', 'inventory.transfer', 'inventory.receive',
+            'uom.view', 'uom.create', 'uom.edit', 'uom.delete',
             'inventory.transfers.view', 'inventory.transfers.create', 'inventory.transfers.complete', 'inventory.transfers.cancel',
             'deliveries.view', 'deliveries.create', 'deliveries.edit', 'deliveries.delete', 'deliveries.confirm',
             'expenses.view', 'expenses.create', 'expenses.update', 'expenses.post',
@@ -488,6 +495,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'expenses.view', 'expenses.create',
             'expense-categories.view',
             'inventory.view',
+            'uom.view',
             'deliveries.view',
             'payments.view', 'payments.create',
             'instruments.view', 'instruments.create',
@@ -524,6 +532,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'expenses.view',
             'expense-categories.view',
             'inventory.view',
+            'uom.view',
             'deliveries.view',
             'payments.view',
             'instruments.view',
@@ -552,6 +561,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'vehicles.view',
             'vehicles.log_mileage',
             'inventory.view',
+            'uom.view',
             'work-orders.view', 'work-orders.update', 'work-orders.complete',
             // Technicians see their own profile (list + show), but NOT pay nor PII —
             // those are admin/manager scope; PII masking is enforced at DTO layer.
@@ -585,6 +595,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'expenses.view', 'expenses.create', 'expenses.update',
             'expense-categories.view',
             'inventory.view',
+            'uom.view',
             'deliveries.view', 'deliveries.create', 'deliveries.edit',
             'payments.view', 'payments.create',
             'work-orders.view', 'work-orders.create', 'work-orders.update',

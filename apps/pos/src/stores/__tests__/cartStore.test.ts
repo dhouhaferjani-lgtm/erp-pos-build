@@ -30,6 +30,21 @@ describe('cartStore', () => {
     expect(items[0]!.line_total).toBe('10.00');
   });
 
+  it('exposes gross subtotal + line-discount total separately from the cart discount (PaymentSummary §5.1 breakdown)', () => {
+    const store = useCartStore.getState();
+    store.addItem(makeProduct({ sale_price: '10.00' }));
+    const id = useCartStore.getState().items[0]!.id;
+    store.applyLineDiscount(id, { type: 'fixed', value: '2.00' });
+    store.setTransactionDiscount({ type: 'fixed', value: '1.00' });
+
+    const s = useCartStore.getState();
+    expect(s.subtotalString()).toBe('8.00'); // net of the line discount
+    expect(s.lineDiscountTotalString()).toBe('2.00'); // Remises produits
+    expect(s.grossSubtotalString()).toBe('10.00'); // Sous-total (gross, before any discount)
+    expect(s.discountAmountString()).toBe('1.00'); // Remise panier (cart-level)
+    expect(s.total()).toBe(7); // 10 gross − 2 line − 1 cart
+  });
+
   it('increments quantity when adding same product twice', () => {
     const product = makeProduct();
     useCartStore.getState().addItem(product);

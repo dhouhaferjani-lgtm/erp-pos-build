@@ -54,9 +54,10 @@ class ProductData extends Data
         public ?BrandData $brand = null,
         public ?ParapharmacyProductMetadataData $parapharmacy_metadata = null,
         public ?AutomotiveProductMetadataData $automotive_metadata = null,
+        public ?OpeningStateData $opening = null,
     ) {}
 
-    public static function fromModel(Product $product, ?ProductMediaData $media = null): self
+    public static function fromModel(Product $product, ?ProductMediaData $media = null, ?OpeningStateData $opening = null): self
     {
         return new self(
             id: $product->id,
@@ -99,6 +100,7 @@ class ProductData extends Data
             automotive_metadata: $product->relationLoaded('automotiveMetadata') && $product->automotiveMetadata !== null
                 ? AutomotiveProductMetadataData::fromModel($product->automotiveMetadata)
                 : null,
+            opening: $opening,
         );
     }
 

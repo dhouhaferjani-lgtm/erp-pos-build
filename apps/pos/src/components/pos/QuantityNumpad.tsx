@@ -62,13 +62,13 @@ export function QuantityNumpad({
         className="absolute inset-0"
         onClick={onClose}
       />
-      <div className="relative z-10 w-72 rounded-2xl bg-white p-6 shadow-2xl">
-        <h3 className="mb-4 text-center text-lg font-bold text-gray-900">
+      <div className="relative z-10 w-72 rounded-2xl bg-surface-raised p-6 shadow-2xl">
+        <h3 className="mb-4 text-center text-lg font-bold text-ink">
           {t('quantity.title')}
         </h3>
 
         {/* Display */}
-        <div className="mb-4 rounded-xl bg-gray-50 px-4 py-3 text-center text-3xl font-bold text-gray-900">
+        <div className="mb-4 rounded-xl bg-surface-sunken px-4 py-3 text-center text-3xl font-bold text-ink">
           {value || '0'}
         </div>
 
@@ -80,7 +80,7 @@ export function QuantityNumpad({
                 <button
                   key={btn}
                   onClick={handleClear}
-                  className="flex h-16 w-16 items-center justify-center rounded-xl bg-red-50 text-lg font-semibold text-red-600 transition-colors hover:bg-red-100 active:bg-red-200 mx-auto"
+                  className="flex h-16 w-16 items-center justify-center rounded-xl bg-danger-surface text-lg font-semibold text-danger-strong transition-colors hover:bg-danger-surface active:bg-danger-surface mx-auto"
                 >
                   {t('quantity.clear')}
                 </button>
@@ -95,8 +95,8 @@ export function QuantityNumpad({
                   className={cn(
                     'flex h-16 w-16 items-center justify-center rounded-xl text-lg font-semibold transition-colors mx-auto',
                     isValid
-                      ? 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'
-                      : 'bg-gray-100 text-gray-400 cursor-not-allowed',
+                      ? 'bg-success text-ink-inverse hover:bg-success-hover active:bg-success-hover'
+                      : 'bg-surface-sunken text-ink-faint cursor-not-allowed',
                   )}
                 >
                   <Check className="h-6 w-6" />
@@ -107,7 +107,7 @@ export function QuantityNumpad({
               <button
                 key={btn}
                 onClick={() => handleDigit(btn)}
-                className="flex h-16 w-16 items-center justify-center rounded-xl bg-gray-50 text-xl font-semibold text-gray-900 transition-colors hover:bg-gray-100 active:bg-gray-200 mx-auto"
+                className="flex h-16 w-16 items-center justify-center rounded-xl bg-surface-sunken text-xl font-semibold text-ink transition-colors hover:bg-surface-raised active:bg-surface-raised mx-auto"
               >
                 {btn}
               </button>

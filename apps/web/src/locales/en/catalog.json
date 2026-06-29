@@ -18,8 +18,12 @@
       "pricing": "Pricing & Tax",
       "inventory": "Inventory & Units",
       "pharmacy": "Pharmacy",
+      "loyalty": "Loyalty",
       "suppliers": "Suppliers",
       "media": "Media & Files"
+    },
+    "loyalty": {
+      "indicativeCaption": "Indicative — actual points depend on the amount paid."
     },
     "related": {
       "title": "Related operations",
@@ -48,6 +52,7 @@
       "namePlaceholder": "Product name"
     },
     "actions": {
+      "save": "Save",
       "saveDraft": "Save draft",
       "publish": "Publish product"
     }

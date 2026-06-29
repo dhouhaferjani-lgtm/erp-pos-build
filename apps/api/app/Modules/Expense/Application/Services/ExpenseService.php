@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace App\Modules\Expense\Application\Services;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Identity\Domain\User;
+use App\Shared\Contracts\Treasury\RepositoryOutflowInterface;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -18,7 +20,9 @@ use Illuminate\Support\Facades\DB;
 final class ExpenseService
 {
     public function __construct(
-        private readonly GeneralLedgerService $glService
+        private readonly GeneralLedgerService $glService,
+        private readonly RepositoryOutflowInterface $outflow,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     /**
@@ -28,13 +32,27 @@ final class ExpenseService
      */
     public function create(array $data, User $user): Document
     {
-        return DB::transaction(function () use ($data, $user): Document {
+        $idempotencyKey = $data['idempotency_key'] ?? null;
+        if ($idempotencyKey !== null) {
+            $existing = ExpenseMetadata::query()->where('idempotency_key', $idempotencyKey)->first();
+            if ($existing !== null) {
+                /** @var Document $doc */
+                $doc = Document::query()->whereKey($existing->document_id)->firstOrFail();
+
+                return $doc->load('expenseMetadata');
+            }
+        }
+
+        $companyCurrency = $this->companyContext->requireCompany()->currency;
+
+        return DB::transaction(function () use ($data, $user, $idempotencyKey, $companyCurrency): Document {
             // Create the expense document
             $expense = Document::create([
                 'tenant_id' => $user->tenant_id,
                 'company_id' => $data['company_id'],
                 'type' => DocumentType::Expense,
                 'status' => DocumentStatus::Draft,
+                'currency' => $companyCurrency,
                 'document_date' => $data['payment_date'] ?? now()->toDateString(),
                 'total' => $data['total'] ?? '0.00',
                 'subtotal' => $data['total'] ?? '0.00',
@@ -51,6 +69,7 @@ final class ExpenseService
                 'is_paid' => $data['is_paid'] ?? true,
                 'receipt_number' => $data['receipt_number'] ?? null,
                 'vendor_name' => $data['vendor_name'] ?? null,
+                'idempotency_key' => $idempotencyKey,
             ]);
 
             return $expense->load('expenseMetadata');
@@ -114,6 +133,20 @@ final class ExpenseService
 
             // Create GL entry
             $this->glService->createFromExpense($expense, $user);
+
+            // Decrement treasury cash balance when the expense is paid and linked
+            // to a payment repository. Amount and currency are passed as strings
+            // so the port handles all bcmath/scale operations (Rule 19).
+            $metadata = $expense->expenseMetadata;
+            if ($metadata?->is_paid === true && $metadata->payment_repository_id !== null && $expense->total !== null) {
+                $this->outflow->applyOutflow(
+                    $metadata->payment_repository_id,
+                    $expense->tenant_id,
+                    $expense->company_id,
+                    $expense->total,
+                    (string) $expense->currency,
+                );
+            }
 
             $freshExpense = $expense->fresh(['expenseMetadata']);
             if ($freshExpense === null) {

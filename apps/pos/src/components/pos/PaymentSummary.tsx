@@ -6,7 +6,12 @@ import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 
 interface PaymentSummaryProps {
   subtotal: number;
+  /** Gross subtotal before any discount (Sous-total). Falls back to `subtotal`. */
+  grossSubtotal?: number;
+  /** Total of per-line discounts (Remises produits). */
+  lineDiscountAmount?: number;
   taxAmount: number;
+  /** Cart-level transaction discount (Remise panier). */
   discountAmount: number;
   total: number;
   onPayCash: () => void;
@@ -20,6 +25,8 @@ interface PaymentSummaryProps {
 
 export function PaymentSummary({
   subtotal,
+  grossSubtotal,
+  lineDiscountAmount = 0,
   taxAmount,
   discountAmount,
   total,
@@ -56,24 +63,27 @@ export function PaymentSummary({
 
   return (
     <div className="space-y-1 border-t border-border-subtle pt-1.5">
-      {/* Subtotal */}
+      {/* Sous-total — GROSS (before any discount). Falls back to net subtotal
+       * when the caller doesn't supply a gross value. */}
       <div className="flex justify-between text-xs text-ink-muted">
         <span>{t('common:subtotal')}</span>
-        <span className="tabular-nums text-ink">{format(subtotal)}</span>
+        <span className="font-mono tabular-nums text-ink">{format(grossSubtotal ?? subtotal)}</span>
       </div>
 
-      {/* Tax */}
-      <div className="flex justify-between text-xs text-ink-muted">
-        <span>{t('common:tax')}</span>
-        <span className="tabular-nums text-ink">{format(taxAmount)}</span>
-      </div>
+      {/* Remises produits — total of per-line discounts (only when present). */}
+      {lineDiscountAmount > 0.0005 && (
+        <div className="flex justify-between text-xs text-danger-strong">
+          <span>{t('pos:cart.lineDiscountsTotal')}</span>
+          <span className="font-mono tabular-nums">−{format(lineDiscountAmount)}</span>
+        </div>
+      )}
 
-      {/* Discount */}
+      {/* Remise panier — cart-level transaction discount (removable). */}
       {hasDiscount && (
         <div className="flex items-center justify-between text-sm">
-          <span className="font-medium text-danger-strong">{t('common:discount')}</span>
+          <span className="font-medium text-danger-strong">{t('pos:cart.cartDiscount')}</span>
           <div className="flex items-center gap-2">
-            <span className="font-medium tabular-nums text-danger-strong">-{format(discountAmount)}</span>
+            <span className="font-mono font-medium tabular-nums text-danger-strong">-{format(discountAmount)}</span>
             {onRemoveDiscount && (
               <IconButton
                 variant="destructive"
@@ -88,11 +98,19 @@ export function PaymentSummary({
         </div>
       )}
 
+      {/* dont TVA — VAT is INCLUDED in the TTC prices (B2C POS), so this is an
+       * "of which" line, not an addition. Generic "TVA" label keeps it correct
+       * for mixed VAT-rate carts (owner decision — not "dont TVA 19%"). */}
+      <div className="flex justify-between text-xs text-ink-muted">
+        <span>{t('common:tax')}</span>
+        <span className="font-mono tabular-nums text-ink">{format(taxAmount)}</span>
+      </div>
+
       {/* Total */}
       <div className="rounded-lg bg-action px-3 py-2 text-ink-inverse">
         <div className="flex items-center justify-between">
           <span className="text-lg font-medium">{t('common:total')}</span>
-          <span className="text-2xl font-bold tabular-nums">{format(total)}</span>
+          <span className="font-mono text-2xl font-bold tabular-nums">{format(total)}</span>
         </div>
       </div>
 

@@ -18,7 +18,8 @@ import { XReportModal } from '@/components/pos/XReportModal';
 import { generateXReport, generateZReport } from '@/api/reportApi';
 import type { GenerateXReportOpts, GenerateZReportOpts, XReportResponse } from '@/api/reportApi';
 import { getErrorMessage } from '@/lib/api';
-import { Badge, IconButton, StatusPill } from '@/components/ui';
+import { Avatar, Badge, Divider, IconButton, StatusPill } from '@/components/ui';
+import { cn } from '@/lib/utils';
 import { CashDrawerModal } from '@/components/organisms/CashDrawerModal';
 import type { EndOfDayConfirmResult, CompanyFraudSettings, AuthorizedManager } from '@/components/pos/EndOfDayPreviewModal';
 import type { CashCountCommitPayload } from '@/components/pos/EndOfDayPreviewModal';
@@ -539,11 +540,23 @@ export function Header() {
 
   return (
     <>
-      <header className="flex h-12 items-center justify-between gap-4 border-b border-subtle bg-surface-raised px-4">
-        {/* LEFT zone — identity (largest). Wordmark + terminal badge. */}
-        <div className="flex min-w-0 items-center gap-3">
-          <h1 className="truncate text-xl font-extrabold tracking-tight text-brand">{t('auth.title')}</h1>
+      <header className="flex h-[62px] items-center justify-between gap-3 border-b border-subtle bg-surface-raised px-4">
+        {/* LEFT zone — identity (largest). Wordmark (display face) + terminal
+         * badge + at-a-glance online dot. The dot is decorative (aria-hidden);
+         * the accessible connectivity/sync state lives in the B3 StatusPill. */}
+        <div className="flex min-w-0 items-center gap-2.5">
+          <h1 className="truncate font-display text-xl font-extrabold tracking-tight text-brand">
+            {t('auth.title')}
+          </h1>
           {terminal && <Badge tone="neutral">{terminal.name}</Badge>}
+          <span
+            aria-hidden
+            title={isOnline ? t('sync.online') : t('sync.offline')}
+            className={cn(
+              'h-2 w-2 shrink-0 rounded-full',
+              isOnline ? 'bg-success' : 'bg-danger',
+            )}
+          />
         </div>
 
         {/* CENTER zone — ONE session-status pill (connectivity + sync + stock age). */}
@@ -564,7 +577,8 @@ export function Header() {
           <StockFreshness />
         </div>
 
-        {/* RIGHT zone — operator + icon-only actions (smallest). */}
+        {/* RIGHT zone — shift · operator · ghost actions, split into clusters by
+         * vertical Divider atoms (mock §5.0). */}
         <div className="flex min-w-0 items-center gap-1">
           {/* Shift badge — opens End of Day preview. */}
           {shift ? (
@@ -580,11 +594,17 @@ export function Header() {
             <span className="text-sm text-ink-faint">{t('header.noShift')}</span>
           )}
 
-          {/* Operator name */}
+          {/* Operator cluster — divider + avatar + name + switch. The leading
+           * divider is part of this cluster so it never orphans when there is
+           * no operator. */}
           {operator && (
-            <span className="mx-1 hidden truncate text-sm font-medium text-ink-muted sm:inline">
-              {operator.name}
-            </span>
+            <>
+              <Divider orientation="vertical" />
+              <Avatar name={operator.name} size={36} tone="accent" />
+              <span className="mx-1 hidden max-w-[10rem] truncate text-sm font-medium text-ink-muted sm:inline">
+                {operator.name}
+              </span>
+            </>
           )}
 
           {/* Switch operator — icon-only */}
@@ -596,6 +616,8 @@ export function Header() {
             aria-label={t('header.switch')}
             icon={<ArrowLeftRight className="h-4 w-4" />}
           />
+
+          <Divider orientation="vertical" />
 
           {/* Lock — icon-only */}
           <IconButton

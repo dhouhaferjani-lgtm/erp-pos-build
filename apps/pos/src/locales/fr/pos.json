@@ -12,7 +12,10 @@
     "incrementQty": "Augmenter la quantité",
     "editQty": "Modifier la quantité",
     "removeItem": "Supprimer l'article",
+    "confirmRemoveItem": "Appuyez pour confirmer",
     "lineDiscount": "Remise article",
+    "lineDiscountsTotal": "Remises produits",
+    "cartDiscount": "Remise panier",
     "editModifiers": "Modifier les options",
     "applyDiscount": "Appliquer la remise",
     "itemDiscount": "Remise article"
@@ -456,7 +459,16 @@
       },
       "empty": "Aucun rapport Z trouvé.",
       "duplicataBanner": "DUPLICATA"
-    }
+    },
+    "view": "Voir",
+    "saleDetailTitle": "Détail de la vente",
+    "qty": "Qté",
+    "unitPrice": "Prix unitaire",
+    "lineTotal": "Total ligne",
+    "subtotal": "Sous-total",
+    "taxLabel": "TVA",
+    "paymentLabel": "Règlement",
+    "voided": "Annulé"
   },
   "productDetail": {
     "title": "Détails du produit",
@@ -531,6 +543,8 @@
     "forceFullscreen": "Forcer le plein écran",
     "forceFullscreenDesc": "Réappliquer le plein écran si la fenêtre est désynchronisée",
     "forceFullscreenApplied": "Plein écran réappliqué",
+    "confirmLineDelete": "Confirmer avant de supprimer une ligne",
+    "confirmLineDeleteDesc": "Exiger un second appui pour supprimer une ligne du panier (évite les suppressions accidentelles)",
     "drawerRequiresPrinter": "Le tiroir-caisse nécessite une imprimante de tickets configurée.",
     "drawerConnectionInfo": "Connecté via l'imprimante de tickets (câble RJ45). Assurez-vous que votre tiroir-caisse est connecté au port DK de l'imprimante.",
     "drawerPin": "Broche du connecteur",
@@ -590,7 +604,23 @@
       "displayOpened": "Affichage client ouvert avec succès.",
       "primaryBadge": "Principal",
       "monitorFallback": "Écran {{number}}"
-    }
+    },
+    "appearance": "Apparence",
+    "appearanceDesc": "Thème, couleur d’accent et disposition",
+    "theme": "Thème",
+    "themeLight": "Clair",
+    "themeDark": "Sombre",
+    "accent": "Couleur d’accent",
+    "accentOrange": "Orange",
+    "accentGreen": "Vert",
+    "accentBlue": "Bleu",
+    "accentTeal": "Sarcelle",
+    "corner": "Coins",
+    "cornerRounded": "Arrondis",
+    "cornerSharp": "Nets",
+    "density": "Densité de la grille",
+    "densityComfortable": "Confortable",
+    "densityDense": "Dense"
   },
   "numpad": {
     "backspace": "Effacer",
@@ -936,5 +966,17 @@
       "cp858": "CP858 (Europe occidentale)",
       "cp1252": "CP1252 (Windows latin occidental)"
     }
+  },
+  "nav": {
+    "caisse": "Caisse",
+    "clients": "Clients",
+    "rapports": "Rapports",
+    "shift": "Caisse",
+    "ariaLabel": "Navigation principale",
+    "themeToggle": "Changer de thème"
+  },
+  "customers": {
+    "pageTitle": "Clients",
+    "placeholder": "La gestion des clients arrive bientôt."
   }
 }

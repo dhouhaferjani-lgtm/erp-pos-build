@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Loyalty\Presentation\Controllers\EarningRuleController;
+use App\Modules\Loyalty\Presentation\Controllers\LoyaltyEarnRateController;
 use App\Modules\Loyalty\Presentation\Controllers\LoyaltyMemberController;
 use App\Modules\Loyalty\Presentation\Controllers\LoyaltyPOSController;
 use App\Modules\Loyalty\Presentation\Controllers\LoyaltyProgramController;
@@ -23,6 +24,11 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'module:Loyalty'])->group(function () {
+    // Earn rate (read-only, for product editor display)
+    Route::get('loyalty/earn-rate', [LoyaltyEarnRateController::class, 'show'])
+        ->middleware('can:loyalty.view')
+        ->name('loyalty.earn-rate');
+
     // Loyalty Programs (Admin)
     Route::prefix('loyalty/programs')->group(function () {
         Route::get('/', [LoyaltyProgramController::class, 'index'])

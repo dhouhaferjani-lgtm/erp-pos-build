@@ -12,7 +12,10 @@
     "incrementQty": "Increase quantity",
     "editQty": "Edit quantity",
     "removeItem": "Remove item",
+    "confirmRemoveItem": "Tap to confirm",
     "lineDiscount": "Item discount",
+    "lineDiscountsTotal": "Product discounts",
+    "cartDiscount": "Cart discount",
     "editModifiers": "Edit options",
     "applyDiscount": "Apply Discount",
     "itemDiscount": "Item Discount"
@@ -456,7 +459,16 @@
       },
       "empty": "No Z reports found.",
       "duplicataBanner": "DUPLICATA"
-    }
+    },
+    "view": "View",
+    "saleDetailTitle": "Sale details",
+    "qty": "Qty",
+    "unitPrice": "Unit price",
+    "lineTotal": "Line total",
+    "subtotal": "Subtotal",
+    "taxLabel": "VAT",
+    "paymentLabel": "Payment",
+    "voided": "Voided"
   },
   "productDetail": {
     "title": "Product Details",
@@ -531,6 +543,8 @@
     "forceFullscreen": "Force Fullscreen",
     "forceFullscreenDesc": "Re-apply fullscreen if the window has fallen out of sync",
     "forceFullscreenApplied": "Fullscreen re-applied",
+    "confirmLineDelete": "Confirm before removing a line",
+    "confirmLineDeleteDesc": "Require a second tap to remove a cart line (prevents accidental deletes)",
     "drawerRequiresPrinter": "Cash drawer requires a configured receipt printer.",
     "drawerConnectionInfo": "Connected via receipt printer (RJ45 cable). Ensure your cash drawer is connected to the printer's DK port.",
     "drawerPin": "Kick Connector Pin",
@@ -590,7 +604,23 @@
       "displayOpened": "Customer display opened successfully.",
       "primaryBadge": "Primary",
       "monitorFallback": "Monitor {{number}}"
-    }
+    },
+    "appearance": "Appearance",
+    "appearanceDesc": "Theme, accent colour and layout",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "accent": "Accent colour",
+    "accentOrange": "Orange",
+    "accentGreen": "Green",
+    "accentBlue": "Blue",
+    "accentTeal": "Teal",
+    "corner": "Corners",
+    "cornerRounded": "Rounded",
+    "cornerSharp": "Sharp",
+    "density": "Grid density",
+    "densityComfortable": "Comfortable",
+    "densityDense": "Dense"
   },
   "numpad": {
     "backspace": "Delete",
@@ -936,5 +966,17 @@
       "cp858": "CP858 (Western Europe)",
       "cp1252": "CP1252 (Windows Latin)"
     }
+  },
+  "nav": {
+    "caisse": "Sale",
+    "clients": "Customers",
+    "rapports": "Reports",
+    "shift": "Register",
+    "ariaLabel": "Main navigation",
+    "themeToggle": "Toggle theme"
+  },
+  "customers": {
+    "pageTitle": "Customers",
+    "placeholder": "Customer management is coming soon."
   }
 }

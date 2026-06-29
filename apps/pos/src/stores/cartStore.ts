@@ -114,6 +114,12 @@ interface CartDerived {
   subtotal: () => number;
   /** Exact subtotal as a currency-scale decimal string (no float boundary). */
   subtotalString: () => string;
+  /** Sum of per-line discounts (Remises produits) as a decimal string. */
+  lineDiscountTotalString: () => string;
+  lineDiscountTotal: () => number;
+  /** Gross subtotal BEFORE any discount (Sous-total) as a decimal string. */
+  grossSubtotalString: () => string;
+  grossSubtotal: () => number;
   taxAmount: () => number;
   discountAmount: () => number;
   /** Exact transaction-discount amount as a currency-scale decimal string. */
@@ -605,6 +611,29 @@ export const useCartStore = create<CartStore>()((set, get) => ({
 
   subtotal: () => {
     return Number(get().subtotalString());
+  },
+
+  lineDiscountTotalString: () => {
+    const decimals = getDecimals();
+    return bcsum(
+      get().items.map((item) => item.discount_amount ?? '0'),
+      decimals,
+    );
+  },
+
+  lineDiscountTotal: () => {
+    return Number(get().lineDiscountTotalString());
+  },
+
+  grossSubtotalString: () => {
+    const decimals = getDecimals();
+    // Gross = net subtotal + the per-line discounts that were already removed
+    // from each line_total. Equivalent to Σ(unit_price × qty) before discounts.
+    return bcadd(get().subtotalString(), get().lineDiscountTotalString(), decimals);
+  },
+
+  grossSubtotal: () => {
+    return Number(get().grossSubtotalString());
   },
 
   taxAmount: () => {

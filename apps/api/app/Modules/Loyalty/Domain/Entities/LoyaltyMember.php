@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Loyalty\Domain\Entities;
 
 use App\Modules\Loyalty\Domain\Enums\MemberStatus;
+use Database\Factories\Loyalty\LoyaltyMemberFactory;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -36,11 +37,19 @@ use Illuminate\Support\Carbon;
  */
 class LoyaltyMember extends Model
 {
-    /** @use HasFactory<Factory<static>> */
+    /** @use HasFactory<LoyaltyMemberFactory> */
     use HasFactory;
 
     use HasUuids;
     use SoftDeletes;
+
+    /**
+     * Create a new factory instance for the model.
+     */
+    protected static function newFactory(): LoyaltyMemberFactory
+    {
+        return LoyaltyMemberFactory::new();
+    }
 
     protected $fillable = [
         'tenant_id',

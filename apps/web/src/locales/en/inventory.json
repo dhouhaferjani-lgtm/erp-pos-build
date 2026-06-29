@@ -858,5 +858,21 @@
     "preparing": "Preparing…",
     "clear": "Clear selection",
     "noVariants": "No variants to label for the selected products."
+  },
+  "opening": {
+    "title": "Opening Stock",
+    "qty_label": "Opening Quantity",
+    "cost_label": "Opening Unit Cost",
+    "cost_help": "Valuation cost used as the initial WAC (Weighted Average Cost) — not the sale or purchase price.",
+    "locked_helper": "Opening stock has been recorded and is locked.",
+    "locked_with_downstream": "This product has inventory movements. Opening stock can no longer be reset.",
+    "reset_label": "Reset opening stock",
+    "reset_confirm_body": "This will reverse the opening balance entry. You can then re-enter new opening stock values.",
+    "reset_confirm_cancel": "Cancel",
+    "reset_confirm_proceed": "Reset",
+    "view_stock_link": "View in Inventory › Stock",
+    "submitError": "Could not record opening stock. Please try again.",
+    "resetSuccess": "Opening stock has been reset.",
+    "resetError": "Could not reset opening stock. Please try again."
   }
 }

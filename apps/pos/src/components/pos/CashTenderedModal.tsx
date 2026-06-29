@@ -55,16 +55,16 @@ export function CashTenderedModal({
     <Modal isOpen={isOpen} onClose={onClose} title={t('cashTendered.title')} size="md">
       <div className="space-y-6">
         {/* Amount due */}
-        <div className="rounded-xl bg-gray-50 p-4 text-center">
-          <p className="mb-1 text-sm font-medium text-gray-500">
+        <div className="rounded-xl bg-surface-sunken p-4 text-center">
+          <p className="mb-1 text-sm font-medium text-ink-muted">
             {t('cashTendered.amountDue')}
           </p>
-          <p className="text-3xl font-bold text-gray-900">{format(total)}</p>
+          <p className="text-3xl font-bold text-ink">{format(total)}</p>
         </div>
 
         {/* Tendered input */}
         <div>
-          <label className="mb-2 block text-sm font-medium text-gray-700">
+          <label className="mb-2 block text-sm font-medium text-ink-muted">
             {t('cashTendered.tenderedAmount')}
           </label>
           <MoneyInput
@@ -77,7 +77,7 @@ export function CashTenderedModal({
                 handleConfirm();
               }
             }}
-            className="w-full rounded-lg border border-gray-300 px-4 py-3 text-right text-2xl font-semibold focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="w-full rounded-lg border border-border-strong px-4 py-3 text-right text-2xl font-semibold focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
             autoFocus
           />
         </div>
@@ -87,7 +87,7 @@ export function CashTenderedModal({
           <button
             type="button"
             onClick={handleExact}
-            className="min-h-[48px] min-w-[80px] flex-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100"
+            className="min-h-[48px] min-w-[80px] flex-1 rounded-lg border border-action-subtle bg-action-subtle px-3 py-2.5 text-sm font-medium text-action transition-colors hover:bg-action-subtle"
           >
             {t('cashTendered.exactAmount')}
           </button>
@@ -96,7 +96,7 @@ export function CashTenderedModal({
               key={amount}
               type="button"
               onClick={() => handleDenomination(amount)}
-              className="min-h-[48px] min-w-[60px] flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100"
+              className="min-h-[48px] min-w-[60px] flex-1 rounded-lg border border-border-subtle bg-surface-sunken px-3 py-2.5 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-raised"
             >
               {format(amount)}
             </button>
@@ -105,11 +105,11 @@ export function CashTenderedModal({
 
         {/* Change due */}
         {tenderedNum > total && (
-          <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-center">
-            <p className="mb-1 text-sm font-medium text-green-600">
+          <div className="rounded-xl border border-success-subtle bg-success-surface p-4 text-center">
+            <p className="mb-1 text-sm font-medium text-success-strong">
               {t('cashTendered.changeDue')}
             </p>
-            <p className="text-2xl font-bold text-green-700">{format(changeDue)}</p>
+            <p className="text-2xl font-bold text-success-strong">{format(changeDue)}</p>
           </div>
         )}
 
@@ -117,7 +117,7 @@ export function CashTenderedModal({
         <button
           onClick={handleConfirm}
           disabled={!isValid || isProcessing}
-          className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-6 py-4 text-lg font-semibold text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-xl bg-success px-6 py-4 text-lg font-semibold text-ink-inverse transition-colors hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Banknote className="h-5 w-5" />
           {isProcessing ? t('cashTendered.processing') : t('cashTendered.confirm')}

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Seeders;
 
+use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -12,7 +14,9 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockTransfer;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\DemoPharmacySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -20,8 +24,6 @@ use Tests\TestCase;
 
 /**
  * TDD test for DemoPharmacySeeder — Tunisia tenant + company + COA + tax config.
- *
- * Mirrors the booting/tenant-context style of ParapharmacyMultiBranchSeederTest.
  */
 final class DemoPharmacySeederTest extends TestCase
 {
@@ -67,8 +69,8 @@ final class DemoPharmacySeederTest extends TestCase
 
         $tenant->run(function () {
             // Task 3: 1 warehouse + 4 shops = 5 total locations
-            $this->assertSame(5, \App\Modules\Company\Domain\Location::count(), '5 locations: 1 warehouse + 4 shops');
-            $warehouse = \App\Modules\Company\Domain\Location::where('code', 'WH-01')->firstOrFail();
+            $this->assertSame(5, Location::count(), '5 locations: 1 warehouse + 4 shops');
+            $warehouse = Location::where('code', 'WH-01')->firstOrFail();
             $this->assertSame('WH-01', $warehouse->code);
             $this->assertFalse((bool) $warehouse->pos_enabled, 'Warehouse must NOT be POS-enabled');
         });
@@ -78,7 +80,7 @@ final class DemoPharmacySeederTest extends TestCase
     {
         $this->seed(DemoPharmacySeeder::class);
         Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail()->run(function () {
-            $locations = \App\Modules\Company\Domain\Location::all();
+            $locations = Location::all();
             $this->assertCount(5, $locations);
             $wh = $locations->firstWhere('code', 'WH-01');
             $this->assertSame('warehouse', $wh->type->value);
@@ -129,11 +131,11 @@ final class DemoPharmacySeederTest extends TestCase
     {
         $this->seed(DemoPharmacySeeder::class);
         Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail()->run(function () {
-            $withBarcode = \App\Modules\Product\Domain\Product::whereNotNull('barcode')->count();
-            $withoutBarcode = \App\Modules\Product\Domain\Product::whereNull('barcode')->count();
+            $withBarcode = Product::whereNotNull('barcode')->count();
+            $withoutBarcode = Product::whereNull('barcode')->count();
             $this->assertGreaterThan(0, $withBarcode, 'need scan-resolves demo set');
             $this->assertGreaterThan(0, $withoutBarcode, 'need no-barcode demo set');
-            $sample = \App\Modules\Product\Domain\Product::whereNotNull('barcode')->first();
+            $sample = Product::whereNotNull('barcode')->first();
             $this->assertStringStartsWith('619', $sample->barcode); // Tunisia GS1
         });
     }
@@ -157,7 +159,7 @@ final class DemoPharmacySeederTest extends TestCase
                 'tunis1.cashier@pharmabio.tn' => 'STORE-TUN1',
                 'tunis2.cashier@pharmabio.tn' => 'STORE-TUN2',
                 'sousse.cashier@pharmabio.tn' => 'STORE-SOU',
-                'sfax.cashier@pharmabio.tn'   => 'STORE-SFA',
+                'sfax.cashier@pharmabio.tn' => 'STORE-SFA',
             ];
 
             foreach ($cashierShopPairs as $email => $shopCode) {
@@ -205,7 +207,7 @@ final class DemoPharmacySeederTest extends TestCase
     {
         $this->seed(DemoPharmacySeeder::class);
         Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail()->run(function () {
-            $debtor = \App\Modules\Partner\Domain\Partner::where('code', 'CUST-DEBTOR-01')->firstOrFail();
+            $debtor = Partner::where('code', 'CUST-DEBTOR-01')->firstOrFail();
             $this->assertTrue(bccomp($debtor->receivable_balance, '0', 3) === 1, 'CUST-DEBTOR-01 has outstanding receivable > 0');
 
             // CUST-CREDIT-01 (CustomerAdvance / store credit) is intentionally NOT seeded:
@@ -218,11 +220,11 @@ final class DemoPharmacySeederTest extends TestCase
             // PartnerBalanceService stores payable_balance as (debit - credit) on the
             // SupplierPayable account. A normal payable is a credit entry → balance < 0
             // (negative = we owe them). The PartnerListPage renders this as green.
-            $supplier = \App\Modules\Partner\Domain\Partner::where('code', 'SUPP-PAYABLE-01')->firstOrFail();
+            $supplier = Partner::where('code', 'SUPP-PAYABLE-01')->firstOrFail();
             $this->assertTrue(bccomp($supplier->payable_balance, '0', 3) === -1, 'SUPP-PAYABLE-01 payable_balance < 0 (we owe them)');
 
             // GL-consistency: recompute and confirm the cached receivable column still holds
-            app(\App\Modules\Accounting\Application\Services\PartnerBalanceService::class)
+            app(PartnerBalanceService::class)
                 ->refreshPartnerBalance($debtor->company_id, $debtor->id);
             $this->assertTrue(bccomp($debtor->fresh()->receivable_balance, '0', 3) === 1);
         });
@@ -253,7 +255,7 @@ final class DemoPharmacySeederTest extends TestCase
         $tenantIdAfterRun1 = $tenantAfterRun1->id;
 
         // Snapshot counts after run 1 — all idempotency checks below compare against these.
-        $productCountRun1 = $tenantAfterRun1->run(fn () => \App\Modules\Product\Domain\Product::count());
+        $productCountRun1 = $tenantAfterRun1->run(fn () => Product::count());
 
         // ---- RUN 2 ----
         $this->seed(DemoPharmacySeeder::class);
@@ -285,12 +287,12 @@ final class DemoPharmacySeederTest extends TestCase
             // (E) Exactly 3 DEMO-BAL-* journal entries — not doubled.
             $this->assertSame(
                 3,
-                \App\Modules\Accounting\Domain\JournalEntry::where('entry_number', 'like', 'DEMO-BAL-%')->count(),
+                JournalEntry::where('entry_number', 'like', 'DEMO-BAL-%')->count(),
                 'second run must skip — exactly 3 DEMO-BAL entries expected'
             );
 
             // (F) Product count is stable — no duplication.
-            $productCountRun2 = \App\Modules\Product\Domain\Product::count();
+            $productCountRun2 = Product::count();
             $this->assertSame($productCountRun1, $productCountRun2, 'product count must not grow on re-run');
         });
     }

@@ -1,7 +1,10 @@
 import { useEffect, useCallback, useMemo, useState, lazy, Suspense } from 'react';
-import { Route, Routes, Navigate } from 'react-router-dom';
+import { Route, Routes, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { ShoppingCart, Users, BarChart3, Wallet } from 'lucide-react';
 import type Database from '@tauri-apps/plugin-sql';
 import { Header } from './Header';
+import { NavRail } from './NavRail';
 import { TrainingModeBanner } from './TrainingModeBanner';
 import { C2MigrationBanner } from './C2MigrationBanner';
 import { RemoteShiftCloseBanner } from './RemoteShiftCloseBanner';
@@ -10,6 +13,7 @@ import { DurabilityGateModal } from './fiscal/DurabilityGateModal';
 import { HomePage } from '@/pages/HomePage';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { isManagerRole } from '@/lib/auth/roles';
 import { useSyncStore } from '@/stores/syncStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useCustomerDisplaySync } from '@/hooks/useCustomerDisplaySync';
@@ -30,11 +34,65 @@ const ZReportListPage = lazy(() =>
   import('@/pages/ZReportListPage').then((m) => ({ default: m.ZReportListPage })),
 );
 
+const CustomersPage = lazy(() =>
+  import('@/pages/CustomersPage').then((m) => ({ default: m.CustomersPage })),
+);
+
+/** Nav-rail destinations → routes. Settings is reached via the header gear. */
+type NavDest = 'caisse' | 'clients' | 'rapports' | 'shift';
+const NAV_ROUTE: Record<NavDest, string> = {
+  caisse: '/',
+  clients: '/customers',
+  rapports: '/sales',
+  shift: '/reports/z',
+};
+function activeDestForPath(pathname: string): NavDest {
+  if (pathname.startsWith('/customers')) return 'clients';
+  if (pathname.startsWith('/sales')) return 'rapports';
+  if (pathname.startsWith('/reports')) return 'shift';
+  return 'caisse';
+}
+
 export function AppShell() {
   const resetActivityTimer = useOperatorStore((s) => s.resetActivityTimer);
   const lock = useOperatorStore((s) => s.lock);
   const operator = useOperatorStore((s) => s.operator);
   const companyId = useAuthStore((s) => s.companyId);
+
+  // Nav rail (P2): destinations + theme toggle, placed OPPOSITE the cart.
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { t } = useTranslation('pos');
+  const theme = useSettingsStore((s) => s.theme);
+  const setTheme = useSettingsStore((s) => s.setTheme);
+  const cartPosition = useSettingsStore((s) => s.cartPosition);
+  const railOnLeft = cartPosition === 'end'; // cart right ⇒ rail left
+  // Manager-gating (point 1/2): a cashier closes blind, so they must NOT get a
+  // nav path to manager-only report screens (Z-report history / X-report) that
+  // could leak shift totals. Sales history (/sales) stays open — it is already
+  // scoped to the current shift. `isManagerRole` is the canonical check.
+  const isManager = isManagerRole(operator?.roles);
+  const navItems: { id: NavDest; label: string; icon: React.ReactNode }[] = [
+    { id: 'caisse', label: t('nav.caisse'), icon: <ShoppingCart className="h-5 w-5" /> },
+    { id: 'clients', label: t('nav.clients'), icon: <Users className="h-5 w-5" /> },
+    { id: 'rapports', label: t('nav.rapports'), icon: <BarChart3 className="h-5 w-5" /> },
+    // Caisse-Shift → Z-report history: managers only.
+    ...(isManager
+      ? [{ id: 'shift' as const, label: t('nav.shift'), icon: <Wallet className="h-5 w-5" /> }]
+      : []),
+  ];
+  const railNode = (
+    <NavRail
+      items={navItems}
+      active={activeDestForPath(location.pathname)}
+      onSelect={(d) => navigate(NAV_ROUTE[d])}
+      theme={theme}
+      onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+      ariaLabel={t('nav.ariaLabel')}
+      themeToggleLabel={t('nav.themeToggle')}
+      brand={<span className="font-display text-xl font-extrabold text-accent">i</span>}
+    />
+  );
 
   // Sync cart/checkout state to customer-facing display
   useCustomerDisplaySync();
@@ -121,8 +179,10 @@ export function AppShell() {
   }, [operator, handleActivity, lock]);
 
   return (
-    <div className="flex h-screen flex-col bg-surface-canvas">
-      <Header />
+    <div className="flex h-screen bg-surface-canvas">
+      {railOnLeft && railNode}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Header />
       {/* T2.5 — sticky training-mode banner. Renders only when the
           active terminal has is_training_mode=true; otherwise null
           (no DOM, no layout impact). Sits BETWEEN Header and main so
@@ -144,13 +204,21 @@ export function AppShell() {
         <Suspense fallback={null}>
           <Routes>
             <Route path="/" element={<HomePage />} />
+            <Route path="/customers" element={<CustomersPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/sales" element={<TodaySalesPage />} />
-            <Route path="/reports/z" element={<ZReportListPage />} />
+            {/* Z-report history = manager-only (point 1/2): defense-in-depth
+                even though the nav item is hidden for cashiers. */}
+            <Route
+              path="/reports/z"
+              element={isManager ? <ZReportListPage /> : <Navigate to="/" replace />}
+            />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
       </main>
+      </div>
+      {!railOnLeft && railNode}
       {/* Round-2 T32-B2: spec §12 forced-archive blocking gate. When the
           durability store reports forceArchiveRequired AND no live
           acknowledgment grace covers the moment, this modal blocks the

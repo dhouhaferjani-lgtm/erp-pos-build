@@ -16,12 +16,14 @@ import { applyFullscreen, useFullscreenEscapeKey, useFullscreenWatchdog } from '
 import { openCustomerDisplay, sendIdleScreen } from '@/lib/customerDisplay';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppShell } from '@/components/AppShell';
+import { ThemeProvider } from '@/components/ThemeProvider';
 import { BootstrapErrorScreen } from '@/components/BootstrapErrorScreen';
 import { runC2BareCartLineDump } from '@/lib/migration/c2BareCartLineDump';
 import { startConnectivityAuditSubscriber } from '@/lib/audit/connectivityAuditSubscriber';
 import { useC2MigrationBannerStore } from '@/stores/c2MigrationBannerStore';
 import { useBootstrapErrorTelemetry } from '@/hooks/useBootstrapErrorTelemetry';
 import { CustomerDisplayPage } from '@/pages/CustomerDisplayPage';
+import { ThemePreviewPage } from '@/pages/ThemePreviewPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { TerminalSetupPage } from '@/pages/TerminalSetupPage';
 import { PinEntryPage } from '@/pages/PinEntryPage';
@@ -38,6 +40,10 @@ const queryClient = new QueryClient({
 
 /** Detect if this window is the customer display (secondary window). */
 const isCustomerDisplayWindow = window.location.pathname === '/customer-display';
+
+/** DEV-only theme/atom gallery — bypasses auth. Stripped from prod builds. */
+const isThemePreview =
+  import.meta.env.DEV && window.location.pathname === '/theme-preview';
 
 export function AppRouter() {
   const { t } = useTranslation('common');
@@ -355,6 +361,15 @@ export function App() {
     return <CustomerDisplayPage />;
   }
 
+  // DEV-only theme/atom gallery — render under ThemeProvider, no auth.
+  if (isThemePreview) {
+    return (
+      <ThemeProvider>
+        <ThemePreviewPage />
+      </ThemeProvider>
+    );
+  }
+
   return <MainApp />;
 }
 
@@ -413,16 +428,18 @@ export function MainApp() {
 
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <AppRouter />
-        </BrowserRouter>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter>
+            <AppRouter />
+          </BrowserRouter>
         {/* Task 11 — sonner mount point. `toast.*` calls (Header, TodaySales,
             stock gate) previously had NO <Toaster /> anywhere in the tree and
             silently rendered nothing. Top-center matches the scan-feedback
             banner position the cashier already watches. */}
-        <Toaster position="top-center" richColors />
-      </QueryClientProvider>
+          <Toaster position="top-center" richColors />
+        </QueryClientProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

@@ -29,7 +29,7 @@ class StockLevelController extends Controller
         $query = StockLevel::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
-            ->with(['product', 'location']);
+            ->with(['product.unitOfMeasure', 'location']);
 
         if ($request->has('product_id')) {
             $query->where('product_id', $request->input('product_id'));

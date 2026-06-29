@@ -129,6 +129,7 @@ export function CreateCreditNotePage() {
           unit_price: parseFloat(line.unit_price),
           tax_rate: parseFloat(line.tax_rate),
           line_total: parseFloat(line.total),
+          quantity_decimals: line.quantity_decimals ?? null,
         }))
         setLines(documentLines)
 

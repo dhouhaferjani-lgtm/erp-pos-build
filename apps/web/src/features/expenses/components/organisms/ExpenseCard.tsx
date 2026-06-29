@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
 import { Calendar, FileText, Tag, TrendingUp, Trash2 } from 'lucide-react'
 import type { Expense } from '../../types'
-import { useCurrency } from '@/hooks/useCurrency'
+import { formatCurrency } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { Button } from '@/components/atoms/Button'
@@ -37,7 +37,6 @@ const statusToneOverrides: Record<string, StatusTone> = {
  */
 export function ExpenseCard({ expense, onDelete, onPost }: ExpenseCardProps) {
   const { t } = useTranslation(['expenses', 'common'])
-  const { decimals } = useCurrency()
 
   const isDraft = expense.status === 'draft'
   const isPosted = expense.status === 'posted'
@@ -74,10 +73,7 @@ export function ExpenseCard({ expense, onDelete, onPost }: ExpenseCardProps) {
           <span
             className={cn('text-2xl font-bold tabular-nums', textColors.primary)}
           >
-            {parseFloat(expense.total).toFixed(decimals)}
-          </span>
-          <span className={cn('text-sm', textColors.disabled)}>
-            {expense.currency}
+            {formatCurrency(expense.total, { currency: expense.currency })}
           </span>
         </div>
       </div>

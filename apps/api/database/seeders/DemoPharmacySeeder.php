@@ -17,13 +17,13 @@ use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
-use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Services\PurchaseOrderService;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
@@ -41,6 +41,7 @@ use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Domain\CurrencyScale;
+use Database\Seeders\Contracts\ChartOfAccountsSeederContract;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -86,7 +87,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
     }
 
     /**
-     * @return class-string<\Database\Seeders\Contracts\ChartOfAccountsSeederContract>
+     * @return class-string<ChartOfAccountsSeederContract>
      */
     protected function localeChartOfAccountsSeeder(): string
     {
@@ -231,9 +232,8 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
     /**
      * Create the 4 Tunisia POS shop locations with per-establishment matricule.
      *
-     * Ported from {@see ParapharmacyMultiBranchSeeder::createCompanyWithBranches()}
-     * (lines 251-297), adapted to Tunisia identity and 4-shop topology.
-     * Uses `firstOrCreate` keyed on `(company_id, code)` so re-runs are safe.
+     * Adapted to the Tunisia identity and 4-shop topology. Uses `firstOrCreate`
+     * keyed on `(company_id, code)` so re-runs are safe.
      *
      * @return Location[]
      */
@@ -357,10 +357,10 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
             // db-per-tenant staging server that hits the G1 500 bug).
             // Instead, re-hydrate the properties the seedTunisia* steps rely on.
             $this->tenant = $existing;
-            $existing->run(function () use ($existing): void {
-                $this->company  = Company::firstOrFail();
+            $existing->run(function (): void {
+                $this->company = Company::firstOrFail();
                 $this->location = Location::where('code', 'WH-01')->firstOrFail();
-                $this->shops    = Location::whereIn('code', ['STORE-TUN1', 'STORE-TUN2', 'STORE-SOU', 'STORE-SFA'])
+                $this->shops = Location::whereIn('code', ['STORE-TUN1', 'STORE-TUN2', 'STORE-SOU', 'STORE-SFA'])
                     ->orderBy('code')
                     ->get()
                     ->all();
@@ -388,6 +388,13 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
             $products = Product::where('company_id', $this->company->id)->get();
             $this->seedTunisiaStock($this->company, $products);
 
+            // Back the shops' batch-tracked stock with default lots too. The
+            // parent's seedBatchesForBatchTrackedProducts() already covered the
+            // warehouse; this idempotent re-run reconciles the front-of-house
+            // shop stock just added above so every batch-tracked product has a
+            // selectable lot at every location (PO/transfer unblock).
+            $this->seedBatchesForBatchTrackedProducts($this->company);
+
             $this->seedTunisiaBalances($this->company);
 
             $this->seedTunisiaPurchaseOrders($this->company, $this->location);
@@ -399,8 +406,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
     /**
      * Distribute front-of-house stock to the 4 Tunisia POS shops.
      *
-     * Strategy mirrors {@see ParapharmacyMultiBranchSeeder::seedMultiBranchStock}:
-     * each shop independently gets ~60% of the catalog in small quantities (2–15
+     * Each shop independently gets ~60% of the catalog in small quantities (2–15
      * units). The warehouse (WH-01) stock was already seeded by the parent's
      * {@see ParapharmacySeeder::seedStockLevels()} — this method ONLY touches
      * the shop locations so warehouse stock is not duplicated.
@@ -441,15 +447,15 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                 // WHERE variant_id IS NULL — reflected here by omitting variant_id.
                 StockLevel::updateOrCreate(
                     [
-                        'tenant_id'   => $company->tenant_id,
-                        'product_id'  => $product->id,
+                        'tenant_id' => $company->tenant_id,
+                        'product_id' => $product->id,
                         'location_id' => $shop->id,
-                        'variant_id'  => null,
+                        'variant_id' => null,
                     ],
                     [
                         'company_id' => $company->id,
-                        'quantity'   => $qty,
-                        'reserved'   => '0',
+                        'quantity' => $qty,
+                        'reserved' => '0',
                     ],
                 );
 
@@ -473,7 +479,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
         $qty = match ($category) {
             ParapharmacyCategory::MedicalDevice,
             ParapharmacyCategory::SportsNutrition => rand(1, 5),
-            default                                => rand(2, 15),
+            default => rand(2, 15),
         };
 
         return (string) $qty;
@@ -483,7 +489,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
      * Create one POS01 terminal per Tunisia shop, unclaimed (hardware_identifier NULL)
      * so devices can claim them immediately on first launch.
      *
-     * @param Location[] $shops
+     * @param  Location[]  $shops
      */
     protected function seedTunisiaTerminals(array $shops): void
     {
@@ -659,7 +665,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
      * the demo shows per-location isolation. Owner/manager (seeded by the parent)
      * retain NULL (all locations) and are not touched here.
      *
-     * @param Location[] $shops
+     * @param  Location[]  $shops
      */
     protected function seedTunisiaCashiers(Company $company, array $shops): void
     {
@@ -672,8 +678,8 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
         $definitions = [
             'STORE-TUN1' => ['email' => "tunis1.cashier@{$domain}", 'pin' => '1111', 'name' => 'Caissier Tunis Lac'],
             'STORE-TUN2' => ['email' => "tunis2.cashier@{$domain}", 'pin' => '2222', 'name' => 'Caissier Tunis Centre'],
-            'STORE-SOU'  => ['email' => "sousse.cashier@{$domain}", 'pin' => '3333', 'name' => 'Caissier Sousse'],
-            'STORE-SFA'  => ['email' => "sfax.cashier@{$domain}", 'pin' => '4444', 'name' => 'Caissier Sfax'],
+            'STORE-SOU' => ['email' => "sousse.cashier@{$domain}", 'pin' => '3333', 'name' => 'Caissier Sousse'],
+            'STORE-SFA' => ['email' => "sfax.cashier@{$domain}", 'pin' => '4444', 'name' => 'Caissier Sfax'],
         ];
 
         foreach ($shops as $shop) {
@@ -774,7 +780,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
         /** @var GoodsReceiptService $grService */
         $grService = $this->container->make(GoodsReceiptService::class);
 
-        $tenantId  = $company->tenant_id;
+        $tenantId = $company->tenant_id;
         $companyId = $company->id;
 
         // Bind the company context so CurrencyScaleResolver::getScale() can resolve the
@@ -786,62 +792,62 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
 
         // Helper: create a PO with a given document_number and N lines.
         // $lineSpecs: array of [product, qty_string, unit_price_tnd_string]
-        $createPo = function (string $docNumber, array $lineSpecs) use ($tenantId, $companyId, $company, $warehouse, $supplier): Document {
+        $createPo = function (string $docNumber, array $lineSpecs) use ($tenantId, $companyId, $warehouse, $supplier): Document {
             /** @var Document $po */
             $po = Document::create([
-                'id'              => Str::uuid()->toString(),
-                'tenant_id'       => $tenantId,
-                'company_id'      => $companyId,
-                'location_id'     => $warehouse->id,
-                'partner_id'      => $supplier->id,
-                'type'            => DocumentType::PurchaseOrder,
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'location_id' => $warehouse->id,
+                'partner_id' => $supplier->id,
+                'type' => DocumentType::PurchaseOrder,
                 'fiscal_category' => FiscalCategory::NonFiscal,
-                'fiscal_status'   => FiscalStatus::Draft,
-                'status'          => DocumentStatus::Draft,
+                'fiscal_status' => FiscalStatus::Draft,
+                'status' => DocumentStatus::Draft,
                 'document_number' => $docNumber,
-                'document_date'   => now()->toDateString(),
-                'due_date'        => now()->addDays(30)->toDateString(),
-                'currency'        => 'TND',
-                'subtotal'        => CurrencyScale::bcformat(0, 3),
+                'document_date' => now()->toDateString(),
+                'due_date' => now()->addDays(30)->toDateString(),
+                'currency' => 'TND',
+                'subtotal' => CurrencyScale::bcformat(0, 3),
                 'discount_amount' => CurrencyScale::bcformat(0, 3),
-                'tax_amount'      => CurrencyScale::bcformat(0, 3),
-                'total'           => CurrencyScale::bcformat(0, 3),
-                'balance_due'     => CurrencyScale::bcformat(0, 3),
-                'is_historical'   => false,
+                'tax_amount' => CurrencyScale::bcformat(0, 3),
+                'total' => CurrencyScale::bcformat(0, 3),
+                'balance_due' => CurrencyScale::bcformat(0, 3),
+                'is_historical' => false,
             ]);
 
             $lineNumber = 1;
-            $subtotal   = '0.000';
+            $subtotal = '0.000';
 
             foreach ($lineSpecs as [$product, $qty, $unitPrice]) {
                 /** @var Product $product */
                 $lineTotal = bcmul($qty, $unitPrice, 3);
-                $subtotal  = bcadd($subtotal, $lineTotal, 3);
+                $subtotal = bcadd($subtotal, $lineTotal, 3);
 
                 DocumentLine::create([
-                    'id'               => Str::uuid()->toString(),
-                    'document_id'      => $po->id,
-                    'product_id'       => $product->id,
-                    'product_code'     => $product->sku ?? $product->barcode,
-                    'line_number'      => $lineNumber++,
-                    'description'      => $product->name,
-                    'quantity'         => $qty,
+                    'id' => Str::uuid()->toString(),
+                    'document_id' => $po->id,
+                    'product_id' => $product->id,
+                    'product_code' => $product->sku ?? $product->barcode,
+                    'line_number' => $lineNumber++,
+                    'description' => $product->name,
+                    'quantity' => $qty,
                     'quantity_received' => '0.0000',
                     'quantity_delivered' => '0.0000',
-                    'unit_price'       => $unitPrice,
-                    'line_total'       => $lineTotal,
-                    'allocated_costs'  => CurrencyScale::bcformat(0, 6),
-                    'tax_rate'         => '19.00',
+                    'unit_price' => $unitPrice,
+                    'line_total' => $lineTotal,
+                    'allocated_costs' => CurrencyScale::bcformat(0, 6),
+                    'tax_rate' => '19.00',
                 ]);
             }
 
             // Update document totals from the lines.
             $taxAmount = bcmul($subtotal, '0.190', 3);
-            $total     = bcadd($subtotal, $taxAmount, 3);
+            $total = bcadd($subtotal, $taxAmount, 3);
             $po->update([
-                'subtotal'    => $subtotal,
-                'tax_amount'  => $taxAmount,
-                'total'       => $total,
+                'subtotal' => $subtotal,
+                'tax_amount' => $taxAmount,
+                'total' => $total,
                 'balance_due' => $total,
             ]);
 
@@ -910,7 +916,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
      * can resolve the TND scale (3 dp) without an HTTP request (same pattern as
      * seedTunisiaPurchaseOrders()).
      *
-     * @param Location[] $shops
+     * @param  Location[]  $shops
      */
     protected function seedTunisiaTransfers(Company $company, Location $warehouse, array $shops): void
     {
@@ -960,7 +966,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
         $companyCtx = $this->container->make(CompanyContext::class);
         $companyCtx->setCompanyId($company->id);
 
-        $tenantId  = $company->tenant_id;
+        $tenantId = $company->tenant_id;
         $companyId = $company->id;
 
         // Use the first few products; cap transfer qty to a safe small amount

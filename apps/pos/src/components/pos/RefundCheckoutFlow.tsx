@@ -116,9 +116,9 @@ export function RefundCheckoutFlow({
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30"
           role="status"
         >
-          <div className="flex items-center gap-3 rounded-xl bg-white px-6 py-4 shadow-2xl">
-            <Loader2 className="h-6 w-6 animate-spin text-blue-500" aria-hidden="true" />
-            <span className="text-sm font-medium text-gray-700">
+          <div className="flex items-center gap-3 rounded-xl bg-surface-raised px-6 py-4 shadow-2xl">
+            <Loader2 className="h-6 w-6 animate-spin text-action" aria-hidden="true" />
+            <span className="text-sm font-medium text-ink-muted">
               {step === 'preparing'
                 ? t('refundFlow.checkout.preparing', { defaultValue: 'Checking the original receipt…' })
                 : t('refundFlow.approval.submitting', { defaultValue: 'Processing…' })}
@@ -131,7 +131,7 @@ export function RefundCheckoutFlow({
       {step === 'idle' && error !== null && (
         <div
           data-testid="refund-checkout-error-banner"
-          className="fixed left-1/2 top-2 z-50 flex max-w-xl -translate-x-1/2 items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-lg"
+          className="fixed left-1/2 top-2 z-50 flex max-w-xl -translate-x-1/2 items-center gap-2 rounded-lg bg-danger px-4 py-2 text-sm font-medium text-ink-inverse shadow-lg"
         >
           <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
           <span>{errorText(error)}</span>
@@ -139,7 +139,7 @@ export function RefundCheckoutFlow({
             type="button"
             onClick={clearError}
             aria-label={t('refundFlow.confirm.cancel', { defaultValue: 'Cancel' })}
-            className="ml-1 rounded p-0.5 hover:bg-red-700"
+            className="ml-1 rounded p-0.5 hover:bg-danger-strong"
             data-testid="refund-checkout-error-dismiss"
           >
             <X className="h-4 w-4" />
@@ -246,7 +246,7 @@ function RefundApprovalStep({
 
   return (
     <div className="space-y-4 p-4" data-testid="refund-approval-modal">
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-ink-muted">
         {t('refundFlow.approval.subtitle', {
           defaultValue: 'A manager must authorize this refund.',
         })}
@@ -259,7 +259,7 @@ function RefundApprovalStep({
         {error !== null && (
           <p
             data-testid="refund-approval-error"
-            className="rounded-md bg-red-50 p-3 text-sm text-red-700"
+            className="rounded-md bg-danger-surface p-3 text-sm text-danger-strong"
           >
             {errorText(error)}
           </p>
@@ -269,7 +269,7 @@ function RefundApprovalStep({
       <div>
         <label
           htmlFor="refund-approval-reason"
-          className="mb-1 block text-sm font-medium text-gray-700"
+          className="mb-1 block text-sm font-medium text-ink-muted"
         >
           {t('voidReturn.reason')}
         </label>
@@ -279,16 +279,16 @@ function RefundApprovalStep({
           value={reason}
           disabled={inputsFrozen}
           onChange={(e) => setReason(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
+          className="w-full rounded-lg border border-border-strong px-3 py-2 text-sm focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none disabled:opacity-50"
         />
       </div>
 
       <div>
         <label
           htmlFor="refund-approval-pin"
-          className="mb-1 block text-sm font-medium text-gray-700"
+          className="mb-1 block text-sm font-medium text-ink-muted"
         >
-          {t('voidReturn.managerPin')} <span className="text-red-500">*</span>
+          {t('voidReturn.managerPin')} <span className="text-danger">*</span>
         </label>
         <input
           id="refund-approval-pin"
@@ -298,7 +298,7 @@ function RefundApprovalStep({
           value={managerPin}
           disabled={inputsFrozen}
           onChange={(e) => setManagerPin(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
+          className="w-full rounded-lg border border-border-strong px-3 py-2 text-sm focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none disabled:opacity-50"
         />
       </div>
 
@@ -308,7 +308,7 @@ function RefundApprovalStep({
           onClick={onCancel}
           disabled={isSubmitting}
           data-testid="refund-approval-cancel"
-          className="flex-1 rounded-md border border-gray-300 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="flex-1 rounded-md border border-border-strong py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
         >
           {t('refundFlow.confirm.cancel', { defaultValue: 'Cancel' })}
         </button>
@@ -317,7 +317,7 @@ function RefundApprovalStep({
           onClick={() => onAuthorize(managerPin, reason)}
           disabled={authorizeDisabled}
           data-testid="refund-approval-authorize"
-          className="flex-1 rounded-md bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex-1 rounded-md bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isSubmitting
             ? t('refundFlow.approval.submitting', { defaultValue: 'Processing…' })

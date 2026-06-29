@@ -75,19 +75,6 @@ class ExpenseResource extends JsonResource
                 ] : null
             ),
 
-            // Document attachments
-            'attachments' => $this->when(
-                $this->resource->relationLoaded('attachments'),
-                // @phpstan-ignore-next-line
-                fn () => $this->resource->attachments->map(fn ($attachment) => [
-                    'id' => $attachment->id,
-                    'filename' => $attachment->filename,
-                    'mime_type' => $attachment->mime_type,
-                    'size' => $attachment->size,
-                    'url' => $attachment->url,
-                ])
-            ),
-
             // Company
             'company' => $this->when(
                 $this->resource->relationLoaded('company'),

@@ -7,13 +7,9 @@ namespace App\Providers;
 use App\Modules\Accounting\Application\Services\AccountingService;
 use App\Modules\Company\Application\Services\LocationService;
 use App\Modules\Company\Services\CompanyContext;
-use App\Modules\Document\Domain\Document;
-use App\Modules\Expense\Domain\ExpenseCategory;
 use App\Modules\Inventory\Application\Services\InventoryService;
 use App\Modules\Partner\Application\Services\PartnerService;
 use App\Modules\Product\Application\Services\ProductService;
-use App\Policies\DocumentPolicy;
-use App\Policies\ExpenseCategoryPolicy;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\InventoryServiceInterface;
 use App\Shared\Contracts\LocationServiceInterface;
@@ -21,7 +17,6 @@ use App\Shared\Contracts\PartnerServiceInterface;
 use App\Shared\Contracts\ProductServiceInterface;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -48,18 +43,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $this->registerPolicies();
         $this->configureRateLimiting();
-    }
-
-    /**
-     * Register authorization policies.
-     */
-    private function registerPolicies(): void
-    {
-        // Explicitly register policies for models in custom namespaces
-        Gate::policy(Document::class, DocumentPolicy::class);
-        Gate::policy(ExpenseCategory::class, ExpenseCategoryPolicy::class);
     }
 
     /**

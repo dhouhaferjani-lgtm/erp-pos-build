@@ -54,6 +54,8 @@ const ReturnNoteDetailPage = lazy(() => import('../features/documents/return-not
 
 // Purchases module
 const GoodsReceiptListPage = lazy(() => import('../features/purchases/GoodsReceiptListPage').then((m) => ({ default: m.GoodsReceiptListPage })))
+const SupplierInvoiceListPage = lazy(() => import('../features/purchases/supplier-invoices/SupplierInvoiceListPage').then((m) => ({ default: m.SupplierInvoiceListPage })))
+const SupplierInvoiceDetailPage = lazy(() => import('../features/purchases/supplier-invoices/SupplierInvoiceDetailPage').then((m) => ({ default: m.SupplierInvoiceDetailPage })))
 
 // Treasury module
 const PaymentListPage = lazy(() => import('../features/treasury/PaymentListPage').then((m) => ({ default: m.PaymentListPage })))
@@ -827,6 +829,28 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+
+          {/* Supplier Invoices */}
+          <Route
+            path="supplier-invoices"
+            element={
+              <RequirePermission moduleKey="purchases">
+                <SuspenseWrapper>
+                  <SupplierInvoiceListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="supplier-invoices/:id"
+            element={
+              <RequirePermission moduleKey="purchases">
+                <SuspenseWrapper>
+                  <SupplierInvoiceDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
         </Route>
 
         {/* Inventory Module */}
@@ -1410,7 +1434,7 @@ export function AppRoutes() {
           <Route
             index
             element={
-              <RequirePermission moduleKey="treasury">
+              <RequirePermission permission="expenses.view">
                 <SuspenseWrapper>
                   <ExpenseListPage />
                 </SuspenseWrapper>
@@ -1420,7 +1444,7 @@ export function AppRoutes() {
           <Route
             path="new"
             element={
-              <RequirePermission permission="treasury.create">
+              <RequirePermission permission="expenses.create">
                 <SuspenseWrapper>
                   <ExpenseFormPage />
                 </SuspenseWrapper>
@@ -1430,7 +1454,7 @@ export function AppRoutes() {
           <Route
             path="categories"
             element={
-              <RequirePermission moduleKey="treasury">
+              <RequirePermission permission="expense-categories.view">
                 <SuspenseWrapper>
                   <ExpenseCategoryPage />
                 </SuspenseWrapper>
@@ -1440,7 +1464,7 @@ export function AppRoutes() {
           <Route
             path=":id"
             element={
-              <RequirePermission moduleKey="treasury">
+              <RequirePermission permission="expenses.view">
                 <SuspenseWrapper>
                   <ExpenseFormPage />
                 </SuspenseWrapper>
@@ -1450,7 +1474,7 @@ export function AppRoutes() {
           <Route
             path=":id/view"
             element={
-              <RequirePermission moduleKey="treasury">
+              <RequirePermission permission="expenses.view">
                 <SuspenseWrapper>
                   <ExpenseDetailPage />
                 </SuspenseWrapper>
@@ -1460,7 +1484,7 @@ export function AppRoutes() {
           <Route
             path=":id/edit"
             element={
-              <RequirePermission permission="treasury.edit">
+              <RequirePermission permission="expenses.update">
                 <SuspenseWrapper>
                   <ExpenseFormPage />
                 </SuspenseWrapper>

@@ -142,4 +142,81 @@ final class UploadDocumentMediaRequestTest extends TestCase
         $this->assertArrayHasKey('file.max', $messages);
         $this->assertArrayHasKey('file.mimetypes', $messages);
     }
+
+    // ── Stage E: role field validation ───────────────────────────────────────
+
+    #[Test]
+    public function role_source_document_passes_validation(): void
+    {
+        $file = UploadedFile::fake()->create('doc.pdf', 100, 'application/pdf');
+        $rules = (new UploadDocumentMediaRequest)->rules();
+        $v = Validator::make(['file' => $file, 'role' => 'SOURCE_DOCUMENT'], $rules);
+        $this->assertFalse($v->fails(), 'SOURCE_DOCUMENT role must pass: '.$v->errors()->toJson());
+    }
+
+    #[Test]
+    public function role_datasheet_passes_validation(): void
+    {
+        $file = UploadedFile::fake()->create('doc.pdf', 100, 'application/pdf');
+        $rules = (new UploadDocumentMediaRequest)->rules();
+        $v = Validator::make(['file' => $file, 'role' => 'DATASHEET'], $rules);
+        $this->assertFalse($v->fails(), 'DATASHEET role must pass: '.$v->errors()->toJson());
+    }
+
+    #[Test]
+    public function role_manual_passes_validation(): void
+    {
+        $file = UploadedFile::fake()->create('doc.pdf', 100, 'application/pdf');
+        $rules = (new UploadDocumentMediaRequest)->rules();
+        $v = Validator::make(['file' => $file, 'role' => 'MANUAL'], $rules);
+        $this->assertFalse($v->fails(), 'MANUAL role must pass: '.$v->errors()->toJson());
+    }
+
+    #[Test]
+    public function absent_role_passes_validation_nullable(): void
+    {
+        $file = UploadedFile::fake()->create('doc.pdf', 100, 'application/pdf');
+        $rules = (new UploadDocumentMediaRequest)->rules();
+        $v = Validator::make(['file' => $file], $rules);
+        $this->assertFalse($v->fails(), 'Absent role must pass (nullable): '.$v->errors()->toJson());
+    }
+
+    #[Test]
+    public function null_role_passes_validation(): void
+    {
+        $file = UploadedFile::fake()->create('doc.pdf', 100, 'application/pdf');
+        $rules = (new UploadDocumentMediaRequest)->rules();
+        $v = Validator::make(['file' => $file, 'role' => null], $rules);
+        $this->assertFalse($v->fails(), 'Null role must pass (nullable): '.$v->errors()->toJson());
+    }
+
+    #[Test]
+    public function role_primary_rejected_as_image_gallery_role(): void
+    {
+        $file = UploadedFile::fake()->create('doc.pdf', 100, 'application/pdf');
+        $rules = (new UploadDocumentMediaRequest)->rules();
+        $v = Validator::make(['file' => $file, 'role' => 'PRIMARY'], $rules);
+        $this->assertTrue($v->fails(), 'PRIMARY must be rejected (image role not allowed on documents)');
+        $this->assertArrayHasKey('role', $v->errors()->toArray());
+    }
+
+    #[Test]
+    public function role_gallery_rejected_as_image_gallery_role(): void
+    {
+        $file = UploadedFile::fake()->create('doc.pdf', 100, 'application/pdf');
+        $rules = (new UploadDocumentMediaRequest)->rules();
+        $v = Validator::make(['file' => $file, 'role' => 'GALLERY'], $rules);
+        $this->assertTrue($v->fails(), 'GALLERY must be rejected (image role not allowed on documents)');
+        $this->assertArrayHasKey('role', $v->errors()->toArray());
+    }
+
+    #[Test]
+    public function unknown_role_string_rejected(): void
+    {
+        $file = UploadedFile::fake()->create('doc.pdf', 100, 'application/pdf');
+        $rules = (new UploadDocumentMediaRequest)->rules();
+        $v = Validator::make(['file' => $file, 'role' => 'BOGUS_ROLE'], $rules);
+        $this->assertTrue($v->fails(), 'Unknown role string must be rejected');
+        $this->assertArrayHasKey('role', $v->errors()->toArray());
+    }
 }

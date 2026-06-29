@@ -22,11 +22,30 @@ export const PERMISSIONS = {
   'inventory.create': ['admin', 'inventory', 'manager'],
   'inventory.edit': ['admin', 'inventory', 'manager'],
 
+  'inventory.adjust': ['admin', 'inventory', 'manager'],
+
   // Inventory - Stock Transfers (document-based, lifecycle-tracked)
   'inventory.transfers.view': ['admin', 'inventory', 'manager'],
   'inventory.transfers.create': ['admin', 'inventory', 'manager'],
   'inventory.transfers.complete': ['admin', 'inventory', 'manager'],
   'inventory.transfers.cancel': ['admin', 'inventory', 'manager'],
+
+  // Expenses
+  'expenses.view': ['admin', 'manager', 'cashier', 'viewer', 'operator', 'accountant'],
+  'expenses.create': ['admin', 'manager', 'cashier', 'operator', 'accountant'],
+  'expenses.update': ['admin', 'manager', 'operator', 'accountant'],
+  'expenses.delete': ['admin', 'accountant'],
+  'expenses.post': ['admin', 'manager', 'accountant'],
+
+  // Expense Categories
+  'expense-categories.view': ['admin', 'manager', 'cashier', 'viewer', 'operator', 'accountant'],
+  'expense-categories.create': ['admin', 'manager', 'accountant'],
+  'expense-categories.update': ['admin', 'manager', 'accountant'],
+  'expense-categories.delete': ['admin', 'manager', 'accountant'],
+
+  // Documents (unified view/update — e.g. attachment uploads)
+  'documents.view': ['admin', 'manager', 'cashier', 'viewer', 'operator', 'accountant'],
+  'documents.update': ['admin', 'manager', 'cashier', 'operator', 'accountant'],
 
   // Treasury
   'treasury.view': ['admin', 'treasury', 'accountant', 'manager'],
@@ -194,6 +213,8 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   sales: ['sales.view'],
   purchases: ['purchases.view'],
   inventory: ['inventory.view'],
+  expenses: ['expenses.view'],
+  'expense-categories': ['expense-categories.view'],
   treasury: ['treasury.view'],
   vehicles: ['vehicles.view'],
   services: ['services.view'],

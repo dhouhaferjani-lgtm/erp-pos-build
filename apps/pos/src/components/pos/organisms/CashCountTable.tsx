@@ -32,15 +32,15 @@ interface CashCountTableProps {
 function varianceColor(status: VarianceStatus | undefined): string {
   switch (status) {
     case 'balanced':
-      return 'text-green-700';
+      return 'text-success-strong';
     case 'info':
-      return 'text-gray-700';
+      return 'text-ink-muted';
     case 'warning':
-      return 'text-amber-700';
+      return 'text-warning-strong';
     case 'critical':
-      return 'text-red-700';
+      return 'text-danger-strong';
     default:
-      return 'text-gray-500';
+      return 'text-ink-muted';
   }
 }
 
@@ -68,7 +68,7 @@ export function CashCountTable({
     <div className="space-y-2" data-testid="cash-count-table">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-gray-500">
+          <tr className="text-left text-ink-muted">
             <th className="px-2 py-1">
               {t('cash_count.tender', { defaultValue: 'Tender' })}
             </th>
@@ -104,7 +104,7 @@ export function CashCountTable({
                   {tender.payment_method_name}
                   {!tender.is_physical && (
                     <span
-                      className="ml-2 text-xs text-gray-500"
+                      className="ml-2 text-xs text-ink-muted"
                       data-testid={`tender-electronic-${tender.payment_method_code}`}
                     >
                       {t('cash_count.electronic_marker', { defaultValue: '✓ elec.' })}
@@ -132,12 +132,12 @@ export function CashCountTable({
                         )
                       }
                       data-testid={`tender-actual-input-${tender.payment_method_code}`}
-                      className="rounded border border-gray-300 px-2 py-1 disabled:cursor-not-allowed disabled:bg-gray-100"
+                      className="rounded border border-border-strong px-2 py-1 disabled:cursor-not-allowed disabled:bg-surface-sunken"
                     >
                       {actual === '' ? '—' : actual}
                     </button>
                   ) : (
-                    <span className="text-gray-500">{tender.expected_amount}</span>
+                    <span className="text-ink-muted">{tender.expected_amount}</span>
                   )}
                 </td>
                 {showVariance && (
@@ -156,7 +156,7 @@ export function CashCountTable({
 
       {activeMethodId !== null && !(blindMode && committed) && (
         <div
-          className="rounded-md border border-gray-300 p-3"
+          className="rounded-md border border-border-strong p-3"
           data-testid="cash-count-numpad-panel"
         >
           <p className="mb-2 text-sm font-medium">

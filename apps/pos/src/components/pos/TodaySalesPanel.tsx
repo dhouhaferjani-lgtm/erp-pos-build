@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RotateCcw, Printer } from 'lucide-react';
+import { ArrowLeft, RotateCcw, Printer, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchShiftReceipts, type ShiftReceipt } from '@/api/reportApi';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useCurrency } from '@/lib/currency';
 import { printReceiptAsPdf } from '@/lib/printing';
+import { SaleDetailModal } from '@/components/pos/SaleDetailModal';
 
 function getLineName(line: ShiftReceipt['lines'][number]): string {
   return line.product?.name ?? line.product_name ?? '—';
@@ -19,12 +20,12 @@ function getPaymentLabel(receipt: ShiftReceipt): string {
 
 function getReceiptStatus(receipt: ShiftReceipt, t: (key: string) => string): { label: string; className: string } {
   if (receipt.is_voided) {
-    return { label: t('voidReturn.void'), className: 'bg-red-100 text-red-700' };
+    return { label: t('voidReturn.void'), className: 'bg-danger-surface text-danger-strong' };
   }
   if (receipt.receipt_type === 'return') {
-    return { label: t('reports.typeReturn'), className: 'bg-amber-100 text-amber-700' };
+    return { label: t('reports.typeReturn'), className: 'bg-warning-surface text-warning-strong' };
   }
-  return { label: t('reports.typeSale'), className: 'bg-green-100 text-green-700' };
+  return { label: t('reports.typeSale'), className: 'bg-success-surface text-success-strong' };
 }
 
 export function TodaySalesPage() {
@@ -37,6 +38,7 @@ export function TodaySalesPage() {
   const [receipts, setReceipts] = useState<ShiftReceipt[]>([]);
   const [loading, setLoading] = useState(false);
   const [reprintingId, setReprintingId] = useState<string | null>(null);
+  const [detailReceipt, setDetailReceipt] = useState<ShiftReceipt | null>(null);
 
   const loadReceipts = useCallback(async () => {
     if (!shiftId) return;
@@ -85,22 +87,22 @@ export function TodaySalesPage() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-gray-50">
+    <div className="flex h-full flex-col bg-surface-canvas">
       {/* Sub-header with back button */}
-      <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3">
+      <div className="flex items-center gap-3 border-b border-border-subtle bg-surface-raised px-4 py-3">
         <button
           onClick={() => navigate('/')}
-          className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+          className="rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <h1 className="text-xl font-bold text-gray-900">{t('reports.todaySales')}</h1>
+        <h1 className="text-xl font-bold text-ink">{t('reports.todaySales')}</h1>
       </div>
 
       {/* No-shift empty state */}
       {!shiftId && (
         <div className="flex flex-1 items-center justify-center">
-          <p className="text-sm text-gray-500">{t('reports.noShiftOpen')}</p>
+          <p className="text-sm text-ink-muted">{t('reports.noShiftOpen')}</p>
         </div>
       )}
 
@@ -108,29 +110,29 @@ export function TodaySalesPage() {
       {shiftId && (
         <>
           <div className="grid grid-cols-4 gap-4 px-6 py-4">
-            <div className="rounded-xl bg-blue-50 p-4">
-              <p className="text-xs font-medium text-blue-600">{t('reports.totalSales')}</p>
-              <p className="mt-1 text-2xl font-bold text-gray-900">{format(totalSales)}</p>
+            <div className="rounded-xl bg-action-subtle p-4">
+              <p className="text-xs font-medium text-action">{t('reports.totalSales')}</p>
+              <p className="mt-1 text-2xl font-bold text-ink">{format(totalSales)}</p>
             </div>
-            <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-              <p className="text-xs font-medium text-gray-500">{t('reports.receiptCount')}</p>
-              <p className="mt-1 text-2xl font-bold text-gray-900">{receipts.length}</p>
+            <div className="rounded-xl bg-surface-raised p-4 shadow-sm ring-1 ring-border-subtle">
+              <p className="text-xs font-medium text-ink-muted">{t('reports.receiptCount')}</p>
+              <p className="mt-1 text-2xl font-bold text-ink">{receipts.length}</p>
             </div>
-            <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-              <p className="text-xs font-medium text-gray-500">{t('reports.avgTicket')}</p>
-              <p className="mt-1 text-2xl font-bold text-gray-900">{format(avgTicket)}</p>
+            <div className="rounded-xl bg-surface-raised p-4 shadow-sm ring-1 ring-border-subtle">
+              <p className="text-xs font-medium text-ink-muted">{t('reports.avgTicket')}</p>
+              <p className="mt-1 text-2xl font-bold text-ink">{format(avgTicket)}</p>
             </div>
-            <div className="rounded-xl bg-red-50 p-4">
-              <p className="text-xs font-medium text-red-600">{t('reports.returns')}</p>
-              <p className="mt-1 text-2xl font-bold text-gray-900">
+            <div className="rounded-xl bg-danger-surface p-4">
+              <p className="text-xs font-medium text-danger-strong">{t('reports.returns')}</p>
+              <p className="mt-1 text-2xl font-bold text-ink">
                 {returnReceipts.length}
                 {totalReturns > 0 && (
-                  <span className="ml-2 text-sm font-normal text-red-500">
+                  <span className="ml-2 text-sm font-normal text-danger">
                     −{format(totalReturns)}
                   </span>
                 )}
                 {voidedCount > 0 && (
-                  <span className="ml-2 text-sm font-normal text-gray-500">
+                  <span className="ml-2 text-sm font-normal text-ink-muted">
                     ({voidedCount} {t('voidReturn.void').toLowerCase()})
                   </span>
                 )}
@@ -140,18 +142,18 @@ export function TodaySalesPage() {
 
       {/* Receipt Table */}
       <div className="flex-1 overflow-y-auto px-6 pb-4">
-        <div className="rounded-xl bg-white shadow-sm ring-1 ring-gray-100">
+        <div className="rounded-xl bg-surface-raised shadow-sm ring-1 ring-border-subtle">
           {loading ? (
             <div className="flex items-center justify-center py-16">
-              <RotateCcw className="h-6 w-6 animate-spin text-gray-400" />
+              <RotateCcw className="h-6 w-6 animate-spin text-ink-faint" />
             </div>
           ) : receipts.length === 0 ? (
-            <p className="py-16 text-center text-sm text-gray-500">
+            <p className="py-16 text-center text-sm text-ink-muted">
               {t('reports.noReceipts')}
             </p>
           ) : (
             <table className="w-full">
-              <thead className="border-b border-gray-100 text-xs font-medium uppercase text-gray-500">
+              <thead className="border-b border-border-subtle text-xs font-medium uppercase text-ink-muted">
                 <tr>
                   <th className="px-5 py-3 text-left">{t('reports.receiptNo')}</th>
                   <th className="px-5 py-3 text-left">{t('reports.time')}</th>
@@ -162,15 +164,15 @@ export function TodaySalesPage() {
                   <th className="px-5 py-3 text-right">{t('reports.actions')}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-border-subtle">
                 {receipts.map((receipt) => {
                   const status = getReceiptStatus(receipt, t);
                   return (
-                    <tr key={receipt.id} className={receipt.is_voided ? 'bg-gray-50/50 opacity-60' : 'hover:bg-gray-50/50'}>
-                      <td className="px-5 py-3 text-sm font-medium text-gray-900">
+                    <tr key={receipt.id} className={receipt.is_voided ? 'bg-surface-sunken/50 opacity-60' : 'hover:bg-surface-sunken/50'}>
+                      <td className="px-5 py-3 text-sm font-medium text-ink">
                         {receipt.receipt_number}
                       </td>
-                      <td className="px-5 py-3 text-sm text-gray-600">
+                      <td className="px-5 py-3 text-sm text-ink-muted">
                         {receiptTime(receipt)}
                       </td>
                       <td className="px-5 py-3">
@@ -178,7 +180,7 @@ export function TodaySalesPage() {
                           {status.label}
                         </span>
                       </td>
-                      <td className="max-w-[260px] px-5 py-3 text-sm text-gray-600">
+                      <td className="max-w-[260px] px-5 py-3 text-sm text-ink-muted">
                         {receipt.lines.length > 0 ? (
                           <span
                             className="block truncate"
@@ -191,28 +193,38 @@ export function TodaySalesPage() {
                               .join(', ')}
                           </span>
                         ) : (
-                          <span className="text-gray-400">—</span>
+                          <span className="text-ink-faint">—</span>
                         )}
                       </td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-gray-900">
+                      <td className="px-5 py-3 text-right text-sm font-semibold text-ink">
                         {receipt.receipt_type === 'return' && '−'}
                         {format(receipt.total)}
                       </td>
                       <td className="px-5 py-3">
-                        <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                        <span className="rounded bg-surface-sunken px-2 py-0.5 text-xs font-medium text-ink-muted">
                           {getPaymentLabel(receipt)}
                         </span>
                       </td>
                       <td className="px-5 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => void handleReprint(receipt.id)}
-                          disabled={reprintingId === receipt.id}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200 disabled:opacity-50"
-                        >
-                          <Printer className="h-3.5 w-3.5" />
-                          {reprintingId === receipt.id ? '...' : t('reports.reprint')}
-                        </button>
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setDetailReceipt(receipt)}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-surface-sunken px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-sunken"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            {t('reports.view')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleReprint(receipt.id)}
+                            disabled={reprintingId === receipt.id}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-surface-sunken px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-sunken disabled:opacity-50"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                            {reprintingId === receipt.id ? '...' : t('reports.reprint')}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -224,6 +236,14 @@ export function TodaySalesPage() {
       </div>
         </>
       )}
+
+      <SaleDetailModal
+        receipt={detailReceipt}
+        isOpen={detailReceipt !== null}
+        onClose={() => setDetailReceipt(null)}
+        onReprint={(id) => void handleReprint(id)}
+        reprinting={detailReceipt !== null && reprintingId === detailReceipt.id}
+      />
     </div>
   );
 }

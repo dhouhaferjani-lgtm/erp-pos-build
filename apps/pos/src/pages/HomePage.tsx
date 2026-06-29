@@ -119,6 +119,8 @@ export function HomePage() {
   const removeItem = useCartStore((s) => s.removeItem);
   const clearCart = useCartStore((s) => s.clearCart);
   const subtotal = useCartStore((s) => s.subtotal);
+  const grossSubtotal = useCartStore((s) => s.grossSubtotal);
+  const lineDiscountTotal = useCartStore((s) => s.lineDiscountTotal);
   const taxAmount = useCartStore((s) => s.taxAmount);
   const discountAmount = useCartStore((s) => s.discountAmount);
   const total = useCartStore((s) => s.total);
@@ -1413,6 +1415,8 @@ export function HomePage() {
             }
             items={cartItems}
             subtotal={subtotal()}
+            grossSubtotal={grossSubtotal()}
+            lineDiscountAmount={lineDiscountTotal()}
             taxAmount={taxAmount()}
             discountAmount={discountAmount()}
             total={total()}
@@ -1427,6 +1431,7 @@ export function HomePage() {
             onDiscount={() => setShowDiscountModal(true)}
             onHold={() => void handleHold()}
             onRecall={() => setShowHeldModal(true)}
+            recallCount={heldTransactions.length}
             onReturns={() => setShowReceiptLocator(true)}
             onLineDiscount={handleLineDiscount}
             onRemoveLineDiscount={handleRemoveLineDiscount}

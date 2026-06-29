@@ -242,7 +242,7 @@ export function CashReconciliationSection({
 
   return (
     <div className="space-y-4" data-testid="cash-reconciliation-section">
-      <h3 className="text-base font-semibold text-gray-900">
+      <h3 className="text-base font-semibold text-ink">
         {t('cash_count.section_title', { defaultValue: 'Cash Reconciliation' })}
       </h3>
 
@@ -263,7 +263,7 @@ export function CashReconciliationSection({
           onClick={() => setCommitted(true)}
           disabled={!allPhysicalFilled}
           data-testid="commit-counts-button"
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+          className="rounded-md bg-action px-4 py-2 text-sm font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:bg-surface-sunken"
         >
           {t('cash_count.commit_counts', { defaultValue: 'Commit Counts' })}
         </button>
@@ -273,7 +273,7 @@ export function CashReconciliationSection({
         <div data-testid="variance-reason-section" className="space-y-1">
           <label
             htmlFor="variance-reason"
-            className="block text-sm font-medium text-gray-700"
+            className="block text-sm font-medium text-ink-muted"
           >
             {t('cash_count.reason_label', {
               defaultValue: 'Variance Reason (required)',
@@ -286,14 +286,14 @@ export function CashReconciliationSection({
             data-testid="variance-reason-input"
             maxLength={500}
             rows={3}
-            className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full rounded-md border border-border-strong p-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
           />
         </div>
       )}
 
       {committed && needsManagerPin && verifiedManager === null && (
         <div data-testid="manager-pin-section" className="space-y-2">
-          <h4 className="text-sm font-medium text-gray-700">
+          <h4 className="text-sm font-medium text-ink-muted">
             {t('cash_count.manager_pin.section_title', {
               defaultValue: 'Manager Authorization Required',
             })}
@@ -312,7 +312,7 @@ export function CashReconciliationSection({
       {verifiedManager !== null && (
         <p
           data-testid="manager-verified"
-          className="text-sm font-medium text-green-700"
+          className="text-sm font-medium text-success-strong"
         >
           {t('cash_count.manager_pin.verified', {
             defaultValue: 'Authorized by: {{name}}',

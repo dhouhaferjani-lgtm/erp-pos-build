@@ -134,7 +134,7 @@ export function ManagerPinPanel({
           onChange={(e) => setSelectedManagerId(e.target.value)}
           disabled={disabled || isThrottled || eligibleManagers.length === 0}
           data-testid="manager-pin-select"
-          className="mt-1 block w-full rounded-md border border-gray-300 p-2"
+          className="mt-1 block w-full rounded-md border border-border-strong p-2"
         >
           {eligibleManagers.length === 0 ? (
             <option value="">
@@ -157,7 +157,7 @@ export function ManagerPinPanel({
           {t('cash_count.manager_pin.pin_label', { defaultValue: 'PIN' })}
         </label>
         <div
-          className="mt-1 rounded-md border border-gray-300 p-2 font-mono text-2xl tracking-widest"
+          className="mt-1 rounded-md border border-border-strong p-2 font-mono text-2xl tracking-widest"
           data-testid="manager-pin-display"
         >
           {pin.length > 0 ? '•'.repeat(pin.length) : ' '}
@@ -176,13 +176,13 @@ export function ManagerPinPanel({
       />
 
       {error !== null && (
-        <p data-testid="manager-pin-error" className="text-sm text-red-600">
+        <p data-testid="manager-pin-error" className="text-sm text-danger">
           {error}
         </p>
       )}
 
       {isThrottled && (
-        <p data-testid="manager-pin-countdown" className="text-sm text-amber-700">
+        <p data-testid="manager-pin-countdown" className="text-sm text-warning-strong">
           {t('cash_count.manager_pin.wait', {
             defaultValue: 'Please wait {{seconds}}s before retry.',
             seconds: remainingSeconds,
@@ -195,7 +195,7 @@ export function ManagerPinPanel({
         onClick={handleVerify}
         disabled={disabled || isThrottled || verifying || pin.length < 4 || !selectedManagerId}
         data-testid="manager-pin-verify"
-        className="w-full rounded-md bg-blue-600 py-2 text-white disabled:bg-gray-400"
+        className="w-full rounded-md bg-action py-2 text-ink-inverse disabled:bg-surface-sunken"
       >
         {verifying
           ? t('cash_count.manager_pin.verifying', { defaultValue: 'Verifying…' })

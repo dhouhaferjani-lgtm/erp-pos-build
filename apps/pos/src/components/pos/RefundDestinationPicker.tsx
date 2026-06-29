@@ -107,7 +107,7 @@ export function RefundDestinationPicker({
 
   return (
     <div className="space-y-3" data-testid="refund-destination-picker">
-      <p className="text-sm font-medium text-gray-700">
+      <p className="text-sm font-medium text-ink-muted">
         {t('refundFlow.destination.label', { defaultValue: 'Refund destination' })}
       </p>
 
@@ -125,9 +125,9 @@ export function RefundDestinationPicker({
                 'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
                 allowed
                   ? value === d
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                  : 'cursor-not-allowed border-gray-200 opacity-50',
+                    ? 'border-accent bg-accent-tint'
+                    : 'border-border-subtle hover:border-border-strong'
+                  : 'cursor-not-allowed border-border-subtle opacity-50',
               ].join(' ')}
             >
               <input
@@ -142,7 +142,7 @@ export function RefundDestinationPicker({
                 className="mt-0.5"
                 data-testid={`refund-destination-radio-${d}`}
               />
-              <span className="text-sm font-medium text-gray-900">{labelFor(d)}</span>
+              <span className="text-sm font-medium text-ink">{labelFor(d)}</span>
             </label>
           );
         })}
@@ -152,16 +152,16 @@ export function RefundDestinationPicker({
       {prorationBreakdown !== undefined && prorationBreakdown.length > 0 && value === 'original' && (
         <div
           data-testid="proration-breakdown"
-          className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm"
+          className="rounded-md border border-action-subtle bg-action-subtle p-3 text-sm"
         >
-          <p className="mb-2 font-medium text-blue-800">
+          <p className="mb-2 font-medium text-action">
             {t('refundFlow.destination.proration_title', { defaultValue: 'Refund breakdown' })}
           </p>
           <ul className="space-y-1">
             {prorationBreakdown.map((row, idx) => (
               <li
                 key={idx}
-                className="flex justify-between text-blue-900"
+                className="flex justify-between text-ink"
                 data-testid={`proration-row-${String(idx)}`}
               >
                 <span>{row.instrument}</span>
@@ -206,7 +206,7 @@ export function RefundDestinationPickerStateful({
         type="button"
         onClick={() => onConfirm(selected)}
         data-testid="refund-destination-confirm"
-        className="w-full rounded-md bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+        className="w-full rounded-md bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover"
       >
         {t('refundFlow.destination.confirm', { defaultValue: 'Confirm destination' })}
       </button>

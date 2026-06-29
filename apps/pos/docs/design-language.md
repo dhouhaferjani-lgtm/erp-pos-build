@@ -16,10 +16,13 @@ Color carries meaning. Do not reuse a status color for decoration.
 | **success** (green) | `success`, `success-surface`, `success-strong`, `success-subtle` | Confirmed money & sync events ONLY (completed sale, "synced", change due) | Generic "good" states, in-stock counts |
 | **warning** (amber) | `warning`, `warning-surface`, `warning-strong`, `warning-subtle` | Warnings, low stock, "caution" actions (e.g. change terminal) | Errors |
 | **danger** (red) | `danger`, `danger-surface`, `danger-strong`, `danger-subtle` | Errors + destructive/irreversible actions ONLY | Out-of-stock, backspace keys, generic emphasis |
-| **brand** (copper) | `brand` | Wordmark, brand chrome | Buttons, body text |
-| **ink** | `ink`, `ink-muted`, `ink-faint`, `ink-inverse` | All text; **prices use `ink`** | — |
+| **brand → accent** (Caisse) | `accent`, `accent-strong`, `accent-tint`, `accent-ring`, `accent-text` | UX accent / primary CTA (Encaisser). Swappable via `data-accent`. In the Caisse theme `action` is re-pointed to `accent`. | Body text |
+| **ink** | `ink`, `ink-strong`, `ink-muted`, `ink-faint`, `ink-inverse` | All text; **prices use `ink`** (+ mono) | — |
+| **stock** (Caisse) | `stock-ok`, `stock-low`, `stock-out` (+ `-surface`) | Product stock state ONLY (En stock / Stock faible / Rupture) | Money, sync, errors, decoration |
 
-Out-of-stock = desaturated surface (`surface-sunken`) + neutral badge, NOT red. Low-stock = amber dot + `warning-strong`.
+### Stock-badge exception (Caisse Parapharmacie)
+
+The earlier rule — *"out-of-stock = neutral, NOT red; never green for in-stock"* — kept the `success`/`danger` money-and-error semantics uncontaminated. The parapharmacy Caisse redesign needs **glanceable green/amber/red stock status** (a near-universal retail convention, and a core merchandising signal at a fast till). Resolution: a **dedicated stock token family** (`stock-ok`/`stock-low`/`stock-out`), visually green/amber/red but **semantically separate** from `success`/`warning`/`danger`. This satisfies the original intent — money/error colours are still never overloaded — while giving the cashier the conventional traffic-light read. Out-of-stock cards are still **dimmed** (desaturated) in addition to the `stock-out` badge. Use the stock tokens ONLY for stock state; never for money, sync, or errors, and never the reverse.
 
 ## 2. Surface scale (elevation = separation)
 

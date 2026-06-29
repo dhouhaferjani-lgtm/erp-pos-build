@@ -98,7 +98,8 @@
     "form": {
       "name": "Nom de la Catégorie",
       "description": "Description",
-      "parentCategory": "Catégorie Parente"
+      "parentCategory": "Catégorie Parente",
+      "glAccount": "Compte GL"
     },
     "messages": {
       "created": "Catégorie créée avec succès",

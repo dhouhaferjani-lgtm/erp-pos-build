@@ -510,13 +510,13 @@ export function AdvancedPaymentsModal({
       aria-modal="true"
       aria-labelledby="advanced-payments-title"
       data-testid="advanced-payments-dialog"
-      className="fixed inset-0 z-50 flex flex-col bg-gray-50 text-gray-900"
+      className="fixed inset-0 z-50 flex flex-col bg-surface-sunken text-ink"
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
+      <div className="flex items-center justify-between border-b border-border-subtle bg-surface-raised px-4 py-3">
         <button
           onClick={handleClose}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-muted hover:bg-surface-sunken hover:text-ink"
         >
           <ArrowLeft className="h-4 w-4" />
           {t('advancedPayments.back')}
@@ -531,8 +531,8 @@ export function AdvancedPaymentsModal({
       {/* Main 3-column layout */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* LEFT COLUMN (30%): Method selection + config */}
-        <div className="flex w-[30%] flex-col border-r border-gray-200 bg-white p-4">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+        <div className="flex w-[30%] flex-col border-r border-border-subtle bg-surface-raised p-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-muted">
             {t('advancedPayments.selectMethod')}
           </p>
           <div className="flex flex-col gap-2">
@@ -553,18 +553,18 @@ export function AdvancedPaymentsModal({
                   className={cn(
                     'flex min-h-[52px] items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-colors',
                     isSelected
-                      ? 'border-primary-500 bg-primary-50 text-primary-700'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50',
+                      ? 'border-accent bg-accent-tint text-accent-strong'
+                      : 'border-border-subtle bg-surface-raised text-ink-muted hover:border-border-strong hover:bg-surface-sunken',
                   )}
                 >
                   {isInstrumentBearing ? (
-                    <Ticket className="h-5 w-5 shrink-0 text-purple-600" />
+                    <Ticket className="h-5 w-5 shrink-0 text-accent-strong" />
                   ) : (
                     <Icon className="h-5 w-5 shrink-0" />
                   )}
                   <span className="text-sm font-medium">{method.name}</span>
                   {isInstrumentBearing && (
-                    <span className="ml-auto rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-purple-700">
+                    <span className="ml-auto rounded-full bg-accent-tint px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-accent-strong">
                       {t('advancedPayments.voucherBadge')}
                     </span>
                   )}
@@ -587,11 +587,11 @@ export function AdvancedPaymentsModal({
                 className={cn(
                   'flex min-h-[52px] items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-colors',
                   accountChargeMode
-                    ? 'border-primary-500 bg-primary-50 text-primary-700'
-                    : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50',
+                    ? 'border-accent bg-accent-tint text-accent-strong'
+                    : 'border-border-subtle bg-surface-raised text-ink-muted hover:border-border-strong hover:bg-surface-sunken',
                 )}
               >
-                <UserRound className="h-5 w-5 shrink-0 text-blue-600" />
+                <UserRound className="h-5 w-5 shrink-0 text-action" />
                 <span className="text-sm font-medium">
                   {t('account_charge.tile', { defaultValue: 'On Account' })}
                 </span>
@@ -601,11 +601,11 @@ export function AdvancedPaymentsModal({
 
           {/* Config fields — shown when method selected */}
           {selectedMethod && (
-            <div className="mt-4 space-y-3 border-t border-gray-200 pt-4">
+            <div className="mt-4 space-y-3 border-t border-border-subtle pt-4">
               {/* Repository dropdown */}
               {compatibleRepositories.length > 1 && (
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500">
+                  <label className="mb-1 block text-xs font-medium text-ink-muted">
                     {t('advancedPayments.repository')}
                   </label>
                   <select
@@ -614,7 +614,7 @@ export function AdvancedPaymentsModal({
                       setRepositoryId(e.target.value);
                       setValidationError(null);
                     }}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                    className="w-full rounded-lg border border-border-strong px-3 py-2.5 text-sm focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
                   >
                     <option value="">
                       {t('advancedPayments.selectRepository')}
@@ -631,14 +631,14 @@ export function AdvancedPaymentsModal({
               {/* Reference field */}
               {showReference && (
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500">
+                  <label className="mb-1 block text-xs font-medium text-ink-muted">
                     {t('advancedPayments.reference')}
                   </label>
                   <input
                     type="text"
                     value={reference}
                     onChange={(e) => setReference(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                    className="w-full rounded-lg border border-border-strong px-3 py-2.5 text-sm focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
                   />
                 </div>
               )}
@@ -646,7 +646,7 @@ export function AdvancedPaymentsModal({
               {/* Card last 4 */}
               {showCardLastFour && (
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500">
+                  <label className="mb-1 block text-xs font-medium text-ink-muted">
                     {t('advancedPayments.cardLastFour')}
                   </label>
                   <input
@@ -656,7 +656,7 @@ export function AdvancedPaymentsModal({
                     onChange={(e) =>
                       setCardLastFour(e.target.value.replace(/\D/g, ''))
                     }
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                    className="w-full rounded-lg border border-border-strong px-3 py-2.5 text-sm focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
                   />
                 </div>
               )}
@@ -667,7 +667,7 @@ export function AdvancedPaymentsModal({
           {selectedMethod && (
             <button
               onClick={handleAddPayment}
-              className="mt-auto rounded-xl bg-primary-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-700 active:bg-primary-800"
+              className="mt-auto rounded-xl bg-action px-4 py-3 text-sm font-semibold text-ink-inverse transition-colors hover:bg-action-hover active:bg-action-strong"
             >
               {t('advancedPayments.addPayment')}
             </button>
@@ -683,7 +683,7 @@ export function AdvancedPaymentsModal({
           split-tender controls apply while it is active.
         */}
         {accountChargeMode ? (
-          <div className="flex flex-1 items-center justify-center bg-gray-50 p-4">
+          <div className="flex flex-1 items-center justify-center bg-surface-sunken p-4">
             <AccountChargeConfirmation
               total={bcformat(String(total), decimals)}
               currency={currency}
@@ -699,13 +699,13 @@ export function AdvancedPaymentsModal({
         ) : (
           <>
         {/* CENTER COLUMN (35%): Amount + NumPad */}
-        <div className="flex w-[35%] flex-col bg-gray-50 p-4">
+        <div className="flex w-[35%] flex-col bg-surface-sunken p-4">
           {/* Amount display */}
           <div className="mb-3 text-center">
-            <p className="text-xs font-medium uppercase tracking-widest text-gray-500">
+            <p className="text-xs font-medium uppercase tracking-widest text-ink-muted">
               {t('advancedPayments.amount')}
             </p>
-            <p className="mt-1 text-3xl font-bold text-gray-900">
+            <p className="mt-1 font-mono text-3xl font-bold tabular-nums text-ink">
               {amount ? format(parseFloat(amount)) : format(0)}
             </p>
           </div>
@@ -715,29 +715,31 @@ export function AdvancedPaymentsModal({
             <div className="mb-3 text-center">
               <button
                 onClick={handlePayRemaining}
-                className="inline-flex rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-700"
+                className="inline-flex rounded-lg bg-action px-4 py-2 text-sm font-semibold text-ink-inverse transition-colors hover:bg-action-hover"
               >
                 {t('advancedPayments.payRemaining')}: {format(remaining)}
               </button>
             </div>
           )}
 
-          {/* NumPad */}
-          <div className="flex-1">
+          {/* NumPad — fills the column so there is no dead gap (consistent with
+           * the cash screen). */}
+          <div className="min-h-0 flex-1">
             <NumPad
               value={amount}
               onChange={(val) => {
                 setAmount(val);
                 setValidationError(null);
               }}
+              className="h-full auto-rows-fr"
             />
           </div>
         </div>
 
         {/* RIGHT COLUMN (35%): Balance + Payments list + Complete */}
-        <div className="flex w-[35%] flex-col border-l border-gray-200 bg-white p-4">
+        <div className="flex w-[35%] flex-col border-l border-border-subtle bg-surface-raised p-4">
           {/* Total due card */}
-          <div className="mb-4 rounded-xl bg-primary-600 p-4 text-white">
+          <div className="mb-4 rounded-xl bg-action p-4 text-ink-inverse">
             <p className="text-xs font-medium uppercase tracking-wider opacity-80">
               {t('advancedPayments.totalDue')}
             </p>
@@ -746,11 +748,11 @@ export function AdvancedPaymentsModal({
 
           {/* Payment lines — scrollable */}
           <div className="mb-3 flex-1 overflow-y-auto">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-muted">
               {t('advancedPayments.addedPayments')}
             </p>
             {paymentLines.length === 0 && voucherTenders.length === 0 ? (
-              <p className="py-6 text-center text-sm text-gray-500">
+              <p className="py-6 text-center text-sm text-ink-muted">
                 {t('advancedPayments.noPayments')}
               </p>
             ) : (
@@ -767,24 +769,24 @@ export function AdvancedPaymentsModal({
                   <div
                     key={`voucher-${v.code}`}
                     data-testid={`voucher-tender-row-${v.code}`}
-                    className="flex items-center justify-between rounded-lg border border-purple-200 bg-purple-50 px-3 py-2.5"
+                    className="flex items-center justify-between rounded-lg border border-accent-tint bg-accent-tint px-3 py-2.5"
                   >
                     <div className="flex items-center gap-2">
-                      <Ticket className="h-4 w-4 text-purple-700" />
+                      <Ticket className="h-4 w-4 text-accent-strong" />
                       <div>
-                        <p className="text-sm font-medium text-gray-900">
+                        <p className="text-sm font-medium text-ink">
                           {t('advancedPayments.voucherTenderLabel')}
                         </p>
-                        <p className="text-xs text-gray-500">{v.code}</p>
+                        <p className="text-xs text-ink-muted">{v.code}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-gray-900">
+                      <span className="text-sm font-semibold text-ink">
                         {format(Number.parseFloat(v.amount) || 0)}
                       </span>
                       <button
                         onClick={() => removeVoucherPayment(v.code)}
-                        className="rounded-lg p-1.5 text-red-500 hover:bg-red-50"
+                        className="rounded-lg p-1.5 text-danger hover:bg-danger-surface"
                         aria-label={t('advancedPayments.delete')}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -795,25 +797,25 @@ export function AdvancedPaymentsModal({
                 {paymentLines.map((line) => (
                   <div
                     key={line.id}
-                    className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5"
+                    className="flex items-center justify-between rounded-lg border border-border-subtle bg-surface-sunken px-3 py-2.5"
                   >
                     <div>
-                      <p className="text-sm font-medium text-gray-900">
+                      <p className="text-sm font-medium text-ink">
                         {line.methodName}
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-ink-muted">
                         {line.repositoryName}
                         {line.cardLastFour && ` · *${line.cardLastFour}`}
                         {line.reference && ` · ${line.reference}`}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-gray-900">
+                      <span className="text-sm font-semibold text-ink">
                         {format(line.amount)}
                       </span>
                       <button
                         onClick={() => handleRemoveLine(line.id)}
-                        className="rounded-lg p-1.5 text-red-500 hover:bg-red-50"
+                        className="rounded-lg p-1.5 text-danger hover:bg-danger-surface"
                         aria-label={t('advancedPayments.delete')}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -826,24 +828,24 @@ export function AdvancedPaymentsModal({
           </div>
 
           {/* Footer — balance + error + complete */}
-          <div className="border-t border-gray-200 pt-3">
+          <div className="border-t border-border-subtle pt-3">
             <div className="mb-2 space-y-1 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-500">
+                <span className="text-ink-muted">
                   {t('advancedPayments.totalPaid')}
                 </span>
-                <span className="font-medium text-gray-900">
+                <span className="font-medium text-ink">
                   {format(totalPaid)}
                 </span>
               </div>
               {remaining > 0 && (
-                <div className="flex justify-between text-orange-600">
+                <div className="flex justify-between text-warning-strong">
                   <span>{t('advancedPayments.remaining')}</span>
                   <span className="font-medium">{format(remaining)}</span>
                 </div>
               )}
               {overpayment > 0 && (
-                <div className="flex justify-between text-green-600">
+                <div className="flex justify-between text-success-strong">
                   <span>{t('advancedPayments.changeDue')}</span>
                   <span className="font-medium">{format(overpayment)}</span>
                 </div>
@@ -851,7 +853,7 @@ export function AdvancedPaymentsModal({
             </div>
 
             {(validationError || error) && (
-              <div className="mb-2 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+              <div className="mb-2 flex items-center gap-2 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-strong">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 {validationError || error}
               </div>
@@ -859,7 +861,7 @@ export function AdvancedPaymentsModal({
 
             {remaining > 0 && (
               <label className="mb-2 block text-sm">
-                <span className="mb-1 block font-medium text-gray-700">
+                <span className="mb-1 block font-medium text-ink-muted">
                   {t('advancedPayments.tenderTolerancePinLabel')}
                 </span>
                 <input
@@ -870,7 +872,7 @@ export function AdvancedPaymentsModal({
                     setTenderTolerancePin(event.target.value);
                     setValidationError(null);
                   }}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                  className="w-full rounded-lg border border-border-strong px-3 py-2.5 text-sm focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
                 />
               </label>
             )}
@@ -878,7 +880,7 @@ export function AdvancedPaymentsModal({
             <button
               onClick={() => void handleComplete()}
               disabled={!canComplete || isProcessing}
-              className="w-full rounded-xl bg-green-600 px-6 py-3.5 text-lg font-semibold text-white transition-colors hover:bg-green-700 active:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-xl bg-success px-6 py-3.5 text-lg font-semibold text-ink-inverse transition-colors hover:bg-success-hover active:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isProcessing
                 ? t('advancedPayments.processing')

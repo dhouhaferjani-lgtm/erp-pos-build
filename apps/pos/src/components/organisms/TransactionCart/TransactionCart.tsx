@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ShoppingCart, Trash2, RotateCcw } from 'lucide-react';
 import { CartLineItem } from '@/components/molecules/CartLineItem';
@@ -6,12 +6,17 @@ import { PaymentSummary } from '@/components/organisms/PaymentSummary';
 import { QuickActions } from '@/components/molecules/QuickActions';
 import { Button, IconButton } from '@/components/ui';
 import { useCurrency } from '@/lib/currency';
+import { useSettingsStore } from '@/stores/settingsStore';
 import type { CartItem } from '@/types/cart';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 
 export interface TransactionCartProps {
   items: CartItem[];
   subtotal: number;
+  /** Gross subtotal before any discount (Sous-total). */
+  grossSubtotal?: number;
+  /** Total of per-line discounts (Remises produits). */
+  lineDiscountAmount?: number;
   taxAmount: number;
   discountAmount: number;
   total: number;
@@ -26,6 +31,8 @@ export interface TransactionCartProps {
   onDiscount?: () => void;
   onHold?: () => void;
   onRecall?: () => void;
+  /** Number of parked sales — shown as a count badge on the Recall quick action. */
+  recallCount?: number;
   /** Opens the Returns / Exchange receipt-locator screen. */
   onReturns?: () => void;
   onLineDiscount?: (itemId: string) => void;
@@ -53,6 +60,8 @@ export interface TransactionCartProps {
 export function TransactionCart({
   items,
   subtotal,
+  grossSubtotal,
+  lineDiscountAmount,
   taxAmount,
   discountAmount,
   total,
@@ -67,6 +76,7 @@ export function TransactionCart({
   onDiscount,
   onHold,
   onRecall,
+  recallCount = 0,
   onReturns,
   onLineDiscount,
   onRemoveLineDiscount,
@@ -80,11 +90,19 @@ export function TransactionCart({
 }: TransactionCartProps) {
   const { t } = useTranslation('pos');
   const { format } = useCurrency();
+  const confirmLineDelete = useSettingsStore((s) => s.confirmLineDelete);
+
+  // Cart-line accordion (mock pattern): collapsed by default so more items fit;
+  // tapping a line expands it (and collapses any previously-open line).
+  const [expandedLineId, setExpandedLineId] = useState<string | null>(null);
+  const toggleLine = (id: string) =>
+    setExpandedLineId((prev) => (prev === id ? null : id));
 
   const returnItems = items.filter((i) => (i.kind ?? 'sale') === 'return');
   const saleItems = items.filter((i) => (i.kind ?? 'sale') === 'sale');
   const isRefundMode = returnItems.length > 0;
-  const hasQuickActions = Boolean(onDiscount && onHold && onRecall && onReturns);
+  const hasQuickActions = Boolean(onDiscount && onHold && onRecall);
+  const hasReturns = Boolean(onReturns);
 
   // Determine confirm button label when in refund/exchange mode
   function getNetLabel(): string {
@@ -120,9 +138,13 @@ export function TransactionCart({
           )}
         </div>
 
-        {/* Row B — operations toolbar (Discount · Hold ⎮ Recall · Returns · Clear).
-         * Renders when quick actions are wired OR there are items to clear. */}
-        {(hasQuickActions || items.length > 0) && (
+        {/* Row B — operations toolbar. The three labelled sale quick actions
+         * (Remise · En attente | Reprendre, mock §5.1) flex to fill, with the
+         * SECONDARY actions — Returns/Exchange (its own flow, §5.4) and Clear —
+         * pinned at the end as compact icons so the row never crowds/truncates.
+         * Renders when quick actions are wired, Returns is wired, OR there are
+         * items to clear. */}
+        {(hasQuickActions || hasReturns || items.length > 0) && (
           <div className="flex items-center gap-1.5 px-2 pb-2">
             {hasQuickActions && (
               <div className="min-w-0 flex-1">
@@ -130,27 +152,38 @@ export function TransactionCart({
                   onDiscount={onDiscount!}
                   onHold={onHold!}
                   onRecall={onRecall!}
-                  onReturns={onReturns!}
+                  recallCount={recallCount}
                   hasItems={items.length > 0}
                   hasDiscount={hasDiscount}
                 />
               </div>
             )}
-            {items.length > 0 && (
-              <>
+            {(hasReturns || items.length > 0) && (
+              <div className="flex shrink-0 items-center gap-1.5">
                 {hasQuickActions && (
                   <span className="h-6 w-px shrink-0 bg-border-subtle" aria-hidden="true" />
                 )}
-                <IconButton
-                  variant="destructive"
-                  size="md"
-                  onClick={onClearCart}
-                  aria-label={t('cart.clear')}
-                  title={t('cart.clear')}
-                  icon={<Trash2 className="h-4 w-4" />}
-                  className="ml-auto"
-                />
-              </>
+                {hasReturns && (
+                  <IconButton
+                    variant="secondary"
+                    size="md"
+                    onClick={onReturns!}
+                    aria-label={t('receiptLocator.entryButton')}
+                    title={t('receiptLocator.entryButton')}
+                    icon={<RotateCcw className="h-4 w-4" />}
+                  />
+                )}
+                {items.length > 0 && (
+                  <IconButton
+                    variant="destructive"
+                    size="md"
+                    onClick={onClearCart}
+                    aria-label={t('cart.clear')}
+                    title={t('cart.clear')}
+                    icon={<Trash2 className="h-4 w-4" />}
+                  />
+                )}
+              </div>
             )}
           </div>
         )}
@@ -209,6 +242,9 @@ export function TransactionCart({
                       onDiscount={onLineDiscount}
                       onEditModifiers={onEditModifiers}
                       onRemoveDiscount={onRemoveLineDiscount}
+                      expanded={expandedLineId === item.id}
+                      onToggleExpand={toggleLine}
+                      confirmDelete={confirmLineDelete}
                     />
                   ))}
                 </div>
@@ -228,6 +264,9 @@ export function TransactionCart({
                 onDiscount={onLineDiscount}
                 onEditModifiers={onEditModifiers}
                 onRemoveDiscount={onRemoveLineDiscount}
+                expanded={expandedLineId === item.id}
+                onToggleExpand={toggleLine}
+                confirmDelete={confirmLineDelete}
               />
             ))}
           </div>
@@ -257,7 +296,7 @@ export function TransactionCart({
                   <div className="flex items-center justify-between">
                     <span className="text-lg font-medium">{t('common.total')}</span>
                     <span
-                      className={`text-2xl font-bold tabular-nums ${netTotal < -0.005 ? 'opacity-80' : ''}`}
+                      className={`font-mono text-2xl font-bold tabular-nums ${netTotal < -0.005 ? 'opacity-80' : ''}`}
                     >
                       {netTotal < -0.005 ? '−' : ''}{format(Math.abs(netTotal))}
                     </span>
@@ -289,6 +328,8 @@ export function TransactionCart({
           // ever-present checkout surface rather than appearing/disappearing.
           <PaymentSummary
             subtotal={subtotal}
+            grossSubtotal={grossSubtotal}
+            lineDiscountAmount={lineDiscountAmount}
             taxAmount={taxAmount}
             discountAmount={discountAmount}
             total={total}
@@ -367,7 +408,7 @@ function ReturnLineItem({
           {/* Decrement (reduce return qty or keep item) */}
           <button
             onClick={handleDecrement}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-danger-subtle bg-danger-surface text-danger-strong active:opacity-80"
+            className="flex h-12 w-12 items-center justify-center rounded-md border border-danger-subtle bg-danger-surface text-danger-strong active:opacity-80"
             aria-label={t('cart.decrementQty')}
           >
             <span className="text-base font-bold leading-none">−</span>
@@ -375,7 +416,7 @@ function ReturnLineItem({
 
           <button
             onClick={() => onQuantityTap?.(item.id)}
-            className="min-w-[1.5rem] text-center text-base font-bold text-danger-strong tabular-nums"
+            className="flex h-12 min-w-[2.5rem] items-center justify-center text-base font-bold text-danger-strong tabular-nums"
             type="button"
             aria-label={t('cart.editQty')}
           >
@@ -385,7 +426,7 @@ function ReturnLineItem({
           {/* Increment (return more) */}
           <button
             onClick={handleIncrement}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-danger-subtle bg-danger-surface text-danger-strong active:opacity-80"
+            className="flex h-12 w-12 items-center justify-center rounded-md border border-danger-subtle bg-danger-surface text-danger-strong active:opacity-80"
             aria-label={t('cart.incrementQty')}
           >
             <span className="text-base font-bold leading-none">+</span>

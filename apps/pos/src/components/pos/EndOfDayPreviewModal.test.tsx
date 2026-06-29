@@ -449,6 +449,26 @@ describe('EndOfDayPreviewModal', () => {
       expect(screen.queryByTestId('commit-counts-button')).not.toBeInTheDocument();
     });
 
+    it('SECURITY: does not leak expected cash via the legacy card during a blind count', async () => {
+      // The legacy "Expected Cash" summary card showed the expected total
+      // unconditionally; with a (blind) cash-count reconciliation active it must
+      // not render, or it would defeat the blind count. The new section owns the
+      // blind-aware reveal.
+      renderModalWithCashCount({
+        fraudSettings: { ...baseFraudSettings, require_blind_cash_count: true },
+      });
+      await screen.findByText('Confirm and Close Day');
+      expect(screen.queryByText('Expected Cash')).not.toBeInTheDocument();
+      // The expected value (130.00) must not appear anywhere pre-commit.
+      expect(screen.queryByText(/130\.00/)).not.toBeInTheDocument();
+    });
+
+    it('shows the legacy expected-cash summary only when there is no cash-count reconciliation', async () => {
+      renderModal();
+      await screen.findByText('Confirm and Close Day');
+      expect(screen.getByText('Expected Cash')).toBeInTheDocument();
+    });
+
     it('onConfirmAndClose receives the cashCountPayload as 2nd arg', async () => {
       const onConfirmAndClose = vi.fn().mockResolvedValue(confirmResult);
       renderModalWithCashCount({ onConfirmAndClose });

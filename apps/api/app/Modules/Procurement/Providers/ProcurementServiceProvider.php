@@ -12,8 +12,9 @@ use Illuminate\Support\ServiceProvider;
  *
  * Phase 1 (Stage A): registers the ProcurementPolicyResolver as a
  * singleton so the same instance is reused within a request lifecycle.
- * Future phases add route loading, event listeners, and additional
- * infrastructure bindings.
+ *
+ * B3 (Presentation layer): loads supplier-invoice routes from the
+ * Procurement Presentation routes.php, mirroring DocumentServiceProvider.
  */
 final class ProcurementServiceProvider extends ServiceProvider
 {
@@ -24,6 +25,6 @@ final class ProcurementServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // Routes, event subscribers, and commands are added in later phases.
+        $this->loadRoutesFrom(__DIR__.'/../Presentation/routes.php');
     }
 }

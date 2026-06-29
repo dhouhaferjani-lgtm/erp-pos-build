@@ -12,6 +12,11 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+vi.mock('@/stores/settingsStore', () => ({
+  useSettingsStore: (selector: (s: { confirmLineDelete: boolean }) => unknown) =>
+    selector({ confirmLineDelete: true }),
+}));
+
 vi.mock('@/components/molecules/CartLineItem', () => ({
   CartLineItem: ({ item }: { item: { id: string; product: { name: string } } }) => (
     <div data-testid={`cart-line-${item.id}`}>{item.product.name}</div>
@@ -124,6 +129,15 @@ describe('TransactionCart', () => {
     fireEvent.click(screen.getByLabelText('cart.clear'));
 
     expect(onClearCart).toHaveBeenCalledOnce();
+  });
+
+  it('renders a Returns icon button (its own flow) when onReturns is provided, even with an empty cart', () => {
+    const onReturns = vi.fn();
+    renderCart({ items: [], itemCount: 0, onReturns });
+    const returnsBtn = screen.getByLabelText('receiptLocator.entryButton');
+    expect(returnsBtn).toBeInTheDocument();
+    fireEvent.click(returnsBtn);
+    expect(onReturns).toHaveBeenCalledOnce();
   });
 
   it('shows payment summary when items present', () => {
