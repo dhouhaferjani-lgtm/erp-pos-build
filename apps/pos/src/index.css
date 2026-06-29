@@ -419,9 +419,26 @@ body,
 .ez-sheet-rise {
   animation: ez-sheet-rise 200ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
 }
+/* Drawer slide-in (240ms per spec). -end = from the right (LTR), -start = left. */
+@keyframes ez-slide-in-end {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes ez-slide-in-start {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+.ez-slide-in-end {
+  animation: ez-slide-in-end 240ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+.ez-slide-in-start {
+  animation: ez-slide-in-start 240ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
 @media (prefers-reduced-motion: reduce) {
   .ez-fade-in,
-  .ez-sheet-rise {
+  .ez-sheet-rise,
+  .ez-slide-in-end,
+  .ez-slide-in-start {
     animation: none;
   }
 }

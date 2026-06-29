@@ -705,7 +705,7 @@ export function AdvancedPaymentsModal({
             <p className="text-xs font-medium uppercase tracking-widest text-ink-muted">
               {t('advancedPayments.amount')}
             </p>
-            <p className="mt-1 text-3xl font-bold text-ink">
+            <p className="mt-1 font-mono text-3xl font-bold tabular-nums text-ink">
               {amount ? format(parseFloat(amount)) : format(0)}
             </p>
           </div>
@@ -722,14 +722,16 @@ export function AdvancedPaymentsModal({
             </div>
           )}
 
-          {/* NumPad */}
-          <div className="flex-1">
+          {/* NumPad — fills the column so there is no dead gap (consistent with
+           * the cash screen). */}
+          <div className="min-h-0 flex-1">
             <NumPad
               value={amount}
               onChange={(val) => {
                 setAmount(val);
                 setValidationError(null);
               }}
+              className="h-full auto-rows-fr"
             />
           </div>
         </div>

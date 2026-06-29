@@ -18,6 +18,7 @@ import {
   KpiCard,
   BreakdownBar,
   Divider,
+  Drawer,
 } from '@/components/ui';
 import { NavRail } from '@/components/NavRail';
 import { CartLineItem } from '@/components/molecules/CartLineItem';
@@ -72,6 +73,7 @@ export function ThemePreviewPage() {
   const [consent, setConsent] = useState(true);
   const [nav, setNav] = useState('caisse');
   const [expandedLine, setExpandedLine] = useState<string | null>('l2');
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const mockCart: CartItem[] = [
     { id: 'l1', quantity: 2, unit_price: '45.500', line_total: '91.000', product: { id: 'p1', name: 'Avène Eau Thermale 300ml', sku: 'AV1', price: '45.500' } } as unknown as CartItem,
     { id: 'l2', quantity: 1, unit_price: '120.000', line_total: '108.000', discount_amount: '12.000', discount_type: 'percentage', discount_percent: 10, product: { id: 'p2', name: 'CeraVe Crème Hydratante', sku: 'CV1', price: '120.000' } } as unknown as CartItem,
@@ -222,6 +224,33 @@ export function ThemePreviewPage() {
             <Divider orientation="vertical" />
             <span>Fond 200,000 DT</span>
           </div>
+        </Section>
+
+        <Section title="Drawer (panneau coulissant)">
+          <Button variant="secondary" onClick={() => setDrawerOpen(true)}>
+            Ouvrir le tiroir
+          </Button>
+          <Drawer
+            isOpen={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            title="Filtres"
+            closeLabel="Fermer"
+            footer={
+              <Button variant="primary" fullWidth onClick={() => setDrawerOpen(false)}>
+                Appliquer
+              </Button>
+            }
+          >
+            <div className="flex flex-col gap-3">
+              <Pill selected>Visage</Pill>
+              <Pill>Solaire</Pill>
+              <Pill>Cheveux</Pill>
+              <p className="text-sm text-ink-muted">
+                Démo du shell Drawer — fond, glissement 240 ms, piège de focus, fermeture par
+                Échap / fond.
+              </p>
+            </div>
+          </Drawer>
         </Section>
 
         <div className="lg:col-span-2">

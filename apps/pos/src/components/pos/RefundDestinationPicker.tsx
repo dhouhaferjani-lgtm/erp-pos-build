@@ -206,7 +206,7 @@ export function RefundDestinationPickerStateful({
         type="button"
         onClick={() => onConfirm(selected)}
         data-testid="refund-destination-confirm"
-        className="w-full rounded-md bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover"
+        className="flex min-h-[48px] items-center justify-center w-full rounded-md bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover"
       >
         {t('refundFlow.destination.confirm', { defaultValue: 'Confirm destination' })}
       </button>

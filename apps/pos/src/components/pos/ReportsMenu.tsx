@@ -81,7 +81,7 @@ export function ReportsMenu({
                 item.onClick();
                 onClose();
               }}
-              className="flex w-full items-center gap-3 px-4 py-3 text-sm text-ink transition-colors hover:bg-surface-sunken"
+              className="flex min-h-[48px] w-full items-center gap-3 px-4 py-3 text-sm text-ink transition-colors hover:bg-surface-sunken"
             >
               <Icon className="h-5 w-5 text-ink-faint" />
               {item.label}

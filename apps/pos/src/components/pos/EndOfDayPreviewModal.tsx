@@ -332,7 +332,7 @@ export function EndOfDayPreviewModal({
             <button
               onClick={handleClose}
               disabled={phase === 'confirming'}
-              className="flex-1 rounded-xl border border-border-strong bg-surface-raised px-4 py-3 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex min-h-[48px] items-center justify-center flex-1 rounded-xl border border-border-strong bg-surface-raised px-4 py-3 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
             >
               {t('reports.endOfDay.cancel')}
             </button>
@@ -341,7 +341,7 @@ export function EndOfDayPreviewModal({
               disabled={confirmDisabled}
               aria-label={t('reports.endOfDay.confirmLabel')}
               data-testid="end-of-day-confirm-button"
-              className="flex-1 rounded-xl bg-danger px-4 py-3 text-sm font-semibold text-ink-inverse transition-colors hover:bg-danger-strong disabled:cursor-not-allowed disabled:opacity-75"
+              className="flex min-h-[48px] items-center justify-center flex-1 rounded-xl bg-danger px-4 py-3 text-sm font-semibold text-ink-inverse transition-colors hover:bg-danger-strong disabled:cursor-not-allowed disabled:opacity-75"
             >
               {phase === 'confirming' ? (
                 <span className="flex items-center justify-center gap-2">
@@ -386,7 +386,7 @@ export function EndOfDayPreviewModal({
             )}
             <button
               onClick={onClose}
-              className="rounded-xl bg-action px-6 py-2.5 text-sm font-semibold text-ink-inverse hover:bg-action-hover"
+              className="flex min-h-[48px] items-center justify-center rounded-xl bg-action px-6 py-2.5 text-sm font-semibold text-ink-inverse hover:bg-action-hover"
             >
               {t('reports.endOfDay.done')}
             </button>

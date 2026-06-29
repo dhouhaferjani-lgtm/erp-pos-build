@@ -9,11 +9,13 @@ use App\Modules\Loyalty\Application\DTOs\EnrollmentData;
 use App\Modules\Loyalty\Application\DTOs\LoyaltyMemberData;
 use App\Modules\Loyalty\Application\DTOs\RewardData;
 use App\Modules\Loyalty\Application\Services\EarningProcessingService;
+use App\Modules\Loyalty\Application\Services\PosLoyaltyBalanceService;
 use App\Modules\Loyalty\Application\Services\RedemptionProcessingService;
 use App\Modules\Loyalty\Domain\Entities\Enrollment;
 use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
 use App\Modules\Loyalty\Domain\Entities\Reward;
 use App\Modules\Loyalty\Domain\Enums\EnrollmentStatus;
+use App\Modules\Loyalty\Presentation\Requests\PosBalanceRequest;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
@@ -31,6 +33,7 @@ class LoyaltyPOSController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly EarningProcessingService $earningService,
         private readonly RedemptionProcessingService $redemptionService,
+        private readonly PosLoyaltyBalanceService $posBalanceService,
     ) {}
 
     /**
@@ -212,6 +215,27 @@ class LoyaltyPOSController extends Controller
                 'error' => ['message' => $e->getMessage()],
             ], 422);
         }
+    }
+
+    /**
+     * Attach-time ensure-enroll + balance read.
+     * Find-or-creates the loyalty member (if phone supplied) and guard-enrolls in the
+     * active program. Returns enrolled status, current balance, tier name, and the
+     * active Spend rule rate so the POS can estimate earning without a separate call.
+     */
+    public function balance(PosBalanceRequest $request): JsonResponse
+    {
+        $company = $this->companyContext->requireCompany();
+
+        $result = $this->posBalanceService->ensureAndGetBalance(
+            $company->tenant_id,
+            $request->input('partner_id'),
+            $request->input('contact_id'),
+            $request->input('phone'),
+            $request->input('name'),
+        );
+
+        return response()->json(['data' => $result]);
     }
 
     /**

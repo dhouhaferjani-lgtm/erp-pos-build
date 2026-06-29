@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RotateCcw, Printer, Eye } from 'lucide-react';
+import { RotateCcw, Printer, Eye } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
+import { Button } from '@/components/ui';
 import { toast } from 'sonner';
 import { fetchShiftReceipts, type ShiftReceipt } from '@/api/reportApi';
 import { useTerminalStore } from '@/stores/terminalStore';
@@ -88,16 +90,11 @@ export function TodaySalesPage() {
 
   return (
     <div className="flex h-full flex-col bg-surface-canvas">
-      {/* Sub-header with back button */}
-      <div className="flex items-center gap-3 border-b border-border-subtle bg-surface-raised px-4 py-3">
-        <button
-          onClick={() => navigate('/')}
-          className="rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <h1 className="text-xl font-bold text-ink">{t('reports.todaySales')}</h1>
-      </div>
+      <PageHeader
+        title={t('reports.todaySales')}
+        onBack={() => navigate('/')}
+        backLabel={t('common:back')}
+      />
 
       {/* No-shift empty state */}
       {!shiftId && (
@@ -207,23 +204,23 @@ export function TodaySalesPage() {
                       </td>
                       <td className="px-5 py-3 text-right">
                         <div className="inline-flex items-center gap-2">
-                          <button
-                            type="button"
+                          <Button
+                            variant="secondary"
+                            size="md"
                             onClick={() => setDetailReceipt(receipt)}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-surface-sunken px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-sunken"
+                            leftIcon={<Eye className="h-4 w-4" />}
                           >
-                            <Eye className="h-3.5 w-3.5" />
                             {t('reports.view')}
-                          </button>
-                          <button
-                            type="button"
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="md"
                             onClick={() => void handleReprint(receipt.id)}
                             disabled={reprintingId === receipt.id}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-surface-sunken px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-sunken disabled:opacity-50"
+                            leftIcon={<Printer className="h-4 w-4" />}
                           >
-                            <Printer className="h-3.5 w-3.5" />
-                            {reprintingId === receipt.id ? '...' : t('reports.reprint')}
-                          </button>
+                            {reprintingId === receipt.id ? '…' : t('reports.reprint')}
+                          </Button>
                         </div>
                       </td>
                     </tr>

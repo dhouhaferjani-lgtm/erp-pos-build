@@ -13,6 +13,10 @@ import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 export interface TransactionCartProps {
   items: CartItem[];
   subtotal: number;
+  /** Gross subtotal before any discount (Sous-total). */
+  grossSubtotal?: number;
+  /** Total of per-line discounts (Remises produits). */
+  lineDiscountAmount?: number;
   taxAmount: number;
   discountAmount: number;
   total: number;
@@ -56,6 +60,8 @@ export interface TransactionCartProps {
 export function TransactionCart({
   items,
   subtotal,
+  grossSubtotal,
+  lineDiscountAmount,
   taxAmount,
   discountAmount,
   total,
@@ -322,6 +328,8 @@ export function TransactionCart({
           // ever-present checkout surface rather than appearing/disappearing.
           <PaymentSummary
             subtotal={subtotal}
+            grossSubtotal={grossSubtotal}
+            lineDiscountAmount={lineDiscountAmount}
             taxAmount={taxAmount}
             discountAmount={discountAmount}
             total={total}

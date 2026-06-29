@@ -43,7 +43,8 @@ const VARIANT: Record<ButtonVariant, string> = {
 
 const SIZE: Record<ButtonSize, string> = {
   sm: 'min-h-9 gap-1.5 px-3 text-sm',
-  md: 'min-h-11 gap-2 px-4 text-sm',
+  // md = 48px, the §6 touch floor (was 44px) — the touchscreen default.
+  md: 'min-h-12 gap-2 px-4 text-sm',
   lg: 'min-h-14 gap-2 px-5 text-base',
 };
 

@@ -57,7 +57,7 @@ function ReceiptRow({ entry, onRefund, locale, t }: ReceiptRowProps) {
       <button
         type="button"
         onClick={() => onRefund(entry)}
-        className="shrink-0 rounded-md bg-action px-3 py-1.5 text-xs font-medium text-ink-inverse hover:bg-action-hover focus:outline-none focus:ring-2 focus:ring-accent"
+        className="flex min-h-[48px] shrink-0 items-center justify-center rounded-md bg-action px-3 text-sm font-medium text-ink-inverse hover:bg-action-hover focus:outline-none focus:ring-2 focus:ring-accent"
       >
         {t('receiptLocator.refundThis')}
       </button>
@@ -173,7 +173,7 @@ export function ReceiptLocatorScreen({ isOpen, onClose }: ReceiptLocatorScreenPr
             type="button"
             onClick={() => void handleSubmit()}
             disabled={isSearching || !input.trim()}
-            className="rounded-lg bg-action px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="flex min-h-[48px] items-center justify-center rounded-lg bg-action px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-accent"
           >
             {isSearching ? t('receiptLocator.searching') : t('receiptLocator.search')}
           </button>
