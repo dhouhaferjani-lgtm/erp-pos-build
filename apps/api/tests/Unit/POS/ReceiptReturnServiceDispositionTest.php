@@ -27,6 +27,8 @@ use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Services\RefundDestinationResolver;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Product\Application\Services\RestockPolicyResolver;
+use App\Modules\Product\Domain\Enums\RestockPolicy;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Services\PaymentRefundService;
@@ -92,6 +94,7 @@ class ReceiptReturnServiceDispositionTest extends TestCase
             $this->app->make(VoucherIssuanceService::class),
             $this->app->make(PaymentRefundService::class),
             $this->app->make(ReceiptHashService::class),
+            $this->app->make(RestockPolicyResolver::class),
         );
     }
 
@@ -499,6 +502,151 @@ class ReceiptReturnServiceDispositionTest extends TestCase
         $returnLine = ReceiptLine::where('receipt_id', $returnReceipt->id)->firstOrFail();
         $this->assertSame(ReturnLineDisposition::NotReceived, $returnLine->disposition);
         $this->assertFalse($returnLine->physical_receipt);
+    }
+
+    // =========================================================================
+    // Task 9: never-policy regulated-goods guard
+    // =========================================================================
+
+    public function test_never_policy_product_restock_disposition_throws(): void
+    {
+        // Arrange: product with restock_policy = never
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'restock_policy' => RestockPolicy::Never->value,
+        ]);
+        $this->createStockLevel($product->id, null, '10.0000');
+        $sale = $this->createReceipt();
+        $line = $this->createProductLine($sale, $product, ['quantity' => '1.000']);
+
+        // Assert: restock disposition on a never-policy product throws
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/policy: never/');
+
+        // Act: explicit restock disposition
+        $this->service->processReturn(
+            originalReceiptId: $sale->id,
+            returnLines: [
+                ['line_id' => $line->id, 'quantity' => '1.000',
+                    'physical_receipt' => true, 'resalable' => true, 'disposition' => 'restock'],
+            ],
+            returnReason: ReturnReason::Defective,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+    }
+
+    public function test_never_policy_product_default_disposition_restock_throws(): void
+    {
+        // Arrange: product with restock_policy = never; no explicit disposition → defaults to RESTOCK
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'restock_policy' => RestockPolicy::Never->value,
+        ]);
+        $this->createStockLevel($product->id, null, '10.0000');
+        $sale = $this->createReceipt();
+        $line = $this->createProductLine($sale, $product, ['quantity' => '1.000']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/policy: never/');
+
+        $this->service->processReturn(
+            originalReceiptId: $sale->id,
+            returnLines: [
+                ['line_id' => $line->id, 'quantity' => '1.000'],
+            ],
+            returnReason: ReturnReason::Defective,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+    }
+
+    public function test_never_policy_product_scrap_disposition_succeeds(): void
+    {
+        // Arrange: product with restock_policy = never
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'restock_policy' => RestockPolicy::Never->value,
+        ]);
+        $stock = $this->createStockLevel($product->id, null, '10.0000');
+        $sale = $this->createReceipt();
+        $line = $this->createProductLine($sale, $product, ['quantity' => '1.000']);
+
+        // Act: SCRAP is allowed even for never-policy products
+        $this->service->processReturn(
+            originalReceiptId: $sale->id,
+            returnLines: [
+                ['line_id' => $line->id, 'quantity' => '1.000',
+                    'physical_receipt' => true, 'resalable' => false, 'disposition' => 'scrap'],
+            ],
+            returnReason: ReturnReason::Defective,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        // Assert: two movements (receive + write-off), net stock unchanged
+        $this->assertSame('10.0000', (string) $stock->refresh()->quantity);
+        $this->assertSame(1, StockMovement::where('product_id', $product->id)->where('reason', 'pos_return')->count());
+        $this->assertSame(1, StockMovement::where('product_id', $product->id)->where('reason', 'write_off')->count());
+    }
+
+    public function test_never_policy_product_not_received_disposition_succeeds(): void
+    {
+        // Arrange: product with restock_policy = never
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'restock_policy' => RestockPolicy::Never->value,
+        ]);
+        $stock = $this->createStockLevel($product->id, null, '10.0000');
+        $sale = $this->createReceipt();
+        $line = $this->createProductLine($sale, $product, ['quantity' => '1.000']);
+
+        // Act: NOT_RECEIVED is allowed even for never-policy products
+        $this->service->processReturn(
+            originalReceiptId: $sale->id,
+            returnLines: [
+                ['line_id' => $line->id, 'quantity' => '1.000',
+                    'physical_receipt' => false, 'resalable' => null, 'disposition' => 'not_received'],
+            ],
+            returnReason: ReturnReason::CustomerChangedMind,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        // Assert: zero stock movements, stock unchanged
+        $this->assertSame('10.0000', (string) $stock->refresh()->quantity);
+        $this->assertSame(0, StockMovement::where('product_id', $product->id)->count());
+    }
+
+    public function test_normal_product_no_policy_restock_still_works(): void
+    {
+        // Arrange: product with no restock_policy (falls back to default_allow)
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'restock_policy' => null,
+        ]);
+        $stock = $this->createStockLevel($product->id, null, '5.0000');
+        $sale = $this->createReceipt();
+        $line = $this->createProductLine($sale, $product, ['quantity' => '2.000']);
+
+        // Act: default RESTOCK must still succeed
+        $this->service->processReturn(
+            originalReceiptId: $sale->id,
+            returnLines: [
+                ['line_id' => $line->id, 'quantity' => '2.000'],
+            ],
+            returnReason: ReturnReason::CustomerChangedMind,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        // Assert: stock increased by returned qty
+        $this->assertSame('7.0000', (string) $stock->refresh()->quantity);
     }
 
     // =========================================================================

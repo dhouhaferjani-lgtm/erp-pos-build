@@ -30,6 +30,8 @@ use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Services\RefundDestinationResolver;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Product\Application\Services\RestockPolicyResolver;
+use App\Modules\Product\Domain\Enums\RestockPolicy;
 use App\Modules\Treasury\Application\DTOs\RefundAllocation;
 use App\Modules\Treasury\Domain\Enums\ProrationStrategy;
 use App\Modules\Treasury\Domain\Services\PaymentRefundService;
@@ -80,6 +82,7 @@ final class ReceiptReturnService
         private readonly VoucherIssuanceService $voucherIssuanceService,
         private readonly PaymentRefundService $paymentRefundService,
         private readonly ReceiptHashService $receiptHashService,
+        private readonly RestockPolicyResolver $restockPolicyResolver,
     ) {}
 
     private function scale(): int
@@ -1105,6 +1108,19 @@ final class ReceiptReturnService
 
             if ($disposition === ReturnLineDisposition::NotReceived && $physicalReceipt === true) {
                 throw new \InvalidArgumentException("NOT_RECEIVED cannot have physical_receipt=true for line '{$lineId}'");
+            }
+
+            // ─────────────────────────────────────────────────────────────────
+            // Regulated-goods guard: products with restock_policy = never may
+            // never be restocked. SCRAP and NOT_RECEIVED are unaffected.
+            // ─────────────────────────────────────────────────────────────────
+            if ($disposition === ReturnLineDisposition::Restock && $originalLine->product_id !== null) {
+                $effective = $this->restockPolicyResolver->resolve($originalLine->product_id);
+                if ($effective->policy === RestockPolicy::Never) {
+                    throw new \InvalidArgumentException(
+                        "Restock not permitted for regulated product on line '{$lineId}' (policy: never)"
+                    );
+                }
             }
 
             $validated[] = [

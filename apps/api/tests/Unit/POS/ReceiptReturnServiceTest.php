@@ -25,6 +25,7 @@ use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Services\RefundDestinationResolver;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Product\Application\Services\RestockPolicyResolver;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Services\PaymentRefundService;
@@ -91,6 +92,7 @@ class ReceiptReturnServiceTest extends TestCase
             $this->app->make(VoucherIssuanceService::class),
             $this->app->make(PaymentRefundService::class),
             $this->app->make(ReceiptHashService::class),
+            $this->app->make(RestockPolicyResolver::class),
         );
     }
 
