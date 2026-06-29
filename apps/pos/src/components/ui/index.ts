@@ -42,3 +42,5 @@ export { BreakdownBar } from './BreakdownBar';
 export type { BreakdownBarProps } from './BreakdownBar';
 export { Divider } from './Divider';
 export type { DividerProps } from './Divider';
+export { Drawer } from './Drawer';
+export type { DrawerProps } from './Drawer';
