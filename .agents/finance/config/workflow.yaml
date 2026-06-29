@@ -1,0 +1,168 @@
+# Finance Agent -- Workflow Definitions
+# Step-by-step processes for implementing features and reviewing PRs.
+
+feature_implementation:
+  steps:
+    1_understand:
+      description: Read the task requirements and identify which modules are affected
+      actions:
+        - Read the feature request/spec/issue
+        - Identify primary module (Accounting, Treasury, Taxation, etc.)
+        - Check if cross-module contracts are needed
+        - Read existing code in the affected area
+
+    2_plan:
+      description: Design the solution before writing code
+      actions:
+        - Identify data model changes (new tables, columns, enums)
+        - Map GL impact (what journal entries will be created)
+        - Design API endpoints
+        - List events that will be emitted
+        - Identify pessimistic locking requirements
+        - Check tax calculation impact
+        - Write plan in specs/ directory
+
+    3_schema:
+      description: Create or modify database schema
+      actions:
+        - Write migration file in apps/api/database/migrations/
+        - Use UUIDs for primary keys
+        - Add proper indexes for query patterns
+        - Use enum-backed columns via PostgreSQL enum types
+        - Ensure tenant_id + company_id columns exist for multi-tenant tables
+
+    4_domain:
+      description: Implement domain layer (TDD)
+      actions:
+        - Write failing test first (red)
+        - Create/update Enums in Domain/Enums/
+        - Create/update Value Objects in Domain/ValueObjects/
+        - Create/update Domain Services in Domain/Services/
+        - Create Domain Events in Domain/Events/ (immutable, versioned)
+        - Write minimum code to pass test (green)
+        - Refactor
+
+    5_application:
+      description: Implement application layer
+      actions:
+        - Create DTOs in Application/DTOs/ (Spatie Data classes)
+        - Create Application Services that orchestrate Domain Services
+        - Wire up event listeners in Application/Listeners/
+        - Implement transaction boundaries with proper locking
+
+    6_presentation:
+      description: Implement API layer
+      actions:
+        - Create Form Requests in Presentation/Requests/
+        - Create thin Controllers in Presentation/Controllers/
+        - Create API Resources in Presentation/Resources/
+        - Register routes with correct middleware ['api', 'auth:sanctum', SetPermissionsTeam::class]
+
+    7_verify:
+      description: End-to-end verification
+      actions:
+        - Run full test suite for affected modules
+        - Run PHPStan (level 8)
+        - Run Pint (code style)
+        - If frontend changes, run TypeScript typecheck + ESLint
+        - Run typescript:transform if DTOs changed
+        - Test the critical business path end-to-end
+
+    8_commit:
+      description: Commit with proper format
+      actions:
+        - Run ./scripts/preflight.sh
+        - Commit message format "Phase X.Y.Z: imperative summary"
+        - Include module scope in commit message
+
+pr_review:
+  financial_checklist:
+    - name: double_entry_balance
+      description: Every GL posting has balanced debits and credits
+      severity: critical
+      check: Verify DoubleEntryValidator is called before posting
+
+    - name: bcmath_arithmetic
+      description: All monetary math uses bcadd/bcsub/bcmul/bcdiv/bccomp
+      severity: critical
+      check: Search for float arithmetic on money fields
+
+    - name: pessimistic_locking
+      description: Financial state mutations use lockForUpdate()
+      severity: critical
+      check: Verify DB::transaction + lockForUpdate on balance/payment/posting operations
+
+    - name: hash_chain_integrity
+      description: Fiscal documents chain correctly
+      severity: critical
+      check: Hash calculation happens FIRST in transaction, before state updates
+
+    - name: event_immutability
+      description: No modifications to existing event classes
+      severity: critical
+      check: Check git diff for changes to existing Event files
+
+    - name: enum_usage
+      description: No raw strings for statuses/types/codes
+      severity: high
+      check: Search for string literals where enums should be used
+
+    - name: status_transition_safety
+      description: Posted documents are immutable, only reversals allowed
+      severity: critical
+      check: Verify no direct updates to posted fiscal documents
+
+    - name: tax_recalculation
+      description: Tax amounts recalculated on line changes
+      severity: high
+      check: Verify TaxCalculationService is called, not stale cached values
+
+    - name: currency_precision
+      description: CurrencyScaleResolverInterface used for scale
+      severity: high
+      check: No hardcoded decimal places in monetary calculations
+
+    - name: fee_gl_entries
+      description: Payment fees create separate GL entries
+      severity: medium
+      check: Fee amounts not absorbed into payment amount
+
+    - name: sequential_numbering
+      description: Fiscal documents have gapless sequential numbers
+      severity: critical
+      check: Sequence generation uses pessimistic locking
+
+    - name: constructor_injection
+      description: Dependencies injected via constructor, not app() helper
+      severity: medium
+      check: Search for app() calls in new/modified code
+
+    - name: module_boundaries
+      description: No direct cross-module model imports
+      severity: high
+      check: Verify imports use Shared/Contracts/ interfaces
+
+spec_creation:
+  template: |
+    # Feature: {name}
+    ## Module(s): {modules}
+    ## Business Context
+    {why this feature exists}
+    ## Acceptance Criteria
+    - [ ] ...
+    ## Data Model Changes
+    {tables, columns, enums}
+    ## Business Rules
+    {validation, constraints, calculations}
+    ## GL Impact
+    {journal entries, accounts affected}
+    ## Tax Impact
+    {tax calculation changes}
+    ## API Endpoints
+    {new/modified endpoints}
+    ## Events Emitted
+    {domain events}
+    ## Hash Chain Impact
+    {does this create/modify fiscal documents}
+    ## Test Scenarios
+    {happy path + edge cases}

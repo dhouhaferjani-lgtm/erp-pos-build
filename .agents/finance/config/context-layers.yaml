@@ -1,0 +1,91 @@
+# Finance Agent -- Context Loading Strategy
+# Progressive disclosure: load only what's needed for the current task.
+# Layer 0 = always, Layer 1 = per-task, Layer 2 = reference, Layer 3 = on-demand
+
+layers:
+  0_always:
+    description: Loaded at agent startup, every session
+    files:
+      - ~/erp-agents/finance/CLAUDE.md
+      - ~/projects/erp/CLAUDE.md
+      - ~/projects/erp/apps/api/.claude/context/architecture.md
+    rationale: Core identity, architecture rules, module structure
+
+  1_per_task:
+    description: Loaded based on the specific task being worked on
+    triggers:
+      accounting_task:
+        condition: Task mentions GL, journal entries, chart of accounts, fiscal periods, balances
+        files:
+          - apps/api/app/Modules/Accounting/Domain/Services/DoubleEntryValidator.php
+          - apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php
+          - apps/api/app/Modules/Accounting/Application/Services/AccountingService.php
+          - apps/api/app/Modules/Accounting/Domain/Enums/AccountType.php
+          - apps/api/app/Modules/Accounting/Domain/Enums/JournalEntryStatus.php
+          - apps/api/tests/Unit/Accounting/
+          - apps/api/tests/Feature/Accounting/
+
+      treasury_task:
+        condition: Task mentions payments, instruments, checks, PDC, repositories, reconciliation
+        files:
+          - apps/api/app/Modules/Treasury/Domain/Services/
+          - apps/api/app/Modules/Treasury/Application/Services/
+          - apps/api/app/Modules/Treasury/Domain/Enums/
+          - apps/api/app/Shared/Contracts/Treasury/
+          - docs/modules/treasury.md
+          - apps/api/tests/Feature/Treasury/
+          - apps/api/tests/Unit/Treasury/
+
+      taxation_task:
+        condition: Task mentions tax, VAT, withholding, stamp duty, tax returns
+        files:
+          - apps/api/app/Modules/Taxation/Domain/Services/
+          - apps/api/app/Modules/Taxation/Application/Services/
+          - apps/api/app/Modules/Taxation/Domain/Enums/
+          - apps/api/app/Modules/Taxation/Infrastructure/Strategies/
+
+      compliance_task:
+        condition: Task mentions NF525, hash chain, fiscal compliance, JET, audit log
+        files:
+          - apps/api/.claude/context/compliance.md
+          - apps/api/app/Modules/Compliance/Services/Nf525/
+          - apps/api/app/Modules/Compliance/Domain/Enums/
+          - apps/api/app/Modules/Compliance/Application/Services/
+
+      document_fiscal_task:
+        condition: Task mentions invoice posting, credit notes, payment status, document lifecycle
+        files:
+          - apps/api/app/Modules/Document/Domain/Enums/DocumentType.php
+          - apps/api/app/Modules/Document/Domain/Enums/DocumentStatus.php
+          - apps/api/app/Modules/Document/Domain/Enums/FiscalStatus.php
+          - apps/api/app/Modules/Document/Domain/Services/
+          - apps/api/app/Modules/Document/Application/Services/
+
+      expense_task:
+        condition: Task mentions expenses, expense recording
+        files:
+          - apps/api/app/Modules/Expense/
+
+  2_reference:
+    description: Loaded when you need to check conventions or patterns
+    files:
+      - docs/conventions/README.md
+      - docs/conventions/01-API-RESPONSES.md
+      - docs/conventions/03-AUTHORIZATION.md
+      - docs/conventions/07-DEPENDENCY-INJECTION.md
+      - apps/api/.claude/context/i18n.md
+      - apps/api/.claude/context/new-feature-checklist.md
+    rationale: Coding conventions and patterns -- check when implementing new features
+
+  3_on_demand:
+    description: Loaded only when explicitly needed
+    files:
+      - apps/api/app/Modules/Inventory/  # When financial events trigger stock updates
+      - apps/api/app/Modules/Product/    # When cost price changes affect accounting
+      - apps/api/app/Modules/POS/        # When working on POS payment/compliance features
+      - apps/api/app/Modules/Partner/    # When dealing with customer/supplier balances
+      - apps/api/app/Modules/Company/    # When company vertical affects tax rules
+      - apps/web/src/                    # When implementing frontend for financial features
+      - apps/api/database/migrations/    # When checking exact schema
+      - apps/api/tests/Fixtures/         # When writing tests that need fixtures
+    rationale: Other modules and infrastructure -- only when cross-module work is needed

@@ -1,0 +1,158 @@
+# autonomy-tiers.yaml -- Orchestrator Autonomy Framework
+# Defines what the orchestrator can do freely, what needs approval,
+# and what requires Houssam's direct session.
+
+---
+
+current_phase: hybrid  # laptop_first | hybrid | autonomous
+
+tiers:
+  tier_1:
+    name: "Do freely"
+    description: "No approval needed. Orchestrator acts autonomously."
+    categories:
+
+      code_quality:
+        - action: "Bug fixes where tests exist and pass"
+          condition: "Tests must pass before AND after the fix"
+        - action: "Adding tests to existing code"
+          condition: "No behavior changes to production code"
+        - action: "Code style / linting fixes"
+          tools: ["Pint", "ESLint", "Prettier"]
+        - action: "Documentation updates"
+          scope: ["CLAUDE.md", "module docs", "API docs", "convention docs"]
+        - action: "Refactoring without behavior change"
+          condition: "All existing tests must still pass"
+        - action: "Removing dead code"
+          condition: "PHPStan and test suite confirm no references"
+        - action: "Adding type hints to untyped code"
+          condition: "PHPStan level 8 compliance"
+
+      operations:
+        - action: "Dispatching tasks to subagents, Codex, or sessions"
+        - action: "Reading and analyzing codebase"
+        - action: "Running quality gates"
+          tools: ["preflight.sh", "Deptrac", "PHPStan", "Pest", "Vitest"]
+        - action: "Generating status reports and summaries"
+        - action: "Monitoring session health via STATE.yaml"
+        - action: "Recovering crashed sessions with existing HANDOFF.md"
+        - action: "Creating feature branches"
+        - action: "Committing to feature branches"
+        - action: "Pushing feature branches to remote"
+          purpose: "For CI pipeline execution only"
+
+      planning:
+        - action: "Decomposing tasks into subtasks"
+        - action: "Estimating effort and complexity"
+        - action: "Prioritizing backlog items"
+          note: "Recommendation only -- Houssam confirms priority"
+        - action: "Writing specs and acceptance criteria"
+        - action: "Creating HANDOFF.md documents for workers"
+        - action: "Updating MANIFEST.yaml"
+
+  tier_2:
+    name: "Ask Houssam via Telegram"
+    description: "Quick yes/no approval required before proceeding."
+    channel: telegram
+    via: adam
+    categories:
+
+      development:
+        - action: "New features within an approved spec"
+          note: "First implementation of a new capability"
+        - action: "Merging to local-dev"
+          condition: "CI passes AND domain agent approves"
+        - action: "Adding new Composer dependencies"
+          require: "Package name, version, purpose"
+        - action: "Adding new npm dependencies"
+          require: "Package name, version, purpose"
+        - action: "Changing API contracts"
+          scope: ["endpoint signatures", "response shapes", "request validation"]
+        - action: "Creating new modules"
+          note: "Architecture implications even with approved spec"
+        - action: "Modifying Shared/Contracts/ interfaces"
+          note: "Affects all consuming modules"
+        - action: "Database schema changes"
+          scope: "New migrations"
+        - action: "Updating PRODUCT-BIBLE.md"
+          note: "With new decisions from Houssam"
+
+      infrastructure:
+        - action: "Changing CI pipeline configuration"
+        - action: "Modifying Docker/deployment configs"
+        - action: "Changing environment variables"
+        - action: "Installing new tooling (Deptrac, Rector, etc.)"
+
+      merge_promotion:
+        - action: "Merging local-dev to main"
+        - action: "Pushing main to remote"
+
+  tier_3:
+    name: "Houssam's laptop session required"
+    description: "Never dispatch autonomously. Requires Houssam's direct involvement."
+    categories:
+
+      fiscal_compliance:
+        description: "NEVER autonomous. Financial integrity depends on human review."
+        items:
+          - "Code participating in SHA-256 fiscal hash chain"
+          - "NF525 compliance (Z-reports, JET export, receipt chaining)"
+          - "Tax calculation rules (TVA, withholding, stamp duty)"
+          - "Sequential document numbering logic"
+          - "Factur-X e-invoicing XML generation"
+          - "ZATCA compliance code"
+          - "Double-entry posting logic modifications"
+          - "Payment instrument lifecycle changes"
+        modules:
+          - Compliance
+          - Taxation
+          - "Accounting (posting logic)"
+          - "Document (fiscal lifecycle)"
+
+      architecture:
+        description: "Structural decisions that shape the system long-term."
+        items:
+          - "New module architecture decisions"
+          - "Cross-module architectural changes"
+          - "Changes to hexagonal layer enforcement rules"
+          - "Database schema changes affecting fiscal data"
+          - "Multi-tenancy structural changes"
+          - "Event sourcing pattern changes"
+          - "New domain event flows across modules"
+
+      visual:
+        description: "Requires visual review on macOS (Playwright is headless)."
+        items:
+          - "UI review of new features"
+          - "Design system changes (tokens, themes)"
+          - "POS terminal UI changes"
+          - "IziPOS vs Otospex vertical theming"
+
+      authority:
+        description: "Decision-making that exceeds orchestrator scope."
+        items:
+          - "PRODUCT-BIBLE updates for new strategic decisions"
+          - "Resolving disagreements between domain agents"
+          - "Anything the orchestrator cannot resolve after 2 attempts"
+          - "Changing the autonomy tier assignments"
+          - "Changing the merge promotion path"
+
+# Transition rules -- how the orchestrator earns more autonomy
+transition:
+  upgrade_criteria:
+    from_tier_2_to_tier_1:
+      required_successes: 10
+      required_rollbacks: 0
+      window: "per task type"
+      process:
+        - "Track success rate per task type in MANIFEST.yaml metrics"
+        - "After 10 consecutive successes with zero rollbacks for a task type"
+        - "Propose upgrade to Houssam with the data"
+        - "Houssam approves or denies"
+        - "If approved, update this file and log in vault/decisions/"
+
+  never_upgradeable:
+    - "Fiscal/compliance code (always Tier 3)"
+    - "PRODUCT-BIBLE strategic updates (always Tier 3)"
+    - "Multi-tenancy structural changes (always Tier 3)"
+    - "Merge to main / push to remote (always Tier 2 minimum)"
