@@ -886,7 +886,7 @@ final class ReceiptReturnService
     /**
      * Compute return totals from validated return lines.
      *
-     * @param  array<int, array{original_line: ReceiptLine, quantity: string}>  $validatedLines
+     * @param  array<int, array{original_line: ReceiptLine, quantity: string, disposition: ReturnLineDisposition, physical_receipt: bool|null, resalable: bool|null}>  $validatedLines
      * @return array{
      *     0: list<array<string, mixed>>,
      *     1: array<array-key, array{tax_rate: string, net_amount: numeric-string, vat_amount: numeric-string, gross_amount: numeric-string}>,
@@ -963,6 +963,9 @@ final class ReceiptReturnService
                 'modifiers' => $originalLine->modifiers,
                 'discount_amount' => $discountAmount,
                 'discount_reason' => $originalLine->discount_reason,
+                'disposition' => $returnLine['disposition']->value,
+                'physical_receipt' => $returnLine['physical_receipt'],
+                'resalable' => $returnLine['resalable'],
             ];
 
             $rateKey = $taxRate;

@@ -16,6 +16,7 @@ use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Application\Services\ReceiptFinalizationService;
 use App\Modules\POS\Application\Services\ReceiptReturnService;
+use App\Modules\POS\Domain\Enums\ReturnLineDisposition;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Receipt;
@@ -399,6 +400,105 @@ class ReceiptReturnServiceDispositionTest extends TestCase
         foreach ($movements as $movement) {
             $this->assertSame($variantA->id, $movement->variant_id);
         }
+    }
+
+    // =========================================================================
+    // Task 8: disposition + facts persisted on return ReceiptLine rows
+    // =========================================================================
+
+    public function test_scrap_return_line_persists_disposition_physical_receipt_resalable(): void
+    {
+        // Arrange
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $this->createStockLevel($product->id, null, '10.0000');
+        $sale = $this->createReceipt();
+        $line = $this->createProductLine($sale, $product, ['quantity' => '2.000']);
+
+        // Act
+        $returnReceipt = $this->service->processReturn(
+            originalReceiptId: $sale->id,
+            returnLines: [
+                [
+                    'line_id' => $line->id,
+                    'quantity' => '2.000',
+                    'disposition' => 'scrap',
+                    'physical_receipt' => true,
+                    'resalable' => false,
+                ],
+            ],
+            returnReason: ReturnReason::Defective,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        // Assert: enum-cast round-trip from DB
+        $returnLine = ReceiptLine::where('receipt_id', $returnReceipt->id)->firstOrFail();
+        $this->assertSame(ReturnLineDisposition::Scrap, $returnLine->disposition);
+        $this->assertTrue($returnLine->physical_receipt);
+        $this->assertFalse($returnLine->resalable);
+    }
+
+    public function test_default_no_disposition_return_line_persists_restock(): void
+    {
+        // Arrange
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $this->createStockLevel($product->id, null, '10.0000');
+        $sale = $this->createReceipt();
+        $line = $this->createProductLine($sale, $product, ['quantity' => '1.000']);
+
+        // Act: no disposition key — defaults to RESTOCK
+        $returnReceipt = $this->service->processReturn(
+            originalReceiptId: $sale->id,
+            returnLines: [
+                ['line_id' => $line->id, 'quantity' => '1.000'],
+            ],
+            returnReason: ReturnReason::CustomerChangedMind,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        // Assert
+        $returnLine = ReceiptLine::where('receipt_id', $returnReceipt->id)->firstOrFail();
+        $this->assertSame(ReturnLineDisposition::Restock, $returnLine->disposition);
+    }
+
+    public function test_not_received_return_line_persists_disposition_and_physical_receipt_false(): void
+    {
+        // Arrange
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $this->createStockLevel($product->id, null, '10.0000');
+        $sale = $this->createReceipt();
+        $line = $this->createProductLine($sale, $product, ['quantity' => '3.000']);
+
+        // Act
+        $returnReceipt = $this->service->processReturn(
+            originalReceiptId: $sale->id,
+            returnLines: [
+                [
+                    'line_id' => $line->id,
+                    'quantity' => '3.000',
+                    'disposition' => 'not_received',
+                    'physical_receipt' => false,
+                ],
+            ],
+            returnReason: ReturnReason::CustomerChangedMind,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        // Assert
+        $returnLine = ReceiptLine::where('receipt_id', $returnReceipt->id)->firstOrFail();
+        $this->assertSame(ReturnLineDisposition::NotReceived, $returnLine->disposition);
+        $this->assertFalse($returnLine->physical_receipt);
     }
 
     // =========================================================================
