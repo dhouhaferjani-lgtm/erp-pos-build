@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Partner\Presentation\Controllers;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Application\DTOs\PartnerData;
@@ -223,6 +224,15 @@ class PartnerController extends Controller
 
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
+
+        // Skin fields are parapharmacy-only merchandising data. Mirror the
+        // read-path vertical gate (PosCustomerMirrorResource) on the write path:
+        // silently drop them for other verticals so a non-parapharmacy tenant
+        // cannot persist them.
+        if ($this->companyContext->requireCompany()->tenant->vertical !== Vertical::Parapharmacy) {
+            unset($validated['skin_type'], $validated['skin_advice_note']);
+        }
+
         $partnerModel->update($validated);
 
         $changes = $partnerModel->getChanges();

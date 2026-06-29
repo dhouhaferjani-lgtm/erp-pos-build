@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Users, UserPlus, ChevronLeft, Pencil, Check } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
+import { useProductStore, hasModule } from '@/stores/productStore';
 import { getDatabase } from '@/lib/db';
 import {
   listCustomers,
@@ -32,10 +33,11 @@ function isSkinTypeValue(value: string): value is SkinTypeValue {
 interface CustomerRowProps {
   customer: CustomerMirrorRow;
   isSelected: boolean;
+  showSkin: boolean;
   onClick: () => void;
 }
 
-function CustomerRow({ customer, isSelected, onClick }: CustomerRowProps) {
+function CustomerRow({ customer, isSelected, showSkin, onClick }: CustomerRowProps) {
   const { t } = useTranslation('pos');
   const contact = [customer.phone, customer.email].filter(Boolean).join(' · ');
 
@@ -68,7 +70,7 @@ function CustomerRow({ customer, isSelected, onClick }: CustomerRowProps) {
           {contact}
         </span>
       )}
-      {customer.skin_type && (
+      {showSkin && customer.skin_type && (
         <span
           className={cn(
             'mt-0.5 text-xs',
@@ -225,6 +227,7 @@ interface CustomerDetailProps {
   customer: CustomerMirrorRow;
   tenantId: string;
   companyId: string;
+  hasMerchandising: boolean;
   onBack: () => void;
   onUpdated: (updated: CustomerMirrorRow) => void;
 }
@@ -233,6 +236,7 @@ function CustomerDetail({
   customer,
   tenantId,
   companyId,
+  hasMerchandising,
   onBack,
   onUpdated,
 }: CustomerDetailProps) {
@@ -274,7 +278,7 @@ function CustomerDetail({
 
       {/* Body */}
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
-        {mode === 'view' ? (
+        {mode === 'view' || !hasMerchandising ? (
           <div className="flex flex-col gap-6">
             {/* Contact info */}
             <section aria-labelledby="customer-contact-heading">
@@ -294,7 +298,8 @@ function CustomerDetail({
               </dl>
             </section>
 
-            {/* Skin profile */}
+            {/* Skin profile — parapharmacy-only (Merchandising module) */}
+            {hasMerchandising && (
             <section aria-labelledby="skin-profile-heading">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h3
@@ -335,6 +340,7 @@ function CustomerDetail({
                 )}
               </dl>
             </section>
+            )}
           </div>
         ) : (
           <div>
@@ -508,6 +514,12 @@ export function CustomersPage() {
   const { t } = useTranslation('pos');
   const tenantId = useAuthStore((s) => s.user?.tenantId ?? null);
   const companyId = useAuthStore((s) => s.companyId);
+  // Skin-profile capture is parapharmacy-only (Merchandising module). The
+  // /customers route itself is generic (all verticals manage customers); only
+  // the skin UI is gated. Mirrors the backend vertical gate on the sync/write
+  // paths so the field never surfaces on a non-parapharmacy terminal.
+  const companyConfig = useProductStore((s) => s.companyConfig);
+  const hasMerchandising = hasModule(companyConfig, 'Merchandising');
 
   const [customers, setCustomers] = useState<CustomerMirrorRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -584,6 +596,7 @@ export function CustomersPage() {
             <CustomerRow
               customer={c}
               isSelected={c.id === selectedId}
+              showSkin={hasMerchandising}
               onClick={() => {
                 setSelectedId(c.id);
                 setPageMode('list');
@@ -693,6 +706,7 @@ export function CustomersPage() {
                 customer={selectedCustomer}
                 tenantId={tenantId}
                 companyId={companyId}
+                hasMerchandising={hasMerchandising}
                 onBack={() => setSelectedId(null)}
                 onUpdated={handleUpdated}
               />

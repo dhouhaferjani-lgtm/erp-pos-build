@@ -7,7 +7,7 @@
  * (c) The customer detail panel shows skin_type and skin_advice_note.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 
 // ---------------------------------------------------------------------------
@@ -71,6 +71,24 @@ vi.mock('@/stores/authStore', () => ({
     };
     return selector ? selector(state) : state;
   }),
+}));
+
+// productStore mock — hoisted so the Merchandising gate can be flipped per test.
+// Defaults to ENABLED so the skin-profile tests below exercise the parapharmacy
+// path; the gating test sets all_enabled_modules to [] to assert it disappears.
+const productStoreMock = vi.hoisted(() => ({
+  state: { companyConfig: { all_enabled_modules: ['Merchandising'] } as { all_enabled_modules: string[] } | null },
+}));
+
+vi.mock('@/stores/productStore', () => ({
+  useProductStore: vi.fn(
+    <T,>(selector: (s: typeof productStoreMock.state) => T): T =>
+      selector(productStoreMock.state),
+  ),
+  hasModule: (
+    config: { all_enabled_modules?: string[] } | null,
+    moduleName: string,
+  ): boolean => config?.all_enabled_modules?.includes(moduleName) ?? false,
 }));
 
 // ---------------------------------------------------------------------------
@@ -276,5 +294,41 @@ describe('CustomersPage — skin profile edit form', () => {
         { skin_type: 'sensitive', skin_advice_note: 'Avoid perfumed products' },
       );
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Merchandising module gate — skin UI is parapharmacy-only (Rule 12)
+// ---------------------------------------------------------------------------
+
+describe('CustomersPage — Merchandising module gate', () => {
+  const customerWithSkin = makeCustomer({
+    id: 'gate-c1',
+    name: 'Marie Curie',
+    skin_type: 'oily',
+    skin_advice_note: 'Prefer oil-free products',
+  });
+
+  beforeEach(() => {
+    productStoreMock.state.companyConfig = { all_enabled_modules: [] }; // module OFF
+    vi.mocked(listCustomers).mockResolvedValue([customerWithSkin]);
+  });
+
+  afterEach(() => {
+    productStoreMock.state.companyConfig = { all_enabled_modules: ['Merchandising'] };
+  });
+
+  it('hides the skin profile section and edit button when Merchandising is OFF', async () => {
+    await act(async () => render(<CustomersPage />));
+    await waitFor(() => screen.getByText('Marie Curie'));
+    await act(async () => { fireEvent.click(screen.getByText('Marie Curie')); });
+
+    // Contact management stays generic (the /customers route is all-vertical)…
+    await waitFor(() => expect(screen.getByText('marie@example.test')).toBeInTheDocument());
+
+    // …but the parapharmacy skin UI must not render.
+    expect(screen.queryByText('skinProfileTitle')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /editSkinProfile/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('Prefer oil-free products')).not.toBeInTheDocument();
   });
 });
