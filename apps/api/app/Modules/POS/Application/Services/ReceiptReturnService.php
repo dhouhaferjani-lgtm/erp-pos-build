@@ -1190,17 +1190,7 @@ final class ReceiptReturnService
         string $cashierId,
         ?string $variantId = null,
     ): void {
-        /** @var StockLevel|null $stockLevel */
-        $stockLevel = StockLevel::where('product_id', $productId)
-            ->where('location_id', $locationId)
-            ->where('company_id', $companyId)
-            ->when(
-                $variantId !== null,
-                fn ($query) => $query->where('variant_id', $variantId),
-                fn ($query) => $query->whereNull('variant_id'),
-            )
-            ->lockForUpdate()
-            ->first();
+        $stockLevel = $this->resolveStockLevelForUpdate($productId, $locationId, $companyId, $variantId);
 
         if ($stockLevel === null) {
             Log::warning('No stock level found for product during return stock restore', [
@@ -1243,6 +1233,31 @@ final class ReceiptReturnService
     }
 
     /**
+     * Resolve the StockLevel row for the given product/location/company/variant,
+     * acquiring a row-level lock for the enclosing transaction.
+     *
+     * Shared by restoreStock (receipt leg) and writeOffReturnedStock (write-off leg)
+     * so that the four-clause variant-aware WHERE is maintained in exactly one place.
+     */
+    private function resolveStockLevelForUpdate(
+        string $productId,
+        string $locationId,
+        string $companyId,
+        ?string $variantId,
+    ): ?StockLevel {
+        return StockLevel::where('product_id', $productId)
+            ->where('location_id', $locationId)
+            ->where('company_id', $companyId)
+            ->when(
+                $variantId !== null,
+                fn ($query) => $query->where('variant_id', $variantId),
+                fn ($query) => $query->whereNull('variant_id'),
+            )
+            ->lockForUpdate()
+            ->first();
+    }
+
+    /**
      * Write off the received-back quantity for a SCRAP return.
      *
      * Called immediately after restoreStock so the two movements form a matched
@@ -1266,17 +1281,9 @@ final class ReceiptReturnService
         string $cashierId,
         ?string $variantId = null,
     ): void {
-        /** @var StockLevel|null $stockLevel */
-        $stockLevel = StockLevel::where('product_id', $productId)
-            ->where('location_id', $locationId)
-            ->where('company_id', $companyId)
-            ->when(
-                $variantId !== null,
-                fn ($query) => $query->where('variant_id', $variantId),
-                fn ($query) => $query->whereNull('variant_id'),
-            )
-            ->lockForUpdate()
-            ->first();
+        // Unreachable via normal pipeline (restoreStock already found+locked this row in
+        // the same transaction); kept as a defense for any future direct callers.
+        $stockLevel = $this->resolveStockLevelForUpdate($productId, $locationId, $companyId, $variantId);
 
         if ($stockLevel === null) {
             Log::warning('No stock level for scrap write-off during return', [
