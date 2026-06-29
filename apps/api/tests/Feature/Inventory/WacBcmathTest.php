@@ -106,8 +106,8 @@ class WacBcmathTest extends TestCase
             $service->recordPurchase(
                 product: $this->product,
                 location: $this->location,
-                quantity: 0.1,
-                landedUnitCost: 0.1,
+                quantity: '0.1',
+                landedUnitCost: '0.1',
                 reference: 'PO-WAC-'.$i,
             );
 
@@ -142,8 +142,8 @@ class WacBcmathTest extends TestCase
         $service->recordPurchase(
             product: $this->product,
             location: $this->location,
-            quantity: 0.3,
-            landedUnitCost: 0.7,
+            quantity: '0.3',
+            landedUnitCost: '0.7',
             reference: 'PO-FRAC-1',
         );
         $this->product->refresh();
@@ -153,8 +153,8 @@ class WacBcmathTest extends TestCase
         $service->recordPurchase(
             product: $this->product,
             location: $this->location,
-            quantity: 0.7,
-            landedUnitCost: 0.3,
+            quantity: '0.7',
+            landedUnitCost: '0.3',
             reference: 'PO-FRAC-2',
         );
         $this->product->refresh();
@@ -167,8 +167,8 @@ class WacBcmathTest extends TestCase
         $service->recordPurchase(
             product: $this->product,
             location: $this->location,
-            quantity: 0.1,
-            landedUnitCost: 0.9,
+            quantity: '0.1',
+            landedUnitCost: '0.9',
             reference: 'PO-FRAC-3',
         );
         $this->product->refresh();
@@ -192,14 +192,15 @@ class WacBcmathTest extends TestCase
         /** @var WeightedAverageCostService $service */
         $service = app(WeightedAverageCostService::class);
 
-        // 1/3 TND, carried at 6 dp = 0.333333.
-        $unitCost = 1 / 3;
+        // 1/3 TND at 10 dp = '0.3333333333' (non-terminating; bcformat truncates to 7 dp
+        // before the cost-scale-6 persist — proves no float rebase in the pipeline).
+        $unitCost = bcdiv('1', '3', 10);
 
         for ($i = 0; $i < 50; $i++) {
             $service->recordPurchase(
                 product: $this->product,
                 location: $this->location,
-                quantity: 1.0,
+                quantity: '1',
                 landedUnitCost: $unitCost,
                 reference: 'PO-DRIFT-'.$i,
             );
@@ -231,23 +232,24 @@ class WacBcmathTest extends TestCase
 
         // Blend 3 units @ 0.1 with 7 units @ 0.1 → exact WAC = 0.100.
         $wac = $service->calculateNewWAC(
-            currentQty: 3.0,
-            currentCost: 0.1,
-            newQty: 7.0,
-            newCost: 0.1,
+            currentQty: '3',
+            currentCost: '0.1',
+            newQty: '7',
+            newCost: '0.1',
         );
 
-        $this->assertSame(0, bccomp('0.100', (string) $wac, 3));
+        $this->assertSame(0, bccomp('0.100', $wac, 3));
 
         // Non-terminating blend: (0.21 + 0.09) / 1.1 = 0.30 / 1.1 = 0.272727…
-        // bcmath boundary at scale 3 = 0.272 (old float rounded half-up to 0.273).
+        // bcmath truncates at COST_SCALE (6 dp) = 0.272727
+        // bccomp at scale 3 → 0.272 == 0.272 ✓ (old float path rounded to 0.273).
         $wacFraction = $service->calculateNewWAC(
-            currentQty: 1.0,
-            currentCost: 0.21,
-            newQty: 0.1,
-            newCost: 0.9,
+            currentQty: '1',
+            currentCost: '0.21',
+            newQty: '0.1',
+            newCost: '0.9',
         );
 
-        $this->assertSame(0, bccomp('0.272', (string) $wacFraction, 3));
+        $this->assertSame(0, bccomp('0.272', $wacFraction, 3));
     }
 }

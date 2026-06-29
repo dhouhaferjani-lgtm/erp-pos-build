@@ -452,8 +452,8 @@ class GoodsReceiptServiceVariantTest extends TestCase
         $service->recordPurchase(
             product: $product,
             location: $this->warehouse,
-            quantity: 3.0,
-            landedUnitCost: 14.0,
+            quantity: '3',
+            landedUnitCost: '14',
             reference: 'PO-WAC-GRAIN',
             referenceType: null,
             referenceId: null,

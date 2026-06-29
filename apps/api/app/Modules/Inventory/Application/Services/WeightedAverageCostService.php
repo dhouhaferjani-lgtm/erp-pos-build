@@ -128,10 +128,14 @@ class WeightedAverageCostService
      * Uses pessimistic locking to prevent race conditions when multiple
      * purchase receipts happen concurrently for the same product.
      *
+     * Precision contract P0-1: $quantity and $landedUnitCost are numeric-strings.
+     * No float rebase. CurrencyScale::bcformat normalises them to the canonical
+     * scales (qty→4, cost→workingScale) before any arithmetic.
+     *
      * @param  Product  $product  The product being purchased
      * @param  Location  $location  The location receiving the stock
-     * @param  float  $quantity  Quantity being purchased
-     * @param  float  $landedUnitCost  Unit cost including landed costs
+     * @param  numeric-string  $quantity  Quantity being purchased
+     * @param  numeric-string  $landedUnitCost  Unit cost including landed costs
      * @param  string|null  $reference  Human-readable reference (e.g., "PO-2025-001")
      * @param  string|null  $referenceType  Type of source document (e.g., "Document")
      * @param  string|null  $referenceId  UUID of source document for audit trail
@@ -140,8 +144,8 @@ class WeightedAverageCostService
     public function recordPurchase(
         Product $product,
         Location $location,
-        float $quantity,
-        float $landedUnitCost,
+        string $quantity,
+        string $landedUnitCost,
         ?string $reference = null,
         ?string $referenceType = null,
         ?string $referenceId = null,
@@ -798,35 +802,42 @@ class WeightedAverageCostService
     }
 
     /**
-     * Calculate what the new weighted average cost would be without recording
+     * Calculate what the new weighted average cost would be without recording.
+     *
+     * Precision contract P0-1: all four parameters and the return value are
+     * numeric-strings. No float touches WAC arithmetic.
+     *
+     * Scales used:
+     *   $cs = COST_SCALE = 6  (internal at-rest precision; constant, resolver-safe)
+     *   $qs = 4               (canonical quantity scale; hardcoded throughout)
+     * Intermediates carry $cs+1 = 7 digits to avoid losing the last persisted
+     * digit before the final bcformat truncation to $cs.
+     *
+     * @param  numeric-string  $currentQty  On-hand quantity before the receipt
+     * @param  numeric-string  $currentCost  Current WAC unit cost at rest (6 dp)
+     * @param  numeric-string  $newQty  Incoming receipt quantity
+     * @param  numeric-string  $newCost  Incoming receipt unit cost
+     * @return numeric-string New WAC, formatted to COST_SCALE (6 dp), truncated
      */
     public function calculateNewWAC(
-        float $currentQty,
-        float $currentCost,
-        float $newQty,
-        float $newCost
-    ): float {
-        $working = $this->workingScale();
+        string $currentQty,
+        string $currentCost,
+        string $newQty,
+        string $newCost
+    ): string {
+        $cs = $this->costScale(); // 6 — constant, never resolver-dependent
+        $qs = 4;                  // canonical quantity scale
 
-        $currentQtyStr = CurrencyScale::bcformat($currentQty, 4);
-        $newQtyStr = CurrencyScale::bcformat($newQty, 4);
-        $currentCostStr = CurrencyScale::bcformat($currentCost, $working);
-        $newCostStr = CurrencyScale::bcformat($newCost, $working);
+        $totalCost = bcadd(
+            bcmul($currentQty, $currentCost, $cs + 1),
+            bcmul($newQty, $newCost, $cs + 1),
+            $cs + 1
+        );
+        $totalQty = bcadd($currentQty, $newQty, $qs);
 
-        $totalQty = bcadd($currentQtyStr, $newQtyStr, 4);
-
-        if (bccomp($totalQty, '0', 4) <= 0) {
-            return 0.0;
-        }
-
-        $currentValue = bcmul($currentQtyStr, $currentCostStr, $working);
-        $newValue = bcmul($newQtyStr, $newCostStr, $working);
-        $blended = bcdiv(bcadd($currentValue, $newValue, $working), $totalQty, $working);
-
-        // Carry to the internal COST_SCALE (no currency-scale truncation), then
-        // surface as float to keep this preview helper's published return type.
-        // This mirrors what recordPurchase()/recordReturn() now persist.
-        return (float) CurrencyScale::bcformat($blended, $this->costScale());
+        return bccomp($totalQty, '0', $qs) === 0
+            ? CurrencyScale::bcformat('0', $cs)
+            : CurrencyScale::bcformat(bcdiv($totalCost, $totalQty, $cs + 1), $cs);
     }
 
     /**

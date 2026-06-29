@@ -81,8 +81,8 @@ final class InventoryEventsTest extends TestCase
         $this->stockService->recordPurchase(
             product: $this->product,
             location: $this->location,
-            quantity: 10.0,
-            landedUnitCost: 50.00,
+            quantity: '10',
+            landedUnitCost: '50',
             reference: 'PO-TEST-001',
             referenceType: 'Document',
             referenceId: '00000000-0000-4000-8000-000000000001'
@@ -106,8 +106,8 @@ final class InventoryEventsTest extends TestCase
         $this->stockService->recordPurchase(
             product: $this->product,
             location: $this->location,
-            quantity: 20.0,
-            landedUnitCost: 50.00
+            quantity: '20',
+            landedUnitCost: '50'
         );
 
         Event::fake([StockMovementRecorded::class]);
@@ -165,8 +165,8 @@ final class InventoryEventsTest extends TestCase
         $this->stockService->recordPurchase(
             product: $this->product,
             location: $this->location,
-            quantity: 10.0,
-            landedUnitCost: 50.00
+            quantity: '10',
+            landedUnitCost: '50'
         );
 
         Event::assertDispatched(StockMovementRecorded::class, function (StockMovementRecorded $event): bool {
@@ -194,8 +194,8 @@ final class InventoryEventsTest extends TestCase
         $this->stockService->recordPurchase(
             product: $this->product,
             location: $this->location,
-            quantity: 10.0,
-            landedUnitCost: 50.00,
+            quantity: '10',
+            landedUnitCost: '50',
             reference: 'PO-TEST-001',
             referenceType: 'Document',
             referenceId: '00000000-0000-4000-8000-000000000123'
@@ -331,8 +331,8 @@ final class InventoryEventsTest extends TestCase
         $this->stockService->recordPurchase(
             product: $this->product,
             location: $this->location,
-            quantity: 10.0,
-            landedUnitCost: 50.00
+            quantity: '10',
+            landedUnitCost: '50'
         );
 
         Event::assertDispatched(StockMovementRecorded::class, function (StockMovementRecorded $event): bool {

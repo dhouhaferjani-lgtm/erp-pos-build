@@ -152,10 +152,9 @@ final class GoodsReceiptService
             }
 
             // Use landed cost from the PO line (includes allocated additional costs).
-            // Capture as a numeric string BEFORE the float cast so GoodsReceived can
-            // carry the cost with full precision (no float rounding artefacts).
+            // Keep as a numeric string — no float cast (precision contract P0-1).
             $unitCostStr = (string) ($line->landed_unit_cost ?? $line->unit_price);
-            $landedUnitCost = (float) $unitCostStr;
+            $landedUnitCost = $unitCostStr;
 
             // Thread variant_id from the PO line (Task 20). null for non-variant
             // products → product-level stock (backward compat). WAC stays
@@ -163,10 +162,12 @@ final class GoodsReceiptService
             $variantId = $line->variant_id ?? null;
 
             // Record purchase with WAC update and audit trail
+            // $qtyToReceive is annotated @var numeric-string (line 110); $landedUnitCost
+            // is already a string (P0-1 cast removed above) — both pass directly.
             $movement = $this->wacService->recordPurchase(
                 product: $product,
                 location: $location,
-                quantity: (float) $qtyToReceive,
+                quantity: $qtyToReceive,
                 landedUnitCost: $landedUnitCost,
                 reference: $purchaseOrder->document_number,
                 referenceType: 'Document',

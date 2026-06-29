@@ -79,55 +79,72 @@ class WeightedAverageCostServiceTest extends TestCase
         ]);
     }
 
+    /**
+     * Precision contract P0-1: calculateNewWAC must return a numeric-string, not a float.
+     * float arithmetic rounds 0.5/3 to 0.166667 (number_format); bcmath truncates to '0.166666'.
+     * assertSame checks both VALUE and TYPE — so the old (float) return fails on type alone;
+     * a wrong-value bcmath impl would fail on value.
+     */
+    public function test_new_wac_is_bcmath_exact_no_float_rebase(): void
+    {
+        // current 1 @ 0.100000, receive 2 @ 0.200000
+        // exact: (1*0.1 + 2*0.2) / 3 = 0.5 / 3 = 0.16666… → bcmath truncates to '0.166666'
+        // float path: number_format(0.16666…, 6) would give '0.166667' (rounds up)
+        $this->assertSame(
+            '0.166666',
+            $this->service->calculateNewWAC('1', '0.100000', '2', '0.200000')
+        );
+    }
+
     public function test_calculate_new_wac_with_first_purchase(): void
     {
         $result = $this->service->calculateNewWAC(
-            currentQty: 0,
-            currentCost: 0,
-            newQty: 10,
-            newCost: 50.00
+            currentQty: '0',
+            currentCost: '0',
+            newQty: '10',
+            newCost: '50.000000'
         );
 
-        // First purchase: WAC = new cost
-        $this->assertEquals(50.00, $result);
+        // First purchase: WAC = new cost (50.000000)
+        $this->assertSame('50.000000', $result);
     }
 
     public function test_calculate_new_wac_with_second_purchase(): void
     {
         $result = $this->service->calculateNewWAC(
-            currentQty: 10,
-            currentCost: 50.00,
-            newQty: 10,
-            newCost: 60.00
+            currentQty: '10',
+            currentCost: '50.000000',
+            newQty: '10',
+            newCost: '60.000000'
         );
 
         // (10*50 + 10*60) / 20 = 1100/20 = 55
-        $this->assertEquals(55.00, $result);
+        $this->assertSame('55.000000', $result);
     }
 
     public function test_calculate_new_wac_with_different_quantities(): void
     {
         $result = $this->service->calculateNewWAC(
-            currentQty: 5,
-            currentCost: 40.00,
-            newQty: 15,
-            newCost: 60.00
+            currentQty: '5',
+            currentCost: '40.000000',
+            newQty: '15',
+            newCost: '60.000000'
         );
 
         // (5*40 + 15*60) / 20 = (200 + 900)/20 = 1100/20 = 55
-        $this->assertEquals(55.00, $result);
+        $this->assertSame('55.000000', $result);
     }
 
     public function test_calculate_new_wac_with_zero_total_quantity(): void
     {
         $result = $this->service->calculateNewWAC(
-            currentQty: 0,
-            currentCost: 0,
-            newQty: 0,
-            newCost: 0
+            currentQty: '0',
+            currentCost: '0',
+            newQty: '0',
+            newCost: '0'
         );
 
-        $this->assertEquals(0.00, $result);
+        $this->assertSame('0.000000', $result);
     }
 
     public function test_service_exists(): void
@@ -377,8 +394,8 @@ class WeightedAverageCostServiceTest extends TestCase
         $this->service->recordPurchase(
             product: $this->product,
             location: $warehouse,
-            quantity: 100.0,
-            landedUnitCost: 11.0,
+            quantity: '100',
+            landedUnitCost: '11',
         );
 
         $fresh = $this->product->fresh();
@@ -564,8 +581,8 @@ class WeightedAverageCostServiceTest extends TestCase
         $this->service->recordPurchase(
             product: $this->product,
             location: $warehouseA,
-            quantity: 100.0,
-            landedUnitCost: 11.0,
+            quantity: '100',
+            landedUnitCost: '11',
         );
 
         $fresh = $this->product->fresh();
@@ -636,8 +653,8 @@ class WeightedAverageCostServiceTest extends TestCase
         $this->service->recordPurchase(
             product: $this->product,
             location: $this->location,
-            quantity: 10.0,
-            landedUnitCost: 50.0
+            quantity: '10',
+            landedUnitCost: '50'
         );
 
         $documentId = '019b481c-7eac-7045-8ba2-cfa7eedf2d08';
@@ -675,8 +692,8 @@ class WeightedAverageCostServiceTest extends TestCase
         $movement = $this->service->recordPurchase(
             product: $this->product,
             location: $this->location,
-            quantity: 10.0,
-            landedUnitCost: 50.0,
+            quantity: '10',
+            landedUnitCost: '50',
             reference: 'PO-2025-001',
             referenceType: 'Document',
             referenceId: $documentId
@@ -702,8 +719,8 @@ class WeightedAverageCostServiceTest extends TestCase
         $this->service->recordPurchase(
             product: $this->product,
             location: $this->location,
-            quantity: 10.0,
-            landedUnitCost: 50.0
+            quantity: '10',
+            landedUnitCost: '50'
         );
 
         // Sell some stock
@@ -746,8 +763,8 @@ class WeightedAverageCostServiceTest extends TestCase
         $this->service->recordPurchase(
             product: $this->product,
             location: $this->location,
-            quantity: 10.0,
-            landedUnitCost: 50.0
+            quantity: '10',
+            landedUnitCost: '50'
         );
 
         // Act - Record sale without audit trail (backward compatibility)
@@ -773,8 +790,8 @@ class WeightedAverageCostServiceTest extends TestCase
         $this->service->recordPurchase(
             product: $this->product,
             location: $this->location,
-            quantity: 10.0,
-            landedUnitCost: 50.0,
+            quantity: '10',
+            landedUnitCost: '50',
             reference: 'DN-001',
             referenceType: 'Document',
             referenceId: $documentId1
@@ -783,8 +800,8 @@ class WeightedAverageCostServiceTest extends TestCase
         $this->service->recordPurchase(
             product: $this->product,
             location: $this->location,
-            quantity: 5.0,
-            landedUnitCost: 45.0,
+            quantity: '5',
+            landedUnitCost: '45',
             reference: 'DN-002',
             referenceType: 'Document',
             referenceId: $documentId2
