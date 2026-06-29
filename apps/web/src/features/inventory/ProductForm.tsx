@@ -214,6 +214,12 @@ export function ProductForm() {
 
   useUnsavedChangesGuard({ isDirty })
 
+  // Close intent for Save & Close. Snapshot+reset at onSubmit entry (covers
+  // mutation error) and reset via the form's onInvalid (covers validation
+  // abort) so a stale intent can never make a later plain Save go to the list.
+  const closeIntentRef = useRef(false)
+  const onInvalid = () => { closeIntentRef.current = false }
+
   const handleProductData = useCallback((data: SuggestedProduct) => {
     suggestedProductRef.current = data
     const filled = new Set<string>()
@@ -438,6 +444,8 @@ export function ProductForm() {
   }
 
   const onSubmit = async (data: ProductFormData) => {
+    const shouldClose = closeIntentRef.current
+    closeIntentRef.current = false
     if (isEditing) {
       try {
         await updateMutation.mutateAsync(data)
@@ -466,7 +474,8 @@ export function ProductForm() {
         // updateMutation error already displayed by react-query
         return
       }
-      void navigate(`/inventory/products/${id}`)
+      if (shouldClose) nav.goToList()
+      else nav.goToRecord(id)
       return
     }
 
@@ -490,7 +499,8 @@ export function ProductForm() {
         toast.success(t('inventory:barcodeLookup.toastProductSaved'))
       }
 
-      nav.goToRecord(created.id)
+      if (shouldClose) nav.goToList()
+      else nav.goToRecord(created.id)
     } catch {
       // Error handling via react-query
     }
@@ -646,6 +656,11 @@ export function ProductForm() {
               form="product-editor-form"
               isPending={isSubmitting}
               onPrimarySave={() => { /* form= handles submission */ }}
+              onSaveAndClose={() => {
+                closeIntentRef.current = true
+                const f = document.getElementById('product-editor-form')
+                if (f instanceof HTMLFormElement) f.requestSubmit()
+              }}
             />
           </div>
         </div>
@@ -683,7 +698,7 @@ export function ProductForm() {
       )}
 
       {/* Form */}
-      <form id="product-editor-form" onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="flex flex-1 flex-col gap-[18px]">
+      <form id="product-editor-form" onSubmit={(e) => { void handleSubmit(onSubmit, onInvalid)(e) }} className="flex flex-1 flex-col gap-[18px]">
         {/* Catalog Lookup Banner */}
         <CatalogBanner
           state={lookupState}

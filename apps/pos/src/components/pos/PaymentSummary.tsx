@@ -87,11 +87,11 @@ export function PaymentSummary({
             {onRemoveDiscount && (
               <IconButton
                 variant="destructive"
-                size="sm"
+                size="md"
                 onClick={onRemoveDiscount}
                 aria-label={t('pos:discount.remove')}
                 title={t('pos:discount.remove')}
-                icon={<X className="h-3.5 w-3.5" />}
+                icon={<X className="h-4 w-4" />}
               />
             )}
           </div>

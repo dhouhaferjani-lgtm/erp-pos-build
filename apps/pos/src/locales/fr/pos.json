@@ -978,5 +978,10 @@
   "customers": {
     "pageTitle": "Clients",
     "placeholder": "La gestion des clients arrive bientôt."
+  },
+  "loyalty": {
+    "points": "{{amount}} pts",
+    "earnEstimate": "+{{points}} pts cette vente",
+    "joinsOnPurchase": "Adhésion à l'achat"
   }
 }

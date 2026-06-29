@@ -71,6 +71,8 @@ const tokenMigratedGlobs = [
   'src/components/organisms/ProductGrid/**/*.{ts,tsx}',
   'src/components/Header.tsx',
   'src/components/AppShell.tsx',
+  'src/components/PageHeader.tsx',
+  'src/pages/ZReportListPage.tsx',
   'src/components/fiscal/UnsyncedRiskIndicator.tsx',
   'src/components/customers/CustomerSearchInput.tsx',
   'src/components/customers/CustomerAttachPanel.tsx',

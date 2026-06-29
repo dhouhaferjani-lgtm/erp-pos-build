@@ -308,7 +308,7 @@ function RefundApprovalStep({
           onClick={onCancel}
           disabled={isSubmitting}
           data-testid="refund-approval-cancel"
-          className="flex-1 rounded-md border border-border-strong py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
+          className="flex min-h-[48px] items-center justify-center flex-1 rounded-md border border-border-strong py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
         >
           {t('refundFlow.confirm.cancel', { defaultValue: 'Cancel' })}
         </button>
@@ -317,7 +317,7 @@ function RefundApprovalStep({
           onClick={() => onAuthorize(managerPin, reason)}
           disabled={authorizeDisabled}
           data-testid="refund-approval-authorize"
-          className="flex-1 rounded-md bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex min-h-[48px] items-center justify-center flex-1 rounded-md bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isSubmitting
             ? t('refundFlow.approval.submitting', { defaultValue: 'Processing…' })

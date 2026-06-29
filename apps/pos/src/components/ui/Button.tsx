@@ -37,13 +37,16 @@ const VARIANT: Record<ButtonVariant, string> = {
   confirm: 'bg-success text-ink-inverse hover:bg-success-hover active:bg-success-hover',
   secondary:
     'border border-border-subtle bg-surface-raised text-ink hover:bg-surface-sunken active:bg-surface-sunken',
-  ghost: 'text-ink-muted hover:bg-surface-sunken hover:text-ink active:bg-surface-sunken',
+  // Persistent filled surface so the control reads as tappable at rest on a
+  // touchscreen (no hover) — NN/g signifiers + kiosk UX.
+  ghost: 'bg-surface-sunken text-ink hover:bg-border-subtle active:bg-border-subtle',
   destructive: 'bg-danger text-ink-inverse hover:opacity-90 active:opacity-80',
 };
 
 const SIZE: Record<ButtonSize, string> = {
   sm: 'min-h-9 gap-1.5 px-3 text-sm',
-  md: 'min-h-11 gap-2 px-4 text-sm',
+  // md = 48px, the §6 touch floor (was 44px) — the touchscreen default.
+  md: 'min-h-12 gap-2 px-4 text-sm',
   lg: 'min-h-14 gap-2 px-5 text-base',
 };
 

@@ -389,7 +389,7 @@ export function VoucherTenderModal({
                 onClick={handleClose}
                 disabled={isLooking}
                 data-testid="voucher-cancel"
-                className="flex-1 rounded-md border border-border-strong py-2 text-sm text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
+                className="flex min-h-[48px] items-center justify-center flex-1 rounded-md border border-border-strong py-2 text-sm text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
               >
                 {t('voucherTender.cancel', { defaultValue: 'Cancel' })}
               </button>
@@ -398,7 +398,7 @@ export function VoucherTenderModal({
                 onClick={() => void handleLookup()}
                 disabled={isLooking || code.trim() === ''}
                 data-testid="voucher-lookup-button"
-                className="flex-1 rounded-md bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover disabled:opacity-50"
+                className="flex min-h-[48px] items-center justify-center flex-1 rounded-md bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover disabled:opacity-50"
               >
                 {isLooking
                   ? t('voucherTender.looking', { defaultValue: 'Looking up…' })
@@ -470,7 +470,7 @@ export function VoucherTenderModal({
                   type="button"
                   onClick={resetToScan}
                   data-testid="voucher-back"
-                  className="flex-1 rounded-md border border-border-strong py-2 text-sm text-ink-muted hover:bg-surface-sunken"
+                  className="flex min-h-[48px] items-center justify-center flex-1 rounded-md border border-border-strong py-2 text-sm text-ink-muted hover:bg-surface-sunken"
                 >
                   {t('voucherTender.back', { defaultValue: 'Back' })}
                 </button>
@@ -478,7 +478,7 @@ export function VoucherTenderModal({
                   type="button"
                   onClick={handleApply}
                   data-testid="voucher-apply-button"
-                  className="flex-1 rounded-md bg-success py-2 text-sm font-semibold text-ink-inverse hover:bg-success-hover"
+                  className="flex min-h-[48px] items-center justify-center flex-1 rounded-md bg-success py-2 text-sm font-semibold text-ink-inverse hover:bg-success-hover"
                 >
                   {t('voucherTender.apply', { defaultValue: 'Apply' })}
                 </button>
