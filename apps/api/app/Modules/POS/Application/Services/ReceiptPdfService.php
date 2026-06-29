@@ -8,6 +8,7 @@ use App\Modules\Company\Application\Services\TaxIdentityResolver;
 use App\Modules\Company\Domain\Company;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\ReceiptPayment;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -121,9 +122,12 @@ final class ReceiptPdfService
         // Calculate change given. Prefer the persisted column (new rows);
         // fall back to totalPaid - total for legacy rows written before the
         // 2026-04-23 migration (BG6).
-        $totalPaid = $receipt->payments->sum('amount');
         /** @var numeric-string $totalPaidStr */
-        $totalPaidStr = (string) $totalPaid;
+        $totalPaidStr = array_reduce(
+            $receipt->payments->all(),
+            fn (string $c, ReceiptPayment $p) => bcadd($c, (string) $p->amount, $this->scale()),
+            CurrencyScale::bcformat('0', $this->scale())
+        );
         /** @var numeric-string $receiptTotal */
         $receiptTotal = (string) $receipt->total;
 
@@ -163,7 +167,7 @@ final class ReceiptPdfService
             'locale' => $locale,
             'currency' => $currency,
             'changeGiven' => $changeGiven,
-            'totalPaid' => $totalPaid,
+            'totalPaid' => $totalPaidStr,
             'isReturn' => $isReturn,
             'originalReceiptNumber' => $isReturn ? $receipt->originalReceipt?->receipt_number : null,
             'returnReason' => $isReturn ? $receipt->return_reason?->label() : null,

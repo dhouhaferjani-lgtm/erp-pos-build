@@ -49,17 +49,20 @@ class DiscountExceedsLimitException extends Exception
     /**
      * Create exception when discount exceeds the effective limit
      * (most restrictive between cashier and terminal)
+     *
+     * @param  numeric-string  $requestedPercent
+     * @param  numeric-string  $effectiveLimit
      */
     public static function forEffectiveLimit(
-        float $requestedPercent,
-        float $effectiveLimit,
+        string $requestedPercent,
+        string $effectiveLimit,
         string $limitSource
     ): self {
         return new self(
             sprintf(
                 'Discount of %.2f%% exceeds effective limit of %.2f%% (limited by: %s)',
-                $requestedPercent,
-                $effectiveLimit,
+                (float) $requestedPercent,
+                (float) $effectiveLimit,
                 $limitSource
             )
         );

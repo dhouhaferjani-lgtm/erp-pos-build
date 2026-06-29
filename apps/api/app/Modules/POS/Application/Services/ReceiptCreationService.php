@@ -1006,7 +1006,7 @@ final class ReceiptCreationService
             $this->discountCalculationService->validateLineDiscount(
                 $terminal,
                 $cashier,
-                (float) $discountPercent,
+                $discountPercent,
                 $discountReason,
             );
 
@@ -1033,7 +1033,7 @@ final class ReceiptCreationService
                 $this->discountCalculationService->validateLineDiscount(
                     $terminal,
                     $cashier,
-                    (float) $derivedPercent,
+                    $derivedPercent,
                     $discountReason,
                 );
             }

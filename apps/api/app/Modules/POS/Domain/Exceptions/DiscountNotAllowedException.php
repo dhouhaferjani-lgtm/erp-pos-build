@@ -58,14 +58,17 @@ class DiscountNotAllowedException extends Exception
 
     /**
      * Create exception when discount reason is required but missing
+     *
+     * @param  numeric-string  $discountPercent
+     * @param  numeric-string  $threshold
      */
-    public static function reasonRequired(float $discountPercent, float $threshold): self
+    public static function reasonRequired(string $discountPercent, string $threshold): self
     {
         return new self(
             sprintf(
                 'Discount reason is required for discounts above %.2f%% (requested: %.2f%%)',
-                $threshold,
-                $discountPercent
+                (float) $threshold,
+                (float) $discountPercent
             )
         );
     }

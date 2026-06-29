@@ -26,9 +26,9 @@ use App\Shared\Contracts\CurrencyScaleResolverInterface;
 final readonly class DiscountCalculationService
 {
     /**
-     * Threshold percentage requiring a discount reason
+     * Threshold percentage requiring a discount reason (numeric-string, percent rate)
      */
-    private const REASON_REQUIRED_THRESHOLD = 10.00;
+    private const string REASON_REQUIRED_THRESHOLD = '10.00';
 
     public function __construct(
         private CurrencyScaleResolverInterface $scaleResolver,
@@ -44,7 +44,7 @@ final readonly class DiscountCalculationService
      *
      * @param  Terminal  $terminal  The terminal where discount is being applied
      * @param  User  $cashier  The cashier applying the discount
-     * @param  float  $discountPercent  The discount percentage being requested
+     * @param  numeric-string  $discountPercent  The discount percentage being requested
      * @param  string|null  $reason  Reason for discount (required for high discounts)
      *
      * @throws DiscountNotAllowedException If discount is not allowed
@@ -53,7 +53,7 @@ final readonly class DiscountCalculationService
     public function validateLineDiscount(
         Terminal $terminal,
         User $cashier,
-        float $discountPercent,
+        string $discountPercent,
         ?string $reason = null
     ): void {
         // Check if cashier has discount permission
@@ -126,10 +126,10 @@ final readonly class DiscountCalculationService
         );
 
         // Validate discount amount against limits
-        $this->validateDiscountLimit($terminal, $cashier, (float) $discountPercent);
+        $this->validateDiscountLimit($terminal, $cashier, $discountPercent);
 
         // Check if reason is required
-        $this->validateDiscountReason((float) $discountPercent, $reason);
+        $this->validateDiscountReason($discountPercent, $reason);
     }
 
     /**
@@ -175,9 +175,9 @@ final readonly class DiscountCalculationService
         if (bccomp($fixedDiscount, $baseAmount, $this->scale()) > 0) {
             throw new \InvalidArgumentException(
                 sprintf(
-                    'Fixed discount %.2f cannot exceed base amount %.2f',
-                    (float) $fixedDiscount,
-                    (float) $baseAmount
+                    'Fixed discount %s cannot exceed base amount %s',
+                    $fixedDiscount,
+                    $baseAmount
                 )
             );
         }
@@ -193,17 +193,28 @@ final readonly class DiscountCalculationService
      *
      * @param  Terminal  $terminal  The terminal
      * @param  User  $cashier  The cashier
-     * @return array{limit: float, source: string} The effective limit and its source
+     * @return array{limit: numeric-string, source: string} The effective limit and its source
      */
     public function getEffectiveDiscountLimit(Terminal $terminal, User $cashier): array
     {
-        $terminalLimit = (float) $terminal->max_discount_percent;
-        $cashierLimit = $cashier->max_discount_percent !== null
-            ? (float) $cashier->max_discount_percent
-            : PHP_FLOAT_MAX;
+        /** @var numeric-string $terminalLimit */
+        $terminalLimit = (string) $terminal->max_discount_percent;
 
-        // Most restrictive limit wins
-        if ($terminalLimit <= $cashierLimit) {
+        $cashierMaxPercent = $cashier->max_discount_percent;
+
+        // No individual cashier limit — terminal limit applies
+        if ($cashierMaxPercent === null) {
+            return [
+                'limit' => $terminalLimit,
+                'source' => 'terminal',
+            ];
+        }
+
+        /** @var numeric-string $cashierLimit */
+        $cashierLimit = (string) $cashierMaxPercent;
+
+        // Most restrictive limit wins (lower value = more restrictive)
+        if (bccomp($terminalLimit, $cashierLimit, 2) <= 0) { // precision-ok: percent rate — 2 dp is the stored column precision (decimal:2), currency-independent
             return [
                 'limit' => $terminalLimit,
                 'source' => 'terminal',
@@ -221,18 +232,18 @@ final readonly class DiscountCalculationService
      *
      * @param  Terminal  $terminal  The terminal
      * @param  User  $cashier  The cashier
-     * @param  float  $discountPercent  Requested discount percentage
+     * @param  numeric-string  $discountPercent  Requested discount percentage
      *
      * @throws DiscountExceedsLimitException If discount exceeds limits
      */
     private function validateDiscountLimit(
         Terminal $terminal,
         User $cashier,
-        float $discountPercent
+        string $discountPercent
     ): void {
         $effectiveLimit = $this->getEffectiveDiscountLimit($terminal, $cashier);
 
-        if ($discountPercent > $effectiveLimit['limit']) {
+        if (bccomp($discountPercent, $effectiveLimit['limit'], 2) > 0) { // precision-ok: percent rate — 2 dp matches decimal:2 column, currency-independent
             throw DiscountExceedsLimitException::forEffectiveLimit(
                 $discountPercent,
                 $effectiveLimit['limit'],
@@ -244,14 +255,14 @@ final readonly class DiscountCalculationService
     /**
      * Validate that discount reason is provided when required
      *
-     * @param  float  $discountPercent  The discount percentage
+     * @param  numeric-string  $discountPercent  The discount percentage
      * @param  string|null  $reason  The provided reason
      *
      * @throws DiscountNotAllowedException If reason is required but missing
      */
-    private function validateDiscountReason(float $discountPercent, ?string $reason): void
+    private function validateDiscountReason(string $discountPercent, ?string $reason): void
     {
-        if ($discountPercent > self::REASON_REQUIRED_THRESHOLD && ($reason === null || trim($reason) === '')) {
+        if (bccomp($discountPercent, self::REASON_REQUIRED_THRESHOLD, 2) > 0 && ($reason === null || trim($reason) === '')) { // precision-ok: percent rate — 2 dp matches column precision, currency-independent
             throw DiscountNotAllowedException::reasonRequired(
                 $discountPercent,
                 self::REASON_REQUIRED_THRESHOLD

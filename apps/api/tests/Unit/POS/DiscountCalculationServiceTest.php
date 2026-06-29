@@ -47,7 +47,7 @@ class DiscountCalculationServiceTest extends TestCase
         $this->expectException(DiscountNotAllowedException::class);
         $this->expectExceptionMessage('not authorized to apply discounts');
 
-        $this->service->validateLineDiscount($terminal, $cashier, 10.00);
+        $this->service->validateLineDiscount($terminal, $cashier, '10.00');
     }
 
     /**
@@ -75,7 +75,7 @@ class DiscountCalculationServiceTest extends TestCase
         $this->expectException(DiscountNotAllowedException::class);
         $this->expectExceptionMessage('Line-level discounts are disabled');
 
-        $this->service->validateLineDiscount($terminal, $cashier, 5.00);
+        $this->service->validateLineDiscount($terminal, $cashier, '5.00');
     }
 
     /**
@@ -106,7 +106,7 @@ class DiscountCalculationServiceTest extends TestCase
         $this->expectException(DiscountExceedsLimitException::class);
         $this->expectExceptionMessage('exceeds effective limit of 10.00');
 
-        $this->service->validateLineDiscount($terminal, $cashier, 15.00);
+        $this->service->validateLineDiscount($terminal, $cashier, '15.00');
     }
 
     /**
@@ -123,7 +123,7 @@ class DiscountCalculationServiceTest extends TestCase
         $this->expectException(DiscountExceedsLimitException::class);
         $this->expectExceptionMessage('exceeds effective limit of 15.00');
 
-        $this->service->validateLineDiscount($terminal, $cashier, 20.00);
+        $this->service->validateLineDiscount($terminal, $cashier, '20.00');
     }
 
     /**
@@ -191,7 +191,7 @@ class DiscountCalculationServiceTest extends TestCase
         $this->expectException(DiscountNotAllowedException::class);
         $this->expectExceptionMessage('Discount reason is required for discounts above 10.00%');
 
-        $this->service->validateLineDiscount($terminal, $cashier, 15.00, null);
+        $this->service->validateLineDiscount($terminal, $cashier, '15.00', null);
     }
 
     /**
@@ -206,7 +206,7 @@ class DiscountCalculationServiceTest extends TestCase
         ]);
 
         // Should not throw exception
-        $this->service->validateLineDiscount($terminal, $cashier, 15.00, 'Loyal customer discount');
+        $this->service->validateLineDiscount($terminal, $cashier, '15.00', 'Loyal customer discount');
 
         $this->assertTrue(true); // Test passes if no exception thrown
     }
@@ -224,7 +224,7 @@ class DiscountCalculationServiceTest extends TestCase
 
         $this->expectException(DiscountNotAllowedException::class);
 
-        $this->service->validateLineDiscount($terminal, $cashier, 12.00, '   '); // Whitespace only
+        $this->service->validateLineDiscount($terminal, $cashier, '12.00', '   '); // Whitespace only
     }
 
     /**
@@ -239,7 +239,7 @@ class DiscountCalculationServiceTest extends TestCase
         ]);
 
         // Should not throw exception
-        $this->service->validateLineDiscount($terminal, $cashier, 10.00, null);
+        $this->service->validateLineDiscount($terminal, $cashier, '10.00', null);
 
         $this->assertTrue(true); // Test passes if no exception thrown
     }
@@ -340,7 +340,7 @@ class DiscountCalculationServiceTest extends TestCase
         ]);
 
         // Should not throw exception
-        $this->service->validateLineDiscount($terminal, $cashier, 15.00, 'Valid discount');
+        $this->service->validateLineDiscount($terminal, $cashier, '15.00', 'Valid discount');
 
         $this->assertTrue(true); // Test passes if no exception thrown
     }
@@ -357,7 +357,7 @@ class DiscountCalculationServiceTest extends TestCase
         ]);
 
         // Should not throw exception
-        $this->service->validateLineDiscount($terminal, $cashier, 20.00, 'At exact limit');
+        $this->service->validateLineDiscount($terminal, $cashier, '20.00', 'At exact limit');
 
         $this->assertTrue(true); // Test passes if no exception thrown
     }
