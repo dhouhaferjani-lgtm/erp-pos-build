@@ -3,6 +3,28 @@
 **Date:** 2026-06-15
 **Scope:** Full codebase analysis (`apps/api`, `apps/web`, `apps/pos`, `packages/shared`)
 **Codebase:** 1,526 PHP source files (API), 584 test files, 330 migrations, 38 modules
+**Verified:** 2026-06-29 against `origin/dev` @ `96f421c56` (corrections below take precedence)
+
+---
+
+## ⚠️ Verification Update (2026-06-29)
+
+The 5 CRITICAL issues and key IMPORTANT items were re-checked against current code. Several are fixed or materially narrowed.
+
+| # | Issue | Status (2026-06-29) | Evidence |
+|---|-------|---------------------|----------|
+| 1 | Float arithmetic on money | **MOSTLY FIXED — downgrade from CRITICAL** | `Billing/.../Money.php` now `public string $amount`, `final readonly`, all ops via bcmath/`CurrencyScale`. `ReceiptReturnService:529` fixed (now bcmath). LandedCost ~15→**2** casts, both return-type boundary casts on bcmath results; WAC/MarginService residual casts are return-type only. New PHPStan guard `ForbidFloatCastOnDecimalProperty`. |
+| 2 | 'XXX' currency fallback | **NARROWED — still present at 1 site** | Only `ZReportSyncController.php:431` remains (company-lookup-fails fallback). The payment-method fallback (doc's 262/361) is gone. |
+| 3 | DailyExpiryCheck notifications | **PARTIAL** | Company-admin notifications now implemented (`notifyCompaniesOfCriticalBatches`, DailyExpiryCheck.php:71/134). Only the **sysadmin alert** is still a no-op TODO (line 219). |
+| 4 | Hierarchy balance calc broken | **STILL PRESENT** | 3× `// TODO: Fix hierarchy balance calculation` at `ReportsController.php:275, 430, 581` (line refs drifted from doc's 143/298/449). |
+| 5 | Missing COGS entry creation | **FIXED for invoices — POS path still open** | Invoice COGS posted via `Inventory/Listeners/PostCOGSOnInvoice.php` (registered `InventoryServiceProvider.php:50`). The cited test TODO is stale leftover. **BUT** POS-sale COGS is still NOT posted (POS bypasses the invoice flow) — see flow-analysis Top-5 #1. |
+
+**IMPORTANT items re-checked:**
+- **#6 Circular deps** — `apps/api/deptrac.yaml` **now exists** (architecture enforcement added). 41-pair count not re-run.
+- **#9 Hardcoded FE permissions map** — **STILL PRESENT** (`apps/web/src/hooks/usePermissions.ts:1` TODO unchanged).
+- **Zero-test modules table (below)** — **NOW WRONG for all 5.** Current counts: Billing 3, Communication 1, Dashboard 1, Expense 8, Media 26. Re-read as "thin coverage," not "zero."
+- **#11 Category margin override** — **STILL commented out**, relocated to `MarginService.php:366-369` ("Skip category check since it doesn't exist yet"). The margin-override-hierarchy feature lives on an unmerged branch, not on `origin/dev`.
+- **New modules** (Procurement, Fiscal, Voucher, Channel) scanned for `TODO/FIXME/(float)/'XXX'` — no money/data-corruption bugs. Voucher has deferred-config TODOs (`VoucherIssuanceService.php`) that fall back to config; not critical.
 
 ---
 
@@ -154,6 +176,8 @@ Tests mock at the wrong layer, making them brittle and not representative of act
 ## IMPORTANT -- Missing Test Coverage
 
 ### Modules with ZERO test files:
+
+> **[VERIFIED 2026-06-29: STALE]** None of these is zero anymore — Billing 3, Communication 1, Dashboard 1, Expense 8, Media 26. Treat as "thin coverage" for Billing/Communication/Dashboard; Expense and Media are no longer concerns.
 
 | Module | Source Files | Tests |
 |--------|-------------|-------|

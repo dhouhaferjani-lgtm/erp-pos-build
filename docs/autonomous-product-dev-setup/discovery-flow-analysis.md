@@ -1,6 +1,38 @@
 # AutoERP Business Flow Completeness Analysis
 
 Generated: 2026-06-15
+**Verified:** 2026-06-29 against `origin/dev` @ `96f421c56` (corrections below take precedence)
+
+---
+
+## ⚠️ Verification Update (2026-06-29)
+
+Re-traced the two lowest-rated flows (Purchase, Treasury) plus the Top-5 gaps against current code. The headline change: **the Purchase flow's two structural gaps are now closed** by the new `Procurement` module + a GR-IR accrual on goods receipt.
+
+**Purchase flow: 70% → ~90%.**
+- **SupplierInvoice document type — NOW EXISTS.** `DocumentType::SupplierInvoice` + `SupplierCreditNote` (`Document/Domain/Enums/DocumentType.php:15-16`), with full create/post flow in `Procurement` (`CreateSupplierInvoiceService`, `SupplierInvoicePostingService`, `SupplierInvoiceMatcher` 2/3-way match, routes `POST /supplier-invoices`, `/match`, `/post`). The original gap #1 is **CLOSED**.
+- **Automated GL on goods receipt — NOW AUTOMATED.** `GoodsReceived` → `PostGrIrOnGoodsReceipt` listener (registered `EventServiceProvider.php:117-119`) posts Dr Inventory / Cr GRNI(408); supplier-invoice posting clears 408 against AP. Original gap #2 is **CLOSED**. (PO *confirm* still posts no GL — correct accounting, not a gap.)
+- **Remaining (minor):** no `PurchaseOrderToSupplierInvoiceConverter` in the converter registry — linkage is via `source_line_id` + 3-way matcher instead (functionally covered). Supplier *payment* still runs through the generic `PaymentController` (no dedicated AP-payment automation).
+
+**Treasury flow: 80% (retained).** All 3 gaps confirmed STILL OPEN: no cash-flow report (no `CashFlowService` anywhere), instrument lifecycle has no GL integration, bank reconciliation is manual-toggle only (now captures a `statement_balance` header but no statement import / auto-match).
+
+**Top-5 actionable gaps — current status:**
+1. **POS COGS — STILL OPEN.** `PostCOGSOnInvoice` is bound only to `InvoicePosted` (`InventoryServiceProvider.php:50`). POS receipts bypass the invoice flow, so POS sales post revenue+VAT (`createPOSPaymentEntry`) but never COGS. ⚠️ Note: *invoice* COGS **is** posted — only the *POS* path lacks it.
+2. **Supplier invoice doc type — FIXED** (see above).
+3. **Inventory movements missing GL — PARTIALLY FIXED.** Batch-expiry write-offs now post GL (`GeneralLedgerService::createInventoryWriteOffEntry`, `source_type='batch_write_off'`, called by `BatchWriteOffService`). But general `StockAdjustmentService` adjust/transfer still post **no** GL, and `MovementType` has no dedicated `WriteOff` case. Manual adjustments + inter-location transfers remain GL-blind.
+4. **No cash flow report — OPEN.**
+5. **Hierarchy balance calculation broken — OPEN.** `// TODO: Fix hierarchy balance calculation` still at `ReportsController.php:275, 430, 581`.
+
+**Corrected summary matrix:**
+
+| Flow | Doc % | Verified % (2026-06-29) | Basis |
+|------|-------|--------------------------|-------|
+| Purchase | 70% | **~90%** | Supplier-invoice doc type + posting + GR-IR goods-receipt GL automation shipped |
+| Sales | 95% | 95% (not re-traced, retain) | |
+| POS | 90% | 90% (retain) | COGS gap confirmed still open |
+| Inventory | 85% | **~88%** | batch write-off GL now automated; general adjustment/transfer GL still missing |
+| Accounting | 90% | **~92%** | supplier-side GL now event-automated (GR-IR); hierarchy-balance TODO still open |
+| Treasury | 80% | 80% (retain) | all 3 gaps confirmed open |
 
 ---
 
