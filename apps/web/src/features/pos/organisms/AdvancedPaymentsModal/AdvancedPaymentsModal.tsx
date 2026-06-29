@@ -206,6 +206,8 @@ export function AdvancedPaymentsModal({
    * Sum of amounts from "immediate" (change-safe) payment methods:
    * - Cash: is_physical && !has_maturity (funds in hand)
    * - Card/mobile: requires_third_party (settled immediately by processor)
+   *
+   * Uses bcadd (not float +) so 0.1 + 0.2 yields '0.30', not 0.30000000000000004.
    */
   const maxSafeChange = useMemo(() => {
     return addedPayments
@@ -214,16 +216,20 @@ export function AdvancedPaymentsModal({
         if (!method) return false
         return (method.is_physical && !method.has_maturity) || method.requires_third_party
       })
-      .reduce((sum, p) => sum + p.amount, 0)
-  }, [addedPayments, paymentMethods])
+      .reduce((sum, p) => bcadd(sum, String(p.amount), decimals), '0')
+  }, [addedPayments, paymentMethods, decimals])
 
   const overpaymentAmount = hasOverpayment ? parseFloat(bcsub(totalPaidStr, total, decimals)) : 0
-  /** Maximum cash change that can safely be returned */
-  const safeChangeLimit = Math.max(0, maxSafeChange - parseFloat(total))
+  /** Maximum cash change that can safely be returned (string decimal) */
+  const safeChangeLimit = bccomp(maxSafeChange, total) > 0
+    ? bcsub(maxSafeChange, total, decimals)
+    : '0'
   /** Whether all overpayment is covered by immediate methods */
-  const isFullySafeOverpayment = overpaymentAmount > 0 && overpaymentAmount <= safeChangeLimit + 0.001
+  const isFullySafeOverpayment = overpaymentAmount > 0 &&
+    bccomp(String(overpaymentAmount), bcadd(safeChangeLimit, '0.001', decimals)) <= 0
   /** Whether some (but not all) overpayment can be returned as change */
-  const hasPartialSafeChange = overpaymentAmount > 0 && !isFullySafeOverpayment && safeChangeLimit > 0.001
+  const hasPartialSafeChange = overpaymentAmount > 0 && !isFullySafeOverpayment &&
+    bccomp(safeChangeLimit, '0.001') > 0
 
   // For Scenario B (fully safe): user can choose change vs credit
   const [preferChangeOverCredit, setPreferChangeOverCredit] = useState(true)
@@ -240,7 +246,10 @@ export function AdvancedPaymentsModal({
     }
 
     // Scenario C: partially or fully unsafe
-    const changeAmount = Math.min(overpaymentAmount, safeChangeLimit)
+    // safeChangeLimit is now a decimal string; pick the lesser of overpayment vs safe limit
+    const changeAmount = bccomp(String(overpaymentAmount), safeChangeLimit) <= 0
+      ? overpaymentAmount
+      : parseFloat(safeChangeLimit)
     const creditAmount = overpaymentAmount - changeAmount
     return { changeAmount, creditAmount }
   }, [hasOverpayment, isFullySafeOverpayment, preferChangeOverCredit, overpaymentAmount, safeChangeLimit])
@@ -746,7 +755,7 @@ export function AdvancedPaymentsModal({
                         <div className="mt-4 space-y-2" data-testid="partial-safe-change">
                           <div className={cn('flex items-start gap-2 text-sm', textColors.warning)}>
                             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                            <span>{t('advancedPayments.changeWarning', { amount: toFixedCurrency(safeChangeLimit), currency })}</span>
+                            <span>{t('advancedPayments.changeWarning', { amount: safeChangeLimit, currency })}</span>
                           </div>
                           <p className={cn('text-xs', textColors.warning)}>
                             {t('advancedPayments.changeExplanation')}
@@ -955,6 +964,9 @@ export function AdvancedPaymentsModal({
           )}
         </div>
       </div>
+
+      {/* Debug element — exposes maxSafeChange for precision tests (visually hidden) */}
+      <span data-testid="debug-max-safe-change" hidden aria-hidden="true">{maxSafeChange}</span>
 
       {/* Transaction Discount Modal */}
       {showDiscountModal && permissions && onTransactionDiscountChange && (

@@ -769,6 +769,46 @@ describe('AdvancedPaymentsModal', () => {
     )
   })
 
+  // ── Precision: maxSafeChange must use bcadd, not float reduce ──
+
+  it('computes maxSafeChange via bcadd without float drift (0.1 + 0.2)', async () => {
+    const user = userEvent.setup()
+    // 0.1 + 0.2 = 0.30000000000000004 in IEEE 754 float — bcadd must give '0.30'
+    const floatDriftCartItems: CartItem[] = [
+      {
+        id: 'float-test',
+        product: { id: 'p-float', name: 'Float Test Product', sku: 'FLT1', price: '0.39' },
+        quantity: 1,
+        unit_price: '0.39',
+        line_total: '0.39',
+        tax_amount: '0',
+      },
+    ]
+
+    renderWithClient(
+      <AdvancedPaymentsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        cartItems={floatDriftCartItems}
+        onComplete={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
+    })
+
+    // Add two cash payments whose IEEE 754 float sum drifts: 0.1 + 0.2 = 0.30000000000000004
+    await addPaymentViaButton(user, 'Cash', '0.1')
+    await addPaymentViaButton(user, 'Cash', '0.2')
+
+    // maxSafeChange (sum of immediate payments) must be the exact decimal string '0.30',
+    // NOT the float-drifted 0.30000000000000004
+    const debugEl = document.querySelector('[data-testid="debug-max-safe-change"]')
+    expect(debugEl).not.toBeNull()
+    expect(debugEl?.textContent).toBe('0.30')
+  })
+
   it('shows card-specific fields for card payment method', async () => {
     const user = userEvent.setup()
 
