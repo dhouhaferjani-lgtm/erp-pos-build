@@ -37,7 +37,9 @@ const VARIANT: Record<ButtonVariant, string> = {
   confirm: 'bg-success text-ink-inverse hover:bg-success-hover active:bg-success-hover',
   secondary:
     'border border-border-subtle bg-surface-raised text-ink hover:bg-surface-sunken active:bg-surface-sunken',
-  ghost: 'text-ink-muted hover:bg-surface-sunken hover:text-ink active:bg-surface-sunken',
+  // Persistent filled surface so the control reads as tappable at rest on a
+  // touchscreen (no hover) — NN/g signifiers + kiosk UX.
+  ghost: 'bg-surface-sunken text-ink hover:bg-border-subtle active:bg-border-subtle',
   destructive: 'bg-danger text-ink-inverse hover:opacity-90 active:opacity-80',
 };
 

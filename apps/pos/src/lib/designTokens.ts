@@ -38,11 +38,12 @@ const buttonSecondary =
   'hover:bg-surface-sunken active:bg-surface-sunken ' +
   'disabled:cursor-not-allowed disabled:text-ink-faint';
 
-/** Low-emphasis text/icon button. */
+/** Low-emphasis button — still carries a PERSISTENT filled surface so it reads
+ * as tappable at rest on a touchscreen (no hover state). */
 const buttonGhost =
-  'inline-flex items-center justify-center gap-2 rounded-lg px-3 font-medium text-ink-muted transition-colors ' +
-  'hover:bg-surface-sunken hover:text-ink ' +
-  'disabled:cursor-not-allowed disabled:text-ink-faint';
+  'inline-flex items-center justify-center gap-2 rounded-lg px-3 font-medium text-ink transition-colors ' +
+  'bg-surface-sunken hover:bg-border-subtle active:bg-border-subtle ' +
+  'disabled:cursor-not-allowed disabled:bg-transparent disabled:text-ink-faint';
 
 /** Destructive action (irreversible). */
 const buttonDestructive =

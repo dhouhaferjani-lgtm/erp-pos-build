@@ -17,9 +17,13 @@ const VARIANT: Record<ButtonVariant, string> = {
   confirm: 'bg-success text-ink-inverse hover:bg-success-hover active:bg-success-hover',
   secondary:
     'border border-border-subtle bg-surface-raised text-ink hover:bg-surface-sunken active:bg-surface-sunken',
-  ghost: 'text-ink-muted hover:bg-surface-sunken hover:text-ink active:bg-surface-sunken',
+  // Touchscreen has no hover: a transparent-at-rest control gives no "tappable"
+  // signal. ghost/destructive therefore carry a PERSISTENT filled surface (NN/g
+  // "make clickable elements obvious"; kiosk UX: affordance must be visible at
+  // rest, not hover-only).
+  ghost: 'bg-surface-sunken text-ink hover:bg-border-subtle active:bg-border-subtle',
   destructive:
-    'text-danger-strong hover:bg-danger-surface active:bg-danger-surface',
+    'bg-danger-surface text-danger-strong hover:opacity-90 active:opacity-80',
 };
 
 const SIZE: Record<IconButtonSize, string> = {
