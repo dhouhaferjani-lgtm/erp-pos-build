@@ -7,7 +7,8 @@ import type { ButtonVariant } from './Button';
  * IconButton — square, icon-only button. Same variant grammar as Button, but
  * a fixed square footprint with an enforced accessible name.
  *
- * Sizes are touch-first: md = 44px, lg = 56px. (sm = 36px desktop-dense.)
+ * Sizes are touch-first: md = 48px (the §6 touch floor — default), lg = 56px.
+ * (sm = 36px is desktop-dense only; never use it for a touchscreen control.)
  */
 export type IconButtonSize = 'sm' | 'md' | 'lg';
 
@@ -23,7 +24,8 @@ const VARIANT: Record<ButtonVariant, string> = {
 
 const SIZE: Record<IconButtonSize, string> = {
   sm: 'h-9 w-9',
-  md: 'h-11 w-11',
+  // md is the touchscreen default — 48px, the §6 touch floor (was 44px).
+  md: 'h-12 w-12',
   lg: 'h-14 w-14',
 };
 

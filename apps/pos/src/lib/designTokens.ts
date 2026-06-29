@@ -75,7 +75,7 @@ export const tokens = {
   /** The ONE segmented (choose-one) control voice. */
   segmented: {
     root: 'inline-flex rounded-lg bg-surface-sunken p-1',
-    item: 'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+    item: 'flex min-h-12 items-center justify-center rounded-md px-3 text-sm font-medium transition-colors',
     itemActive: 'bg-surface-raised text-ink shadow-sm',
     itemInactive: 'text-ink-muted hover:text-ink',
   },
