@@ -192,6 +192,10 @@ export function CustomerAttachBody({
         sync_version: null,
         updated_at: null,
         synced_at: selectedCustomer.balance_updated_at ?? now().toISOString(),
+        // Task 21 — skin fields are not part of AttachedCheckoutCustomer;
+        // default to null when projecting onto CustomerMirrorRow for staleness check.
+        skin_type: null,
+        skin_advice_note: null,
       },
       now(),
       staleThresholdMinutes,

@@ -55,6 +55,8 @@ function customer(overrides: Partial<CustomerMirrorRow> = {}): CustomerMirrorRow
     sync_version: 'sync-1',
     updated_at: '2026-05-21T08:01:00.000Z',
     synced_at: '2026-05-21T08:02:00.000Z',
+    skin_type: null,
+    skin_advice_note: null,
     ...overrides,
   };
 }

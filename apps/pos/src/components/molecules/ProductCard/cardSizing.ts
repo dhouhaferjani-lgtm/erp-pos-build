@@ -11,10 +11,16 @@ export const GAP = 12;
 /** Grid mode (text-first card): name (2 lines) + price + stock + p-4. */
 export const CARD_MIN_H_GRID = 140;
 
+/** Grid mode, dense density — tighter vertical rhythm. */
+export const CARD_MIN_H_GRID_DENSE = 112;
+
 /** Visual mode (image card): image (80px) + name (2 lines) + price + stock + p-4.
  *  Kept at 220 to match the existing virtualizer estimate — do NOT lower without
  *  visual verification at 1366×768, 1280×720, and 1024×600. */
 export const CARD_MIN_H_VISUAL = 220;
+
+/** Visual mode, dense density — reduced image area for tighter layout. */
+export const CARD_MIN_H_VISUAL_DENSE = 176;
 
 export const ROW_HEIGHT_GRID = CARD_MIN_H_GRID;
 export const ROW_HEIGHT_VISUAL = CARD_MIN_H_VISUAL;
@@ -42,3 +48,45 @@ export const CARD_MIN_H_CLASS_VISUAL = 'min-h-[220px]';
  */
 export const CARD_NAME_MIN_H_CLASS_GRID = 'min-h-[3rem]';
 export const CARD_NAME_MIN_H_CLASS_VISUAL = 'min-h-[2.5rem]';
+
+/**
+ * Density-aware column count for the product grid.
+ *
+ * Breakpoints match Tailwind's default (sm=640, lg=1024).
+ * Column matrix at lg (≥1024px):
+ *   visual + comfortable = 5 | visual + dense = 6
+ *   grid  + comfortable = 4 | grid  + dense = 5
+ *
+ * Pass `window.innerWidth` (or 0 for SSR) — defaults to xs (smallest bucket).
+ */
+export function getColumns(
+  displayMode: 'grid' | 'visual',
+  density: 'comfortable' | 'dense',
+  width: number,
+): number {
+  if (displayMode === 'visual') {
+    if (width >= 1024) return density === 'dense' ? 6 : 5;
+    if (width >= 640) return density === 'dense' ? 5 : 4;
+    return density === 'dense' ? 4 : 3;
+  }
+  // grid / compact mode
+  if (width >= 1024) return density === 'dense' ? 5 : 4;
+  if (width >= 640) return density === 'dense' ? 4 : 3;
+  return density === 'dense' ? 3 : 2;
+}
+
+/**
+ * Density-aware card min-height for the virtualizer row estimate.
+ *
+ * Use this wherever `CARD_MIN_H_GRID` / `CARD_MIN_H_VISUAL` was used so that
+ * dense layouts get a tighter row estimate, reducing wasted space.
+ */
+export function getCardMinH(
+  displayMode: 'grid' | 'visual',
+  density: 'comfortable' | 'dense',
+): number {
+  if (displayMode === 'visual') {
+    return density === 'dense' ? CARD_MIN_H_VISUAL_DENSE : CARD_MIN_H_VISUAL;
+  }
+  return density === 'dense' ? CARD_MIN_H_GRID_DENSE : CARD_MIN_H_GRID;
+}

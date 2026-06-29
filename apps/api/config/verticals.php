@@ -354,6 +354,9 @@ return [
             // so batch/expiry management is a default capability, not an upgrade.
             'BatchExpiry',
             'Parapharmacy',
+            // Merchandising is bundled for parapharmacy: shelf/planogram
+            // management and product display/layout features.
+            'Merchandising',
         ],
     ],
 ];

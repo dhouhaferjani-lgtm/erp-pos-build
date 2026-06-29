@@ -10,10 +10,11 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\SmartPrompts\Application\DTOs\RecommendationRequestData;
 use App\Modules\SmartPrompts\Application\Services\SmartPromptsService;
 use App\Modules\SmartPrompts\Domain\Enums\RecommendationContext;
-use App\Modules\SmartPrompts\Domain\Enums\SkinType;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\Enums\SkinType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 final class SmartPromptsController extends Controller
 {
@@ -29,7 +30,7 @@ final class SmartPromptsController extends Controller
             'product_ids.*' => ['required', 'uuid'],
             'context' => ['sometimes', 'string', 'in:cart,checkout,reorder'],
             'limit' => ['sometimes', 'integer', 'min:1', 'max:20'],
-            'skin_type' => ['sometimes', 'nullable', 'string', 'in:normal,oily,dry,combination,sensitive'],
+            'skin_type' => ['sometimes', 'nullable', Rule::enum(SkinType::class)],
             'customer_id' => ['sometimes', 'nullable', 'uuid'],
         ]);
 

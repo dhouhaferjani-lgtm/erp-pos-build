@@ -39,7 +39,17 @@
     "sortByMostSold": "Sort by most sold",
     "sortDefault": "Default order",
     "favorites": "Favorites",
-    "viewDetails": "View details"
+    "viewDetails": "View details",
+    "filters": "Filters",
+    "filtersClose": "Close",
+    "filtersBrand": "Brand",
+    "filtersCategory": "Category",
+    "filtersSkinType": "Skin type",
+    "filtersResultCount": "{{count}} results",
+    "filtersClearAll": "Clear all",
+    "filterRemove": "Remove: {{value}}",
+    "filtersNoFacets": "No filters available for this catalog",
+    "skinAdviceLabel": "Advice · Skin type"
   },
   "payment": {
     "success": "Payment Successful!",
@@ -479,7 +489,15 @@
     "margin": "Margin",
     "reorderLevel": "Reorder Level",
     "ingredients": "Ingredients",
-    "backOrder": "Back Order"
+    "backOrder": "Back Order",
+    "merchandising": {
+      "ariaLabel": "Related product tabs",
+      "equivalents": "Equivalents",
+      "complements": "Complements",
+      "routine": "Routine",
+      "add": "Add",
+      "empty": "No products"
+    }
   },
   "settings": {
     "title": "Settings",
@@ -977,7 +995,32 @@
   },
   "customers": {
     "pageTitle": "Customers",
-    "placeholder": "Customer management is coming soon."
+    "placeholder": "Customer management is coming soon.",
+    "search": "Search customers…",
+    "addCustomer": "New customer",
+    "noCustomers": "No synced customers.",
+    "loadError": "Could not load customers.",
+    "close": "Close",
+    "backToList": "Back",
+    "name": "Name",
+    "phone": "Phone",
+    "email": "Email",
+    "nameRequired": "Name is required.",
+    "contactRequired": "Phone or email is required.",
+    "creating": "Creating…",
+    "createCustomer": "Create customer",
+    "createFailed": "Could not create customer.",
+    "skinProfileTitle": "Skin profile",
+    "skinType": "Skin type",
+    "skinTypeNone": "Not specified",
+    "skinAdviceNote": "Care note",
+    "skinAdviceNotePlaceholder": "Personalised care advice for this customer…",
+    "editSkinProfile": "Edit skin profile",
+    "saveSkinProfile": "Save",
+    "savingSkinProfile": "Saving…",
+    "updateSkinError": "Skin profile update failed.",
+    "phone_label": "Phone: {{value}}",
+    "email_label": "Email: {{value}}"
   },
   "loyalty": {
     "points": "{{amount}} pts",

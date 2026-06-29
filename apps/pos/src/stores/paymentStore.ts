@@ -739,6 +739,10 @@ async function createAccountChargeLocalFirst(
       sync_version: null,
       updated_at: null,
       synced_at: selectedCustomer.balance_updated_at ?? new Date().toISOString(),
+      // Task 21 — skin fields are not part of AttachedCheckoutCustomer;
+      // default to null when projecting onto CustomerMirrorRow for staleness check.
+      skin_type: null,
+      skin_advice_note: null,
     },
     new Date(),
     30,

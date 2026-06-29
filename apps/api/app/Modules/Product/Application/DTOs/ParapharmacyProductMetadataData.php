@@ -12,10 +12,15 @@ use App\Modules\Product\Domain\HealthClaim;
 use App\Modules\Product\Domain\Ingredient;
 use App\Modules\Product\Domain\KeyComponent;
 use App\Modules\Product\Domain\ParapharmacyProductMetadata;
+use App\Modules\Product\Domain\Product;
+use App\Modules\Product\Domain\ProductSkinSuitability;
+use App\Modules\Product\Domain\Routine;
+use App\Shared\Domain\Enums\SkinType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 use Spatie\LaravelData\Data;
+use Spatie\TypeScriptTransformer\Attributes\LiteralTypeScriptType;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 #[TypeScript]
@@ -26,6 +31,10 @@ class ParapharmacyProductMetadataData extends Data
      * @param  array<int, ProductKeyComponentData>|null  $key_components
      * @param  array<int, ProductHealthClaimData>|null  $health_claims
      * @param  array<int, ProductCertificationData>|null  $certifications
+     * @param  array<int, SkinType>  $suitable_skin_types
+     * @param  array<int, string>  $equivalent_product_ids
+     * @param  array<int, string>  $complement_product_ids
+     * @param  array<int, array{routine_id: string, step_order: int, step_label: string}>  $routine_refs
      */
     public function __construct(
         public string $id,
@@ -46,6 +55,14 @@ class ParapharmacyProductMetadataData extends Data
         public ?string $storage_requirements,
         public string $created_at,
         public ?string $updated_at,
+        #[LiteralTypeScriptType('Array<App.Shared.Domain.Enums.SkinType>')]
+        public array $suitable_skin_types,
+        #[LiteralTypeScriptType('Array<string>')]
+        public array $equivalent_product_ids,
+        #[LiteralTypeScriptType('Array<string>')]
+        public array $complement_product_ids,
+        #[LiteralTypeScriptType('Array<{routine_id: string; step_order: number; step_label: string}>')]
+        public array $routine_refs,
     ) {}
 
     public static function fromModel(ParapharmacyProductMetadata $metadata): self
@@ -62,6 +79,18 @@ class ParapharmacyProductMetadataData extends Data
         }
         if (! $metadata->relationLoaded('certifications')) {
             $metadata->load('certifications');
+        }
+        if (! $metadata->relationLoaded('skinSuitabilities')) {
+            $metadata->load('skinSuitabilities');
+        }
+        if (! $metadata->relationLoaded('routines')) {
+            $metadata->load('routines');
+        }
+        if (! $metadata->relationLoaded('equivalentProducts')) {
+            $metadata->load('equivalentProducts');
+        }
+        if (! $metadata->relationLoaded('complementProducts')) {
+            $metadata->load('complementProducts');
         }
 
         /** @var Collection<int, Ingredient>|null $ingredients */
@@ -120,6 +149,30 @@ class ParapharmacyProductMetadataData extends Data
             })->values()->all()
             : null;
 
+        /** @var Collection<int, ProductSkinSuitability> $skinSuitabilities */
+        $skinSuitabilities = $metadata->skinSuitabilities;
+        /** @var array<int, SkinType> $suitableSkinTypes */
+        $suitableSkinTypes = $skinSuitabilities->pluck('skin_type')->all();
+
+        /** @var Collection<int, Product> $equivalentProducts */
+        $equivalentProducts = $metadata->equivalentProducts;
+        /** @var array<int, string> $equivalentProductIds */
+        $equivalentProductIds = $equivalentProducts->pluck('id')->all();
+
+        /** @var Collection<int, Product> $complementProducts */
+        $complementProducts = $metadata->complementProducts;
+        /** @var array<int, string> $complementProductIds */
+        $complementProductIds = $complementProducts->pluck('id')->all();
+
+        /** @var Collection<int, Routine> $routines */
+        $routines = $metadata->routines;
+        /** @var array<int, array{routine_id: string, step_order: int, step_label: string}> $routineRefs */
+        $routineRefs = $routines->map(fn (Routine $r): array => [
+            'routine_id' => $r->id,
+            'step_order' => (int) $r->pivot->step_order,
+            'step_label' => (string) $r->pivot->step_label,
+        ])->all();
+
         return new self(
             id: $metadata->id,
             product_id: $metadata->product_id,
@@ -139,6 +192,10 @@ class ParapharmacyProductMetadataData extends Data
             storage_requirements: $metadata->storage_requirements,
             created_at: $metadata->created_at?->toIso8601String() ?? '',
             updated_at: $metadata->updated_at?->toIso8601String(),
+            suitable_skin_types: $suitableSkinTypes,
+            equivalent_product_ids: $equivalentProductIds,
+            complement_product_ids: $complementProductIds,
+            routine_refs: $routineRefs,
         );
     }
 }

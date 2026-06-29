@@ -127,6 +127,7 @@ function makeSyncResult(overrides: Partial<SyncResult> = {}): SyncResult {
     vouchersPulled: 0,
     voucherLedgerPulled: 0,
     receiptQrIndexPulled: 0,
+    customersPulled: 0,
     chainBreak: false,
     errors: [],
     degraded: false,

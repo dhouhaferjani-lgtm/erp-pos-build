@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\SmartPrompts\Application\DTOs;
 
 use App\Modules\SmartPrompts\Domain\Enums\RecommendationContext;
-use App\Modules\SmartPrompts\Domain\Enums\SkinType;
+use App\Shared\Domain\Enums\SkinType;
 
 final readonly class RecommendationRequestData
 {

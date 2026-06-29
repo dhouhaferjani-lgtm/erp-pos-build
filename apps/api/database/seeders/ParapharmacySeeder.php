@@ -18,9 +18,12 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Product\Domain\Brand;
 use App\Modules\Product\Domain\Certification;
 use App\Modules\Product\Domain\Enums\AgeRestriction;
+use App\Modules\Product\Domain\Enums\BrandSource;
 use App\Modules\Product\Domain\Enums\DosageForm;
+use App\Modules\Product\Domain\Enums\EquivalenceType;
 use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
 use App\Modules\Product\Domain\HealthClaim;
 use App\Modules\Product\Domain\Ingredient;
@@ -32,6 +35,7 @@ use App\Modules\Tenant\Application\Services\IdentityIndexService;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Domain\Entities\Unit;
+use App\Shared\Domain\Enums\SkinType;
 use Database\Seeders\Contracts\ChartOfAccountsSeederContract;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
@@ -356,9 +360,39 @@ class ParapharmacySeeder extends Seeder
         $products = $this->seedProducts($this->company);
         $this->command->info("✓ Created {$products->count()} products across 6 categories");
 
+        // 5a. Seed brands and assign brand_id to cosmetic / baby-care products
+        $this->command->info('🏷️ Seeding brands...');
+        $brands = $this->seedBrands($this->company);
+        $this->command->info("✓ Created {$brands->count()} brands");
+
+        // 5b. Seed skin suitability mappings for cosmetic products
+        $this->command->info('🧴 Seeding skin suitability...');
+        $this->seedProductSkinSuitability($this->company);
+        $this->command->info('✓ Skin suitability rows seeded');
+
+        // 5c. Seed product equivalents (both directions)
+        $this->command->info('🔁 Seeding product equivalents...');
+        $this->seedProductEquivalents($this->company);
+        $this->command->info('✓ Product equivalents seeded');
+
+        // 5d. Seed product complements (cross-category bundles)
+        $this->command->info('🔗 Seeding product complements...');
+        $this->seedProductComplements($this->company);
+        $this->command->info('✓ Product complements seeded');
+
+        // 5e. Seed skincare routines + ordered membership
+        $this->command->info('🧴 Seeding routines...');
+        $this->seedRoutines($this->company);
+        $this->command->info('✓ Routines seeded');
+
         // 6. Seed partners (customers and suppliers)
         $this->command->info('👥 Seeding partners...');
         $this->seedPartners($this->tenant, $this->company);
+
+        // 6a. Seed skin types for individual (customer-type) partners
+        $this->command->info('🧴 Seeding customer skin types...');
+        $this->seedCustomerSkinTypes($this->company);
+        $this->command->info('✓ Customer skin types seeded');
 
         // 7. Seed stock levels
         $this->command->info('📊 Seeding stock levels...');
@@ -662,6 +696,200 @@ class ParapharmacySeeder extends Seeder
         }
 
         return $products;
+    }
+
+    /**
+     * Seed real French parapharmacy brands and assign brand_id to products.
+     *
+     * Inserts ~21 real brands via a single batch insert, then distributes
+     * brand assignments across products by category (round-robin), setting
+     * `brand_source = 'user'` on every assigned row.
+     *
+     * @return Collection<int, array{id: string, slug: string}>
+     */
+    protected function seedBrands(Company $company): Collection
+    {
+        $now = now();
+        $tenantId = $company->tenant_id;
+
+        // Real French parapharmacy brands, grouped by category hint used for
+        // the assignment heuristic below. `category_hint` mirrors the
+        // ParapharmacyCategory::value that these brands are best known for.
+        $brandData = [
+            // Cosmetic & Skincare
+            ['name' => 'Avène',          'country' => 'FR', 'url' => 'https://www.eau-thermale-avene.fr', 'category_hint' => 'cosmetic'],
+            ['name' => 'La Roche-Posay', 'country' => 'FR', 'url' => 'https://www.laroche-posay.fr',     'category_hint' => 'cosmetic'],
+            ['name' => 'Bioderma',       'country' => 'FR', 'url' => 'https://www.bioderma.fr',           'category_hint' => 'cosmetic'],
+            ['name' => 'Vichy',          'country' => 'FR', 'url' => 'https://www.vichy.fr',              'category_hint' => 'cosmetic'],
+            ['name' => 'CeraVe',         'country' => 'US', 'url' => 'https://www.cerave.fr',             'category_hint' => 'cosmetic'],
+            ['name' => 'Nuxe',           'country' => 'FR', 'url' => 'https://www.nuxe.com',              'category_hint' => 'cosmetic'],
+            ['name' => 'Caudalie',       'country' => 'FR', 'url' => 'https://www.caudalie.com',          'category_hint' => 'cosmetic'],
+            ['name' => 'Uriage',         'country' => 'FR', 'url' => 'https://www.uriage.com',            'category_hint' => 'cosmetic'],
+            ['name' => 'Ducray',         'country' => 'FR', 'url' => 'https://www.ducray.com',            'category_hint' => 'cosmetic'],
+            ['name' => 'A-Derma',        'country' => 'FR', 'url' => 'https://www.a-derma.fr',            'category_hint' => 'cosmetic'],
+            ['name' => 'Klorane',        'country' => 'FR', 'url' => 'https://www.klorane.com',           'category_hint' => 'cosmetic'],
+            ['name' => 'SVR',            'country' => 'FR', 'url' => 'https://www.laboratoiresvr.com',    'category_hint' => 'cosmetic'],
+            ['name' => 'Embryolisse',    'country' => 'FR', 'url' => 'https://www.embryolisse.com',       'category_hint' => 'cosmetic'],
+            // Baby care
+            ['name' => 'Mustela',        'country' => 'FR', 'url' => 'https://www.mustela.com',           'category_hint' => 'baby_care'],
+            ['name' => 'Bébé Cadum',     'country' => 'FR', 'url' => null,                                'category_hint' => 'baby_care'],
+            // Dietary supplements
+            ['name' => 'Pileje',         'country' => 'FR', 'url' => 'https://www.pileje.com',            'category_hint' => 'supplement'],
+            ['name' => 'Nutergia',       'country' => 'FR', 'url' => 'https://www.nutergia.com',          'category_hint' => 'supplement'],
+            ['name' => 'Forté Pharma',   'country' => 'FR', 'url' => 'https://www.fortepharma.com',       'category_hint' => 'supplement'],
+            ['name' => 'Boiron',         'country' => 'FR', 'url' => 'https://www.boiron.fr',             'category_hint' => 'supplement'],
+            // Herbal / phytotherapy
+            ['name' => 'Arkopharma',     'country' => 'FR', 'url' => 'https://www.arkopharma.com',        'category_hint' => 'herbal'],
+            ['name' => 'Weleda',         'country' => 'DE', 'url' => 'https://www.weleda.fr',             'category_hint' => 'herbal'],
+        ];
+
+        // Build flat rows for a single batch insert
+        $rows = [];
+        /** @var array<string, array{id: string, category_hint: string}> */
+        $brandsBySlug = [];
+
+        foreach ($brandData as $data) {
+            $id = Str::uuid()->toString();
+            $slug = Brand::slugFor($data['name']);
+
+            $rows[] = [
+                'id' => $id,
+                'tenant_id' => $tenantId,
+                'name' => $data['name'],
+                'slug' => $slug,
+                'canonical_brand_id' => null,
+                'logo_media_id' => null,
+                'website_url' => $data['url'],
+                'country_of_origin' => $data['country'],
+                'description' => null,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+
+            $brandsBySlug[$slug] = ['id' => $id, 'category_hint' => $data['category_hint']];
+        }
+
+        DB::table('brands')->insert($rows);
+
+        // Assign brands to products by category using round-robin distribution.
+        // Only categories that have matching brands are processed; others are
+        // left with brand_id = null (medical_device, sports_nutrition, etc.).
+        $brandSource = BrandSource::User->value;
+
+        foreach (['cosmetic', 'baby_care', 'supplement', 'herbal'] as $categoryHint) {
+            $categoryBrandIds = array_column(
+                array_filter(
+                    $brandsBySlug,
+                    fn (array $b): bool => $b['category_hint'] === $categoryHint,
+                ),
+                'id',
+            );
+
+            if ($categoryBrandIds === []) {
+                continue;
+            }
+
+            /** @var list<string> $productIds */
+            $productIds = DB::table('parapharmacy_product_metadata')
+                ->join('products', 'products.id', '=', 'parapharmacy_product_metadata.product_id')
+                ->where('products.company_id', $company->id)
+                ->where('parapharmacy_product_metadata.category', $categoryHint)
+                ->pluck('parapharmacy_product_metadata.product_id')
+                ->toArray();
+
+            if ($productIds === []) {
+                continue;
+            }
+
+            // Group product IDs by brand (round-robin), then one UPDATE per brand.
+            $brandCount = count($categoryBrandIds);
+            $groupedByBrand = [];
+
+            foreach ($productIds as $idx => $productId) {
+                $brandId = $categoryBrandIds[$idx % $brandCount];
+                $groupedByBrand[$brandId][] = $productId;
+            }
+
+            foreach ($groupedByBrand as $brandId => $ids) {
+                DB::table('products')
+                    ->whereIn('id', $ids)
+                    ->update([
+                        'brand_id' => $brandId,
+                        'brand_source' => $brandSource,
+                    ]);
+            }
+        }
+
+        /** @var Collection<int, array{id: string, slug: string}> */
+        return collect($rows)->map(fn (array $r): array => ['id' => $r['id'], 'slug' => $r['slug']]);
+    }
+
+    /**
+     * Seed skin suitability mappings for cosmetic/visage products.
+     *
+     * Maps each cosmetic product to 1–3 {@see SkinType} values using a
+     * round-robin heuristic over 6 predefined combinations, then
+     * batch-inserts the rows into `product_skin_suitability`. Rows are
+     * chunked at 150 per insert to stay within SQLite's 999-variable
+     * prepared-statement limit (6 columns × 150 = 900 < 999).
+     *
+     * The unique(product_id, skin_type) constraint is respected because
+     * each combination contains no repeated SkinType values.
+     */
+    protected function seedProductSkinSuitability(Company $company): void
+    {
+        // 6 predefined combinations spanning all 5 SkinType cases.
+        // Round-robin assignment ensures every product gets 1–3 distinct
+        // skin types and the full type space appears in the fixture.
+        /** @var list<list<SkinType>> $combinations */
+        $combinations = [
+            [SkinType::Normal, SkinType::Dry],
+            [SkinType::Sensitive, SkinType::Normal],
+            [SkinType::Oily, SkinType::Combination],
+            [SkinType::Dry, SkinType::Sensitive],
+            [SkinType::Combination, SkinType::Normal, SkinType::Oily],
+            [SkinType::Sensitive, SkinType::Dry, SkinType::Normal],
+        ];
+
+        $tenantId = $company->tenant_id;
+        $now = now();
+        $combinationCount = count($combinations);
+
+        /** @var list<string> $productIds */
+        $productIds = DB::table('parapharmacy_product_metadata')
+            ->join('products', 'products.id', '=', 'parapharmacy_product_metadata.product_id')
+            ->where('products.company_id', $company->id)
+            ->where('parapharmacy_product_metadata.category', ParapharmacyCategory::Cosmetic->value)
+            ->pluck('parapharmacy_product_metadata.product_id')
+            ->toArray();
+
+        if ($productIds === []) {
+            return;
+        }
+
+        $rows = [];
+
+        foreach ($productIds as $idx => $productId) {
+            /** @var list<SkinType> $types */
+            $types = $combinations[$idx % $combinationCount];
+
+            foreach ($types as $skinType) {
+                $rows[] = [
+                    'id' => Str::uuid()->toString(),
+                    'tenant_id' => $tenantId,
+                    'product_id' => $productId,
+                    'skin_type' => $skinType->value,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+        }
+
+        // 6 columns × 150 rows = 900 params — safely under SQLite's 999 limit.
+        foreach (array_chunk($rows, 150) as $chunk) {
+            DB::table('product_skin_suitability')->insert($chunk);
+        }
     }
 
     /**
@@ -1567,6 +1795,408 @@ class ParapharmacySeeder extends Seeder
         ];
 
         return $types[rand(0, count($types) - 1)];
+    }
+
+    /**
+     * Seed French skincare routines and their ordered product memberships.
+     *
+     * Inserts 3 named routines into `routines` and 3–4 ordered step rows per
+     * routine into `product_routine`, picking one cosmetic product per step
+     * from a deterministic dosage-form bucket:
+     *   Gel     → "Nettoyage"
+     *   Liquid  → "Sérum"
+     *   Cream   → "Hydratation intense" / "Protection"
+     *   Lotion  → "Hydratation légère" / "Hydratation"
+     *   Spray   → "Protection solaire"
+     *
+     * The unique(routine_id, product_id) constraint is respected by
+     * construction: every step within a routine draws from a **different**
+     * dosage-form pool, so a product cannot appear twice in the same routine.
+     *
+     * Rows are chunked at 100 (`routines`) and 150 (`product_routine`) to
+     * stay under SQLite's 999-parameter prepared-statement limit.
+     */
+    protected function seedRoutines(Company $company): void
+    {
+        $tenantId = $company->tenant_id;
+        $now = now();
+
+        // ── 1. Resolve one product pool per cosmetic dosage form ───────────
+        // Ordered deterministically (by product_id) so the seeder is stable
+        // across re-runs.  Each pool maps dosage_form_value → [product_id, …].
+        /** @var array<string, list<string>> $byForm */
+        $byForm = [];
+
+        foreach (['gel', 'liquid', 'cream', 'lotion', 'spray'] as $form) {
+            /** @var list<string> $ids */
+            $ids = DB::table('parapharmacy_product_metadata as m')
+                ->join('products as p', 'p.id', '=', 'm.product_id')
+                ->where('p.company_id', $company->id)
+                ->where('m.category', ParapharmacyCategory::Cosmetic->value)
+                ->where('m.dosage_form', $form)
+                ->orderBy('m.product_id')
+                ->pluck('m.product_id')
+                ->toArray();
+
+            $byForm[$form] = $ids;
+        }
+
+        // ── 2. Insert 3 routine header rows ───────────────────────────────
+        /** @var list<array{id: string, tenant_id: string, name: string, description: string, period: string, is_active: bool, created_at: mixed, updated_at: mixed}> $routineRows */
+        $routineRows = [
+            [
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $tenantId,
+                'name' => 'Routine visage — peau sèche',
+                'description' => 'Routine quotidienne adaptée aux peaux sèches et inconfortables.',
+                'period' => 'matin-soir',
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $tenantId,
+                'name' => 'Routine visage — peau grasse',
+                'description' => 'Routine légère pour les peaux grasses et à tendance acnéique.',
+                'period' => 'matin-soir',
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $tenantId,
+                'name' => 'Routine visage — peau sensible',
+                'description' => 'Routine douce pour les peaux réactives et sensibles.',
+                'period' => 'matin-soir',
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+        ];
+
+        // 8 columns × 3 rows = 24 params — well under SQLite's 999 limit.
+        foreach (array_chunk($routineRows, 100) as $chunk) {
+            DB::table('routines')->insert($chunk);
+        }
+
+        // ── 3. Build product_routine membership rows ───────────────────────
+        // Routine 0 "peau sèche"   : 4 steps — gel[0], liquid[0], cream[0], spray[0]
+        // Routine 1 "peau grasse"  : 3 steps — gel[1], liquid[1], lotion[0]
+        // Routine 2 "peau sensible": 4 steps — gel[2], liquid[2], lotion[1], cream[1]
+        //
+        // Each step draws from a DISTINCT dosage-form pool so product_id
+        // never repeats within the same routine.
+
+        /** @var list<array{ri: int, form: string, idx: int, label: string}> $stepDefs */
+        $stepDefs = [
+            // Routine 0 — peau sèche (4 steps)
+            ['ri' => 0, 'form' => 'gel',    'idx' => 0, 'label' => 'Nettoyage'],
+            ['ri' => 0, 'form' => 'liquid', 'idx' => 0, 'label' => 'Sérum actif'],
+            ['ri' => 0, 'form' => 'cream',  'idx' => 0, 'label' => 'Hydratation intense'],
+            ['ri' => 0, 'form' => 'spray',  'idx' => 0, 'label' => 'Protection solaire'],
+            // Routine 1 — peau grasse (3 steps)
+            ['ri' => 1, 'form' => 'gel',    'idx' => 1, 'label' => 'Nettoyage purifiant'],
+            ['ri' => 1, 'form' => 'liquid', 'idx' => 1, 'label' => 'Sérum régulateur'],
+            ['ri' => 1, 'form' => 'lotion', 'idx' => 0, 'label' => 'Hydratation légère'],
+            // Routine 2 — peau sensible (4 steps)
+            ['ri' => 2, 'form' => 'gel',    'idx' => 2, 'label' => 'Nettoyage doux'],
+            ['ri' => 2, 'form' => 'liquid', 'idx' => 2, 'label' => 'Sérum apaisant'],
+            ['ri' => 2, 'form' => 'lotion', 'idx' => 1, 'label' => 'Hydratation'],
+            ['ri' => 2, 'form' => 'cream',  'idx' => 1, 'label' => 'Protection'],
+        ];
+
+        /** @var list<array{id: string, routine_id: string, product_id: string, step_order: int, step_label: string, created_at: mixed, updated_at: mixed}> $memberRows */
+        $memberRows = [];
+
+        /** @var array<int, int> $stepCounters — routine index → next step_order (1-based) */
+        $stepCounters = [];
+
+        foreach ($stepDefs as $def) {
+            $ri = $def['ri'];
+            $pool = $byForm[$def['form']] ?? [];
+
+            // Skip step gracefully when the dosage-form pool is empty; the
+            // remaining steps stay contiguous because we only increment the
+            // counter when we actually write a row.
+            if ($pool === []) {
+                continue;
+            }
+
+            $productId = $pool[$def['idx'] % count($pool)];
+            $routineId = $routineRows[$ri]['id'];
+
+            if (! isset($stepCounters[$ri])) {
+                $stepCounters[$ri] = 1;
+            }
+
+            $memberRows[] = [
+                'id' => Str::uuid()->toString(),
+                'routine_id' => $routineId,
+                'product_id' => $productId,
+                'step_order' => $stepCounters[$ri],
+                'step_label' => $def['label'],
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+
+            $stepCounters[$ri]++;
+        }
+
+        // 6 columns × 150 rows = 900 params — safely under SQLite's 999 limit.
+        foreach (array_chunk($memberRows, 150) as $chunk) {
+            DB::table('product_routine')->insert($chunk);
+        }
+    }
+
+    /**
+     * Seed product equivalents (generic / brand-alt) in both directions.
+     *
+     * Groups products by (category, dosage_form) sub-group and links up to 3
+     * consecutive pairs within each sub-group as equivalents. Every forward
+     * row (A→B) is immediately followed by its reverse (B→A) with the same
+     * `equivalence_type`, satisfying the symmetry invariant.
+     *
+     * Safety guarantees enforced in PHP (the SQLite test DB does not run the
+     * PostgreSQL CHECK constraint):
+     *  - `product_id != equivalent_product_id` (self-ref guard)
+     *  - `unique(product_id, equivalent_product_id)` (dedup via `$seen`)
+     *
+     * Rows are chunked at 100 to stay under SQLite's 999-parameter limit
+     * (8 columns × 100 = 800).
+     */
+    protected function seedProductEquivalents(Company $company): void
+    {
+        $tenantId = $company->tenant_id;
+        $now = now();
+
+        // Pull product IDs ordered deterministically per (category, dosage_form) sub-group.
+        /** @var Collection<string, Collection<int, object{product_id: string}>> $groups */
+        $groups = DB::table('parapharmacy_product_metadata as m')
+            ->join('products as p', 'p.id', '=', 'm.product_id')
+            ->where('p.company_id', $company->id)
+            ->whereNotNull('m.dosage_form')
+            ->select('m.category', 'm.dosage_form', 'm.product_id')
+            ->orderBy('m.product_id')
+            ->get()
+            ->groupBy(fn (object $row): string => $row->category.'|'.$row->dosage_form);
+
+        /** @var list<string> $validTypes */
+        $validTypes = [EquivalenceType::Generic->value, EquivalenceType::BrandAlt->value];
+        $typeIndex = 0;
+
+        /** @var list<array{id: string, tenant_id: string, product_id: string, equivalent_product_id: string, equivalence_type: string, notes: null, created_at: mixed, updated_at: mixed}> $rows */
+        $rows = [];
+
+        /** @var array<string, true> $seen — deduplicate unordered pairs across groups */
+        $seen = [];
+
+        foreach ($groups as $productCollection) {
+            // Limit to 4 candidates per sub-group so the seeder stays lean.
+            /** @var list<string> $ids */
+            $ids = $productCollection->take(4)->pluck('product_id')->toArray();
+
+            if (count($ids) < 2) {
+                continue;
+            }
+
+            $type = $validTypes[$typeIndex % count($validTypes)];
+            $typeIndex++;
+
+            // Consecutive pairs: (0,1), (1,2), (2,3) — at most 3 pairs per sub-group.
+            for ($i = 0, $n = count($ids) - 1; $i < $n; $i++) {
+                $a = $ids[$i];
+                $b = $ids[$i + 1];
+
+                // Self-reference guard (impossible with distinct product IDs, but defensive).
+                if ($a === $b) {
+                    continue;
+                }
+
+                // Dedup across groups: store canonical (min, max) key.
+                $key = ($a < $b) ? $a.'|'.$b : $b.'|'.$a;
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+
+                // Forward direction A → B
+                $rows[] = [
+                    'id' => Str::uuid()->toString(),
+                    'tenant_id' => $tenantId,
+                    'product_id' => $a,
+                    'equivalent_product_id' => $b,
+                    'equivalence_type' => $type,
+                    'notes' => null,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+
+                // Reverse direction B → A (same type — symmetry)
+                $rows[] = [
+                    'id' => Str::uuid()->toString(),
+                    'tenant_id' => $tenantId,
+                    'product_id' => $b,
+                    'equivalent_product_id' => $a,
+                    'equivalence_type' => $type,
+                    'notes' => null,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+        }
+
+        // 8 columns × 100 rows = 800 params — safely under SQLite's 999 limit.
+        foreach (array_chunk($rows, 100) as $chunk) {
+            DB::table('product_equivalents')->insert($chunk);
+        }
+    }
+
+    /**
+     * Seed product complements as cross-category bundles.
+     *
+     * Resolves one representative product per parapharmacy category and creates
+     * directed complement links across pre-defined category pairs (e.g. supplement
+     * paired with cosmetic, herbal paired with supplement, etc.). Every row must
+     * link products from different categories — enforced by construction and
+     * verified by the test.
+     *
+     * Rows are chunked at 140 to stay under SQLite's 999-parameter limit
+     * (7 columns × 140 = 980).
+     */
+    protected function seedProductComplements(Company $company): void
+    {
+        $tenantId = $company->tenant_id;
+        $now = now();
+
+        // One representative product ID per category (lexicographic minimum UUID).
+        /** @var array<string, string> $firstByCategory — category value => product_id */
+        $firstByCategory = DB::table('parapharmacy_product_metadata as m')
+            ->join('products as p', 'p.id', '=', 'm.product_id')
+            ->where('p.company_id', $company->id)
+            ->select('m.category', DB::raw('MIN(m.product_id) as product_id'))
+            ->groupBy('m.category')
+            ->pluck('product_id', 'category')
+            ->all();
+
+        // Cross-category pairs that form clinically meaningful bundles:
+        // supplement + cosmetic (e.g. vitamin D + SPF sunscreen),
+        // herbal + supplement (e.g. echinacea + zinc),
+        // baby_care + supplement (e.g. baby lotion + vitamin D drops),
+        // sports_nutrition + supplement (e.g. creatine + magnesium),
+        // cosmetic + herbal (e.g. face cream + plant extract),
+        // medical_device + supplement (e.g. blood glucose meter + chromium).
+        /** @var list<array{0: string, 1: string}> $pairs */
+        $pairs = [
+            ['supplement', 'cosmetic'],
+            ['herbal', 'supplement'],
+            ['baby_care', 'supplement'],
+            ['sports_nutrition', 'supplement'],
+            ['cosmetic', 'herbal'],
+            ['medical_device', 'supplement'],
+        ];
+
+        /** @var list<array{id: string, tenant_id: string, product_id: string, complement_product_id: string, reason: null, created_at: mixed, updated_at: mixed}> $rows */
+        $rows = [];
+
+        /** @var array<string, true> $seen — dedup unordered pairs */
+        $seen = [];
+
+        foreach ($pairs as [$catA, $catB]) {
+            $a = $firstByCategory[$catA] ?? null;
+            $b = $firstByCategory[$catB] ?? null;
+
+            if ($a === null || $b === null || $a === $b) {
+                continue;
+            }
+
+            $key = ($a < $b) ? $a.'|'.$b : $b.'|'.$a;
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+
+            $rows[] = [
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $tenantId,
+                'product_id' => $a,
+                'complement_product_id' => $b,
+                'reason' => null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        // 7 columns × 140 rows = 980 params — safely under SQLite's 999 limit.
+        foreach (array_chunk($rows, 140) as $chunk) {
+            DB::table('product_complements')->insert($chunk);
+        }
+    }
+
+    /**
+     * Assign a SkinType to every customer-type partner and give ~30% a short
+     * French skin advice note.
+     *
+     * Rounds-robin the 5 SkinType cases across all customer partners (ordered
+     * by id) so the full type space is represented in the fixture, then issues
+     * one UPDATE per skin_type group for efficiency. A second pass sets
+     * `skin_advice_note` for every 3rd customer (≈ 30%).
+     */
+    protected function seedCustomerSkinTypes(Company $company): void
+    {
+        $cases = SkinType::cases();
+        $caseCount = count($cases);
+
+        /** @var array<string, string> $adviceByType */
+        $adviceByType = [
+            SkinType::Normal->value => 'Peau normale : maintenez l\'équilibre avec un soin hydratant léger, matin et soir.',
+            SkinType::Oily->value => 'Peau grasse : privilégiez les soins matifiants et les nettoyants doux sans détergents agressifs.',
+            SkinType::Dry->value => 'Peau sèche : appliquez une crème riche nourrissante après chaque nettoyage pour restaurer la barrière cutanée.',
+            SkinType::Combination->value => 'Peau mixte : utilisez des soins différenciés pour la zone T et les joues, en évitant les formules trop riches.',
+            SkinType::Sensitive->value => 'Peau sensible : choisissez des formules sans parfum ni alcool et testez tout nouveau produit sur une petite zone.',
+        ];
+
+        /** @var list<string> $ids */
+        $ids = DB::table('partners')
+            ->where('company_id', $company->id)
+            ->where('type', 'customer')
+            ->orderBy('id')
+            ->pluck('id')
+            ->toArray();
+
+        if ($ids === []) {
+            return;
+        }
+
+        // Group IDs by skin_type via round-robin; track which also get a note.
+        /** @var array<string, list<string>> $bySkinType */
+        $bySkinType = [];
+        /** @var array<string, list<string>> $noteIds */
+        $noteIds = [];
+
+        foreach ($ids as $idx => $id) {
+            $typeValue = $cases[$idx % $caseCount]->value;
+            $bySkinType[$typeValue][] = $id;
+
+            if ($idx % 10 < 3) {
+                $noteIds[$typeValue][] = $id;
+            }
+        }
+
+        // One UPDATE per skin_type group to set skin_type.
+        foreach ($bySkinType as $typeValue => $groupIds) {
+            DB::table('partners')
+                ->whereIn('id', $groupIds)
+                ->update(['skin_type' => $typeValue]);
+        }
+
+        // One UPDATE per skin_type group to set skin_advice_note (~30%).
+        foreach ($noteIds as $typeValue => $groupIds) {
+            DB::table('partners')
+                ->whereIn('id', $groupIds)
+                ->update(['skin_advice_note' => $adviceByType[$typeValue]]);
+        }
     }
 
     /**

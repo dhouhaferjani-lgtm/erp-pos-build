@@ -1,12 +1,13 @@
-import { memo, useCallback, type KeyboardEvent } from 'react';
+import { memo, useCallback, useRef, type KeyboardEvent } from 'react';
 import { cn } from '@/lib/utils';
 import { tokens } from '@/lib/designTokens';
 import { useCurrency } from '@/lib/currency';
-import { ArrowUpRight, Check, Eye, Package, SlidersHorizontal } from 'lucide-react';
+import { ArrowUpRight, Check, Eye, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useProductImage } from '@/lib/images/useProductImage';
 import { bccomp, bcsum } from '@/lib/decimal';
 import { formatAvailableQty } from '@/lib/stock/stockGate';
+import { ProductThumb, StockBadge } from '@/components/ui';
 import {
   CARD_MIN_H_CLASS_GRID,
   CARD_MIN_H_CLASS_VISUAL,
@@ -122,9 +123,6 @@ function ProductCardInner({
     }
   }
 
-  // In-stock count is data, not a money/sync confirmation → ink-muted, never
-  // green. Low-stock gets a warning dot + warning-strong text (rendered as a
-  // dot + label below). Out-of-stock is a NEUTRAL badge (see JSX), not red.
   const minHClass = displayMode === 'grid' ? CARD_MIN_H_CLASS_GRID : CARD_MIN_H_CLASS_VISUAL;
   const nameMinHClass =
     displayMode === 'grid' ? CARD_NAME_MIN_H_CLASS_GRID : CARD_NAME_MIN_H_CLASS_VISUAL;
@@ -134,8 +132,25 @@ function ProductCardInner({
   // add and surfaces the warning toast.
   const isActivationBlocked = isOutOfStock && hardBlockOutOfStock;
 
+  // Tap-confirm ring pulse — applied via direct DOM manipulation to avoid a
+  // React state update inside event handlers (which triggers act() warnings in
+  // tests). The animation is purely cosmetic; no re-render is needed.
+  const cardRef = useRef<HTMLDivElement>(null);
+
   const activate = useCallback(() => {
-    if (!isActivationBlocked) onAddToCart(product);
+    if (!isActivationBlocked) {
+      if (cardRef.current) {
+        const el = cardRef.current;
+        el.classList.remove('ez-tap');
+        // Force reflow so the animation restarts on rapid taps.
+        void el.offsetWidth;
+        el.classList.add('ez-tap');
+        setTimeout(() => {
+          el.classList.remove('ez-tap');
+        }, 420);
+      }
+      onAddToCart(product);
+    }
   }, [isActivationBlocked, onAddToCart, product]);
 
   const onKeyDown = useCallback(
@@ -148,8 +163,22 @@ function ProductCardInner({
     [activate],
   );
 
+  // Card surface — three visual states:
+  // 1. Out-of-stock (any policy): desaturated/dimmed. Cursor differs by policy.
+  // 2. In-cart: full accent border + accent-tint background.
+  // 3. Default: raised surface, accent border on hover.
+  const cardSurface = isOutOfStock
+    ? cn(
+        'border-subtle bg-surface-sunken text-ink-faint opacity-70',
+        isActivationBlocked ? 'cursor-not-allowed' : 'cursor-pointer',
+      )
+    : isInCart
+      ? 'cursor-pointer border-accent bg-accent-tint shadow-sm'
+      : 'cursor-pointer border-subtle bg-surface-raised hover:border-action hover:shadow-md';
+
   return (
     <div
+      ref={cardRef}
       role="button"
       tabIndex={isActivationBlocked ? -1 : 0}
       aria-disabled={isActivationBlocked}
@@ -161,24 +190,23 @@ function ProductCardInner({
         minHClass,
         'transition-all duration-150 active:scale-[0.95] focus-visible:ring-2 focus-visible:ring-action',
         displayMode === 'visual' ? 'items-center text-center' : 'items-start',
-        // Out-of-stock + hard-blocked: desaturate the whole card (sunken
-        // surface, faint ink) instead of a red treatment — "unavailable", not
-        // "error".
-        isActivationBlocked
-          ? 'cursor-not-allowed border-subtle bg-surface-sunken text-ink-faint opacity-70'
-          : isInCart
-            ? // Selected: full action border + a corner badge (below). No
-              // asymmetric side-stripe.
-              'cursor-pointer border-action bg-surface-raised shadow-sm'
-            : 'cursor-pointer border-subtle bg-surface-raised hover:border-action hover:shadow-md',
+        cardSurface,
       )}
     >
+      {/* 3px top accent bar — visible in the in-cart/selected state */}
+      {isInCart && (
+        <span
+          aria-hidden
+          className="absolute inset-x-0 top-0 h-[3px] rounded-t-xl bg-accent"
+        />
+      )}
+
       {isInCart && (
         <span
           data-testid="in-cart-badge"
           className={cn(
             tokens.badge.neutral,
-            'absolute top-1.5 left-1.5 border-action bg-action-subtle text-action-strong',
+            'absolute top-1.5 left-1.5 border-accent/40 bg-accent-tint text-accent-strong',
           )}
           title={t('products.inCart')}
         >
@@ -231,20 +259,28 @@ function ProductCardInner({
         </div>
       )}
 
+      {/* Visual mode: ProductThumb on top. Compact (grid) mode: no thumb. */}
       {displayMode === 'visual' && (
         <div className="mb-3 shrink-0">
-          {imageSrc ? (
-            <img
-              src={imageSrc}
-              alt=""
-              className="h-20 w-20 rounded-xl object-cover"
-            />
-          ) : (
-            <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-surface-sunken">
-              <Package className="h-8 w-8 text-ink-faint" />
-            </div>
-          )}
+          <ProductThumb
+            name={product.name}
+            category={product.category}
+            imageUrl={imageSrc}
+            size={88}
+          />
         </div>
+      )}
+
+      {/* Brand name in caps — rendered only when present. */}
+      {product.brand_name && (
+        <p
+          className={cn(
+            'w-full text-xs font-semibold tracking-widest uppercase',
+            isOutOfStock ? 'text-ink-faint' : 'text-ink-muted',
+          )}
+        >
+          {product.brand_name}
+        </p>
       )}
 
       <h3
@@ -255,7 +291,7 @@ function ProductCardInner({
           // never leak a sliced third line nor push the price/stock rows up.
           'w-full line-clamp-2 overflow-hidden font-semibold',
           nameMinHClass,
-          isActivationBlocked ? 'text-ink-faint' : 'text-ink',
+          isOutOfStock ? 'text-ink-faint' : 'text-ink',
           displayMode === 'visual' ? 'text-sm' : 'text-base',
         )}
       >
@@ -265,33 +301,22 @@ function ProductCardInner({
       <p
         data-testid="price-row"
         className={cn(
-          'shrink-0 pt-2 text-lg font-bold tabular-nums',
-          isActivationBlocked ? 'text-ink-faint' : 'text-ink',
+          'shrink-0 pt-2 text-lg font-mono tabular-nums',
+          isOutOfStock ? 'text-ink-faint' : 'text-ink',
         )}
       >
         {format(product.sale_price ?? '0')}
       </p>
 
+      {/* StockBadge replaces the inline stock label — stock-* token family. */}
       {stockLabel !== null && (
-        <p
+        <StockBadge
           data-testid="stock-row"
-          className={cn(
-            'shrink-0 mt-1 inline-flex items-center gap-1 text-xs',
-            isOutOfStock
-              ? 'font-medium text-ink-muted'
-              : isLowStock
-                ? 'font-medium text-warning-strong'
-                : 'text-ink-muted',
-          )}
+          status={isOutOfStock ? 'out' : isLowStock ? 'low' : 'ok'}
+          className="shrink-0 mt-1"
         >
-          {isLowStock && (
-            <span
-              aria-hidden="true"
-              className="inline-block h-1.5 w-1.5 rounded-full bg-warning"
-            />
-          )}
           {stockLabel}
-        </p>
+        </StockBadge>
       )}
 
       {incomingTotal !== null && (
