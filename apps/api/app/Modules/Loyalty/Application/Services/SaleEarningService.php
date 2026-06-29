@@ -103,5 +103,4 @@ final readonly class SaleEarningService implements LoyaltyEarningContract
             }
         }
     }
-
 }
