@@ -17,7 +17,7 @@ final class RestockPolicyResolver
     public function resolve(string $productId): EffectiveRestockPolicy
     {
         /** @var Product|null $product */
-        $product = Product::query()->with('category')->find($productId);
+        $product = Product::query()->with(['category', 'company'])->find($productId);
 
         if ($product?->restock_policy instanceof RestockPolicy) {
             return new EffectiveRestockPolicy($product->restock_policy, RestockPolicySource::Product, null);
@@ -29,7 +29,8 @@ final class RestockPolicyResolver
             }
         }
 
-        $companyDefault = $product?->company?->reservation_settings['default_restock_policy'] ?? null;
+        $settings = $product?->company?->reservation_settings;
+        $companyDefault = is_array($settings) ? ($settings['default_restock_policy'] ?? null) : null;
         if (is_string($companyDefault) && ($policy = RestockPolicy::tryFrom($companyDefault)) !== null) {
             return new EffectiveRestockPolicy($policy, RestockPolicySource::Company, null);
         }
@@ -47,8 +48,13 @@ final class RestockPolicyResolver
 
         $chain = [$category];
         $cursor = $category;
+        $seen = [$category->id];
         // Walk parent_id to the root (self-referencing tree).
         while (($cursor = $cursor->parent) !== null) {
+            if (isset($seen[$cursor->id])) {
+                break; // Cycle detected
+            }
+            $seen[$cursor->id] = true;
             $chain[] = $cursor;
         }
 
