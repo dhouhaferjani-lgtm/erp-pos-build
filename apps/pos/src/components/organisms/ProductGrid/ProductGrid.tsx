@@ -3,25 +3,24 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { cn } from '@/lib/utils';
-import { Search, X, Package, LayoutGrid, Image, TrendingUp } from 'lucide-react';
-import { Button, SegmentedControl } from '@/components/ui';
+import { Search, X, Package, LayoutGrid, Image, TrendingUp, SlidersHorizontal } from 'lucide-react';
+import { Button, Pill, SegmentedControl } from '@/components/ui';
 import type { SegmentedOption } from '@/components/ui';
 import { ProductCard } from '@/components/molecules/ProductCard';
 import type { POSProduct } from '@/types/product';
 import type { GridLocationStockMap } from '@/lib/stock/gridStock';
 import { useAuthStore } from '@/stores/authStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { useMostSoldCounts } from '@/hooks/useMostSoldCounts';
 import { bccomp } from '@/lib/decimal';
 import {
-  CARD_MIN_H_GRID,
-  CARD_MIN_H_VISUAL,
   GAP,
+  getColumns,
+  getCardMinH,
 } from '@/components/molecules/ProductCard/cardSizing';
 
 type DisplayMode = 'grid' | 'visual';
 type SortMode = 'default' | 'mostSold';
-
-const DISPLAY_MODE_STORAGE_KEY = 'pos-display-mode';
 
 /**
  * Stable default for the `locationStock` prop — an inline `{}` default would
@@ -29,12 +28,6 @@ const DISPLAY_MODE_STORAGE_KEY = 'pos-display-mode';
  * memo (which depends on it) on each pass.
  */
 const EMPTY_LOCATION_STOCK: GridLocationStockMap = {};
-
-function getStoredDisplayMode(): DisplayMode {
-  const stored = localStorage.getItem(DISPLAY_MODE_STORAGE_KEY);
-  if (stored === 'grid' || stored === 'visual') return stored;
-  return 'grid';
-}
 
 export interface ProductGridProps {
   products: POSProduct[];
@@ -56,25 +49,6 @@ export interface ProductGridProps {
   onViewDetails?: (product: POSProduct) => void;
 }
 
-/** Column counts per display mode. */
-function getColumns(displayMode: DisplayMode): number {
-  // Match the original CSS grid classes:
-  // grid mode:   grid-cols-3 sm:grid-cols-4 lg:grid-cols-5
-  // visual mode: grid-cols-2 sm:grid-cols-3 lg:grid-cols-4
-  // We use a sensible default that works for typical POS screens (>= lg).
-  if (typeof window === 'undefined') return displayMode === 'grid' ? 5 : 4;
-  const w = window.innerWidth;
-  if (displayMode === 'grid') {
-    if (w >= 1024) return 5;
-    if (w >= 640) return 4;
-    return 3;
-  }
-  // visual
-  if (w >= 1024) return 4;
-  if (w >= 640) return 3;
-  return 2;
-}
-
 export function ProductGrid({
   products,
   categories,
@@ -88,9 +62,17 @@ export function ProductGrid({
   onViewDetails,
 }: ProductGridProps) {
   const { t } = useTranslation('pos');
+
+  // ---------------------------------------------------------------------------
+  // settingsStore — single source of truth for displayMode and density
+  // (Task 25: replaced localStorage dual-source with store subscription)
+  // ---------------------------------------------------------------------------
+  const displayMode = useSettingsStore((s) => s.displayMode);
+  const density = useSettingsStore((s) => s.density);
+  const setDisplayMode = useSettingsStore((s) => s.setDisplayMode);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [displayMode, setDisplayMode] = useState<DisplayMode>(getStoredDisplayMode);
   const [inStockOnly, setInStockOnly] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('default');
 
@@ -104,10 +86,28 @@ export function ProductGrid({
 
   const allCategoriesLabel = t('products.allCategories');
 
-  const handleDisplayModeChange = useCallback((mode: DisplayMode) => {
-    setDisplayMode(mode);
-    localStorage.setItem(DISPLAY_MODE_STORAGE_KEY, mode);
-  }, []);
+  // ---------------------------------------------------------------------------
+  // Density-aware column count — recomputed on displayMode / density change and
+  // on window resize so the virtualizer row math stays correct.
+  // ---------------------------------------------------------------------------
+  const [columns, setColumns] = useState<number>(() =>
+    getColumns(displayMode, density, typeof window !== 'undefined' ? window.innerWidth : 1280),
+  );
+
+  useEffect(() => {
+    const update = () =>
+      setColumns(getColumns(displayMode, density, typeof window !== 'undefined' ? window.innerWidth : 1280));
+    update();
+    window.addEventListener('resize', update, { passive: true });
+    return () => window.removeEventListener('resize', update);
+  }, [displayMode, density]);
+
+  const handleDisplayModeChange = useCallback(
+    (mode: DisplayMode) => {
+      setDisplayMode(mode);
+    },
+    [setDisplayMode],
+  );
 
   const displayModeOptions = useMemo<SegmentedOption<DisplayMode>[]>(
     () => [
@@ -224,9 +224,14 @@ export function ProductGrid({
     return filtered;
   }, [sortedProducts, selectedCategory, searchQuery, inStockOnly, locationStock]);
 
-  const columns = useMemo(() => getColumns(displayMode), [displayMode]);
+  // ---------------------------------------------------------------------------
+  // Active filter count — used for the Filtres badge.
+  // Counts drawer-style filters (inStockOnly); category is shown in the Pill row.
+  // ---------------------------------------------------------------------------
+  const activeFilterCount = inStockOnly ? 1 : 0;
+
+  const rowHeight = getCardMinH(displayMode, density);
   const rowCount = Math.ceil(filteredProducts.length / columns);
-  const rowHeight = displayMode === 'grid' ? CARD_MIN_H_GRID : CARD_MIN_H_VISUAL;
 
   const virtualizer = useVirtualizer({
     count: rowCount,
@@ -335,7 +340,9 @@ export function ProductGrid({
 
   return (
     <div className="flex h-full flex-col gap-2">
-      {/* Search bar + sort toggle + display mode toggle — one control voice */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Toolbar: search · Filtres · Top ventes · view toggle               */}
+      {/* ------------------------------------------------------------------ */}
       <div className="flex items-center gap-2">
         {consumptionModeToggle}
         <div className="relative min-w-0 flex-1">
@@ -357,6 +364,22 @@ export function ProductGrid({
             </button>
           )}
         </div>
+
+        {/* Filtres — placeholder button; drawer is a later task (Task 26+).
+            Badge shows the count of active drawer-style filters.             */}
+        <Button
+          variant="secondary"
+          size="md"
+          leftIcon={<SlidersHorizontal className="h-5 w-5" />}
+          aria-label={t('products.filters')}
+        >
+          {t('products.filters')}
+          {activeFilterCount > 0 && (
+            <span className="ml-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-action text-xs font-semibold text-ink-inverse">
+              {activeFilterCount}
+            </span>
+          )}
+        </Button>
 
         {/* Most-sold sort toggle — secondary Button atom; active/pressed state
             signalled by a soft action-subtle fill, not a saturated block. */}
@@ -384,61 +407,50 @@ export function ProductGrid({
         />
       </div>
 
-      {/* Category tabs + In Stock filter */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Category Pill row + In Stock toggle                                 */}
+      {/* ------------------------------------------------------------------ */}
       {categories.length > 0 && (
         <div className="scrollbar-none flex items-center gap-2 overflow-x-auto pb-1">
-          <button
+          <Pill
+            selected={selectedCategory === null}
             onClick={() => setSelectedCategory(null)}
-            className={cn(
-              'whitespace-nowrap rounded-full px-5 py-3 text-base font-medium transition-colors',
-              'min-h-[48px]',
-              selectedCategory === null
-                ? 'bg-action text-ink-inverse'
-                : 'bg-surface-sunken text-ink-muted hover:bg-surface-canvas',
-            )}
           >
             {allCategoriesLabel}
             <span className="ml-1.5 text-xs opacity-70">({products.length})</span>
-          </button>
+          </Pill>
+
           {categories.map((category) => (
-            <button
+            <Pill
               key={category}
+              selected={selectedCategory === category}
               onClick={() => setSelectedCategory(category)}
-              className={cn(
-                'whitespace-nowrap rounded-full px-5 py-3 text-base font-medium transition-colors',
-                'min-h-[48px]',
-                selectedCategory === category
-                  ? 'bg-action text-ink-inverse'
-                  : 'bg-surface-sunken text-ink-muted hover:bg-surface-canvas',
-              )}
             >
               {category}
               {categoryCounts[category] !== undefined && (
                 <span className="ml-1.5 text-xs opacity-70">({categoryCounts[category]})</span>
               )}
-            </button>
+            </Pill>
           ))}
 
-          {/* In Stock Only toggle — a filter (interactive), so it adopts the
-              action color when active, NOT success-green (green is reserved
-              for confirmed money/sync events). */}
-          <button
+          {/* In Stock Only — currently in the Pill row; will migrate to the
+              Filtres drawer in a later task. Contributes to activeFilterCount. */}
+          <Pill
+            selected={inStockOnly}
             onClick={() => setInStockOnly((prev) => !prev)}
-            className={cn(
-              'ml-auto whitespace-nowrap rounded-full px-5 py-3 text-base font-medium transition-colors',
-              'min-h-[48px]',
-              inStockOnly
-                ? 'bg-action text-ink-inverse'
-                : 'bg-surface-sunken text-ink-muted hover:bg-surface-canvas',
-            )}
-            aria-pressed={inStockOnly}
+            className="ml-auto"
           >
             {t('display.inStockOnly')}
-          </button>
+          </Pill>
         </div>
       )}
 
-      {/* Virtualized product grid */}
+      {/* Placeholder slot for active filter-chip row (Task 26+) */}
+      {/* data-testid="filter-chip-row" reserved for the next task */}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Virtualized product grid                                            */}
+      {/* ------------------------------------------------------------------ */}
       {filteredProducts.length === 0 ? (
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center">
@@ -466,13 +478,11 @@ export function ProductGrid({
               return (
                 <div
                   key={virtualRow.key}
-                  className={cn(
-                    'absolute left-0 top-0 grid w-full gap-3',
-                    displayMode === 'grid'
-                      ? 'grid-cols-3 sm:grid-cols-4 lg:grid-cols-5'
-                      : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4',
-                  )}
+                  className="absolute left-0 top-0 grid w-full gap-3"
                   style={{
+                    // gridTemplateColumns is computed from JS (density-aware),
+                    // replacing the old responsive Tailwind grid-cols-* classes.
+                    gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
                     height: `${virtualRow.size}px`,
                     // Pin the single grid track to exactly rowHeight so the
                     // leftover space below each card equals GAP (12px) — the

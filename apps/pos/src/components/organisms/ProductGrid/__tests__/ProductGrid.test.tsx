@@ -6,6 +6,26 @@ import { ProductGrid, type ProductGridProps } from '../ProductGrid';
 import { makeProduct } from '@/test/helpers';
 import type { POSProduct } from '@/types/product';
 
+// ---------------------------------------------------------------------------
+// settingsStore mock — hoisted so vi.mock factory can reference it.
+// Each test that cares about displayMode/density mutates settingsStoreMock.state
+// directly; a beforeEach resets it to safe defaults (grid + comfortable).
+// ---------------------------------------------------------------------------
+const settingsStoreMock = vi.hoisted(() => ({
+  state: {
+    displayMode: 'grid' as 'grid' | 'visual',
+    density: 'comfortable' as 'comfortable' | 'dense',
+    setDisplayMode: vi.fn(),
+  },
+}));
+
+vi.mock('@/stores/settingsStore', () => ({
+  useSettingsStore: vi.fn(
+    <T,>(selector: (s: typeof settingsStoreMock.state) => T): T =>
+      selector(settingsStoreMock.state),
+  ),
+}));
+
 // Mock localStorage for ProductGrid's display mode storage
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
@@ -102,6 +122,10 @@ describe('ProductGrid', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
+    // Reset store mock to safe defaults.
+    settingsStoreMock.state.displayMode = 'grid';
+    settingsStoreMock.state.density = 'comfortable';
+    settingsStoreMock.state.setDisplayMode = vi.fn();
     // Restore default t() behaviour (key-passthrough) after vi.clearAllMocks.
     mockT.mockImplementation((key: string) => key);
   });
@@ -516,5 +540,73 @@ describe('ProductGrid — T2.1 Step C filter-state guards', () => {
     );
 
     expect(virtualizerSpies.scrollToIndex).toHaveBeenCalledWith(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 25 — settingsStore is the single source of truth for displayMode
+// ---------------------------------------------------------------------------
+
+describe('ProductGrid — Task 25 settingsStore dual-source reconcile', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+    settingsStoreMock.state.displayMode = 'grid';
+    settingsStoreMock.state.density = 'comfortable';
+    settingsStoreMock.state.setDisplayMode = vi.fn();
+    mockT.mockImplementation((key: string) => {
+      const map: Record<string, string> = {
+        'products.allCategories': 'All',
+        'products.searchPlaceholder': 'Search',
+        'products.clearSearch': 'Clear search',
+        'display.gridMode': 'Grid',
+        'display.visualMode': 'Visual',
+        'display.mode': 'Display mode',
+        'products.sortByMostSold': 'Sort by most sold',
+        'display.inStockOnly': 'In stock only',
+        'products.filters': 'Filtres',
+      };
+      return map[key] ?? key;
+    });
+  });
+
+  function renderGrid(extra?: Partial<ProductGridProps>) {
+    const defaults: ProductGridProps = {
+      products: [
+        makeProduct({ id: 'p1', name: 'Alpha', sku: 'A1', sale_price: '10.000', stock_quantity: 5 }),
+        makeProduct({ id: 'p2', name: 'Beta', sku: 'B1', sale_price: '20.000', stock_quantity: 5 }),
+      ],
+      categories: [],
+      onAddToCart: vi.fn(),
+      cartProductIds: [],
+    };
+    return render(<ProductGrid {...defaults} {...extra} />);
+  }
+
+  it('reads displayMode from settingsStore — visual mode is reflected in the view toggle even when localStorage says grid', () => {
+    // localStorage would have driven 'grid' in the old dual-source
+    localStorageMock.setItem('pos-display-mode', 'grid');
+    // Store says 'visual'
+    settingsStoreMock.state.displayMode = 'visual';
+
+    renderGrid();
+
+    // SegmentedControl renders role="radio" buttons with aria-checked
+    const visualRadio = screen.getByRole('radio', { name: 'Visual' });
+    expect(visualRadio).toHaveAttribute('aria-checked', 'true');
+
+    const gridRadio = screen.getByRole('radio', { name: 'Grid' });
+    expect(gridRadio).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('clicking the view toggle calls settingsStore.setDisplayMode, not localStorage', () => {
+    settingsStoreMock.state.displayMode = 'grid';
+    renderGrid();
+
+    const visualRadio = screen.getByRole('radio', { name: 'Visual' });
+    fireEvent.click(visualRadio);
+
+    // The store setter must have been called
+    expect(settingsStoreMock.state.setDisplayMode).toHaveBeenCalledWith('visual');
   });
 });

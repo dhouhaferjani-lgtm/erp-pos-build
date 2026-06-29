@@ -39,7 +39,8 @@
     "sortByMostSold": "Trier par plus vendus",
     "sortDefault": "Ordre par défaut",
     "favorites": "Favoris",
-    "viewDetails": "Voir les détails"
+    "viewDetails": "Voir les détails",
+    "filters": "Filtres"
   },
   "payment": {
     "success": "Paiement réussi !",
