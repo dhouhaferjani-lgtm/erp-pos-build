@@ -112,6 +112,50 @@ final class PosLoyaltyBalanceTest extends TestCase
             ->assertOk()->assertJsonPath('data.enrolled', false);
     }
 
+    public function test_phone_match_repoints_member_to_attaching_customer(): void
+    {
+        $this->activeProgram('2');
+
+        // A different partner — the one the phone-matched member currently points at.
+        $other = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => 'customer',
+        ]);
+        // The attaching customer (partner A).
+        $partnerA = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => 'customer',
+        ]);
+
+        // Seed a member with phone P pointing at $other (not $partnerA).
+        LoyaltyMember::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'loyaltyable_type' => 'partner',
+            'loyaltyable_id' => (string) $other->id,
+            'customer_id' => (string) $other->id,
+            'phone' => '+21699000001',
+        ]);
+
+        $partnerId = (string) $partnerA->id;
+
+        $res = $this->postJson('/api/v1/loyalty/pos/balance', [
+            'partner_id' => $partnerId,
+            'phone' => '+21699000001',
+            'name' => 'Rim',
+        ]);
+
+        $res->assertOk()->assertJsonPath('data.enrolled', true);
+
+        // The member must now point at $partnerA so MemberResolver / SaleEarningService resolve correctly.
+        $this->assertDatabaseHas('loyalty_members', [
+            'tenant_id' => $this->tenant->id,
+            'loyaltyable_id' => $partnerId,
+            'customer_id' => $partnerId,
+        ]);
+    }
+
     public function test_403_when_loyalty_module_disabled(): void
     {
         $t = Tenant::factory()->create(['enabled_extras' => []]);

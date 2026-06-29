@@ -31,4 +31,10 @@ describe('CustomerLoyaltyBadge', () => {
     render(<CustomerLoyaltyBadge customer={synced} />)
     expect(screen.queryByTestId('loyalty-chrome')).toBeNull()
   })
+
+  it('renders nothing when not enrolled and rate is null (no active program)', () => {
+    balance.current = { enrolled: false, balance: '0.000', tier: null, rate: null }
+    render(<CustomerLoyaltyBadge customer={synced} />)
+    expect(screen.queryByTestId('loyalty-chrome')).toBeNull()
+  })
 })

@@ -106,6 +106,11 @@ final readonly class PosLoyaltyBalanceService
             if ($existing->trashed()) {
                 $existing->restore();
             }
+            [$type, $id] = $contactId !== null ? ['contact', $contactId] : ['partner', $partnerId];
+            $existing->loyaltyable_type = $type;
+            $existing->loyaltyable_id = $id;
+            $existing->customer_id = $partnerId;
+            $existing->save();
 
             return $existing;
         }

@@ -18,6 +18,9 @@ export function CustomerLoyaltyBadge({ customer }: Props): ReactElement | null {
   const rate = balance.rate
   const estimate = rate !== null ? Math.floor(total * Number(rate)) : null
 
+  // Nothing to show when not enrolled and there is no rate (no active program estimate).
+  if (!balance.enrolled && estimate === null) return null
+
   return (
     <div data-testid="loyalty-chrome" className="flex flex-wrap items-center gap-1">
       {balance.enrolled && (
