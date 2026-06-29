@@ -585,7 +585,7 @@ export function Header() {
             <button
               type="button"
               onClick={() => setShowEndOfDay(true)}
-              className="rounded-full"
+              className="flex min-h-12 items-center rounded-full px-1 transition-colors hover:bg-surface-sunken"
               title={t('shift.opening', { amount: shift.opening_cash })}
             >
               <Badge tone="success">{t('shift.number', { number: shift.shift_number })}</Badge>

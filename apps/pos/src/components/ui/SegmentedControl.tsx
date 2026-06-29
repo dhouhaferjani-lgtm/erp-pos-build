@@ -32,7 +32,7 @@ export function SegmentedControl<T extends string>({
   className,
   ariaLabel,
 }: SegmentedControlProps<T>) {
-  const segHeight = size === 'sm' ? 'min-h-9' : 'min-h-11';
+  const segHeight = size === 'sm' ? 'min-h-9' : 'min-h-12';
   return (
     <div
       role="radiogroup"

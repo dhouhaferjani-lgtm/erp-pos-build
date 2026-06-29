@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield, RefreshCw, LogOut, Sun, Moon, Trash2 } from 'lucide-react';
+import { Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield, RefreshCw, LogOut, Sun, Moon, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { tokens } from '@/lib/designTokens';
 import { SegmentedControl } from '@/components/ui';
@@ -16,6 +16,7 @@ import { Modal } from '@/components/pos/Modal';
 import { teardownPosSessionStores } from '@/lib/session/teardownPosSession';
 import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
 import { isManagerRole } from '@/lib/auth/roles';
+import { PageHeader } from '@/components/PageHeader';
 import {
   discoverPrinters,
   printTestPage,
@@ -167,26 +168,66 @@ export function SettingsPage() {
     }
   }, [printerConfig, t]);
 
+  // Section navigation (owner: use the full width + a way to move between
+  // sections). Sticky left nav scrolls to / highlights each section.
+  const [activeSection, setActiveSection] = useState('display');
+  const sections = [
+    { id: 'display', labelKey: 'settings.display' },
+    { id: 'appearance', labelKey: 'settings.appearance' },
+    { id: 'touch', labelKey: 'settings.touchDisplay' },
+    { id: 'security', labelKey: 'settings.security' },
+    { id: 'printer', labelKey: 'settings.printer' },
+    { id: 'kitchen', labelKey: 'settings.kitchenPrinter' },
+    { id: 'terminal', labelKey: 'settings.terminal' },
+    ...(isManager ? [{ id: 'device-security', labelKey: 'settings.deviceSecurity' }] : []),
+    { id: 'about', labelKey: 'settings.about' },
+  ];
+  const scrollToSection = (id: string) => {
+    setActiveSection(id);
+    document
+      .getElementById(`settings-${id}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <div className="flex h-full flex-col bg-surface-canvas">
-      {/* Header */}
-      <div className="border-b border-border-subtle bg-surface-raised">
-        <div className="mx-auto flex w-full max-w-lg items-center gap-3 px-4 py-3">
-          <button
-            onClick={() => navigate('/')}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-ink-muted hover:bg-surface-sunken"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <h1 className="text-xl font-bold text-ink">{t('settings.title')}</h1>
-        </div>
-      </div>
+      <PageHeader
+        title={t('settings.title')}
+        onBack={() => navigate('/')}
+        backLabel={t('common:back')}
+      />
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-12">
-        <div className="mx-auto max-w-lg space-y-6">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Section nav — sticky left rail */}
+        <nav
+          aria-label={t('settings.title')}
+          className="hidden w-56 shrink-0 overflow-y-auto border-r border-border-subtle bg-surface-raised p-3 lg:block"
+        >
+          <ul className="space-y-1">
+            {sections.map((s) => (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  onClick={() => scrollToSection(s.id)}
+                  className={cn(
+                    'flex min-h-12 w-full items-center rounded-lg px-3 text-left text-sm font-medium transition-colors',
+                    activeSection === s.id
+                      ? 'bg-accent-tint text-accent-strong'
+                      : 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
+                  )}
+                >
+                  {t(s.labelKey)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        {/* Content */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-12">
+          <div className="mx-auto max-w-3xl space-y-6">
           {/* Display Preferences */}
-          <section className="rounded-xl bg-surface-raised p-4 shadow-sm">
+          <section id="settings-display" className="scroll-mt-4 rounded-xl bg-surface-raised p-4 shadow-sm">
             <h2 className="mb-4 text-base font-bold text-ink">
               {t('settings.display')}
             </h2>
@@ -250,7 +291,7 @@ export function SettingsPage() {
           </section>
 
           {/* Appearance — theme foundation knobs */}
-          <section className="rounded-xl bg-surface-raised p-4 shadow-sm">
+          <section id="settings-appearance" className="rounded-xl bg-surface-raised p-4 shadow-sm">
             <h2 className="mb-1 text-base font-bold text-ink">
               {t('settings.appearance')}
             </h2>
@@ -338,7 +379,7 @@ export function SettingsPage() {
           </section>
 
           {/* Touch & Display */}
-          <section className="rounded-xl bg-surface-raised p-4 shadow-sm">
+          <section id="settings-touch" className="rounded-xl bg-surface-raised p-4 shadow-sm">
             <h2 className="mb-4 text-base font-bold text-ink">
               {t('settings.touchDisplay')}
             </h2>
@@ -436,7 +477,7 @@ export function SettingsPage() {
           </section>
 
           {/* Security */}
-          <section className="rounded-xl bg-surface-raised p-4 shadow-sm">
+          <section id="settings-security" className="rounded-xl bg-surface-raised p-4 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
               <Shield className="h-5 w-5 text-ink-muted" />
               <h2 className="text-base font-bold text-ink">
@@ -490,7 +531,7 @@ export function SettingsPage() {
           </section>
 
           {/* Receipt Printer */}
-          <section className="rounded-xl bg-surface-raised p-4 shadow-sm">
+          <section id="settings-printer" className="rounded-xl bg-surface-raised p-4 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
               <Printer className="h-5 w-5 text-ink-muted" />
               <h2 className="text-base font-bold text-ink">
@@ -652,7 +693,7 @@ export function SettingsPage() {
           <ScannerSettings />
 
           {/* Kitchen Printer (coming soon) */}
-          <section className="rounded-xl bg-surface-raised p-4 shadow-sm">
+          <section id="settings-kitchen" className="rounded-xl bg-surface-raised p-4 shadow-sm">
             <h2 className="mb-4 text-base font-bold text-ink">
               {t('settings.kitchenPrinter')}
             </h2>
@@ -663,7 +704,7 @@ export function SettingsPage() {
           </section>
 
           {/* Terminal Info */}
-          <section className="rounded-xl bg-surface-raised p-4 shadow-sm">
+          <section id="settings-terminal" className="rounded-xl bg-surface-raised p-4 shadow-sm">
             <h2 className="mb-4 text-base font-bold text-ink">
               {t('settings.terminal')}
             </h2>
@@ -693,7 +734,7 @@ export function SettingsPage() {
 
           {/* Device & Security — manager only */}
           {isManager && (
-            <section data-testid="device-security-section" className="rounded-xl bg-surface-raised p-4 shadow-sm">
+            <section id="settings-device-security" data-testid="device-security-section" className="rounded-xl bg-surface-raised p-4 shadow-sm">
               <h2 className="mb-4 text-base font-bold text-ink">{t('settings.deviceSecurity')}</h2>
               {terminal && (
                 <div className="mb-3">
@@ -737,7 +778,7 @@ export function SettingsPage() {
           )}
 
           {/* About */}
-          <section className="rounded-xl bg-surface-raised p-4 shadow-sm">
+          <section id="settings-about" className="rounded-xl bg-surface-raised p-4 shadow-sm">
             <h2 className="mb-4 text-base font-bold text-ink">
               {t('settings.about')}
             </h2>
@@ -760,14 +801,7 @@ export function SettingsPage() {
               </div>
             </div>
           </section>
-
-          {/* Back button */}
-          <button
-            onClick={() => navigate('/')}
-            className={cn(tokens.button.secondary, 'w-full py-3 text-sm')}
-          >
-            {t('settings.back')}
-          </button>
+          </div>
         </div>
       </div>
 

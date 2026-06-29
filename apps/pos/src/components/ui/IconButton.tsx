@@ -7,7 +7,8 @@ import type { ButtonVariant } from './Button';
  * IconButton — square, icon-only button. Same variant grammar as Button, but
  * a fixed square footprint with an enforced accessible name.
  *
- * Sizes are touch-first: md = 44px, lg = 56px. (sm = 36px desktop-dense.)
+ * Sizes are touch-first: md = 48px (the §6 touch floor — default), lg = 56px.
+ * (sm = 36px is desktop-dense only; never use it for a touchscreen control.)
  */
 export type IconButtonSize = 'sm' | 'md' | 'lg';
 
@@ -16,14 +17,19 @@ const VARIANT: Record<ButtonVariant, string> = {
   confirm: 'bg-success text-ink-inverse hover:bg-success-hover active:bg-success-hover',
   secondary:
     'border border-border-subtle bg-surface-raised text-ink hover:bg-surface-sunken active:bg-surface-sunken',
-  ghost: 'text-ink-muted hover:bg-surface-sunken hover:text-ink active:bg-surface-sunken',
+  // Touchscreen has no hover: a transparent-at-rest control gives no "tappable"
+  // signal. ghost/destructive therefore carry a PERSISTENT filled surface (NN/g
+  // "make clickable elements obvious"; kiosk UX: affordance must be visible at
+  // rest, not hover-only).
+  ghost: 'bg-surface-sunken text-ink hover:bg-border-subtle active:bg-border-subtle',
   destructive:
-    'text-danger-strong hover:bg-danger-surface active:bg-danger-surface',
+    'bg-danger-surface text-danger-strong hover:opacity-90 active:opacity-80',
 };
 
 const SIZE: Record<IconButtonSize, string> = {
   sm: 'h-9 w-9',
-  md: 'h-11 w-11',
+  // md is the touchscreen default — 48px, the §6 touch floor (was 44px).
+  md: 'h-12 w-12',
   lg: 'h-14 w-14',
 };
 

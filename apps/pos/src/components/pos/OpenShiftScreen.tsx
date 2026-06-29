@@ -73,7 +73,7 @@ export function OpenShiftScreen({ terminalName, isLoading, error, onOpenShift }:
           data-testid="open-shift-submit"
           onClick={handleSubmit}
           disabled={isLoading}
-          className="mt-4 w-full rounded-md bg-action px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-action-hover disabled:opacity-50"
+          className="flex min-h-[48px] items-center justify-center mt-4 w-full rounded-md bg-action px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-action-hover disabled:opacity-50"
         >
           {isLoading ? t('shift.openingLoading') : t('shift.openingButton')}
         </button>

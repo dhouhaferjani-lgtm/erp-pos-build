@@ -303,7 +303,7 @@ export function RefundConfirmModal({
               onClick={handleClose}
               disabled={isSubmitting}
               data-testid="refund-confirm-cancel"
-              className="flex-1 rounded-md border border-border-strong py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
+              className="flex min-h-[48px] items-center justify-center flex-1 rounded-md border border-border-strong py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
             >
               {t('refundFlow.confirm.cancel', { defaultValue: 'Cancel' })}
             </button>
@@ -312,7 +312,7 @@ export function RefundConfirmModal({
               onClick={() => void submitRefund(authorizedManagerId ?? undefined)}
               disabled={isSubmitting}
               data-testid="refund-confirm-submit"
-              className="flex-1 rounded-md bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover disabled:opacity-50"
+              className="flex min-h-[48px] items-center justify-center flex-1 rounded-md bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover disabled:opacity-50"
             >
               {isSubmitting
                 ? t('refundFlow.confirm.submitting', { defaultValue: 'Processing…' })

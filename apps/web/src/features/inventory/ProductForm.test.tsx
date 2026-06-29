@@ -165,6 +165,8 @@ describe('ProductForm (canonical layout)', () => {
     const save = screen.getByRole('button', { name: 'catalog:editor.actions.save' })
     expect(save).toHaveAttribute('type', 'submit')
     expect(save).toHaveAttribute('form', 'product-editor-form')
+    // Save & Close is offered via the split-button caret (onSaveAndClose wired).
+    expect(screen.getByRole('button', { name: 'actions.openSaveMenu' })).toBeInTheDocument()
   })
 
   it('navigates to the new product detail page after create', async () => {
@@ -175,6 +177,20 @@ describe('ProductForm (canonical layout)', () => {
     fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-9' } })
     fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/inventory/products/prod-9'))
+  })
+
+  it('Save & Close navigates to the product list after create', async () => {
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-10' })
+    render(<ProductForm />)
+    fireEvent.change(screen.getByLabelText('inventory:products.name', { exact: false }), { target: { value: 'Test Product' } })
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-10' } })
+    // Drive the real Save & Close path: open the split menu, click the item
+    // (sets close intent + requestSubmit on the external form).
+    fireEvent.click(screen.getByRole('button', { name: 'actions.openSaveMenu' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'actions.saveAndClose' }))
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/inventory/products'))
+    // And NOT to the detail route.
+    expect(mockNavigate).not.toHaveBeenCalledWith('/inventory/products/prod-10')
   })
 })
 

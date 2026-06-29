@@ -1020,5 +1020,10 @@
     "updateSkinError": "Mise à jour du profil de peau échouée.",
     "phone_label": "Téléphone : {{value}}",
     "email_label": "E-mail : {{value}}"
+  },
+  "loyalty": {
+    "points": "{{amount}} pts",
+    "earnEstimate": "+{{points}} pts cette vente",
+    "joinsOnPurchase": "Adhésion à l'achat"
   }
 }

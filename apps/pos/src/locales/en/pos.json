@@ -1020,5 +1020,10 @@
     "updateSkinError": "Skin profile update failed.",
     "phone_label": "Phone: {{value}}",
     "email_label": "Email: {{value}}"
+  },
+  "loyalty": {
+    "points": "{{amount}} pts",
+    "earnEstimate": "+{{points}} pts this sale",
+    "joinsOnPurchase": "Joins on purchase"
   }
 }

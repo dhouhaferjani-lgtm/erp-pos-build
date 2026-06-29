@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { User, X } from 'lucide-react';
 import { Button, IconButton } from '@/components/ui';
 import { usePaymentStore, type AttachedCheckoutCustomer } from '@/stores/paymentStore';
+import { CustomerLoyaltyBadge } from './CustomerLoyaltyBadge';
 
 export interface CartCustomerControlProps {
   onOpen: () => void;
@@ -29,6 +30,7 @@ export function CartCustomerControl({ onOpen }: CartCustomerControlProps) {
         >
           {selectedCustomer.name}
         </button>
+        <CustomerLoyaltyBadge customer={selectedCustomer} />
         <IconButton
           variant="ghost"
           size="sm"

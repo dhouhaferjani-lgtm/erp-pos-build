@@ -126,6 +126,10 @@ export function hasModule(config: CompanyConfig | null, moduleName: string): boo
   return modules.includes(moduleName);
 }
 
+export function useHasModule(moduleName: string): boolean {
+  return useProductStore((s) => hasModule(s.companyConfig, moduleName))
+}
+
 /**
  * Menu-tenant API fetch — verbatim from pre-T2.1.
  *
