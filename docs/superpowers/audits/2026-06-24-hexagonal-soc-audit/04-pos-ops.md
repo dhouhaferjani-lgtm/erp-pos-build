@@ -1,0 +1,27 @@
+# Appendix 04 — POS/Ops
+
+Modules: POS, Scheduling, Service, Workshop, Progression, Menu
+
+| ID | Severity | Pattern | File:line | Description | Suggested fix |
+|----|----------|---------|-----------|-------------|---------------|
+| F1 | HIGH | H6 + H5 | `POS/Domain/Services/ZReportHashService.php:241,243,246` | Domain service resolves via `app(ConnectionInterface::class)`/`app(FiscalIntegrityProvider::class)` then runs `$db->table('fiscal_events')->where(...)` inside Domain. | Constructor-inject interfaces; move query behind an Infrastructure repository port. |
+| F2 | HIGH | H6 | `POS/Domain/Services/ShiftManagementService.php:18,66,90,139,199` | Domain service imports `DB` facade and orchestrates `DB::transaction()`/`DB::afterCommit()`. | Move transaction orchestration to Application; Domain via repository/unit-of-work ports. |
+| F3 | HIGH | H6 | `POS/Domain/Services/GrandtotalService.php:59` | Domain service runs `DB::transaction(...)`. | Relocate transaction boundary to Application. |
+| F4 | MED | H6 | `POS/Domain/Services/ReceiptHashService.php:298`; `RefundDestinationResolver.php:102` | `Log::` facade in Domain. | Inject PSR-3 `LoggerInterface` or emit a domain event. |
+| F5 | HIGH | H4 | `POS/Application/Services/ReceiptCreationService.php:7-44` (~164 cross-module imports across POS) | POS imports concrete models of many modules (BatchExpiry Batch, Catalog CompositeItem/Recipe, Inventory StockLevel/StockMovement, Partner, Product, Treasury Payment*, Voucher). | Read/port contracts in `Shared/Contracts`; depend on those. |
+| F6 | MED | H4 | `POS/Domain/OrderLine.php:8` (Product); `ExchangeRequest.php:8` (Voucher); `XReport.php:7` (User) | POS Domain entities import other modules' models for relations. | Reference by FK + resolver port. |
+| F7 | HIGH | H3 + H4 + H6 | `POS/Presentation/Controllers/PosPendingCustomerController.php:75-93,175` | Controller opens `DB::transaction` and `Partner::query()->create([...])` — business logic + cross-module write + persistence in Presentation. | Application service; create Partner via Partner module's public service. |
+| F8 | MED | H3 + H6 | `POS/Presentation/Controllers/ZReportSyncController.php:219-`, `ShiftController.php:103,197,261`, `SyncController.php:63-109`, `ReportController.php:220-311`, `KitchenDisplayController.php:35-133`, `TableController.php:36,87` | Controllers build Eloquent queries directly; one persists a Z-report in a `DB::transaction`. | Push query/persistence into Application services/repositories. |
+| F9 | MED | H10 | `POS/Application/Services/Nf525DataProvider.php` (1694), `ReceiptCreationService.php` (1412), `ReceiptReturnService.php` (1326), `ReportGenerationService.php` (1044), `OrderManagementService.php` (823) | God classes spanning many responsibilities. | Split by responsibility. |
+| F10 | MED | H9 | `POS/Application/Services/ReceiptCreationService.php:1004-1035` → `Domain/Services/DiscountCalculationService.php:144-148` | Discount percent `(float)` then `(string)` into bcdiv money math — float crosses the monetary boundary. | Keep `discount_percent` numeric-string end-to-end. |
+| F11 | LOW | H9 | `POS/Application/Services/PosAnalyticsService.php:65,184,359,360`; `ReceiptPdfService.php:133,198,249`; `ReportGenerationService.php:758,792` | `(float)` casts / `number_format`; `ReceiptPdfService:133` decides change-given via `(float)$totalPaid > (float)$receipt->total`. | bccomp + `formatCurrency`. |
+| F12 | LOW | H8 | `POS/Application/Services/ReceiptCreationService.php:997,1004` | Magic strings for discount type; array-bag line data. | `DiscountType` enum + typed line DTO. |
+| F13 | LOW | H7 | `POS/routes_held_orders.php`, `routes_kitchen.php`, `routes_orders.php`, `routes_tables.php`, `routes.php` (root) | 5 route files at module root. | Consolidate under `POS/Presentation/`. |
+| F14 | LOW | H4 | `Scheduling/Application/Services/AppointmentConversionService.php:14` | Imports concrete `Workshop\WorkOrder\Domain\WorkOrder` for return typing (write itself goes through the interface). | Interface returns a Shared/Contracts DTO. |
+| F15 | LOW | H4/H6 (accepted-pattern note) | `Scheduling/Domain/Appointment.php:7-17`, `Service/Domain/Service.php:7-10`, `Menu/Domain/Entities/Menu.php`, `Workshop/Bundle/Domain/ServiceBundleComponent.php:7-9` | Domain entities are Eloquent (accepted) with foreign-module relation imports (residual smell). | No action on Eloquent base; reduce foreign-model relation coupling over time. |
+
+**Counts:** 0 BLOCKER, 4 HIGH, 5 MED, 6 LOW. (Scheduling/Service/Workshop/Progression/Menu are structurally cleaner; main issue = foreign-model relation imports in Domain entities, partly excused by the "models at Domain root" allowance.)
+
+**Worst systemic issue:** POS routinely punches through hexagonal boundaries — Domain services own DB transactions, raw query builders, `app()`, and `Log`, while controllers hold query/persistence logic including cross-module writes (creating a `Partner` in a controller transaction). With ~164 direct imports of other modules' models and several 1,000–1,700-line god services, dependency direction is effectively flat. Central refactor: extract transaction orchestration + cross-module access behind `Shared/Contracts` ports and thin the controllers.
+
+Note: Menu has only `Menu/Presentation/routes.php` (no `routes_*` variants — that pattern is POS-only). Workshop's `Bundle/`/`Technician/`/`WorkOrder/` are intentional sub-bounded-contexts each carrying a full 4-layer structure.

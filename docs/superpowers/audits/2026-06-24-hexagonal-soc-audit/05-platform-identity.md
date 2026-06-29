@@ -1,0 +1,22 @@
+# Appendix 05 — Platform/Identity
+
+Modules: Identity, Tenant, Company, Admin, Contact, Partner, Communication
+
+| ID | Severity | Pattern | File:line | Description | Suggested fix |
+|---|---|---|---|---|---|
+| F1 | HIGH | H1 (Domain → Application import) | `Tenant/Domain/CentralIdentity.php:7` | Domain model `use`s `Application\Services\IdentityIndexService` (only in a `{@see}` docblock, but a real coupling). | Drop the `use`; reference FQCN inline in PHPDoc. |
+| F2 | HIGH | H4 (cross-module Domain/model import) | `Contact/Domain/PartyContact.php:7`, `Contact.php:7,9`; `Company/Domain/Company.php:15-18`, `FiscalYear.php:7`, `CompanyDocument.php:8`; `Identity/Domain/User.php:7,9`; `Tenant/Domain/Tenant.php:9` | Domain entities import other modules' Domain models for Eloquent relations (Contact↔Partner↔Company↔Identity↔Tenant mutually coupled). | Relations behind contracts/IDs, or document an accepted "core platform aggregate" exception. |
+| F3 | HIGH | H3 (fat controller) | `Company/Presentation/Controllers/CompanyController.php:68-161` | `store()` runs a 5-step workflow in a controller transaction: company, default location, owner membership, genesis hash-chain rows per `HashChainType`, COA seeding. | Extract `CompanyProvisioningService`. |
+| F4 | HIGH | H3 (fat controller) | `Identity/Presentation/Controllers/UserController.php:166-218` (775 lines) | `store()`/`update()` embed user creation, role assignment, central-identity writes, audit logging, invitations across multiple `DB::transaction` closures. | Extract `CreateUser`/`UpdateUser` Application commands. |
+| F5 | HIGH | H3 (god controller) | `Identity/Presentation/Controllers/AuthController.php` (932 lines) | Mixes session vs token auth, tenant/company/membership resolution, provisioning fan-out. | Decompose into Application services. |
+| F6 | HIGH | H10 + H5 + H4 (god class) | `Admin/Application/Services/MonitoringService.php:1-763` | 763-line service for server/DB/cache/queue/external metrics; uses `Cache`/`DB`/`Queue`/`Redis` facades; imports Billing + Tenant Domain models. | Split per concern behind injected interfaces. |
+| F7 | HIGH | H6 (query builder in Domain) | `Identity/Domain/User.php:231-234,259-262` | `canAccessCompany()`/`canAccessCompanyChannel()` run `->where('company_id',$id)->where('status','active')->exists()` from Domain. | Move to Application service or repository port. |
+| F8 | MED | H8 (magic string instead of Enum) | `Identity/Domain/User.php:233,261` | `->where('status','active')` while `MembershipStatus::Active` exists. | Use `MembershipStatus::Active->value`. |
+| F9 | MED | H7 (files outside layers) | `Company/CompanyServiceProvider.php`, `Company/Services/{CompanyContext,LocationContext}.php`, `Company/Listeners/CreateFiscalYearsForNewCompany.php`, `Partner/PartnerServiceProvider.php`, `Contact/Providers/ContactServiceProvider.php` | Providers/`Services/`/`Listeners/` at module root vs canonical dirs. | Relocate to Application/Infrastructure dirs. |
+| F10 | MED | H10 (incomplete-layer modules) | `Admin/` (Application+Presentation only), `Communication/` (Application+Presentation only) | No Domain/Infrastructure; Application services talk to facades/foreign models directly, no port boundary to test. | Document exception or introduce ports. |
+| F11 | MED | H5 (facade / `app()`) | `Identity/Presentation/Middleware/ResolveTenancy.php:76`; `Tenant/Application/Commands/ResetTenantCommand.php:29`; `Company/Services/LocationContext.php:169,228`; `Admin/Application/Services/HealthCheckService.php` | Container resolution + facades instead of injection. | Inject the dependencies. |
+| F12 | LOW | H6/H4 (raw DB in Application) | `Tenant/Application/Services/TenantProvisioningService.php:225-235` | `DB::purge('tenant')` + raw `DB::connection('central')->table(...)` deletes — central/tenant plumbing in Application. | Wrap central-directory mutations in an Infrastructure repository. |
+
+**Counts:** 0 BLOCKER, 7 HIGH, 4 MED, 1 LOW.
+
+**Worst systemic issue:** Platform-core modules treat Eloquent models as the Domain layer and freely import each other's models for relations (F2) — Contact↔Partner↔Company↔Identity↔Tenant are mutually coupled, so there's effectively no module boundary to enforce. Reinforced by Domain entities running queries (F7) and very fat controllers/services (F3–F6) orchestrating multi-step workflows in the edge. Partner money handling is, by contrast, clean (numeric-string + `decimal:4` + bcmath).
