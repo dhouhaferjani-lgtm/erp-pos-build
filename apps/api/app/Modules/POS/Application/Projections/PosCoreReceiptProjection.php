@@ -321,7 +321,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             $this->writePayments($receiptId, $event, $view);
             $this->redeemVouchers($receiptId, $event, $view);
             $this->earnLoyaltyPoints($receiptId, $event, $view, $payload, $receiptTypeEnum, $totalNorm);
-            $this->decrementStockForLines($receiptId, $event, $terminal, $view);
+            $this->decrementStockForLines($receiptId, $event, $terminal, $view, $receiptTypeEnum);
         });
     }
 
@@ -920,7 +920,16 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         FiscalEvent $event,
         Terminal $terminal,
         SaleReceiptCanonicalView $view,
+        ReceiptType $receiptType,
     ): void {
+        // Phase 0 fast-follow (return-disposition spec §5.1): a REFUND/VOID-via-
+        // SALE_RECEIPT maps to ReceiptType::Return and must NOT decrement stock
+        // (it would compound the loss). Disposition-gated restock/re-increment
+        // is the Phase 3 deliverable; here we skip.
+        if ($receiptType === ReceiptType::Return) {
+            return;
+        }
+
         foreach ($view->lineItems as $line) {
             $productId = $line->productId;
             // Skip stock decrement when the canonical product_id is not a
