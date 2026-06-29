@@ -60,6 +60,26 @@ function getMethodIcon(method: PaymentMethodType) {
   return METHOD_ICONS[code] ?? Wallet
 }
 
+/**
+ * Sum amounts from "immediate" (change-safe) payment methods using bcadd.
+ * Cash: is_physical && !has_maturity; Card/mobile: requires_third_party.
+ * Uses bcadd (not float reduce) to prevent IEEE 754 drift — 0.1 + 0.2 via
+ * native float gives 0.30000000000000004; bcadd gives the exact string '0.30'.
+ */
+export function computeMaxSafeChange(
+  payments: ReadonlyArray<{ methodId: string; amount: number }>,
+  methods: ReadonlyArray<{ id: string; is_physical: boolean; has_maturity: boolean; requires_third_party: boolean }>,
+  decimals: number
+): string {
+  return payments
+    .filter(p => {
+      const method = methods.find(m => m.id === p.methodId)
+      if (!method) return false
+      return (method.is_physical && !method.has_maturity) || method.requires_third_party
+    })
+    .reduce((sum, p) => bcadd(sum, String(p.amount), decimals), '0')
+}
+
 interface PaymentLine {
   id: string
   methodId: string
@@ -203,21 +223,14 @@ export function AdvancedPaymentsModal({
   const hasOverpayment = bccomp(totalPaidStr, total) > 0
 
   /**
-   * Sum of amounts from "immediate" (change-safe) payment methods:
-   * - Cash: is_physical && !has_maturity (funds in hand)
-   * - Card/mobile: requires_third_party (settled immediately by processor)
-   *
-   * Uses bcadd (not float +) so 0.1 + 0.2 yields '0.30', not 0.30000000000000004.
+   * Sum of amounts from "immediate" (change-safe) payment methods.
+   * Delegated to the exported pure helper computeMaxSafeChange so the
+   * bcadd-vs-float precision guarantee is unit-testable without DOM rendering.
    */
-  const maxSafeChange = useMemo(() => {
-    return addedPayments
-      .filter(p => {
-        const method = paymentMethods.find(m => m.id === p.methodId)
-        if (!method) return false
-        return (method.is_physical && !method.has_maturity) || method.requires_third_party
-      })
-      .reduce((sum, p) => bcadd(sum, String(p.amount), decimals), '0')
-  }, [addedPayments, paymentMethods, decimals])
+  const maxSafeChange = useMemo(
+    () => computeMaxSafeChange(addedPayments, paymentMethods, decimals),
+    [addedPayments, paymentMethods, decimals]
+  )
 
   const overpaymentAmount = hasOverpayment ? parseFloat(bcsub(totalPaidStr, total, decimals)) : 0
   /** Maximum cash change that can safely be returned (string decimal) */
@@ -964,9 +977,6 @@ export function AdvancedPaymentsModal({
           )}
         </div>
       </div>
-
-      {/* Debug element — exposes maxSafeChange for precision tests (visually hidden) */}
-      <span data-testid="debug-max-safe-change" hidden aria-hidden="true">{maxSafeChange}</span>
 
       {/* Transaction Discount Modal */}
       {showDiscountModal && permissions && onTransactionDiscountChange && (

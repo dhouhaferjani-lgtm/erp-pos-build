@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { seedAuth, resetAuth } from '@/test/seedAuth'
-import { AdvancedPaymentsModal } from './AdvancedPaymentsModal'
+import { AdvancedPaymentsModal, computeMaxSafeChange } from './AdvancedPaymentsModal'
 import type { CartItem } from '../../molecules'
 
 // Mock translation hook — returns key as-is
@@ -771,42 +771,32 @@ describe('AdvancedPaymentsModal', () => {
 
   // ── Precision: maxSafeChange must use bcadd, not float reduce ──
 
-  it('computes maxSafeChange via bcadd without float drift (0.1 + 0.2)', async () => {
-    const user = userEvent.setup()
-    // 0.1 + 0.2 = 0.30000000000000004 in IEEE 754 float — bcadd must give '0.30'
-    const floatDriftCartItems: CartItem[] = [
-      {
-        id: 'float-test',
-        product: { id: 'p-float', name: 'Float Test Product', sku: 'FLT1', price: '0.39' },
-        quantity: 1,
-        unit_price: '0.39',
-        line_total: '0.39',
-        tax_amount: '0',
-      },
+  it('P0-5 precision: computeMaxSafeChange uses bcadd — 0.1 + 0.2 yields exact decimal string, not float drift', () => {
+    // Demonstrate that native float addition drifts on the canonical pair
+    expect(0.1 + 0.2).not.toBe(0.3)                          // IEEE 754: 0.30000000000000004
+    expect(0.1 + 0.2).toBe(0.30000000000000004)
+
+    // Two immediate (cash) payments whose float sum drifts
+    const payments = [
+      { methodId: 'cash', amount: 0.1 },
+      { methodId: 'cash', amount: 0.2 },
     ]
 
-    renderWithClient(
-      <AdvancedPaymentsModal
-        isOpen={true}
-        onClose={vi.fn()}
-        cartItems={floatDriftCartItems}
-        onComplete={vi.fn()}
-      />
-    )
+    // Only immediate methods contribute to maxSafeChange —
+    // cash (is_physical && !has_maturity) qualifies, check (has_maturity) does not
+    const result = computeMaxSafeChange(payments, mockPaymentMethods, 2)
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
-    })
+    // bcadd must yield the exact decimal string '0.30', never the drifted float
+    expect(result).toBe('0.30')
+    expect(result).not.toBe('0.30000000000000004')
 
-    // Add two cash payments whose IEEE 754 float sum drifts: 0.1 + 0.2 = 0.30000000000000004
-    await addPaymentViaButton(user, 'Cash', '0.1')
-    await addPaymentViaButton(user, 'Cash', '0.2')
-
-    // maxSafeChange (sum of immediate payments) must be the exact decimal string '0.30',
-    // NOT the float-drifted 0.30000000000000004
-    const debugEl = document.querySelector('[data-testid="debug-max-safe-change"]')
-    expect(debugEl).not.toBeNull()
-    expect(debugEl?.textContent).toBe('0.30')
+    // Deferred methods are excluded from the safe-change sum
+    const mixedPayments = [
+      { methodId: 'cash', amount: 0.1 },
+      { methodId: 'check', amount: 0.2 },   // has_maturity → NOT immediate
+    ]
+    const mixedResult = computeMaxSafeChange(mixedPayments, mockPaymentMethods, 2)
+    expect(mixedResult).toBe('0.10')          // only the cash leg
   })
 
   it('shows card-specific fields for card payment method', async () => {
