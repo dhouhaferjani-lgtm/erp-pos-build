@@ -96,14 +96,14 @@ export function CloseShiftModal({ isOpen, onClose, shift }: CloseShiftModalProps
         <div className="mt-4 flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 rounded-md border border-border-strong px-4 py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken"
+            className="flex min-h-[48px] items-center justify-center flex-1 rounded-md border border-border-strong px-4 py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken"
           >
             {t('common:cancel')}
           </button>
           <button
             onClick={() => void handleCloseShift()}
             disabled={closing || !actualCash}
-            className="flex-1 rounded-md bg-danger px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-danger-strong disabled:opacity-50"
+            className="flex min-h-[48px] items-center justify-center flex-1 rounded-md bg-danger px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-danger-strong disabled:opacity-50"
           >
             {closing ? t('pos:header.closing') : t('pos:header.closeShift')}
           </button>

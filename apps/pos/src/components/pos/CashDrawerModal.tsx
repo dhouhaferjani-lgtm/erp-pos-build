@@ -106,7 +106,7 @@ export function CashDrawerModal({
           <button
             onClick={() => { setTab('deposit'); setSuccess(false); }}
             className={cn(
-              'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+              'flex min-h-[48px] flex-1 items-center justify-center rounded-md px-3 text-sm font-medium transition-colors',
               tab === 'deposit'
                 ? 'bg-surface-raised text-ink shadow-sm'
                 : 'text-ink-muted hover:text-ink',
@@ -117,7 +117,7 @@ export function CashDrawerModal({
           <button
             onClick={() => { setTab('payout'); setSuccess(false); }}
             className={cn(
-              'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+              'flex min-h-[48px] flex-1 items-center justify-center rounded-md px-3 text-sm font-medium transition-colors',
               tab === 'payout'
                 ? 'bg-surface-raised text-ink shadow-sm'
                 : 'text-ink-muted hover:text-ink',
