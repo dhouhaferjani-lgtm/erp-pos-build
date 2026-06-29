@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RotateCcw, Printer, Eye } from 'lucide-react';
+import { RotateCcw, Printer, Eye } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 import { toast } from 'sonner';
 import { fetchShiftReceipts, type ShiftReceipt } from '@/api/reportApi';
 import { useTerminalStore } from '@/stores/terminalStore';
@@ -88,16 +89,11 @@ export function TodaySalesPage() {
 
   return (
     <div className="flex h-full flex-col bg-surface-canvas">
-      {/* Sub-header with back button */}
-      <div className="flex items-center gap-3 border-b border-border-subtle bg-surface-raised px-4 py-3">
-        <button
-          onClick={() => navigate('/')}
-          className="rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <h1 className="text-xl font-bold text-ink">{t('reports.todaySales')}</h1>
-      </div>
+      <PageHeader
+        title={t('reports.todaySales')}
+        onBack={() => navigate('/')}
+        backLabel={t('common:back')}
+      />
 
       {/* No-shift empty state */}
       {!shiftId && (
