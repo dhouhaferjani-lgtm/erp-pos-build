@@ -69,6 +69,9 @@ final readonly class ReservationSettings
         public string $goodwillFourEyesThreshold = '250.00',
         public ?string $goodwillDailyIssuanceCapPerUser = null,
         public bool $goodwillBearerDefaultOff = true,
+
+        // ── Return disposition: tenant-level restock default (Phase 0 Task 3) ──
+        public string $default_restock_policy = 'default_allow',
     ) {}
 
     /**
@@ -156,6 +159,11 @@ final readonly class ReservationSettings
                 ? (string) $data['goodwill_daily_issuance_cap_per_user']
                 : null,
             goodwillBearerDefaultOff: (bool) ($data['goodwill_bearer_default_off'] ?? true),
+
+            // Return disposition
+            default_restock_policy: isset($data['default_restock_policy'])
+                ? (string) $data['default_restock_policy']
+                : 'default_allow',
         );
     }
 
@@ -214,6 +222,9 @@ final readonly class ReservationSettings
             'goodwill_four_eyes_threshold' => $this->goodwillFourEyesThreshold,
             'goodwill_daily_issuance_cap_per_user' => $this->goodwillDailyIssuanceCapPerUser,
             'goodwill_bearer_default_off' => $this->goodwillBearerDefaultOff,
+
+            // Return disposition
+            'default_restock_policy' => $this->default_restock_policy,
         ];
     }
 }
