@@ -19,7 +19,9 @@ use App\Modules\Document\Domain\Events\DraftLineRemoved;
 use App\Modules\Document\Domain\Events\DraftLineRemovedV2;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\ProductVariantLookup;
+use App\Shared\Domain\CurrencyScale;
 use App\Shared\DTOs\ProductVariantSummary;
 use Illuminate\Support\Facades\DB;
 
@@ -42,6 +44,7 @@ final class DraftPersistenceService
         private readonly DocumentNumberingService $numberingService,
         private readonly DocumentTotalsCalculator $totalsCalculator,
         private readonly ProductVariantLookup $variantLookup,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     /**
@@ -243,9 +246,10 @@ final class DraftPersistenceService
         // to $product). A forged or mismatched variant_id resolves to null.
         $variant = $this->resolveVariant($lineData['variant_id'] ?? null, $product);
 
-        $quantity = (float) ($lineData['quantity'] ?? 1);
-        $unitPrice = (float) ($lineData['unit_price'] ?? 0);
-        $lineTotal = (string) ($quantity * $unitPrice);
+        $quantityStr = $this->numericStringFromInput($lineData['quantity'] ?? '1', '1');
+        $unitPriceStr = $this->numericStringFromInput($lineData['unit_price'] ?? '0', '0');
+        $scale = $this->scaleResolver->getScale($document->currency);
+        $lineTotal = CurrencyScale::bcformat(bcmul($quantityStr, $unitPriceStr, $scale + 1), $scale);
 
         // api.document.045: persist the *scoped* lookup result, not the raw
         // request UUID. If the scoped lookup missed (cross-tenant or
@@ -261,8 +265,8 @@ final class DraftPersistenceService
             'description' => $overriddenDescription,
             'designation_default_snapshot' => $designationSnapshot,
             'notes' => isset($lineData['notes']) ? mb_substr((string) $lineData['notes'], 0, 1000) : null,
-            'quantity' => $quantity,
-            'unit_price' => $unitPrice,
+            'quantity' => $quantityStr,
+            'unit_price' => $unitPriceStr,
             'tax_rate' => $lineData['tax_rate'] ?? 0,
             'line_total' => $lineTotal,
         ]);
@@ -381,13 +385,17 @@ final class DraftPersistenceService
         }
 
         if ($hasChanges) {
-            $quantityFloat = (float) (string) $line->quantity;
-            $unitPriceFloat = (float) (string) $line->unit_price;
-            $line->line_total = (string) ($quantityFloat * $unitPriceFloat);
+            $scale = $this->scaleResolver->getScale($document->currency);
+            $line->line_total = CurrencyScale::bcformat(
+                bcmul((string) $line->quantity, (string) $line->unit_price, $scale + 1),
+                $scale
+            );
             $line->save();
 
             // Audit events declare float fields; convert at the event boundary on a
             // string var, never directly on the decimal-cast Eloquent property.
+            $quantityFloat = (float) (string) $line->quantity;
+            $unitPriceFloat = (float) (string) $line->unit_price;
             $newValues = [
                 'quantity' => $quantityFloat,
                 'unit_price' => $unitPriceFloat,
@@ -555,6 +563,7 @@ final class DraftPersistenceService
         }
 
         // 2. Prepare line data for batch insert
+        $scale = $this->scaleResolver->getScale($document->currency);
         $currentLineNumber = $document->lines()->count();
         $linesToInsert = [];
         $lineInsertData = []; // Store for event firing
@@ -573,9 +582,9 @@ final class DraftPersistenceService
                 $variant = null;
             }
 
-            $quantity = (float) ($lineData['quantity'] ?? 1);
-            $unitPrice = (float) ($lineData['unit_price'] ?? 0);
-            $lineTotal = $quantity * $unitPrice;
+            $quantityStr = $this->numericStringFromInput($lineData['quantity'] ?? '1', '1');
+            $unitPriceStr = $this->numericStringFromInput($lineData['unit_price'] ?? '0', '0');
+            $lineTotalStr = CurrencyScale::bcformat(bcmul($quantityStr, $unitPriceStr, $scale + 1), $scale);
 
             $batchDefaultName = $service !== null
                 ? (string) $service->name
@@ -606,22 +615,25 @@ final class DraftPersistenceService
                 'description' => $batchDescription,
                 'designation_default_snapshot' => $batchSnapshot,
                 'notes' => isset($lineData['notes']) ? mb_substr((string) $lineData['notes'], 0, 1000) : null,
-                'quantity' => $quantity,
-                'unit_price' => $unitPrice,
+                'quantity' => $quantityStr,
+                'unit_price' => $unitPriceStr,
                 'tax_rate' => $lineData['tax_rate'] ?? 0,
-                'line_total' => (string) $lineTotal,
+                'line_total' => $lineTotalStr,
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
 
             $linesToInsert[] = $insertData;
+            // Audit events declare float fields (immutable signatures, Rule 8);
+            // convert at the event boundary from the string values, never from
+            // a float intermediate (precision contract: no float on money/qty).
             $lineInsertData[] = [
                 'id' => $insertData['id'],
                 'product_id' => $insertData['product_id'] ?? '',
                 'product_name' => $batchDefaultName,
-                'quantity' => $quantity,
-                'unit_price' => $unitPrice,
-                'line_total' => $lineTotal,
+                'quantity' => (float) $quantityStr,
+                'unit_price' => (float) $unitPriceStr,
+                'line_total' => (float) $lineTotalStr,
                 'description' => $batchDescription,
                 'notes' => $insertData['notes'],
                 'designation_default_snapshot' => $batchSnapshot,
@@ -692,6 +704,28 @@ final class DraftPersistenceService
                 addedAt: now()->toIso8601String(),
             ));
         }
+    }
+
+    /**
+     * Convert a raw mixed value to a numeric-string safe for bcmath operations.
+     *
+     * The input arrives as `mixed` from `array<string, mixed>` request data.
+     * We perform one (string) cast, then validate with is_numeric(). Non-numeric
+     * inputs (empty strings, garbage) fall back to $fallback. This is the single
+     * float-free touch-point between untrusted array data and bcmul.
+     *
+     * @param  numeric-string  $fallback  Must be a literal numeric string (e.g. '1', '0')
+     * @return numeric-string
+     */
+    private function numericStringFromInput(mixed $value, string $fallback): string
+    {
+        $str = (string) $value;
+
+        if (is_numeric($str)) {
+            return $str;
+        }
+
+        return $fallback;
     }
 
     /**

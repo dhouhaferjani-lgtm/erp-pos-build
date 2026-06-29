@@ -19,6 +19,7 @@ use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -83,6 +84,7 @@ class DraftPersistenceServiceTest extends TestCase
             new DocumentNumberingService,
             new DocumentTotalsCalculator(app(TaxCalculationService::class)),
             new EloquentProductVariantLookup,
+            app(CurrencyScaleResolverInterface::class),
         );
     }
 
@@ -416,6 +418,46 @@ class DraftPersistenceServiceTest extends TestCase
 
         $this->assertNotNull($line, 'Draft must have at least one line');
         $this->assertSame(500, mb_strlen((string) $line->description), 'Description exceeding 500 chars must be truncated to exactly 500 chars');
+    }
+
+    #[Test]
+    public function test_line_total_is_bcmath_not_float_product(): void
+    {
+        // qty 3 × unit_price 0.3335 = 1.0005 exactly.
+        // Float path: (string)(3 * 0.3335) = "1.0005" →
+        //   Eloquent decimal:3 HALF_UP → "1.001" (wrong — rounds up the half digit).
+        // BCmath path: bcformat(bcmul('3','0.3335', scale+1), scale) →
+        //   truncates 1.0005 to "1.000" at EUR scale 2 → stored "1.00" →
+        //   Eloquent decimal:3 returns "1.000" (correct).
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Precision Test Product',
+        ]);
+
+        $draft = $this->service->saveDraft(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            userId: 'user-precision',
+            draftId: null,
+            data: [
+                'type' => DocumentType::Invoice->value,
+                'partner_id' => $this->partner->id,
+                'lines' => [
+                    [
+                        'product_id' => $product->id,
+                        'quantity' => '3',
+                        'unit_price' => '0.3335',
+                    ],
+                ],
+            ]
+        );
+
+        $line = $draft->lines->first();
+        $this->assertNotNull($line, 'Draft must have at least one line');
+        // BCmath truncation: 3 × 0.3335 = 1.0005 → truncated at EUR scale 2 → "1.00"
+        // → Eloquent decimal:3 cast → "1.000"
+        $this->assertSame('1.000', $line->line_total);
     }
 
     #[Test]
