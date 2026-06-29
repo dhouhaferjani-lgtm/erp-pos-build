@@ -83,6 +83,14 @@ NEXT on resume:
 - Customer/loyalty card slot in the cart = seam owned by the loyalty session.
 - `ProductCard`/`ProductGrid` + product-detail fiche → parapharmacy session Phase D (do not touch).
 
+## ✅ PAGE-CONSISTENCY + TOUCH-ERGONOMY BATCH (2026-06-29; owner feedback + audit)
+Owner: inconsistent sub-page headers (Settings back centred + narrow vs Ventes-du-jour left + full-width), Settings should use the full width + section nav + (maybe) a Save button, and "do a full touch-screen ergonomy audit — some elements deserve to be clear buttons with clear contrast." (+5 ahead of origin/dev when written.)
+- **Shared `components/PageHeader`** (left back @48px, title, actions slot, full-width, tokenised) → applied to TodaySalesPanel, **ZReportListPage** (also fully tokenised + gained a back button + guard), and **SettingsPage**.
+- **SettingsPage redesign**: full-width two-column layout — sticky left **section nav** (scrolls to + highlights each section) + wider max-w-3xl content; section anchor ids; redundant bottom back button removed. 14 tests green.
+- **Touch-ergonomy** (audit `docs/superpowers/audits/2026-06-29-pos-touch-ergonomy-audit.md`): ROOT-CAUSE fix — `IconButton`/`Button`/`SegmentedControl` + the segmented token `md` were 44px (4px under §6 floor) → **48px** (clears the bulk app-wide). Then the custom non-atom controls: **21 raw <button> Cancel/Confirm/submit/menu-row** targets across EOD/Refund*/Voucher/CloseShift/CashDrawer/ReceiptLocator/OpenShift/ReportsMenu → `min-h-[48px]`; PaymentSummary remove-discount sm→md; **TodaySales Voir/Réimprimer** faint text → clear bordered Buttons; **Header shift chip** tappable-Badge → 48px button w/ hover. (Fork-assisted for the mechanical bumps; combined diff verified sizing-only.)
+- **DEFERRED (genuine design fork — flagged, not guessed): the Settings explicit Save button.** The page mixes preference toggles (draftable) with async actions (printer scan, device unbind — not draftable) + live-preview appearance settings; a clean draft/Save needs the owner's call on which settings are pending-until-saved vs immediate.
+- **Audit minor remainder (taste/low): Header ghost action icons** are now 48px but still ghost (no border/fill) — left as the deliberate clean-header design; owner can opt for bordered. Modal/ReportsMenu faint-icon contrast is minor.
+
 ## ✅ FOLLOW-UP BATCH — layout/breakdown/shells (2026-06-29; owner "fold in as much as possible")
 - **✅ Dark-mode visual pass PASSED** (owner, 2026-06-29 — sell/cash/success/returns screenshots in dark): token mapping held, no contrast/semantic issues.
 - **CashPaymentScreen space-usage** (owner-flagged): numpad fills its column (`h-full auto-rows-fr`, no dead gap above Valider), denominations at the 56px floor, navy amounts bigger (text-5xl/text-4xl).
