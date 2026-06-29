@@ -47,6 +47,7 @@
     "filtersSkinType": "Type de peau",
     "filtersResultCount": "{{count}} résultats",
     "filtersClearAll": "Effacer tout",
+    "filterRemove": "Retirer : {{value}}",
     "filtersNoFacets": "Aucun filtre disponible pour ce catalogue",
     "skinAdviceLabel": "Conseil · Type de peau"
   },

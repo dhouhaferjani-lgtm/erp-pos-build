@@ -48,6 +48,14 @@ export function ProductDetailDrawer({
   // Task 28 — merchandising tabs (module-gated). All hooks run unconditionally
   // before the early return so hook order is stable.
   const [activeTab, setActiveTab] = useState<MerchandiseTab>('equivalents');
+  // Reset to the first tab when a different product is shown in the same drawer
+  // instance. Inline prev-prop comparison (React's recommended pattern) instead
+  // of a useEffect — avoids the extra commit with a stale tab.
+  const [prevProductId, setPrevProductId] = useState<string | undefined>(product?.id);
+  if (product?.id !== prevProductId) {
+    setPrevProductId(product?.id);
+    setActiveTab('equivalents');
+  }
   const companyConfig = useProductStore((s) => s.companyConfig);
   const getByIds = useProductStore((s) => s.getByIds);
   const allProducts = useProductStore((s) => s.products);

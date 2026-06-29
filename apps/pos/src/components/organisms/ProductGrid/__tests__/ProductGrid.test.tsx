@@ -785,8 +785,8 @@ describe('ProductGrid — Task 26 Filtres drawer', () => {
         onFiltersChange={onFiltersChange}
       />,
     );
-    // The Pill's onRemove button has aria-label = t('products.filtersClearAll') = key passthrough
-    const removeBtn = screen.getByLabelText('products.filtersClearAll');
+    // The Pill's onRemove button has a per-item aria-label = t('products.filterRemove', {value}) = key passthrough
+    const removeBtn = screen.getByLabelText('products.filterRemove');
     fireEvent.click(removeBtn);
     expect(onFiltersChange).toHaveBeenCalledWith({
       brands: [],

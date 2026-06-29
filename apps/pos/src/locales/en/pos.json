@@ -47,6 +47,7 @@
     "filtersSkinType": "Skin type",
     "filtersResultCount": "{{count}} results",
     "filtersClearAll": "Clear all",
+    "filterRemove": "Remove: {{value}}",
     "filtersNoFacets": "No filters available for this catalog",
     "skinAdviceLabel": "Advice · Skin type"
   },

@@ -299,11 +299,11 @@ export function ProductGrid({
   }, [sortedProducts, selectedCategory, searchQuery, inStockOnly, locationStock, filters]);
 
   // ---------------------------------------------------------------------------
-  // Active filter count — used for the Filtres badge.
-  // Counts inStockOnly + all active drawer-style facet selections.
+  // Active filter count — badge on the Filtres button. Counts ONLY the
+  // drawer-style facet selections; `inStockOnly` is a separate toggle outside
+  // the drawer, so including it would make the badge misrepresent the drawer.
   // ---------------------------------------------------------------------------
   const activeFilterCount =
-    (inStockOnly ? 1 : 0) +
     (filters?.brands.length ?? 0) +
     (filters?.categories.length ?? 0) +
     (filters?.skinTypes.length ?? 0);
@@ -543,7 +543,7 @@ export function ProductGrid({
                   brands: filters.brands.filter((b) => b !== brand),
                 })
               }
-              removeLabel={t('products.filtersClearAll')}
+              removeLabel={t('products.filterRemove', { value: brand })}
             >
               {brand}
             </Pill>
@@ -558,7 +558,7 @@ export function ProductGrid({
                   categories: filters.categories.filter((c) => c !== cat),
                 })
               }
-              removeLabel={t('products.filtersClearAll')}
+              removeLabel={t('products.filterRemove', { value: cat })}
             >
               {cat}
             </Pill>
@@ -573,7 +573,9 @@ export function ProductGrid({
                   skinTypes: filters.skinTypes.filter((s) => s !== st),
                 })
               }
-              removeLabel={t('products.filtersClearAll')}
+              removeLabel={t('products.filterRemove', {
+                value: t(`skin_type.${st}`, { ns: 'smart-prompts', defaultValue: st }),
+              })}
             >
               {t(`skin_type.${st}`, { ns: 'smart-prompts', defaultValue: st })}
             </Pill>
