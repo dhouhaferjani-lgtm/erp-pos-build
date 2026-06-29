@@ -45,6 +45,12 @@ interface ProductActions {
   refreshFromSQLite: () => Promise<void>;
   refreshLocationStock: () => Promise<void>;
   getById: (id: string) => POSProduct | undefined;
+  /**
+   * Task 28 — resolve a list of product IDs to in-memory POSProduct objects.
+   * Preserves input order; skips IDs that are not found in the current catalog.
+   * No network call — reads only from the in-memory `products` array.
+   */
+  getByIds: (ids: string[]) => POSProduct[];
   reset: () => void;
 }
 
@@ -483,6 +489,13 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
 
   getById: (id: string) => {
     return get().products.find((p) => p.id === id);
+  },
+
+  getByIds: (ids: string[]) => {
+    const { products } = get();
+    return ids
+      .map((id) => products.find((p) => p.id === id))
+      .filter((p): p is POSProduct => p !== undefined);
   },
 
   reset: () => {

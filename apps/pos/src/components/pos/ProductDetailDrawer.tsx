@@ -1,13 +1,17 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
 import { X, Package } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { bccomp } from '@/lib/decimal';
 import { formatAvailableQty } from '@/lib/stock/stockGate';
-import { useProductStore } from '@/stores/productStore';
+import { useProductStore, hasModule } from '@/stores/productStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { CrossLocationStockSection } from '@/components/organisms/CrossLocationStockSection/CrossLocationStockSection';
+import { Tabs, type TabItem } from '@/components/ui/Tabs';
+import { ProductThumb } from '@/components/ui/ProductThumb';
+import { addItemGated } from '@/lib/stock/cartIngress';
 import type { POSProduct } from '@/types/product';
 import type { LocationStockDisplay } from '@/lib/stock/gridStock';
 
@@ -18,6 +22,8 @@ interface ProductDetailDrawerProps {
   /** Same slice semantics as ProductCard: object -> location-aware; null -> exempt (no chrome); undefined -> legacy fallback. */
   locationStock?: LocationStockDisplay | null;
 }
+
+type MerchandiseTab = 'equivalents' | 'complements' | 'routine';
 
 export function ProductDetailDrawer({
   isOpen,
@@ -39,6 +45,14 @@ export function ProductDetailDrawer({
   );
   const currentLocationId = useTerminalStore((s) => s.terminal?.location?.id ?? null);
 
+  // Task 28 — merchandising tabs (module-gated). All hooks run unconditionally
+  // before the early return so hook order is stable.
+  const [activeTab, setActiveTab] = useState<MerchandiseTab>('equivalents');
+  const companyConfig = useProductStore((s) => s.companyConfig);
+  const getByIds = useProductStore((s) => s.getByIds);
+  const allProducts = useProductStore((s) => s.products);
+  const hasMerchandising = hasModule(companyConfig, 'Merchandising');
+
   if (!product) return null;
 
   const hasSlice = locationStock !== undefined && locationStock !== null;
@@ -49,6 +63,66 @@ export function ProductDetailDrawer({
   const isLow = !isOut && (available !== null ? bccomp(available, '10') <= 0 : product.stock_quantity <= 10);
   const stockTone = isOut ? 'text-red-600 bg-red-50' : isLow ? 'text-amber-600 bg-amber-50' : 'text-green-600 bg-green-50';
   const stockText = available !== null ? formatAvailableQty(available) : String(product.stock_quantity);
+
+  // Task 28 — compute merchandising data (product is non-null here)
+  const meta = product.parapharmacy_metadata;
+  const showMerchandisingTabs = hasMerchandising && meta != null;
+
+  const equivalents = showMerchandisingTabs ? getByIds(meta.equivalent_product_ids) : [];
+  const complements = showMerchandisingTabs ? getByIds(meta.complement_product_ids) : [];
+
+  /**
+   * Reconstruct the routine(s) this product belongs to.
+   * For each routine_id referenced in this product's routine_refs, find ALL
+   * products in the in-memory catalog that share that routine_id, then order
+   * them by step_order.  Multiple routines are sorted by routine_id first so
+   * the list is stable across renders.
+   */
+  const routineSteps: { product: POSProduct; step_label: string; step_order: number; routine_id: string }[] =
+    showMerchandisingTabs
+      ? (() => {
+          const myRoutineIds = new Set(meta.routine_refs.map((r) => r.routine_id));
+          if (myRoutineIds.size === 0) return [];
+          const steps: { product: POSProduct; step_label: string; step_order: number; routine_id: string }[] = [];
+          for (const p of allProducts) {
+            const refs = p.parapharmacy_metadata?.routine_refs ?? [];
+            for (const ref of refs) {
+              if (myRoutineIds.has(ref.routine_id)) {
+                steps.push({
+                  product: p,
+                  step_label: ref.step_label,
+                  step_order: ref.step_order,
+                  routine_id: ref.routine_id,
+                });
+              }
+            }
+          }
+          steps.sort((a, b) =>
+            a.routine_id !== b.routine_id
+              ? a.routine_id.localeCompare(b.routine_id)
+              : a.step_order - b.step_order,
+          );
+          return steps;
+        })()
+      : [];
+
+  const merchandisingTabs: TabItem<MerchandiseTab>[] = [
+    {
+      id: 'equivalents',
+      label: t('productDetail.merchandising.equivalents'),
+      count: equivalents.length,
+    },
+    {
+      id: 'complements',
+      label: t('productDetail.merchandising.complements'),
+      count: complements.length,
+    },
+    {
+      id: 'routine',
+      label: t('productDetail.merchandising.routine'),
+      count: routineSteps.length,
+    },
+  ];
 
   return (
     <>
@@ -160,8 +234,142 @@ export function ProductDetailDrawer({
             canView={allowCrossLocation && canViewCrossLocation}
             currentLocationId={currentLocationId}
           />
+
+          {/* Task 28 — Merchandising tabs (module-gated) */}
+          {showMerchandisingTabs && (
+            <div className="mt-6 border-t border-border-subtle pt-4">
+              <Tabs
+                tabs={merchandisingTabs}
+                value={activeTab}
+                onChange={setActiveTab}
+                ariaLabel={t('productDetail.merchandising.ariaLabel')}
+              />
+
+              <div className="mt-3 space-y-1">
+                {/* Équivalents panel */}
+                {activeTab === 'equivalents' && (
+                  <>
+                    {equivalents.length === 0 ? (
+                      <p className="py-6 text-center text-sm text-ink-muted">
+                        {t('productDetail.merchandising.empty')}
+                      </p>
+                    ) : (
+                      equivalents.map((p) => (
+                        <MerchandiseRow
+                          key={p.id}
+                          product={p}
+                          format={format}
+                          addLabel={t('productDetail.merchandising.add')}
+                        />
+                      ))
+                    )}
+                  </>
+                )}
+
+                {/* Compléments panel */}
+                {activeTab === 'complements' && (
+                  <>
+                    {complements.length === 0 ? (
+                      <p className="py-6 text-center text-sm text-ink-muted">
+                        {t('productDetail.merchandising.empty')}
+                      </p>
+                    ) : (
+                      complements.map((p) => (
+                        <MerchandiseRow
+                          key={p.id}
+                          product={p}
+                          format={format}
+                          addLabel={t('productDetail.merchandising.add')}
+                        />
+                      ))
+                    )}
+                  </>
+                )}
+
+                {/* Routine panel */}
+                {activeTab === 'routine' && (
+                  <>
+                    {routineSteps.length === 0 ? (
+                      <p className="py-6 text-center text-sm text-ink-muted">
+                        {t('productDetail.merchandising.empty')}
+                      </p>
+                    ) : (
+                      routineSteps.map((step, i) => (
+                        <button
+                          key={`${step.routine_id}-${step.product.id}-${i}`}
+                          type="button"
+                          data-testid="routine-step-row"
+                          onClick={() => { void addItemGated(step.product); }}
+                          className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-surface-raised active:bg-surface-sunken"
+                        >
+                          {/* Step order badge */}
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-xs font-semibold text-ink-muted tabular-nums">
+                            {step.step_order}
+                          </span>
+                          <ProductThumb
+                            name={step.product.name}
+                            category={step.product.category}
+                            imageUrl={step.product.image_url}
+                            size={40}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs text-ink-muted">{step.step_label}</p>
+                            <p className="truncate text-sm font-medium text-ink">{step.product.name}</p>
+                          </div>
+                          <span
+                            data-testid="merch-add-btn"
+                            className="shrink-0 text-xs font-semibold text-accent"
+                          >
+                            {t('productDetail.merchandising.add')}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MerchandiseRow — shared row component for Équivalents and Compléments tabs.
+// ---------------------------------------------------------------------------
+interface MerchandiseRowProps {
+  product: POSProduct;
+  format: (value: string | number) => string;
+  addLabel: string;
+}
+
+function MerchandiseRow({ product, format, addLabel }: MerchandiseRowProps) {
+  return (
+    <button
+      type="button"
+      onClick={() => { void addItemGated(product); }}
+      className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-surface-raised active:bg-surface-sunken"
+    >
+      <ProductThumb
+        name={product.name}
+        category={product.category}
+        imageUrl={product.image_url}
+        size={40}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-ink">{product.name}</p>
+        {product.sale_price != null && (
+          <p className="text-xs text-ink-muted">{format(product.sale_price)}</p>
+        )}
+      </div>
+      <span
+        data-testid="merch-add-btn"
+        className="shrink-0 text-xs font-semibold text-accent"
+      >
+        {addLabel}
+      </span>
+    </button>
   );
 }

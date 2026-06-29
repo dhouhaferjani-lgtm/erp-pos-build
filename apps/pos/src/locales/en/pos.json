@@ -488,7 +488,15 @@
     "margin": "Margin",
     "reorderLevel": "Reorder Level",
     "ingredients": "Ingredients",
-    "backOrder": "Back Order"
+    "backOrder": "Back Order",
+    "merchandising": {
+      "ariaLabel": "Related product tabs",
+      "equivalents": "Equivalents",
+      "complements": "Complements",
+      "routine": "Routine",
+      "add": "Add",
+      "empty": "No products"
+    }
   },
   "settings": {
     "title": "Settings",

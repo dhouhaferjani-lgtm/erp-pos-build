@@ -488,7 +488,15 @@
     "margin": "Marge",
     "reorderLevel": "Seuil de réapprovisionnement",
     "ingredients": "Ingrédients",
-    "backOrder": "Commande fournisseur"
+    "backOrder": "Commande fournisseur",
+    "merchandising": {
+      "ariaLabel": "Onglets produits associés",
+      "equivalents": "Équivalents",
+      "complements": "Compléments",
+      "routine": "Routine",
+      "add": "Ajouter",
+      "empty": "Aucun produit"
+    }
   },
   "settings": {
     "title": "Paramètres",
