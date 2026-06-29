@@ -121,15 +121,16 @@ export function ProductGrid({
   _onFiltersChangeRef.current = onFiltersChange;
 
   useEffect(() => {
+    if (!isMerchandisingEnabled) return;       // guard: no-op when module is off (bar is hidden but filter must not apply)
     if (!customerSkinType) return;
     const f = _filtersRef.current;
     const onChange = _onFiltersChangeRef.current;
     if (!f || !onChange) return;
-    if (f.skinTypes.includes(customerSkinType)) return;
+    if (f.skinTypes.length > 0) return;        // don't override any existing manual skin selection
     onChange({ ...f, skinTypes: [customerSkinType] });
-    // customerSkinType is the sole change-driver; filters/onFiltersChange are
+    // customerSkinType / isMerchandisingEnabled are the change-drivers; filters/onFiltersChange are
     // read via stable refs — refs are excluded from deps by convention.
-  }, [customerSkinType]);
+  }, [customerSkinType, isMerchandisingEnabled]);
 
   const companyId = useAuthStore((s) => s.companyId);
   const { counts: salesCounts } = useMostSoldCounts({

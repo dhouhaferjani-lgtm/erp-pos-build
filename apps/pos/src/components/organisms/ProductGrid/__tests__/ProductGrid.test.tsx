@@ -1049,4 +1049,45 @@ describe('ProductGrid — Task 27 Skin-advice bar', () => {
     );
     expect(onFiltersChange).not.toHaveBeenCalled();
   });
+
+  // Important fix: module OFF — effect must not fire even when customerSkinType is set
+  it('(b) does NOT call onFiltersChange when Merchandising module is OFF, even with customerSkinType set', () => {
+    // Disable the module
+    productStoreMock.state.companyConfig = null;
+    const onFiltersChange = vi.fn();
+    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: [] };
+    render(
+      <ProductGrid
+        products={skinProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+        filters={filters}
+        onFiltersChange={onFiltersChange}
+        customerSkinType="dry"
+      />,
+    );
+    // The isMerchandisingEnabled guard must prevent any auto-default
+    expect(onFiltersChange).not.toHaveBeenCalled();
+  });
+
+  // Minor fix: pre-existing manual selection must not be overridden by customer default
+  it('(b) does NOT call onFiltersChange when a different skin type is already manually selected', () => {
+    const onFiltersChange = vi.fn();
+    // User already selected 'oily'; customer has 'dry' — must not wipe the manual choice
+    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: ['oily'] };
+    render(
+      <ProductGrid
+        products={skinProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+        filters={filters}
+        onFiltersChange={onFiltersChange}
+        customerSkinType="dry"
+      />,
+    );
+    // skinTypes.length > 0 guard must block the auto-default
+    expect(onFiltersChange).not.toHaveBeenCalled();
+  });
 });
