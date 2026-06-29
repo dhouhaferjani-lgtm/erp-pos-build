@@ -205,6 +205,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         Route::post('/earn', [LoyaltyPOSController::class, 'earn'])
             ->middleware('can:pos.operate_terminal')
             ->name('loyalty.pos.earn');
+
+        Route::post('/balance', [LoyaltyPOSController::class, 'balance'])
+            ->middleware('can:pos.operate_terminal')
+            ->name('loyalty.pos.balance');
     });
 
     // Loyalty Members (Admin)

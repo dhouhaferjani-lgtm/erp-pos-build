@@ -978,5 +978,10 @@
   "customers": {
     "pageTitle": "Customers",
     "placeholder": "Customer management is coming soon."
+  },
+  "loyalty": {
+    "points": "{{amount}} pts",
+    "earnEstimate": "+{{points}} pts this sale",
+    "joinsOnPurchase": "Joins on purchase"
   }
 }
