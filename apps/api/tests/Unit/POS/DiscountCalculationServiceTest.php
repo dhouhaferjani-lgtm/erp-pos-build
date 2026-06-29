@@ -250,7 +250,7 @@ class DiscountCalculationServiceTest extends TestCase
     public function test_calculate_line_discount_from_percentage(): void
     {
         $baseAmount = '100.00';
-        $discountPercent = 15.00;
+        $discountPercent = '15.00';
 
         $discountAmount = $this->service->calculateLineDiscountAmount($baseAmount, $discountPercent);
 
@@ -263,7 +263,7 @@ class DiscountCalculationServiceTest extends TestCase
     public function test_calculate_discount_with_decimal_base(): void
     {
         $baseAmount = '87.50';
-        $discountPercent = 10.00;
+        $discountPercent = '10.00';
 
         $discountAmount = $this->service->calculateLineDiscountAmount($baseAmount, $discountPercent);
 
@@ -276,7 +276,7 @@ class DiscountCalculationServiceTest extends TestCase
     public function test_discount_calculation_rounds_to_two_decimals(): void
     {
         $baseAmount = '33.33';
-        $discountPercent = 10.00; // Results in 3.333
+        $discountPercent = '10.00'; // Results in 3.333
 
         $discountAmount = $this->service->calculateLineDiscountAmount($baseAmount, $discountPercent);
 
@@ -308,6 +308,21 @@ class DiscountCalculationServiceTest extends TestCase
         $this->expectExceptionMessage('cannot exceed base amount');
 
         $this->service->calculateFixedDiscountAmount($baseAmount, $fixedDiscount);
+    }
+
+    /**
+     * Percent arg is a numeric-string — no float coercion or drift.
+     *
+     * 10.05% of 100.000 = 10.050 exactly.  If the param were (float), PHP
+     * strict_types would throw a TypeError; even where coercion is allowed,
+     * bcdiv((string)(float)'10.05', …) can silently drift the last digit.
+     */
+    public function test_line_discount_accepts_numeric_string_percent_no_float(): void
+    {
+        $this->assertSame(
+            '10.050',
+            $this->service->calculateLineDiscountAmount('100.000', '10.05')
+        );
     }
 
     /**

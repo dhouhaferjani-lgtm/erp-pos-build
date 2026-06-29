@@ -65,6 +65,28 @@ final class ReceiptPdfChangeDueTest extends TestCase
         $this->assertSame('5.00', $changeGiven);
     }
 
+    /**
+     * When total_paid == total exactly (no stored change_due), change must be
+     * '0.00' — the bccomp guard must NOT trigger bcsub and return a spurious value.
+     */
+    public function test_pdf_computes_zero_change_when_total_paid_equals_total(): void
+    {
+        $receipt = $this->makeReceipt(total: '20.000', tendered: '20.000', changeDue: null);
+        $paymentMethod = $this->makePaymentMethod($receipt);
+        $receipt->payments()->create([
+            'id' => Str::uuid()->toString(),
+            'payment_method_id' => $paymentMethod->id,
+            'payment_type' => 'CASH',
+            'amount' => '20.000',
+        ]);
+
+        $changeGiven = $this->invokePrepareData(
+            $receipt->fresh(['payments', 'company', 'location', 'terminal', 'cashier', 'lines', 'vatDetails'])
+        );
+
+        $this->assertSame('0.00', $changeGiven);
+    }
+
     public function test_pdf_renders_content_without_error_for_stored_change_due(): void
     {
         // Sanity: generate the actual PDF bytes end-to-end to ensure the new

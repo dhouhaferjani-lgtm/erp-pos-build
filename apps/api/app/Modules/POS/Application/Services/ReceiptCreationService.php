@@ -995,13 +995,14 @@ final class ReceiptCreationService
         User $cashier,
     ): string {
         $discountType = $lineData['discount_type'] ?? null;
+        /** @var numeric-string|null $discountPercent */
         $discountPercent = isset($lineData['discount_percent']) ? (string) $lineData['discount_percent'] : null;
         /** @var numeric-string|null $discountAmount */
         $discountAmount = isset($lineData['discount_amount']) ? (string) $lineData['discount_amount'] : null;
         $discountReason = $lineData['discount_reason'] ?? null;
 
         // If percentage-based discount, calculate the amount
-        if ($discountType === 'percentage' && $discountPercent !== null && (float) $discountPercent > 0) {
+        if ($discountType === 'percentage' && $discountPercent !== null && bccomp($discountPercent, '0', 10) > 0) { // precision-ok: percent rate—scale 10 is intermediate precision for sign check on a rate, not currency-scaled
             $this->discountCalculationService->validateLineDiscount(
                 $terminal,
                 $cashier,
@@ -1011,7 +1012,7 @@ final class ReceiptCreationService
 
             return $this->discountCalculationService->calculateLineDiscountAmount(
                 $grossLineTotal,
-                (float) $discountPercent,
+                $discountPercent,
             );
         }
 

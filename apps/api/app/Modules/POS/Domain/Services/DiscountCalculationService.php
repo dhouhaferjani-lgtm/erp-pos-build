@@ -138,14 +138,14 @@ final readonly class DiscountCalculationService
      * Uses bcmath for precise decimal calculations.
      *
      * @param  numeric-string  $baseAmount  The base amount to calculate discount on (decimal string)
-     * @param  float  $discountPercent  The discount percentage
+     * @param  numeric-string  $discountPercent  The discount percentage as a numeric string (e.g. '10.05')
      * @return numeric-string The calculated discount amount (decimal string)
      */
-    public function calculateLineDiscountAmount(string $baseAmount, float $discountPercent): string
+    public function calculateLineDiscountAmount(string $baseAmount, string $discountPercent): string
     {
         // Convert percentage to decimal (e.g., 10% = 0.10)
         /** @var numeric-string $discountRate */
-        $discountRate = bcdiv((string) $discountPercent, '100', 10);
+        $discountRate = bcdiv($discountPercent, '100', 10);
 
         // Calculate discount amount
         /** @var numeric-string $discountAmount */

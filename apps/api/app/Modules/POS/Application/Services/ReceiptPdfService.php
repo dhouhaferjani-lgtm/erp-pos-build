@@ -130,7 +130,7 @@ final class ReceiptPdfService
         if ($receipt->change_due !== null) {
             $changeGiven = CurrencyScale::bcformat((string) $receipt->change_due, $this->scale());
         } else {
-            $changeGiven = (float) $totalPaid > (float) $receipt->total
+            $changeGiven = bccomp($totalPaidStr, $receiptTotal, $this->scale()) > 0
                 ? bcsub($totalPaidStr, $receiptTotal, $this->scale())
                 : CurrencyScale::bcformat('0', $this->scale());
         }
