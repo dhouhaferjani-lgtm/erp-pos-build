@@ -40,7 +40,14 @@
     "sortDefault": "Default order",
     "favorites": "Favorites",
     "viewDetails": "View details",
-    "filters": "Filters"
+    "filters": "Filters",
+    "filtersClose": "Close",
+    "filtersBrand": "Brand",
+    "filtersCategory": "Category",
+    "filtersSkinType": "Skin type",
+    "filtersResultCount": "{{count}} results",
+    "filtersClearAll": "Clear all",
+    "filtersNoFacets": "No filters available for this catalog"
   },
   "payment": {
     "success": "Payment Successful!",

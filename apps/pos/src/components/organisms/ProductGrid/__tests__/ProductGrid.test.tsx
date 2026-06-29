@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { ProductGrid, type ProductGridProps } from '../ProductGrid';
 import { makeProduct } from '@/test/helpers';
 import type { POSProduct } from '@/types/product';
+import type { FiltresFilters } from '@/components/organisms/FiltresDrawer';
 
 // ---------------------------------------------------------------------------
 // settingsStore mock — hoisted so vi.mock factory can reference it.
@@ -24,6 +25,54 @@ vi.mock('@/stores/settingsStore', () => ({
     <T,>(selector: (s: typeof settingsStoreMock.state) => T): T =>
       selector(settingsStoreMock.state),
   ),
+}));
+
+// ---------------------------------------------------------------------------
+// productStore mock — hoisted so Task 26 module-gating tests can control
+// companyConfig. Default: null (Merchandising disabled → Filtres hidden).
+// ---------------------------------------------------------------------------
+const productStoreMock = vi.hoisted(() => ({
+  state: {
+    companyConfig: null as import('@/types/companyConfig').CompanyConfig | null,
+  },
+}));
+
+vi.mock('@/stores/productStore', () => ({
+  useProductStore: vi.fn(
+    <T,>(
+      selector: (s: { companyConfig: import('@/types/companyConfig').CompanyConfig | null }) => T,
+    ): T => selector(productStoreMock.state),
+  ),
+  hasModule: (
+    config: { all_enabled_modules?: string[] } | null,
+    moduleName: string,
+  ): boolean => {
+    const modules = config?.all_enabled_modules ?? [];
+    return modules.includes(moduleName);
+  },
+}));
+
+// FiltresDrawer mock — avoids focus-trap DOM issues when the drawer is opened
+// via button click. ProductGrid integration tests verify chip rendering and
+// grid narrowing via the filters prop directly.
+vi.mock('@/components/organisms/FiltresDrawer', () => ({
+  FiltresDrawer: ({
+    isOpen,
+    onClose,
+  }: {
+    isOpen: boolean;
+    onClose: () => void;
+    products: POSProduct[];
+    filters: FiltresFilters;
+    onFiltersChange: (f: FiltresFilters) => void;
+    resultCount: number;
+  }) =>
+    isOpen ? (
+      <div role="dialog" data-testid="filtres-drawer" onClick={onClose}>
+        FiltresDrawer
+      </div>
+    ) : null,
+  EMPTY_FILTRES_FILTERS: { brands: [], categories: [], skinTypes: [] },
 }));
 
 // Mock localStorage for ProductGrid's display mode storage
@@ -608,5 +657,187 @@ describe('ProductGrid — Task 25 settingsStore dual-source reconcile', () => {
 
     // The store setter must have been called
     expect(settingsStoreMock.state.setDisplayMode).toHaveBeenCalledWith('visual');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 26 — Filtres drawer (module-gated)
+// (b) applying filters narrows the grid + shows removable chips + count badge
+// (c) the Filtres affordance is hidden when hasModule returns false
+// ---------------------------------------------------------------------------
+
+describe('ProductGrid — Task 26 Filtres drawer', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    productStoreMock.state.companyConfig = null;
+    settingsStoreMock.state.displayMode = 'grid';
+    settingsStoreMock.state.density = 'comfortable';
+    settingsStoreMock.state.setDisplayMode = vi.fn();
+    mockT.mockImplementation((key: string, opts?: { defaultValue?: string; ns?: string }) =>
+      opts?.defaultValue ?? key,
+    );
+  });
+
+  const brandProducts = [
+    makeProduct({ id: 'p-avene', name: 'Avene Cream', sku: 'A1', sale_price: '10.000', stock_quantity: 5, brand_name: 'Avene' }),
+    makeProduct({ id: 'p-vichy', name: 'Vichy Gel', sku: 'V1', sale_price: '8.000', stock_quantity: 5, brand_name: 'Vichy' }),
+    makeProduct({ id: 'p-plain', name: 'Generic Cream', sku: 'G1', sale_price: '5.000', stock_quantity: 5 }),
+  ];
+
+  // (c) Filtres affordance hidden when module off
+  it('hides the Filtres button when Merchandising module is not enabled', () => {
+    productStoreMock.state.companyConfig = null;
+    render(
+      <ProductGrid
+        products={brandProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+      />,
+    );
+    expect(screen.queryByTestId('filtres-button')).not.toBeInTheDocument();
+  });
+
+  it('shows the Filtres button when Merchandising module is enabled', () => {
+    productStoreMock.state.companyConfig = {
+      all_enabled_modules: ['Merchandising'],
+    } as import('@/types/companyConfig').CompanyConfig;
+    render(
+      <ProductGrid
+        products={brandProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+      />,
+    );
+    expect(screen.getByTestId('filtres-button')).toBeInTheDocument();
+  });
+
+  // (b) Brand filter narrows the grid
+  it('applies a brand filter: only matching products remain visible', () => {
+    productStoreMock.state.companyConfig = {
+      all_enabled_modules: ['Merchandising'],
+    } as import('@/types/companyConfig').CompanyConfig;
+    const filters: FiltresFilters = {
+      brands: ['Avene'],
+      categories: [],
+      skinTypes: [],
+    };
+    render(
+      <ProductGrid
+        products={brandProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+        filters={filters}
+        onFiltersChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('product-p-avene')).toBeInTheDocument();
+    expect(screen.queryByTestId('product-p-vichy')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('product-p-plain')).not.toBeInTheDocument();
+  });
+
+  // (b) Chip row visible with removable chips
+  it('renders a chip for each active filter in the filter-chip row', () => {
+    productStoreMock.state.companyConfig = {
+      all_enabled_modules: ['Merchandising'],
+    } as import('@/types/companyConfig').CompanyConfig;
+    const filters: FiltresFilters = {
+      brands: ['Avene'],
+      categories: [],
+      skinTypes: ['dry'],
+    };
+    render(
+      <ProductGrid
+        products={brandProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+        filters={filters}
+        onFiltersChange={vi.fn()}
+      />,
+    );
+    const chipRow = screen.getByTestId('filter-chip-row');
+    expect(chipRow).toBeInTheDocument();
+    expect(chipRow).toHaveTextContent('Avene');
+    expect(chipRow).toHaveTextContent('dry');
+  });
+
+  // (b) Removable chip calls onFiltersChange correctly
+  it('removing a chip calls onFiltersChange with the filter removed', () => {
+    productStoreMock.state.companyConfig = {
+      all_enabled_modules: ['Merchandising'],
+    } as import('@/types/companyConfig').CompanyConfig;
+    const onFiltersChange = vi.fn();
+    const filters: FiltresFilters = {
+      brands: ['Avene'],
+      categories: [],
+      skinTypes: [],
+    };
+    render(
+      <ProductGrid
+        products={brandProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+        filters={filters}
+        onFiltersChange={onFiltersChange}
+      />,
+    );
+    // The Pill's onRemove button has aria-label = t('products.filtersClearAll') = key passthrough
+    const removeBtn = screen.getByLabelText('products.filtersClearAll');
+    fireEvent.click(removeBtn);
+    expect(onFiltersChange).toHaveBeenCalledWith({
+      brands: [],
+      categories: [],
+      skinTypes: [],
+    });
+  });
+
+  // (b) activeFilterCount badge shows on Filtres button
+  it('shows the active-filter count badge on the Filtres button', () => {
+    productStoreMock.state.companyConfig = {
+      all_enabled_modules: ['Merchandising'],
+    } as import('@/types/companyConfig').CompanyConfig;
+    const filters: FiltresFilters = {
+      brands: ['Avene', 'Vichy'],
+      categories: ['Soin'],
+      skinTypes: [],
+    };
+    render(
+      <ProductGrid
+        products={brandProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+        filters={filters}
+        onFiltersChange={vi.fn()}
+      />,
+    );
+    const btn = screen.getByTestId('filtres-button');
+    // 2 brands + 1 category = 3
+    expect(btn.textContent).toContain('3');
+  });
+
+  // (c) No chip row shown when module is off (even if filters prop is non-empty)
+  it('does NOT render the filter-chip row when Merchandising module is disabled', () => {
+    productStoreMock.state.companyConfig = null;
+    const filters: FiltresFilters = {
+      brands: ['Avene'],
+      categories: [],
+      skinTypes: [],
+    };
+    render(
+      <ProductGrid
+        products={brandProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+        filters={filters}
+        onFiltersChange={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('filter-chip-row')).not.toBeInTheDocument();
   });
 });

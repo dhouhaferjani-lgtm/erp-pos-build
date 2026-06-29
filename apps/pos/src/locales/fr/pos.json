@@ -40,7 +40,14 @@
     "sortDefault": "Ordre par défaut",
     "favorites": "Favoris",
     "viewDetails": "Voir les détails",
-    "filters": "Filtres"
+    "filters": "Filtres",
+    "filtersClose": "Fermer",
+    "filtersBrand": "Marque",
+    "filtersCategory": "Catégorie",
+    "filtersSkinType": "Type de peau",
+    "filtersResultCount": "{{count}} résultats",
+    "filtersClearAll": "Effacer tout",
+    "filtersNoFacets": "Aucun filtre disponible pour ce catalogue"
   },
   "payment": {
     "success": "Paiement réussi !",

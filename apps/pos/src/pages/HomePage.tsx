@@ -43,6 +43,8 @@ import { buildEscPosReceiptData } from '@/lib/buildReceiptData';
 import type { ReceiptVisibilitySettings } from '@/lib/buildReceiptData';
 import type { ReceiptData } from '@/lib/printing';
 import { hasModule } from '@/stores/productStore';
+import { EMPTY_FILTRES_FILTERS } from '@/components/organisms/FiltresDrawer';
+import type { FiltresFilters } from '@/components/organisms/FiltresDrawer';
 import { ChainBreakAlert } from '@/components/atoms/ChainBreakAlert';
 import { TerminalNotReadyBanner } from '@/components/atoms/TerminalNotReadyBanner';
 import { ConsumptionModeToggle } from '@/components/atoms/ConsumptionModeToggle';
@@ -247,6 +249,10 @@ export function HomePage() {
 
   // Settings
   const cartPosition = useSettingsStore((s) => s.cartPosition);
+
+  // Task 26 — Filtres drawer filter state. Lifted here so the skin-advice bar
+  // (Task 27+) can also read/set the skinType selection.
+  const [filtresFilters, setFiltresFilters] = useState<FiltresFilters>(EMPTY_FILTRES_FILTERS);
 
   // Line discount state
   const [discountItemId, setDiscountItemId] = useState<string | null>(null);
@@ -1471,6 +1477,8 @@ export function HomePage() {
               onChange={handleConsumptionModeChange}
             />
           ) : undefined}
+          filters={filtresFilters}
+          onFiltersChange={setFiltresFilters}
         />
         {(smartPromptsVariant === 'toast' || smartPromptsVariant === 'both') && (
           <ToastSmartPrompts {...smartPromptsSharedProps} />

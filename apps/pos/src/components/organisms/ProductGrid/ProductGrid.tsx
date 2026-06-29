@@ -11,6 +11,7 @@ import type { POSProduct } from '@/types/product';
 import type { GridLocationStockMap } from '@/lib/stock/gridStock';
 import { useAuthStore } from '@/stores/authStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useProductStore, hasModule } from '@/stores/productStore';
 import { useMostSoldCounts } from '@/hooks/useMostSoldCounts';
 import { bccomp } from '@/lib/decimal';
 import {
@@ -18,6 +19,8 @@ import {
   getColumns,
   getCardMinH,
 } from '@/components/molecules/ProductCard/cardSizing';
+import { FiltresDrawer, EMPTY_FILTRES_FILTERS } from '@/components/organisms/FiltresDrawer';
+import type { FiltresFilters } from '@/components/organisms/FiltresDrawer';
 
 type DisplayMode = 'grid' | 'visual';
 type SortMode = 'default' | 'mostSold';
@@ -47,6 +50,15 @@ export interface ProductGridProps {
   /** Threads to every ProductCard — see its prop doc. Default true. */
   hardBlockOutOfStock?: boolean;
   onViewDetails?: (product: POSProduct) => void;
+  /**
+   * Task 26 — Drawer-style active filters (brands, categories, skinTypes).
+   * Owned by HomePage so the skin-advice bar (Task 27+) can also read/set
+   * the skinType selection. Optional — when absent the grid applies no drawer
+   * filters and the Filtres affordance is hidden.
+   */
+  filters?: FiltresFilters;
+  /** Called when the user changes drawer filters. */
+  onFiltersChange?: (filters: FiltresFilters) => void;
 }
 
 export function ProductGrid({
@@ -60,6 +72,8 @@ export function ProductGrid({
   locationStock = EMPTY_LOCATION_STOCK,
   hardBlockOutOfStock = true,
   onViewDetails,
+  filters,
+  onFiltersChange,
 }: ProductGridProps) {
   const { t } = useTranslation('pos');
 
@@ -75,6 +89,11 @@ export function ProductGrid({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [inStockOnly, setInStockOnly] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('default');
+
+  // Task 26 — Merchandising module gate for the Filtres drawer.
+  const companyConfig = useProductStore((s) => s.companyConfig);
+  const isMerchandisingEnabled = hasModule(companyConfig, 'Merchandising');
+  const [filtresOpen, setFiltresOpen] = useState(false);
 
   const companyId = useAuthStore((s) => s.companyId);
   const { counts: salesCounts } = useMostSoldCounts({
@@ -221,14 +240,36 @@ export function ProductGrid({
       );
     }
 
+    // Task 26 — drawer-style facet filters (Merchandising module).
+    if (filters?.brands && filters.brands.length > 0) {
+      filtered = filtered.filter(
+        (p) => p.brand_name != null && filters.brands.includes(p.brand_name),
+      );
+    }
+    if (filters?.categories && filters.categories.length > 0) {
+      filtered = filtered.filter(
+        (p) => p.category != null && filters.categories.includes(p.category),
+      );
+    }
+    if (filters?.skinTypes && filters.skinTypes.length > 0) {
+      filtered = filtered.filter((p) => {
+        const sst = p.parapharmacy_metadata?.suitable_skin_types;
+        return sst != null && filters.skinTypes.some((st) => sst.includes(st));
+      });
+    }
+
     return filtered;
-  }, [sortedProducts, selectedCategory, searchQuery, inStockOnly, locationStock]);
+  }, [sortedProducts, selectedCategory, searchQuery, inStockOnly, locationStock, filters]);
 
   // ---------------------------------------------------------------------------
   // Active filter count — used for the Filtres badge.
-  // Counts drawer-style filters (inStockOnly); category is shown in the Pill row.
+  // Counts inStockOnly + all active drawer-style facet selections.
   // ---------------------------------------------------------------------------
-  const activeFilterCount = inStockOnly ? 1 : 0;
+  const activeFilterCount =
+    (inStockOnly ? 1 : 0) +
+    (filters?.brands.length ?? 0) +
+    (filters?.categories.length ?? 0) +
+    (filters?.skinTypes.length ?? 0);
 
   const rowHeight = getCardMinH(displayMode, density);
   const rowCount = Math.ceil(filteredProducts.length / columns);
@@ -365,21 +406,25 @@ export function ProductGrid({
           )}
         </div>
 
-        {/* Filtres — placeholder button; drawer is a later task (Task 26+).
-            Badge shows the count of active drawer-style filters.             */}
-        <Button
-          variant="secondary"
-          size="md"
-          leftIcon={<SlidersHorizontal className="h-5 w-5" />}
-          aria-label={t('products.filters')}
-        >
-          {t('products.filters')}
-          {activeFilterCount > 0 && (
-            <span className="ml-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-action text-xs font-semibold text-ink-inverse">
-              {activeFilterCount}
-            </span>
-          )}
-        </Button>
+        {/* Filtres — module-gated (Merchandising). Task 26: real drawer + filter chips. */}
+        {isMerchandisingEnabled && (
+          <Button
+            variant="secondary"
+            size="md"
+            leftIcon={<SlidersHorizontal className="h-5 w-5" />}
+            onClick={() => setFiltresOpen(true)}
+            aria-label={t('products.filters')}
+            aria-expanded={filtresOpen}
+            data-testid="filtres-button"
+          >
+            {t('products.filters')}
+            {activeFilterCount > 0 && (
+              <span className="ml-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-action text-xs font-semibold text-ink-inverse">
+                {activeFilterCount}
+              </span>
+            )}
+          </Button>
+        )}
 
         {/* Most-sold sort toggle — secondary Button atom; active/pressed state
             signalled by a soft action-subtle fill, not a saturated block. */}
@@ -445,8 +490,73 @@ export function ProductGrid({
         </div>
       )}
 
-      {/* Placeholder slot for active filter-chip row (Task 26+) */}
-      {/* data-testid="filter-chip-row" reserved for the next task */}
+      {/* Active filter-chip row (Task 26) — shown only when Merchandising module is on
+          and there are active drawer filters. */}
+      {isMerchandisingEnabled && filters && (
+        filters.brands.length > 0 || filters.categories.length > 0 || filters.skinTypes.length > 0
+      ) && (
+        <div className="flex flex-wrap items-center gap-2" data-testid="filter-chip-row">
+          {filters.brands.map((brand) => (
+            <Pill
+              key={`brand-${brand}`}
+              selected
+              onRemove={() =>
+                onFiltersChange?.({
+                  ...filters,
+                  brands: filters.brands.filter((b) => b !== brand),
+                })
+              }
+              removeLabel={t('products.filtersClearAll')}
+            >
+              {brand}
+            </Pill>
+          ))}
+          {filters.categories.map((cat) => (
+            <Pill
+              key={`cat-${cat}`}
+              selected
+              onRemove={() =>
+                onFiltersChange?.({
+                  ...filters,
+                  categories: filters.categories.filter((c) => c !== cat),
+                })
+              }
+              removeLabel={t('products.filtersClearAll')}
+            >
+              {cat}
+            </Pill>
+          ))}
+          {filters.skinTypes.map((st) => (
+            <Pill
+              key={`skin-${st}`}
+              selected
+              onRemove={() =>
+                onFiltersChange?.({
+                  ...filters,
+                  skinTypes: filters.skinTypes.filter((s) => s !== st),
+                })
+              }
+              removeLabel={t('products.filtersClearAll')}
+            >
+              {t(`skin_type.${st}`, { ns: 'smart-prompts', defaultValue: st })}
+            </Pill>
+          ))}
+        </div>
+      )}
+
+      {/* Filtres drawer (Task 26) — module-gated */}
+      {isMerchandisingEnabled && (
+        <FiltresDrawer
+          isOpen={filtresOpen}
+          onClose={() => setFiltresOpen(false)}
+          products={products}
+          filters={filters ?? EMPTY_FILTRES_FILTERS}
+          onFiltersChange={(f) => {
+            onFiltersChange?.(f);
+          }}
+          resultCount={filteredProducts.length}
+        />
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Virtualized product grid                                            */}
