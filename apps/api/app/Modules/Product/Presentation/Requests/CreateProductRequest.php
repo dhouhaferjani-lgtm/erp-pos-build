@@ -160,6 +160,11 @@ class CreateProductRequest extends FormRequest
 
         return [
             'name' => ['required', 'string', 'max:255'],
+            'brand_id' => [
+                'nullable',
+                'uuid',
+                Rule::exists('brands', 'id')->where('tenant_id', $company->tenant_id),
+            ],
             'sku' => [
                 'required',
                 'string',

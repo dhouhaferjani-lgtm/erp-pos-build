@@ -39,7 +39,17 @@
     "sortByMostSold": "Trier par plus vendus",
     "sortDefault": "Ordre par défaut",
     "favorites": "Favoris",
-    "viewDetails": "Voir les détails"
+    "viewDetails": "Voir les détails",
+    "filters": "Filtres",
+    "filtersClose": "Fermer",
+    "filtersBrand": "Marque",
+    "filtersCategory": "Catégorie",
+    "filtersSkinType": "Type de peau",
+    "filtersResultCount": "{{count}} résultats",
+    "filtersClearAll": "Effacer tout",
+    "filterRemove": "Retirer : {{value}}",
+    "filtersNoFacets": "Aucun filtre disponible pour ce catalogue",
+    "skinAdviceLabel": "Conseil · Type de peau"
   },
   "payment": {
     "success": "Paiement réussi !",
@@ -479,7 +489,15 @@
     "margin": "Marge",
     "reorderLevel": "Seuil de réapprovisionnement",
     "ingredients": "Ingrédients",
-    "backOrder": "Commande fournisseur"
+    "backOrder": "Commande fournisseur",
+    "merchandising": {
+      "ariaLabel": "Onglets produits associés",
+      "equivalents": "Équivalents",
+      "complements": "Compléments",
+      "routine": "Routine",
+      "add": "Ajouter",
+      "empty": "Aucun produit"
+    }
   },
   "settings": {
     "title": "Paramètres",
@@ -977,7 +995,32 @@
   },
   "customers": {
     "pageTitle": "Clients",
-    "placeholder": "La gestion des clients arrive bientôt."
+    "placeholder": "La gestion des clients arrive bientôt.",
+    "search": "Rechercher un client…",
+    "addCustomer": "Nouveau client",
+    "noCustomers": "Aucun client synchronisé.",
+    "loadError": "Impossible de charger les clients.",
+    "close": "Fermer",
+    "backToList": "Retour",
+    "name": "Nom",
+    "phone": "Téléphone",
+    "email": "E-mail",
+    "nameRequired": "Le nom est requis.",
+    "contactRequired": "Téléphone ou e-mail requis.",
+    "creating": "Création…",
+    "createCustomer": "Créer le client",
+    "createFailed": "La création du client a échoué.",
+    "skinProfileTitle": "Profil de peau",
+    "skinType": "Type de peau",
+    "skinTypeNone": "Non renseigné",
+    "skinAdviceNote": "Note de conseil",
+    "skinAdviceNotePlaceholder": "Conseils personnalisés pour ce client…",
+    "editSkinProfile": "Modifier le profil de peau",
+    "saveSkinProfile": "Enregistrer",
+    "savingSkinProfile": "Enregistrement…",
+    "updateSkinError": "Mise à jour du profil de peau échouée.",
+    "phone_label": "Téléphone : {{value}}",
+    "email_label": "E-mail : {{value}}"
   },
   "loyalty": {
     "points": "{{amount}} pts",

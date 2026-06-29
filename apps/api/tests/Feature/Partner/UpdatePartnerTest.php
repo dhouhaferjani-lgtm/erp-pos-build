@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Partner;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -266,6 +267,50 @@ class UpdatePartnerTest extends TestCase
             ->postJson('/api/v1/partners/not-a-uuid/validate-tax-id');
 
         $response->assertNotFound();
+    }
+
+    public function test_parapharmacy_tenant_can_persist_skin_fields(): void
+    {
+        $this->tenant->update(['vertical' => Vertical::Parapharmacy]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/partners/{$this->partner->id}", [
+                'skin_type' => 'dry',
+                'skin_advice_note' => 'Use moisturizer daily',
+            ]);
+
+        $response->assertOk();
+
+        $this->assertDatabaseHas('partners', [
+            'id' => $this->partner->id,
+            'skin_type' => 'dry',
+            'skin_advice_note' => 'Use moisturizer daily',
+        ]);
+    }
+
+    public function test_non_parapharmacy_tenant_cannot_persist_skin_fields(): void
+    {
+        // setUp tenant defaults to the retail vertical.
+        $this->assertNotSame(Vertical::Parapharmacy, $this->tenant->fresh()?->vertical);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/partners/{$this->partner->id}", [
+                'name' => 'Updated Name',
+                'skin_type' => 'dry',
+                'skin_advice_note' => 'Should be ignored',
+            ]);
+
+        // The update succeeds (other fields apply); skin fields are silently
+        // dropped to mirror the read-path vertical gate.
+        $response->assertOk()
+            ->assertJsonPath('data.name', 'Updated Name');
+
+        $this->assertDatabaseHas('partners', [
+            'id' => $this->partner->id,
+            'name' => 'Updated Name',
+            'skin_type' => null,
+            'skin_advice_note' => null,
+        ]);
     }
 
     public function test_cannot_update_partner_from_another_tenant(): void

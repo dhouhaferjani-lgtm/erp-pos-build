@@ -9,6 +9,7 @@ use App\Modules\Partner\Domain\Enums\ConsolidationFrequency;
 use App\Modules\Partner\Domain\Enums\CustomerCategory;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Enums\PaymentTerms;
+use App\Shared\Domain\Enums\SkinType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
@@ -91,6 +92,8 @@ class UpdatePartnerRequest extends FormRequest
             ],
             'is_active' => ['sometimes', 'boolean'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'skin_type' => ['sometimes', 'nullable', new Enum(SkinType::class)],
+            'skin_advice_note' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'street_address' => ['sometimes', 'nullable', 'string', 'max:255'],
             'street_address_2' => ['sometimes', 'nullable', 'string', 'max:255'],
             'city' => ['sometimes', 'nullable', 'string', 'max:100'],

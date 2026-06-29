@@ -118,10 +118,18 @@ vi.mock('@/lib/db/repositories/menuRepository', () => ({
 vi.mock('@/stores/authStore', () => ({
   useAuthStore: {
     getState: vi.fn().mockReturnValue({
-      user: { id: 'u1' },
+      user: { id: 'u1', tenantId: 'tenant-1' },
+      companyId: 'company-1',
       refreshCompanyConfig: vi.fn().mockResolvedValue(undefined),
     }),
   },
+}));
+
+// Task 22 — pullCustomers is now called by runFullSync. Mock it here so
+// the existing runFullSync test keeps result.errors.toHaveLength(0) and so
+// no apiGet slot is consumed by the customer sync path.
+vi.mock('@/lib/customer/customerSyncService', () => ({
+  pullCustomers: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({

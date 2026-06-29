@@ -84,6 +84,7 @@ import {
 import { logSyncOperation, getSyncMetadata, setSyncMetadata, cleanupOldSyncLogs } from '@/lib/db/repositories/syncLogRepository';
 import { coerceSyncError } from '@/lib/sync/coerceSyncError';
 import { reconcileOpenShift, applyShiftReconcileVerdict } from '@/lib/sync/shiftReconcile';
+import { pullCustomers } from '@/lib/customer/customerSyncService';
 import { withWriteTransaction } from '@/lib/db/writeGate';
 import {
   upsertVouchers,
@@ -157,6 +158,15 @@ export interface SyncResult {
   vouchersPulled: number;
   voucherLedgerPulled: number;
   receiptQrIndexPulled: number;
+  /**
+   * Task 22 — customer mirror delta pull (parapharmacy).
+   * `customersPulled` is the number of customer rows upserted this tick.
+   * `customersFailed` is set to `true` when the pull was skipped (missing
+   * tenant/company context) or threw — it triggers `degraded` via
+   * `errors.push()` (errors.length > 0 path in `computeDegraded`).
+   */
+  customersPulled: number;
+  customersFailed?: boolean;
   chainBreak: boolean;
   errors: string[];
   /**
@@ -2009,6 +2019,31 @@ export async function runFullSync(
   const voucherLedgerPulled = await pullVoucherLedger(db, terminalId);
   const receiptQrIndexPulled = await pullReceiptQrIndex(db, terminalId);
 
+  // Task 22 — customer mirror delta pull (parapharmacy). Gated on both
+  // tenant/company IDs being present in the auth store (I-2 strict guard).
+  // Errors push into the shared `errors` array so `computeDegraded` picks
+  // them up automatically via `errors.length > 0`. Cursor advancement lives
+  // entirely inside `pullCustomers` (success-path-only) — no cursor logic here.
+  let customersPulled = 0;
+  let customersFailed = false;
+  {
+    const { useAuthStore } = await import('@/stores/authStore');
+    const auth = useAuthStore.getState();
+    const tenantId = auth.user?.tenantId;
+    const companyId = auth.companyId;
+    if (!tenantId || !companyId) {
+      customersFailed = true;
+      errors.push('Customer pull skipped: missing tenant/company context');
+    } else {
+      try {
+        customersPulled = await pullCustomers(db, tenantId, companyId);
+      } catch (e) {
+        customersFailed = true;
+        errors.push(`Customer pull failed: ${coerceSyncError(e)}`);
+      }
+    }
+  }
+
   // FV2 — variant catalog delta pull. Runs after the receipt QrIndex pull so
   // the full catalog round-trip completes before stock is refreshed. Swallow-
   // and-log like pullLocationStock — a variant-pull failure must never block
@@ -2103,6 +2138,8 @@ export async function runFullSync(
     vouchersPulled,
     voucherLedgerPulled,
     receiptQrIndexPulled,
+    customersPulled,
+    customersFailed,
     chainBreak,
     errors,
     degraded,

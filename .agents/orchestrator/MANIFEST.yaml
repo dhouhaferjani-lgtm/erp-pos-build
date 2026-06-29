@@ -1,0 +1,139 @@
+# MANIFEST.yaml -- ERP Development Orchestrator State
+# Single source of truth for all active development work.
+# Updated after every dispatch, completion, review, or merge.
+# The orchestrator reads this on startup to restore full awareness.
+#
+# Last updated: 2026-06-15T12:00:00Z
+
+---
+
+# Active tasks -- currently being worked on by agents/sessions/Codex
+active_tasks: []
+  # Example entry:
+  # - id: TASK-001
+  #   title: "Implement bank reconciliation matching algorithm"
+  #   description: "Auto-match bank statement lines to payments using amount, date, and reference"
+  #   dispatch: subagent          # subagent | codex | long_session | houssam
+  #   dispatched_at: "2026-06-15T09:00:00Z"
+  #   branch: feature/TASK-001
+  #   worktree: ~/erp-worktrees/TASK-001   # null if not using worktree
+  #   session: null                         # session name if long_session
+  #   modules:
+  #     - Treasury
+  #     - Accounting
+  #   domain_agents:
+  #     - finance
+  #   status: in_progress          # in_progress | testing | creating_pr
+  #   last_activity: "2026-06-15T10:30:00Z"
+  #   estimated_hours: 3
+  #   notes: "Worker has completed the matching service, now writing tests"
+
+# Review queue -- PRs awaiting domain agent or architect review
+review_queue: []
+  # Example entry:
+  # - id: TASK-001
+  #   pr_number: 42
+  #   pr_url: "https://github.com/otospexsolutions/erp/pull/42"
+  #   title: "feat(treasury): bank reconciliation matching"
+  #   branch: feature/TASK-001
+  #   target: local-dev
+  #   created_at: "2026-06-15T11:00:00Z"
+  #   ci_status: passing            # passing | failing | pending
+  #   reviews_needed:
+  #     - agent: finance
+  #       status: pending            # pending | approved | changes_requested
+  #       comments: null
+  #     - agent: architect
+  #       status: pending
+  #       comments: null
+  #   files_changed: 12
+  #   modules_touched:
+  #     - Treasury
+  #     - Accounting
+
+# Merge queue -- PRs approved and ready to merge to local-dev
+merge_queue: []
+  # Example entry:
+  # - id: TASK-001
+  #   pr_number: 42
+  #   branch: feature/TASK-001
+  #   target: local-dev
+  #   approved_by:
+  #     - finance
+  #     - architect
+  #   ci_status: passing
+  #   ready_since: "2026-06-15T12:00:00Z"
+  #   merge_priority: normal        # urgent | normal | low
+
+# Completed tasks -- recently completed for reference (keep last 20)
+completed: []
+  # Example entry:
+  # - id: TASK-000
+  #   title: "Add Deptrac configuration for all 38 modules"
+  #   dispatch: subagent
+  #   branch: feature/TASK-000
+  #   merged_to: local-dev
+  #   merged_at: "2026-06-14T16:00:00Z"
+  #   pr_number: 41
+  #   duration_hours: 2.5
+  #   rollback: false
+
+# Blocked tasks -- waiting on Houssam, external input, or dependencies
+blocked: []
+  # Example entry:
+  # - id: TASK-002
+  #   title: "Implement Tunisian stamp duty rules"
+  #   dispatch: houssam
+  #   reason: fiscal_compliance
+  #   blocked_since: "2026-06-15T08:00:00Z"
+  #   description: "Requires Houssam's session -- fiscal/compliance code (Tier 3)"
+  #   dependencies: []
+  #   escalated: true
+  #   escalated_at: "2026-06-15T08:05:00Z"
+
+# Task groups -- multi-task work items with dependencies
+task_groups: []
+  # Example entry:
+  # - group_id: GRP-001
+  #   title: "Purchase-to-Pay flow completion"
+  #   tasks:
+  #     - id: TASK-010
+  #       title: "PO approval workflow"
+  #       status: completed
+  #     - id: TASK-011
+  #       title: "Goods receipt service"
+  #       status: in_progress
+  #       depends_on: [TASK-010]
+  #     - id: TASK-012
+  #       title: "Supplier invoice matching"
+  #       status: queued
+  #       depends_on: [TASK-011]
+
+# Counters -- for generating unique IDs
+counters:
+  task: 0          # next task ID: TASK-{counter+1}
+  codex: 0         # next Codex job: CX-{counter+1}
+  session: 0       # next session: SES-{counter+1}
+  group: 0         # next group: GRP-{counter+1}
+
+# Metrics -- track operational performance
+metrics:
+  period: "2026-W25"     # ISO week
+  tasks_dispatched: 0
+  tasks_completed: 0
+  avg_hours_to_merge: null
+  ci_first_pass_rate: null    # % of tasks where CI passes on first commit
+  escalation_count: 0
+  rollback_count: 0
+
+# Branch state -- current state of key branches
+branches:
+  main:
+    last_commit: null
+    last_merge_from: null
+    last_merge_at: null
+  local-dev:
+    last_commit: null
+    last_merge_from: null
+    last_merge_at: null
+  active_feature_branches: []

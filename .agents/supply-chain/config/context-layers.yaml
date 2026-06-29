@@ -1,0 +1,93 @@
+# Supply Chain Agent -- Context Loading Strategy
+
+layers:
+  0_always:
+    description: Loaded at agent startup
+    files:
+      - ~/erp-agents/supply-chain/CLAUDE.md
+      - ~/projects/erp/CLAUDE.md
+      - ~/projects/erp/apps/api/.claude/context/architecture.md
+
+  1_per_task:
+    description: Loaded based on the specific task
+    triggers:
+      inventory_task:
+        condition: Task mentions stock, inventory, WAC, cost, movements, adjustments
+        files:
+          - apps/api/app/Modules/Inventory/Application/Services/WeightedAverageCostService.php
+          - apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php
+          - apps/api/app/Modules/Inventory/Domain/Enums/MovementType.php
+          - apps/api/app/Modules/Inventory/Application/Services/StockReservationService.php
+          - apps/api/tests/Feature/Inventory/
+          - apps/api/tests/Unit/Inventory/
+
+      product_task:
+        condition: Task mentions products, SKU, barcode, cost price, margins, enrichment
+        files:
+          - apps/api/app/Modules/Product/
+          - apps/api/app/Modules/Product/Domain/Enums/
+          - apps/api/tests/Feature/Product/
+
+      catalog_task:
+        condition: Task mentions bundles, recipes, composites, modifiers, kits
+        files:
+          - apps/api/app/Modules/Catalog/
+          - apps/api/app/Modules/Catalog/Domain/Entities/
+          - apps/api/app/Modules/Catalog/Domain/Enums/
+
+      batch_task:
+        condition: Task mentions batches, lots, expiry, FEFO, write-off
+        files:
+          - apps/api/app/Modules/BatchExpiry/
+          - apps/api/app/Modules/BatchExpiry/Domain/Services/FEFOInventoryService.php
+          - apps/api/app/Modules/BatchExpiry/Domain/Entities/
+
+      uom_task:
+        condition: Task mentions units, conversion, UoM, measurement
+        files:
+          - apps/api/app/Modules/Uom/
+          - apps/api/app/Modules/Uom/Domain/Services/UnitConversionService.php
+
+      purchase_task:
+        condition: Task mentions purchase orders, procurement, goods receipt, suppliers
+        files:
+          - apps/api/app/Modules/PurchaseHub/
+          - apps/api/app/Modules/Inventory/Application/Services/GoodsReceiptService.php
+          - apps/api/app/Modules/Inventory/Application/Services/LandedCostService.php
+
+      counting_task:
+        condition: Task mentions inventory count, reconciliation, physical count
+        files:
+          - apps/api/app/Modules/Inventory/Application/Services/InventoryCountingService.php
+          - apps/api/app/Modules/Inventory/Application/Services/CountingReconciliationService.php
+          - apps/api/app/Modules/Inventory/Application/Services/FraudTriggeredCountingService.php
+
+      pricing_task:
+        condition: Task mentions pricing, price lists, promotions, coupons, discounts
+        files:
+          - apps/api/app/Modules/Pricing/
+          - apps/api/app/Modules/Promotion/
+          - apps/api/app/Modules/Coupon/
+
+  2_reference:
+    description: Coding conventions and patterns
+    files:
+      - docs/conventions/README.md
+      - docs/conventions/01-API-RESPONSES.md
+      - docs/conventions/03-AUTHORIZATION.md
+      - docs/conventions/07-DEPENDENCY-INJECTION.md
+      - apps/api/.claude/context/i18n.md
+      - apps/api/.claude/context/new-feature-checklist.md
+
+  3_on_demand:
+    description: Only when explicitly needed
+    files:
+      - apps/api/app/Modules/Accounting/   # When stock valuation posts to GL
+      - apps/api/app/Modules/Treasury/      # When goods receipt triggers payment
+      - apps/api/app/Modules/Document/      # When delivery/return notes affect stock
+      - apps/api/app/Modules/Vehicle/       # When auto parts cross-referencing
+      - apps/api/app/Modules/Workshop/      # When work orders consume parts
+      - apps/api/app/Modules/POS/           # When POS sale triggers stock issue
+      - apps/web/src/                       # Frontend implementation
+      - apps/api/database/migrations/       # Schema details
+      - apps/api/tests/Fixtures/

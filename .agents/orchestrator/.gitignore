@@ -1,0 +1,28 @@
+# Environment and secrets
+.env
+.env.*
+
+# Claude Code session data
+.claude/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Session artifacts (ephemeral, tracked in ~/erp-sessions/ instead)
+sessions/
+
+# Node (if any tooling is added later)
+node_modules/
+
+# Python (if any scripts are added)
+__pycache__/
+*.pyc
+.venv/

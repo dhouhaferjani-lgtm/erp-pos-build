@@ -14,6 +14,7 @@ use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Enums\PaymentTerms;
 use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\Enums\SkinType;
 use Database\Factories\PartnerFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -57,6 +58,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $withholding_exemption_reason
  * @property string|null $withholding_exemption_certificate_id
  * @property string|null $notes
+ * @property SkinType|null $skin_type
+ * @property string|null $skin_advice_note
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property string|null $street_address
@@ -134,6 +137,8 @@ class Partner extends Model
         'account_status_changed_at',
         'account_status_changed_by',
         'account_status_reason',
+        'skin_type',
+        'skin_advice_note',
     ];
 
     /**
@@ -161,6 +166,7 @@ class Partner extends Model
             'account_status' => CustomerAccountStatus::class,
             'account_status_version' => 'integer',
             'account_status_changed_at' => 'datetime',
+            'skin_type' => SkinType::class,
         ];
     }
 

@@ -1,0 +1,78 @@
+# STATE.yaml -- Session State Tracking
+# Written by the worker session, read by the orchestrator.
+# Update this file every 30 minutes or on any status change.
+
+---
+
+task_id: "{TASK-ID}"
+title: "{task title}"
+branch: "feature/{TASK-ID}"
+session_name: "{tmux session name}"
+
+# Status: queued | in_progress | testing | creating_pr | completed | blocked | failed
+status: queued
+started_at: null
+last_updated: null
+completed_at: null
+
+# Progress tracking
+progress:
+  current_step: null        # e.g., "4_domain" (from workflow.yaml steps)
+  steps_completed: []
+  # Example:
+  # - step: "1_understand"
+  #   completed_at: "2026-06-15T09:15:00Z"
+  # - step: "2_plan"
+  #   completed_at: "2026-06-15T09:30:00Z"
+  estimated_remaining_hours: null
+
+# Files modified so far
+files_changed: []
+  # - path: "app/Modules/Treasury/Domain/Services/ReconciliationService.php"
+  #   action: created      # created | modified | deleted
+  # - path: "tests/Feature/Treasury/ReconciliationTest.php"
+  #   action: created
+
+# Commits made
+commits: []
+  # - hash: "abc123f"
+  #   message: "Phase X.Y.Z: add reconciliation matching service"
+  #   timestamp: "2026-06-15T10:00:00Z"
+
+# Quality gate results (updated after each run)
+quality_gates:
+  phpstan: null             # pass | fail | not_run
+  pint: null
+  pest: null
+  typecheck: null           # for frontend changes
+  eslint: null              # for frontend changes
+  deptrac: null
+  playwright: null          # for UI changes
+  preflight: null           # final all-in-one check
+
+# PR info (filled when PR is created)
+pr:
+  number: null
+  url: null
+  created_at: null
+  ci_status: null           # passing | failing | pending
+
+# Blockers (filled when status is "blocked")
+blockers: []
+  # - category: technical    # technical | clarification | dependency | environment
+  #   description: "Cannot determine the correct GL accounts for bank reconciliation adjustments"
+  #   attempted: "Checked Accounting module, treasury.md docs, and convention docs"
+  #   recommendation: "Need Finance agent or Houssam to clarify the chart of accounts mapping"
+  #   reported_at: "2026-06-15T10:45:00Z"
+  #   resolved: false
+  #   resolved_at: null
+  #   resolution: null
+
+# Follow-ups (out-of-scope items noticed during work)
+follow_ups: []
+  # - description: "Treasury module's PaymentRefundService has no tests"
+  #   severity: medium       # low | medium | high
+  #   module: Treasury
+
+# Notes (free-form observations for the orchestrator)
+notes: null

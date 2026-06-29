@@ -1,0 +1,396 @@
+# Product Intelligence Agent -- Vertical Definitions
+# Each vertical defines what modules are relevant, required business flows,
+# compliance requirements, and expected industry-standard features.
+
+verticals:
+  parapharmacy:
+    display_name: Parapharmacy / Pharmacy Adjacent
+    description: >
+      Stores selling OTC medications, cosmetics, hygiene products, dietary supplements,
+      medical devices. Regulated but not full pharmacy. Common in Tunisia, France, Morocco.
+
+    relevant_modules:
+      primary:
+        - Product          # DCI, dosage forms, age restrictions, parapharmacy categories
+        - Inventory         # FEFO mandatory, batch tracking, expiry management
+        - BatchExpiry       # Core module for this vertical
+        - Catalog           # Product categories, regulated item flags
+        - Pricing           # Regulated pricing for some items
+        - POS               # Point of sale with age verification prompts
+        - Document          # Invoices, purchase orders for pharmaceutical distributors
+        - Taxation          # TVA rates vary by product category (medical devices vs cosmetics)
+      secondary:
+        - Loyalty           # Customer loyalty programs
+        - Partner           # Supplier management (pharmaceutical distributors)
+        - PurchaseHub       # Reorder from distributors
+        - Compliance        # Fiscal compliance (NF525 if France-based)
+        - Uom               # Dosage units, packaging units
+
+    required_business_flows:
+      - name: Purchase-to-stock
+        steps:
+          - Create purchase order to distributor
+          - Receive goods with batch/lot numbers and expiry dates
+          - Record landed cost (if import)
+          - Update WAC
+          - Batch-level stock tracking begins
+        status: partially_implemented
+        gaps:
+          - No distributor-specific PO templates
+          - Landed cost allocation exists but not tested for pharma imports
+
+      - name: FEFO sale
+        steps:
+          - Customer purchases product
+          - System allocates from batch with earliest expiry
+          - Stock deducted at batch level
+          - If near-expiry, alert cashier
+          - If expired, block sale
+        status: implemented
+        notes: FEFOInventoryService and BatchWriteOffService exist
+
+      - name: Expiry management
+        steps:
+          - Daily job scans for near-expiry batches
+          - Alert generated for products expiring within threshold
+          - Option to discount near-expiry items
+          - Write-off expired stock
+          - Adjustment movement created
+        status: partially_implemented
+        gaps:
+          - Near-expiry discount automation not built
+          - Alert notification channel not configured
+
+      - name: Regulated product sale
+        steps:
+          - Product flagged as age-restricted or requires ID
+          - POS prompts cashier for age verification
+          - Sale blocked or allowed based on verification
+          - Audit trail of verification
+        status: enum_exists_implementation_unknown
+        notes: AgeRestriction enum exists in Product module
+
+    compliance_requirements:
+      - name: Batch traceability
+        description: Must trace any product back to its batch, supplier, and receipt date
+        severity: legally_required
+        status: implemented
+
+      - name: FEFO enforcement
+        description: First Expired First Out for all products with expiry dates
+        severity: legally_required
+        status: implemented
+
+      - name: Product recall support
+        description: Ability to identify all customers who purchased a recalled batch
+        severity: legally_required
+        status: not_implemented
+
+      - name: DCI tracking
+        description: Track active pharmaceutical ingredient (DCI/INN) per product
+        severity: best_practice
+        status: enum_exists
+        notes: ParapharmacyCategory and DosageForm enums exist
+
+      - name: Temperature-sensitive storage
+        description: Track storage requirements (cold chain) per product/batch
+        severity: best_practice
+        status: not_implemented
+
+      - name: Prescription tracking
+        description: Track prescription references for dispensed items
+        severity: depends_on_jurisdiction
+        status: not_implemented
+
+    expected_features:
+      table_stakes:
+        - Batch/lot tracking with expiry dates
+        - FEFO automatic allocation
+        - Near-expiry alerts and reporting
+        - Barcode scanning (EAN-13, DataMatrix for pharma)
+        - Product categorization (DCI, cosmetics, medical devices, etc.)
+        - Supplier management with pharmaceutical distributors
+        - Purchase order with batch number capture at receipt
+        - Age-restricted product handling
+        - Multi-location stock management
+        - VAT rate management (multiple rates per product category)
+
+      differentiators:
+        - Drug interaction checking (DCI cross-reference)
+        - Automatic reorder point calculation based on sales velocity
+        - Expiry-based markdown automation
+        - Customer purchase history for interaction alerts
+        - Integration with pharmaceutical price databases
+        - Loyalty program with points-for-purchases
+        - WhatsApp/SMS order notifications
+
+      future:
+        - AI-powered demand forecasting by product category
+        - Integration with e-prescription systems
+        - Marketplace sync with online para-pharmacy platforms
+        - Digital shelf labels with price sync
+
+  automotive:
+    display_name: Automotive Parts & Service
+    description: >
+      Auto parts retailers, garages, and service centers. Part number management,
+      vehicle compatibility, work orders, and parts inventory are critical.
+
+    relevant_modules:
+      primary:
+        - Product           # Cross-references, OEM numbers, compatibility
+        - Vehicle            # VIN lookup, vehicle management
+        - Workshop           # Work orders, technician assignment, service bundles
+        - Inventory          # Parts stock, multi-location warehouse
+        - Catalog            # Parts bundles (brake kit = pads + discs + pins)
+        - Service            # Labor items, service menu
+        - Scheduling         # Appointment booking for service bays
+        - Document           # Quotes, work order invoices, parts invoices
+      secondary:
+        - Partner            # Customer vehicles, fleet management
+        - POS                # Counter sales for walk-in parts purchases
+        - PurchaseHub        # Parts ordering from distributors
+        - Pricing            # Tiered pricing (retail, trade, fleet)
+        - Uom                # Parts units (piece, set, liter, meter)
+
+    required_business_flows:
+      - name: Part lookup by vehicle
+        steps:
+          - Customer provides VIN or vehicle make/model/year
+          - System looks up vehicle
+          - Cross-reference database finds compatible parts
+          - Display parts with OEM, aftermarket, and compatible options
+          - Show stock availability across locations
+        status: partially_implemented
+        notes: Vehicle module exists with VIN lookup. CrossReferenceType enum exists (OEM, aftermarket, compatible)
+
+      - name: Work order lifecycle
+        steps:
+          - Schedule appointment
+          - Create work order with service items + parts
+          - Assign technician
+          - Technician logs time and parts used
+          - Parts consumed from inventory
+          - Work order invoiced
+          - Payment recorded
+        status: partially_implemented
+        notes: Workshop module has WorkOrder, Technician, Bundle sub-modules. Scheduling module exists.
+
+      - name: Counter sale
+        steps:
+          - Walk-in customer asks for part
+          - Look up by part number, cross-reference, or vehicle
+          - POS sale with immediate stock deduction
+          - Print receipt
+        status: partially_implemented
+
+      - name: Core returns (automotive specific)
+        steps:
+          - Old part returned (alternator core, brake caliper)
+          - Core credit issued to customer
+          - Core returned to supplier for refund
+          - Core deposit tracking
+        status: not_implemented
+
+    compliance_requirements:
+      - name: VIN decoding
+        description: Decode VIN to identify make, model, year, engine for parts compatibility
+        severity: table_stakes
+        status: partially_implemented
+
+      - name: Warranty tracking
+        description: Track warranty periods on parts sold, manage warranty claims
+        severity: best_practice
+        status: not_implemented
+
+      - name: EPA/environmental compliance
+        description: Track hazardous materials (oil, coolant, batteries) disposal
+        severity: jurisdiction_dependent
+        status: not_implemented
+
+    expected_features:
+      table_stakes:
+        - Part number cross-referencing (OEM to aftermarket)
+        - Vehicle compatibility lookup (VIN or YMM)
+        - Work order management with parts + labor
+        - Technician time tracking
+        - Multi-location parts inventory
+        - Core deposit/return tracking
+        - Service appointment scheduling
+        - Parts catalog with images and specifications
+        - Tiered pricing (retail, trade, fleet)
+        - Customer vehicle history
+
+      differentiators:
+        - Automatic parts recommendation based on service type
+        - Integration with parts catalog databases (TecDoc, WHI Solutions)
+        - Predictive maintenance alerts (based on vehicle mileage/age)
+        - Fleet management dashboard
+        - Warranty claim automation
+        - Digital vehicle inspection with photo documentation
+
+      future:
+        - AI-powered diagnostic assistance
+        - Integration with OBD-II diagnostic tools
+        - Online parts ordering portal for B2B customers
+        - Electric vehicle service module (HV battery, charging systems)
+
+  general_retail:
+    display_name: General Retail
+    description: >
+      General merchandise retail. Covers clothing, electronics, home goods,
+      specialty shops. Focus on POS efficiency, inventory management, and promotions.
+
+    relevant_modules:
+      primary:
+        - POS                # Core retail POS
+        - Product            # Product master data
+        - Inventory          # Stock management
+        - Catalog            # Product variants, bundles
+        - Pricing            # Price lists, markdown management
+        - Promotion          # Promotions and discounts
+        - Coupon             # Coupon codes
+        - Document           # Sales invoices, returns
+      secondary:
+        - Loyalty            # Customer loyalty program
+        - Partner            # Customer management
+        - Marketplace        # Multi-channel selling
+        - PlatformIntegration # E-commerce sync
+        - Uom                # Product units
+        - Import             # Bulk product import
+
+    required_business_flows:
+      - name: Walk-in sale
+        steps:
+          - Scan product barcodes
+          - Apply promotions/coupons
+          - Calculate tax
+          - Process payment (cash, card, split)
+          - Print receipt
+          - Update inventory
+        status: implemented
+
+      - name: Return/exchange
+        steps:
+          - Look up original sale
+          - Process return (full or partial)
+          - Issue credit note or refund
+          - Restock returned items
+          - Update inventory
+        status: implemented
+
+      - name: Seasonal markdown
+        steps:
+          - Define markdown schedule
+          - Apply percentage discounts by category/date range
+          - Track markdown impact on margins
+          - Clear end-of-season stock
+        status: partially_implemented
+        gaps:
+          - Scheduled markdown automation not built
+          - Margin impact reporting limited
+
+    compliance_requirements:
+      - name: NF525 (France)
+        description: French POS certification with receipt chaining, Z-reports, JET
+        severity: legally_required_france
+        status: implemented
+
+      - name: Receipt requirements
+        description: Tax-compliant receipts with required fields per country
+        severity: legally_required
+        status: implemented
+
+    expected_features:
+      table_stakes:
+        - Fast POS with barcode scanning
+        - Multi-payment method support
+        - Inventory management with stock alerts
+        - Basic promotions (% off, BOGO)
+        - Customer management and purchase history
+        - Return/exchange processing
+        - Daily Z-report closing
+        - Multi-location support
+
+      differentiators:
+        - Omnichannel inventory (online + in-store)
+        - Advanced promotions engine (conditions, stacking rules)
+        - Loyalty program with tiers
+        - Customer-facing display integration
+        - Mobile POS (tablet-based)
+        - AI-powered product recommendations at checkout
+        - Dynamic pricing based on demand/competition
+
+      future:
+        - Self-checkout kiosk mode
+        - Visual search (take photo to find product)
+        - AR try-on (fashion/eyewear)
+        - Social commerce integration
+        - Subscription/recurring order support
+
+  restaurant:
+    display_name: Restaurant / Food Service
+    description: >
+      Restaurants, cafes, food service. Order management, kitchen display,
+      recipe costing, table management. IziPOS variant focus.
+
+    relevant_modules:
+      primary:
+        - POS                # Order entry, table management
+        - Catalog            # Menu items, recipes, modifiers
+        - Inventory          # Ingredient stock management
+        - Menu               # Digital menu configuration
+        - Uom                # Recipe units (grams, ml, portions)
+      secondary:
+        - Pricing            # Menu pricing, happy hour pricing
+        - Promotion          # Meal deals, combos
+        - Document           # Supplier invoices for food purchases
+        - BatchExpiry        # Ingredient expiry tracking (food safety)
+        - Scheduling         # Reservation management (future)
+
+    required_business_flows:
+      - name: Dine-in order
+        steps:
+          - Assign table
+          - Take order with modifiers
+          - Send to kitchen display
+          - Track preparation status
+          - Serve
+          - Process payment
+          - Close table
+        status: partially_implemented
+        notes: Menu and Catalog modules exist with modifiers
+
+      - name: Recipe costing
+        steps:
+          - Define recipe with ingredients and quantities
+          - System calculates food cost per serving
+          - Track food cost percentage vs sale price
+          - Alert when food cost exceeds threshold
+        status: partially_implemented
+        notes: Recipe/RecipeLine entities exist in Catalog
+
+    expected_features:
+      table_stakes:
+        - Table management
+        - Kitchen display system (KDS)
+        - Order modifiers (no onion, extra cheese)
+        - Course management (appetizer, main, dessert)
+        - Split bill
+        - Recipe costing
+        - Ingredient inventory with recipe deduction
+        - Tip management
+
+      differentiators:
+        - Real-time food cost tracking
+        - Menu engineering analytics (stars, plowhorses, puzzles, dogs)
+        - Online ordering integration
+        - QR code table ordering
+        - Driver dispatch for delivery
+        - Waste tracking and analytics
+
+      future:
+        - AI-powered menu optimization
+        - Predictive ingredient ordering
+        - Customer dietary preference tracking
+        - Integration with delivery platforms (Uber Eats, etc.)

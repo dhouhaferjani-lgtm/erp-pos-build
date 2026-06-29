@@ -1,0 +1,131 @@
+# Supply Chain Agent -- Workflow Definitions
+
+feature_implementation:
+  steps:
+    1_understand:
+      description: Read the task and identify affected modules
+      actions:
+        - Read feature request/spec
+        - Identify primary module (Inventory, Product, Catalog, BatchExpiry, etc.)
+        - Check if cross-module contracts are needed
+        - Read existing code in the affected area
+        - Check if WAC calculation is affected
+
+    2_plan:
+      description: Design the solution
+      actions:
+        - Identify data model changes
+        - Map stock movement impact (what MovementType, before/after)
+        - Determine if WAC is affected
+        - Check if FEFO/batch tracking applies
+        - Check UoM conversion requirements
+        - Design API endpoints
+        - List events that will be emitted
+
+    3_schema:
+      description: Create or modify database schema
+      actions:
+        - Write migration in apps/api/database/migrations/
+        - UUIDs for primary keys
+        - tenant_id + company_id for multi-tenant tables
+        - product_id + location_id for inventory tables
+        - Proper indexes for query patterns
+
+    4_domain:
+      description: Implement domain layer (TDD)
+      actions:
+        - Write failing test first
+        - Create/update enums, value objects, domain services
+        - Create domain events (immutable, versioned)
+        - Implement to pass test, then refactor
+
+    5_application:
+      description: Implement application layer
+      actions:
+        - Create DTOs (Spatie Data)
+        - Create application services with proper transaction boundaries
+        - Wire pessimistic locking for stock operations
+        - Create event listeners
+        - Ensure DB::afterCommit for event dispatch
+
+    6_presentation:
+      description: Implement API layer
+      actions:
+        - Form requests with validation
+        - Thin controllers
+        - API resources
+        - Routes with middleware ['api', 'auth:sanctum', SetPermissionsTeam::class]
+
+    7_verify:
+      description: End-to-end verification
+      actions:
+        - Run test suite for affected modules
+        - PHPStan level 8
+        - Pint code style
+        - TypeScript typecheck + ESLint if frontend
+        - typescript:transform if DTOs changed
+        - Test concurrent access scenarios for stock operations
+
+    8_commit:
+      description: Commit
+      actions:
+        - Run ./scripts/preflight.sh
+        - "Phase X.Y.Z: imperative summary"
+
+pr_review:
+  supply_chain_checklist:
+    - name: pessimistic_locking
+      severity: critical
+      check: Stock modifications use lockForUpdate() on StockLevel and Product
+
+    - name: movement_audit_trail
+      severity: critical
+      check: Every stock change creates StockMovement with before/after snapshots
+
+    - name: wac_correctness
+      severity: critical
+      check: WAC recalculates only on inbound (purchase, return), not on sales
+
+    - name: bcmath_arithmetic
+      severity: critical
+      check: All monetary/quantity math uses bcmath, not float
+
+    - name: fefo_compliance
+      severity: high
+      check: Batch-tracked products use FEFOInventoryService for allocation
+
+    - name: reservation_consistency
+      severity: high
+      check: Reserved quantity never exceeds total quantity
+
+    - name: uom_conversion
+      severity: high
+      check: Quantities converted correctly between units
+
+    - name: negative_stock_prevention
+      severity: critical
+      check: Sales/issues validate sufficient available stock
+
+    - name: event_after_commit
+      severity: high
+      check: Domain events dispatched via DB::afterCommit(), not inside transactions
+
+    - name: event_immutability
+      severity: critical
+      check: No modifications to existing event classes
+
+    - name: reference_tracing
+      severity: medium
+      check: Stock movements reference source document (reference_type + reference_id)
+
+    - name: module_boundaries
+      severity: high
+      check: No direct imports from Finance/Accounting modules
+
+    - name: constructor_injection
+      severity: medium
+      check: No app() helper usage
+
+    - name: enum_usage
+      severity: medium
+      check: No raw strings for movement types, statuses

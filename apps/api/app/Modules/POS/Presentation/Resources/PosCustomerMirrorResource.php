@@ -6,6 +6,7 @@ namespace App\Modules\POS\Presentation\Resources;
 
 use App\Modules\Partner\Domain\Enums\CustomerAccountStatus;
 use App\Modules\Partner\Domain\Partner;
+use App\Shared\Domain\Enums\SkinType;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Carbon;
@@ -15,6 +16,11 @@ use Illuminate\Support\Carbon;
  */
 final class PosCustomerMirrorResource extends JsonResource
 {
+    public function __construct(mixed $resource, private readonly bool $isParapharmacy = false)
+    {
+        parent::__construct($resource);
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -25,7 +31,7 @@ final class PosCustomerMirrorResource extends JsonResource
         $accountStatusValue = $accountStatus->value;
         $chargeAccountEnabled = (bool) $this->is_active && $accountStatusValue === CustomerAccountStatus::Active->value;
 
-        return [
+        $payload = [
             'id' => $this->id,
             'tenant_id' => $this->tenant_id,
             'company_id' => $this->company_id,
@@ -49,5 +55,12 @@ final class PosCustomerMirrorResource extends JsonResource
             'updated_at' => $updatedAt,
             'synced_at' => Carbon::now()->toISOString(),
         ];
+
+        if ($this->isParapharmacy) {
+            $payload['skin_type'] = $this->skin_type instanceof SkinType ? $this->skin_type->value : $this->skin_type;
+            $payload['skin_advice_note'] = $this->skin_advice_note;
+        }
+
+        return $payload;
     }
 }

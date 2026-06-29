@@ -1,6 +1,6 @@
 declare global {
 declare namespace App.Enums {
-export type ModuleName = 'Identity' | 'Tenant' | 'Catalog' | 'Vehicle' | 'Partner' | 'Workshop' | 'Sales' | 'Inventory' | 'Treasury' | 'Accounting' | 'PlatformIntegration' | 'BatchExpiry' | 'Menu' | 'Tables' | 'CompositeItems' | 'Parapharmacy' | 'Appointments' | 'Fleet' | 'Prescription' | 'Reservation' | 'Loyalty' | 'Ecommerce';
+export type ModuleName = 'Identity' | 'Tenant' | 'Catalog' | 'Vehicle' | 'Partner' | 'Workshop' | 'Sales' | 'Inventory' | 'Treasury' | 'Accounting' | 'PlatformIntegration' | 'BatchExpiry' | 'Menu' | 'Tables' | 'CompositeItems' | 'Parapharmacy' | 'Appointments' | 'Fleet' | 'Prescription' | 'Reservation' | 'Loyalty' | 'Ecommerce' | 'Merchandising';
 export type Product = 'izipos' | 'otospex';
 export type Vertical = 'mechanic' | 'pharmacy' | 'restaurant' | 'coffee_shop' | 'retail' | 'fashion' | 'body_shop' | 'parts_retailer' | 'car_glass' | 'tire_shop' | 'service_station' | 'parapharmacy';
 }
@@ -1345,6 +1345,14 @@ platform_synced_at: string | null;
 created_at: string;
 updated_at: string | null;
 };
+export type BrandData = {
+id: string;
+name: string;
+slug: string;
+country_of_origin: string | null;
+website_url: string | null;
+is_active: boolean;
+};
 export type CategoryData = {
 id: number;
 company_id: string;
@@ -1469,6 +1477,10 @@ certifications: Array<App.Modules.Product.Application.DTOs.ProductCertificationD
 storage_requirements: string | null;
 created_at: string;
 updated_at: string | null;
+suitable_skin_types: Array<App.Shared.Domain.Enums.SkinType>;
+equivalent_product_ids: Array<string>;
+complement_product_ids: Array<string>;
+routine_refs: Array<{routine_id: string; step_order: number; step_label: string}>;
 };
 export type ProductCertificationData = {
 certification: App.Modules.Product.Application.DTOs.CertificationData;
@@ -1510,6 +1522,7 @@ updated_at: string | null;
 has_variants: boolean;
 primary_image_url: string | null;
 media: Array<App.Modules.Catalog.Application.DTOs.MediaAttachmentData>;
+brand: App.Modules.Product.Application.DTOs.BrandData | null;
 parapharmacy_metadata: App.Modules.Product.Application.DTOs.ParapharmacyProductMetadataData | null;
 automotive_metadata: App.Modules.Product.Application.DTOs.AutomotiveProductMetadataData | null;
 opening: App.Modules.Product.Application.DTOs.OpeningStateData | null;
@@ -1535,9 +1548,11 @@ declare namespace App.Modules.Product.Domain.Enums {
 export type AgeRestriction = 'adult_only' | 'children_only' | 'all_ages';
 export type AutomotiveArticleStatus = 'active' | 'discontinued' | 'superseded' | 'pending_review';
 export type BrandQualityTier = 'oe' | 'oes' | 'premium_aftermarket' | 'aftermarket' | 'economy';
+export type BrandSource = 'user' | 'enriched';
 export type CrossReferenceType = 'oe' | 'oem' | 'trade' | 'iam' | 'ean' | 'internal';
 export type DosageForm = 'capsule' | 'tablet' | 'softgel' | 'liquid' | 'powder' | 'cream' | 'gel' | 'lotion' | 'spray' | 'patch' | 'other';
 export type EnrichmentReviewStatus = 'pending_review' | 'accepted' | 'rejected';
+export type EquivalenceType = 'generic' | 'therapeutic' | 'brand_alt';
 export type ParapharmacyCategory = 'supplement' | 'cosmetic' | 'medical_device' | 'herbal' | 'baby_care' | 'sports_nutrition' | 'other';
 export type PlatformLinkStatus = 'linked' | 'unlinked' | 'pending_match' | 'rejected';
 export type ProductType = 'part' | 'service' | 'consumable';
@@ -1627,7 +1642,6 @@ export type PricingType = 'flat_rate' | 'hourly' | 'percentage';
 }
 declare namespace App.Modules.SmartPrompts.Domain.Enums {
 export type RecommendationContext = 'cart' | 'checkout' | 'reorder';
-export type SkinType = 'normal' | 'oily' | 'dry' | 'combination' | 'sensitive';
 export type SmartPromptsVariant = 'inline' | 'toast' | 'both' | 'off';
 }
 declare namespace App.Modules.Taxation.Domain.Enums {
@@ -2147,6 +2161,7 @@ declare namespace App.Shared.Contracts.Treasury.Enums {
 export type ToleranceType = 'underpayment' | 'overpayment' | 'none';
 }
 declare namespace App.Shared.Domain.Enums {
+export type SkinType = 'normal' | 'oily' | 'dry' | 'combination' | 'sensitive';
 export type VarianceDirection = 'over' | 'under' | 'balanced';
 export type VarianceSeverity = 'info' | 'warning' | 'critical';
 }

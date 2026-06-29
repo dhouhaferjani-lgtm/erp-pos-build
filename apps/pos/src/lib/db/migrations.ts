@@ -1787,4 +1787,73 @@ export const migrations: Migration[] = [
       DELETE FROM sync_metadata WHERE key = 'products_last_sync';
     `,
   },
+  {
+    // Parapharmacy Merchandising — Task 18.
+    //
+    // Adds three nullable TEXT columns to `products` so the parapharmacy
+    // catalog fields synced from the server are persisted on the device:
+    //   - `brand_id`: UUID of the product's brand (e.g. "Vichy", "Avène").
+    //   - `brand_name`: Denormalised display label — avoids a join and lets
+    //     the POS render brand badges fully offline.
+    //   - `parapharmacy_metadata`: JSON blob (ParapharmacyMetadata shape)
+    //     carrying category hierarchy, DCI code, age range, gender, and any
+    //     future parapharmacy-specific fields. TEXT/JSON avoids schema churn
+    //     when the payload evolves; the consumer parses + validates at read time.
+    //
+    // All three columns are nullable (no DEFAULT) — the existing product sync
+    // writes only the fields the server sends; non-parapharmacy products never
+    // receive these columns and correctly remain NULL.
+    //
+    // The `products_last_sync` cursor is deleted from `sync_metadata` so the
+    // next `pullProductsCore` executes a full re-fetch. Without the reset,
+    // existing product rows keep all three columns NULL indefinitely because the
+    // delta-keyed sync never re-fetches already-seen products.
+    //
+    // Uses a `run` handler with idempotent `isDuplicateColumnError` guards
+    // (matching the v30 / v54 pattern) so the migration survives re-application
+    // or any schema drift without aborting the entire migration run.
+    version: 58,
+    name: 'add_brand_and_parapharmacy_metadata_to_products',
+    sql: '',
+    async run(db) {
+      for (const col of ['brand_id', 'brand_name', 'parapharmacy_metadata']) {
+        try {
+          await db.execute(`ALTER TABLE products ADD COLUMN ${col} TEXT`);
+        } catch (e) {
+          if (!isDuplicateColumnError(e)) throw e;
+        }
+      }
+      await db.execute(`DELETE FROM sync_metadata WHERE key = 'products_last_sync'`);
+    },
+  },
+  {
+    // v59: Add skin_type and skin_advice_note to the customers mirror table so
+    // the POS can display (and optionally filter by) parapharmacy skin profile
+    // data alongside the customer record.
+    //
+    // Both columns are nullable TEXT — non-parapharmacy installs never receive
+    // these fields and correctly stay NULL; no DEFAULT is needed.
+    //
+    // The `customers.updated_since` cursor is deleted from `sync_metadata` so
+    // the next `pullCustomers` executes a full re-fetch. Without the reset,
+    // existing customer rows keep both skin columns NULL indefinitely because
+    // the delta-keyed sync never re-fetches already-seen customers.
+    //
+    // Uses a `run` handler with idempotent `isDuplicateColumnError` guards
+    // (matching the v58 pattern) so the migration survives re-application or
+    // any schema drift without aborting the entire migration run.
+    version: 59,
+    name: 'add_skin_fields_to_customers',
+    sql: '',
+    async run(db) {
+      for (const col of ['skin_type', 'skin_advice_note']) {
+        try {
+          await db.execute(`ALTER TABLE customers ADD COLUMN ${col} TEXT`);
+        } catch (e) {
+          if (!isDuplicateColumnError(e)) throw e;
+        }
+      }
+      await db.execute(`DELETE FROM sync_metadata WHERE key = 'customers.updated_since'`);
+    },
+  },
 ];

@@ -23,6 +23,7 @@ use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Application\DTOs\OpeningStateData;
 use App\Modules\Product\Application\DTOs\ProductData;
 use App\Modules\Product\Application\Services\ProductTombstoneService;
+use App\Modules\Product\Domain\Enums\BrandSource;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Events\ProductCreated;
 use App\Modules\Product\Domain\Events\ProductDeleted;
@@ -87,12 +88,16 @@ class ProductController extends Controller
         $perPage = min((int) $request->input('per_page', 25), 2000);
 
         // Build query with conditional vertical-specific metadata loading
-        $with = ['category', 'unitOfMeasure'];
+        $with = ['category', 'unitOfMeasure', 'brand'];
         if ($company->tenant->vertical === Vertical::Parapharmacy) {
             $with[] = 'parapharmacyMetadata.ingredients';
             $with[] = 'parapharmacyMetadata.keyComponents';
             $with[] = 'parapharmacyMetadata.healthClaims';
             $with[] = 'parapharmacyMetadata.certifications';
+            $with[] = 'parapharmacyMetadata.skinSuitabilities';
+            $with[] = 'parapharmacyMetadata.routines';
+            $with[] = 'parapharmacyMetadata.equivalentProducts';
+            $with[] = 'parapharmacyMetadata.complementProducts';
         }
 
         if ($company->tenant->vertical->isAutomotive()) {
@@ -281,7 +286,7 @@ class ProductController extends Controller
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->where('id', $product)
-            ->with(['unitOfMeasure'])
+            ->with(['unitOfMeasure', 'brand'])
             ->first();
 
         if (! $productModel) {
@@ -304,6 +309,10 @@ class ProductController extends Controller
                 'parapharmacyMetadata.keyComponents',
                 'parapharmacyMetadata.healthClaims',
                 'parapharmacyMetadata.certifications',
+                'parapharmacyMetadata.skinSuitabilities',
+                'parapharmacyMetadata.routines',
+                'parapharmacyMetadata.equivalentProducts',
+                'parapharmacyMetadata.complementProducts',
             ]);
         }
 
@@ -377,6 +386,15 @@ class ProductController extends Controller
                 $validated['category_id'] ?? null,
             );
         }
+
+        // C-2: derive brand_source from the supplied brand_id — never trust the client.
+        // isset() returns false when brand_id is absent OR null, so a non-null
+        // brand_id unambiguously means the user is assigning a brand. Set BEFORE the
+        // creation transaction so it flows into Product::create([...$validated]).
+        unset($validated['brand_source']);
+        $validated['brand_source'] = isset($validated['brand_id'])
+            ? BrandSource::User->value
+            : null;
 
         // Authz gate: posting an opening balance is an inventory-adjustment action.
         // Check BEFORE any write so no partial state is created.
@@ -500,6 +518,10 @@ class ProductController extends Controller
                 'parapharmacyMetadata.keyComponents',
                 'parapharmacyMetadata.healthClaims',
                 'parapharmacyMetadata.certifications',
+                'parapharmacyMetadata.skinSuitabilities',
+                'parapharmacyMetadata.routines',
+                'parapharmacyMetadata.equivalentProducts',
+                'parapharmacyMetadata.complementProducts',
             ]);
         }
 
@@ -512,7 +534,7 @@ class ProductController extends Controller
             ]);
         }
 
-        $product->load(['unitOfMeasure']);
+        $product->load(['unitOfMeasure', 'brand']);
 
         $media = $this->catalogMedia->forProduct($product->id, $tenantId);
 
@@ -685,6 +707,16 @@ class ProductController extends Controller
             unset($validated['automotive_metadata']);
         }
 
+        // C-2: derive brand_source from the supplied brand_id — never trust the client.
+        if (array_key_exists('brand_id', $validated)) {
+            unset($validated['brand_source']);
+            if ($validated['brand_id'] !== null) {
+                $validated['brand_source'] = BrandSource::User->value;
+            } else {
+                $validated['brand_source'] = null;
+            }
+        }
+
         // Update product core fields
         $productModel->update($validated);
 
@@ -756,6 +788,10 @@ class ProductController extends Controller
                 'parapharmacyMetadata.keyComponents',
                 'parapharmacyMetadata.healthClaims',
                 'parapharmacyMetadata.certifications',
+                'parapharmacyMetadata.skinSuitabilities',
+                'parapharmacyMetadata.routines',
+                'parapharmacyMetadata.equivalentProducts',
+                'parapharmacyMetadata.complementProducts',
             ]);
         }
 
@@ -768,7 +804,7 @@ class ProductController extends Controller
             ]);
         }
 
-        $freshProduct->load(['unitOfMeasure']);
+        $freshProduct->load(['unitOfMeasure', 'brand']);
 
         $media = $this->catalogMedia->forProduct($freshProduct->id, $company->tenant_id);
 

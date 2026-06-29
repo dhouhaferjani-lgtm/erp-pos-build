@@ -147,6 +147,12 @@ class UpdateProductRequest extends FormRequest
 
         return [
             'name' => ['sometimes', 'string', 'max:255'],
+            'brand_id' => [
+                'sometimes',
+                'nullable',
+                'uuid',
+                Rule::exists('brands', 'id')->where('tenant_id', $company->tenant_id),
+            ],
             'sku' => [
                 'sometimes',
                 'string',

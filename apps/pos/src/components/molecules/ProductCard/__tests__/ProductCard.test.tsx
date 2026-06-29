@@ -89,11 +89,11 @@ describe('ProductCard', () => {
     expect(screen.getByText('Stable Product')).toBeInTheDocument();
   });
 
-  it('shows in-cart visual state via a full action border + corner badge (no side-stripe)', () => {
+  it('shows in-cart visual state via a full accent border + corner badge (no side-stripe)', () => {
     renderCard({ isInCart: true });
     const btn = screen.getByRole('button');
-    // Full action border, not an asymmetric thick side-stripe.
-    expect(btn.className).toContain('border-action');
+    // Full accent border (Task 24 restyle), not an asymmetric thick side-stripe.
+    expect(btn.className).toContain('border-accent');
     expect(btn.className).not.toContain('border-l-4');
     // Corner badge signals the selected state.
     expect(screen.getByTestId('in-cart-badge')).toBeInTheDocument();
@@ -209,5 +209,63 @@ describe('ProductCard layout regressions', () => {
     const eye = screen.getByTestId('view-details-button');
     fireEvent.keyDown(eye, { key: 'Enter' });
     expect(onAddToCart).not.toHaveBeenCalled();
+  });
+});
+
+// ── Task 24 restyle assertions ────────────────────────────────────────────────
+describe('ProductCard — Task 24 restyle', () => {
+  it('(a) preserved data-testids all render on a standard in-stock product', () => {
+    const product = makeProduct({ id: 'p1', name: 'Widget', sale_price: '5.00', stock_quantity: 10 });
+    const { container } = renderCard({ product, onViewDetails: vi.fn() });
+
+    // price-row and stock-row always present for a tracked product
+    expect(container.querySelector('[data-testid="price-row"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-testid="stock-row"]')).toBeInTheDocument();
+    // incoming-badge absent when no incoming stock (undefined locationStock = legacy path)
+    expect(container.querySelector('[data-testid="incoming-badge"]')).not.toBeInTheDocument();
+    // view-details-button present when handler provided
+    expect(container.querySelector('[data-testid="view-details-button"]')).toBeInTheDocument();
+    // in-cart-badge absent when not in cart
+    expect(container.querySelector('[data-testid="in-cart-badge"]')).not.toBeInTheDocument();
+  });
+
+  it('(b) brand_name renders in caps above the name only when present', () => {
+    const withBrand = makeProduct({ name: 'Crème Hydratante', brand_name: 'Avène' });
+    const withoutBrand = makeProduct({ name: 'Crème Hydratante', brand_name: undefined });
+
+    const { container: withBrandContainer } = render(
+      <ProductCard product={withBrand} onAddToCart={vi.fn()} />,
+    );
+    const { container: withoutBrandContainer } = render(
+      <ProductCard product={withoutBrand} onAddToCart={vi.fn()} />,
+    );
+
+    // Brand renders in an element with the uppercase utility class when present
+    const brandEl = withBrandContainer.querySelector('.uppercase');
+    expect(brandEl).toBeInTheDocument();
+    expect(brandEl?.textContent).toBe('Avène');
+
+    // Brand row is absent when brand_name is not provided
+    expect(withoutBrandContainer.querySelector('.uppercase')).not.toBeInTheDocument();
+  });
+
+  it('(c) in-cart accent treatment: accent border, accent-tint bg, accent badge, 3px bar', () => {
+    renderCard({ isInCart: true });
+    const btn = screen.getByRole('button');
+
+    // Accent border and tinted background
+    expect(btn.className).toContain('border-accent');
+    expect(btn.className).toContain('bg-accent-tint');
+
+    // 3px top accent bar — an absolute <span> with bg-accent
+    const bars = Array.from(btn.querySelectorAll('span[aria-hidden]'));
+    const topBar = bars.find((el) => el.className.includes('h-[3px]'));
+    expect(topBar).toBeDefined();
+    expect(topBar?.className).toContain('bg-accent');
+
+    // In-cart badge uses accent text token
+    const badge = screen.getByTestId('in-cart-badge');
+    expect(badge).toBeInTheDocument();
+    expect(badge.className).toContain('text-accent-strong');
   });
 });

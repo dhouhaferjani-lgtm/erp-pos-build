@@ -1,0 +1,47 @@
+# Progressive Disclosure — Context Management
+# Load when you need to decide what to read for a task
+
+# The ERP has ~38 modules, 328+ migrations, 574+ tests.
+# NEVER load everything at once.
+
+layer_0:
+  description: "Always loaded at session start"
+  files:
+    - ~/erp-agents/orchestrator/CLAUDE.md
+    - ~/erp-agents/orchestrator/MANIFEST.yaml
+    - ~/projects/erp/CLAUDE.md  # first 100 lines only (operational rules)
+    - ~/projects/erp/docs/PRODUCT-BIBLE.md  # summary section only (if exists)
+
+layer_1:
+  description: "Per-task — load when dispatching or reviewing a specific task"
+  load_when: "a task involves specific modules"
+  files:
+    - "ls -R apps/api/app/Modules/{Module}/"  # module structure
+    - "~/erp-agents/{domain-agent}/CLAUDE.md"  # domain agent's business rules
+    - "apps/api/app/Modules/{Module}/routes.php"  # routes
+    - "apps/api/app/Shared/Contracts/{Module}*"  # cross-module interfaces
+    - "apps/api/tests/Unit/Modules/{Module}/"  # existing tests
+
+layer_2:
+  description: "On-demand — load when you need specific details"
+  load_when: "you need to compare patterns or understand schema"
+  files:
+    - reference implementations (how another module solved a similar problem)
+    - migration history for schema context
+    - "docs/conventions/*.md"
+    - "docs/architecture/*.md"
+    - "apps/api/.claude/context/*.md"  # if codified context exists
+
+layer_3:
+  description: "Never pre-load — use grep/glob when needed"
+  includes:
+    - full codebase
+    - all migration files
+    - all test files
+    - node_modules, vendor
+
+context_hygiene:
+  - run /compact every 2-3 hours
+  - after completing a task review, summarize and drop detailed context
+  - when switching tasks, note what context is no longer relevant
+  - MANIFEST.yaml is external memory — write state there, not in context
