@@ -936,5 +936,10 @@
       "cp858": "CP858 (Western Europe)",
       "cp1252": "CP1252 (Windows Latin)"
     }
+  },
+  "loyalty": {
+    "points": "{{amount}} pts",
+    "earnEstimate": "+{{points}} pts this sale",
+    "joinsOnPurchase": "Joins on purchase"
   }
 }
